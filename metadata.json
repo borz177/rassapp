@@ -1,0 +1,6 @@
+{
+  "name": "InstallMate - AI Installment Manager",
+  "description": "A comprehensive PWA for managing goods sold on installment, tracking customer debts, and generating AI-powered payment reminders.",
+  "permissions": [],
+  "requestFramePermissions": []
+}
