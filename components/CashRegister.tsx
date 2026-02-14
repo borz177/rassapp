@@ -11,6 +11,7 @@ interface CashRegisterProps {
   onAction: (action: string) => void;
   onSelectAccount: (accountId: string) => void;
   onSetMainAccount: (accountId: string) => void;
+  onUpdateAccount?: (account: Account) => void;
   isManager: boolean;
   totalExpectedProfit: number;
   realizedPeriodProfit: number;
@@ -49,7 +50,7 @@ const CreateAccountModal = ({ onClose, onSubmit, investors }: { onClose: () => v
                             <button type="button" onClick={() => setType('SHARED')} className={`flex-1 py-2 text-xs font-bold rounded-lg ${type === 'SHARED' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>Общий</button>
                         </div>
                     </div>
-                    
+
                     {type === 'SHARED' && (
                         <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 max-h-40 overflow-y-auto">
                             <p className="text-xs text-indigo-700 font-bold mb-2">Выберите партнеров:</p>
@@ -76,11 +77,40 @@ const CreateAccountModal = ({ onClose, onSubmit, investors }: { onClose: () => v
     )
 }
 
+const EditAccountModal = ({ account, onClose, onUpdate }: { account: Account, onClose: () => void, onUpdate: (acc: Account) => void }) => {
+    const [name, setName] = useState(account.name);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if(!name.trim()) return;
+        onUpdate({ ...account, name });
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={e => e.stopPropagation()}>
+                <h3 className="text-lg font-bold text-slate-800 mb-4">Редактировать счет</h3>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Название</label>
+                        <input autoFocus value={name} onChange={e => setName(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl outline-none" />
+                    </div>
+                    <div className="flex gap-3 mt-4">
+                        <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
+                        <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    )
+}
+
 const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: { account: Account, sales: Sale[], expenses: Expense[], investors: Investor[], onClose: () => void }) => {
     // 1. Calculate Account Total Value (Cash + Receivables)
     const accountSales = sales.filter(s => s.accountId === account.id);
     const accountExpenses = expenses.filter(e => e.accountId === account.id);
-    
+
     // Cash Balance
     let cashBalance = 0;
     accountSales.forEach(s => {
@@ -97,25 +127,17 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
     const totalAccountEquity = cashBalance + receivables;
 
     // 2. Calculate Partner Contributions (Net Capital)
-    // Deposit: Sale type CASH, customerId == investorId
-    // Withdrawal: Expense type INVESTOR_WITHDRAWAL, investorId == investorId
     const partnerStats = (account.partners || []).map(partnerId => {
         const investor = investors.find(i => i.id === partnerId);
-        
-        // Deposits (Income into account tagged with investor)
-        // In NewIncome, INVESTOR_DEPOSIT sets customerId = investorId and type=CASH (actually type is mapped to CASH in app logic but let's check Sale structure)
-        // App.tsx handleIncomeSubmit: customerId: data.investorId, type: 'CASH'
+
         const deposits = accountSales
             .filter(s => s.type === 'CASH' && s.customerId === partnerId)
             .reduce((sum, s) => sum + s.totalAmount, 0);
 
-        // Withdrawals (Capital Return)
-        // Only count capital return, not profit payout, for "Net Invested Capital" calculation?
-        // Actually, for simple equity share: Share = (Deposits - CapitalWithdrawals) / TotalNetDeposits
         const withdrawals = accountExpenses
             .filter(e => e.investorId === partnerId && e.payoutType === 'INVESTMENT')
             .reduce((sum, e) => sum + e.amount, 0);
-        
+
         const profitWithdrawals = accountExpenses
             .filter(e => e.investorId === partnerId && e.payoutType === 'PROFIT')
             .reduce((sum, e) => sum + e.amount, 0);
@@ -140,7 +162,7 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
                     <h3 className="text-lg font-bold text-slate-800">{account.name}</h3>
                     <p className="text-xs text-indigo-600 font-bold uppercase tracking-wider">Совместный счет</p>
                 </div>
-                
+
                 <div className="p-5 space-y-4 overflow-y-auto">
                     <div className="grid grid-cols-2 gap-4">
                         <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
@@ -152,7 +174,7 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
                             <p className="text-xl font-bold text-amber-600">{receivables.toLocaleString()} ₽</p>
                         </div>
                     </div>
-                    
+
                     <div className="bg-slate-800 text-white p-4 rounded-xl">
                         <div className="flex justify-between items-end mb-1">
                             <span className="text-slate-400 text-sm">Общая стоимость активов</span>
@@ -167,7 +189,7 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
                     <div>
                         <h4 className="font-bold text-slate-700 mb-3 text-sm">Распределение долей</h4>
                         <div className="space-y-3">
-                            {partnerStats.length === 0 ? <p className="text-center text-slate-400 text-xs">Нет активных партнеров</p> : 
+                            {partnerStats.length === 0 ? <p className="text-center text-slate-400 text-xs">Нет активных партнеров</p> :
                             partnerStats.map(p => {
                                 const sharePercent = totalNetCapital > 0 ? (p.netCapital / totalNetCapital) * 100 : 0;
                                 const equityValue = totalAccountEquity * (sharePercent / 100);
@@ -207,28 +229,30 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
     );
 };
 
-const CashRegister: React.FC<CashRegisterProps> = ({ 
-    accounts, sales, expenses, investors, onAddAccount, onAction, onSelectAccount, onSetMainAccount,
+const CashRegister: React.FC<CashRegisterProps> = ({
+    accounts, sales, expenses, investors, onAddAccount, onAction, onSelectAccount, onSetMainAccount, onUpdateAccount,
     isManager, totalExpectedProfit, realizedPeriodProfit, myProfitPeriod, setMyProfitPeriod
 }) => {
   const [isAdding, setIsAdding] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [selectedSharedAccount, setSelectedSharedAccount] = useState<Account | null>(null);
 
   const [showProfitDetails, setShowProfitDetails] = useState(false);
   const [profitDetailsTab, setProfitDetailsTab] = useState<'accruals' | 'payouts'>('accruals');
+  const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL');
 
   const accountBalances = useMemo(() => {
     const balances: Record<string, number> = {};
 
     accounts.forEach(acc => {
       let total = 0;
-      
+
       const accountSales = sales.filter(s => s.accountId === acc.id);
       accountSales.forEach(s => {
           total += s.downPayment;
           s.paymentPlan.filter(p => p.isPaid).forEach(p => total += p.amount);
       });
-      
+
       const accountExpenses = expenses.filter(e => e.accountId === acc.id);
       total -= accountExpenses.reduce((sum, e) => sum + e.amount, 0);
 
@@ -242,19 +266,16 @@ const CashRegister: React.FC<CashRegisterProps> = ({
     const accruals: {id: string, date: string, amount: number, source: string}[] = [];
 
     sales.forEach(sale => {
+        // Filter by Account if selected
+        if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
+
         if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
 
         const totalSaleProfit = sale.totalAmount - sale.buyPrice;
         const profitMargin = totalSaleProfit / sale.totalAmount;
-        
+
         const account = accounts.find(a => a.id === sale.accountId);
-        
-        // Skip profit calc for Shared Accounts in "My Profit" view (calculated separately in Shared View)
-        // Or treat manager as 100% owner if not investor? 
-        // For simplicity, Manager Profit View currently tracks accounts where he is owner.
-        // If it is a SHARED account, the manager might be one of the partners.
-        // Let's keep existing logic for MAIN/CUSTOM/INVESTOR accounts.
-        
+
         let managerProfitSharePercent = 1.0;
         if (account?.type === 'INVESTOR' && account.ownerId) {
             const investor = investors.find(i => i.id === account.ownerId);
@@ -262,17 +283,14 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                 managerProfitSharePercent = (100 - investor.profitPercentage) / 100;
             }
         } else if (account?.type === 'SHARED') {
-            // For shared accounts, "My Profit" logic is complex because it depends on dynamic share.
-            // We'll exclude SHARED accounts from the general "My Profit" dashboard widget to avoid confusion,
-            // relying on the specific SharedAccountDetails modal for that info.
-            return;
+            return; // Skip shared accounts for simple "My Profit" for now
         }
 
         const allPayments = [
             { date: sale.startDate, amount: sale.downPayment, id: `${sale.id}_dp` },
             ...sale.paymentPlan.filter(p => p.isPaid)
         ];
-        
+
         allPayments.forEach(p => {
             if (p.amount > 0) {
                 const profitFromPayment = p.amount * profitMargin;
@@ -290,9 +308,9 @@ const CashRegister: React.FC<CashRegisterProps> = ({
     });
 
     const payouts = expenses
-        .filter(e => e.category === 'Моя выплата')
+        .filter(e => e.category === 'Моя выплата' && (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
         .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
+
     const totalEarned = accruals.reduce((sum, item) => sum + item.amount, 0);
     const totalWithdrawn = payouts.reduce((sum, item) => sum + item.amount, 0);
 
@@ -302,7 +320,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
         totalManagerProfitEarned: totalEarned,
         totalManagerProfitWithdrawn: totalWithdrawn
     };
-  }, [sales, expenses, accounts, investors]);
+  }, [sales, expenses, accounts, investors, profitFilterAccountId]);
 
   const managerProfitBalance = totalManagerProfitEarned - totalManagerProfitWithdrawn;
 
@@ -310,7 +328,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       onAddAccount(name, type, partners);
       setIsAdding(false);
   }
-  
+
   const getAccountTypeLabel = (type: Account['type']) => {
       switch(type) {
           case 'MAIN': return 'Основной счет';
@@ -331,17 +349,11 @@ const CashRegister: React.FC<CashRegisterProps> = ({
 
   return (
     <div className="space-y-6 animate-fade-in pb-20 w-full">
-      <header className="flex justify-between items-center">
-        <div>
-            <h2 className="text-2xl font-bold text-slate-800">Касса и Счета</h2>
-            <p className="text-slate-500 text-sm">Управление финансами</p>
-        </div>
-      </header>
-      
+
       <div className="flex justify-between items-center pt-4">
         <h3 className="font-bold text-slate-700">Мои Счета</h3>
         {isManager && (
-            <button 
+            <button
                 onClick={() => setIsAdding(true)}
                 className="text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-100"
             >
@@ -351,21 +363,29 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       </div>
 
       {isAdding && (
-          <CreateAccountModal 
-            onClose={() => setIsAdding(false)} 
-            onSubmit={handleCreateAccount} 
+          <CreateAccountModal
+            onClose={() => setIsAdding(false)}
+            onSubmit={handleCreateAccount}
             investors={investors}
+          />
+      )}
+
+      {editingAccount && onUpdateAccount && (
+          <EditAccountModal
+            account={editingAccount}
+            onClose={() => setEditingAccount(null)}
+            onUpdate={onUpdateAccount}
           />
       )}
 
       {/* Account Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {accounts.map(acc => (
-          <div 
-            key={acc.id} 
+          <div
+            key={acc.id}
             className="bg-white p-5 rounded-2xl shadow-sm relative overflow-hidden group hover:shadow-md transition-all flex flex-col"
           >
-            <div 
+            <div
                 onClick={() => handleAccountClick(acc)}
                 className="flex-1 cursor-pointer"
             >
@@ -379,6 +399,18 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                         {ICONS.Users} ОБЩИЙ
                     </span>
                 )}
+
+                {/* Edit Button */}
+                {isManager && onUpdateAccount && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setEditingAccount(acc); }}
+                        className="absolute top-3 right-3 p-1.5 bg-white rounded-full text-slate-400 hover:text-indigo-600 shadow-sm z-20"
+                        style={{ right: acc.type === 'MAIN' || acc.type === 'SHARED' ? '80px' : '12px' }}
+                    >
+                        {ICONS.Edit}
+                    </button>
+                )}
+
                 <div className="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                    <div className="scale-150 text-indigo-600">{ICONS.Wallet}</div>
                 </div>
@@ -389,7 +421,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </span>
                     </p>
-                    <h3 className="font-bold text-slate-800 text-lg">{acc.name}</h3>
+                    <h3 className="font-bold text-slate-800 text-lg pr-8">{acc.name}</h3>
                     <p className="text-2xl font-bold text-indigo-600 mt-2">
                         {(accountBalances[acc.id] || 0).toLocaleString()} ₽
                     </p>
@@ -433,7 +465,48 @@ const CashRegister: React.FC<CashRegisterProps> = ({
 
       {isManager && (
         <div className="space-y-4 pt-4 border-t border-slate-100 mt-6">
-            <h3 className="font-bold text-slate-800 px-1">Моя прибыль (Личные счета)</h3>
+            <div className="flex justify-between items-center">
+                <h3 className="font-bold text-slate-800 px-1">Моя прибыль (Личные счета)</h3>
+            </div>
+
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 space-y-3">
+                {/* Account Filter */}
+                <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Фильтр по счету</label>
+                    <select
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm text-slate-700 font-medium"
+                        value={profitFilterAccountId}
+                        onChange={e => setProfitFilterAccountId(e.target.value)}
+                    >
+                        <option value="ALL">Все счета</option>
+                        {accounts.filter(a => a.type !== 'SHARED').map(acc => (
+                            <option key={acc.id} value={acc.id}>{acc.name}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="text-xs text-slate-500 mb-1 block">Начало</label>
+                        <input
+                            type="date"
+                            className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-900 font-medium"
+                            value={myProfitPeriod.start}
+                            onChange={e => setMyProfitPeriod(p => ({...p, start: e.target.value}))}
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs text-slate-500 mb-1 block">Конец</label>
+                        <input
+                            type="date"
+                            className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-900 font-medium"
+                            value={myProfitPeriod.end}
+                            onChange={e => setMyProfitPeriod(p => ({...p, end: e.target.value}))}
+                        />
+                    </div>
+                </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
                     <h3 className="font-bold text-sm text-slate-800 mb-1">Общая ожидаемая прибыль</h3>
@@ -449,26 +522,6 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                     <h3 className="font-bold text-sm text-slate-800 mb-1">Полученная прибыль</h3>
                     <p className="text-xs text-slate-500 mb-2">Общий баланс</p>
                     <p className="text-2xl font-bold text-emerald-800">{managerProfitBalance.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽</p>
-                </div>
-            </div>
-            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 grid grid-cols-2 gap-3">
-                <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Начало</label>
-                    <input 
-                        type="date" 
-                        className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-900 font-medium" 
-                        value={myProfitPeriod.start} 
-                        onChange={e => setMyProfitPeriod(p => ({...p, start: e.target.value}))} 
-                    />
-                </div>
-                <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Конец</label>
-                    <input 
-                        type="date" 
-                        className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white text-slate-900 font-medium" 
-                        value={myProfitPeriod.end} 
-                        onChange={e => setMyProfitPeriod(p => ({...p, end: e.target.value}))} 
-                    />
                 </div>
             </div>
         </div>

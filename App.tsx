@@ -342,28 +342,34 @@ const App: React.FC = () => {
               alert("Ошибка создания инвестора");
               console.error(e);
           }
-      } 
+      }
   };
-  
-  const handleUpdateInvestor = async (updated: Investor) => { 
-      if (isManager) { 
+
+  const handleUpdateInvestor = async (updated: Investor) => {
+      if (isManager) {
           await api.saveItem('investors', updated);
-          setInvestors(prev => prev.map(inv => inv.id === updated.id ? updated : inv)); 
-      } 
+          setInvestors(prev => prev.map(inv => inv.id === updated.id ? updated : inv));
+      }
   };
   const handleDeleteInvestor = async (id: string) => { if (isManager) { await api.deleteUser(id); setInvestors(prev => prev.filter(inv => inv.id !== id)); setAccounts(prev => prev.filter(a => a.ownerId !== id)); } };
-  
+
   const handleAddProduct = async (name: string, price: number, stock: number) => { if (user) { const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newProd = { id: Date.now().toString(), userId: ownerId, name, price, category: 'Общее', stock }; setProducts([...products, newProd]); await api.saveItem('products', newProd); } };
   const handleUpdateProduct = async (updated: Product) => { if (isEmployee && !user?.permissions?.canEdit) return; setProducts(products.map(p => p.id === updated.id ? updated : p)); await api.saveItem('products', updated); };
   const handleDeleteProduct = async (id: string) => { if (isEmployee && !user?.permissions?.canDelete) return; setProducts(products.filter(p => p.id !== id)); await api.deleteItem('products', id); };
-  
+
   const handleAddCustomer = async (name: string, phone: string, photo: string) => { if (!user) throw new Error("No user"); const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newCustomer: Customer = { id: Date.now().toString(), userId: ownerId, name, phone, email: '', trustScore: 50, notes: '', photo }; setCustomers([...customers, newCustomer]); await api.saveItem('customers', newCustomer); return newCustomer; };
-  
+
   const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', partners?: string[]) => { if (user && isManager) { const newAcc = { id: `acc_${Date.now()}`, userId: user.id, name, type, partners }; setAccounts([...accounts, newAcc]); await api.saveItem('accounts', newAcc); } };
   const handleSetMainAccount = async (accountId: string) => { if (user && isManager) { const updatedAccounts = accounts.map(acc => { if (acc.id === accountId) { return { ...acc, type: 'MAIN' as const }; } if (acc.type === 'MAIN') { return { ...acc, type: 'CUSTOM' as const }; } return acc; }); setAccounts(updatedAccounts); for(const acc of updatedAccounts) await api.saveItem('accounts', acc); } };
-  
-  const handleUndoPayment = async (saleId: string, paymentId: string) => { 
-      if (isEmployee && !user?.permissions?.canDelete) { alert("Нет прав на удаление"); return; } 
+  const handleUpdateAccount = async (updatedAccount: Account) => {
+      if (user && isManager) {
+          await api.saveItem('accounts', updatedAccount);
+          setAccounts(prev => prev.map(a => a.id === updatedAccount.id ? updatedAccount : a));
+      }
+  };
+
+  const handleUndoPayment = async (saleId: string, paymentId: string) => {
+      if (isEmployee && !user?.permissions?.canDelete) { alert("Нет прав на удаление"); return; }
       const sale = sales.find(s => s.id === saleId);
       if(sale) {
           const payment = sale.paymentPlan.find(p => p.id === paymentId);
@@ -374,8 +380,8 @@ const App: React.FC = () => {
           }
       }
   };
-  const handleEditPayment = async (saleId: string, paymentId: string, newDate: string) => { 
-      if (isEmployee && !user?.permissions?.canEdit) { alert("Нет прав на редактирование"); return; } 
+  const handleEditPayment = async (saleId: string, paymentId: string, newDate: string) => {
+      if (isEmployee && !user?.permissions?.canEdit) { alert("Нет прав на редактирование"); return; }
       const sale = sales.find(s => s.id === saleId);
       if (sale) {
           const updatedSale = { ...sale, paymentPlan: sale.paymentPlan.map(p => p.id === paymentId ? { ...p, date: newDate } : p) };
@@ -383,7 +389,7 @@ const App: React.FC = () => {
           await api.saveItem('sales', updatedSale);
       }
   };
-  
+
   const handleInitiateDashboardPayment = (sale: Sale, amount: number) => { setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount }); setCurrentView('CREATE_INCOME'); };
   const handleInitiateCustomerPayment = (sale: Sale, payment: Payment) => { setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount: payment.amount }); setCurrentView('CREATE_INCOME'); };
   const openSelection = (view: ViewState, currentData: any) => { setDraftSaleData(currentData); setPreviousView(currentView); setCurrentView(view); };
@@ -392,7 +398,7 @@ const App: React.FC = () => {
   const handleSelectAccountForOperations = (accountId: string) => { setOperationsAccountId(accountId); setCurrentView('OPERATIONS'); };
   const handleSelectCustomer = (id: string) => { setSelectedCustomerId(id); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
   const handleSelectInvestor = (investor: Investor) => { setSelectedInvestorId(investor.id); setCurrentView('INVESTOR_DETAILS'); };
-  
+
   const handleAddPartnership = async (name: string, members: string[]) => {
       if (!user) return;
       const newAccountId = `acc_part_${Date.now()}`;
@@ -430,12 +436,12 @@ const App: React.FC = () => {
   if (isLoading) { return <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">Загрузка...</div>; }
 
   if (!user) { return ( <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6"> <div className="bg-white p-8 rounded-2xl w-full max-w-sm shadow-xl animate-fade-in"> <h1 className="text-3xl font-bold text-center mb-2 text-slate-800">InstallMate</h1> <p className="text-center text-slate-500 mb-6">Учет рассрочек и продаж</p> <form onSubmit={handleAuthSubmit} className="space-y-4"> {authError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center">{authError}</div>} {isRegistering && (<div><label className="block text-sm font-medium text-slate-700 mb-1">Имя</label><input type="text" className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={authName} onChange={e => setAuthName(e.target.value)} placeholder="Ваше имя"/></div>)} <div><label className="block text-sm font-medium text-slate-700 mb-1">Email</label><input type="email" className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="example@mail.com" required/></div> <div><label className="block text-sm font-medium text-slate-700 mb-1">Пароль</label><input type="password" className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder="••••••" required/></div> <button type="submit" className="w-full bg-indigo-600 text-white p-4 rounded-xl font-bold hover:bg-indigo-700 transition-colors">{isRegistering ? 'Зарегистрироваться' : 'Войти'}</button> </form> <div className="mt-6 text-center"><button onClick={() => { setIsRegistering(!isRegistering); setAuthError(''); }} className="text-indigo-600 text-sm font-medium hover:underline">{isRegistering ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Регистрация'}</button></div> </div> </div> ) }
-  
+
   return (
     <Layout currentView={currentView} setView={setCurrentView} onAction={handleAction} onContractTabChange={setActiveContractTab} sales={sales} appSettings={appSettings} customers={customers} user={user} activeInvestor={activeInvestor} onNavigateToProfile={() => setCurrentView('PROFILE')}>
       {currentView === 'DASHBOARD' && !isInvestor && <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital} onAction={handleAction} onSelectCustomer={handleSelectCustomer} onInitiatePayment={handleInitiateDashboardPayment} />}
       {currentView === 'DASHBOARD' && isInvestor && activeInvestor && <InvestorDashboard sales={sales} expenses={expenses} accounts={accounts} investor={activeInvestor} />}
-      {currentView === 'CASH_REGISTER' && <CashRegister accounts={accounts} sales={sales} expenses={expenses} investors={investors} onAddAccount={handleAddAccount} onAction={handleAction} onSelectAccount={handleSelectAccountForOperations} onSetMainAccount={handleSetMainAccount} isManager={isManager} totalExpectedProfit={totalExpectedProfit} realizedPeriodProfit={realizedPeriodProfit} myProfitPeriod={myProfitPeriod} setMyProfitPeriod={setMyProfitPeriod} />}
+      {currentView === 'CASH_REGISTER' && <CashRegister accounts={accounts} sales={sales} expenses={expenses} investors={investors} onAddAccount={handleAddAccount} onAction={handleAction} onSelectAccount={handleSelectAccountForOperations} onSetMainAccount={handleSetMainAccount} onUpdateAccount={handleUpdateAccount} isManager={isManager} totalExpectedProfit={totalExpectedProfit} realizedPeriodProfit={realizedPeriodProfit} myProfitPeriod={myProfitPeriod} setMyProfitPeriod={setMyProfitPeriod} />}
       {currentView === 'CONTRACTS' && (
         <Contracts 
             sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales} 
