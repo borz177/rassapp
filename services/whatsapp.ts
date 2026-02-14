@@ -99,6 +99,36 @@ export const sendWhatsAppMessage = async (
     }
 };
 
+export const sendWhatsAppFile = async (
+    idInstance: string,
+    apiTokenInstance: string,
+    phone: string,
+    fileBlob: Blob,
+    fileName: string
+): Promise<boolean> => {
+    try {
+        const formattedPhone = formatPhone(phone);
+        if (!formattedPhone) return false;
+
+        const chatId = `${formattedPhone}@c.us`;
+
+        const formData = new FormData();
+        formData.append('chatId', chatId);
+        formData.append('file', fileBlob, fileName);
+
+        const response = await fetch(`${GREEN_API_BASE_URL}/waInstance${idInstance}/sendFileByUpload/${apiTokenInstance}`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        return !!data.idMessage;
+    } catch (error) {
+        console.error("WhatsApp Send File Error:", error);
+        return false;
+    }
+};
+
 // Returns an array of updated sales with new lastNotificationDate
 export const processDailyReminders = async (
     settings: WhatsAppSettings,

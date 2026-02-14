@@ -426,7 +426,27 @@ const App: React.FC = () => {
   const handleInitiateCustomerPayment = (sale: Sale, payment: Payment) => { setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount: payment.amount }); setCurrentView('CREATE_INCOME'); };
   const openSelection = (view: ViewState, currentData: any) => { setDraftSaleData(currentData); setPreviousView(currentView); setCurrentView(view); };
   const handleSelection = (key: 'customerId', id: string) => { setDraftSaleData({ ...draftSaleData, [key]: id }); setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE'); };
-  const handleQuickAddCustomer = () => { const name = prompt("Имя клиента:"); if (!name) return; const phone = prompt("Телефон:"); if (name && phone) { handleAddCustomer(name, phone, '').then(c => handleSelection('customerId', c.id)); } };
+
+  // Updated Handler for Customer Creation
+  const handleQuickAddCustomer = async (data: { name: string, phone: string, address: string }) => {
+      if (!user) return;
+      const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+      const newCustomer: Customer = {
+          id: Date.now().toString(),
+          userId: ownerId,
+          name: data.name,
+          phone: data.phone,
+          address: data.address,
+          email: '',
+          trustScore: 50,
+          notes: '',
+          photo: ''
+      };
+      const saved = await api.saveItem('customers', newCustomer);
+      updateList(setCustomers, saved);
+      handleSelection('customerId', saved.id);
+  };
+
   const handleSelectAccountForOperations = (accountId: string) => { setOperationsAccountId(accountId); setCurrentView('OPERATIONS'); };
   const handleSelectCustomer = (id: string) => { setSelectedCustomerId(id); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
   const handleSelectInvestor = (investor: Investor) => { setSelectedInvestorId(investor.id); setCurrentView('INVESTOR_DETAILS'); };

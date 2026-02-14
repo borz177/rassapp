@@ -507,7 +507,7 @@ const Contracts: React.FC<ContractsProps> = ({
                     <div>
                       <span className={`inline-block px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span>
                       {activeTab === 'OVERDUE' ? (
-                          <p className="text-sm font-bold text-red-600 mt-1">Просрочено: {overdueSum.toLocaleString()} ₽</p>
+                          <p className="text-sm font-bold text-red-600 mt-1">{overdueSum.toLocaleString()} ₽</p>
                       ) : (
                           <p className="text-sm font-semibold mt-1">{sale.totalAmount.toLocaleString()} ₽</p>
                       )}
