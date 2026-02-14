@@ -1,5 +1,3 @@
-
-
 export enum PaymentStatus {
   PENDING = 'PENDING',
   PAID = 'PAID',
@@ -37,7 +35,7 @@ export interface Investor {
   phone: string;
   joinedDate: string;
   // This now represents the current investment balance, not just the initial deposit.
-  initialAmount: number; 
+  initialAmount: number;
   profitPercentage: number;
   permissions?: InvestorPermissions;
 }
@@ -69,6 +67,7 @@ export interface Customer {
   trustScore: number; // 0-100, AI calculated
   notes: string;
   photo?: string; // Base64 string
+  allowWhatsappNotification?: boolean; // New field for toggle
 }
 
 export interface Product {

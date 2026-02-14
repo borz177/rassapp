@@ -106,10 +106,6 @@ const App: React.FC = () => {
           setInvestors(data.investors);
           setPartnerships(data.partnerships);
           setEmployees(data.employees);
-          
-          if (data.sales.length > 0) {
-             // Logic to set profit period based on first sale...
-          }
       } catch (error) {
           console.error("Failed to load data", error);
       } finally {
@@ -165,7 +161,8 @@ const App: React.FC = () => {
               userData = await api.login({ email: authEmail, password: authPassword });
           }
           setUser(userData);
-          loadData();
+          // FORCE DATA RELOAD AFTER LOGIN
+          await loadData();
       } catch (err: any) {
           setAuthError(err.message || 'Ошибка авторизации');
       }
@@ -193,37 +190,30 @@ const App: React.FC = () => {
         }))
     };
 
-    // Update State Optimistically
     const existingSaleIndex = sales.findIndex(s => s.id === data.id);
-    let newSales = [...sales];
-    if (existingSaleIndex >= 0) {
-        newSales = sales.map(s => s.id === data.id ? { ...s, ...saleData } : s);
-    } else {
-        const newSale = { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
-        newSales = [newSale, ...sales];
 
-        // Handle linked data
+    // API Call
+    await api.saveItem('sales', existingSaleIndex >= 0 ? { ...sales[existingSaleIndex], ...saleData } : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' });
+
+    if (existingSaleIndex < 0) {
         if (data.buyPrice > 0) {
             const buyPriceExpense: Expense = {
-                id: `exp_sale_${newSale.id}`, userId: ownerId, accountId: data.accountId, title: `Закуп: ${data.productName}`, amount: data.buyPrice, category: 'Себестоимость', date: data.startDate
+                id: `exp_sale_${saleId}`, userId: ownerId, accountId: data.accountId, title: `Закуп: ${data.productName}`, amount: data.buyPrice, category: 'Себестоимость', date: data.startDate
             };
             await api.saveItem('expenses', buyPriceExpense);
-            setExpenses(prev => [buyPriceExpense, ...prev]);
         }
         if (data.productId) {
             const prod = products.find(p => p.id === data.productId);
             if(prod) {
                 const updatedProd = { ...prod, stock: prod.stock - 1 };
                 await api.saveItem('products', updatedProd);
-                setProducts(prev => prev.map(p => p.id === data.productId ? updatedProd : p));
             }
         }
     }
 
-    setSales(newSales);
     setEditingSale(null);
-    // API Call
-    await api.saveItem('sales', existingSaleIndex >= 0 ? { ...sales[existingSaleIndex], ...saleData } : newSales[0]);
+    // RELOAD DATA TO SYNC
+    await loadData();
   };
 
   const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
@@ -231,11 +221,9 @@ const App: React.FC = () => {
   const handleDeleteSale = async (saleId: string) => {
       if (window.confirm("Вы уверены?")) {
           const sale = sales.find(s => s.id === saleId);
-          setSales(prev => prev.filter(s => s.id !== saleId));
           await api.deleteItem('sales', saleId);
 
           if(sale) {
-              setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${saleId}`));
               await api.deleteItem('expenses', `exp_sale_${saleId}`);
 
               if (sale.productId) {
@@ -243,10 +231,11 @@ const App: React.FC = () => {
                   if(prod) {
                       const updatedProd = { ...prod, stock: prod.stock + 1 };
                       await api.saveItem('products', updatedProd);
-                      setProducts(prev => prev.map(p => p.id === sale.productId ? updatedProd : p));
                   }
               }
           }
+          // RELOAD DATA
+          await loadData();
       }
   };
 
@@ -262,25 +251,23 @@ const App: React.FC = () => {
               updatedSale.remainingAmount = Math.max(0, updatedSale.remainingAmount - amount);
               updatedSale.paymentPlan.push({ id: `paid_${Date.now()}`, saleId: sale.id, amount: amount, date: data.date, isPaid: true });
               if (updatedSale.remainingAmount === 0) updatedSale.status = 'COMPLETED';
-
-              setSales(sales.map(s => s.id === saleId ? updatedSale : s));
               await api.saveItem('sales', updatedSale);
           }
       } else {
           const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
           const newTransaction: Sale = { id: `inc_${Date.now()}`, userId: ownerId, type: 'CASH', customerId: data.investorId || 'system_income', productName: data.note || 'Приход', buyPrice: 0, accountId: data.accountId, totalAmount: data.amount, downPayment: data.amount, remainingAmount: 0, interestRate: 0, installments: 0, startDate: data.date, status: 'COMPLETED', paymentPlan: [] };
-          setSales([newTransaction, ...sales]);
           await api.saveItem('sales', newTransaction);
 
           if (data.type === 'INVESTOR_DEPOSIT') {
               const inv = investors.find(i => i.id === data.investorId);
               if (inv) {
                   const updatedInv = { ...inv, initialAmount: (inv.initialAmount || 0) + Number(data.amount) };
-                  setInvestors(investors.map(i => i.id === data.investorId ? updatedInv : i));
                   await api.saveItem('investors', updatedInv);
               }
           }
       }
+      // RELOAD DATA
+      await loadData();
       setCurrentView('OPERATIONS');
   };
 
@@ -290,17 +277,17 @@ const App: React.FC = () => {
       if (!user) return;
       const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
       const newExpense: Expense = { id: Date.now().toString(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId };
-      setExpenses([newExpense, ...expenses]);
       await api.saveItem('expenses', newExpense);
 
       if(data.payoutType === 'INVESTMENT' && data.investorId) {
           const inv = investors.find(i => i.id === data.investorId);
           if (inv) {
               const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount };
-              setInvestors(investors.map(i => i.id === data.investorId ? updatedInv : i));
               await api.saveItem('investors', updatedInv);
           }
       }
+      // RELOAD DATA
+      await loadData();
       setCurrentView('OPERATIONS');
   };
 
@@ -308,16 +295,17 @@ const App: React.FC = () => {
       if (user && isManager) {
           try {
               // CHANGED: Use createSubUser to avoid logging out the manager
-              const newUser = await api.createSubUser({ ...data, role: 'employee' });
-              setEmployees([...employees, newUser]);
+              await api.createSubUser({ ...data, role: 'employee' });
+              // RELOAD DATA
+              await loadData();
           } catch(e) {
               alert("Ошибка создания сотрудника");
               console.error(e);
           }
       }
   };
-  const handleUpdateEmployee = async (updatedData: User) => { if (isManager) { await api.updateUser(updatedData); setEmployees(prev => prev.map(e => e.id === updatedData.id ? updatedData : e)); } };
-  const handleDeleteEmployee = async (id: string) => { if (isManager) { await api.deleteUser(id); setEmployees(prev => prev.filter(e => e.id !== id)); } };
+  const handleUpdateEmployee = async (updatedData: User) => { if (isManager) { await api.updateUser(updatedData); await loadData(); } };
+  const handleDeleteEmployee = async (id: string) => { if (isManager) { await api.deleteUser(id); await loadData(); } };
 
   const handleAddInvestor = async (name: string, phone: string, email: string, pass: string, amount: number, profitPercentage: number, permissions: InvestorPermissions) => {
       if (user && isManager) {
@@ -334,10 +322,9 @@ const App: React.FC = () => {
               const depositTransaction: Sale = { id: `dep_${Date.now()}`, userId: user.id, type: 'CASH', customerId: `system_deposit_${newInvestorUser.id}`, productName: 'Начальный депозит', buyPrice: 0, accountId: newAccount.id, totalAmount: amount, downPayment: amount, remainingAmount: 0, interestRate: 0, installments: 0, startDate: new Date().toISOString(), status: 'COMPLETED', paymentPlan: [] };
               await api.saveItem('sales', depositTransaction);
 
-              setInvestors([...investors, newInvestor]);
-              setAccounts([...accounts, newAccount]);
-              setSales([depositTransaction, ...sales]);
               alert("Инвестор создан!");
+              // RELOAD DATA
+              await loadData();
           } catch(e) {
               alert("Ошибка создания инвестора");
               console.error(e);
@@ -348,23 +335,24 @@ const App: React.FC = () => {
   const handleUpdateInvestor = async (updated: Investor) => {
       if (isManager) {
           await api.saveItem('investors', updated);
-          setInvestors(prev => prev.map(inv => inv.id === updated.id ? updated : inv));
+          await loadData();
       }
   };
-  const handleDeleteInvestor = async (id: string) => { if (isManager) { await api.deleteUser(id); setInvestors(prev => prev.filter(inv => inv.id !== id)); setAccounts(prev => prev.filter(a => a.ownerId !== id)); } };
+  const handleDeleteInvestor = async (id: string) => { if (isManager) { await api.deleteUser(id); await loadData(); } };
 
-  const handleAddProduct = async (name: string, price: number, stock: number) => { if (user) { const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newProd = { id: Date.now().toString(), userId: ownerId, name, price, category: 'Общее', stock }; setProducts([...products, newProd]); await api.saveItem('products', newProd); } };
-  const handleUpdateProduct = async (updated: Product) => { if (isEmployee && !user?.permissions?.canEdit) return; setProducts(products.map(p => p.id === updated.id ? updated : p)); await api.saveItem('products', updated); };
-  const handleDeleteProduct = async (id: string) => { if (isEmployee && !user?.permissions?.canDelete) return; setProducts(products.filter(p => p.id !== id)); await api.deleteItem('products', id); };
+  const handleAddProduct = async (name: string, price: number, stock: number) => { if (user) { const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newProd = { id: Date.now().toString(), userId: ownerId, name, price, category: 'Общее', stock }; await api.saveItem('products', newProd); await loadData(); } };
+  const handleUpdateProduct = async (updated: Product) => { if (isEmployee && !user?.permissions?.canEdit) return; await api.saveItem('products', updated); await loadData(); };
+  const handleDeleteProduct = async (id: string) => { if (isEmployee && !user?.permissions?.canDelete) return; await api.deleteItem('products', id); await loadData(); };
 
-  const handleAddCustomer = async (name: string, phone: string, photo: string) => { if (!user) throw new Error("No user"); const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newCustomer: Customer = { id: Date.now().toString(), userId: ownerId, name, phone, email: '', trustScore: 50, notes: '', photo }; setCustomers([...customers, newCustomer]); await api.saveItem('customers', newCustomer); return newCustomer; };
+  const handleAddCustomer = async (name: string, phone: string, photo: string) => { if (!user) throw new Error("No user"); const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newCustomer: Customer = { id: Date.now().toString(), userId: ownerId, name, phone, email: '', trustScore: 50, notes: '', photo }; await api.saveItem('customers', newCustomer); await loadData(); return newCustomer; };
+  const handleUpdateCustomer = async (updated: Customer) => { await api.saveItem('customers', updated); await loadData(); };
 
-  const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', partners?: string[]) => { if (user && isManager) { const newAcc = { id: `acc_${Date.now()}`, userId: user.id, name, type, partners }; setAccounts([...accounts, newAcc]); await api.saveItem('accounts', newAcc); } };
-  const handleSetMainAccount = async (accountId: string) => { if (user && isManager) { const updatedAccounts = accounts.map(acc => { if (acc.id === accountId) { return { ...acc, type: 'MAIN' as const }; } if (acc.type === 'MAIN') { return { ...acc, type: 'CUSTOM' as const }; } return acc; }); setAccounts(updatedAccounts); for(const acc of updatedAccounts) await api.saveItem('accounts', acc); } };
+  const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', partners?: string[]) => { if (user && isManager) { const newAcc = { id: `acc_${Date.now()}`, userId: user.id, name, type, partners }; await api.saveItem('accounts', newAcc); await loadData(); } };
+  const handleSetMainAccount = async (accountId: string) => { if (user && isManager) { const updatedAccounts = accounts.map(acc => { if (acc.id === accountId) { return { ...acc, type: 'MAIN' as const }; } if (acc.type === 'MAIN') { return { ...acc, type: 'CUSTOM' as const }; } return acc; }); for(const acc of updatedAccounts) await api.saveItem('accounts', acc); await loadData(); } };
   const handleUpdateAccount = async (updatedAccount: Account) => {
       if (user && isManager) {
           await api.saveItem('accounts', updatedAccount);
-          setAccounts(prev => prev.map(a => a.id === updatedAccount.id ? updatedAccount : a));
+          await loadData();
       }
   };
 
@@ -375,8 +363,8 @@ const App: React.FC = () => {
           const payment = sale.paymentPlan.find(p => p.id === paymentId);
           if (payment) {
               const updatedSale = { ...sale, remainingAmount: sale.remainingAmount + payment.amount, paymentPlan: sale.paymentPlan.filter(p => p.id !== paymentId), status: 'ACTIVE' as const };
-              setSales(prev => prev.map(s => s.id === saleId ? updatedSale : s));
               await api.saveItem('sales', updatedSale);
+              await loadData();
           }
       }
   };
@@ -385,8 +373,8 @@ const App: React.FC = () => {
       const sale = sales.find(s => s.id === saleId);
       if (sale) {
           const updatedSale = { ...sale, paymentPlan: sale.paymentPlan.map(p => p.id === paymentId ? { ...p, date: newDate } : p) };
-          setSales(prev => prev.map(s => s.id === saleId ? updatedSale : s));
           await api.saveItem('sales', updatedSale);
+          await loadData();
       }
   };
 
@@ -404,10 +392,9 @@ const App: React.FC = () => {
       const newAccountId = `acc_part_${Date.now()}`;
       const newAccount: Account = { id: newAccountId, userId: user.id, name: `Счет: ${name}`, type: 'CUSTOM' };
       const newPartnership: Partnership = { id: `part_${Date.now()}`, userId: user.id, name, accountId: newAccountId, partnerIds: members, createdAt: new Date().toISOString() };
-      setAccounts([...accounts, newAccount]);
-      setPartnerships([...partnerships, newPartnership]);
       await api.saveItem('accounts', newAccount);
       await api.saveItem('partnerships', newPartnership);
+      await loadData();
   };
 
   const handleUpdateProfile = async (data: any) => {
@@ -443,15 +430,15 @@ const App: React.FC = () => {
       {currentView === 'DASHBOARD' && isInvestor && activeInvestor && <InvestorDashboard sales={sales} expenses={expenses} accounts={accounts} investor={activeInvestor} />}
       {currentView === 'CASH_REGISTER' && <CashRegister accounts={accounts} sales={sales} expenses={expenses} investors={investors} onAddAccount={handleAddAccount} onAction={handleAction} onSelectAccount={handleSelectAccountForOperations} onSetMainAccount={handleSetMainAccount} onUpdateAccount={handleUpdateAccount} isManager={isManager} totalExpectedProfit={totalExpectedProfit} realizedPeriodProfit={realizedPeriodProfit} myProfitPeriod={myProfitPeriod} setMyProfitPeriod={setMyProfitPeriod} />}
       {currentView === 'CONTRACTS' && (
-        <Contracts 
-            sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales} 
-            customers={customers} 
-            accounts={accounts} 
-            activeTab={activeContractTab} 
-            onTabChange={setActiveContractTab} 
-            onViewSchedule={handleViewSaleSchedule} 
-            onEditSale={handleStartEditSale} 
-            onDeleteSale={handleDeleteSale} 
+        <Contracts
+            sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
+            customers={customers}
+            accounts={accounts}
+            activeTab={activeContractTab}
+            onTabChange={setActiveContractTab}
+            onViewSchedule={handleViewSaleSchedule}
+            onEditSale={handleStartEditSale}
+            onDeleteSale={handleDeleteSale}
             readOnly={isInvestor}
             user={user}
             appSettings={appSettings}
@@ -460,18 +447,18 @@ const App: React.FC = () => {
       {currentView === 'INVESTORS' && <Investors investors={investors} onAddInvestor={handleAddInvestor} onUpdateInvestor={handleUpdateInvestor} onDeleteInvestor={handleDeleteInvestor} onViewDetails={handleSelectInvestor} />}
       {currentView === 'INVESTOR_DETAILS' && selectedInvestorId && <InvestorDetails investor={investors.find(i => i.id === selectedInvestorId)!} account={accounts.find(a => a.ownerId === selectedInvestorId)} sales={sales} expenses={expenses} onBack={() => setCurrentView('INVESTORS')} />}
       {currentView === 'PARTNERS' && (
-          <Partners 
-            partnerships={partnerships} 
-            investors={investors} 
-            accounts={accounts} 
-            sales={sales} 
-            expenses={expenses} 
-            onAddPartnership={handleAddPartnership} 
+          <Partners
+            partnerships={partnerships}
+            investors={investors}
+            accounts={accounts}
+            sales={sales}
+            expenses={expenses}
+            onAddPartnership={handleAddPartnership}
             onSelectAccount={handleSelectAccountForOperations}
           />
       )}
       {currentView === 'CUSTOMERS' && <Customers customers={customers} onAddCustomer={handleAddCustomer} onSelectCustomer={handleSelectCustomer} />}
-      {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId && <CustomerDetails customer={customers.find(c => c.id === selectedCustomerId)!} sales={sales} onBack={() => setCurrentView(previousView)} onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment} onEditPayment={handleEditPayment} initialSaleId={initialSaleIdForDetails} />}
+      {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId && <CustomerDetails customer={customers.find(c => c.id === selectedCustomerId)!} sales={sales} onBack={() => setCurrentView(previousView)} onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment} onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer} initialSaleId={initialSaleIdForDetails} />}
       {currentView === 'MANAGE_PRODUCTS' && <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} />}
       {currentView === 'OPERATIONS' && (
         <Operations 

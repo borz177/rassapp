@@ -225,9 +225,11 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
         )}
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 md:ml-64 p-4 md:p-8 max-w-6xl mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col">
-        {children}
+      {/* Main Content Area - Updated margins and centering */}
+      <main className="flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50">
+        <div className="w-full max-w-7xl mx-auto h-full">
+            {children}
+        </div>
       </main>
 
       {/* Mobile Quick Actions Menu (Triggered by FAB) - ONLY FOR MANAGER/EMPLOYEE */}
