@@ -12,6 +12,7 @@ interface DashboardProps {
     installmentSalesTotal: number;
   };
   workingCapital: number;
+  accountBalances: Record<string, number>;
   onAction: (action: string) => void;
   onSelectCustomer: (id: string) => void;
   onInitiatePayment: (sale: Sale, amount: number) => void;
@@ -46,7 +47,7 @@ const SaleDetailsModal = ({ sale, customerName, onClose }: { sale: Sale, custome
     );
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalStats, workingCapital: globalWorkingCapital, onAction, onSelectCustomer, onInitiatePayment, accounts }) => {
+const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalStats, workingCapital: globalWorkingCapital, accountBalances, onAction, onSelectCustomer, onInitiatePayment, accounts }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
   const [selectedSaleForModal, setSelectedSaleForModal] = useState<Sale | null>(null);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
@@ -65,12 +66,9 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
       let totalRevenue = 0;
       let totalOutstanding = 0;
       let installmentSalesTotal = 0;
-      let workingCapitalCash = 0;
 
       filteredSales.forEach(sale => {
           // EXCLUDE INVESTOR DEPOSITS (System transactions) from Revenue & Outstanding calculations
-          // Assuming investor deposits have specific customer IDs or types.
-          // Based on App.tsx logic: customerId: `system_deposit_${newInvestorUser.id}`
           const isSystemTransaction = sale.customerId.startsWith('system_');
 
           if (!isSystemTransaction) {
@@ -81,13 +79,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                   installmentSalesTotal += sale.totalAmount;
               }
           }
-
-          // For Working Capital (Cash in hand + Outstanding), we might include everything available in the account
-          // But strict "Working Capital" usually implies liquid cash + receivables.
-          // Let's approximate Cash Balance for this account context based on *sales* flow (ignoring pure expenses for this simplified view unless passed)
-          // Since we don't have expenses filtered by account easily accessible here without props, we'll stick to Sales logic.
-          // However, for consistency with the global app logic, if NO account is selected, we use the global stats.
-          // If Account IS selected, we calculate strictly based on sales flow in that account.
       });
 
       return {
@@ -97,13 +88,13 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
       };
   }, [sales, selectedAccountId]);
 
-  // Use global stats if no account selected (or if we want to be consistent),
-  // BUT the requirement is to filter cards by account.
-  // So we use calculatedStats always, but for Working Capital we need expenses which we don't have here.
-  // We will display Revenue/Outstanding/Installments based on local calc.
-  // Working Capital card might be misleading if filtered without expenses, so we'll omit or keep global for now?
-  // User asked: "if select account info on cards show only selected account".
-  // Let's use the local calculations.
+  const currentWorkingCapital = useMemo(() => {
+      if (selectedAccountId) {
+          const cash = accountBalances[selectedAccountId] || 0;
+          return cash + calculatedStats.totalOutstanding;
+      }
+      return globalWorkingCapital;
+  }, [selectedAccountId, accountBalances, calculatedStats.totalOutstanding, globalWorkingCapital]);
 
   const lastFiveSales = useMemo(() => {
       let filtered = sales;
@@ -131,10 +122,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
 
     const payments: { sale: Sale, customerName: string, totalDue: number, isTomorrow: boolean, isToday: boolean, isOverdue: boolean }[] = [];
 
-    // Use ALL sales for payments tab (or should we filter by account too? User didn't specify for Payments tab, but logically yes if filter is global)
-    // The filter UI is on Overview tab. Let's keep Payments tab global or independent.
-    // The request said "add filters to payments tab", implying independent control.
-
     sales.forEach(sale => {
       if (sale.status !== 'ACTIVE') return;
 
@@ -146,7 +133,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
       sale.paymentPlan.forEach(p => {
         if (!p.isPaid) {
           const paymentDate = new Date(p.date);
-          const isOverdue = paymentDate < today && paymentDate.toDateString() !== today.toDateString(); // Strictly before today
+          const isOverdue = paymentDate < today && paymentDate.toDateString() !== today.toDateString();
           const isToday = paymentDate.toDateString() === today.toDateString();
           const isTomorrow = paymentDate >= tomorrow && paymentDate <= tomorrowEnd;
 
@@ -158,7 +145,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                   if (isOverdue) isOverduePayment = true;
               }
           } else if (paymentDateFilter === 'TODAY') {
-              // "Today" button usually implies immediate attention: Today's dues + Overdues
               if (isOverdue || isToday) {
                   relevantAmount += p.amount;
                   if (isToday) isTodayPayment = true;
@@ -195,11 +181,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
 
   return (
     <div className="space-y-6 animate-fade-in pb-20 w-full">
-      <header className="mb-4">
-        <h2 className="text-2xl font-bold text-slate-800">Главная</h2>
-        <p className="text-slate-500 text-sm">Панель управления бизнесом</p>
-      </header>
-
       {/* Tabs */}
       <div className="flex bg-slate-100 p-1 rounded-xl">
         <button onClick={() => setActiveTab('overview')} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${activeTab === 'overview' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Обзор</button>
@@ -234,9 +215,10 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                   </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Собрано средств (Клиенты)</p><p className="text-2xl font-bold text-emerald-600">{calculatedStats.totalRevenue.toLocaleString()} ₽</p></div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Долг клиентов</p><p className="text-2xl font-bold text-amber-600">{calculatedStats.totalOutstanding.toLocaleString()} ₽</p></div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Оборотные средства</p><p className="text-2xl font-bold text-blue-600">{currentWorkingCapital.toLocaleString()} ₽</p></div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Продажи в рассрочку</p><p className="text-2xl font-bold text-indigo-600">{calculatedStats.installmentSalesTotal.toLocaleString()} ₽</p></div>
               </div>
 
