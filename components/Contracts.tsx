@@ -18,7 +18,12 @@ interface ContractsProps {
 }
 
 const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?: Customer, onClose: () => void }) => {
+    // Logic for "Overdue starts on 2nd day":
+    // Compare payment date strictly against start of today.
+    // If payment date is today, it is NOT < today (00:00). So it's not overdue.
+    // If payment date was yesterday, it IS < today (00:00). So it is overdue.
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     // Calculations
     const monthlyPayment = sale.paymentPlan.length > 0 ? sale.paymentPlan[0].amount : 0;
@@ -26,12 +31,6 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
     const overduePayments = sale.paymentPlan.filter(p => !p.isPaid && new Date(p.date) < today);
     const overdueMonths = overduePayments.length;
 
-    // Calculate total overdue debt (sum of unpaid payments in the past)
-    // If a payment was partially paid (logic not fully in types but implied), we sum amounts.
-    // Assuming paymentPlan amount is what's left to pay for that month if using partial logic,
-    // or full amount if simple boolean logic.
-    // Based on App structure, amount is fixed, isPaid is boolean.
-    // However, Dashboard logic suggests calculating totals. Simple sum here:
     const overdueAmount = overduePayments.reduce((sum, p) => sum + p.amount, 0);
 
     const handleCall = () => {
@@ -141,6 +140,7 @@ const Contracts: React.FC<ContractsProps> = ({
 
   const { filteredList } = useMemo(() => {
     const today = new Date();
+    today.setHours(0,0,0,0);
 
     const active: Sale[] = [];
     const overdue: Sale[] = [];
@@ -193,15 +193,9 @@ const Contracts: React.FC<ContractsProps> = ({
 
   const totalOverdueAmount = useMemo(() => {
     if (activeTab !== 'OVERDUE') return 0;
-    let total = 0;
-    const now = new Date();
-    filteredList.forEach(sale => {
-        const unpaid = sale.paymentPlan.filter(p => !p.isPaid && new Date(p.date) < now);
-        // Simple calculation for display: sum of all overdue installments
-        const overdueSum = unpaid.reduce((sum, p) => sum + p.amount, 0);
-        total += overdueSum;
-    });
-    return total;
+    // Calculate total actual debt (remaining balance) for all overdue contracts
+    // Requirement: "show overdue debt show actual example if from 20k he gave 5k then show 15k" -> remainingAmount
+    return filteredList.reduce((sum, s) => sum + s.remainingAmount, 0);
   }, [filteredList, activeTab]);
 
   const getTabTitle = () => {
@@ -407,20 +401,30 @@ const Contracts: React.FC<ContractsProps> = ({
 
   return (
     <div className="space-y-4 pb-20 w-full">
-      <div className="flex justify-between items-center mb-2">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-800">{getTabTitle()}</h2>
-            <p className="text-slate-500 text-sm">Найдено: {filteredList.length}</p>
-          </div>
-      </div>
+      {activeTab !== 'OVERDUE' && (
+        <div className="flex justify-between items-center mb-2">
+            <div>
+                <h2 className="text-2xl font-bold text-slate-800">{getTabTitle()}</h2>
+                <p className="text-slate-500 text-sm">Найдено: {filteredList.length}</p>
+            </div>
+        </div>
+      )}
 
        {activeTab === 'OVERDUE' && (
-          <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex items-center justify-between shadow-sm animate-fade-in">
-              <div>
-                  <p className="text-sm font-bold text-red-800">Общая сумма просрочки</p>
-                  <p className="text-2xl font-bold text-red-600">{totalOverdueAmount.toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</p>
+          <div className="bg-gradient-to-r from-red-50 to-white border border-red-100 p-5 rounded-2xl shadow-sm animate-fade-in mb-4">
+              <div className="flex justify-between items-start">
+                  <div>
+                      <h2 className="text-xl font-bold text-slate-800 mb-1">Просроченные договоры</h2>
+                      <p className="text-slate-500 text-xs uppercase font-bold tracking-wide">Всего договоров: {filteredList.length}</p>
+                  </div>
+                  <div className="bg-red-100 p-2 rounded-full text-red-500">
+                      {ICONS.Alert}
+                  </div>
               </div>
-              <div className="text-red-300 scale-125">{ICONS.Alert}</div>
+              <div className="mt-4 pt-4 border-t border-red-100">
+                  <p className="text-xs text-slate-400 font-medium mb-1">Общая задолженность (по остатку)</p>
+                  <p className="text-3xl font-bold text-red-600">{totalOverdueAmount.toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</p>
+              </div>
           </div>
         )}
 
@@ -440,7 +444,7 @@ const Contracts: React.FC<ContractsProps> = ({
                   <span className="absolute left-3 top-3 text-slate-400 scale-75">{ICONS.Clock}</span>
                   <input
                     type="date"
-                    className="w-full pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm text-slate-900 bg-white focus:border-indigo-500"
+                    className="w-full min-w-0 pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm text-slate-900 bg-white focus:border-indigo-500"
                     value={filterDate}
                     onChange={e => setFilterDate(e.target.value)}
                   />
@@ -468,21 +472,17 @@ const Contracts: React.FC<ContractsProps> = ({
             if (sale.status === 'COMPLETED') { statusLabel = 'ЗАКРЫТО'; statusColor = 'bg-slate-100 text-slate-700'; }
             if (activeTab === 'OVERDUE') { statusLabel = 'ПРОСРОЧЕНО'; statusColor = 'bg-red-100 text-red-700'; }
 
-            const saleOverdueAmount = activeTab === 'OVERDUE'
-                ? sale.paymentPlan
-                    .filter(p => !p.isPaid && new Date(p.date) < new Date())
-                    .reduce((sum, p) => sum + p.amount, 0)
-                : 0;
+            // Reverse numbering logic: Top is highest number, Bottom is 1
+            const displayNumber = filteredList.length - index;
 
             return (
               <div
                 key={sale.id}
-                className="bg-white rounded-xl shadow-sm p-4 relative animate-fade-in cursor-pointer active:scale-[0.99] transition-transform"
-                onClick={() => setSelectedSaleForInfo(sale)}
+                className="bg-white rounded-xl shadow-sm p-4 relative animate-fade-in transition-transform"
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-start gap-3">
-                    <span className="text-sm font-bold text-slate-400 mt-1">#{index + 1}</span>
+                    <span className="text-sm font-bold text-slate-400 mt-1">#{displayNumber}</span>
                     <div>
                       <h3 className="font-bold text-slate-800">{getCustomerName(sale.customerId)}</h3>
                       <p className="text-sm text-slate-500">{sale.productName}</p>
@@ -492,7 +492,7 @@ const Contracts: React.FC<ContractsProps> = ({
                     <div>
                       <span className={`inline-block px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span>
                       {activeTab === 'OVERDUE' ? (
-                          <p className="text-sm font-bold text-red-600 mt-1">Долг: {saleOverdueAmount.toLocaleString()} ₽</p>
+                          <p className="text-sm font-bold text-red-600 mt-1">Долг: {sale.remainingAmount.toLocaleString()} ₽</p>
                       ) : (
                           <p className="text-sm font-semibold mt-1">{sale.totalAmount.toLocaleString()} ₽</p>
                       )}
@@ -508,6 +508,7 @@ const Contracts: React.FC<ContractsProps> = ({
 
                 {!readOnly && activeMenuId === sale.id && (
                   <div className="absolute right-4 top-14 bg-white shadow-xl rounded-xl z-20 w-48 overflow-hidden animate-fade-in" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => setSelectedSaleForInfo(sale)} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 bg-blue-50/50"><span className="text-blue-500">{ICONS.File}</span> Инфо о договоре</button>
                       <button onClick={() => onViewSchedule(sale)} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"><span className="text-indigo-500">{ICONS.List}</span> График</button>
                       <button onClick={() => onEditSale(sale)} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"><span className="text-slate-500">{ICONS.Edit}</span> Редактировать</button>
                       <button onClick={() => printContract(sale)} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"><span className="text-slate-500">{ICONS.File}</span> Печать</button>
