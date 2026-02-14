@@ -5,6 +5,8 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
+const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 
@@ -465,6 +467,56 @@ app.post('/api/users/manage', auth, async (req, res) => {
     } catch (e) {
         console.error(e);
         res.status(500).send('Server Error');
+    }
+});
+
+// --- PAYMENTS (YooKassa) ---
+
+app.post('/api/payment/create', auth, async (req, res) => {
+    const { amount, description, returnUrl } = req.body;
+    const shopId = process.env.YOOKASSA_SHOP_ID;
+    const secretKey = process.env.YOOKASSA_SECRET_KEY;
+
+    if (!shopId || !secretKey) {
+        // Mock Response for Development/Demo
+        console.log('[MOCK PAYMENT] Credentials missing. Returning dummy success URL.');
+        return res.json({
+            id: `mock_pay_${Date.now()}`,
+            status: 'pending',
+            confirmationUrl: returnUrl || 'https://yoomoney.ru' // Redirect back effectively simulates success in demo
+        });
+    }
+
+    try {
+        const idempotenceKey = uuidv4();
+        const response = await axios.post('https://api.yookassa.ru/v3/payments', {
+            amount: {
+                value: amount.toFixed(2),
+                currency: 'RUB'
+            },
+            capture: true,
+            confirmation: {
+                type: 'redirect',
+                return_url: returnUrl
+            },
+            description: description
+        }, {
+            headers: {
+                'Authorization': 'Basic ' + Buffer.from(`${shopId}:${secretKey}`).toString('base64'),
+                'Idempotence-Key': idempotenceKey,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        res.json({
+            id: response.data.id,
+            status: response.data.status,
+            confirmationUrl: response.data.confirmation.confirmation_url
+        });
+
+    } catch (error) {
+        console.error('YooKassa Error:', error.response?.data || error.message);
+        res.status(500).json({ msg: 'Payment creation failed' });
     }
 });
 

@@ -25,7 +25,8 @@ import {
   Edit2,
   ArrowLeft,
   Briefcase,
-  Handshake
+  Handshake,
+  Crown
 } from 'lucide-react';
 
 export const ICONS: Record<string, ReactNode> = {
@@ -56,7 +57,8 @@ export const ICONS: Record<string, ReactNode> = {
   TrendingUp: <TrendingUp size={20} />,
   List: <List size={20} />,
   Employees: <Briefcase size={20} />,
-  Partners: <Handshake size={20} />
+  Partners: <Handshake size={20} />,
+  Tariffs: <Crown size={20} />
 };
 
 export const APP_NAME = "InstallMate";

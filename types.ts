@@ -160,4 +160,5 @@ export type ViewState =
   | 'SETTINGS'
   | 'REPORTS'
   | 'PROFILE'
-  | 'PARTNERS';
+  | 'PARTNERS'
+  | 'TARIFFS';
