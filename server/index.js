@@ -237,7 +237,8 @@ app.post('/api/data/:type', auth, async (req, res) => {
                 updated_at = NOW();
         `, [id, targetUserId, type, JSON.stringify(itemData)]);
 
-        res.json({ success: true });
+        // Return the saved data
+        res.json(itemData);
     } catch (err) {
         console.error(err);
         res.status(500).send('Server Error');
@@ -250,7 +251,7 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
         const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.managerId : req.user.id;
 
         await pool.query('DELETE FROM data_items WHERE id = $1 AND user_id = $2', [id, targetUserId]);
-        res.json({ success: true });
+        res.json({ success: true, id });
     } catch (err) {
         console.error(err);
         res.status(500).send('Server Error');
@@ -307,7 +308,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
 
         if (action === 'delete') {
             await pool.query('DELETE FROM users WHERE id = $1 AND manager_id = $2', [userData.id, req.user.id]);
-            return res.json({ success: true });
+            return res.json({ success: true, id: userData.id });
         }
 
         if (action === 'update') {

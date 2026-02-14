@@ -12,6 +12,7 @@ const getBaseUrl = () => {
     // Продакшен: используем тот же домен и протокол, без порта
     return '/api';
 };
+
 const API_URL = getBaseUrl();
 
 const getAuthHeader = () => {
@@ -90,6 +91,7 @@ export const api = {
                 if (res.status === 401) {
                     localStorage.removeItem('token');
                     localStorage.removeItem('user');
+                    // We can redirect or reload here, but be careful about loops
                     window.location.reload();
                 }
                 throw new Error('Failed to fetch data');
@@ -102,12 +104,14 @@ export const api = {
     },
 
     // CRUD
-    saveItem: async (type: string, item: any) => {
-        await fetch(`${API_URL}/data/${type}`, {
+    saveItem: async (type: string, item: any): Promise<any> => {
+        const res = await fetch(`${API_URL}/data/${type}`, {
             method: 'POST',
             headers: getAuthHeader(),
             body: JSON.stringify(item)
         });
+        if (!res.ok) throw new Error(`Failed to save ${type}`);
+        return res.json(); // Returns the saved item
     },
 
     deleteItem: async (type: string, id: string) => {
