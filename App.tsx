@@ -21,8 +21,8 @@ import Profile from './components/Profile';
 import Partners from './components/Partners';
 import InvestorDashboard from './components/InvestorDashboard';
 import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership } from './types';
-import { 
-  getAppSettings, saveAppSettings 
+import {
+  getAppSettings, saveAppSettings
 } from './services/storage';
 import { api } from './services/api'; // NEW API SERVICE
 import { processDailyReminders } from './services/whatsapp';
@@ -33,7 +33,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // Auth Form State
   const [authName, setAuthName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
@@ -43,7 +43,7 @@ const App: React.FC = () => {
   // App State
   const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
   const [activeContractTab, setActiveContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
-  
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -53,7 +53,7 @@ const App: React.FC = () => {
   const [employees, setEmployees] = useState<User[]>([]);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>({ companyName: 'InstallMate' });
-  
+
   // Drafts & Temporary State
   const [draftSaleData, setDraftSaleData] = useState<any>({});
   const [previousView, setPreviousView] = useState<ViewState>('DASHBOARD');
@@ -83,7 +83,7 @@ const App: React.FC = () => {
   useEffect(() => {
       const storedUser = localStorage.getItem('user');
       const token = localStorage.getItem('token');
-      
+
       if (storedUser && token) {
           const parsedUser = JSON.parse(storedUser);
           setUser(parsedUser);
@@ -473,7 +473,7 @@ const App: React.FC = () => {
 
   return (
     <Layout currentView={currentView} setView={setCurrentView} onAction={handleAction} onContractTabChange={setActiveContractTab} sales={sales} appSettings={appSettings} customers={customers} user={user} activeInvestor={activeInvestor} onNavigateToProfile={() => setCurrentView('PROFILE')}>
-      {currentView === 'DASHBOARD' && !isInvestor && <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital} onAction={handleAction} onSelectCustomer={handleSelectCustomer} onInitiatePayment={handleInitiateDashboardPayment} accounts={accounts} />}
+      {currentView === 'DASHBOARD' && !isInvestor && <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital} accountBalances={accountBalances} onAction={handleAction} onSelectCustomer={handleSelectCustomer} onInitiatePayment={handleInitiateDashboardPayment} accounts={accounts} />}
       {currentView === 'DASHBOARD' && isInvestor && activeInvestor && <InvestorDashboard sales={sales} expenses={expenses} accounts={accounts} investor={activeInvestor} />}
       {currentView === 'CASH_REGISTER' && <CashRegister accounts={accounts} sales={sales} expenses={expenses} investors={investors} onAddAccount={handleAddAccount} onAction={handleAction} onSelectAccount={handleSelectAccountForOperations} onSetMainAccount={handleSetMainAccount} onUpdateAccount={handleUpdateAccount} isManager={isManager} totalExpectedProfit={totalExpectedProfit} realizedPeriodProfit={realizedPeriodProfit} myProfitPeriod={myProfitPeriod} setMyProfitPeriod={setMyProfitPeriod} />}
       {currentView === 'CONTRACTS' && (
@@ -508,12 +508,12 @@ const App: React.FC = () => {
       {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId && <CustomerDetails customer={customers.find(c => c.id === selectedCustomerId)!} sales={sales} onBack={() => setCurrentView(previousView)} onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment} onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer} initialSaleId={initialSaleIdForDetails} />}
       {currentView === 'MANAGE_PRODUCTS' && <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} />}
       {currentView === 'OPERATIONS' && (
-        <Operations 
-            sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales} 
-            expenses={isInvestor ? expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id) : expenses} 
-            accounts={accounts} 
-            customers={customers} 
-            initialAccountId={operationsAccountId} 
+        <Operations
+            sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
+            expenses={isInvestor ? expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id) : expenses}
+            accounts={accounts}
+            customers={customers}
+            initialAccountId={operationsAccountId}
         />
       )}
       {currentView === 'REPORTS' && reportData && <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters} data={reportData} />}
