@@ -20,25 +20,18 @@ import Reports from './components/Reports';
 import Profile from './components/Profile';
 import Partners from './components/Partners';
 import InvestorDashboard from './components/InvestorDashboard';
+import Auth from './components/Auth'; // New Import
 import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership } from './types';
 import {
   getAppSettings, saveAppSettings
 } from './services/storage';
-import { api } from './services/api'; // NEW API SERVICE
-import { processDailyReminders } from './services/whatsapp';
+import { api } from './services/api';
 import { ICONS } from './constants';
 
 const App: React.FC = () => {
   // Auth State
   const [user, setUser] = useState<User | null>(null);
-  const [isRegistering, setIsRegistering] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Auth Form State
-  const [authName, setAuthName] = useState('');
-  const [authEmail, setAuthEmail] = useState('');
-  const [authPassword, setAuthPassword] = useState('');
-  const [authError, setAuthError] = useState('');
 
   // App State
   const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
@@ -151,24 +144,9 @@ const App: React.FC = () => {
   const accountBalances = useMemo(() => { const balances: Record<string, number> = {}; accounts.forEach(acc => { let total = 0; const accountSales = sales.filter(s => s.accountId === acc.id); accountSales.forEach(s => { total += s.downPayment; s.paymentPlan.filter(p => p.isPaid).forEach(p => total += p.amount); }); const accountExpenses = expenses.filter(e => e.accountId === acc.id); total -= accountExpenses.reduce((sum, e) => sum + e.amount, 0); balances[acc.id] = total; }); return balances; }, [accounts, sales, expenses]);
   const workingCapital = useMemo(() => { const cashInAccounts = Object.values(accountBalances).reduce((sum: number, bal: number) => sum + bal, 0); return cashInAccounts + dashboardStats.totalOutstanding; }, [accountBalances, dashboardStats.totalOutstanding]);
 
-  const handleAuthSubmit = async (e: React.FormEvent) => {
-      e.preventDefault();
-      setAuthError('');
-      try {
-          let userData;
-          if (isRegistering) {
-              if (!authName || !authEmail || !authPassword) { setAuthError('Заполните все поля'); return; }
-              userData = await api.register({ name: authName, email: authEmail, password: authPassword, role: 'manager' });
-          } else {
-              if (!authEmail || !authPassword) { setAuthError('Введите Email и пароль'); return; }
-              userData = await api.login({ email: authEmail, password: authPassword });
-          }
-          setUser(userData);
-          // Initial load after login
-          await loadData();
-      } catch (err: any) {
-          setAuthError(err.message || 'Ошибка авторизации');
-      }
+  const handleAuthSuccess = async (loggedInUser: User) => {
+      setUser(loggedInUser);
+      await loadData();
   };
 
   const handleAction = (action: string) => { if (isEmployee && ['CREATE_SALE', 'INCOME', 'EXPENSE', 'ADD_CUSTOMER', 'ADD_PRODUCT'].includes(action) && !user.permissions?.canCreate) { alert("У вас нет прав на создание записей"); return; } switch (action) { case 'CREATE_SALE': setDraftSaleData({}); setEditingSale(null); setCurrentView('CREATE_SALE'); break; case 'INCOME': setDraftSaleData({}); setCurrentView('CREATE_INCOME'); break; case 'EXPENSE': setCurrentView('CREATE_EXPENSE'); break; case 'OPERATIONS': setOperationsAccountId(null); setCurrentView('OPERATIONS'); break; case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break; case 'ADD_CUSTOMER': setCurrentView('CUSTOMERS'); break; case 'ADD_PRODUCT': setCurrentView('MANAGE_PRODUCTS'); break; } };
@@ -489,7 +467,7 @@ const App: React.FC = () => {
 
   if (isLoading) { return <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">Загрузка...</div>; }
 
-  if (!user) { return ( <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6"> <div className="bg-white p-8 rounded-2xl w-full max-w-sm shadow-xl animate-fade-in"> <h1 className="text-3xl font-bold text-center mb-2 text-slate-800">InstallMate</h1> <p className="text-center text-slate-500 mb-6">Учет рассрочек и продаж</p> <form onSubmit={handleAuthSubmit} className="space-y-4"> {authError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center">{authError}</div>} {isRegistering && (<div><label className="block text-sm font-medium text-slate-700 mb-1">Имя</label><input type="text" className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={authName} onChange={e => setAuthName(e.target.value)} placeholder="Ваше имя"/></div>)} <div><label className="block text-sm font-medium text-slate-700 mb-1">Email</label><input type="email" className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="example@mail.com" required/></div> <div><label className="block text-sm font-medium text-slate-700 mb-1">Пароль</label><input type="password" className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder="••••••" required/></div> <button type="submit" className="w-full bg-indigo-600 text-white p-4 rounded-xl font-bold hover:bg-indigo-700 transition-colors">{isRegistering ? 'Зарегистрироваться' : 'Войти'}</button> </form> <div className="mt-6 text-center"><button onClick={() => { setIsRegistering(!isRegistering); setAuthError(''); }} className="text-indigo-600 text-sm font-medium hover:underline">{isRegistering ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Регистрация'}</button></div> </div> </div> ) }
+  if (!user) { return <Auth onLogin={handleAuthSuccess} />; }
 
   return (
     <Layout currentView={currentView} setView={setCurrentView} onAction={handleAction} onContractTabChange={setActiveContractTab} sales={sales} appSettings={appSettings} customers={customers} user={user} activeInvestor={activeInvestor} onNavigateToProfile={() => setCurrentView('PROFILE')}>

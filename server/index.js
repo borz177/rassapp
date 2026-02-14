@@ -4,6 +4,7 @@ const { Pool } = require('pg');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 
 const app = express();
 
@@ -20,9 +21,21 @@ app.use((req, res, next) => {
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'secret_key_change_this';
 
+// Nodemailer Transporter
+// NOTE: Ensure these ENV variables are set for real email sending.
+// If not set, the code will be logged to the console.
+const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: process.env.SMTP_PORT || 587,
+    secure: false, // true for 465, false for other ports
+    auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+    },
+});
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || undefined, // пусть pg использует стандартные настройки
+  connectionString: process.env.DATABASE_URL || undefined,
 });
 
 // Initialize Database Tables
@@ -45,7 +58,7 @@ const initDB = async () => {
       );
     `);
 
-    // Data Items Table (Generic Store for flexibility)
+    // Data Items Table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS data_items (
         id TEXT PRIMARY KEY,
@@ -57,7 +70,17 @@ const initDB = async () => {
       );
     `);
 
-    // Indexes for performance
+    // Verification Codes Table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS verification_codes (
+        email TEXT PRIMARY KEY,
+        code TEXT NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        attempts INTEGER DEFAULT 0
+      );
+    `);
+
+    // Indexes
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_manager_id ON users(manager_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_data_items_user_id ON data_items(user_id);`);
@@ -66,7 +89,6 @@ const initDB = async () => {
     console.log('PostgreSQL Tables Initialized');
   } catch (err) {
     console.error('Error initializing database:', err);
-    console.log('Make sure PostgreSQL is running and the database "installmate" exists.');
   }
 };
 
@@ -87,23 +109,104 @@ const auth = (req, res, next) => {
   }
 };
 
+// --- HELPER FUNCTIONS ---
+
+const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+const sendEmail = async (email, subject, text) => {
+    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+        try {
+            await transporter.sendMail({
+                from: `"InstallMate" <${process.env.SMTP_USER}>`,
+                to: email,
+                subject,
+                text,
+            });
+            console.log(`Email sent to ${email}`);
+            return true;
+        } catch (error) {
+            console.error('Email send error:', error);
+            return false;
+        }
+    } else {
+        console.log('================================================');
+        console.log(`[MOCK EMAIL] To: ${email}`);
+        console.log(`[MOCK EMAIL] Subject: ${subject}`);
+        console.log(`[MOCK EMAIL] Body: ${text}`);
+        console.log('================================================');
+        return true; // Simulate success
+    }
+};
+
 // --- ROUTES ---
 
 // Health Check
 app.get('/', (req, res) => {
-    res.send('InstallMate API (PostgreSQL) is running');
+    res.send('InstallMate API is running');
 });
 
 // 1. Auth Routes
-app.post('/api/auth/register', async (req, res) => {
-  const { name, email, password, role, managerId, permissions, allowedInvestorIds } = req.body;
 
-  console.log('Register attempt:', email);
+// Send Verification Code
+app.post('/api/auth/send-code', async (req, res) => {
+    const { email, type } = req.body; // type: 'REGISTER' or 'RESET'
+
+    try {
+        const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        const userExists = userCheck.rows.length > 0;
+
+        if (type === 'REGISTER' && userExists) {
+            return res.status(400).json({ msg: 'Пользователь с таким Email уже существует' });
+        }
+        if (type === 'RESET' && !userExists) {
+            return res.status(400).json({ msg: 'Пользователь не найден' });
+        }
+
+        const code = generateCode();
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+        // Upsert code
+        await pool.query(`
+            INSERT INTO verification_codes (email, code, expires_at, attempts)
+            VALUES ($1, $2, $3, 0)
+            ON CONFLICT (email) 
+            DO UPDATE SET code = $2, expires_at = $3, attempts = 0
+        `, [email, code, expiresAt]);
+
+        const subject = type === 'REGISTER' ? 'Код подтверждения регистрации' : 'Код восстановления пароля';
+        const message = `Ваш код подтверждения для InstallMate: ${code}. Код действителен 10 минут.`;
+
+        await sendEmail(email, subject, message);
+
+        res.json({ msg: 'Код отправлен' });
+    } catch (err) {
+        console.error('Send Code Error:', err);
+        res.status(500).send('Server error');
+    }
+});
+
+app.post('/api/auth/register', async (req, res) => {
+  const { name, email, password, code, role, managerId, permissions, allowedInvestorIds } = req.body;
 
   try {
+    // 1. Verify Code
+    const codeCheck = await pool.query('SELECT * FROM verification_codes WHERE email = $1', [email]);
+    if (codeCheck.rows.length === 0) {
+        return res.status(400).json({ msg: 'Сначала запросите код' });
+    }
+
+    const record = codeCheck.rows[0];
+    if (new Date() > new Date(record.expires_at)) {
+        return res.status(400).json({ msg: 'Код истек' });
+    }
+    if (record.code !== code) {
+        return res.status(400).json({ msg: 'Неверный код' });
+    }
+
+    // 2. Check User Existence (Double check)
     const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
     if (userCheck.rows.length > 0) {
-      return res.status(400).json({ msg: 'User already exists' });
+      return res.status(400).json({ msg: 'Пользователь уже существует' });
     }
 
     const id = role === 'manager' ? `u_${Date.now()}` : (role === 'investor' ? `u_inv_${Date.now()}` : `u_emp_${Date.now()}`);
@@ -127,8 +230,11 @@ app.post('/api/auth/register', async (req, res) => {
       ]
     );
 
+    // Clean up code
+    await pool.query('DELETE FROM verification_codes WHERE email = $1', [email]);
+
     // Create default account for managers
-    if (role === 'manager' || role === 'admin') {
+    if (!role || role === 'manager' || role === 'admin') {
         const accId = `acc_main_${id}`;
         const accData = { id: accId, userId: id, name: 'Основной счет', type: 'MAIN' };
         await pool.query(
@@ -139,7 +245,6 @@ app.post('/api/auth/register', async (req, res) => {
 
     const token = jwt.sign({ id, role: role || 'manager', managerId }, JWT_SECRET, { expiresIn: '30d' });
 
-    console.log('Register success:', email);
     res.json({ token, user: { id, name, email, role: role || 'manager', managerId, permissions, allowedInvestorIds } });
   } catch (err) {
     console.error('Register Error:', err);
@@ -147,18 +252,51 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+app.post('/api/auth/reset-password', async (req, res) => {
+    const { email, code, newPassword } = req.body;
+
+    try {
+        // 1. Verify Code
+        const codeCheck = await pool.query('SELECT * FROM verification_codes WHERE email = $1', [email]);
+        if (codeCheck.rows.length === 0) {
+            return res.status(400).json({ msg: 'Сначала запросите код' });
+        }
+
+        const record = codeCheck.rows[0];
+        if (new Date() > new Date(record.expires_at)) {
+            return res.status(400).json({ msg: 'Код истек' });
+        }
+        if (record.code !== code) {
+            return res.status(400).json({ msg: 'Неверный код' });
+        }
+
+        // 2. Update Password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE email = $2', [hashedPassword, email]);
+
+        // Clean up code
+        await pool.query('DELETE FROM verification_codes WHERE email = $1', [email]);
+
+        res.json({ msg: 'Пароль успешно изменен' });
+    } catch (err) {
+        console.error('Reset Password Error:', err);
+        res.status(500).send('Server error');
+    }
+});
+
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
-  console.log('Login attempt:', email);
 
   try {
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    if (result.rows.length === 0) return res.status(400).json({ msg: 'Invalid credentials' });
+    if (result.rows.length === 0) return res.status(400).json({ msg: 'Неверные учетные данные' });
 
     const user = result.rows[0];
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ msg: 'Invalid credentials' });
+    if (!isMatch) return res.status(400).json({ msg: 'Неверные учетные данные' });
 
     const token = jwt.sign({ id: user.id, role: user.role, managerId: user.manager_id }, JWT_SECRET, { expiresIn: '30d' });
 
@@ -170,7 +308,7 @@ app.post('/api/auth/login', async (req, res) => {
             email: user.email,
             role: user.role,
             managerId: user.manager_id,
-            permissions: user.permissions, // pg parses JSONB automatically
+            permissions: user.permissions,
             allowedInvestorIds: user.allowed_investor_ids
         }
     });

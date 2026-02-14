@@ -21,7 +21,17 @@ const getAuthHeader = () => {
 };
 
 export const api = {
-    // Auth - Self Registration (Public)
+    // Auth
+    sendCode: async (email: string, type: 'REGISTER' | 'RESET'): Promise<void> => {
+        const res = await fetch(`${API_URL}/auth/send-code`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, type })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Ошибка отправки кода');
+    },
+
     register: async (userData: any): Promise<any> => {
         try {
             const res = await fetch(`${API_URL}/auth/register`, {
@@ -43,6 +53,16 @@ export const api = {
             }
             throw error;
         }
+    },
+
+    resetPassword: async (resetData: any): Promise<void> => {
+        const res = await fetch(`${API_URL}/auth/reset-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(resetData)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Ошибка смены пароля');
     },
 
     login: async (creds: any): Promise<any> => {
