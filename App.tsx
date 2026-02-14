@@ -216,9 +216,9 @@ const App: React.FC = () => {
 
     // Handle Linked Expenses (Buy Price) & Product Stock (Only on creation)
     if (existingSaleIndex < 0) {
-        if (data.buyPrice > 0) {
+        if (Number(data.buyPrice) > 0) {
             const buyPriceExpense: Expense = {
-                id: `exp_sale_${saleId}`, userId: ownerId, accountId: data.accountId, title: `Закуп: ${data.productName}`, amount: data.buyPrice, category: 'Себестоимость', date: data.startDate
+                id: `exp_sale_${saleId}`, userId: ownerId, accountId: data.accountId, title: `Закуп: ${data.productName}`, amount: Number(data.buyPrice), category: 'Себестоимость', date: data.startDate
             };
             const savedExpense = await api.saveItem('expenses', buyPriceExpense);
             updateList(setExpenses, savedExpense);

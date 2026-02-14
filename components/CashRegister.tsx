@@ -114,15 +114,15 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
     // Cash Balance
     let cashBalance = 0;
     accountSales.forEach(s => {
-        cashBalance += s.downPayment;
-        s.paymentPlan.filter(p => p.isPaid).forEach(p => cashBalance += p.amount);
+        cashBalance += Number(s.downPayment);
+        s.paymentPlan.filter(p => p.isPaid).forEach(p => cashBalance += Number(p.amount));
     });
-    cashBalance -= accountExpenses.reduce((sum, e) => sum + e.amount, 0);
+    cashBalance -= accountExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
     // Receivables (Active Debt)
     const receivables = accountSales
         .filter(s => s.status === 'ACTIVE')
-        .reduce((sum, s) => sum + s.remainingAmount, 0);
+        .reduce((sum, s) => sum + Number(s.remainingAmount), 0);
 
     const totalAccountEquity = cashBalance + receivables;
 
@@ -132,15 +132,15 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
 
         const deposits = accountSales
             .filter(s => s.type === 'CASH' && s.customerId === partnerId)
-            .reduce((sum, s) => sum + s.totalAmount, 0);
+            .reduce((sum, s) => sum + Number(s.totalAmount), 0);
 
         const withdrawals = accountExpenses
             .filter(e => e.investorId === partnerId && e.payoutType === 'INVESTMENT')
-            .reduce((sum, e) => sum + e.amount, 0);
+            .reduce((sum, e) => sum + Number(e.amount), 0);
 
         const profitWithdrawals = accountExpenses
             .filter(e => e.investorId === partnerId && e.payoutType === 'PROFIT')
-            .reduce((sum, e) => sum + e.amount, 0);
+            .reduce((sum, e) => sum + Number(e.amount), 0);
 
         const netCapital = Math.max(0, deposits - withdrawals);
 
@@ -249,12 +249,12 @@ const CashRegister: React.FC<CashRegisterProps> = ({
 
       const accountSales = sales.filter(s => s.accountId === acc.id);
       accountSales.forEach(s => {
-          total += s.downPayment;
-          s.paymentPlan.filter(p => p.isPaid).forEach(p => total += p.amount);
+          total += Number(s.downPayment);
+          s.paymentPlan.filter(p => p.isPaid).forEach(p => total += Number(p.amount));
       });
 
       const accountExpenses = expenses.filter(e => e.accountId === acc.id);
-      total -= accountExpenses.reduce((sum, e) => sum + e.amount, 0);
+      total -= accountExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
       balances[acc.id] = total;
     });
@@ -271,8 +271,8 @@ const CashRegister: React.FC<CashRegisterProps> = ({
 
         if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
 
-        const totalSaleProfit = sale.totalAmount - sale.buyPrice;
-        const profitMargin = totalSaleProfit / sale.totalAmount;
+        const totalSaleProfit = Number(sale.totalAmount) - Number(sale.buyPrice);
+        const profitMargin = totalSaleProfit / Number(sale.totalAmount);
 
         const account = accounts.find(a => a.id === sale.accountId);
 
@@ -287,7 +287,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
         }
 
         const allPayments = [
-            { date: sale.startDate, amount: sale.downPayment, id: `${sale.id}_dp` },
+            { date: sale.startDate, amount: Number(sale.downPayment), id: `${sale.id}_dp` },
             ...sale.paymentPlan.filter(p => p.isPaid)
         ];
 
@@ -312,7 +312,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
         .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const totalEarned = accruals.reduce((sum, item) => sum + item.amount, 0);
-    const totalWithdrawn = payouts.reduce((sum, item) => sum + item.amount, 0);
+    const totalWithdrawn = payouts.reduce((sum, item) => sum + Number(item.amount), 0);
 
     return {
         managerProfitAccruals: accruals.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
@@ -531,7 +531,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowProfitDetails(false)}>
               <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
                   <div className="p-5 border-b border-slate-200"><h3 className="text-lg font-bold text-slate-800">Детализация моей прибыли</h3><p className="text-sm text-slate-500">Общий баланс: <span className="font-bold text-emerald-600">{managerProfitBalance.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽</span></p></div>
-                  
+
                   <div className="flex border-b border-slate-200 px-2">
                       <button onClick={() => setProfitDetailsTab('accruals')} className={`flex-1 py-3 text-sm font-semibold transition-colors ${profitDetailsTab === 'accruals' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-500'}`}>Начисления</button>
                       <button onClick={() => setProfitDetailsTab('payouts')} className={`flex-1 py-3 text-sm font-semibold transition-colors ${profitDetailsTab === 'payouts' ? 'text-red-600 border-b-2 border-red-600' : 'text-slate-500'}`}>Выплаты</button>
@@ -553,7 +553,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                               {managerProfitPayouts.length === 0 ? <p className="text-center text-slate-400 py-4">Выплат нет</p> : managerProfitPayouts.map(e => (
                                   <div key={e.id} className="flex justify-between items-center text-sm p-2 bg-red-50 rounded-lg">
                                       <div className="flex flex-col"><span className="text-slate-800">{e.title}</span><span className="text-xs text-slate-400">{new Date(e.date).toLocaleDateString()}</span></div>
-                                      <span className="font-bold text-red-600">-{e.amount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽</span>
+                                      <span className="font-bold text-red-600">-{Number(e.amount).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽</span>
                                   </div>
                               ))}
                           </div>

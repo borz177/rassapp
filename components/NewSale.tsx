@@ -133,10 +133,16 @@ const NewSale: React.FC<NewSaleProps> = ({
     const saleId = formData.id || Date.now().toString();
 
     // Reconstruct the full Sale object structure to pass to success modal and parent
-    const submissionData = { 
-        ...formData, 
+    // CRITICAL: Ensure numbers are actually numbers to avoid string concatenation bugs
+    const submissionData = {
+        ...formData,
         id: saleId,
-        paymentDay: pDay 
+        paymentDay: pDay,
+        buyPrice: Number(formData.buyPrice),
+        price: Number(formData.price),
+        downPayment: Number(formData.downPayment),
+        installments: Number(formData.installments),
+        interestRate: Number(formData.interestRate),
     };
 
     let finalSaleData;
