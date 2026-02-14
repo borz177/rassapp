@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { ICONS } from '../constants';
+import { PrivacyPolicy, DataProcessingAgreement } from './LegalDocs';
 
 interface AuthProps {
     onLogin: (user: any) => void;
@@ -8,10 +9,12 @@ interface AuthProps {
 
 type AuthMode = 'LOGIN' | 'REGISTER' | 'RESET';
 type AuthStep = 'EMAIL' | 'CODE' | 'DETAILS' | 'NEW_PASSWORD';
+type LegalView = 'NONE' | 'PRIVACY' | 'AGREEMENT';
 
 const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     const [mode, setMode] = useState<AuthMode>('LOGIN');
     const [step, setStep] = useState<AuthStep>('EMAIL');
+    const [legalView, setLegalView] = useState<LegalView>('NONE');
 
     // Data
     const [email, setEmail] = useState('');
@@ -115,6 +118,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         setPassword('');
         setConfirmPassword('');
     };
+
+    if (legalView === 'PRIVACY') {
+        return <PrivacyPolicy onBack={() => setLegalView('NONE')} />;
+    }
+
+    if (legalView === 'AGREEMENT') {
+        return <DataProcessingAgreement onBack={() => setLegalView('NONE')} />;
+    }
 
     return (
         <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
@@ -236,6 +247,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         </div>
                     </div>
                 )}
+
+                {/* Legal Footer */}
+                <div className="mt-6 text-[10px] text-center text-slate-400 leading-tight">
+                    Продолжая, вы соглашаетесь с <br/>
+                    <button onClick={() => setLegalView('PRIVACY')} className="text-indigo-500 hover:underline">Политикой конфиденциальности</button>
+                    {' '}и{' '}
+                    <button onClick={() => setLegalView('AGREEMENT')} className="text-indigo-500 hover:underline">Обработкой персональных данных</button>
+                </div>
             </div>
         </div>
     );
