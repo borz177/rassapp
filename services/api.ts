@@ -3,14 +3,12 @@ import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership 
 // Helper to determine the API URL dynamically
 const getBaseUrl = () => {
     const { hostname, protocol } = window.location;
-
-    // Локальная разработка
-    if (hostname === 'localhost' || hostname.startsWith('192.168.')) {
-        return `${protocol}//${hostname === 'localhost' ? '127.0.0.1' : hostname}:5000/api`;
+    // Force IPv4 for localhost to avoid ::1 vs 127.0.0.1 resolution issues in Node v17+
+    if (hostname === 'localhost') {
+        return `${protocol}//127.0.0.1:5000/api`;
     }
-
-    // Продакшен: используем тот же домен и протокол, без порта
-    return '/api';
+    // For LAN testing (e.g. 192.168.1.5), use the same hostname as the frontend
+    return `${protocol}//${hostname}:5000/api`;
 };
 
 const API_URL = getBaseUrl();
@@ -21,7 +19,7 @@ const getAuthHeader = () => {
 };
 
 export const api = {
-    // Auth
+    // Auth - Self Registration (Public)
     register: async (userData: any): Promise<any> => {
         try {
             const res = await fetch(`${API_URL}/auth/register`, {
@@ -32,13 +30,14 @@ export const api = {
             const data = await res.json();
             if (!res.ok) throw new Error(data.msg || 'Ошибка регистрации');
 
+            // Stores token automatically (Log in)
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
             return data.user;
         } catch (error: any) {
             console.error("API Register Error:", error);
             if (error.message === 'Failed to fetch') {
-                throw new Error('Нет соединения с сервером. Убедитесь, что бэкенд запущен (npm start в папке server).');
+                throw new Error('Нет соединения с сервером. Убедитесь, что бэкенд запущен.');
             }
             throw error;
         }
@@ -60,10 +59,22 @@ export const api = {
         } catch (error: any) {
             console.error("API Login Error:", error);
             if (error.message === 'Failed to fetch') {
-                throw new Error('Нет соединения с сервером. Убедитесь, что бэкенд запущен (npm start в папке server).');
+                throw new Error('Нет соединения с сервером. Убедитесь, что бэкенд запущен.');
             }
             throw error;
         }
+    },
+
+    // User Management - Create Sub-User (Protected, No Login Side-effect)
+    createSubUser: async (userData: any): Promise<any> => {
+        const res = await fetch(`${API_URL}/users/manage`, {
+            method: 'POST',
+            headers: getAuthHeader(),
+            body: JSON.stringify({ action: 'create', userData })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Ошибка создания пользователя');
+        return data; // Returns the created user object
     },
 
     // Data Sync

@@ -257,7 +257,7 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
     }
 });
 
-// User Management
+// User Management (Create / Update / Delete for Sub-users)
 app.post('/api/users/manage', auth, async (req, res) => {
     const { action, userData } = req.body;
 
@@ -266,6 +266,45 @@ app.post('/api/users/manage', auth, async (req, res) => {
     }
 
     try {
+        if (action === 'create') {
+            const { name, email, password, role, permissions, allowedInvestorIds, phone } = userData;
+
+            // Check existence
+            const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+            if (userCheck.rows.length > 0) {
+              return res.status(400).json({ msg: 'User already exists' });
+            }
+
+            // Create ID
+            const id = role === 'investor' ? `u_inv_${Date.now()}` : `u_emp_${Date.now()}`;
+
+            // Hash Password
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(password, salt);
+
+            // Insert linked to current manager (req.user.id)
+            await pool.query(
+              `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, phone) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+              [
+                id,
+                name,
+                email,
+                hashedPassword,
+                role,
+                req.user.id, // FORCE manager_id to be the current logged in user
+                JSON.stringify(permissions || {}),
+                JSON.stringify(allowedInvestorIds || []),
+                phone || null
+              ]
+            );
+
+            // Return the created user object (NO TOKEN, so manager stays logged in)
+            return res.json({
+                id, name, email, role, managerId: req.user.id, permissions, allowedInvestorIds, phone
+            });
+        }
+
         if (action === 'delete') {
             await pool.query('DELETE FROM users WHERE id = $1 AND manager_id = $2', [userData.id, req.user.id]);
             return res.json({ success: true });
@@ -273,7 +312,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
 
         if (action === 'update') {
             const { id, name, email, permissions, allowedInvestorIds } = userData;
-            // Simple update, usually password change is separate
+            // Simple update, usually password change is separate or handled specifically
             await pool.query(`
                 UPDATE users 
                 SET name = $1, email = $2, permissions = $3, allowed_investor_ids = $4, updated_at = NOW()

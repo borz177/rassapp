@@ -122,8 +122,6 @@ const App: React.FC = () => {
   const isInvestor = user?.role === 'investor';
   const activeInvestor = isInvestor && user ? investors.find(i => i.id === user.id) : null;
 
-  // REMOVED AUTO-SAVE useEffects. Data is now saved in handlers.
-
   useEffect(() => { if (currentView !== 'CUSTOMER_DETAILS') { setInitialSaleIdForDetails(null); } }, [currentView]);
 
   const reportData = useMemo(() => {
@@ -203,43 +201,43 @@ const App: React.FC = () => {
     } else {
         const newSale = { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
         newSales = [newSale, ...sales];
-        
+
         // Handle linked data
-        if (data.buyPrice > 0) { 
-            const buyPriceExpense: Expense = { 
-                id: `exp_sale_${newSale.id}`, userId: ownerId, accountId: data.accountId, title: `Закуп: ${data.productName}`, amount: data.buyPrice, category: 'Себестоимость', date: data.startDate 
-            }; 
+        if (data.buyPrice > 0) {
+            const buyPriceExpense: Expense = {
+                id: `exp_sale_${newSale.id}`, userId: ownerId, accountId: data.accountId, title: `Закуп: ${data.productName}`, amount: data.buyPrice, category: 'Себестоимость', date: data.startDate
+            };
             await api.saveItem('expenses', buyPriceExpense);
-            setExpenses(prev => [buyPriceExpense, ...prev]); 
+            setExpenses(prev => [buyPriceExpense, ...prev]);
         }
-        if (data.productId) { 
+        if (data.productId) {
             const prod = products.find(p => p.id === data.productId);
             if(prod) {
                 const updatedProd = { ...prod, stock: prod.stock - 1 };
                 await api.saveItem('products', updatedProd);
-                setProducts(prev => prev.map(p => p.id === data.productId ? updatedProd : p)); 
+                setProducts(prev => prev.map(p => p.id === data.productId ? updatedProd : p));
             }
         }
     }
-    
+
     setSales(newSales);
     setEditingSale(null);
     // API Call
     await api.saveItem('sales', existingSaleIndex >= 0 ? { ...sales[existingSaleIndex], ...saleData } : newSales[0]);
   };
-  
+
   const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
-  
-  const handleDeleteSale = async (saleId: string) => { 
-      if (window.confirm("Вы уверены?")) { 
+
+  const handleDeleteSale = async (saleId: string) => {
+      if (window.confirm("Вы уверены?")) {
           const sale = sales.find(s => s.id === saleId);
-          setSales(prev => prev.filter(s => s.id !== saleId)); 
+          setSales(prev => prev.filter(s => s.id !== saleId));
           await api.deleteItem('sales', saleId);
-          
+
           if(sale) {
               setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${saleId}`));
               await api.deleteItem('expenses', `exp_sale_${saleId}`);
-              
+
               if (sale.productId) {
                   const prod = products.find(p => p.id === sale.productId);
                   if(prod) {
@@ -249,31 +247,31 @@ const App: React.FC = () => {
                   }
               }
           }
-      } 
+      }
   };
 
   const handleViewSaleSchedule = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView('CONTRACTS'); setCurrentView('CUSTOMER_DETAILS'); };
 
-  const handleIncomeSubmit = async (data: any) => { 
-      if (!user) return; 
-      if (data.type === 'CUSTOMER_PAYMENT') { 
-          const { saleId, amount } = data; 
+  const handleIncomeSubmit = async (data: any) => {
+      if (!user) return;
+      if (data.type === 'CUSTOMER_PAYMENT') {
+          const { saleId, amount } = data;
           const sale = sales.find(s => s.id === saleId);
           if (sale) {
               const updatedSale = { ...sale };
               updatedSale.remainingAmount = Math.max(0, updatedSale.remainingAmount - amount);
               updatedSale.paymentPlan.push({ id: `paid_${Date.now()}`, saleId: sale.id, amount: amount, date: data.date, isPaid: true });
               if (updatedSale.remainingAmount === 0) updatedSale.status = 'COMPLETED';
-              
+
               setSales(sales.map(s => s.id === saleId ? updatedSale : s));
               await api.saveItem('sales', updatedSale);
           }
-      } else { 
-          const ownerId = isEmployee && user.managerId ? user.managerId : user.id; 
-          const newTransaction: Sale = { id: `inc_${Date.now()}`, userId: ownerId, type: 'CASH', customerId: data.investorId || 'system_income', productName: data.note || 'Приход', buyPrice: 0, accountId: data.accountId, totalAmount: data.amount, downPayment: data.amount, remainingAmount: 0, interestRate: 0, installments: 0, startDate: data.date, status: 'COMPLETED', paymentPlan: [] }; 
+      } else {
+          const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+          const newTransaction: Sale = { id: `inc_${Date.now()}`, userId: ownerId, type: 'CASH', customerId: data.investorId || 'system_income', productName: data.note || 'Приход', buyPrice: 0, accountId: data.accountId, totalAmount: data.amount, downPayment: data.amount, remainingAmount: 0, interestRate: 0, installments: 0, startDate: data.date, status: 'COMPLETED', paymentPlan: [] };
           setSales([newTransaction, ...sales]);
           await api.saveItem('sales', newTransaction);
-          
+
           if (data.type === 'INVESTOR_DEPOSIT') {
               const inv = investors.find(i => i.id === data.investorId);
               if (inv) {
@@ -282,19 +280,19 @@ const App: React.FC = () => {
                   await api.saveItem('investors', updatedInv);
               }
           }
-      } 
-      setCurrentView('OPERATIONS'); 
+      }
+      setCurrentView('OPERATIONS');
   };
 
   const handleUpdateSettings = (newSettings: AppSettings) => { setAppSettings(newSettings); saveAppSettings(newSettings); };
-  
-  const handleExpenseSubmit = async (data: any) => { 
-      if (!user) return; 
-      const ownerId = isEmployee && user.managerId ? user.managerId : user.id; 
-      const newExpense: Expense = { id: Date.now().toString(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; 
+
+  const handleExpenseSubmit = async (data: any) => {
+      if (!user) return;
+      const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+      const newExpense: Expense = { id: Date.now().toString(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId };
       setExpenses([newExpense, ...expenses]);
       await api.saveItem('expenses', newExpense);
-      
+
       if(data.payoutType === 'INVESTMENT' && data.investorId) {
           const inv = investors.find(i => i.id === data.investorId);
           if (inv) {
@@ -303,36 +301,47 @@ const App: React.FC = () => {
               await api.saveItem('investors', updatedInv);
           }
       }
-      setCurrentView('OPERATIONS'); 
+      setCurrentView('OPERATIONS');
   };
 
-  const handleAddEmployee = async (data: any) => { 
-      if (user && isManager) { 
+  const handleAddEmployee = async (data: any) => {
+      if (user && isManager) {
           try {
-              const newUser = await api.register({ ...data, role: 'employee', managerId: user.id });
+              // CHANGED: Use createSubUser to avoid logging out the manager
+              const newUser = await api.createSubUser({ ...data, role: 'employee' });
               setEmployees([...employees, newUser]);
-          } catch(e) { alert("Ошибка создания сотрудника"); }
-      } 
+          } catch(e) {
+              alert("Ошибка создания сотрудника");
+              console.error(e);
+          }
+      }
   };
   const handleUpdateEmployee = async (updatedData: User) => { if (isManager) { await api.updateUser(updatedData); setEmployees(prev => prev.map(e => e.id === updatedData.id ? updatedData : e)); } };
   const handleDeleteEmployee = async (id: string) => { if (isManager) { await api.deleteUser(id); setEmployees(prev => prev.filter(e => e.id !== id)); } };
-  
-  const handleAddInvestor = async (name: string, phone: string, email: string, pass: string, amount: number, profitPercentage: number, permissions: InvestorPermissions) => { 
-      if (user && isManager) { 
+
+  const handleAddInvestor = async (name: string, phone: string, email: string, pass: string, amount: number, profitPercentage: number, permissions: InvestorPermissions) => {
+      if (user && isManager) {
           try {
-              const newInvestorUser = await api.register({ name, email, password: pass, role: 'investor', managerId: user.id, phone });
-              const newInvestor: Investor = { id: newInvestorUser.id, userId: user.id, name, phone, email, initialAmount: amount, joinedDate: new Date().toISOString(), profitPercentage, permissions }; 
-              await api.saveItem('investors', newInvestor); // Save specific investor data
+              // CHANGED: Use createSubUser to avoid logging out the manager
+              const newInvestorUser = await api.createSubUser({ name, email, password: pass, role: 'investor', phone });
+
+              const newInvestor: Investor = { id: newInvestorUser.id, userId: user.id, name, phone, email, initialAmount: amount, joinedDate: new Date().toISOString(), profitPercentage, permissions };
+              await api.saveItem('investors', newInvestor);
+
               const newAccount: Account = { id: `acc_${newInvestorUser.id}`, userId: user.id, name: `Счет: ${name}`, type: 'INVESTOR', ownerId: newInvestorUser.id };
               await api.saveItem('accounts', newAccount);
-              const depositTransaction: Sale = { id: `dep_${Date.now()}`, userId: user.id, type: 'CASH', customerId: `system_deposit_${newInvestorUser.id}`, productName: 'Начальный депозит', buyPrice: 0, accountId: newAccount.id, totalAmount: amount, downPayment: amount, remainingAmount: 0, interestRate: 0, installments: 0, startDate: new Date().toISOString(), status: 'COMPLETED', paymentPlan: [] }; 
+
+              const depositTransaction: Sale = { id: `dep_${Date.now()}`, userId: user.id, type: 'CASH', customerId: `system_deposit_${newInvestorUser.id}`, productName: 'Начальный депозит', buyPrice: 0, accountId: newAccount.id, totalAmount: amount, downPayment: amount, remainingAmount: 0, interestRate: 0, installments: 0, startDate: new Date().toISOString(), status: 'COMPLETED', paymentPlan: [] };
               await api.saveItem('sales', depositTransaction);
 
-              setInvestors([...investors, newInvestor]); 
-              setAccounts([...accounts, newAccount]); 
-              setSales([depositTransaction, ...sales]); 
+              setInvestors([...investors, newInvestor]);
+              setAccounts([...accounts, newAccount]);
+              setSales([depositTransaction, ...sales]);
               alert("Инвестор создан!");
-          } catch(e) { alert("Ошибка создания инвестора"); }
+          } catch(e) {
+              alert("Ошибка создания инвестора");
+              console.error(e);
+          }
       } 
   };
   
