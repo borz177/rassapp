@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
