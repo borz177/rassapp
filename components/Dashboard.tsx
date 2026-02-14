@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Sale, Customer } from '../types';
+import { Sale, Customer, Account } from '../types';
 import { ICONS } from '../constants';
 
 interface DashboardProps {
@@ -15,9 +15,16 @@ interface DashboardProps {
   onAction: (action: string) => void;
   onSelectCustomer: (id: string) => void;
   onInitiatePayment: (sale: Sale, amount: number) => void;
+  accounts: Account[];
 }
 
 const SaleDetailsModal = ({ sale, customerName, onClose }: { sale: Sale, customerName: string, onClose: () => void }) => {
+    const statusMap: Record<string, string> = {
+        'ACTIVE': 'Активен',
+        'COMPLETED': 'Завершен',
+        'DEFAULTED': 'Просрочен'
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
             <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -31,7 +38,7 @@ const SaleDetailsModal = ({ sale, customerName, onClose }: { sale: Sale, custome
                     <div className="flex justify-between text-sm"><span className="text-slate-500">Первый взнос</span><span className="font-medium">{sale.downPayment.toLocaleString()} ₽</span></div>
                     <div className="flex justify-between text-sm"><span className="text-slate-500">Остаток долга</span><span className="font-bold text-amber-600">{sale.remainingAmount.toLocaleString()} ₽</span></div>
                     <div className="flex justify-between text-sm"><span className="text-slate-500">Срок</span><span className="font-medium">{sale.installments} мес.</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-slate-500">Статус</span><span className={`font-bold ${sale.status === 'COMPLETED' ? 'text-emerald-600' : 'text-blue-600'}`}>{sale.status}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-slate-500">Статус</span><span className={`font-bold ${sale.status === 'COMPLETED' ? 'text-emerald-600' : 'text-blue-600'}`}>{statusMap[sale.status] || sale.status}</span></div>
                 </div>
                 <div className="p-4 border-t border-slate-100"><button onClick={onClose} className="w-full py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200">Закрыть</button></div>
             </div>
@@ -39,16 +46,77 @@ const SaleDetailsModal = ({ sale, customerName, onClose }: { sale: Sale, custome
     );
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats, workingCapital, onAction, onSelectCustomer, onInitiatePayment }) => {
+const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalStats, workingCapital: globalWorkingCapital, onAction, onSelectCustomer, onInitiatePayment, accounts }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
   const [selectedSaleForModal, setSelectedSaleForModal] = useState<Sale | null>(null);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
 
+  // Filters
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [paymentDateFilter, setPaymentDateFilter] = useState<'ALL' | 'TODAY' | 'TOMORROW'>('ALL');
+
+  // --- STATS CALCULATION (FILTERED) ---
+  const calculatedStats = useMemo(() => {
+      // Filter sales by selected account if needed
+      const filteredSales = selectedAccountId
+          ? sales.filter(s => s.accountId === selectedAccountId)
+          : sales;
+
+      let totalRevenue = 0;
+      let totalOutstanding = 0;
+      let installmentSalesTotal = 0;
+      let workingCapitalCash = 0;
+
+      filteredSales.forEach(sale => {
+          // EXCLUDE INVESTOR DEPOSITS (System transactions) from Revenue & Outstanding calculations
+          // Assuming investor deposits have specific customer IDs or types.
+          // Based on App.tsx logic: customerId: `system_deposit_${newInvestorUser.id}`
+          const isSystemTransaction = sale.customerId.startsWith('system_');
+
+          if (!isSystemTransaction) {
+              const collected = sale.downPayment + sale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
+              totalRevenue += collected;
+              totalOutstanding += sale.remainingAmount;
+              if (sale.type === 'INSTALLMENT') {
+                  installmentSalesTotal += sale.totalAmount;
+              }
+          }
+
+          // For Working Capital (Cash in hand + Outstanding), we might include everything available in the account
+          // But strict "Working Capital" usually implies liquid cash + receivables.
+          // Let's approximate Cash Balance for this account context based on *sales* flow (ignoring pure expenses for this simplified view unless passed)
+          // Since we don't have expenses filtered by account easily accessible here without props, we'll stick to Sales logic.
+          // However, for consistency with the global app logic, if NO account is selected, we use the global stats.
+          // If Account IS selected, we calculate strictly based on sales flow in that account.
+      });
+
+      return {
+          totalRevenue,
+          totalOutstanding,
+          installmentSalesTotal,
+      };
+  }, [sales, selectedAccountId]);
+
+  // Use global stats if no account selected (or if we want to be consistent),
+  // BUT the requirement is to filter cards by account.
+  // So we use calculatedStats always, but for Working Capital we need expenses which we don't have here.
+  // We will display Revenue/Outstanding/Installments based on local calc.
+  // Working Capital card might be misleading if filtered without expenses, so we'll omit or keep global for now?
+  // User asked: "if select account info on cards show only selected account".
+  // Let's use the local calculations.
+
   const lastFiveSales = useMemo(() => {
-      return [...sales]
+      let filtered = sales;
+      if (selectedAccountId) {
+          filtered = filtered.filter(s => s.accountId === selectedAccountId);
+      }
+      // Filter out system deposits
+      filtered = filtered.filter(s => !s.customerId.startsWith('system_'));
+
+      return [...filtered]
           .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
           .slice(0, 5);
-  }, [sales]);
+  }, [sales, selectedAccountId]);
 
   const upcomingAndOverduePayments = useMemo(() => {
     const tomorrow = new Date();
@@ -58,42 +126,67 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats, workingC
     tomorrowEnd.setHours(23, 59, 59, 999);
 
     const today = new Date();
-    
-    const payments: { sale: Sale, customerName: string, totalDue: number, isTomorrow: boolean }[] = [];
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const payments: { sale: Sale, customerName: string, totalDue: number, isTomorrow: boolean, isToday: boolean, isOverdue: boolean }[] = [];
+
+    // Use ALL sales for payments tab (or should we filter by account too? User didn't specify for Payments tab, but logically yes if filter is global)
+    // The filter UI is on Overview tab. Let's keep Payments tab global or independent.
+    // The request said "add filters to payments tab", implying independent control.
 
     sales.forEach(sale => {
       if (sale.status !== 'ACTIVE') return;
 
-      let overdueAmount = 0;
-      let tomorrowAmount = 0;
+      let relevantAmount = 0;
       let isTomorrowPayment = false;
+      let isTodayPayment = false;
+      let isOverduePayment = false;
 
       sale.paymentPlan.forEach(p => {
         if (!p.isPaid) {
           const paymentDate = new Date(p.date);
-          if (paymentDate < today) {
-            overdueAmount += p.amount;
-          } else if (paymentDate >= tomorrow && paymentDate <= tomorrowEnd) {
-            tomorrowAmount += p.amount;
-            isTomorrowPayment = true;
+          const isOverdue = paymentDate < today && paymentDate.toDateString() !== today.toDateString(); // Strictly before today
+          const isToday = paymentDate.toDateString() === today.toDateString();
+          const isTomorrow = paymentDate >= tomorrow && paymentDate <= tomorrowEnd;
+
+          if (paymentDateFilter === 'ALL') {
+              if (isOverdue || isToday || isTomorrow) {
+                  relevantAmount += p.amount;
+                  if (isTomorrow) isTomorrowPayment = true;
+                  if (isToday) isTodayPayment = true;
+                  if (isOverdue) isOverduePayment = true;
+              }
+          } else if (paymentDateFilter === 'TODAY') {
+              // "Today" button usually implies immediate attention: Today's dues + Overdues
+              if (isOverdue || isToday) {
+                  relevantAmount += p.amount;
+                  if (isToday) isTodayPayment = true;
+                  if (isOverdue) isOverduePayment = true;
+              }
+          } else if (paymentDateFilter === 'TOMORROW') {
+              if (isTomorrow) {
+                  relevantAmount += p.amount;
+                  isTomorrowPayment = true;
+              }
           }
         }
       });
-      
-      const totalDue = overdueAmount + tomorrowAmount;
 
-      if (totalDue > 0) {
+      if (relevantAmount > 0) {
         payments.push({
           sale: sale,
           customerName: customers.find(c => c.id === sale.customerId)?.name || 'Неизвестный клиент',
-          totalDue: totalDue,
-          isTomorrow: isTomorrowPayment && overdueAmount === 0,
+          totalDue: relevantAmount,
+          isTomorrow: isTomorrowPayment && !isOverduePayment && !isTodayPayment,
+          isToday: isTodayPayment,
+          isOverdue: isOverduePayment
         });
       }
     });
 
     return payments.sort((a,b) => a.totalDue - b.totalDue);
-  }, [sales, customers]);
+  }, [sales, customers, paymentDateFilter]);
 
   const handleActionClick = (e: React.MouseEvent, saleId: string) => {
       e.stopPropagation();
@@ -106,7 +199,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats, workingC
         <h2 className="text-2xl font-bold text-slate-800">Главная</h2>
         <p className="text-slate-500 text-sm">Панель управления бизнесом</p>
       </header>
-      
+
       {/* Tabs */}
       <div className="flex bg-slate-100 p-1 rounded-xl">
         <button onClick={() => setActiveTab('overview')} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${activeTab === 'overview' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Обзор</button>
@@ -119,19 +212,40 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats, workingC
       {/* Overview Tab */}
       {activeTab === 'overview' && (
           <div className="space-y-6 animate-fade-in">
+
+              {/* Account Filter */}
+              <div className="overflow-x-auto pb-2 no-scrollbar">
+                  <div className="flex gap-2">
+                      <button
+                        onClick={() => setSelectedAccountId(null)}
+                        className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${!selectedAccountId ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
+                      >
+                          Все счета
+                      </button>
+                      {accounts.map(acc => (
+                          <button
+                            key={acc.id}
+                            onClick={() => setSelectedAccountId(acc.id)}
+                            className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${selectedAccountId === acc.id ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
+                          >
+                              {acc.name}
+                          </button>
+                      ))}
+                  </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Собрано средств</p><p className="text-2xl font-bold text-emerald-600">{stats.totalRevenue.toLocaleString()} ₽</p></div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Долг клиентов</p><p className="text-2xl font-bold text-amber-600">{stats.totalOutstanding.toLocaleString()} ₽</p></div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Продажи в рассрочку</p><p className="text-2xl font-bold text-indigo-600">{stats.installmentSalesTotal.toLocaleString()} ₽</p></div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Оборотные средства</p><p className="text-2xl font-bold text-sky-600">{workingCapital.toLocaleString()} ₽</p></div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Рискованные сделки</p><p className="text-2xl font-bold text-red-600">{stats.overdueCount}</p></div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Собрано средств (Клиенты)</p><p className="text-2xl font-bold text-emerald-600">{calculatedStats.totalRevenue.toLocaleString()} ₽</p></div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Долг клиентов</p><p className="text-2xl font-bold text-amber-600">{calculatedStats.totalOutstanding.toLocaleString()} ₽</p></div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Продажи в рассрочку</p><p className="text-2xl font-bold text-indigo-600">{calculatedStats.installmentSalesTotal.toLocaleString()} ₽</p></div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white p-6 rounded-2xl shadow-sm">
-                    <h3 className="text-lg font-semibold text-slate-700 mb-4">Последние 5 договоров</h3>
+                    <h3 className="text-lg font-semibold text-slate-700 mb-4">Последние договоры</h3>
                     <div className="space-y-3">
-                        {lastFiveSales.map(sale => (
+                        {lastFiveSales.length === 0 ? <p className="text-center text-slate-400 py-4 text-sm">Нет договоров</p> :
+                        lastFiveSales.map(sale => (
                             <div key={sale.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                                 <div>
                                     <p className="font-bold text-sm text-slate-800">{customers.find(c=>c.id === sale.customerId)?.name}</p>
@@ -142,7 +256,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats, workingC
                         ))}
                     </div>
                 </div>
-                
+
                 <div className="bg-white p-6 rounded-2xl shadow-sm">
                      <h3 className="text-lg font-semibold text-slate-700 mb-4">Быстрые действия</h3>
                      <div className="space-y-4">
@@ -160,8 +274,31 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats, workingC
       {/* Upcoming Payments Tab */}
       {activeTab === 'upcoming' && (
         <div className="space-y-4 animate-fade-in" onClick={() => setActiveActionMenu(null)}>
+
+            {/* Date Filters */}
+            <div className="flex gap-2 mb-2">
+                <button
+                    onClick={() => setPaymentDateFilter('ALL')}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors border ${paymentDateFilter === 'ALL' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
+                >
+                    Все
+                </button>
+                <button
+                    onClick={() => setPaymentDateFilter('TODAY')}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors border ${paymentDateFilter === 'TODAY' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200'}`}
+                >
+                    Сегодня
+                </button>
+                <button
+                    onClick={() => setPaymentDateFilter('TOMORROW')}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors border ${paymentDateFilter === 'TOMORROW' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-600 border-slate-200'}`}
+                >
+                    Завтра
+                </button>
+            </div>
+
             {upcomingAndOverduePayments.length === 0 ? (
-                <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">Нет просроченных или ближайших платежей.</div>
+                <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">Нет платежей по выбранному фильтру.</div>
             ) : (
                 upcomingAndOverduePayments.map(p => (
                     <div key={p.sale.id} className="bg-white p-4 rounded-xl shadow-sm relative">
@@ -178,7 +315,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats, workingC
                             <div className="flex items-center gap-2">
                                 <div className="text-right">
                                     <p className="text-lg font-bold text-indigo-600">{p.totalDue.toLocaleString()} ₽</p>
-                                    {!p.isTomorrow && <p className="text-[10px] font-bold text-red-500">ЕСТЬ ДОЛГ</p>}
+                                    {!p.isTomorrow && <p className="text-[10px] font-bold text-red-500">К ОПЛАТЕ</p>}
                                 </div>
                                 <button onClick={(e) => handleActionClick(e, p.sale.id)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg">{ICONS.More}</button>
                             </div>

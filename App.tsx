@@ -473,7 +473,7 @@ const App: React.FC = () => {
 
   return (
     <Layout currentView={currentView} setView={setCurrentView} onAction={handleAction} onContractTabChange={setActiveContractTab} sales={sales} appSettings={appSettings} customers={customers} user={user} activeInvestor={activeInvestor} onNavigateToProfile={() => setCurrentView('PROFILE')}>
-      {currentView === 'DASHBOARD' && !isInvestor && <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital} onAction={handleAction} onSelectCustomer={handleSelectCustomer} onInitiatePayment={handleInitiateDashboardPayment} />}
+      {currentView === 'DASHBOARD' && !isInvestor && <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital} onAction={handleAction} onSelectCustomer={handleSelectCustomer} onInitiatePayment={handleInitiateDashboardPayment} accounts={accounts} />}
       {currentView === 'DASHBOARD' && isInvestor && activeInvestor && <InvestorDashboard sales={sales} expenses={expenses} accounts={accounts} investor={activeInvestor} />}
       {currentView === 'CASH_REGISTER' && <CashRegister accounts={accounts} sales={sales} expenses={expenses} investors={investors} onAddAccount={handleAddAccount} onAction={handleAction} onSelectAccount={handleSelectAccountForOperations} onSetMainAccount={handleSetMainAccount} onUpdateAccount={handleUpdateAccount} isManager={isManager} totalExpectedProfit={totalExpectedProfit} realizedPeriodProfit={realizedPeriodProfit} myProfitPeriod={myProfitPeriod} setMyProfitPeriod={setMyProfitPeriod} />}
       {currentView === 'CONTRACTS' && (
