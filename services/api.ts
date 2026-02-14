@@ -3,14 +3,15 @@ import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership 
 // Helper to determine the API URL dynamically
 const getBaseUrl = () => {
     const { hostname, protocol } = window.location;
-    // Force IPv4 for localhost to avoid ::1 vs 127.0.0.1 resolution issues in Node v17+
-    if (hostname === 'localhost') {
-        return `${protocol}//127.0.0.1:5000/api`;
-    }
-    // For LAN testing (e.g. 192.168.1.5), use the same hostname as the frontend
-    return `${protocol}//${hostname}:5000/api`;
-};
 
+    // Локальная разработка
+    if (hostname === 'localhost' || hostname.startsWith('192.168.')) {
+        return `${protocol}//${hostname === 'localhost' ? '127.0.0.1' : hostname}:5000/api`;
+    }
+
+    // Продакшен: используем тот же домен и протокол, без порта
+    return '/api';
+};
 const API_URL = getBaseUrl();
 
 const getAuthHeader = () => {
