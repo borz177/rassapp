@@ -5,6 +5,13 @@ export enum PaymentStatus {
   OVERDUE = 'OVERDUE'
 }
 
+export type SubscriptionPlan = 'TRIAL' | 'START' | 'STANDARD' | 'BUSINESS';
+
+export interface UserSubscription {
+  plan: SubscriptionPlan;
+  expiresAt: string; // ISO String
+}
+
 export interface UserPermissions {
   canCreate: boolean;
   canEdit: boolean;
@@ -21,6 +28,7 @@ export interface User {
   managerId?: string; // If role is 'investor' or 'employee', this links to the manager
   permissions?: UserPermissions; // Only for employees
   allowedInvestorIds?: string[]; // IDs of investors this employee can manage/see
+  subscription?: UserSubscription; // New field
 }
 
 export interface InvestorPermissions {

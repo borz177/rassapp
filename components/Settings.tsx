@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { AppSettings, WhatsAppSettings } from '../types';
 import { ICONS } from '../constants';
 import { checkGreenApiConnection, createPartnerInstance, getQrCode } from '../services/whatsapp';
+import { PrivacyPolicy, DataProcessingAgreement } from './LegalDocs';
 
 interface SettingsProps {
   appSettings: AppSettings;
@@ -30,6 +32,9 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings }) =>
 
   // Clear Data Modal State
   const [showClearModal, setShowClearModal] = useState(false);
+
+  // Legal Docs View State
+  const [legalView, setLegalView] = useState<'NONE' | 'PRIVACY' | 'AGREEMENT'>('NONE');
 
   const hasPartnerToken = !!process.env.REACT_APP_GREEN_API_PARTNER_TOKEN;
 
@@ -140,6 +145,14 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings }) =>
       localStorage.clear();
       window.location.reload();
   };
+
+  if (legalView === 'PRIVACY') {
+      return <PrivacyPolicy onBack={() => setLegalView('NONE')} />;
+  }
+
+  if (legalView === 'AGREEMENT') {
+      return <DataProcessingAgreement onBack={() => setLegalView('NONE')} />;
+  }
 
   return (
     <div className="space-y-6 animate-fade-in pb-20">
@@ -284,6 +297,32 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings }) =>
                   </div>
               </div>
           )}
+      </div>
+
+      {/* Legal Information Section */}
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+          <h3 className="text-lg font-semibold text-slate-800 mb-2">Правовая информация</h3>
+          <div className="space-y-2">
+              <button 
+                  onClick={() => setLegalView('AGREEMENT')}
+                  className="w-full text-left p-3 rounded-xl hover:bg-slate-50 text-sm font-medium text-slate-700 flex justify-between items-center transition-colors"
+              >
+                  Согласие на обработку данных
+                  <span className="text-slate-400">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </span>
+              </button>
+              <div className="h-px bg-slate-50 mx-2"></div>
+              <button 
+                  onClick={() => setLegalView('PRIVACY')}
+                  className="w-full text-left p-3 rounded-xl hover:bg-slate-50 text-sm font-medium text-slate-700 flex justify-between items-center transition-colors"
+              >
+                  Политика конфиденциальности
+                  <span className="text-slate-400">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </span>
+              </button>
+          </div>
       </div>
 
       {/* Clear Data Section */}

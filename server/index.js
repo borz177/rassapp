@@ -24,8 +24,6 @@ const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'secret_key_change_this';
 
 // Nodemailer Transporter
-// NOTE: Ensure these ENV variables are set for real email sending.
-// If not set, the code will be logged to the console.
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: process.env.SMTP_PORT || 587,
@@ -55,9 +53,20 @@ const initDB = async () => {
         permissions JSONB,
         allowed_investor_ids JSONB,
         phone TEXT,
+        subscription JSONB,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+
+    // Ensure subscription column exists (Migration for existing DBs)
+    await pool.query(`
+        DO $$ 
+        BEGIN 
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='subscription') THEN 
+                ALTER TABLE users ADD COLUMN subscription JSONB; 
+            END IF; 
+        END $$;
     `);
 
     // Data Items Table
@@ -216,10 +225,21 @@ app.post('/api/auth/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    // Initial Subscription (3 Days Trial) for Managers
+    let subscription = null;
+    if (!role || role === 'manager' || role === 'admin') {
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 3);
+        subscription = {
+            plan: 'TRIAL',
+            expiresAt: expiresAt.toISOString()
+        };
+    }
+
     // Insert User
     await pool.query(
-      `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, subscription) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         id,
         name,
@@ -228,7 +248,8 @@ app.post('/api/auth/register', async (req, res) => {
         role || 'manager',
         managerId || null,
         JSON.stringify(permissions || {}),
-        JSON.stringify(allowedInvestorIds || [])
+        JSON.stringify(allowedInvestorIds || []),
+        subscription ? JSON.stringify(subscription) : null
       ]
     );
 
@@ -247,7 +268,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     const token = jwt.sign({ id, role: role || 'manager', managerId }, JWT_SECRET, { expiresIn: '30d' });
 
-    res.json({ token, user: { id, name, email, role: role || 'manager', managerId, permissions, allowedInvestorIds } });
+    res.json({ token, user: { id, name, email, role: role || 'manager', managerId, permissions, allowedInvestorIds, subscription } });
   } catch (err) {
     console.error('Register Error:', err);
     res.status(500).send('Server error');
@@ -311,13 +332,49 @@ app.post('/api/auth/login', async (req, res) => {
             role: user.role,
             managerId: user.manager_id,
             permissions: user.permissions,
-            allowedInvestorIds: user.allowed_investor_ids
+            allowedInvestorIds: user.allowed_investor_ids,
+            subscription: user.subscription
         }
     });
   } catch (err) {
     console.error('Login Error:', err);
     res.status(500).send('Server error');
   }
+});
+
+// Subscription Management
+app.post('/api/user/subscription', auth, async (req, res) => {
+    const { plan, months } = req.body;
+
+    if (req.user.role !== 'manager' && req.user.role !== 'admin') {
+        return res.status(403).json({ msg: 'Only managers can subscribe' });
+    }
+
+    try {
+        const userResult = await pool.query('SELECT subscription FROM users WHERE id = $1', [req.user.id]);
+        let currentSub = userResult.rows[0]?.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
+
+        let newExpiresAt = new Date(currentSub.expiresAt);
+        // If expired, start from now
+        if (newExpiresAt < new Date()) {
+            newExpiresAt = new Date();
+        }
+
+        // Add months
+        newExpiresAt.setMonth(newExpiresAt.getMonth() + Number(months));
+
+        const updatedSub = {
+            plan: plan,
+            expiresAt: newExpiresAt.toISOString()
+        };
+
+        await pool.query('UPDATE users SET subscription = $1 WHERE id = $2', [JSON.stringify(updatedSub), req.user.id]);
+
+        res.json({ subscription: updatedSub });
+    } catch (e) {
+        console.error("Subscription update error:", e);
+        res.status(500).send('Server Error');
+    }
 });
 
 // 2. Data Routes (Sync/Load)
