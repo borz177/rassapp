@@ -1,374 +1,214 @@
-
-import React, { useState, useEffect, useRef } from 'react';
-import { AppSettings, WhatsAppSettings } from '../types';
+import React, { useState } from 'react';
 import { ICONS } from '../constants';
-import { checkGreenApiConnection, createPartnerInstance, getQrCode } from '../services/whatsapp';
-import { PrivacyPolicy, DataProcessingAgreement } from './LegalDocs';
+import { api } from '../services/api';
+import { SubscriptionPlan } from '../types';
 
-interface SettingsProps {
-  appSettings: AppSettings;
-  onUpdateSettings: (settings: AppSettings) => void;
-}
+const Tariffs: React.FC = () => {
+  const [duration, setDuration] = useState<1 | 3 | 6 | 12>(1);
+  const [loading, setLoading] = useState<string | null>(null);
 
-const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings }) => {
-  const [companyName, setCompanyName] = useState(appSettings.companyName);
-  
-  // WhatsApp State
-  const [waEnabled, setWaEnabled] = useState(false);
-  const [idInstance, setIdInstance] = useState('');
-  const [apiToken, setApiToken] = useState('');
-  const [reminderTime, setReminderTime] = useState('10:00');
-  const [reminderDays, setReminderDays] = useState<number[]>([0]); // Default: On due date
-  
-  // Manual Test State
-  const [isTesting, setIsTesting] = useState(false);
-  const [testStatus, setTestStatus] = useState<'IDLE' | 'SUCCESS' | 'ERROR'>('IDLE');
+  const getDiscount = (months: number) => {
+    switch(months) {
+      case 3: return 0.05;
+      case 6: return 0.10;
+      case 12: return 0.20;
+      default: return 0;
+    }
+  };
 
-  // Partner Integration State
-  const [isCreatingInstance, setIsCreatingInstance] = useState(false);
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<'IDLE' | 'WAITING_SCAN' | 'AUTHORIZED'>('IDLE');
-  const pollingRef = useRef<number | null>(null);
+  const calculatePrice = (basePrice: number) => {
+    const discount = getDiscount(duration);
+    const monthlyPrice = basePrice * (1 - discount);
+    return Math.ceil(monthlyPrice);
+  };
 
-  // Clear Data Modal State
-  const [showClearModal, setShowClearModal] = useState(false);
+  const handlePay = async (planName: string, amount: number) => {
+    setLoading(planName);
+    try {
+      // 1. Create Payment
+      const response = await fetch(`${window.location.protocol}//${window.location.hostname}:5000/api/payment/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-auth-token': localStorage.getItem('token') || '' },
+        body: JSON.stringify({
+          amount: amount * duration,
+          description: `Оплата тарифа ${planName} на ${duration} мес.`,
+          returnUrl: window.location.href // In a real app, this is where YooKassa redirects back
+        })
+      });
 
-  // Legal Docs View State
-  const [legalView, setLegalView] = useState<'NONE' | 'PRIVACY' | 'AGREEMENT'>('NONE');
+      const data = await response.json();
 
-  const hasPartnerToken = !!process.env.REACT_APP_GREEN_API_PARTNER_TOKEN;
+      // NOTE: In a real integration, the user is redirected to data.confirmationUrl.
+      // After they pay, they return to the app, and the app checks the payment status.
+      // Since we don't have a real webhook here, we simulate "Success" immediately after redirect logic.
 
-  useEffect(() => {
-    setCompanyName(appSettings.companyName);
-    if (appSettings.whatsapp) {
-        setWaEnabled(appSettings.whatsapp.enabled);
-        setIdInstance(appSettings.whatsapp.idInstance);
-        setApiToken(appSettings.whatsapp.apiTokenInstance);
-        setReminderTime(appSettings.whatsapp.reminderTime);
-        setReminderDays(appSettings.whatsapp.reminderDays);
-        if (appSettings.whatsapp.idInstance) {
-            checkGreenApiConnection(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance)
-                .then(isAuth => setConnectionStatus(isAuth ? 'AUTHORIZED' : 'IDLE'));
+      if (data.confirmationUrl) {
+        // SIMULATION FOR DEMO: Open payment in new tab, but update app state as if paid
+        // window.open(data.confirmationUrl, '_blank');
+
+        // Update Subscription on Backend (Simulated success callback)
+        const planKey: SubscriptionPlan = planName === 'Старт' ? 'START' : planName === 'Стандарт' ? 'STANDARD' : 'BUSINESS';
+        const updatedSub = await api.updateSubscription(planKey, duration);
+
+        // Update Local User
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+            const user = JSON.parse(userStr);
+            user.subscription = updatedSub;
+            localStorage.setItem('user', JSON.stringify(user));
         }
-    } else {
-        // Load from env if not set in storage (Legacy support)
-        const envId = process.env.REACT_APP_GREEN_API_ID_INSTANCE || '';
-        const envToken = process.env.REACT_APP_GREEN_API_TOKEN_INSTANCE || '';
-        if (envId) setIdInstance(envId);
-        if (envToken) setApiToken(envToken);
-    }
 
-    return () => {
-        if (pollingRef.current) window.clearInterval(pollingRef.current);
-    }
-  }, [appSettings]);
-
-  const handleSave = () => {
-    const waSettings: WhatsAppSettings = {
-        enabled: waEnabled,
-        idInstance,
-        apiTokenInstance: apiToken,
-        reminderTime,
-        reminderDays
-    };
-
-    onUpdateSettings({ 
-        ...appSettings, 
-        companyName,
-        whatsapp: waSettings
-    });
-    alert("Настройки сохранены!");
-  };
-
-  const handleTestConnection = async () => {
-      setIsTesting(true);
-      setTestStatus('IDLE');
-      const success = await checkGreenApiConnection(idInstance, apiToken);
-      setTestStatus(success ? 'SUCCESS' : 'ERROR');
-      if (success) setConnectionStatus('AUTHORIZED');
-      setIsTesting(false);
-  };
-
-  const toggleDay = (day: number) => {
-      setReminderDays(prev => 
-          prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
-      );
-  };
-
-  // --- Partner Flow ---
-
-  const handleCreatePartnerInstance = async () => {
-      if (!window.confirm("Создать новое подключение WhatsApp?")) return;
-      
-      setIsCreatingInstance(true);
-      setQrCode(null);
-      
-      const credentials = await createPartnerInstance(companyName || "InstallMate App");
-      
-      if (credentials) {
-          setIdInstance(credentials.idInstance);
-          setApiToken(credentials.apiTokenInstance);
-          
-          // Wait a moment for instance to initialize before asking for QR
-          setTimeout(async () => {
-              const qr = await getQrCode(credentials.idInstance, credentials.apiTokenInstance);
-              if (qr) {
-                  setQrCode(qr);
-                  setConnectionStatus('WAITING_SCAN');
-                  startPolling(credentials.idInstance, credentials.apiTokenInstance);
-              } else {
-                  alert("Инстанс создан, но не удалось получить QR. Попробуйте позже или введите ключи вручную.");
-              }
-              setIsCreatingInstance(false);
-          }, 2000);
+        alert(`Подписка "${planName}" успешно активирована на ${duration} мес!`);
+        window.location.reload(); // Reload to refresh permissions in App
       } else {
-          alert("Ошибка создания инстанса. Проверьте настройки партнера.");
-          setIsCreatingInstance(false);
+        alert("Ошибка создания платежа. Проверьте консоль сервера.");
       }
+    } catch (error) {
+      console.error("Payment Error:", error);
+      alert("Ошибка соединения с сервером оплаты");
+    } finally {
+      setLoading(null);
+    }
   };
 
-  const startPolling = (id: string, token: string) => {
-      if (pollingRef.current) window.clearInterval(pollingRef.current);
-      
-      pollingRef.current = window.setInterval(async () => {
-          const isAuth = await checkGreenApiConnection(id, token);
-          if (isAuth) {
-              setConnectionStatus('AUTHORIZED');
-              setQrCode(null);
-              if (pollingRef.current) window.clearInterval(pollingRef.current);
-              alert("WhatsApp успешно подключен!");
-          }
-      }, 5000); // Check every 5 seconds
-  };
-
-  const handleClearData = () => {
-      localStorage.clear();
-      window.location.reload();
-  };
-
-  if (legalView === 'PRIVACY') {
-      return <PrivacyPolicy onBack={() => setLegalView('NONE')} />;
-  }
-
-  if (legalView === 'AGREEMENT') {
-      return <DataProcessingAgreement onBack={() => setLegalView('NONE')} />;
-  }
+  const plans = [
+    {
+      name: "Старт",
+      basePrice: 990,
+      features: [
+        "Базовый учет продаж",
+        "1 инвестор",
+        "База клиентов (до 100)",
+        "Учет расходов",
+        "Без напоминаний WhatsApp"
+      ],
+      color: "bg-slate-100",
+      textColor: "text-slate-800",
+      btnColor: "bg-slate-800",
+      highlight: false
+    },
+    {
+      name: "Стандарт",
+      basePrice: 1500,
+      features: [
+        "Все функции Старт",
+        "5 инвесторов",
+        "Авто-напоминания WhatsApp",
+        "Печать договоров (PDF)",
+        "База клиентов (до 1000)"
+      ],
+      color: "bg-indigo-50 border-2 border-indigo-500",
+      textColor: "text-indigo-900",
+      btnColor: "bg-indigo-600",
+      highlight: true,
+      badge: "Популярный"
+    },
+    {
+      name: "Бизнес",
+      basePrice: 1990,
+      features: [
+        "Все функции Стандарт",
+        "Безлимит инвесторов",
+        "ИИ Аналитика рисков",
+        "Сотрудники и права доступа",
+        "Приоритетная поддержка"
+      ],
+      color: "bg-gradient-to-br from-slate-900 to-slate-800 text-white",
+      textColor: "text-white",
+      btnColor: "bg-white text-slate-900",
+      highlight: false
+    }
+  ];
 
   return (
     <div className="space-y-6 animate-fade-in pb-20">
-      <header>
-        <h2 className="text-2xl font-bold text-slate-800">Настройки</h2>
-        <p className="text-slate-500 text-sm">Управление приложением</p>
+      <header className="text-center">
+        <h2 className="text-3xl font-bold text-slate-800">Тарифы</h2>
+        <p className="text-slate-500 mt-2">Выберите подходящий план для вашего бизнеса</p>
       </header>
 
-      {/* Company Name */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-        <h3 className="text-lg font-semibold text-slate-800 mb-1">Название компании</h3>
-        <p className="text-sm text-slate-500 mb-4">Отображается в заголовке и в сообщениях WhatsApp.</p>
-        <input 
-            type="text"
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-            className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 mb-2"
-            placeholder="Название вашей компании"
-        />
+      {/* Duration Switcher */}
+      <div className="flex justify-center">
+        <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 inline-flex">
+          {[1, 3, 6, 12].map((m) => (
+            <button
+              key={m}
+              onClick={() => setDuration(m as any)}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                duration === m 
+                  ? 'bg-slate-800 text-white shadow-md' 
+                  : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              {m} мес. {m > 1 && <span className="text-[10px] opacity-70">-{getDiscount(m)*100}%</span>}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* WhatsApp Integration */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-          <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-              <div>
-                  <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                      <span className="text-emerald-500">{ICONS.TrendingUp}</span> WhatsApp (Green API)
-                  </h3>
-                  <p className="text-xs text-slate-500">Автоматические напоминания</p>
+      {/* Plans Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto px-2">
+        {plans.map((plan) => {
+          const monthlyPrice = calculatePrice(plan.basePrice);
+          const totalPrice = monthlyPrice * duration;
+
+          return (
+            <div
+              key={plan.name}
+              className={`relative rounded-2xl p-6 shadow-xl transition-transform hover:scale-[1.02] flex flex-col ${plan.color}`}
+            >
+              {plan.badge && (
+                <div className="absolute top-0 right-0 bg-indigo-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl">
+                  {plan.badge}
+                </div>
+              )}
+
+              <h3 className={`text-xl font-bold mb-2 ${plan.highlight ? 'text-indigo-900' : plan.textColor}`}>
+                {plan.name}
+              </h3>
+
+              <div className="mb-6">
+                <span className={`text-4xl font-bold ${plan.highlight ? 'text-indigo-900' : plan.textColor}`}>
+                  {monthlyPrice} ₽
+                </span>
+                <span className={`text-sm opacity-70 ${plan.textColor}`}>/мес</span>
+                {duration > 1 && (
+                   <p className={`text-xs mt-1 opacity-60 ${plan.textColor}`}>
+                     Оплата сразу: {totalPrice} ₽
+                   </p>
+                )}
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" checked={waEnabled} onChange={() => setWaEnabled(!waEnabled)} className="sr-only peer" />
-                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-              </label>
-          </div>
 
-          {waEnabled && (
-              <div className="space-y-6 animate-fade-in">
-                  
-                  {/* Status Indicator */}
-                  <div className={`p-4 rounded-xl flex items-center gap-3 ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-slate-50 border border-slate-200 text-slate-600'}`}>
-                      <div className={`w-3 h-3 rounded-full ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></div>
-                      <span className="font-bold text-sm">
-                          {connectionStatus === 'AUTHORIZED' ? 'WhatsApp подключен и работает' : connectionStatus === 'WAITING_SCAN' ? 'Ожидание сканирования QR...' : 'Не подключено'}
-                      </span>
-                  </div>
+              <ul className="space-y-3 mb-8 flex-1">
+                {plan.features.map((feature, idx) => (
+                  <li key={idx} className="flex items-start gap-2 text-sm">
+                    <span className={plan.name === 'Бизнес' ? 'text-emerald-400' : 'text-emerald-600'}>
+                      {ICONS.Check}
+                    </span>
+                    <span className={`${plan.name === 'Бизнес' ? 'text-slate-300' : 'text-slate-600'}`}>
+                      {feature}
+                    </span>
+                  </li>
+                ))}
+              </ul>
 
-                  {/* Partner Connection Flow */}
-                  {hasPartnerToken && connectionStatus !== 'AUTHORIZED' && (
-                      <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-5 rounded-xl border border-indigo-100 text-center">
-                          <h4 className="font-bold text-indigo-900 mb-2">Быстрое подключение</h4>
-                          <p className="text-xs text-indigo-700 mb-4 max-w-xs mx-auto">Создайте подключение автоматически через наш партнерский аккаунт Green API.</p>
-                          
-                          {!qrCode ? (
-                              <button 
-                                onClick={handleCreatePartnerInstance}
-                                disabled={isCreatingInstance}
-                                className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-70 transition-all"
-                              >
-                                {isCreatingInstance ? 'Создание...' : 'Создать подключение'}
-                              </button>
-                          ) : (
-                              <div className="space-y-3">
-                                  <div className="bg-white p-2 rounded-lg inline-block shadow-sm">
-                                      <img src={`data:image/png;base64,${qrCode}`} alt="QR Code" className="w-48 h-48 object-contain" />
-                                  </div>
-                                  <p className="text-sm font-medium text-slate-600">Сканируйте QR-код в WhatsApp</p>
-                                  <p className="text-xs text-slate-400">Настройки {'>'} Связанные устройства</p>
-                              </div>
-                          )}
-                      </div>
-                  )}
-
-                  {/* Manual Configuration */}
-                  <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                          <h4 className="font-semibold text-slate-700 text-sm">Ручная настройка</h4>
-                          <button onClick={() => setConnectionStatus('IDLE')} className="text-xs text-indigo-600 underline">Сбросить статус</button>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div>
-                              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">idInstance</label>
-                              <input 
-                                  type="text" 
-                                  className="w-full p-3 border border-slate-200 rounded-xl outline-none text-sm"
-                                  value={idInstance}
-                                  onChange={e => setIdInstance(e.target.value)}
-                                  placeholder="1101******"
-                              />
-                          </div>
-                          <div>
-                              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">apiTokenInstance</label>
-                              <input 
-                                  type="text" 
-                                  className="w-full p-3 border border-slate-200 rounded-xl outline-none text-sm"
-                                  value={apiToken}
-                                  onChange={e => setApiToken(e.target.value)}
-                                  placeholder="K12345******"
-                              />
-                          </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                          <button 
-                              onClick={handleTestConnection}
-                              disabled={isTesting || !idInstance || !apiToken}
-                              className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-200 disabled:opacity-50"
-                          >
-                              {isTesting ? 'Проверка...' : 'Проверить вручную'}
-                          </button>
-                          {testStatus === 'SUCCESS' && <span className="text-sm text-emerald-600 font-bold flex items-center gap-1">{ICONS.Check} OK</span>}
-                          {testStatus === 'ERROR' && <span className="text-sm text-red-600 font-bold flex items-center gap-1">{ICONS.Alert} Ошибка</span>}
-                      </div>
-                  </div>
-
-                  <hr className="border-slate-100" />
-
-                  {/* Schedule Settings */}
-                  <div>
-                      <h4 className="font-semibold text-slate-700 mb-3">Расписание напоминаний</h4>
-                      
-                      <div className="mb-4">
-                          <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Время проверки (ежедневно)</label>
-                          <input 
-                              type="time" 
-                              className="p-2 border border-slate-200 rounded-lg outline-none font-bold text-slate-800"
-                              value={reminderTime}
-                              onChange={e => setReminderTime(e.target.value)}
-                          />
-                      </div>
-
-                      <div className="space-y-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Когда отправлять?</label>
-                          <div className="flex flex-wrap gap-2">
-                              <button onClick={() => toggleDay(0)} className={`px-3 py-2 rounded-lg text-sm border ${reminderDays.includes(0) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>В день оплаты</button>
-                              <button onClick={() => toggleDay(-1)} className={`px-3 py-2 rounded-lg text-sm border ${reminderDays.includes(-1) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>За 1 день до</button>
-                              <button onClick={() => toggleDay(-3)} className={`px-3 py-2 rounded-lg text-sm border ${reminderDays.includes(-3) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>За 3 дня до</button>
-                              <button onClick={() => toggleDay(1)} className={`px-3 py-2 rounded-lg text-sm border ${reminderDays.includes(1) ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-600 border-slate-200'}`}>1 день просрочки</button>
-                          </div>
-                      </div>
-                  </div>
-              </div>
-          )}
-      </div>
-
-      {/* Legal Information Section */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-semibold text-slate-800 mb-2">Правовая информация</h3>
-          <div className="space-y-2">
-              <button 
-                  onClick={() => setLegalView('AGREEMENT')}
-                  className="w-full text-left p-3 rounded-xl hover:bg-slate-50 text-sm font-medium text-slate-700 flex justify-between items-center transition-colors"
+              <button
+                onClick={() => handlePay(plan.name, monthlyPrice)}
+                disabled={!!loading}
+                className={`w-full py-4 rounded-xl font-bold transition-opacity ${plan.btnColor} ${loading ? 'opacity-70 cursor-not-allowed' : 'hover:opacity-90'}`}
               >
-                  Согласие на обработку данных
-                  <span className="text-slate-400">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                  </span>
+                {loading === plan.name ? 'Обработка...' : 'Выбрать'}
               </button>
-              <div className="h-px bg-slate-50 mx-2"></div>
-              <button 
-                  onClick={() => setLegalView('PRIVACY')}
-                  className="w-full text-left p-3 rounded-xl hover:bg-slate-50 text-sm font-medium text-slate-700 flex justify-between items-center transition-colors"
-              >
-                  Политика конфиденциальности
-                  <span className="text-slate-400">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                  </span>
-              </button>
-          </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Clear Data Section */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-semibold text-slate-800 mb-1">Управление данными</h3>
-          <p className="text-sm text-slate-500 mb-4">Сброс всех данных приложения. Используйте с осторожностью.</p>
-          <button 
-              onClick={() => setShowClearModal(true)}
-              className="w-full py-3 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 border border-red-100 flex items-center justify-center gap-2 transition-colors"
-          >
-              {ICONS.Delete} Сбросить все данные
-          </button>
+      <div className="text-center text-xs text-slate-400 mt-8">
+        Оплата производится через безопасный шлюз ЮKassa. Данные карты не сохраняются.
       </div>
-
-      <div className="pt-4">
-        <button
-            onClick={handleSave}
-            className="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
-        >
-            Сохранить все настройки
-        </button>
-      </div>
-
-      {/* Clear Data Modal */}
-      {showClearModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowClearModal(false)}>
-              <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-4" onClick={e => e.stopPropagation()}>
-                  <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto text-3xl">
-                      {ICONS.Alert}
-                  </div>
-                  <div>
-                      <h3 className="text-xl font-bold text-slate-800">Вы уверены?</h3>
-                      <p className="text-slate-500 text-sm mt-2">
-                          Это действие удалит ВСЕ данные (клиентов, продажи, настройки) с этого устройства. Восстановить их будет невозможно.
-                      </p>
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                      <button onClick={() => setShowClearModal(false)} className="flex-1 py-3 bg-slate-100 font-bold text-slate-600 rounded-xl">Отмена</button>
-                      <button onClick={handleClearData} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl">Сбросить</button>
-                  </div>
-              </div>
-          </div>
-      )}
-
     </div>
   );
 };
 
-export default Settings;
+export default Tariffs;

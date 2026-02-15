@@ -62,3 +62,4 @@ export const ICONS: Record<string, ReactNode> = {
 };
 
 export const APP_NAME = "InstallMate";
+export const APP_VERSION = "1.0.1";

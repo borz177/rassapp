@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AppSettings, WhatsAppSettings } from '../types';
-import { ICONS } from '../constants';
+import { ICONS, APP_VERSION } from '../constants';
 import { checkGreenApiConnection, createPartnerInstance, getQrCode } from '../services/whatsapp';
 import { PrivacyPolicy, DataProcessingAgreement } from './LegalDocs';
 
@@ -12,14 +12,14 @@ interface SettingsProps {
 
 const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings }) => {
   const [companyName, setCompanyName] = useState(appSettings.companyName);
-  
+
   // WhatsApp State
   const [waEnabled, setWaEnabled] = useState(false);
   const [idInstance, setIdInstance] = useState('');
   const [apiToken, setApiToken] = useState('');
   const [reminderTime, setReminderTime] = useState('10:00');
   const [reminderDays, setReminderDays] = useState<number[]>([0]); // Default: On due date
-  
+
   // Manual Test State
   const [isTesting, setIsTesting] = useState(false);
   const [testStatus, setTestStatus] = useState<'IDLE' | 'SUCCESS' | 'ERROR'>('IDLE');
@@ -72,8 +72,8 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings }) =>
         reminderDays
     };
 
-    onUpdateSettings({ 
-        ...appSettings, 
+    onUpdateSettings({
+        ...appSettings,
         companyName,
         whatsapp: waSettings
     });
@@ -90,7 +90,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings }) =>
   };
 
   const toggleDay = (day: number) => {
-      setReminderDays(prev => 
+      setReminderDays(prev =>
           prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
       );
   };
@@ -99,16 +99,16 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings }) =>
 
   const handleCreatePartnerInstance = async () => {
       if (!window.confirm("Создать новое подключение WhatsApp?")) return;
-      
+
       setIsCreatingInstance(true);
       setQrCode(null);
-      
+
       const credentials = await createPartnerInstance(companyName || "InstallMate App");
-      
+
       if (credentials) {
           setIdInstance(credentials.idInstance);
           setApiToken(credentials.apiTokenInstance);
-          
+
           // Wait a moment for instance to initialize before asking for QR
           setTimeout(async () => {
               const qr = await getQrCode(credentials.idInstance, credentials.apiTokenInstance);
@@ -129,7 +129,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings }) =>
 
   const startPolling = (id: string, token: string) => {
       if (pollingRef.current) window.clearInterval(pollingRef.current);
-      
+
       pollingRef.current = window.setInterval(async () => {
           const isAuth = await checkGreenApiConnection(id, token);
           if (isAuth) {
@@ -146,6 +146,10 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings }) =>
       window.location.reload();
   };
 
+  const handleForceUpdate = () => {
+      window.location.reload();
+  }
+
   if (legalView === 'PRIVACY') {
       return <PrivacyPolicy onBack={() => setLegalView('NONE')} />;
   }
@@ -156,9 +160,14 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings }) =>
 
   return (
     <div className="space-y-6 animate-fade-in pb-20">
-      <header>
-        <h2 className="text-2xl font-bold text-slate-800">Настройки</h2>
-        <p className="text-slate-500 text-sm">Управление приложением</p>
+      <header className="flex justify-between items-start">
+        <div>
+            <h2 className="text-2xl font-bold text-slate-800">Настройки</h2>
+            <p className="text-slate-500 text-sm">Версия: {APP_VERSION}</p>
+        </div>
+        <button onClick={handleForceUpdate} className="text-xs bg-slate-100 text-slate-600 px-3 py-2 rounded-lg font-medium hover:bg-slate-200">
+            Обновить приложение
+        </button>
       </header>
 
       {/* Company Name */}
