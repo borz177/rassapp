@@ -1,5 +1,5 @@
 
-import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan } from "../types";
+import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings } from "../types";
 
 // Helper to determine the API URL dynamically
 const getBaseUrl = () => {
@@ -116,7 +116,7 @@ export const api = {
     fetchAllData: async (): Promise<{
         customers: Customer[], products: Product[], sales: Sale[],
         expenses: Expense[], accounts: Account[], investors: Investor[],
-        partnerships: Partnership[], employees: User[]
+        partnerships: Partnership[], employees: User[], settings?: AppSettings
     }> => {
         try {
             const res = await fetch(`${API_URL}/data`, { headers: getAuthHeader() });
@@ -152,6 +152,15 @@ export const api = {
             method: 'DELETE',
             headers: getAuthHeader()
         });
+    },
+
+    // Account Reset
+    resetAccountData: async () => {
+        const res = await fetch(`${API_URL}/user/data`, {
+            method: 'DELETE',
+            headers: getAuthHeader()
+        });
+        if (!res.ok) throw new Error('Failed to reset account');
     },
 
     // User Management

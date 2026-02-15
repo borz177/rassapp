@@ -417,15 +417,17 @@ app.get('/api/data', auth, async (req, res) => {
     try {
         const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.managerId : req.user.id;
 
-        // Fetch Data Items
+        // Fetch Data Items including settings
         const itemsResult = await pool.query('SELECT * FROM data_items WHERE user_id = $1', [targetUserId]);
 
         const result = {
-            customers: [], products: [], sales: [], expenses: [], accounts: [], investors: [], partnerships: []
+            customers: [], products: [], sales: [], expenses: [], accounts: [], investors: [], partnerships: [], settings: null
         };
 
         itemsResult.rows.forEach(row => {
-            if (result[row.type]) {
+            if (row.type === 'settings') {
+                result.settings = row.data;
+            } else if (result[row.type]) {
                 result[row.type].push(row.data);
             }
         });
@@ -486,6 +488,32 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
         res.json({ success: true, id });
     } catch (err) {
         console.error(err);
+        res.status(500).send('Server Error');
+    }
+});
+
+// Wipe User Data (Reset)
+app.delete('/api/user/data', auth, async (req, res) => {
+    try {
+        const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.managerId : req.user.id;
+
+        // Delete all data items for this user
+        await pool.query('DELETE FROM data_items WHERE user_id = $1', [targetUserId]);
+
+        // Optionally delete sub-users (employees/investors)?
+        // For safety, let's keep users but wipe business data.
+
+        // Re-initialize default account so the app doesn't break
+        const accId = `acc_main_${targetUserId}`;
+        const accData = { id: accId, userId: targetUserId, name: 'Основной счет', type: 'MAIN' };
+        await pool.query(
+            `INSERT INTO data_items (id, user_id, type, data) VALUES ($1, $2, $3, $4)`,
+            [accId, targetUserId, 'accounts', JSON.stringify(accData)]
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error("Reset Data Error:", err);
         res.status(500).send('Server Error');
     }
 });

@@ -5,7 +5,6 @@ import Dashboard from './components/Dashboard';
 import CashRegister from './components/CashRegister';
 import Investors from './components/Investors';
 import Contracts from './components/Contracts';
-import AIConsultant from './components/AIConsultant';
 import NewSale from './components/NewSale';
 import NewIncome from './components/NewIncome';
 import NewExpense from './components/NewExpense';
@@ -25,8 +24,8 @@ import Tariffs from './components/Tariffs';
 import AdminPanel from './components/AdminPanel'; // New Import
 import Auth from './components/Auth';
 import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan } from './types';
-import { 
-  getAppSettings, saveAppSettings 
+import {
+  getAppSettings
 } from './services/storage';
 import { api } from './services/api';
 import { ICONS } from './constants';
@@ -35,11 +34,11 @@ const App: React.FC = () => {
   // Auth State
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // App State
   const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
   const [activeContractTab, setActiveContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
-  
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -49,7 +48,7 @@ const App: React.FC = () => {
   const [employees, setEmployees] = useState<User[]>([]);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>({ companyName: 'InstallMate' });
-  
+
   // Drafts & Temporary State
   const [draftSaleData, setDraftSaleData] = useState<any>({});
   const [previousView, setPreviousView] = useState<ViewState>('DASHBOARD');
@@ -79,7 +78,7 @@ const App: React.FC = () => {
   useEffect(() => {
       const storedUser = localStorage.getItem('user');
       const token = localStorage.getItem('token');
-      
+
       if (storedUser && token) {
           const parsedUser = JSON.parse(storedUser);
           setUser(parsedUser);
@@ -87,6 +86,7 @@ const App: React.FC = () => {
       } else {
           setIsLoading(false);
       }
+      // Fallback for settings if offline/loading first time (though loadData will overwrite if online)
       setAppSettings(getAppSettings());
   }, []);
 
@@ -105,6 +105,10 @@ const App: React.FC = () => {
           setInvestors(data.investors);
           setPartnerships(data.partnerships);
           setEmployees(data.employees);
+
+          if (data.settings) {
+              setAppSettings(data.settings);
+          }
       } catch (error) {
           console.error("Failed to load data", error);
       } finally {
@@ -191,11 +195,11 @@ const App: React.FC = () => {
       await loadData();
   };
 
-  const handleAction = (action: string) => { 
-      if (isEmployee && ['CREATE_SALE', 'INCOME', 'EXPENSE', 'ADD_CUSTOMER', 'ADD_PRODUCT'].includes(action) && !user.permissions?.canCreate) { 
-          alert("У вас нет прав на создание записей"); return; 
+  const handleAction = (action: string) => {
+      if (isEmployee && ['CREATE_SALE', 'INCOME', 'EXPENSE', 'ADD_CUSTOMER', 'ADD_PRODUCT'].includes(action) && !user.permissions?.canCreate) {
+          alert("У вас нет прав на создание записей"); return;
       }
-      
+
       // Check Subscription Expiry for Writes
       if (isManager && ['CREATE_SALE', 'INCOME', 'EXPENSE', 'ADD_CUSTOMER', 'ADD_PRODUCT'].includes(action)) {
           if (!checkAccess('WRITE')) {
@@ -204,15 +208,15 @@ const App: React.FC = () => {
           }
       }
 
-      switch (action) { 
-          case 'CREATE_SALE': setDraftSaleData({}); setEditingSale(null); setCurrentView('CREATE_SALE'); break; 
-          case 'INCOME': setDraftSaleData({}); setCurrentView('CREATE_INCOME'); break; 
-          case 'EXPENSE': setCurrentView('CREATE_EXPENSE'); break; 
-          case 'OPERATIONS': setOperationsAccountId(null); setCurrentView('OPERATIONS'); break; 
-          case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break; 
-          case 'ADD_CUSTOMER': setCurrentView('CUSTOMERS'); break; 
-          case 'ADD_PRODUCT': setCurrentView('MANAGE_PRODUCTS'); break; 
-      } 
+      switch (action) {
+          case 'CREATE_SALE': setDraftSaleData({}); setEditingSale(null); setCurrentView('CREATE_SALE'); break;
+          case 'INCOME': setDraftSaleData({}); setCurrentView('CREATE_INCOME'); break;
+          case 'EXPENSE': setCurrentView('CREATE_EXPENSE'); break;
+          case 'OPERATIONS': setOperationsAccountId(null); setCurrentView('OPERATIONS'); break;
+          case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break;
+          case 'ADD_CUSTOMER': setCurrentView('CUSTOMERS'); break;
+          case 'ADD_PRODUCT': setCurrentView('MANAGE_PRODUCTS'); break;
+      }
   };
 
   // --- CRUD HELPERS (Local State Updates) ---
@@ -337,13 +341,22 @@ const App: React.FC = () => {
       setCurrentView('OPERATIONS');
   };
 
-  const handleUpdateSettings = (newSettings: AppSettings) => { 
+  const handleUpdateSettings = async (newSettings: AppSettings) => {
       if (isManager && !checkAccess('WHATSAPP')) {
           showUpgradeAlert("WhatsApp доступен в тарифе Стандарт и выше.");
           return;
       }
-      setAppSettings(newSettings); 
-      saveAppSettings(newSettings); 
+
+      setAppSettings(newSettings);
+      if (user) {
+          // Save with a predictable ID so it overwrites
+          const settingsId = `settings_${user.id}`;
+          try {
+              await api.saveItem('settings', { id: settingsId, ...newSettings });
+          } catch (e) {
+              console.error("Failed to save settings to API", e);
+          }
+      }
   };
 
   const handleExpenseSubmit = async (data: any) => {
@@ -429,16 +442,16 @@ const App: React.FC = () => {
       }
   };
 
-  const handleAddProduct = async (name: string, price: number, stock: number) => { 
+  const handleAddProduct = async (name: string, price: number, stock: number) => {
       if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; }
-      if (user) { const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newProd = { id: Date.now().toString(), userId: ownerId, name, price, category: 'Общее', stock }; const saved = await api.saveItem('products', newProd); updateList(setProducts, saved); } 
+      if (user) { const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newProd = { id: Date.now().toString(), userId: ownerId, name, price, category: 'Общее', stock }; const saved = await api.saveItem('products', newProd); updateList(setProducts, saved); }
   };
   const handleUpdateProduct = async (updated: Product) => { if (isEmployee && !user?.permissions?.canEdit) return; const saved = await api.saveItem('products', updated); updateList(setProducts, saved); };
   const handleDeleteProduct = async (id: string) => { if (isEmployee && !user?.permissions?.canDelete) return; await api.deleteItem('products', id); removeFromList(setProducts, id); };
 
-  const handleAddCustomer = async (name: string, phone: string, photo: string) => { 
+  const handleAddCustomer = async (name: string, phone: string, photo: string) => {
       if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; }
-      if (!user) throw new Error("No user"); const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newCustomer: Customer = { id: Date.now().toString(), userId: ownerId, name, phone, email: '', trustScore: 50, notes: '', photo }; const saved = await api.saveItem('customers', newCustomer); updateList(setCustomers, saved); return saved; 
+      if (!user) throw new Error("No user"); const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newCustomer: Customer = { id: Date.now().toString(), userId: ownerId, name, phone, email: '', trustScore: 50, notes: '', photo }; const saved = await api.saveItem('customers', newCustomer); updateList(setCustomers, saved); return saved;
   };
   const handleUpdateCustomer = async (updated: Customer) => { const saved = await api.saveItem('customers', updated); updateList(setCustomers, saved); };
 
@@ -485,34 +498,34 @@ const App: React.FC = () => {
       }
   };
 
-  const handleInitiateDashboardPayment = (sale: Sale, amount: number) => { 
+  const handleInitiateDashboardPayment = (sale: Sale, amount: number) => {
       if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; }
-      setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount }); setCurrentView('CREATE_INCOME'); 
+      setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount }); setCurrentView('CREATE_INCOME');
   };
-  const handleInitiateCustomerPayment = (sale: Sale, payment: Payment) => { 
+  const handleInitiateCustomerPayment = (sale: Sale, payment: Payment) => {
       if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; }
-      setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount: payment.amount }); setCurrentView('CREATE_INCOME'); 
+      setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount: payment.amount }); setCurrentView('CREATE_INCOME');
   };
   const openSelection = (view: ViewState, currentData: any) => { setDraftSaleData(currentData); setPreviousView(currentView); setCurrentView(view); };
   const handleSelection = (key: 'customerId', id: string) => { setDraftSaleData({ ...draftSaleData, [key]: id }); setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE'); };
-  
+
   // Updated Handler for Customer Creation
-  const handleQuickAddCustomer = async (data: { name: string, phone: string, address: string }) => { 
+  const handleQuickAddCustomer = async (data: { name: string, phone: string, address: string }) => {
       if (!user) return;
       if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; }
       const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
-      const newCustomer: Customer = { 
-          id: Date.now().toString(), 
-          userId: ownerId, 
-          name: data.name, 
-          phone: data.phone, 
+      const newCustomer: Customer = {
+          id: Date.now().toString(),
+          userId: ownerId,
+          name: data.name,
+          phone: data.phone,
           address: data.address,
-          email: '', 
-          trustScore: 50, 
-          notes: '', 
-          photo: '' 
-      }; 
-      const saved = await api.saveItem('customers', newCustomer); 
+          email: '',
+          trustScore: 50,
+          notes: '',
+          photo: ''
+      };
+      const saved = await api.saveItem('customers', newCustomer);
       updateList(setCustomers, saved);
       handleSelection('customerId', saved.id);
   };
@@ -598,28 +611,18 @@ const App: React.FC = () => {
       {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId && <CustomerDetails customer={customers.find(c => c.id === selectedCustomerId)!} sales={sales} onBack={() => setCurrentView(previousView)} onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment} onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer} initialSaleId={initialSaleIdForDetails} />}
       {currentView === 'MANAGE_PRODUCTS' && <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} />}
       {currentView === 'OPERATIONS' && (
-        <Operations 
-            sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales} 
-            expenses={isInvestor ? expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id) : expenses} 
-            accounts={accounts} 
-            customers={customers} 
-            initialAccountId={operationsAccountId} 
+        <Operations
+            sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
+            expenses={isInvestor ? expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id) : expenses}
+            accounts={accounts}
+            customers={customers}
+            initialAccountId={operationsAccountId}
         />
       )}
       {currentView === 'REPORTS' && reportData && <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters} data={reportData} />}
-      {currentView === 'AI_ASSISTANT' && (
-          // Protect AI Route
-          checkAccess('AI') ? (
-              <AIConsultant customers={customers} sales={sales} /> 
-          ) : (
-              <div className="flex flex-col items-center justify-center h-full p-10 text-center">
-                  <div className="bg-purple-100 p-4 rounded-full text-purple-600 mb-4">{ICONS.AI}</div>
-                  <h2 className="text-xl font-bold mb-2">ИИ Ассистент недоступен</h2>
-                  <p className="text-slate-500 mb-6">Эта функция доступна только в тарифе "Бизнес".</p>
-                  <button onClick={() => setCurrentView('TARIFFS')} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold">Перейти к тарифам</button>
-              </div>
-          )
-      )}
+
+      {/* AI Assistant view removed */}
+
       {currentView === 'CREATE_INCOME' && <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts} sales={sales} onClose={() => setCurrentView('DASHBOARD')} onSubmit={handleIncomeSubmit} onSelectCustomer={() => openSelection('SELECT_CUSTOMER', draftSaleData)} />}
       {currentView === 'CREATE_EXPENSE' && <NewExpense investors={investors} accounts={accounts} onClose={() => setCurrentView('DASHBOARD')} onSubmit={handleExpenseSubmit} />}
       {currentView === 'CREATE_SALE' && <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products} accounts={accounts} onClose={() => { setCurrentView('DASHBOARD'); setEditingSale(null); }} onSelectCustomer={(data) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} />}
@@ -629,7 +632,7 @@ const App: React.FC = () => {
       {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings} />}
       {currentView === 'PROFILE' && user && <Profile user={user} onUpdateProfile={handleUpdateProfile} onBack={() => setCurrentView('MORE')} onLogout={() => { localStorage.removeItem('user'); localStorage.removeItem('token'); setUser(null); }} />}
       {currentView === 'ADMIN_PANEL' && <AdminPanel />}
-      {currentView === 'MORE' && !isInvestor && (<div className="space-y-4 animate-fade-in pb-20"><button onClick={() => setCurrentView('PROFILE')} className="w-full bg-slate-900 text-white p-6 rounded-2xl flex items-center gap-4 hover:bg-slate-800"><div className="w-16 h-16 bg-indigo-500 rounded-full flex items-center justify-center text-2xl font-bold">{user.name.charAt(0).toUpperCase()}</div><div><h2 className="text-xl font-bold text-left">{user.name}</h2><p className="text-slate-400 text-sm capitalize text-left">{user.role}</p><p className="text-slate-500 text-xs mt-1 text-left">{user.email}</p></div></button><div className="space-y-2 pt-4"><div className="bg-white rounded-xl border border-slate-100 overflow-hidden"><button onClick={() => toggleMoreSection('CASH')} className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"><div className="flex items-center gap-3"><div className="bg-emerald-100 text-emerald-600 p-2 rounded-lg">{ICONS.Wallet}</div><span className="font-semibold text-slate-800">Касса</span></div><span className={`text-slate-400 transition-transform ${moreExpandedSection === 'CASH' ? 'rotate-90' : ''}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button> {moreExpandedSection === 'CASH' && (<div className="bg-slate-50 border-t border-slate-100 p-2 space-y-1"><button onClick={() => setCurrentView('CASH_REGISTER')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.Wallet}</span> Счета</button><button onClick={() => handleAction('INCOME')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.Income}</span> Приход</button><button onClick={() => handleAction('EXPENSE')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.Expense}</span> Расход</button><button onClick={() => handleAction('OPERATIONS')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.List}</span> История</button></div>)}</div><div className="bg-white rounded-xl border border-slate-100 overflow-hidden"><button onClick={() => toggleMoreSection('CONTRACTS')} className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"><div className="flex items-center gap-3"><div className="bg-indigo-100 text-indigo-600 p-2 rounded-lg">{ICONS.File}</div><span className="font-semibold text-slate-800">Договоры</span></div><span className={`text-slate-400 transition-transform ${moreExpandedSection === 'CONTRACTS' ? 'rotate-90' : ''}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button> {moreExpandedSection === 'CONTRACTS' && (<div className="bg-slate-50 border-t border-slate-100 p-2 space-y-1"><button onClick={() => handleAction('CREATE_SALE')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.AddSmall}</span> Оформить</button><button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('ACTIVE'); }} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Check}</span> Активные</div>{contractCounts.active > 0 && <span className="text-xs bg-indigo-100 text-indigo-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.active}</span>}</button><button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('OVERDUE'); }} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Alert}</span> Просроченные</div>{contractCounts.overdue > 0 && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.overdue}</span>}</button><button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('ARCHIVE'); }} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Clock}</span> Архив</div>{contractCounts.archive > 0 && <span className="text-xs bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.archive}</span>}</button></div>)}</div><button onClick={() => setCurrentView('REPORTS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-sky-100 text-sky-600 p-2 rounded-lg">{ICONS.Dashboard}</div><span className="font-semibold text-slate-800">Отчеты</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button><button onClick={() => setCurrentView('CUSTOMERS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-orange-100 text-orange-600 p-2 rounded-lg">{ICONS.Customers}</div><span className="font-semibold text-slate-800">Клиенты</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button><button onClick={() => setCurrentView('INVESTORS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-purple-100 text-purple-600 p-2 rounded-lg">{ICONS.Users}</div><span className="font-semibold text-slate-800">Инвесторы</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button> <button onClick={() => setCurrentView('AI_ASSISTANT')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-purple-100 text-purple-600 p-2 rounded-lg">{ICONS.AI}</div><span className="font-semibold text-slate-800">ИИ Ассистент</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button> {user.role === 'manager' && (<button onClick={() => setCurrentView('EMPLOYEES')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-blue-100 text-blue-600 p-2 rounded-lg">{ICONS.Employees}</div><span className="font-semibold text-slate-800">Сотрудники</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button>)} <button onClick={() => setCurrentView('TARIFFS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-emerald-100 text-emerald-600 p-2 rounded-lg">{ICONS.Tariffs}</div><span className="font-semibold text-slate-800">Тарифы</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button> {user.role === 'admin' && (<button onClick={() => setCurrentView('ADMIN_PANEL')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-red-100 text-red-600 p-2 rounded-lg">{ICONS.Crown}</div><span className="font-semibold text-slate-800">Админ панель</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button>)} <button onClick={() => setCurrentView('SETTINGS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-slate-100 text-slate-600 p-2 rounded-lg">{ICONS.Settings}</div><span className="font-semibold text-slate-800">Настройки</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button></div><div className="pt-4"><button onClick={() => { localStorage.removeItem('user'); localStorage.removeItem('token'); setUser(null); }} className="w-full p-4 bg-red-50 text-red-600 rounded-xl font-medium">Выйти из системы</button></div></div>)}
+      {currentView === 'MORE' && !isInvestor && (<div className="space-y-4 animate-fade-in pb-20"><button onClick={() => setCurrentView('PROFILE')} className="w-full bg-slate-900 text-white p-6 rounded-2xl flex items-center gap-4 hover:bg-slate-800"><div className="w-16 h-16 bg-indigo-500 rounded-full flex items-center justify-center text-2xl font-bold">{user.name.charAt(0).toUpperCase()}</div><div><h2 className="text-xl font-bold text-left">{user.name}</h2><p className="text-slate-400 text-sm capitalize text-left">{user.role}</p><p className="text-slate-500 text-xs mt-1 text-left">{user.email}</p></div></button><div className="space-y-2 pt-4"><div className="bg-white rounded-xl border border-slate-100 overflow-hidden"><button onClick={() => toggleMoreSection('CASH')} className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"><div className="flex items-center gap-3"><div className="bg-emerald-100 text-emerald-600 p-2 rounded-lg">{ICONS.Wallet}</div><span className="font-semibold text-slate-800">Касса</span></div><span className={`text-slate-400 transition-transform ${moreExpandedSection === 'CASH' ? 'rotate-90' : ''}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button> {moreExpandedSection === 'CASH' && (<div className="bg-slate-50 border-t border-slate-100 p-2 space-y-1"><button onClick={() => setCurrentView('CASH_REGISTER')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.Wallet}</span> Счета</button><button onClick={() => handleAction('INCOME')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.Income}</span> Приход</button><button onClick={() => handleAction('EXPENSE')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.Expense}</span> Расход</button><button onClick={() => handleAction('OPERATIONS')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.List}</span> История</button></div>)}</div><div className="bg-white rounded-xl border border-slate-100 overflow-hidden"><button onClick={() => toggleMoreSection('CONTRACTS')} className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"><div className="flex items-center gap-3"><div className="bg-indigo-100 text-indigo-600 p-2 rounded-lg">{ICONS.File}</div><span className="font-semibold text-slate-800">Договоры</span></div><span className={`text-slate-400 transition-transform ${moreExpandedSection === 'CONTRACTS' ? 'rotate-90' : ''}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button> {moreExpandedSection === 'CONTRACTS' && (<div className="bg-slate-50 border-t border-slate-100 p-2 space-y-1"><button onClick={() => handleAction('CREATE_SALE')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.AddSmall}</span> Оформить</button><button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('ACTIVE'); }} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Check}</span> Активные</div>{contractCounts.active > 0 && <span className="text-xs bg-indigo-100 text-indigo-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.active}</span>}</button><button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('OVERDUE'); }} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Alert}</span> Просроченные</div>{contractCounts.overdue > 0 && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.overdue}</span>}</button><button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('ARCHIVE'); }} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Clock}</span> Архив</div>{contractCounts.archive > 0 && <span className="text-xs bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.archive}</span>}</button></div>)}</div><button onClick={() => setCurrentView('REPORTS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-sky-100 text-sky-600 p-2 rounded-lg">{ICONS.Dashboard}</div><span className="font-semibold text-slate-800">Отчеты</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button><button onClick={() => setCurrentView('CUSTOMERS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-orange-100 text-orange-600 p-2 rounded-lg">{ICONS.Customers}</div><span className="font-semibold text-slate-800">Клиенты</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button><button onClick={() => setCurrentView('INVESTORS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-purple-100 text-purple-600 p-2 rounded-lg">{ICONS.Users}</div><span className="font-semibold text-slate-800">Инвесторы</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button>  {user.role === 'manager' && (<button onClick={() => setCurrentView('EMPLOYEES')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-blue-100 text-blue-600 p-2 rounded-lg">{ICONS.Employees}</div><span className="font-semibold text-slate-800">Сотрудники</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button>)} <button onClick={() => setCurrentView('TARIFFS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-emerald-100 text-emerald-600 p-2 rounded-lg">{ICONS.Tariffs}</div><span className="font-semibold text-slate-800">Тарифы</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button> {user.role === 'admin' && (<button onClick={() => setCurrentView('ADMIN_PANEL')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-red-100 text-red-600 p-2 rounded-lg">{ICONS.Crown}</div><span className="font-semibold text-slate-800">Админ панель</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button>)} <button onClick={() => setCurrentView('SETTINGS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-slate-100 text-slate-600 p-2 rounded-lg">{ICONS.Settings}</div><span className="font-semibold text-slate-800">Настройки</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button></div><div className="pt-4"><button onClick={() => { localStorage.removeItem('user'); localStorage.removeItem('token'); setUser(null); }} className="w-full p-4 bg-red-50 text-red-600 rounded-xl font-medium">Выйти из системы</button></div></div>)}
     </Layout>
   );
 };
