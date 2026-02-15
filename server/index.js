@@ -1,3 +1,4 @@
+
 require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 const express = require('express');
 const { Pool } = require('pg');
@@ -98,9 +99,33 @@ const initDB = async () => {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_data_items_type ON data_items(type);`);
 
     console.log('PostgreSQL Tables Initialized');
+    initSuperAdmin();
   } catch (err) {
     console.error('Error initializing database:', err);
   }
+};
+
+const initSuperAdmin = async () => {
+    const adminEmail = process.env.SUPER_ADMIN_EMAIL || 'borz017795@gmail.com';
+    const adminPass = process.env.SUPER_ADMIN_PASSWORD || 'admin123';
+    
+    try {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(adminPass, salt);
+        
+        // Upsert Admin User
+        await pool.query(`
+            INSERT INTO users (id, name, email, password, role, subscription)
+            VALUES ('super_admin', 'Super Admin', $1, $2, 'admin', '{"plan":"BUSINESS","expiresAt":"2099-12-31T23:59:59.999Z"}')
+            ON CONFLICT (email) DO UPDATE SET 
+                role = 'admin',
+                password = $2
+        `, [adminEmail, hashedPassword]);
+        
+        console.log(`Super Admin initialized: ${adminEmail}`);
+    } catch (e) {
+        console.error('Failed to init super admin', e);
+    }
 };
 
 initDB();
@@ -118,6 +143,16 @@ const auth = (req, res, next) => {
   } catch (e) {
     res.status(400).json({ msg: 'Token is not valid' });
   }
+};
+
+const adminAuth = (req, res, next) => {
+    auth(req, res, () => {
+        if (req.user.role === 'admin') {
+            next();
+        } else {
+            res.status(403).json({ msg: 'Access denied: Admins only' });
+        }
+    });
 };
 
 // --- HELPER FUNCTIONS ---
@@ -205,7 +240,7 @@ app.post('/api/auth/register', async (req, res) => {
     if (codeCheck.rows.length === 0) {
         return res.status(400).json({ msg: 'Сначала запросите код' });
     }
-
+    
     const record = codeCheck.rows[0];
     if (new Date() > new Date(record.expires_at)) {
         return res.status(400).json({ msg: 'Код истек' });
@@ -284,7 +319,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
         if (codeCheck.rows.length === 0) {
             return res.status(400).json({ msg: 'Сначала запросите код' });
         }
-
+        
         const record = codeCheck.rows[0];
         if (new Date() > new Date(record.expires_at)) {
             return res.status(400).json({ msg: 'Код истек' });
@@ -331,7 +366,7 @@ app.post('/api/auth/login', async (req, res) => {
             email: user.email,
             role: user.role,
             managerId: user.manager_id,
-            permissions: user.permissions,
+            permissions: user.permissions, 
             allowedInvestorIds: user.allowed_investor_ids,
             subscription: user.subscription
         }
@@ -345,7 +380,7 @@ app.post('/api/auth/login', async (req, res) => {
 // Subscription Management
 app.post('/api/user/subscription', auth, async (req, res) => {
     const { plan, months } = req.body;
-
+    
     if (req.user.role !== 'manager' && req.user.role !== 'admin') {
         return res.status(403).json({ msg: 'Only managers can subscribe' });
     }
@@ -353,7 +388,7 @@ app.post('/api/user/subscription', auth, async (req, res) => {
     try {
         const userResult = await pool.query('SELECT subscription FROM users WHERE id = $1', [req.user.id]);
         let currentSub = userResult.rows[0]?.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
-
+        
         let newExpiresAt = new Date(currentSub.expiresAt);
         // If expired, start from now
         if (newExpiresAt < new Date()) {
@@ -466,7 +501,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
     try {
         if (action === 'create') {
             const { name, email, password, role, permissions, allowedInvestorIds, phone } = userData;
-
+            
             // Check existence
             const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
             if (userCheck.rows.length > 0) {
@@ -475,7 +510,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
 
             // Create ID
             const id = role === 'investor' ? `u_inv_${Date.now()}` : `u_emp_${Date.now()}`;
-
+            
             // Hash Password
             const salt = await bcrypt.genSalt(10);
             const hashedPassword = await bcrypt.hash(password, salt);
@@ -485,21 +520,21 @@ app.post('/api/users/manage', auth, async (req, res) => {
               `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, phone) 
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
               [
-                id,
-                name,
-                email,
-                hashedPassword,
-                role,
+                id, 
+                name, 
+                email, 
+                hashedPassword, 
+                role, 
                 req.user.id, // FORCE manager_id to be the current logged in user
-                JSON.stringify(permissions || {}),
+                JSON.stringify(permissions || {}), 
                 JSON.stringify(allowedInvestorIds || []),
                 phone || null
               ]
             );
 
             // Return the created user object (NO TOKEN, so manager stays logged in)
-            return res.json({
-                id, name, email, role, managerId: req.user.id, permissions, allowedInvestorIds, phone
+            return res.json({ 
+                id, name, email, role, managerId: req.user.id, permissions, allowedInvestorIds, phone 
             });
         }
 
@@ -524,6 +559,61 @@ app.post('/api/users/manage', auth, async (req, res) => {
     } catch (e) {
         console.error(e);
         res.status(500).send('Server Error');
+    }
+});
+
+// --- ADMIN ROUTES ---
+
+app.get('/api/admin/users', adminAuth, async (req, res) => {
+    try {
+        // Fetch all users and count their sales from data_items
+        const query = `
+            SELECT 
+                u.id, u.name, u.email, u.role, u.phone, u.subscription, u.created_at,
+                (SELECT COUNT(*) FROM data_items WHERE user_id = u.id AND type = 'sales') as sales_count
+            FROM users u
+            ORDER BY u.created_at DESC
+        `;
+        const result = await pool.query(query);
+        
+        // Clean up data for frontend
+        const users = result.rows.map(r => ({
+            id: r.id,
+            name: r.name,
+            email: r.email,
+            role: r.role,
+            phone: r.phone,
+            subscription: r.subscription,
+            salesCount: parseInt(r.sales_count || '0'),
+            createdAt: r.created_at
+        }));
+
+        res.json(users);
+    } catch (e) {
+        console.error("Admin fetch users error", e);
+        res.status(500).send("Server Error");
+    }
+});
+
+app.post('/api/admin/set-subscription', adminAuth, async (req, res) => {
+    const { userId, plan, months } = req.body;
+    
+    try {
+        // Calculate expiration
+        const expiresAt = new Date();
+        expiresAt.setMonth(expiresAt.getMonth() + Number(months));
+        
+        const subscription = {
+            plan,
+            expiresAt: expiresAt.toISOString()
+        };
+
+        await pool.query('UPDATE users SET subscription = $1 WHERE id = $2', [JSON.stringify(subscription), userId]);
+        
+        res.json({ success: true, subscription });
+    } catch (e) {
+        console.error("Admin set sub error", e);
+        res.status(500).send("Server Error");
     }
 });
 

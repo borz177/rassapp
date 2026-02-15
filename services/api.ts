@@ -169,5 +169,24 @@ export const api = {
             headers: getAuthHeader(),
             body: JSON.stringify({ action: 'delete', userData: { id: userId } })
         });
+    },
+
+    // --- ADMIN METHODS ---
+
+    adminGetUsers: async (): Promise<User[]> => {
+        const res = await fetch(`${API_URL}/admin/users`, { headers: getAuthHeader() });
+        if (!res.ok) throw new Error('Failed to fetch users');
+        return res.json();
+    },
+
+    adminSetSubscription: async (userId: string, plan: SubscriptionPlan, months: number): Promise<any> => {
+        const res = await fetch(`${API_URL}/admin/set-subscription`, {
+            method: 'POST',
+            headers: getAuthHeader(),
+            body: JSON.stringify({ userId, plan, months })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error('Failed to set subscription');
+        return data.subscription;
     }
 };

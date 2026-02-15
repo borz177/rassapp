@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { ViewState, Sale, AppSettings, Customer, User, Investor } from '../types';
 import { ICONS, APP_NAME } from '../constants';
@@ -22,6 +23,20 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
 
   const isInvestor = user?.role === 'investor';
   const investorPermissions = activeInvestor?.permissions;
+
+  // Subscription Calc
+  const subStatus = useMemo(() => {
+      if (!user?.subscription) return { daysLeft: 0, plan: 'TRIAL', expired: true };
+      const now = new Date();
+      const expires = new Date(user.subscription.expiresAt);
+      const diffTime = expires.getTime() - now.getTime();
+      const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return {
+          daysLeft,
+          plan: user.subscription.plan,
+          expired: diffTime < 0
+      };
+  }, [user]);
 
   // Calculate counts for badges
   const counts = useMemo(() => {
@@ -88,6 +103,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
     { id: 'EMPLOYEES' as const, label: 'Сотрудники', icon: ICONS.Employees, visible: !isInvestor && user?.role === 'manager' },
     { id: 'TARIFFS' as const, label: 'Тарифы', icon: ICONS.Tariffs, visible: !isInvestor && user?.role === 'manager' },
     { id: 'SETTINGS' as const, label: 'Настройки', icon: ICONS.Settings, visible: !isInvestor },
+    { id: 'ADMIN_PANEL' as const, label: 'Админ панель', icon: ICONS.Crown, visible: user?.role === 'admin' },
   ];
 
   const sidebarItems = useMemo(() => {
@@ -134,10 +150,10 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
     const hasSubItems = 'subItems' in item;
     const isExpanded = expandedMenu === item.id;
     const isActive = currentView === item.id;
-
+    
     // Filter subitems if visibility logic exists
     const visibleSubItems = hasSubItems ? item.subItems.filter((sub: any) => sub.visible !== false) : [];
-
+    
     return (
         <div key={item.id} className="w-full">
             <button
@@ -198,6 +214,15 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
       {/* Mobile Top Navbar */}
       <header className="md:hidden fixed top-0 left-0 right-0 bg-white h-16 flex items-center px-4 shadow-md z-30 border-b border-slate-200">
         <h1 className="text-xl font-bold tracking-tight text-indigo-600">{appSettings.companyName}</h1>
+        {!isInvestor && (
+            <div 
+                className={`ml-auto text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1 ${subStatus.expired ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}
+                onClick={() => setView('TARIFFS')}
+            >
+                {subStatus.expired ? 'Истек' : `${subStatus.daysLeft}дн.`}
+                <span className="opacity-50 text-[10px]">{subStatus.plan}</span>
+            </div>
+        )}
       </header>
 
       {/* Desktop Sidebar */}
@@ -206,6 +231,15 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
           <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
             {appSettings.companyName}
           </h1>
+          {user && !isInvestor && user.role !== 'admin' && (
+              <div 
+                className={`mt-4 p-2 rounded-lg border text-xs font-medium cursor-pointer flex justify-between items-center ${subStatus.expired ? 'bg-red-900/30 border-red-800 text-red-300' : 'bg-emerald-900/30 border-emerald-800 text-emerald-300'}`}
+                onClick={() => setView('TARIFFS')}
+              >
+                  <span>{subStatus.plan}: {subStatus.expired ? 'Истек' : 'Активен'}</span>
+                  <span>{subStatus.daysLeft > 0 ? `${subStatus.daysLeft} дн.` : ''}</span>
+              </div>
+          )}
         </div>
         <nav className="flex-1 p-4 space-y-2">
           {sidebarItems.map(item => renderMenuItem(item))}
@@ -235,7 +269,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
 
       {/* Mobile Quick Actions Menu (Triggered by FAB) - ONLY FOR MANAGER/EMPLOYEE */}
       {!isInvestor && isMenuOpen && (
-        <div
+        <div 
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden flex flex-col justify-end pb-24 px-4 animate-fade-in"
           onClick={() => setIsMenuOpen(false)}
         >
@@ -265,7 +299,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
 
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-50 px-2 py-2 flex justify-between items-end safe-area-pb">
-
+        
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
             <button onClick={() => setView('DASHBOARD')} className={`flex flex-col items-center p-2 ${currentView === 'DASHBOARD' ? 'text-indigo-600' : 'text-slate-400'}`}>
                 {ICONS.Dashboard}
@@ -281,7 +315,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
 
         {!isInvestor && (
           <div className="relative -top-5">
-              <button
+              <button 
                   onClick={handleFabClick}
                   className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-300 transition-transform active:scale-95 ${isMenuOpen ? 'bg-slate-800 rotate-45' : 'bg-indigo-600'}`}
               >
@@ -297,7 +331,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
                   <span className="text-[10px] mt-1 font-medium">Клиенты</span>
               </button>
             )}
-            <button onClick={() => setView('MORE')} className={`flex flex-col items-center p-2 ${currentView === 'MORE' || currentView === 'PROFILE' || currentView === 'CONTRACTS' || currentView === 'INVESTORS' || currentView === 'EMPLOYEES' || currentView === 'SETTINGS' || currentView === 'TARIFFS' ? 'text-indigo-600' : 'text-slate-400'}`}>
+            <button onClick={() => setView('MORE')} className={`flex flex-col items-center p-2 ${currentView === 'MORE' || currentView === 'PROFILE' || currentView === 'CONTRACTS' || currentView === 'INVESTORS' || currentView === 'EMPLOYEES' || currentView === 'SETTINGS' || currentView === 'TARIFFS' || currentView === 'ADMIN_PANEL' ? 'text-indigo-600' : 'text-slate-400'}`}>
                 {ICONS.Menu}
                 <span className="text-[10px] mt-1 font-medium">{isInvestor ? 'Профиль' : 'Еще'}</span>
             </button>

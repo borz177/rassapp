@@ -29,6 +29,9 @@ export interface User {
   permissions?: UserPermissions; // Only for employees
   allowedInvestorIds?: string[]; // IDs of investors this employee can manage/see
   subscription?: UserSubscription; // New field
+  // Admin specific optional fields
+  salesCount?: number;
+  lastLogin?: string;
 }
 
 export interface InvestorPermissions {
@@ -44,7 +47,7 @@ export interface Investor {
   phone: string;
   joinedDate: string;
   // This now represents the current investment balance, not just the initial deposit.
-  initialAmount: number; 
+  initialAmount: number;
   profitPercentage: number;
   permissions?: InvestorPermissions;
 }
@@ -140,7 +143,7 @@ export interface WhatsAppSettings {
   apiTokenInstance: string;
   reminderTime: string; // "09:00"
   // Array of offsets: 0 = due date, -1 = 1 day before, 1 = 1 day after
-  reminderDays: number[]; 
+  reminderDays: number[];
 }
 
 export interface AppSettings {
@@ -148,15 +151,15 @@ export interface AppSettings {
   whatsapp?: WhatsAppSettings;
 }
 
-export type ViewState = 
-  | 'DASHBOARD' 
-  | 'CASH_REGISTER' 
-  | 'CUSTOMERS' 
+export type ViewState =
+  | 'DASHBOARD'
+  | 'CASH_REGISTER'
+  | 'CUSTOMERS'
   | 'CUSTOMER_DETAILS'
-  | 'MANAGE_PRODUCTS' 
-  | 'MORE' 
-  | 'OPERATIONS' 
-  | 'INVESTORS' 
+  | 'MANAGE_PRODUCTS'
+  | 'MORE'
+  | 'OPERATIONS'
+  | 'INVESTORS'
   | 'INVESTOR_DETAILS'
   | 'AI_ASSISTANT'
   | 'CONTRACTS'
@@ -169,4 +172,5 @@ export type ViewState =
   | 'REPORTS'
   | 'PROFILE'
   | 'PARTNERS'
-  | 'TARIFFS';
+  | 'TARIFFS'
+  | 'ADMIN_PANEL';
