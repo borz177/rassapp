@@ -1,10 +1,21 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Customer, Sale } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getAiClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.warn("Google Gemini API Key is missing");
+    return null;
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 export const generateCollectionMessage = async (customerName: string, amountDue: number, dueDate: string, tone: 'polite' | 'firm' | 'urgent'): Promise<string> => {
   try {
+    const ai = getAiClient();
+    if (!ai) return "AI services unavailable (Missing API Key)";
+
     const toneMap = {
         polite: 'вежливый',
         firm: 'строгий',
@@ -18,7 +29,6 @@ export const generateCollectionMessage = async (customerName: string, amountDue:
       Тон: ${toneMap[tone]}.
       Максимум 40 слов. Не используй плейсхолдеры. Подпись: 'Команда InstallMate'.`,
     });
-    // FIX: Access the 'text' property directly instead of calling a method.
     return response.text || "Не удалось сгенерировать сообщение.";
   } catch (error) {
     console.error("Gemini Error:", error);
@@ -28,6 +38,9 @@ export const generateCollectionMessage = async (customerName: string, amountDue:
 
 export const analyzeCustomerRisk = async (customer: Customer, salesHistory: Sale[]): Promise<{ score: number, reason: string }> => {
   try {
+    const ai = getAiClient();
+    if (!ai) return { score: 50, reason: "AI services unavailable (Missing API Key)" };
+
     const historySummary = salesHistory.map(s => ({
       status: s.status,
       total: s.totalAmount,
@@ -59,7 +72,6 @@ export const analyzeCustomerRisk = async (customer: Customer, salesHistory: Sale
       }
     });
 
-    // FIX: Access the 'text' property directly and handle potential parsing errors.
     const responseText = response.text;
     if (responseText) {
       try {
@@ -80,11 +92,13 @@ export const analyzeCustomerRisk = async (customer: Customer, salesHistory: Sale
 
 export const suggestProductDescription = async (productName: string): Promise<string> => {
     try {
+        const ai = getAiClient();
+        if (!ai) return "";
+
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: `Напиши продающее описание из одного предложения для товара "${productName}" на русском языке.`,
         });
-        // FIX: Access the 'text' property directly instead of calling a method.
         return response.text?.trim() || "";
     } catch (e) {
         return "";
