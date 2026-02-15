@@ -89,7 +89,7 @@ const Tariffs: React.FC = () => {
     },
     {
       name: "Стандарт",
-      basePrice: 1500,
+      basePrice: 100,
       features: [
         "Все функции Старт",
         "5 инвесторов",
