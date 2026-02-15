@@ -1,5 +1,4 @@
-
-import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan } from "../types";
+import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership } from "../types";
 
 // Helper to determine the API URL dynamically
 const getBaseUrl = () => {
@@ -98,18 +97,6 @@ export const api = {
         const data = await res.json();
         if (!res.ok) throw new Error(data.msg || 'Ошибка создания пользователя');
         return data; // Returns the created user object
-    },
-
-    // Subscription
-    updateSubscription: async (plan: SubscriptionPlan, months: number): Promise<any> => {
-        const res = await fetch(`${API_URL}/user/subscription`, {
-            method: 'POST',
-            headers: getAuthHeader(),
-            body: JSON.stringify({ plan, months })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error('Failed to update subscription');
-        return data.subscription;
     },
 
     // Data Sync
