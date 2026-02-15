@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { ICONS } from '../constants';
 import { api } from '../services/api';
@@ -24,6 +25,8 @@ const Tariffs: React.FC = () => {
 
   const handlePay = async (planName: string, amount: number) => {
     setLoading(planName);
+    const planKey: SubscriptionPlan = planName === 'Старт' ? 'START' : planName === 'Стандарт' ? 'STANDARD' : 'BUSINESS';
+
     try {
       // 1. Create Payment
       const response = await fetch(`${window.location.protocol}//${window.location.hostname}:5000/api/payment/create`, {
@@ -32,36 +35,19 @@ const Tariffs: React.FC = () => {
         body: JSON.stringify({
           amount: amount * duration,
           description: `Оплата тарифа ${planName} на ${duration} мес.`,
-          returnUrl: window.location.href // In a real app, this is where YooKassa redirects back
+          returnUrl: window.location.href, // Redirect back to this page
+          plan: planKey,
+          months: duration
         })
       });
 
       const data = await response.json();
-
-      // NOTE: In a real integration, the user is redirected to data.confirmationUrl.
-      // After they pay, they return to the app, and the app checks the payment status.
-      // Since we don't have a real webhook here, we simulate "Success" immediately after redirect logic.
-
+      
       if (data.confirmationUrl) {
-        // SIMULATION FOR DEMO: Open payment in new tab, but update app state as if paid
-        // window.open(data.confirmationUrl, '_blank');
-
-        // Update Subscription on Backend (Simulated success callback)
-        const planKey: SubscriptionPlan = planName === 'Старт' ? 'START' : planName === 'Стандарт' ? 'STANDARD' : 'BUSINESS';
-        const updatedSub = await api.updateSubscription(planKey, duration);
-
-        // Update Local User
-        const userStr = localStorage.getItem('user');
-        if (userStr) {
-            const user = JSON.parse(userStr);
-            user.subscription = updatedSub;
-            localStorage.setItem('user', JSON.stringify(user));
-        }
-
-        alert(`Подписка "${planName}" успешно активирована на ${duration} мес!`);
-        window.location.reload(); // Reload to refresh permissions in App
+        // Redirect user to YooKassa
+        window.location.href = data.confirmationUrl;
       } else {
-        alert("Ошибка создания платежа. Проверьте консоль сервера.");
+        alert("Ошибка инициализации платежа. Проверьте настройки сервера.");
       }
     } catch (error) {
       console.error("Payment Error:", error);
@@ -153,8 +139,8 @@ const Tariffs: React.FC = () => {
           const totalPrice = monthlyPrice * duration;
 
           return (
-            <div
-              key={plan.name}
+            <div 
+              key={plan.name} 
               className={`relative rounded-2xl p-6 shadow-xl transition-transform hover:scale-[1.02] flex flex-col ${plan.color}`}
             >
               {plan.badge && (
@@ -162,11 +148,11 @@ const Tariffs: React.FC = () => {
                   {plan.badge}
                 </div>
               )}
-
+              
               <h3 className={`text-xl font-bold mb-2 ${plan.highlight ? 'text-indigo-900' : plan.textColor}`}>
                 {plan.name}
               </h3>
-
+              
               <div className="mb-6">
                 <span className={`text-4xl font-bold ${plan.highlight ? 'text-indigo-900' : plan.textColor}`}>
                   {monthlyPrice} ₽
@@ -197,15 +183,15 @@ const Tariffs: React.FC = () => {
                 disabled={!!loading}
                 className={`w-full py-4 rounded-xl font-bold transition-opacity ${plan.btnColor} ${loading ? 'opacity-70 cursor-not-allowed' : 'hover:opacity-90'}`}
               >
-                {loading === plan.name ? 'Обработка...' : 'Выбрать'}
+                {loading === plan.name ? 'Загрузка...' : 'Выбрать'}
               </button>
             </div>
           );
         })}
       </div>
-
+      
       <div className="text-center text-xs text-slate-400 mt-8">
-        Оплата производится через безопасный шлюз ЮKassa. Данные карты не сохраняются.
+        Оплата производится через безопасный шлюз ЮKassa. Активация происходит автоматически после подтверждения платежа.
       </div>
     </div>
   );

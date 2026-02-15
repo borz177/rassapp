@@ -529,7 +529,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
     try {
         if (action === 'create') {
             const { name, email, password, role, permissions, allowedInvestorIds, phone } = userData;
-            
+
             // Check existence
             const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
             if (userCheck.rows.length > 0) {
@@ -538,7 +538,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
 
             // Create ID
             const id = role === 'investor' ? `u_inv_${Date.now()}` : `u_emp_${Date.now()}`;
-            
+
             // Hash Password
             const salt = await bcrypt.genSalt(10);
             const hashedPassword = await bcrypt.hash(password, salt);
@@ -548,21 +548,21 @@ app.post('/api/users/manage', auth, async (req, res) => {
               `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, phone) 
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
               [
-                id, 
-                name, 
-                email, 
-                hashedPassword, 
-                role, 
+                id,
+                name,
+                email,
+                hashedPassword,
+                role,
                 req.user.id, // FORCE manager_id to be the current logged in user
-                JSON.stringify(permissions || {}), 
+                JSON.stringify(permissions || {}),
                 JSON.stringify(allowedInvestorIds || []),
                 phone || null
               ]
             );
 
             // Return the created user object (NO TOKEN, so manager stays logged in)
-            return res.json({ 
-                id, name, email, role, managerId: req.user.id, permissions, allowedInvestorIds, phone 
+            return res.json({
+                id, name, email, role, managerId: req.user.id, permissions, allowedInvestorIds, phone
             });
         }
 
@@ -603,7 +603,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
             ORDER BY u.created_at DESC
         `;
         const result = await pool.query(query);
-        
+
         // Clean up data for frontend
         const users = result.rows.map(r => ({
             id: r.id,
@@ -625,19 +625,19 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
 
 app.post('/api/admin/set-subscription', adminAuth, async (req, res) => {
     const { userId, plan, months } = req.body;
-    
+
     try {
         // Calculate expiration
         const expiresAt = new Date();
         expiresAt.setMonth(expiresAt.getMonth() + Number(months));
-        
+
         const subscription = {
             plan,
             expiresAt: expiresAt.toISOString()
         };
 
         await pool.query('UPDATE users SET subscription = $1 WHERE id = $2', [JSON.stringify(subscription), userId]);
-        
+
         res.json({ success: true, subscription });
     } catch (e) {
         console.error("Admin set sub error", e);
@@ -648,17 +648,16 @@ app.post('/api/admin/set-subscription', adminAuth, async (req, res) => {
 // --- PAYMENTS (YooKassa) ---
 
 app.post('/api/payment/create', auth, async (req, res) => {
-    const { amount, description, returnUrl } = req.body;
+    const { amount, description, returnUrl, plan, months } = req.body;
     const shopId = process.env.YOOKASSA_SHOP_ID;
     const secretKey = process.env.YOOKASSA_SECRET_KEY;
 
     if (!shopId || !secretKey) {
-        // Mock Response for Development/Demo
-        console.log('[MOCK PAYMENT] Credentials missing. Returning dummy success URL.');
+        console.log('[MOCK PAYMENT] Credentials missing.');
         return res.json({
             id: `mock_pay_${Date.now()}`,
             status: 'pending',
-            confirmationUrl: returnUrl || 'https://yoomoney.ru' // Redirect back effectively simulates success in demo
+            confirmationUrl: returnUrl || 'https://yoomoney.ru'
         });
     }
 
@@ -674,7 +673,12 @@ app.post('/api/payment/create', auth, async (req, res) => {
                 type: 'redirect',
                 return_url: returnUrl
             },
-            description: description
+            description: description,
+            metadata: {
+                userId: req.user.id,
+                plan: plan,
+                months: months
+            }
         }, {
             headers: {
                 'Authorization': 'Basic ' + Buffer.from(`${shopId}:${secretKey}`).toString('base64'),
@@ -693,6 +697,47 @@ app.post('/api/payment/create', auth, async (req, res) => {
         console.error('YooKassa Error:', error.response?.data || error.message);
         res.status(500).json({ msg: 'Payment creation failed' });
     }
+});
+
+// --- WEBHOOK HANDLER ---
+app.post('/api/payment/webhook', async (req, res) => {
+    const { event, object } = req.body;
+
+    // Check if event is payment success
+    if (event === 'payment.succeeded' && object.status === 'succeeded') {
+        const { userId, plan, months } = object.metadata;
+
+        if (userId && plan && months) {
+            try {
+                // Logic duplicated from subscription endpoint to update user sub
+                const userResult = await pool.query('SELECT subscription FROM users WHERE id = $1', [userId]);
+                let currentSub = userResult.rows[0]?.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
+
+                let newExpiresAt = new Date(currentSub.expiresAt);
+                // If expired, start from now
+                if (newExpiresAt < new Date()) {
+                    newExpiresAt = new Date();
+                }
+
+                // Add months
+                newExpiresAt.setMonth(newExpiresAt.getMonth() + Number(months));
+
+                const updatedSub = {
+                    plan: plan,
+                    expiresAt: newExpiresAt.toISOString()
+                };
+
+                await pool.query('UPDATE users SET subscription = $1 WHERE id = $2', [JSON.stringify(updatedSub), userId]);
+
+                console.log(`[WEBHOOK] Updated subscription for user ${userId}: ${plan} for ${months} months`);
+            } catch (err) {
+                console.error('[WEBHOOK] Failed to update subscription', err);
+                return res.status(500).send('DB Error');
+            }
+        }
+    }
+
+    res.status(200).send('OK');
 });
 
 app.listen(PORT, '0.0.0.0', () => console.log(`Server started on port ${PORT} (0.0.0.0)`));
