@@ -146,14 +146,16 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings }) =>
   const handleClearData = async () => {
       setIsClearing(true);
       try {
+          // CRITICAL FIX: Call API to wipe data BEFORE clearing local storage (so token is present)
+          await api.resetAccountData();
+
           // Clear Local Storage
           localStorage.clear();
-          // Call API to wipe data
-          await api.resetAccountData();
+
           window.location.reload();
       } catch (error) {
           console.error(error);
-          alert("Ошибка при очистке данных на сервере. Попробуйте снова.");
+          alert("Ошибка при очистке данных на сервере. Попробуйте снова или перезайдите в аккаунт.");
           setIsClearing(false);
       }
   };
