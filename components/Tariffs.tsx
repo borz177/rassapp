@@ -48,7 +48,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
       const data = await api.createPayment({
           amount: amount,
           description: `Оплата тарифа ${name} на ${duration} мес.`,
-          returnUrl: window.location.href, // Redirect back to this page
+          returnUrl: 'https://rassrochka.pro',// Redirect back to this page
           plan: planKey,
           months: duration
       });

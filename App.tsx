@@ -75,40 +75,25 @@ const App: React.FC = () => {
   }, [myProfitPeriod]);
 
   // Initial Data Load (Auth Check & Fetch)
-  // Initial Data Load + Payment Return Handling
-useEffect(() => {
+  useEffect(() => {
   const initApp = async () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const isPaymentReturn = urlParams.has('payment_id') ||
-                           urlParams.has('status') ||
-                           window.location.pathname.includes('success');
-
-    const storedUser = localStorage.getItem('user');
     const token = localStorage.getItem('token');
-
-    if (storedUser && token) {
-      let parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
-
-      // Если вернулись с оплаты — обновляем данные пользователя
-      if (isPaymentReturn) {
-        try {
-          const freshUser = await api.getMe();
-          setUser(freshUser);
-          localStorage.setItem('user', JSON.stringify(freshUser));
-          // Очищаем URL от параметров
-          window.history.replaceState({}, document.title, window.location.pathname);
-        } catch (err) {
-          console.error('Failed to refresh user after payment', err);
-        }
+    if (token) {
+      try {
+        // 🔥 Запрашиваем СВЕЖИЕ данные пользователя из базы
+        const freshUser = await api.getMe();
+        setUser(freshUser);
+        localStorage.setItem('user', JSON.stringify(freshUser));
+        loadData();
+      } catch (err) {
+        console.error('Auth failed, logging out', err);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setIsLoading(false);
       }
-
-      // Загружаем бизнес-данные
-      loadData();
     } else {
       setIsLoading(false);
     }
-
     setAppSettings(getAppSettings());
   };
 
