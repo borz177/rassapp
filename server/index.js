@@ -13,8 +13,15 @@ const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-
+app.use(express.json({
+  limit: '15mb',
+  type: (req) => {
+    // Не применять JSON парсер к webhook и загрузке файлов
+    if (req.url.startsWith('/api/payments/webhook')) return false;
+    if (req.url.startsWith('/api/upload-image')) return false; // ИСПРАВЛЕНИЕ: Исключаем загрузку файлов
+    return true;
+  }
+}));
 // Logging Middleware
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
@@ -108,11 +115,11 @@ const initDB = async () => {
 const initSuperAdmin = async () => {
     const adminEmail = process.env.SUPER_ADMIN_EMAIL || 'borz017795@gmail.com';
     const adminPass = process.env.SUPER_ADMIN_PASSWORD || 'admin123';
-    
+
     try {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(adminPass, salt);
-        
+
         // Upsert Admin User
         await pool.query(`
             INSERT INTO users (id, name, email, password, role, subscription)
@@ -121,7 +128,7 @@ const initSuperAdmin = async () => {
                 role = 'admin',
                 password = $2
         `, [adminEmail, hashedPassword]);
-        
+
         console.log(`Super Admin initialized: ${adminEmail}`);
     } catch (e) {
         console.error('Failed to init super admin', e);
@@ -240,7 +247,7 @@ app.post('/api/auth/register', async (req, res) => {
     if (codeCheck.rows.length === 0) {
         return res.status(400).json({ msg: 'Сначала запросите код' });
     }
-    
+
     const record = codeCheck.rows[0];
     if (new Date() > new Date(record.expires_at)) {
         return res.status(400).json({ msg: 'Код истек' });
@@ -319,7 +326,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
         if (codeCheck.rows.length === 0) {
             return res.status(400).json({ msg: 'Сначала запросите код' });
         }
-        
+
         const record = codeCheck.rows[0];
         if (new Date() > new Date(record.expires_at)) {
             return res.status(400).json({ msg: 'Код истек' });
@@ -366,7 +373,7 @@ app.post('/api/auth/login', async (req, res) => {
             email: user.email,
             role: user.role,
             managerId: user.manager_id,
-            permissions: user.permissions, 
+            permissions: user.permissions,
             allowedInvestorIds: user.allowed_investor_ids,
             subscription: user.subscription
         }
@@ -380,7 +387,7 @@ app.post('/api/auth/login', async (req, res) => {
 // Subscription Management
 app.post('/api/user/subscription', auth, async (req, res) => {
     const { plan, months } = req.body;
-    
+
     if (req.user.role !== 'manager' && req.user.role !== 'admin') {
         return res.status(403).json({ msg: 'Only managers can subscribe' });
     }
@@ -388,7 +395,7 @@ app.post('/api/user/subscription', auth, async (req, res) => {
     try {
         const userResult = await pool.query('SELECT subscription FROM users WHERE id = $1', [req.user.id]);
         let currentSub = userResult.rows[0]?.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
-        
+
         let newExpiresAt = new Date(currentSub.expiresAt);
         // If expired, start from now
         if (newExpiresAt < new Date()) {
