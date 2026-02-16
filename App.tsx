@@ -75,20 +75,45 @@ const App: React.FC = () => {
   }, [myProfitPeriod]);
 
   // Initial Data Load (Auth Check & Fetch)
-  useEffect(() => {
-      const storedUser = localStorage.getItem('user');
-      const token = localStorage.getItem('token');
+  // Initial Data Load + Payment Return Handling
+useEffect(() => {
+  const initApp = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const isPaymentReturn = urlParams.has('payment_id') ||
+                           urlParams.has('status') ||
+                           window.location.pathname.includes('success');
 
-      if (storedUser && token) {
-          const parsedUser = JSON.parse(storedUser);
-          setUser(parsedUser);
-          loadData();
-      } else {
-          setIsLoading(false);
+    const storedUser = localStorage.getItem('user');
+    const token = localStorage.getItem('token');
+
+    if (storedUser && token) {
+      let parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
+
+      // Если вернулись с оплаты — обновляем данные пользователя
+      if (isPaymentReturn) {
+        try {
+          const freshUser = await api.getMe();
+          setUser(freshUser);
+          localStorage.setItem('user', JSON.stringify(freshUser));
+          // Очищаем URL от параметров
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } catch (err) {
+          console.error('Failed to refresh user after payment', err);
+        }
       }
-      // Fallback for settings if offline/loading first time (though loadData will overwrite if online)
-      setAppSettings(getAppSettings());
-  }, []);
+
+      // Загружаем бизнес-данные
+      loadData();
+    } else {
+      setIsLoading(false);
+    }
+
+    setAppSettings(getAppSettings());
+  };
+
+  initApp();
+}, []);
 
   const loadData = async () => {
       // Don't set isLoading(true) here if data already exists to prevent flickering

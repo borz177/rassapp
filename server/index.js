@@ -386,6 +386,34 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+
+// Get current user (for refreshing after payment)
+app.get('/api/auth/me', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, name, email, role, manager_id, subscription FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    const user = result.rows[0];
+    res.json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      managerId: user.manager_id,
+      subscription: user.subscription
+    });
+  } catch (err) {
+    console.error('Me Error:', err);
+    res.status(500).send('Server error');
+  }
+});
+
+
 // Subscription Management
 app.post('/api/user/subscription', auth, async (req, res) => {
     const { plan, months } = req.body;

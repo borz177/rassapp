@@ -192,6 +192,13 @@ export const api = {
         });
     },
 
+    // Получить свежие данные пользователя
+getMe: async (): Promise<User> => {
+  const res = await fetch(`${API_URL}/auth/me`, { headers: getAuthHeader() });
+  if (!res.ok) throw new Error('Failed to fetch user data');
+  return res.json();
+},
+
     // --- ADMIN METHODS ---
 
     adminGetUsers: async (): Promise<User[]> => {
