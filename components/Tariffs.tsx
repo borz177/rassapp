@@ -28,30 +28,24 @@ const Tariffs: React.FC = () => {
     const planKey: SubscriptionPlan = planName === 'Старт' ? 'START' : planName === 'Стандарт' ? 'STANDARD' : 'BUSINESS';
 
     try {
-      // 1. Create Payment
-      const response = await fetch(`${window.location.protocol}//${window.location.hostname}:5000/api/payment/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-auth-token': localStorage.getItem('token') || '' },
-        body: JSON.stringify({
+      // Use API service which handles the correct URL (proxy vs localhost)
+      const data = await api.createPayment({
           amount: amount * duration,
           description: `Оплата тарифа ${planName} на ${duration} мес.`,
           returnUrl: window.location.href, // Redirect back to this page
           plan: planKey,
           months: duration
-        })
       });
 
-      const data = await response.json();
-      
       if (data.confirmationUrl) {
         // Redirect user to YooKassa
         window.location.href = data.confirmationUrl;
       } else {
         alert("Ошибка инициализации платежа. Проверьте настройки сервера.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Payment Error:", error);
-      alert("Ошибка соединения с сервером оплаты");
+      alert(`Ошибка: ${error.message || 'Не удалось создать платеж'}`);
     } finally {
       setLoading(null);
     }
@@ -75,7 +69,7 @@ const Tariffs: React.FC = () => {
     },
     {
       name: "Стандарт",
-      basePrice: 100,
+      basePrice: 1500,
       features: [
         "Все функции Старт",
         "5 инвесторов",

@@ -112,6 +112,18 @@ export const api = {
         return data.subscription;
     },
 
+    // Payments
+    createPayment: async (paymentData: { amount: number, description: string, returnUrl: string, plan: SubscriptionPlan, months: number }): Promise<any> => {
+        const res = await fetch(`${API_URL}/payment/create`, {
+            method: 'POST',
+            headers: getAuthHeader(),
+            body: JSON.stringify(paymentData)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Ошибка создания платежа');
+        return data;
+    },
+
     // Data Sync
     fetchAllData: async (): Promise<{
         customers: Customer[], products: Product[], sales: Sale[],

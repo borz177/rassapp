@@ -101,7 +101,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
     { id: 'CUSTOMERS' as const, label: 'Клиенты', icon: ICONS.Customers, visible: !isInvestor },
     { id: 'INVESTORS' as const, label: 'Инвесторы', icon: ICONS.Users, visible: !isInvestor },
     { id: 'EMPLOYEES' as const, label: 'Сотрудники', icon: ICONS.Employees, visible: !isInvestor && (user?.role === 'manager' || user?.role === 'admin') },
-    { id: 'TARIFFS' as const, label: 'Тарифы', icon: ICONS.Tariffs, visible: !isInvestor && user?.role === 'manager' },
+    { id: 'TARIFFS' as const, label: 'Тарифы', icon: ICONS.Tariffs, visible: !isInvestor },
     { id: 'SETTINGS' as const, label: 'Настройки', icon: ICONS.Settings, visible: !isInvestor },
     { id: 'ADMIN_PANEL' as const, label: 'Админ панель', icon: ICONS.Crown, visible: user?.role === 'admin' },
   ];
