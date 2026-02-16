@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { Sale, Customer, Account, User, AppSettings } from '../types';
 import { ICONS } from '../constants';
@@ -20,15 +21,25 @@ interface ContractsProps {
 const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?: Customer, onClose: () => void }) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
+    
     // Calculations
     const monthlyPayment = sale.paymentPlan.length > 0 ? sale.paymentPlan[0].amount : 0;
     const paidMonths = sale.paymentPlan.filter(p => p.isPaid).length;
+    
+    // Calculate Actual Overdue based on expected vs paid
+    let expectedPaidByNow = sale.downPayment;
+    sale.paymentPlan.forEach(p => {
+        if (new Date(p.date) < today) {
+            expectedPaidByNow += p.amount;
+        }
+    });
+    
+    const actualPaidTotal = sale.totalAmount - sale.remainingAmount;
+    const realOverdueAmount = Math.max(0, expectedPaidByNow - actualPaidTotal);
+
+    // List of technically overdue dates (for display)
     const overduePaymentsList = sale.paymentPlan.filter(p => !p.isPaid && new Date(p.date) < today);
     const overdueMonths = overduePaymentsList.length;
-
-    // Calculate actual overdue amount: Sum of all unpaid payments in the past
-    const actualOverdueAmount = overduePaymentsList.reduce((sum, p) => sum + p.amount, 0);
 
     // Find next payment date
     const nextUnpaidPayment = sale.paymentPlan.find(p => !p.isPaid && new Date(p.date) >= today);
@@ -43,7 +54,7 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
     const handleWhatsApp = () => {
         if (customer?.phone) {
             const phone = customer.phone.replace(/[^0-9]/g, '');
-            const text = `Здравствуйте, ${customer.name}. Напоминаем о задолженности по договору "${sale.productName}" в размере ${actualOverdueAmount.toLocaleString()} ₽.`;
+            const text = `Здравствуйте, ${customer.name}. Напоминаем о задолженности по договору "${sale.productName}" в размере ${realOverdueAmount.toLocaleString()} ₽.`;
             window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
         }
     };
@@ -68,14 +79,14 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
                             <label className="text-xs text-slate-500 block mb-1">Общий срок</label>
                             <p className="font-bold text-slate-800">{sale.installments} мес.</p>
                         </div>
-
+                        
                         <div>
                             <label className="text-xs text-slate-500 block mb-1">Оплачено</label>
                             <p className="font-bold text-emerald-600">{paidMonths} мес.</p>
                         </div>
                         <div>
                             <label className="text-xs text-slate-500 block mb-1">Просрочено</label>
-                            <p className="font-bold text-red-600">{overdueMonths} мес.</p>
+                            <p className="font-bold text-red-600">{overdueMonths} платежей</p>
                         </div>
 
                         <div>
@@ -86,14 +97,14 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
                             <label className="text-xs text-slate-500 block mb-1">След. платеж</label>
                             <p className="font-bold text-indigo-600">{nextPaymentDate}</p>
                         </div>
-
+                        
                         <div className="col-span-2 border-t border-slate-100 pt-4 mt-2">
                             <div className="flex justify-between items-center">
-                                <label className="text-xs text-slate-500 block">Сумма просрочки</label>
-                                <p className="font-bold text-red-600 text-xl">{actualOverdueAmount.toLocaleString()} ₽</p>
+                                <label className="text-xs text-slate-500 block">Сумма просрочки (по факту)</label>
+                                <p className="font-bold text-red-600 text-xl">{realOverdueAmount.toLocaleString()} ₽</p>
                             </div>
                             <div className="flex justify-between items-center mt-1">
-                                <label className="text-xs text-slate-500 block">Общий остаток</label>
+                                <label className="text-xs text-slate-500 block">Общий остаток долга</label>
                                 <p className="font-bold text-slate-800">{sale.remainingAmount.toLocaleString()} ₽</p>
                             </div>
                         </div>
@@ -102,12 +113,12 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
                     {/* Overdue Dates */}
                     {overduePaymentsList.length > 0 && (
                         <div className="max-h-32 overflow-y-auto pr-2">
-                            <label className="text-xs text-slate-500 block mb-2 sticky top-0 bg-white">Просроченные даты</label>
+                            <label className="text-xs text-slate-500 block mb-2 sticky top-0 bg-white">Даты пропущенных платежей</label>
                             <div className="space-y-1">
                                 {overduePaymentsList.map(p => (
                                     <div key={p.id} className="flex justify-between text-sm">
                                         <span className="text-red-600 font-medium">{new Date(p.date).toLocaleDateString()}</span>
-                                        <span className="text-slate-700 font-bold">{p.amount.toLocaleString()} ₽</span>
+                                        <span className="text-slate-400 text-xs">План: {p.amount.toLocaleString()} ₽</span>
                                     </div>
                                 ))}
                             </div>
@@ -117,27 +128,27 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
 
                 {/* Actions Footer */}
                 <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-3">
-                    <button
+                    <button 
                         onClick={handleCall}
                         className="flex-1 py-3 bg-blue-600 text-white rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors"
                     >
                         <Phone size={18} /> Позвонить
                     </button>
-                    <button
+                    <button 
                         onClick={handleWhatsApp}
                         className="flex-1 py-3 bg-emerald-600 text-white rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors"
                     >
                         {ICONS.Send} Написать
                     </button>
                 </div>
-
+                
                 <button onClick={onClose} className="w-full py-3 text-slate-400 text-sm hover:text-slate-600">Закрыть</button>
             </div>
         </div>
     );
 };
 
-const Contracts: React.FC<ContractsProps> = ({
+const Contracts: React.FC<ContractsProps> = ({ 
     sales, customers, accounts, activeTab, onTabChange,
     onViewSchedule, onEditSale, onDeleteSale, readOnly = false,
     user, appSettings
@@ -151,20 +162,33 @@ const Contracts: React.FC<ContractsProps> = ({
 
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Неизвестно';
 
-  // Helper to calculate accurate overdue amount: SUM of unpaid payments strictly in the past
+  // Helper to calculate accurate overdue amount based on actual payments vs expected schedule
   const calculateSaleOverdue = (sale: Sale) => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+      
+      // 1. Calculate Total Expected to be paid by TODAY
+      // Include DownPayment + All Installments strictly before today
+      let expectedTotal = sale.downPayment;
+      sale.paymentPlan.forEach(p => {
+          if (new Date(p.date) < today) {
+              expectedTotal += p.amount;
+          }
+      });
 
-      return sale.paymentPlan
-          .filter(p => !p.isPaid && new Date(p.date) < today)
-          .reduce((sum, p) => sum + p.amount, 0);
+      // 2. Calculate Total Actually Paid
+      const totalPaid = sale.totalAmount - sale.remainingAmount;
+
+      // 3. Difference is the real overdue
+      const overdue = expectedTotal - totalPaid;
+
+      return Math.max(0, overdue);
   };
 
   const { filteredList } = useMemo(() => {
     const today = new Date();
     today.setHours(0,0,0,0);
-
+    
     const active: Sale[] = [];
     const overdue: Sale[] = [];
     const archive: Sale[] = [];
@@ -205,12 +229,12 @@ const Contracts: React.FC<ContractsProps> = ({
     if (filterAccountId) {
         list = list.filter(sale => sale.accountId === filterAccountId);
     }
-
-    return {
+    
+    return { 
         filteredList: list.sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
     };
   }, [sales, customers, activeTab, searchTerm, filterDate, filterAccountId]);
-
+  
   const totalOverdueSum = useMemo(() => {
     if (activeTab !== 'OVERDUE') return 0;
     return filteredList.reduce((sum, s) => sum + calculateSaleOverdue(s), 0);
@@ -228,7 +252,7 @@ const Contracts: React.FC<ContractsProps> = ({
       e.stopPropagation();
       setActiveMenuId(prev => prev === saleId ? null : saleId);
   };
-
+  
   const handleDeleteConfirm = () => {
       if (deletingSale) {
           onDeleteSale(deletingSale.id);
@@ -241,7 +265,7 @@ const Contracts: React.FC<ContractsProps> = ({
       const companyName = appSettings?.companyName || "Компания";
       const sellerPhone = user?.phone || "";
       const hasGuarantor = !!sale.guarantorName;
-
+      
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
           alert("Разрешите всплывающие окна для печати");
@@ -414,7 +438,7 @@ const Contracts: React.FC<ContractsProps> = ({
       printWindow.document.write(htmlContent);
       printWindow.document.close();
   };
-
+  
   return (
     <div className="space-y-4 pb-20 w-full">
       {activeTab !== 'OVERDUE' && (
@@ -425,7 +449,7 @@ const Contracts: React.FC<ContractsProps> = ({
             </div>
         </div>
       )}
-
+      
        {activeTab === 'OVERDUE' && (
           <div className="bg-gradient-to-r from-red-50 to-white border border-red-100 p-5 rounded-2xl shadow-sm animate-fade-in mb-4">
               <div className="flex justify-between items-start">
@@ -438,7 +462,7 @@ const Contracts: React.FC<ContractsProps> = ({
                   </div>
               </div>
               <div className="mt-4 pt-4 border-t border-red-100">
-                  <p className="text-xs text-slate-400 font-medium mb-1">Сумма просрочки (только платежи)</p>
+                  <p className="text-xs text-slate-400 font-medium mb-1">Общая сумма просрочки (по факту)</p>
                   <p className="text-3xl font-bold text-red-600">{totalOverdueSum.toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</p>
               </div>
           </div>
@@ -448,28 +472,28 @@ const Contracts: React.FC<ContractsProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="relative">
                   <span className="absolute left-3 top-3 text-slate-400 scale-90">{ICONS.Users}</span>
-                  <input
-                    type="text"
-                    placeholder="Поиск по имени или товару..."
-                    className="w-full pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm focus:border-indigo-500 bg-white text-slate-900"
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
+                  <input 
+                    type="text" 
+                    placeholder="Поиск по имени или товару..." 
+                    className="w-full pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm focus:border-indigo-500 bg-white text-slate-900" 
+                    value={searchTerm} 
+                    onChange={e => setSearchTerm(e.target.value)} 
                   />
               </div>
               <div className="relative">
                   <span className="absolute left-3 top-3 text-slate-400 scale-75">{ICONS.Clock}</span>
-                  <input
-                    type="date"
-                    className="w-full max-w-[130px] pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm text-slate-900 bg-white focus:border-indigo-500"
-                    value={filterDate}
-                    onChange={e => setFilterDate(e.target.value)}
+                  <input 
+                    type="date" 
+                    className="w-full max-w-[130px] pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm text-slate-900 bg-white focus:border-indigo-500" 
+                    value={filterDate} 
+                    onChange={e => setFilterDate(e.target.value)} 
                   />
               </div>
               <div className="relative">
                   <span className="absolute left-3 top-3 text-slate-400 scale-75">{ICONS.Wallet}</span>
-                  <select
-                    className="w-full pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm text-slate-900 bg-white focus:border-indigo-500"
-                    value={filterAccountId}
+                  <select 
+                    className="w-full pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm text-slate-900 bg-white focus:border-indigo-500" 
+                    value={filterAccountId} 
                     onChange={e => setFilterAccountId(e.target.value)}
                   >
                       <option value="">Все счета / Инвесторы</option>
@@ -480,7 +504,7 @@ const Contracts: React.FC<ContractsProps> = ({
       </div>
 
       <div className="space-y-3 pt-2" onClick={() => setActiveMenuId(null)}>
-        {filteredList.length === 0 ? (<div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">Ничего не найдено</div>) :
+        {filteredList.length === 0 ? (<div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">Ничего не найдено</div>) : 
         (filteredList.map((sale, index) => {
             const progress = sale.totalAmount > 0 ? ((sale.totalAmount - sale.remainingAmount) / sale.totalAmount) * 100 : 0;
             let statusLabel = 'АКТИВНО';
@@ -490,11 +514,13 @@ const Contracts: React.FC<ContractsProps> = ({
 
             // Reverse numbering logic: Top is highest number, Bottom is 1
             const displayNumber = filteredList.length - index;
+            
+            // Calculate REAL overdue based on payments made vs expected
             const overdueSum = calculateSaleOverdue(sale);
 
             return (
-              <div
-                key={sale.id}
+              <div 
+                key={sale.id} 
                 className="bg-white rounded-xl shadow-sm p-4 relative animate-fade-in transition-transform"
               >
                 <div className="flex justify-between items-start mb-2">
@@ -510,7 +536,7 @@ const Contracts: React.FC<ContractsProps> = ({
                     <div>
                       <span className={`inline-block px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span>
                       {activeTab === 'OVERDUE' ? (
-                          <p className="text-sm font-bold text-red-600 mt-1">Просрочено: {overdueSum.toLocaleString()} ₽</p>
+                          <p className="text-sm font-bold text-red-600 mt-1">Долг: {overdueSum.toLocaleString()} ₽</p>
                       ) : (
                           <p className="text-sm font-semibold mt-1">{sale.totalAmount.toLocaleString()} ₽</p>
                       )}
@@ -520,7 +546,7 @@ const Contracts: React.FC<ContractsProps> = ({
                     )}
                   </div>
                 </div>
-
+                
                 <div className="w-full bg-slate-100 rounded-full h-2 mt-3"><div className={`h-2 rounded-full ${activeTab === 'OVERDUE' ? 'bg-red-500' : 'bg-indigo-600'}`} style={{ width: `${progress}%` }}></div></div>
                 <div className="flex justify-between text-xs text-slate-400 mt-1"><span>Оплачено: {(sale.totalAmount - sale.remainingAmount).toLocaleString()} ₽</span><span>Остаток: {sale.remainingAmount.toLocaleString()} ₽</span></div>
 
@@ -553,8 +579,8 @@ const Contracts: React.FC<ContractsProps> = ({
         )}
 
         {selectedSaleForInfo && (
-            <ContractInfoModal
-                sale={selectedSaleForInfo}
+            <ContractInfoModal 
+                sale={selectedSaleForInfo} 
                 customer={customers.find(c => c.id === selectedSaleForInfo.customerId)}
                 onClose={() => setSelectedSaleForInfo(null)}
             />
