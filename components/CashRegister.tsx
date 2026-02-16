@@ -355,13 +355,13 @@ const AccountActionMenu = ({
     };
 
     return (
-        <div className="absolute inset-0 z-30 flex items-center justify-center p-6 bg-gradient-to-br from-slate-900/90 to-indigo-900/90 backdrop-blur-sm rounded-3xl animate-fade-in" onClick={onClose}>
-            <div className="bg-white/95 backdrop-blur-sm w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden border border-white/20" onClick={e => e.stopPropagation()}>
+        <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/90 to-indigo-900/90 backdrop-blur-sm rounded-3xl animate-fade-in" onClick={onClose}>
+            <div className="bg-white/95 backdrop-blur-sm w-full max-w-[90%] rounded-2xl shadow-2xl overflow-hidden border border-white/20" onClick={e => e.stopPropagation()}>
                 {/* Заголовок с градиентом как у карточки */}
-                <div className={`h-2 bg-gradient-to-r ${getAccountTypeColor(account.type)}`}></div>
+                <div className={`h-1.5 bg-gradient-to-r ${getAccountTypeColor(account.type)}`}></div>
 
                 <div className="p-5">
-                    <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center gap-3 mb-4 pb-3 border-b border-slate-100">
                         <div className={`w-10 h-10 rounded-xl bg-gradient-to-r ${getAccountTypeColor(account.type)} flex items-center justify-center text-white shadow-lg`}>
                             {account.type === 'SHARED' ? ICONS.Users : ICONS.Wallet}
                         </div>
@@ -419,7 +419,7 @@ const AccountActionMenu = ({
 
                         <button
                             onClick={onClose}
-                            className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-100 rounded-xl flex items-center gap-3 transition-all group mt-2 border-t border-slate-100 pt-3"
+                            className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-100 rounded-xl flex items-center gap-3 transition-all group mt-2 pt-3 border-t border-slate-100"
                         >
                             <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 group-hover:bg-slate-200 transition-all">
                                 ✕
@@ -593,12 +593,11 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       }
   }
 
-  const handleAccountClick = (acc: Account) => {
+  // При клике на карточку ничего не происходит (убираем handleAccountClick)
+  // Только для общих счетов открываем детали
+  const handleSharedAccountClick = (acc: Account) => {
       if (acc.type === 'SHARED') {
           setSelectedSharedAccount(acc);
-      } else {
-          // Больше не переходим на историю, просто показываем меню
-          setActiveMenuAccount(acc);
       }
   }
 
@@ -671,8 +670,8 @@ const CashRegister: React.FC<CashRegisterProps> = ({
           {accounts.map(acc => (
             <div
               key={acc.id}
-              className="relative bg-white rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer transform hover:-translate-y-1"
-              onClick={() => handleAccountClick(acc)}
+              className="relative bg-white rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden"
+              onClick={() => handleSharedAccountClick(acc)}
             >
               {/* Background Gradient */}
               <div className={`absolute inset-0 bg-gradient-to-br ${getAccountTypeColor(acc.type)} opacity-0 hover:opacity-5 transition-opacity`}></div>
@@ -688,7 +687,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                     {getAccountTypeLabel(acc.type)}
                   </div>
 
-                  {/* Кнопка меню теперь вызывает меню поверх карточки */}
+                  {/* Кнопка меню - единственный способ открыть действия */}
                   <button
                     onClick={(e) => handleMenuClick(e, acc)}
                     className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all z-10"
@@ -735,7 +734,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                 </div>
               </div>
 
-              {/* Action Menu Overlay */}
+              {/* Action Menu Overlay - появляется поверх карточки при клике на кнопку меню */}
               {activeMenuAccount?.id === acc.id && (
                 <AccountActionMenu
                   account={acc}
