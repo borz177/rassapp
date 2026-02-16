@@ -146,9 +146,15 @@ export interface WhatsAppSettings {
   reminderDays: number[];
 }
 
+export interface CalculatorSettings {
+    defaultInterestRate: number;
+    maxMonths: number;
+}
+
 export interface AppSettings {
   companyName: string;
   whatsapp?: WhatsAppSettings;
+  calculator?: CalculatorSettings;
 }
 
 export type ViewState =
@@ -169,6 +175,8 @@ export type ViewState =
   | 'SELECT_CUSTOMER'
   | 'EMPLOYEES'
   | 'SETTINGS'
+  | 'INTEGRATIONS'
+  | 'CALCULATOR'
   | 'REPORTS'
   | 'PROFILE'
   | 'PARTNERS'
