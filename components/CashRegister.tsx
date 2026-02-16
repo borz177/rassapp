@@ -326,6 +326,113 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
     );
 };
 
+// Компонент меню действий, который появляется поверх карточки
+const AccountActionMenu = ({
+    account,
+    onClose,
+    onSelectAccount,
+    onEdit,
+    onSetMain,
+    isManager,
+    onUpdateAccount
+}: {
+    account: Account;
+    onClose: () => void;
+    onSelectAccount: (id: string) => void;
+    onEdit: (acc: Account) => void;
+    onSetMain: (id: string) => void;
+    isManager: boolean;
+    onUpdateAccount?: (acc: Account) => void;
+}) => {
+    const getAccountTypeColor = (type: Account['type']) => {
+        switch(type) {
+            case 'MAIN': return 'from-indigo-500 to-indigo-600';
+            case 'INVESTOR': return 'from-purple-500 to-purple-600';
+            case 'CUSTOM': return 'from-emerald-500 to-emerald-600';
+            case 'SHARED': return 'from-amber-500 to-amber-600';
+            default: return 'from-slate-500 to-slate-600';
+        }
+    };
+
+    return (
+        <div className="absolute inset-0 z-30 flex items-center justify-center p-6 bg-gradient-to-br from-slate-900/90 to-indigo-900/90 backdrop-blur-sm rounded-3xl animate-fade-in" onClick={onClose}>
+            <div className="bg-white/95 backdrop-blur-sm w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden border border-white/20" onClick={e => e.stopPropagation()}>
+                {/* Заголовок с градиентом как у карточки */}
+                <div className={`h-2 bg-gradient-to-r ${getAccountTypeColor(account.type)}`}></div>
+
+                <div className="p-5">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-r ${getAccountTypeColor(account.type)} flex items-center justify-center text-white shadow-lg`}>
+                            {account.type === 'SHARED' ? ICONS.Users : ICONS.Wallet}
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-slate-800">{account.name}</h3>
+                            <p className="text-xs text-slate-500">{account.type === 'MAIN' ? 'Основной счет' :
+                                account.type === 'INVESTOR' ? 'Счет инвестора' :
+                                account.type === 'SHARED' ? 'Общий счет' : 'Дополнительный'}</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <button
+                            onClick={() => { onSelectAccount(account.id); onClose(); }}
+                            className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 rounded-xl flex items-center gap-3 transition-all group"
+                        >
+                            <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-all">
+                                {ICONS.List}
+                            </span>
+                            <div>
+                                <span className="font-medium">История операций</span>
+                                <p className="text-xs text-slate-400">Просмотр всех движений по счету</p>
+                            </div>
+                        </button>
+
+                        {isManager && onUpdateAccount && (
+                            <button
+                                onClick={() => { onEdit(account); onClose(); }}
+                                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-amber-50 rounded-xl flex items-center gap-3 transition-all group"
+                            >
+                                <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 group-hover:bg-amber-100 group-hover:text-amber-600 transition-all">
+                                    {ICONS.Edit}
+                                </span>
+                                <div>
+                                    <span className="font-medium">Редактировать</span>
+                                    <p className="text-xs text-slate-400">Изменить название счета</p>
+                                </div>
+                            </button>
+                        )}
+
+                        {isManager && account.type !== 'MAIN' && (
+                            <button
+                                onClick={() => { onSetMain(account.id); onClose(); }}
+                                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-emerald-50 rounded-xl flex items-center gap-3 transition-all group"
+                            >
+                                <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 group-hover:bg-emerald-100 group-hover:text-emerald-600 transition-all">
+                                    {ICONS.Check}
+                                </span>
+                                <div>
+                                    <span className="font-medium">Сделать основным</span>
+                                    <p className="text-xs text-slate-400">Установить как основной счет</p>
+                                </div>
+                            </button>
+                        )}
+
+                        <button
+                            onClick={onClose}
+                            className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-100 rounded-xl flex items-center gap-3 transition-all group mt-2 border-t border-slate-100 pt-3"
+                        >
+                            <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 group-hover:bg-slate-200 transition-all">
+                                ✕
+                            </span>
+                            <span className="font-medium">Закрыть</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const CashRegister: React.FC<CashRegisterProps> = ({
     accounts, sales, expenses, investors, onAddAccount, onAction, onSelectAccount, onSetMainAccount, onUpdateAccount,
     isManager, myProfitPeriod, setMyProfitPeriod
@@ -333,7 +440,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
   const [isAdding, setIsAdding] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [selectedSharedAccount, setSelectedSharedAccount] = useState<Account | null>(null);
-  const [activeMenuAccountId, setActiveMenuAccountId] = useState<string | null>(null);
+  const [activeMenuAccount, setActiveMenuAccount] = useState<Account | null>(null);
 
   const [showProfitDetails, setShowProfitDetails] = useState(false);
   const [profitDetailsTab, setProfitDetailsTab] = useState<'accruals' | 'payouts'>('accruals');
@@ -490,17 +597,18 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       if (acc.type === 'SHARED') {
           setSelectedSharedAccount(acc);
       } else {
-          onSelectAccount(acc.id);
+          // Больше не переходим на историю, просто показываем меню
+          setActiveMenuAccount(acc);
       }
   }
 
-  const handleMenuClick = (e: React.MouseEvent, accId: string) => {
+  const handleMenuClick = (e: React.MouseEvent, acc: Account) => {
       e.stopPropagation();
-      setActiveMenuAccountId(prev => prev === accId ? null : accId);
+      setActiveMenuAccount(acc);
   }
 
   return (
-    <div className="space-y-8 animate-fade-in pb-20 w-full max-w-7xl mx-auto px-4" onClick={() => setActiveMenuAccountId(null)}>
+    <div className="space-y-8 animate-fade-in pb-20 w-full max-w-7xl mx-auto px-4">
       {/* Header */}
       <div className="flex justify-between items-center pt-6">
         <div className="flex items-center gap-3">
@@ -563,11 +671,11 @@ const CashRegister: React.FC<CashRegisterProps> = ({
           {accounts.map(acc => (
             <div
               key={acc.id}
-              className="group relative bg-white rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer transform hover:-translate-y-1"
+              className="relative bg-white rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer transform hover:-translate-y-1"
               onClick={() => handleAccountClick(acc)}
             >
               {/* Background Gradient */}
-              <div className={`absolute inset-0 bg-gradient-to-br ${getAccountTypeColor(acc.type)} opacity-0 group-hover:opacity-5 transition-opacity`}></div>
+              <div className={`absolute inset-0 bg-gradient-to-br ${getAccountTypeColor(acc.type)} opacity-0 hover:opacity-5 transition-opacity`}></div>
 
               {/* Top Accent */}
               <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${getAccountTypeColor(acc.type)}`}></div>
@@ -580,46 +688,13 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                     {getAccountTypeLabel(acc.type)}
                   </div>
 
-                  {/* Menu Button */}
-                  <div className="relative z-20">
-                    <button
-                      onClick={(e) => handleMenuClick(e, acc.id)}
-                      className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
-                    >
-                      {ICONS.More}
-                    </button>
-
-                    {/* Dropdown Menu */}
-                    {activeMenuAccountId === acc.id && (
-                      <div className="absolute right-0 top-10 bg-white shadow-xl rounded-2xl border border-slate-100 z-30 w-48 overflow-hidden animate-fade-in">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onSelectAccount(acc.id); }}
-                          className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-                        >
-                          <span className="text-slate-400">{ICONS.List}</span>
-                          История
-                        </button>
-                        {isManager && onUpdateAccount && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setEditingAccount(acc); setActiveMenuAccountId(null); }}
-                            className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-t border-slate-50"
-                          >
-                            <span className="text-slate-400">{ICONS.Edit}</span>
-                            Редактировать
-                          </button>
-                        )}
-                        {isManager && acc.type !== 'MAIN' && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onSetMainAccount(acc.id); setActiveMenuAccountId(null); }}
-                            className="w-full text-left px-4 py-3 text-sm text-indigo-600 hover:bg-slate-50 flex items-center gap-3 transition-colors border-t border-slate-50"
-                          >
-                            <span>{ICONS.Check}</span>
-                            Сделать основным
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  {/* Кнопка меню теперь вызывает меню поверх карточки */}
+                  <button
+                    onClick={(e) => handleMenuClick(e, acc)}
+                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all z-10"
+                  >
+                    {ICONS.More}
+                  </button>
                 </div>
 
                 {/* Account Info */}
@@ -659,6 +734,19 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                   )}
                 </div>
               </div>
+
+              {/* Action Menu Overlay */}
+              {activeMenuAccount?.id === acc.id && (
+                <AccountActionMenu
+                  account={acc}
+                  onClose={() => setActiveMenuAccount(null)}
+                  onSelectAccount={onSelectAccount}
+                  onEdit={setEditingAccount}
+                  onSetMain={onSetMainAccount}
+                  isManager={isManager}
+                  onUpdateAccount={onUpdateAccount}
+                />
+              )}
             </div>
           ))}
         </div>
