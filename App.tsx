@@ -621,14 +621,14 @@ const App: React.FC = () => {
       )}
       {currentView === 'REPORTS' && reportData && <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters} data={reportData} />}
 
-      {/* AI Assistant view removed */}
+      {/* AI Assistant Removed */}
 
       {currentView === 'CREATE_INCOME' && <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts} sales={sales} onClose={() => setCurrentView('DASHBOARD')} onSubmit={handleIncomeSubmit} onSelectCustomer={() => openSelection('SELECT_CUSTOMER', draftSaleData)} />}
       {currentView === 'CREATE_EXPENSE' && <NewExpense investors={investors} accounts={accounts} onClose={() => setCurrentView('DASHBOARD')} onSubmit={handleExpenseSubmit} />}
       {currentView === 'CREATE_SALE' && <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products} accounts={accounts} onClose={() => { setCurrentView('DASHBOARD'); setEditingSale(null); }} onSelectCustomer={(data) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} />}
       {currentView === 'SELECT_CUSTOMER' && <SelectionList title="Выберите клиента" items={customers.map(c => ({ id: c.id, title: c.name, subtitle: c.phone }))} onSelect={(id) => handleSelection('customerId', id)} onCancel={() => setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE')} onAddNew={handleQuickAddCustomer} />}
       {currentView === 'EMPLOYEES' && <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} />}
-      {currentView === 'TARIFFS' && <Tariffs />}
+      {currentView === 'TARIFFS' && <Tariffs user={user} />}
       {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings} />}
       {currentView === 'PROFILE' && user && <Profile user={user} onUpdateProfile={handleUpdateProfile} onBack={() => setCurrentView('MORE')} onLogout={() => { localStorage.removeItem('user'); localStorage.removeItem('token'); setUser(null); }} />}
       {currentView === 'ADMIN_PANEL' && <AdminPanel />}

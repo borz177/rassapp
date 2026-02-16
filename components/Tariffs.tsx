@@ -2,9 +2,13 @@
 import React, { useState } from 'react';
 import { ICONS } from '../constants';
 import { api } from '../services/api';
-import { SubscriptionPlan } from '../types';
+import { SubscriptionPlan, User } from '../types';
 
-const Tariffs: React.FC = () => {
+interface TariffsProps {
+    user?: User | null;
+}
+
+const Tariffs: React.FC<TariffsProps> = ({ user }) => {
   const [duration, setDuration] = useState<1 | 3 | 6 | 12>(1);
   const [loading, setLoading] = useState<string | null>(null);
 
@@ -67,6 +71,7 @@ const Tariffs: React.FC = () => {
   const plans = [
     {
       name: "Старт",
+      key: "START",
       basePrice: 990,
       features: [
         "Базовый учет продаж",
@@ -82,7 +87,8 @@ const Tariffs: React.FC = () => {
     },
     {
       name: "Стандарт",
-      basePrice: 1500,
+      key: "STANDARD",
+      basePrice: 100,
       features: [
         "Все функции Старт",
         "5 инвесторов",
@@ -98,6 +104,7 @@ const Tariffs: React.FC = () => {
     },
     {
       name: "Бизнес",
+      key: "BUSINESS",
       basePrice: 1990,
       features: [
         "Все функции Стандарт",
@@ -145,14 +152,22 @@ const Tariffs: React.FC = () => {
           const monthlyPrice = calculatePrice(plan.basePrice);
           const totalPrice = monthlyPrice * duration;
 
+          const isCurrentPlan = user?.subscription?.plan === plan.key;
+
           return (
             <div
               key={plan.name}
-              className={`relative rounded-2xl p-6 shadow-xl transition-transform hover:scale-[1.02] flex flex-col ${plan.color}`}
+              className={`relative rounded-2xl p-6 shadow-xl transition-transform hover:scale-[1.02] flex flex-col ${plan.color} ${isCurrentPlan ? 'ring-4 ring-emerald-400 ring-offset-2' : ''}`}
             >
-              {plan.badge && (
+              {plan.badge && !isCurrentPlan && (
                 <div className="absolute top-0 right-0 bg-indigo-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl">
                   {plan.badge}
+                </div>
+              )}
+
+              {isCurrentPlan && (
+                <div className="absolute top-0 right-0 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl flex items-center gap-1">
+                  {ICONS.Check} Ваш текущий план
                 </div>
               )}
 
@@ -186,10 +201,15 @@ const Tariffs: React.FC = () => {
               </ul>
 
               <button
-                onClick={() => handleSelectPlan(plan.name, monthlyPrice, plan.basePrice)}
-                className={`w-full py-4 rounded-xl font-bold transition-opacity ${plan.btnColor} hover:opacity-90`}
+                onClick={() => !isCurrentPlan && handleSelectPlan(plan.name, monthlyPrice, plan.basePrice)}
+                disabled={isCurrentPlan}
+                className={`w-full py-4 rounded-xl font-bold transition-opacity ${
+                    isCurrentPlan 
+                    ? 'bg-emerald-600 text-white cursor-default' 
+                    : `${plan.btnColor} hover:opacity-90`
+                }`}
               >
-                Выбрать
+                {isCurrentPlan ? 'Активен' : 'Выбрать'}
               </button>
             </div>
           );

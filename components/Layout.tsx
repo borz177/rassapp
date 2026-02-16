@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { ViewState, Sale, AppSettings, Customer, User, Investor } from '../types';
+import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
 import { ICONS, APP_NAME } from '../constants';
 
 interface LayoutProps {
@@ -17,6 +17,13 @@ interface LayoutProps {
   onNavigateToProfile: () => void;
 }
 
+const PLAN_NAMES: Record<SubscriptionPlan, string> = {
+    'TRIAL': 'Пробный',
+    'START': 'Старт',
+    'STANDARD': 'Стандарт',
+    'BUSINESS': 'Бизнес'
+};
+
 const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onAction, onContractTabChange, sales = [], appSettings, customers, user, activeInvestor, onNavigateToProfile }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
@@ -26,15 +33,18 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
 
   // Subscription Calc
   const subStatus = useMemo(() => {
-      if (!user?.subscription) return { daysLeft: 0, plan: 'TRIAL', expired: true };
+      if (!user?.subscription) return { daysLeft: 0, planName: 'Пробный', expired: true, isWarning: true };
+
       const now = new Date();
       const expires = new Date(user.subscription.expiresAt);
       const diffTime = expires.getTime() - now.getTime();
       const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
       return {
           daysLeft,
-          plan: user.subscription.plan,
-          expired: diffTime < 0
+          planName: PLAN_NAMES[user.subscription.plan] || user.subscription.plan,
+          expired: diffTime < 0,
+          isWarning: daysLeft <= 3 && daysLeft >= 0
       };
   }, [user]);
 
@@ -67,9 +77,9 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
   // Desktop Sidebar Items
   const allSidebarItems = [
     { id: 'DASHBOARD' as const, label: 'Главная', icon: ICONS.Dashboard, visible: true },
-    { 
-      id: 'CASH_REGISTER' as const, 
-      label: 'Касса', 
+    {
+      id: 'CASH_REGISTER' as const,
+      label: 'Касса',
       icon: ICONS.Wallet,
       visible: !isInvestor,
       subItems: [
@@ -79,9 +89,9 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
         { label: 'История', action: 'OPERATIONS', icon: ICONS.List },
       ]
     },
-    { 
-      id: 'CONTRACTS' as const, 
-      label: 'Договоры', 
+    {
+      id: 'CONTRACTS' as const,
+      label: 'Договоры',
       icon: ICONS.File,
       visible: !isInvestor || (isInvestor && !!investorPermissions?.canViewContracts),
       subItems: [
@@ -91,11 +101,11 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
         { label: 'Архив', tab: 'ARCHIVE', icon: ICONS.Clock, count: counts.archive, visible: true },
       ]
     },
-    { 
-        id: 'OPERATIONS' as const, 
-        label: 'История', 
-        icon: ICONS.List, 
-        visible: isInvestor && !!investorPermissions?.canViewHistory 
+    {
+        id: 'OPERATIONS' as const,
+        label: 'История',
+        icon: ICONS.List,
+        visible: isInvestor && !!investorPermissions?.canViewHistory
     },
     { id: 'REPORTS' as const, label: 'Отчеты', icon: ICONS.Dashboard, visible: !isInvestor && user?.role !== 'employee' },
     { id: 'CUSTOMERS' as const, label: 'Клиенты', icon: ICONS.Customers, visible: !isInvestor },
@@ -150,10 +160,10 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
     const hasSubItems = 'subItems' in item;
     const isExpanded = expandedMenu === item.id;
     const isActive = currentView === item.id;
-    
+
     // Filter subitems if visibility logic exists
     const visibleSubItems = hasSubItems ? item.subItems.filter((sub: any) => sub.visible !== false) : [];
-    
+
     return (
         <div key={item.id} className="w-full">
             <button
@@ -215,12 +225,16 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
       <header className="md:hidden fixed top-0 left-0 right-0 bg-white h-16 flex items-center px-4 shadow-md z-30 border-b border-slate-200">
         <h1 className="text-xl font-bold tracking-tight text-indigo-600">{appSettings.companyName}</h1>
         {!isInvestor && (
-            <div 
-                className={`ml-auto text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1 ${subStatus.expired ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}
+            <div
+                className={`ml-auto text-xs px-2 py-1.5 rounded-lg font-bold flex flex-col items-end leading-tight cursor-pointer
+                    ${subStatus.expired ? 'bg-red-50 text-red-600' : subStatus.isWarning ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}
+                `}
                 onClick={() => setView('TARIFFS')}
             >
-                {subStatus.expired ? 'Истек' : `${subStatus.daysLeft}дн.`}
-                <span className="opacity-50 text-[10px]">{subStatus.plan}</span>
+                <span>{subStatus.planName}</span>
+                <span className="text-[10px] opacity-80">
+                    {subStatus.expired ? 'Истек' : `Осталось: ${subStatus.daysLeft} дн.`}
+                </span>
             </div>
         )}
       </header>
@@ -232,12 +246,20 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
             {appSettings.companyName}
           </h1>
           {user && !isInvestor && user.role !== 'admin' && (
-              <div 
-                className={`mt-4 p-2 rounded-lg border text-xs font-medium cursor-pointer flex justify-between items-center ${subStatus.expired ? 'bg-red-900/30 border-red-800 text-red-300' : 'bg-emerald-900/30 border-emerald-800 text-emerald-300'}`}
+              <div
+                className={`mt-4 p-3 rounded-lg border text-xs font-medium cursor-pointer transition-colors hover:opacity-90 
+                    ${subStatus.expired ? 'bg-red-900/30 border-red-800 text-red-300' : subStatus.isWarning ? 'bg-amber-900/30 border-amber-800 text-amber-300' : 'bg-emerald-900/30 border-emerald-800 text-emerald-300'}
+                `}
                 onClick={() => setView('TARIFFS')}
               >
-                  <span>{subStatus.plan}: {subStatus.expired ? 'Истек' : 'Активен'}</span>
-                  <span>{subStatus.daysLeft > 0 ? `${subStatus.daysLeft} дн.` : ''}</span>
+                  <div className="flex justify-between items-center mb-1">
+                      <span className="opacity-70">Тариф:</span>
+                      <span className="font-bold uppercase tracking-wider">{subStatus.planName}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                      <span className="opacity-70">Статус:</span>
+                      <span className="font-bold">{subStatus.expired ? 'Истек' : `Активен (${subStatus.daysLeft} дн.)`}</span>
+                  </div>
               </div>
           )}
         </div>
