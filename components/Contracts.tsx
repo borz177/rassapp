@@ -18,7 +18,6 @@ interface ContractsProps {
 }
 
 const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?: Customer, onClose: () => void }) => {
-    // Logic for "Overdue starts on 2nd day":
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -28,15 +27,12 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
     const overduePaymentsList = sale.paymentPlan.filter(p => !p.isPaid && new Date(p.date) < today);
     const overdueMonths = overduePaymentsList.length;
 
-    // Calculate actual overdue amount (Remaining Debt - Future Payments) to handle partial payments
-    const futurePaymentsSum = sale.paymentPlan
-        .filter(p => !p.isPaid && new Date(p.date) >= today)
-        .reduce((sum, p) => sum + p.amount, 0);
-    const actualOverdueAmount = Math.max(0, sale.remainingAmount - futurePaymentsSum);
+    // Calculate actual overdue amount: Sum of all unpaid payments in the past
+    const actualOverdueAmount = overduePaymentsList.reduce((sum, p) => sum + p.amount, 0);
 
     // Find next payment date
-    const nextUnpaidPayment = sale.paymentPlan.find(p => !p.isPaid);
-    const nextPaymentDate = nextUnpaidPayment ? new Date(nextUnpaidPayment.date).toLocaleDateString() : 'Закрыт';
+    const nextUnpaidPayment = sale.paymentPlan.find(p => !p.isPaid && new Date(p.date) >= today);
+    const nextPaymentDate = nextUnpaidPayment ? new Date(nextUnpaidPayment.date).toLocaleDateString() : (sale.remainingAmount > 0 ? 'Просрочен' : 'Закрыт');
 
     const handleCall = () => {
         if (customer?.phone) {
@@ -87,27 +83,32 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
                             <p className="font-bold text-slate-800">{monthlyPayment.toLocaleString()} ₽</p>
                         </div>
                         <div>
-                            <label className="text-xs text-slate-500 block mb-1">Дата платежа</label>
+                            <label className="text-xs text-slate-500 block mb-1">След. платеж</label>
                             <p className="font-bold text-indigo-600">{nextPaymentDate}</p>
                         </div>
 
                         <div className="col-span-2 border-t border-slate-100 pt-4 mt-2">
                             <div className="flex justify-between items-center">
-                                <label className="text-xs text-slate-500 block">Текущая задолженность</label>
+                                <label className="text-xs text-slate-500 block">Сумма просрочки</label>
                                 <p className="font-bold text-red-600 text-xl">{actualOverdueAmount.toLocaleString()} ₽</p>
+                            </div>
+                            <div className="flex justify-between items-center mt-1">
+                                <label className="text-xs text-slate-500 block">Общий остаток</label>
+                                <p className="font-bold text-slate-800">{sale.remainingAmount.toLocaleString()} ₽</p>
                             </div>
                         </div>
                     </div>
 
                     {/* Overdue Dates */}
                     {overduePaymentsList.length > 0 && (
-                        <div>
-                            <label className="text-xs text-slate-500 block mb-2">Просроченные даты</label>
+                        <div className="max-h-32 overflow-y-auto pr-2">
+                            <label className="text-xs text-slate-500 block mb-2 sticky top-0 bg-white">Просроченные даты</label>
                             <div className="space-y-1">
                                 {overduePaymentsList.map(p => (
-                                    <p key={p.id} className="text-red-600 font-bold text-sm">
-                                        {new Date(p.date).toLocaleDateString()}
-                                    </p>
+                                    <div key={p.id} className="flex justify-between text-sm">
+                                        <span className="text-red-600 font-medium">{new Date(p.date).toLocaleDateString()}</span>
+                                        <span className="text-slate-700 font-bold">{p.amount.toLocaleString()} ₽</span>
+                                    </div>
                                 ))}
                             </div>
                         </div>
@@ -150,18 +151,14 @@ const Contracts: React.FC<ContractsProps> = ({
 
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Неизвестно';
 
-  // Helper to calculate accurate overdue amount considering partial payments
+  // Helper to calculate accurate overdue amount: SUM of unpaid payments strictly in the past
   const calculateSaleOverdue = (sale: Sale) => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Sum of all future (or today's) payments that are not yet marked paid
-      const futurePaymentsSum = sale.paymentPlan
-          .filter(p => !p.isPaid && new Date(p.date) >= today)
+      return sale.paymentPlan
+          .filter(p => !p.isPaid && new Date(p.date) < today)
           .reduce((sum, p) => sum + p.amount, 0);
-
-      // The difference between Total Remaining Debt and Future Obligations is what should have been paid by now
-      return Math.max(0, sale.remainingAmount - futurePaymentsSum);
   };
 
   const { filteredList } = useMemo(() => {
@@ -172,10 +169,7 @@ const Contracts: React.FC<ContractsProps> = ({
     const overdue: Sale[] = [];
     const archive: Sale[] = [];
 
-    // Create a set of valid customer IDs for efficient lookup.
     const customerIdSet = new Set(customers.map(c => c.id));
-
-    // Filter out system transactions (like investor deposits) before categorizing.
     const actualSales = sales.filter(sale => customerIdSet.has(sale.customerId));
 
     actualSales.forEach(sale => {
@@ -219,7 +213,6 @@ const Contracts: React.FC<ContractsProps> = ({
 
   const totalOverdueSum = useMemo(() => {
     if (activeTab !== 'OVERDUE') return 0;
-    // Calculate sum of specific overdue amounts, not total debts
     return filteredList.reduce((sum, s) => sum + calculateSaleOverdue(s), 0);
   }, [filteredList, activeTab]);
 
@@ -263,7 +256,6 @@ const Contracts: React.FC<ContractsProps> = ({
       let rows = '';
 
       if (paidPlan.length > 0) {
-          // If payments exist, show them with calculated balance
           let currentDebt = sale.totalAmount - sale.downPayment;
           rows = paidPlan.map((p, index) => {
               currentDebt -= p.amount;
@@ -278,7 +270,6 @@ const Contracts: React.FC<ContractsProps> = ({
               `;
           }).join('');
       } else {
-          // If NO payments, show EMPTY rows corresponding to installment count
           rows = Array.from({ length: sale.installments || 1 }).map((_, index) => `
             <tr>
                 <td style="text-align: center;">${index + 1}</td>
@@ -447,7 +438,7 @@ const Contracts: React.FC<ContractsProps> = ({
                   </div>
               </div>
               <div className="mt-4 pt-4 border-t border-red-100">
-                  <p className="text-xs text-slate-400 font-medium mb-1">Сумма просрочки</p>
+                  <p className="text-xs text-slate-400 font-medium mb-1">Сумма просрочки (только платежи)</p>
                   <p className="text-3xl font-bold text-red-600">{totalOverdueSum.toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</p>
               </div>
           </div>

@@ -1,10 +1,13 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
-import { Customer, Sale, Payment } from '../types';
+import { Customer, Sale, Payment, Account, Investor } from '../types';
 import { ICONS } from '../constants';
 
 interface CustomerDetailsProps {
   customer: Customer;
   sales: Sale[];
+  accounts: Account[]; // Added
+  investors: Investor[]; // Added
   onBack: () => void;
   onInitiatePayment: (sale: Sale, payment: Payment) => void;
   onUndoPayment?: (saleId: string, paymentId: string) => void;
@@ -16,8 +19,9 @@ interface CustomerDetailsProps {
 const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer, onClose: () => void, onUpdate: (c: Customer) => void }) => {
     const [name, setName] = useState(customer.name);
     const [phone, setPhone] = useState(customer.phone);
+    const [address, setAddress] = useState(customer.address || '');
     const [notes, setNotes] = useState(customer.notes || '');
-    const [allowWhatsapp, setAllowWhatsapp] = useState(customer.allowWhatsappNotification !== false); // Default true if undefined
+    const [allowWhatsapp, setAllowWhatsapp] = useState(customer.allowWhatsappNotification !== false);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -25,6 +29,7 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
             ...customer,
             name,
             phone,
+            address,
             notes,
             allowWhatsappNotification: allowWhatsapp
         });
@@ -45,10 +50,14 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
                         <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={phone} onChange={e => setPhone(e.target.value)} required />
                     </div>
                     <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Адрес</label>
+                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={address} onChange={e => setAddress(e.target.value)} />
+                    </div>
+                    <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Заметки</label>
                         <textarea className="w-full p-3 border border-slate-200 rounded-xl outline-none resize-none" rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
                     </div>
-
+                    
                     {/* WhatsApp Setting */}
                     <div className="flex items-center justify-between bg-emerald-50 p-3 rounded-xl border border-emerald-100">
                         <div className="flex items-center gap-2">
@@ -74,8 +83,8 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
     );
 };
 
-const CustomerDetails: React.FC<CustomerDetailsProps> = ({
-    customer, sales, onBack, onInitiatePayment, onUndoPayment, onEditPayment, onUpdateCustomer, initialSaleId
+const CustomerDetails: React.FC<CustomerDetailsProps> = ({ 
+    customer, sales, accounts, investors, onBack, onInitiatePayment, onUndoPayment, onEditPayment, onUpdateCustomer, initialSaleId
 }) => {
   const [activeTab, setActiveTab] = useState<'INFO' | 'INSTALLMENTS'>('INFO');
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
@@ -104,7 +113,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
       if (!selectedSale) return;
       const upcomingPayments = selectedSale.paymentPlan.filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       const nextPayment = upcomingPayments[0];
-
+      
       const message = `
 Здравствуйте, ${customer.name}!
 
@@ -139,7 +148,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
       const url = `https://wa.me/${phone}?text=${encodeURIComponent(report)}`;
       window.open(url, '_blank');
   };
-
+  
   const { paidPayments, paymentSchedule } = useMemo(() => {
     if (!selectedSale) return { paidPayments: [], paymentSchedule: [] };
 
@@ -156,26 +165,36 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
     const scheduleForDisplay = scheduled.map(p => {
       const paymentDue = p.amount;
       const amountPaidThisMonth = Math.min(paymentDue, paymentPool);
-
+      
       paymentPool -= amountPaidThisMonth;
-
+      
       return {
         ...p,
         amountToPay: paymentDue - amountPaidThisMonth,
       };
-    }).filter(p => p.amountToPay > 0.01);
+    }).filter(p => p.amountToPay > 0.01); 
 
-    return {
+    return { 
         paidPayments: paid,
         paymentSchedule: scheduleForDisplay
     };
   }, [selectedSale]);
 
+  const getInvestorInfo = (sale: Sale) => {
+      const account = accounts.find(a => a.id === sale.accountId);
+      if (account && account.type === 'INVESTOR' && account.ownerId) {
+          const investor = investors.find(i => i.id === account.ownerId);
+          return investor ? investor.name : null;
+      }
+      return null;
+  };
+
   if (selectedSale) {
       const paidAmount = selectedSale.totalAmount - selectedSale.remainingAmount;
       const profit = selectedSale.buyPrice > 0 ? selectedSale.totalAmount - selectedSale.buyPrice : 0;
       const monthlyProfit = selectedSale.installments > 0 && profit > 0 ? profit / selectedSale.installments : 0;
-
+      const firstPaymentDate = selectedSale.paymentPlan.length > 0 ? selectedSale.paymentPlan[0].date : null;
+      
       return (
           <div className="space-y-4 animate-fade-in pb-20 relative">
               <div className="flex items-center justify-between border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
@@ -189,6 +208,12 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
               </div>
 
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-3">
+                  {firstPaymentDate && (
+                      <div className="flex justify-between border-b border-slate-50 pb-2">
+                          <span className="text-slate-500">Первый платеж</span>
+                          <span className="font-medium text-slate-800">{new Date(firstPaymentDate).toLocaleDateString()}</span>
+                      </div>
+                  )}
                   <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Цена закупа</span><span className="font-medium text-slate-800">{selectedSale.buyPrice.toLocaleString()} ₽</span></div>
                   <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Цена в рассрочку</span><span className="font-bold text-indigo-600">{selectedSale.totalAmount.toLocaleString()} ₽</span></div>
                   {selectedSale.downPayment > 0 && (
@@ -241,11 +266,11 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
       {activeTab === 'INFO' && (
           <div className="space-y-4 pt-2">
               <div className="flex justify-center"><div className="w-32 h-32 rounded-full bg-slate-200 overflow-hidden border-4 border-white shadow-lg">{customer.photo ? <img src={customer.photo} alt={customer.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-400 text-4xl font-bold">{customer.name.charAt(0)}</div>}</div></div>
-
+              
               {/* Info Card with Edit Button */}
               <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 space-y-4 relative">
                   {onUpdateCustomer && (
-                      <button
+                      <button 
                         onClick={() => setShowEditModal(true)}
                         className="absolute top-4 right-4 p-2 bg-slate-50 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
                       >
@@ -253,6 +278,9 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
                       </button>
                   )}
                   <div><label className="text-xs text-slate-400 uppercase">Телефон</label><p className="text-lg font-medium text-slate-800">{customer.phone}</p></div>
+                  {customer.address && (
+                      <div><label className="text-xs text-slate-400 uppercase">Адрес</label><p className="text-base font-medium text-slate-800">{customer.address}</p></div>
+                  )}
                   <div><label className="text-xs text-slate-400 uppercase">Рейтинг доверия</label><div className="flex items-center gap-2 mt-1"><div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden"><div className="bg-emerald-500 h-full" style={{ width: `${customer.trustScore}%` }}></div></div><span className="text-sm font-bold">{customer.trustScore}%</span></div></div>
                   <div><label className="text-xs text-slate-400 uppercase">Заметки</label><p className="text-sm text-slate-600 mt-1">{customer.notes || 'Нет заметок'}</p></div>
                   <div>
@@ -273,15 +301,35 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
       {activeTab === 'INSTALLMENTS' && (
           <div className="space-y-3 pt-2">
               {customerSales.length === 0 && <div className="text-center py-10 text-slate-400">Нет активных рассрочек</div>}
-              {customerSales.map(sale => (<div key={sale.id} onClick={() => setSelectedSaleId(sale.id)} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm active:bg-slate-50 cursor-pointer"><div className="flex justify-between items-start mb-2"><h3 className="font-bold text-slate-800">{sale.productName}</h3><span className={`text-xs px-2 py-1 rounded-full ${sale.remainingAmount === 0 ? 'bg-slate-100 text-slate-600' : 'bg-indigo-100 text-indigo-700'}`}>{sale.remainingAmount === 0 ? 'Закрыто' : 'Активно'}</span></div><p className="text-xs text-slate-500 mb-2">от {new Date(sale.startDate).toLocaleDateString()}</p><div className="flex justify-between text-sm mt-3 pt-3 border-t border-slate-100"><span className="text-slate-500">Остаток:</span><span className="font-bold text-slate-800">{sale.remainingAmount.toLocaleString()} ₽</span></div></div>))}
+              {customerSales.map(sale => {
+                  const investorName = getInvestorInfo(sale);
+                  return (
+                    <div key={sale.id} onClick={() => setSelectedSaleId(sale.id)} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm active:bg-slate-50 cursor-pointer">
+                        <div className="flex justify-between items-start mb-2">
+                            <h3 className="font-bold text-slate-800">{sale.productName}</h3>
+                            <span className={`text-xs px-2 py-1 rounded-full ${sale.remainingAmount === 0 ? 'bg-slate-100 text-slate-600' : 'bg-indigo-100 text-indigo-700'}`}>{sale.remainingAmount === 0 ? 'Закрыто' : 'Активно'}</span>
+                        </div>
+                        <p className="text-xs text-slate-500 mb-2">от {new Date(sale.startDate).toLocaleDateString()}</p>
+                        {investorName && (
+                            <div className="mb-2">
+                                <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold">Инвестор: {investorName}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between text-sm mt-3 pt-3 border-t border-slate-100">
+                            <span className="text-slate-500">Остаток:</span>
+                            <span className="font-bold text-slate-800">{sale.remainingAmount.toLocaleString()} ₽</span>
+                        </div>
+                    </div>
+                  );
+              })}
           </div>
       )}
 
       {showEditModal && onUpdateCustomer && (
-          <EditCustomerModal
-            customer={customer}
-            onClose={() => setShowEditModal(false)}
-            onUpdate={onUpdateCustomer}
+          <EditCustomerModal 
+            customer={customer} 
+            onClose={() => setShowEditModal(false)} 
+            onUpdate={onUpdateCustomer} 
           />
       )}
     </div>

@@ -1,10 +1,11 @@
+
 import React, { useState } from 'react';
 import { Customer } from '../types';
 import { ICONS } from '../constants';
 
 interface CustomersProps {
   customers: Customer[];
-  onAddCustomer: (name: string, phone: string, photo: string) => void;
+  onAddCustomer: (name: string, phone: string, photo: string, address: string) => void;
   onSelectCustomer: (id: string) => void;
 }
 
@@ -12,7 +13,11 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onSelec
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newAddress, setNewAddress] = useState('');
   const [newPhoto, setNewPhoto] = useState('');
+
+  // Search State
+  const [searchTerm, setSearchTerm] = useState('');
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -28,28 +33,50 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onSelec
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (newName && newPhone) {
-      onAddCustomer(newName, newPhone, newPhoto);
+      onAddCustomer(newName, newPhone, newPhoto, newAddress);
       setNewName('');
       setNewPhone('');
+      setNewAddress('');
       setNewPhoto('');
       setIsAdding(false);
     }
   };
 
+  const filteredCustomers = customers.filter(c =>
+    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.phone.includes(searchTerm)
+  );
+
   return (
-    <div className="space-y-6 pb-20 animate-fade-in">
+    <div className="space-y-4 pb-20 animate-fade-in">
       <header className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Клиенты</h2>
-          <p className="text-slate-500 text-sm">{customers.length} человек</p>
+          <p className="text-slate-500 text-sm">{filteredCustomers.length} из {customers.length}</p>
         </div>
-        <button 
+        <button
           onClick={() => setIsAdding(!isAdding)}
           className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg shadow-indigo-200"
         >
           {isAdding ? 'Отмена' : '+ Добавить'}
         </button>
       </header>
+
+      {/* Search Bar */}
+      {!isAdding && (
+          <div className="relative">
+              <input
+                type="text"
+                placeholder="Поиск по имени или телефону..."
+                className="w-full pl-10 p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-indigo-500 text-slate-800"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+              <span className="absolute left-3 top-3.5 text-slate-400 scale-90">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </span>
+          </div>
+      )}
 
       {isAdding && (
         <form onSubmit={handleSubmit} className="bg-white p-5 rounded-2xl shadow-md border border-slate-100 space-y-4 animate-fade-in">
@@ -63,7 +90,7 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onSelec
                 <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
             </label>
             <div className="flex-1 space-y-2">
-                <input 
+                <input
                     placeholder="ФИО Клиента"
                     className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                     value={newName}
@@ -72,12 +99,18 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onSelec
                 />
             </div>
           </div>
-          <input 
+          <input
             placeholder="Номер телефона"
             className="w-full p-3 border border-slate-200 rounded-xl outline-none"
             value={newPhone}
             onChange={e => setNewPhone(e.target.value)}
             required
+          />
+          <input
+            placeholder="Адрес (необязательно)"
+            className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+            value={newAddress}
+            onChange={e => setNewAddress(e.target.value)}
           />
           <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold">
             Сохранить клиента
@@ -86,7 +119,10 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onSelec
       )}
 
       <div className="grid gap-3">
-        {customers.map(c => (
+        {filteredCustomers.length === 0 && !isAdding && (
+            <div className="text-center py-8 text-slate-400">Клиенты не найдены</div>
+        )}
+        {filteredCustomers.map(c => (
           <div 
             key={c.id} 
             onClick={() => onSelectCustomer(c.id)}

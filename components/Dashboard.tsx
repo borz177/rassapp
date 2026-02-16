@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { Sale, Customer, Account } from '../types';
 import { ICONS } from '../constants';
@@ -51,7 +52,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
   const [selectedSaleForModal, setSelectedSaleForModal] = useState<Sale | null>(null);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
-
+  
   // Filters
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [paymentDateFilter, setPaymentDateFilter] = useState<'ALL' | 'TODAY' | 'TOMORROW'>('ALL');
@@ -59,8 +60,8 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
   // --- STATS CALCULATION (FILTERED) ---
   const calculatedStats = useMemo(() => {
       // Filter sales by selected account if needed
-      const filteredSales = selectedAccountId
-          ? sales.filter(s => s.accountId === selectedAccountId)
+      const filteredSales = selectedAccountId 
+          ? sales.filter(s => s.accountId === selectedAccountId) 
           : sales;
 
       let totalRevenue = 0;
@@ -118,60 +119,81 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
 
     const today = new Date();
     const todayEnd = new Date(today);
+    today.setHours(0,0,0,0); // Reset today to start of day for accurate comparison
     todayEnd.setHours(23, 59, 59, 999);
-
+    const todayStr = today.toDateString();
+    
     const payments: { sale: Sale, customerName: string, totalDue: number, isTomorrow: boolean, isToday: boolean, isOverdue: boolean }[] = [];
 
     sales.forEach(sale => {
       if (sale.status !== 'ACTIVE') return;
+
+      // Pool Logic to handle partial payments correctly in the view
+      const paidTotal = sale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
+      let paymentPool = paidTotal;
+
+      const scheduledPayments = sale.paymentPlan
+          .filter(p => !p.isPaid)
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
       let relevantAmount = 0;
       let isTomorrowPayment = false;
       let isTodayPayment = false;
       let isOverduePayment = false;
 
-      sale.paymentPlan.forEach(p => {
-        if (!p.isPaid) {
-          const paymentDate = new Date(p.date);
-          const isOverdue = paymentDate < today && paymentDate.toDateString() !== today.toDateString();
-          const isToday = paymentDate.toDateString() === today.toDateString();
-          const isTomorrow = paymentDate >= tomorrow && paymentDate <= tomorrowEnd;
+      scheduledPayments.forEach(p => {
+          // Calculate actual due for this installment
+          const amountDue = p.amount;
+          const coveredByPool = Math.min(amountDue, paymentPool);
+          paymentPool -= coveredByPool;
+          const actualDue = amountDue - coveredByPool;
 
-          if (paymentDateFilter === 'ALL') {
-              if (isOverdue || isToday || isTomorrow) {
-                  relevantAmount += p.amount;
+          if (actualDue > 0.01) {
+              const paymentDate = new Date(p.date);
+              paymentDate.setHours(0,0,0,0);
+              
+              const isPast = paymentDate < today;
+              const isToday = paymentDate.toDateString() === todayStr;
+              const isTomorrow = paymentDate >= tomorrow && paymentDate <= tomorrowEnd;
+
+              // Filter Logic: "Show only Today and Tomorrow" (Exclude Past Overdue from this view)
+              let include = false;
+              if (paymentDateFilter === 'ALL') {
+                  if (isToday || isTomorrow) include = true;
+              } else if (paymentDateFilter === 'TODAY') {
+                  if (isToday) include = true;
+              } else if (paymentDateFilter === 'TOMORROW') {
+                  if (isTomorrow) include = true;
+              }
+
+              if (include) {
+                  relevantAmount += actualDue;
                   if (isTomorrow) isTomorrowPayment = true;
                   if (isToday) isTodayPayment = true;
-                  if (isOverdue) isOverduePayment = true;
-              }
-          } else if (paymentDateFilter === 'TODAY') {
-              if (isOverdue || isToday) {
-                  relevantAmount += p.amount;
-                  if (isToday) isTodayPayment = true;
-                  if (isOverdue) isOverduePayment = true;
-              }
-          } else if (paymentDateFilter === 'TOMORROW') {
-              if (isTomorrow) {
-                  relevantAmount += p.amount;
-                  isTomorrowPayment = true;
+                  // We track isOverduePayment just in case, but if we filter out 'isPast', this will only be true if 'isToday' counts as overdue (usually not)
+                  if (isPast) isOverduePayment = true; 
               }
           }
-        }
       });
-
+      
       if (relevantAmount > 0) {
         payments.push({
           sale: sale,
           customerName: customers.find(c => c.id === sale.customerId)?.name || 'Неизвестный клиент',
           totalDue: relevantAmount,
-          isTomorrow: isTomorrowPayment && !isOverduePayment && !isTodayPayment,
+          isTomorrow: isTomorrowPayment && !isTodayPayment, // If both, treat as Today (Urgent)
           isToday: isTodayPayment,
           isOverdue: isOverduePayment
         });
       }
     });
 
-    return payments.sort((a,b) => a.totalDue - b.totalDue);
+    return payments.sort((a,b) => {
+        // Sort: Today first, then Tomorrow
+        if (a.isToday && !b.isToday) return -1;
+        if (!a.isToday && b.isToday) return 1;
+        return a.totalDue - b.totalDue;
+    });
   }, [sales, customers, paymentDateFilter]);
 
   const handleActionClick = (e: React.MouseEvent, saleId: string) => {
@@ -193,18 +215,18 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
       {/* Overview Tab */}
       {activeTab === 'overview' && (
           <div className="space-y-6 animate-fade-in">
-
+              
               {/* Account Filter */}
               <div className="overflow-x-auto pb-2 no-scrollbar">
                   <div className="flex gap-2">
-                      <button
+                      <button 
                         onClick={() => setSelectedAccountId(null)}
                         className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${!selectedAccountId ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
                       >
                           Все счета
                       </button>
                       {accounts.map(acc => (
-                          <button
+                          <button 
                             key={acc.id}
                             onClick={() => setSelectedAccountId(acc.id)}
                             className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${selectedAccountId === acc.id ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
@@ -226,7 +248,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                 <div className="bg-white p-6 rounded-2xl shadow-sm">
                     <h3 className="text-lg font-semibold text-slate-700 mb-4">Последние договоры</h3>
                     <div className="space-y-3">
-                        {lastFiveSales.length === 0 ? <p className="text-center text-slate-400 py-4 text-sm">Нет договоров</p> :
+                        {lastFiveSales.length === 0 ? <p className="text-center text-slate-400 py-4 text-sm">Нет договоров</p> : 
                         lastFiveSales.map(sale => (
                             <div key={sale.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                                 <div>
@@ -238,7 +260,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                         ))}
                     </div>
                 </div>
-
+                
                 <div className="bg-white p-6 rounded-2xl shadow-sm">
                      <h3 className="text-lg font-semibold text-slate-700 mb-4">Быстрые действия</h3>
                      <div className="space-y-4">
@@ -256,23 +278,23 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
       {/* Upcoming Payments Tab */}
       {activeTab === 'upcoming' && (
         <div className="space-y-4 animate-fade-in" onClick={() => setActiveActionMenu(null)}>
-
+            
             {/* Date Filters */}
             <div className="flex gap-2 mb-2">
-                <button
-                    onClick={() => setPaymentDateFilter('ALL')}
+                <button 
+                    onClick={() => setPaymentDateFilter('ALL')} 
                     className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors border ${paymentDateFilter === 'ALL' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
                 >
                     Все
                 </button>
-                <button
-                    onClick={() => setPaymentDateFilter('TODAY')}
+                <button 
+                    onClick={() => setPaymentDateFilter('TODAY')} 
                     className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors border ${paymentDateFilter === 'TODAY' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200'}`}
                 >
                     Сегодня
                 </button>
-                <button
-                    onClick={() => setPaymentDateFilter('TOMORROW')}
+                <button 
+                    onClick={() => setPaymentDateFilter('TOMORROW')} 
                     className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors border ${paymentDateFilter === 'TOMORROW' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-600 border-slate-200'}`}
                 >
                     Завтра
@@ -280,7 +302,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
             </div>
 
             {upcomingAndOverduePayments.length === 0 ? (
-                <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">Нет платежей по выбранному фильтру.</div>
+                <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">Нет платежей на сегодня и завтра.</div>
             ) : (
                 upcomingAndOverduePayments.map(p => (
                     <div key={p.sale.id} className="bg-white p-4 rounded-xl shadow-sm relative">

@@ -459,9 +459,24 @@ const App: React.FC = () => {
   const handleUpdateProduct = async (updated: Product) => { if (isEmployee && !user?.permissions?.canEdit) return; const saved = await api.saveItem('products', updated); updateList(setProducts, saved); };
   const handleDeleteProduct = async (id: string) => { if (isEmployee && !user?.permissions?.canDelete) return; await api.deleteItem('products', id); removeFromList(setProducts, id); };
 
-  const handleAddCustomer = async (name: string, phone: string, photo: string) => {
+  const handleAddCustomer = async (name: string, phone: string, photo: string, address: string) => {
       if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; }
-      if (!user) throw new Error("No user"); const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newCustomer: Customer = { id: Date.now().toString(), userId: ownerId, name, phone, email: '', trustScore: 50, notes: '', photo }; const saved = await api.saveItem('customers', newCustomer); updateList(setCustomers, saved); return saved;
+      if (!user) throw new Error("No user");
+      const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+      const newCustomer: Customer = {
+          id: Date.now().toString(),
+          userId: ownerId,
+          name,
+          phone,
+          email: '',
+          trustScore: 50,
+          notes: '',
+          photo,
+          address
+      };
+      const saved = await api.saveItem('customers', newCustomer);
+      updateList(setCustomers, saved);
+      return saved;
   };
   const handleUpdateCustomer = async (updated: Customer) => { const saved = await api.saveItem('customers', updated); updateList(setCustomers, saved); };
 
@@ -618,7 +633,7 @@ const App: React.FC = () => {
           />
       )}
       {currentView === 'CUSTOMERS' && <Customers customers={customers} onAddCustomer={handleAddCustomer} onSelectCustomer={handleSelectCustomer} />}
-      {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId && <CustomerDetails customer={customers.find(c => c.id === selectedCustomerId)!} sales={sales} onBack={() => setCurrentView(previousView)} onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment} onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer} initialSaleId={initialSaleIdForDetails} />}
+      {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId && <CustomerDetails customer={customers.find(c => c.id === selectedCustomerId)!} sales={sales} accounts={accounts} investors={investors} onBack={() => setCurrentView(previousView)} onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment} onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer} initialSaleId={initialSaleIdForDetails} />}
       {currentView === 'MANAGE_PRODUCTS' && <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} />}
       {currentView === 'OPERATIONS' && (
         <Operations

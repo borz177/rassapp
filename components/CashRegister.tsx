@@ -20,19 +20,14 @@ interface CashRegisterProps {
   setMyProfitPeriod: React.Dispatch<React.SetStateAction<{ start: string; end: string; }>>;
 }
 
-const CreateAccountModal = ({ onClose, onSubmit, investors }: { onClose: () => void, onSubmit: (name: string, type: Account['type'], partners?: string[]) => void, investors: Investor[] }) => {
+const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubmit: (name: string, type: Account['type']) => void }) => {
     const [name, setName] = useState('');
-    const [type, setType] = useState<Account['type']>('CUSTOM');
-    const [selectedPartners, setSelectedPartners] = useState<string[]>([]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if(!name.trim()) return;
-        onSubmit(name, type, type === 'SHARED' ? selectedPartners : undefined);
-    };
-
-    const togglePartner = (id: string) => {
-        setSelectedPartners(prev => prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]);
+        // Default to CUSTOM (Personal) account, removed SHARED option
+        onSubmit(name, 'CUSTOM');
     };
 
     return (
@@ -53,65 +48,9 @@ const CreateAccountModal = ({ onClose, onSubmit, investors }: { onClose: () => v
                             value={name}
                             onChange={e => setName(e.target.value)}
                             className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
-                            placeholder="Например: Общий котел"
+                            placeholder="Например: Касса 1"
                         />
                     </div>
-
-                    <div className="space-y-2">
-                        <label className="block text-sm font-semibold text-slate-700">Тип счета</label>
-                        <div className="flex gap-2 bg-slate-100 p-1.5 rounded-2xl">
-                            <button
-                                type="button"
-                                onClick={() => setType('CUSTOM')}
-                                className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                                    type === 'CUSTOM' 
-                                        ? 'bg-white shadow-md text-slate-800 transform scale-105' 
-                                        : 'text-slate-500 hover:text-slate-700'
-                                }`}
-                            >
-                                Личный
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setType('SHARED')}
-                                className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                                    type === 'SHARED' 
-                                        ? 'bg-white shadow-md text-indigo-600 transform scale-105' 
-                                        : 'text-slate-500 hover:text-slate-700'
-                                }`}
-                            >
-                                Общий
-                            </button>
-                        </div>
-                    </div>
-
-                    {type === 'SHARED' && (
-                        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-4 rounded-xl border border-indigo-100 max-h-40 overflow-y-auto">
-                            <p className="text-xs font-bold text-indigo-700 mb-3 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>
-                                Выберите партнеров:
-                            </p>
-                            {investors.length === 0 ? (
-                                <p className="text-xs text-slate-400 text-center py-2">Нет доступных инвесторов</p>
-                            ) : (
-                                <div className="space-y-2">
-                                    {investors.map(inv => (
-                                        <label key={inv.id} className="flex items-center gap-3 cursor-pointer group">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedPartners.includes(inv.id)}
-                                                onChange={() => togglePartner(inv.id)}
-                                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 transition-all"
-                                            />
-                                            <span className="text-sm text-slate-700 group-hover:text-indigo-600 transition-colors">
-                                                {inv.name}
-                                            </span>
-                                        </label>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
 
                     <div className="flex gap-3 mt-6">
                         <button
@@ -652,7 +591,6 @@ const CashRegister: React.FC<CashRegisterProps> = ({
         <CreateAccountModal
           onClose={() => setIsAdding(false)}
           onSubmit={handleCreateAccount}
-          investors={investors}
         />
       )}
 
