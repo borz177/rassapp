@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Sale, Customer, Account, User, AppSettings } from '../types';
 import { ICONS } from '../constants';
-import { Phone } from 'lucide-react'; // Importing Phone icon directly
+import { Phone } from 'lucide-react';
 
 interface ContractsProps {
   sales: Sale[];
@@ -33,6 +33,10 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
         .filter(p => !p.isPaid && new Date(p.date) >= today)
         .reduce((sum, p) => sum + p.amount, 0);
     const actualOverdueAmount = Math.max(0, sale.remainingAmount - futurePaymentsSum);
+
+    // Find next payment date
+    const nextUnpaidPayment = sale.paymentPlan.find(p => !p.isPaid);
+    const nextPaymentDate = nextUnpaidPayment ? new Date(nextUnpaidPayment.date).toLocaleDateString() : 'Закрыт';
 
     const handleCall = () => {
         if (customer?.phone) {
@@ -83,8 +87,15 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
                             <p className="font-bold text-slate-800">{monthlyPayment.toLocaleString()} ₽</p>
                         </div>
                         <div>
-                            <label className="text-xs text-slate-500 block mb-1">Задолженность</label>
-                            <p className="font-bold text-red-600 text-lg">{actualOverdueAmount.toLocaleString()} ₽</p>
+                            <label className="text-xs text-slate-500 block mb-1">Дата платежа</label>
+                            <p className="font-bold text-indigo-600">{nextPaymentDate}</p>
+                        </div>
+
+                        <div className="col-span-2 border-t border-slate-100 pt-4 mt-2">
+                            <div className="flex justify-between items-center">
+                                <label className="text-xs text-slate-500 block">Текущая задолженность</label>
+                                <p className="font-bold text-red-600 text-xl">{actualOverdueAmount.toLocaleString()} ₽</p>
+                            </div>
                         </div>
                     </div>
 
@@ -501,13 +512,14 @@ const Contracts: React.FC<ContractsProps> = ({
                     <div>
                       <h3 className="font-bold text-slate-800">{getCustomerName(sale.customerId)}</h3>
                       <p className="text-sm text-slate-500">{sale.productName}</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Оформлен: {new Date(sale.startDate).toLocaleDateString()}</p>
                     </div>
                   </div>
                   <div className="text-right flex items-center gap-2">
                     <div>
                       <span className={`inline-block px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span>
                       {activeTab === 'OVERDUE' ? (
-                          <p className="text-sm font-bold text-red-600 mt-1">{overdueSum.toLocaleString()} ₽</p>
+                          <p className="text-sm font-bold text-red-600 mt-1">Просрочено: {overdueSum.toLocaleString()} ₽</p>
                       ) : (
                           <p className="text-sm font-semibold mt-1">{sale.totalAmount.toLocaleString()} ₽</p>
                       )}

@@ -88,6 +88,14 @@ export const api = {
         }
     },
 
+    getMe: async (): Promise<User> => {
+        const res = await fetch(`${API_URL}/auth/me`, {
+            headers: getAuthHeader()
+        });
+        if (!res.ok) throw new Error('Failed to fetch user');
+        return res.json();
+    },
+
     // User Management - Create Sub-User (Protected, No Login Side-effect)
     createSubUser: async (userData: any): Promise<any> => {
         const res = await fetch(`${API_URL}/users/manage`, {
@@ -191,13 +199,6 @@ export const api = {
             body: JSON.stringify({ action: 'delete', userData: { id: userId } })
         });
     },
-
-    // Получить свежие данные пользователя
-getMe: async (): Promise<User> => {
-  const res = await fetch(`${API_URL}/auth/me`, { headers: getAuthHeader() });
-  if (!res.ok) throw new Error('Failed to fetch user data');
-  return res.json();
-},
 
     // --- ADMIN METHODS ---
 

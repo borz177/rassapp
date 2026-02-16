@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { Sale, Account, Expense, Investor } from '../types';
 import { ICONS } from '../constants';
@@ -329,6 +330,7 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
 // Аккуратное модальное окно для действий со счетом
 const AccountActionModal = ({
     account,
+    balance,
     onClose,
     onSelectAccount,
     onEdit,
@@ -337,6 +339,7 @@ const AccountActionModal = ({
     onUpdateAccount
 }: {
     account: Account;
+    balance: number;
     onClose: () => void;
     onSelectAccount: (id: string) => void;
     onEdit: (acc: Account) => void;
@@ -384,7 +387,7 @@ const AccountActionModal = ({
                                  account.type === 'SHARED' ? 'Общий счет' : 'Дополнительный счет'}
                             </p>
                             <p className="text-sm font-bold text-indigo-600 mt-1">
-                                {(account.balance || 0).toLocaleString()} ₽
+                                {balance.toLocaleString()} ₽
                             </p>
                         </div>
                     </div>
@@ -639,7 +642,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
             className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-lg shadow-indigo-200 text-sm sm:text-base"
           >
             <span className="text-lg">{ICONS.Plus}</span>
-            <span className="hidden sm:inline">Новый счет</span>
+            <span className="hidden sm:inline">+Новый счет</span>
           </button>
         )}
       </div>
@@ -757,6 +760,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       {activeMenuAccount && (
         <AccountActionModal
           account={activeMenuAccount}
+          balance={accountBalances[activeMenuAccount.id] || 0}
           onClose={() => setActiveMenuAccount(null)}
           onSelectAccount={onSelectAccount}
           onEdit={setEditingAccount}
