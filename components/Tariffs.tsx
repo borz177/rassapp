@@ -8,6 +8,9 @@ const Tariffs: React.FC = () => {
   const [duration, setDuration] = useState<1 | 3 | 6 | 12>(1);
   const [loading, setLoading] = useState<string | null>(null);
 
+  // State for Confirmation Modal
+  const [confirmData, setConfirmData] = useState<{name: string, monthlyPrice: number, basePrice: number} | null>(null);
+
   const getDiscount = (months: number) => {
     switch(months) {
       case 3: return 0.05;
@@ -23,31 +26,41 @@ const Tariffs: React.FC = () => {
     return Math.ceil(monthlyPrice);
   };
 
-  const handlePay = async (planName: string, amount: number) => {
-    setLoading(planName);
-    const planKey: SubscriptionPlan = planName === 'Старт' ? 'START' : planName === 'Стандарт' ? 'STANDARD' : 'BUSINESS';
+  const handleSelectPlan = (name: string, monthlyPrice: number, basePrice: number) => {
+      setConfirmData({ name, monthlyPrice, basePrice });
+  };
+
+  const proceedToPayment = async () => {
+    if (!confirmData) return;
+
+    const { name, monthlyPrice } = confirmData;
+    setLoading(name);
+
+    const planKey: SubscriptionPlan = name === 'Старт' ? 'START' : name === 'Стандарт' ? 'STANDARD' : 'BUSINESS';
+    const amount = monthlyPrice * duration;
 
     try {
       // Use API service which handles the correct URL (proxy vs localhost)
       const data = await api.createPayment({
-          amount: amount * duration,
-          description: `Оплата тарифа ${planName} на ${duration} мес.`,
+          amount: amount,
+          description: `Оплата тарифа ${name} на ${duration} мес.`,
           returnUrl: window.location.href, // Redirect back to this page
           plan: planKey,
           months: duration
       });
 
       if (data.confirmationUrl) {
-        // Redirect user to YooKassa
         window.location.href = data.confirmationUrl;
       } else {
         alert("Ошибка инициализации платежа. Проверьте настройки сервера.");
+        setLoading(null);
+        setConfirmData(null);
       }
     } catch (error: any) {
       console.error("Payment Error:", error);
       alert(`Ошибка: ${error.message || 'Не удалось создать платеж'}`);
-    } finally {
       setLoading(null);
+      setConfirmData(null);
     }
   };
 
@@ -101,7 +114,7 @@ const Tariffs: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-6 animate-fade-in pb-20">
+    <div className="space-y-6 animate-fade-in pb-20 relative">
       <header className="text-center">
         <h2 className="text-3xl font-bold text-slate-800">Тарифы</h2>
         <p className="text-slate-500 mt-2">Выберите подходящий план для вашего бизнеса</p>
@@ -133,8 +146,8 @@ const Tariffs: React.FC = () => {
           const totalPrice = monthlyPrice * duration;
 
           return (
-            <div 
-              key={plan.name} 
+            <div
+              key={plan.name}
               className={`relative rounded-2xl p-6 shadow-xl transition-transform hover:scale-[1.02] flex flex-col ${plan.color}`}
             >
               {plan.badge && (
@@ -142,11 +155,11 @@ const Tariffs: React.FC = () => {
                   {plan.badge}
                 </div>
               )}
-              
+
               <h3 className={`text-xl font-bold mb-2 ${plan.highlight ? 'text-indigo-900' : plan.textColor}`}>
                 {plan.name}
               </h3>
-              
+
               <div className="mb-6">
                 <span className={`text-4xl font-bold ${plan.highlight ? 'text-indigo-900' : plan.textColor}`}>
                   {monthlyPrice} ₽
@@ -173,20 +186,91 @@ const Tariffs: React.FC = () => {
               </ul>
 
               <button
-                onClick={() => handlePay(plan.name, monthlyPrice)}
-                disabled={!!loading}
-                className={`w-full py-4 rounded-xl font-bold transition-opacity ${plan.btnColor} ${loading ? 'opacity-70 cursor-not-allowed' : 'hover:opacity-90'}`}
+                onClick={() => handleSelectPlan(plan.name, monthlyPrice, plan.basePrice)}
+                className={`w-full py-4 rounded-xl font-bold transition-opacity ${plan.btnColor} hover:opacity-90`}
               >
-                {loading === plan.name ? 'Загрузка...' : 'Выбрать'}
+                Выбрать
               </button>
             </div>
           );
         })}
       </div>
-      
+
       <div className="text-center text-xs text-slate-400 mt-8">
         Оплата производится через безопасный шлюз ЮKassa. Активация происходит автоматически после подтверждения платежа.
       </div>
+
+      {/* Confirmation Modal */}
+      {confirmData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !loading && setConfirmData(null)}>
+              <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 relative overflow-hidden" onClick={e => e.stopPropagation()}>
+
+                  {/* Decorative Background Element */}
+                  <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-50 rounded-full opacity-50 pointer-events-none"></div>
+
+                  <h3 className="text-xl font-bold text-slate-800 mb-1">Подтверждение заказа</h3>
+                  <p className="text-sm text-slate-500 mb-6">Проверьте детали перед оплатой</p>
+
+                  <div className="bg-slate-50 p-4 rounded-xl space-y-3 border border-slate-100 mb-6">
+                      <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-sm">Тариф</span>
+                          <span className="font-bold text-slate-800">{confirmData.name}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                          <span className="text-slate-500 text-sm">Период</span>
+                          <span className="font-medium text-slate-800">{duration} мес.</span>
+                      </div>
+                      <div className="border-t border-slate-200 my-2"></div>
+                      <div className="flex justify-between items-center text-xs text-slate-400">
+                          <span>Цена за месяц</span>
+                          <span>{confirmData.monthlyPrice} ₽</span>
+                      </div>
+                      {confirmData.basePrice > confirmData.monthlyPrice && (
+                          <div className="flex justify-between items-center text-xs text-emerald-600 font-medium">
+                              <span>Скидка ({(1 - confirmData.monthlyPrice / confirmData.basePrice) * 100}%)</span>
+                              <span>-{(confirmData.basePrice * duration - confirmData.monthlyPrice * duration).toLocaleString()} ₽</span>
+                          </div>
+                      )}
+                      <div className="flex justify-between items-end pt-2">
+                          <span className="text-slate-800 font-bold">Итого к оплате:</span>
+                          <span className="text-2xl font-bold text-indigo-600">{(confirmData.monthlyPrice * duration).toLocaleString()} ₽</span>
+                      </div>
+                  </div>
+
+                  <div className="space-y-3">
+                      <button
+                          onClick={proceedToPayment}
+                          disabled={!!loading}
+                          className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                      >
+                          {loading ? (
+                              <>
+                                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                  Переход к оплате...
+                              </>
+                          ) : (
+                              'Оплатить через ЮKassa'
+                          )}
+                      </button>
+
+                      <button
+                          onClick={() => setConfirmData(null)}
+                          disabled={!!loading}
+                          className="w-full py-3 bg-white text-slate-500 rounded-xl font-medium hover:bg-slate-50 transition-colors"
+                      >
+                          Отмена
+                      </button>
+                  </div>
+
+                  <div className="mt-4 flex justify-center opacity-50">
+                      <span className="text-[10px] text-slate-400">Безопасный платеж • SSL Encrypted</span>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
