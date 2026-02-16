@@ -13,8 +13,8 @@ interface CashRegisterProps {
   onSetMainAccount: (accountId: string) => void;
   onUpdateAccount?: (account: Account) => void;
   isManager: boolean;
-  totalExpectedProfit: number; // Deprecated in favor of local calc, but kept for interface compatibility
-  realizedPeriodProfit: number; // Deprecated in favor of local calc
+  totalExpectedProfit: number;
+  realizedPeriodProfit: number;
   myProfitPeriod: { start: string; end: string; };
   setMyProfitPeriod: React.Dispatch<React.SetStateAction<{ start: string; end: string; }>>;
 }
@@ -26,7 +26,7 @@ const CreateAccountModal = ({ onClose, onSubmit, investors }: { onClose: () => v
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if(!name) return;
+        if(!name.trim()) return;
         onSubmit(name, type, type === 'SHARED' ? selectedPartners : undefined);
     };
 
@@ -35,31 +35,76 @@ const CreateAccountModal = ({ onClose, onSubmit, investors }: { onClose: () => v
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={e => e.stopPropagation()}>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">Новый счет</h3>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Название</label>
-                        <input autoFocus value={name} onChange={e => setName(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl outline-none" placeholder="Например: Общий котел" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+            <div className="bg-white/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white shadow-lg">
+                        {ICONS.Plus}
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Тип счета</label>
-                        <div className="flex gap-2 bg-slate-100 p-1 rounded-xl">
-                            <button type="button" onClick={() => setType('CUSTOM')} className={`flex-1 py-2 text-xs font-bold rounded-lg ${type === 'CUSTOM' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`}>Личный</button>
-                            <button type="button" onClick={() => setType('SHARED')} className={`flex-1 py-2 text-xs font-bold rounded-lg ${type === 'SHARED' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>Общий</button>
+                    <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-indigo-800 bg-clip-text text-transparent">Новый счет</h3>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    <div className="space-y-2">
+                        <label className="block text-sm font-semibold text-slate-700">Название счета</label>
+                        <input
+                            autoFocus
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                            placeholder="Например: Общий котел"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="block text-sm font-semibold text-slate-700">Тип счета</label>
+                        <div className="flex gap-2 bg-slate-100 p-1.5 rounded-2xl">
+                            <button
+                                type="button"
+                                onClick={() => setType('CUSTOM')}
+                                className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
+                                    type === 'CUSTOM' 
+                                        ? 'bg-white shadow-md text-slate-800 transform scale-105' 
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                Личный
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setType('SHARED')}
+                                className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
+                                    type === 'SHARED' 
+                                        ? 'bg-white shadow-md text-indigo-600 transform scale-105' 
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                Общий
+                            </button>
                         </div>
                     </div>
 
                     {type === 'SHARED' && (
-                        <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 max-h-40 overflow-y-auto">
-                            <p className="text-xs text-indigo-700 font-bold mb-2">Выберите партнеров:</p>
-                            {investors.length === 0 ? <p className="text-xs text-slate-400">Нет инвесторов</p> : (
+                        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 p-4 rounded-xl border border-indigo-100 max-h-40 overflow-y-auto">
+                            <p className="text-xs font-bold text-indigo-700 mb-3 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>
+                                Выберите партнеров:
+                            </p>
+                            {investors.length === 0 ? (
+                                <p className="text-xs text-slate-400 text-center py-2">Нет доступных инвесторов</p>
+                            ) : (
                                 <div className="space-y-2">
                                     {investors.map(inv => (
-                                        <label key={inv.id} className="flex items-center gap-2 cursor-pointer">
-                                            <input type="checkbox" checked={selectedPartners.includes(inv.id)} onChange={() => togglePartner(inv.id)} className="rounded text-indigo-600 focus:ring-indigo-500" />
-                                            <span className="text-sm text-slate-700">{inv.name}</span>
+                                        <label key={inv.id} className="flex items-center gap-3 cursor-pointer group">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedPartners.includes(inv.id)}
+                                                onChange={() => togglePartner(inv.id)}
+                                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 transition-all"
+                                            />
+                                            <span className="text-sm text-slate-700 group-hover:text-indigo-600 transition-colors">
+                                                {inv.name}
+                                            </span>
                                         </label>
                                     ))}
                                 </div>
@@ -67,9 +112,20 @@ const CreateAccountModal = ({ onClose, onSubmit, investors }: { onClose: () => v
                         </div>
                     )}
 
-                    <div className="flex gap-3 mt-4">
-                        <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
-                        <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Создать</button>
+                    <div className="flex gap-3 mt-6">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="flex-1 py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all"
+                        >
+                            Отмена
+                        </button>
+                        <button
+                            type="submit"
+                            className="flex-1 py-3.5 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-lg shadow-indigo-200"
+                        >
+                            Создать
+                        </button>
                     </div>
                 </form>
             </div>
@@ -88,17 +144,40 @@ const EditAccountModal = ({ account, onClose, onUpdate }: { account: Account, on
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={e => e.stopPropagation()}>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">Редактировать счет</h3>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Название</label>
-                        <input autoFocus value={name} onChange={e => setName(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl outline-none" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+            <div className="bg-white/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-white shadow-lg">
+                        {ICONS.Edit}
                     </div>
-                    <div className="flex gap-3 mt-4">
-                        <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
-                        <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
+                    <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-amber-800 bg-clip-text text-transparent">Редактировать счет</h3>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    <div className="space-y-2">
+                        <label className="block text-sm font-semibold text-slate-700">Название счета</label>
+                        <input
+                            autoFocus
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-100 transition-all"
+                        />
+                    </div>
+
+                    <div className="flex gap-3 mt-6">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="flex-1 py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all"
+                        >
+                            Отмена
+                        </button>
+                        <button
+                            type="submit"
+                            className="flex-1 py-3.5 bg-gradient-to-r from-amber-600 to-amber-700 text-white rounded-xl font-bold hover:from-amber-700 hover:to-amber-800 transition-all shadow-lg shadow-amber-200"
+                        >
+                            Сохранить
+                        </button>
                     </div>
                 </form>
             </div>
@@ -107,11 +186,9 @@ const EditAccountModal = ({ account, onClose, onUpdate }: { account: Account, on
 }
 
 const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: { account: Account, sales: Sale[], expenses: Expense[], investors: Investor[], onClose: () => void }) => {
-    // 1. Calculate Account Total Value (Cash + Receivables)
     const accountSales = sales.filter(s => s.accountId === account.id);
     const accountExpenses = expenses.filter(e => e.accountId === account.id);
 
-    // Cash Balance
     let cashBalance = 0;
     accountSales.forEach(s => {
         cashBalance += Number(s.downPayment);
@@ -119,14 +196,12 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
     });
     cashBalance -= accountExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
 
-    // Receivables (Active Debt)
     const receivables = accountSales
         .filter(s => s.status === 'ACTIVE')
         .reduce((sum, s) => sum + Number(s.remainingAmount), 0);
 
     const totalAccountEquity = cashBalance + receivables;
 
-    // 2. Calculate Partner Contributions (Net Capital)
     const partnerStats = (account.partners || []).map(partnerId => {
         const investor = investors.find(i => i.id === partnerId);
 
@@ -156,60 +231,77 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
     const totalProfitGenerated = Math.max(0, totalAccountEquity - totalNetCapital);
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                <div className="p-5 border-b border-slate-200 bg-indigo-50">
-                    <h3 className="text-lg font-bold text-slate-800">{account.name}</h3>
-                    <p className="text-xs text-indigo-600 font-bold uppercase tracking-wider">Совместный счет</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+            <div className="bg-white/95 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-white/20" onClick={e => e.stopPropagation()}>
+                <div className="p-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                            {ICONS.Users}
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-bold">{account.name}</h3>
+                            <p className="text-indigo-100 text-sm">Совместный счет</p>
+                        </div>
+                    </div>
                 </div>
 
-                <div className="p-5 space-y-4 overflow-y-auto">
+                <div className="p-6 space-y-6 overflow-y-auto">
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
-                            <p className="text-xs text-slate-500">Кэш в кассе</p>
-                            <p className="text-xl font-bold text-emerald-600">{cashBalance.toLocaleString()} ₽</p>
+                        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-4 rounded-2xl">
+                            <p className="text-xs text-emerald-700 font-medium mb-1">Кэш в кассе</p>
+                            <p className="text-xl font-bold text-emerald-800">{cashBalance.toLocaleString()} ₽</p>
                         </div>
-                        <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
-                            <p className="text-xs text-slate-500">В товаре (Долги)</p>
-                            <p className="text-xl font-bold text-amber-600">{receivables.toLocaleString()} ₽</p>
-                        </div>
-                    </div>
-
-                    <div className="bg-slate-800 text-white p-4 rounded-xl">
-                        <div className="flex justify-between items-end mb-1">
-                            <span className="text-slate-400 text-sm">Общая стоимость активов</span>
-                            <span className="text-2xl font-bold">{totalAccountEquity.toLocaleString()} ₽</span>
-                        </div>
-                        <div className="flex justify-between text-xs text-slate-400 border-t border-slate-700 pt-2 mt-2">
-                             <span>Вложено: {totalNetCapital.toLocaleString()} ₽</span>
-                             <span className="text-emerald-400">Прибыль: +{totalProfitGenerated.toLocaleString()} ₽</span>
+                        <div className="bg-gradient-to-br from-amber-50 to-amber-100 p-4 rounded-2xl">
+                            <p className="text-xs text-amber-700 font-medium mb-1">В товаре (Долги)</p>
+                            <p className="text-xl font-bold text-amber-800">{receivables.toLocaleString()} ₽</p>
                         </div>
                     </div>
 
-                    <div>
-                        <h4 className="font-bold text-slate-700 mb-3 text-sm">Распределение долей</h4>
+                    <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-5 rounded-2xl">
+                        <p className="text-slate-400 text-sm mb-2">Общая стоимость активов</p>
+                        <p className="text-3xl font-bold mb-3">{totalAccountEquity.toLocaleString()} ₽</p>
+                        <div className="flex justify-between text-xs border-t border-slate-700 pt-3">
+                            <span className="text-slate-400">Вложено: <span className="text-white font-medium">{totalNetCapital.toLocaleString()} ₽</span></span>
+                            <span className="text-emerald-400">Прибыль: +{totalProfitGenerated.toLocaleString()} ₽</span>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>
+                            Распределение долей
+                        </h4>
                         <div className="space-y-3">
-                            {partnerStats.length === 0 ? <p className="text-center text-slate-400 text-xs">Нет активных партнеров</p> :
-                            partnerStats.map(p => {
+                            {partnerStats.length === 0 ? (
+                                <p className="text-center text-slate-400 text-sm py-4">Нет активных партнеров</p>
+                            ) : partnerStats.map(p => {
                                 const sharePercent = totalNetCapital > 0 ? (p.netCapital / totalNetCapital) * 100 : 0;
                                 const equityValue = totalAccountEquity * (sharePercent / 100);
                                 const profitShare = Math.max(0, equityValue - p.netCapital);
 
                                 return (
-                                    <div key={p.id} className="bg-white border border-slate-100 p-3 rounded-xl shadow-sm">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="font-bold text-slate-800 text-sm">{p.name}</span>
-                                            <span className="bg-indigo-100 text-indigo-700 text-xs px-2 py-1 rounded-full font-bold">{sharePercent.toFixed(1)}%</span>
+                                    <div key={p.id} className="bg-white border border-slate-100 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all">
+                                        <div className="flex justify-between items-center mb-3">
+                                            <span className="font-bold text-slate-800">{p.name}</span>
+                                            <span className="bg-indigo-100 text-indigo-700 text-xs px-3 py-1 rounded-full font-bold">
+                                                {sharePercent.toFixed(1)}%
+                                            </span>
                                         </div>
-                                        <div className="w-full bg-slate-100 h-1.5 rounded-full mb-3 overflow-hidden">
-                                            <div className="bg-indigo-500 h-full rounded-full" style={{width: `${sharePercent}%`}}></div>
+                                        <div className="w-full bg-slate-100 h-2 rounded-full mb-4 overflow-hidden">
+                                            <div className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full transition-all" style={{width: `${sharePercent}%`}}></div>
                                         </div>
-                                        <div className="grid grid-cols-2 text-xs gap-2">
-                                            <div><span className="text-slate-400 block">Вложено</span><span className="font-medium">{p.netCapital.toLocaleString()} ₽</span></div>
-                                            <div className="text-right"><span className="text-slate-400 block">Доля в активах</span><span className="font-bold text-slate-700">{Math.round(equityValue).toLocaleString()} ₽</span></div>
+                                        <div className="grid grid-cols-2 text-sm gap-3">
+                                            <div>
+                                                <span className="text-slate-400 text-xs block">Вложено</span>
+                                                <span className="font-medium text-slate-800">{p.netCapital.toLocaleString()} ₽</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="text-slate-400 text-xs block">Доля в активах</span>
+                                                <span className="font-bold text-slate-800">{Math.round(equityValue).toLocaleString()} ₽</span>
+                                            </div>
                                         </div>
                                         {profitShare > 0 && (
-                                            <div className="mt-2 pt-2 border-t border-slate-50 flex justify-between text-xs">
+                                            <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between text-sm">
                                                 <span className="text-emerald-600 font-medium">Доступная прибыль</span>
                                                 <span className="font-bold text-emerald-600">+{Math.round(profitShare).toLocaleString()} ₽</span>
                                             </div>
@@ -221,8 +313,13 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
                     </div>
                 </div>
 
-                <div className="p-4 border-t border-slate-200 bg-slate-50">
-                    <button onClick={onClose} className="w-full py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50">Закрыть</button>
+                <div className="p-4 border-t border-slate-100 bg-slate-50">
+                    <button
+                        onClick={onClose}
+                        className="w-full py-3.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-100 transition-all"
+                    >
+                        Закрыть
+                    </button>
                 </div>
             </div>
         </div>
@@ -263,14 +360,12 @@ const CashRegister: React.FC<CashRegisterProps> = ({
     return balances;
   }, [accounts, sales, expenses]);
 
-  // Calculate Expected Profit LOCALLY based on the filter
   const calculatedExpectedProfit = useMemo(() => {
       let totalProfit = 0;
 
       const activeSales = sales.filter(s => s.status === 'ACTIVE' && s.buyPrice > 0);
 
       activeSales.forEach(sale => {
-          // Filter by selected account
           if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
 
           const saleProfit = sale.totalAmount - sale.buyPrice;
@@ -285,7 +380,6 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                   managerProfitShare = (100 - investor.profitPercentage) / 100;
               }
           }
-          // Shared accounts logic can be complex, for now strictly manager owns 100% of 'CUSTOM' or 'MAIN'
 
           totalProfit += saleProfit * managerProfitShare;
       });
@@ -297,9 +391,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
     const accruals: {id: string, date: string, amount: number, source: string}[] = [];
 
     sales.forEach(sale => {
-        // Filter by Account if selected
         if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
-
         if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
 
         const totalSaleProfit = Number(sale.totalAmount) - Number(sale.buyPrice);
@@ -314,7 +406,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                 managerProfitSharePercent = (100 - investor.profitPercentage) / 100;
             }
         } else if (account?.type === 'SHARED') {
-            return; // Skip shared accounts for simple "My Profit" for now
+            return;
         }
 
         const allPayments = [
@@ -324,12 +416,9 @@ const CashRegister: React.FC<CashRegisterProps> = ({
 
         allPayments.forEach(p => {
             if (p.amount > 0) {
-                // DATE FILTER LOGIC: If dates are empty, include everything.
                 const pDate = new Date(p.date);
                 const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
                 const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
-
-                // Adjust end date to include the full day
                 endDate.setHours(23, 59, 59, 999);
 
                 if (pDate >= startDate && pDate <= endDate) {
@@ -340,7 +429,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                             id: p.id,
                             date: p.date,
                             amount: managerShare,
-                            source: `Платеж по '${sale.productName}'`
+                            source: `Платеж по "${sale.productName}"`
                         });
                     }
                 }
@@ -387,11 +476,20 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       }
   }
 
+  const getAccountTypeColor = (type: Account['type']) => {
+      switch(type) {
+          case 'MAIN': return 'from-indigo-500 to-indigo-600';
+          case 'INVESTOR': return 'from-purple-500 to-purple-600';
+          case 'CUSTOM': return 'from-emerald-500 to-emerald-600';
+          case 'SHARED': return 'from-amber-500 to-amber-600';
+          default: return 'from-slate-500 to-slate-600';
+      }
+  }
+
   const handleAccountClick = (acc: Account) => {
       if (acc.type === 'SHARED') {
           setSelectedSharedAccount(acc);
       } else {
-          // Default behavior on card click: Go to History
           onSelectAccount(acc.id);
       }
   }
@@ -402,235 +500,366 @@ const CashRegister: React.FC<CashRegisterProps> = ({
   }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-20 w-full" onClick={() => setActiveMenuAccountId(null)}>
+    <div className="space-y-8 animate-fade-in pb-20 w-full max-w-7xl mx-auto px-4" onClick={() => setActiveMenuAccountId(null)}>
+      {/* Header */}
+      <div className="flex justify-between items-center pt-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white shadow-lg">
+            {ICONS.Wallet}
+          </div>
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-indigo-800 bg-clip-text text-transparent">
+            Мои Счета
+          </h2>
+        </div>
 
-      <div className="flex justify-between items-center pt-4">
-        <h3 className="font-bold text-slate-700">Мои Счета</h3>
         {isManager && (
-            <button
-                onClick={() => setIsAdding(true)}
-                className="text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-100"
-            >
-                + Новый счет
-            </button>
+          <button
+            onClick={() => setIsAdding(true)}
+            className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-lg shadow-indigo-200"
+          >
+            <span className="text-lg">{ICONS.Plus}</span>
+            <span>Новый счет</span>
+          </button>
         )}
       </div>
 
+      {/* Modals */}
       {isAdding && (
-          <CreateAccountModal
-            onClose={() => setIsAdding(false)}
-            onSubmit={handleCreateAccount}
-            investors={investors}
-          />
+        <CreateAccountModal
+          onClose={() => setIsAdding(false)}
+          onSubmit={handleCreateAccount}
+          investors={investors}
+        />
       )}
 
       {editingAccount && onUpdateAccount && (
-          <EditAccountModal
-            account={editingAccount}
-            onClose={() => setEditingAccount(null)}
-            onUpdate={onUpdateAccount}
-          />
+        <EditAccountModal
+          account={editingAccount}
+          onClose={() => setEditingAccount(null)}
+          onUpdate={onUpdateAccount}
+        />
       )}
 
       {/* Account Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {accounts.map(acc => (
-          <div
-            key={acc.id}
-            className="bg-white p-5 rounded-2xl shadow-sm relative overflow-hidden group hover:shadow-md transition-all flex flex-col"
-            onClick={() => handleAccountClick(acc)}
-          >
-            <div>
-                {acc.type === 'MAIN' && (
-                    <span className="absolute top-3 left-3 bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                        ОСНОВНОЙ
-                    </span>
-                )}
-                {acc.type === 'SHARED' && (
-                    <span className="absolute top-3 left-3 bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                        {ICONS.Users} ОБЩИЙ
-                    </span>
-                )}
+      {accounts.length === 0 ? (
+        <div className="bg-gradient-to-br from-slate-50 to-indigo-50 rounded-3xl p-12 text-center border-2 border-dashed border-indigo-200">
+          <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+            <span className="text-3xl text-indigo-400">{ICONS.Wallet}</span>
+          </div>
+          <h3 className="text-xl font-bold text-slate-800 mb-2">Нет созданных счетов</h3>
+          <p className="text-slate-500 mb-6">Создайте первый счет для начала работы</p>
+          {isManager && (
+            <button
+              onClick={() => setIsAdding(true)}
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-6 py-3 rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-lg"
+            >
+              <span>{ICONS.Plus}</span>
+              <span>Создать счет</span>
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {accounts.map(acc => (
+            <div
+              key={acc.id}
+              className="group relative bg-white rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer transform hover:-translate-y-1"
+              onClick={() => handleAccountClick(acc)}
+            >
+              {/* Background Gradient */}
+              <div className={`absolute inset-0 bg-gradient-to-br ${getAccountTypeColor(acc.type)} opacity-0 group-hover:opacity-5 transition-opacity`}></div>
 
-                {/* Actions Menu Button */}
-                <button
-                    onClick={(e) => handleMenuClick(e, acc.id)}
-                    className="absolute top-3 right-3 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors z-20"
-                >
-                    {ICONS.More}
-                </button>
+              {/* Top Accent */}
+              <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${getAccountTypeColor(acc.type)}`}></div>
 
-                {/* Dropdown Menu */}
-                {activeMenuAccountId === acc.id && (
-                    <div className="absolute right-3 top-10 bg-white shadow-xl border border-slate-100 rounded-xl z-30 w-48 overflow-hidden animate-fade-in" onClick={e => e.stopPropagation()}>
+              <div className="relative p-6">
+                {/* Type Badge */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r ${getAccountTypeColor(acc.type)} text-white shadow-sm`}>
+                    {acc.type === 'SHARED' && <span className="text-xs">{ICONS.Users}</span>}
+                    {getAccountTypeLabel(acc.type)}
+                  </div>
+
+                  {/* Menu Button */}
+                  <div className="relative z-20">
+                    <button
+                      onClick={(e) => handleMenuClick(e, acc.id)}
+                      className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                    >
+                      {ICONS.More}
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {activeMenuAccountId === acc.id && (
+                      <div className="absolute right-0 top-10 bg-white shadow-xl rounded-2xl border border-slate-100 z-30 w-48 overflow-hidden animate-fade-in">
                         <button
-                            onClick={() => onSelectAccount(acc.id)}
-                            className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                          onClick={(e) => { e.stopPropagation(); onSelectAccount(acc.id); }}
+                          className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
                         >
-                            <span className="text-slate-400 scale-90">{ICONS.List}</span> История
+                          <span className="text-slate-400">{ICONS.List}</span>
+                          История
                         </button>
                         {isManager && onUpdateAccount && (
-                            <button
-                                onClick={() => { setEditingAccount(acc); setActiveMenuAccountId(null); }}
-                                className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                            >
-                                <span className="text-slate-400 scale-90">{ICONS.Edit}</span> Редактировать
-                            </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setEditingAccount(acc); setActiveMenuAccountId(null); }}
+                            className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-t border-slate-50"
+                          >
+                            <span className="text-slate-400">{ICONS.Edit}</span>
+                            Редактировать
+                          </button>
                         )}
                         {isManager && acc.type !== 'MAIN' && (
-                            <button
-                                onClick={() => { onSetMainAccount(acc.id); setActiveMenuAccountId(null); }}
-                                className="w-full text-left px-4 py-3 text-sm text-indigo-600 hover:bg-slate-50 flex items-center gap-2 border-t border-slate-50"
-                            >
-                                <span className="scale-90">{ICONS.Check}</span> Сделать основным
-                            </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onSetMainAccount(acc.id); setActiveMenuAccountId(null); }}
+                            className="w-full text-left px-4 py-3 text-sm text-indigo-600 hover:bg-slate-50 flex items-center gap-3 transition-colors border-t border-slate-50"
+                          >
+                            <span>{ICONS.Check}</span>
+                            Сделать основным
+                          </button>
                         )}
-                    </div>
-                )}
-
-                <div className="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity pointer-events-none">
-                   <div className="scale-150 text-indigo-600">{ICONS.Wallet}</div>
-                </div>
-                <div className="relative z-10 mt-6">
-                    <p className="text-sm font-medium text-slate-500 mb-1 flex items-center gap-1">
-                        {getAccountTypeLabel(acc.type)}
-                    </p>
-                    <h3 className="font-bold text-slate-800 text-lg pr-8">{acc.name}</h3>
-                    <p className="text-2xl font-bold text-indigo-600 mt-2">
-                        {(accountBalances[acc.id] || 0).toLocaleString()} ₽
-                    </p>
-                    {acc.type === 'SHARED' && (
-                        <div className="mt-2 flex -space-x-2 overflow-hidden">
-                            {acc.partners?.slice(0, 4).map((pid, idx) => (
-                                <div key={pid} className="inline-block h-6 w-6 rounded-full ring-2 ring-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                                    {investors.find(i => i.id === pid)?.name.charAt(0)}
-                                </div>
-                            ))}
-                            {(acc.partners?.length || 0) > 4 && (
-                                <div className="inline-block h-6 w-6 rounded-full ring-2 ring-white bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                                    +{(acc.partners?.length || 0) - 4}
-                                </div>
-                            )}
-                        </div>
+                      </div>
                     )}
-                </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {isManager && (
-        <div className="space-y-4 pt-4 border-t border-slate-100 mt-6">
-            <div className="flex justify-between items-center">
-                <h3 className="font-bold text-slate-800 px-1">Моя прибыль (Личные счета)</h3>
-            </div>
-
-            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 space-y-3">
-                {/* Account Filter */}
-                <div>
-                    <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Фильтр по счету</label>
-                    <select
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm text-slate-700 font-medium"
-                        value={profitFilterAccountId}
-                        onChange={e => setProfitFilterAccountId(e.target.value)}
-                    >
-                        <option value="ALL">Все счета</option>
-                        {accounts.filter(a => a.type !== 'SHARED').map(acc => (
-                            <option key={acc.id} value={acc.id}>{acc.name}</option>
-                        ))}
-                    </select>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                    <div className="relative">
-                        <input
-                            type="date"
-                            className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white text-slate-900 font-medium"
-                            value={myProfitPeriod.start}
-                            onChange={e => setMyProfitPeriod(p => ({...p, start: e.target.value}))}
-                        />
-                        {!myProfitPeriod.start && <span className="absolute left-2 top-2 text-xs text-slate-400 pointer-events-none">Начало</span>}
+                {/* Account Info */}
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="font-bold text-xl text-slate-800 mb-1">{acc.name}</h3>
+                    <p className="text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+                      {(accountBalances[acc.id] || 0).toLocaleString()} ₽
+                    </p>
+                  </div>
+
+                  {/* Partners Avatars for Shared Accounts */}
+                  {acc.type === 'SHARED' && acc.partners && acc.partners.length > 0 && (
+                    <div className="flex items-center justify-between">
+                      <div className="flex -space-x-2 overflow-hidden">
+                        {acc.partners.slice(0, 4).map((pid, idx) => {
+                          const investor = investors.find(i => i.id === pid);
+                          const colors = ['bg-indigo-500', 'bg-purple-500', 'bg-pink-500', 'bg-amber-500'];
+                          return (
+                            <div
+                              key={pid}
+                              className={`inline-flex h-8 w-8 rounded-full ${colors[idx % colors.length]} ring-2 ring-white items-center justify-center text-white text-xs font-bold shadow-sm`}
+                              title={investor?.name}
+                            >
+                              {investor?.name?.charAt(0) || '?'}
+                            </div>
+                          );
+                        })}
+                        {(acc.partners.length) > 4 && (
+                          <div className="inline-flex h-8 w-8 rounded-full bg-slate-100 ring-2 ring-white items-center justify-center text-xs font-bold text-slate-600">
+                            +{acc.partners.length - 4}
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-xs text-slate-400">{acc.partners.length} участников</span>
                     </div>
-                    <div className="relative">
-                        <input
-                            type="date"
-                            className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white text-slate-900 font-medium"
-                            value={myProfitPeriod.end}
-                            onChange={e => setMyProfitPeriod(p => ({...p, end: e.target.value}))}
-                        />
-                        {!myProfitPeriod.end && <span className="absolute left-2 top-2 text-xs text-slate-400 pointer-events-none">Конец</span>}
-                    </div>
+                  )}
                 </div>
-                {(!myProfitPeriod.start && !myProfitPeriod.end) && (
-                    <p className="text-[10px] text-center text-slate-400">Показаны данные за все время</p>
-                )}
+              </div>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-                    <h3 className="font-bold text-sm text-slate-800 mb-1">Общая ожидаемая прибыль</h3>
-                    <p className="text-xs text-slate-500 mb-2">С активных договоров (фильтр)</p>
-                    <p className="text-2xl font-bold text-indigo-800">{calculatedExpectedProfit.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽</p>
-                </div>
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-                    <h3 className="font-bold text-sm text-slate-800 mb-1">Полученная прибыль</h3>
-                    <p className="text-xs text-slate-500 mb-2">За выбранный период</p>
-                    <p className="text-2xl font-bold text-emerald-800">{totalManagerProfitEarned.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽</p>
-                </div>
-                 <div onClick={() => setShowProfitDetails(true)} className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 cursor-pointer hover:bg-slate-50">
-                    <h3 className="font-bold text-sm text-slate-800 mb-1">Фактический баланс</h3>
-                    <p className="text-xs text-slate-500 mb-2">Получено - Выведено</p>
-                    <p className="text-2xl font-bold text-emerald-800">{managerProfitBalance.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽</p>
-                </div>
-            </div>
+          ))}
         </div>
       )}
 
-       {showProfitDetails && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowProfitDetails(false)}>
-              <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
-                  <div className="p-5 border-b border-slate-200"><h3 className="text-lg font-bold text-slate-800">Детализация моей прибыли</h3><p className="text-sm text-slate-500">Общий баланс: <span className="font-bold text-emerald-600">{managerProfitBalance.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽</span></p></div>
-
-                  <div className="flex border-b border-slate-200 px-2">
-                      <button onClick={() => setProfitDetailsTab('accruals')} className={`flex-1 py-3 text-sm font-semibold transition-colors ${profitDetailsTab === 'accruals' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-500'}`}>Начисления</button>
-                      <button onClick={() => setProfitDetailsTab('payouts')} className={`flex-1 py-3 text-sm font-semibold transition-colors ${profitDetailsTab === 'payouts' ? 'text-red-600 border-b-2 border-red-600' : 'text-slate-500'}`}>Выплаты</button>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto p-5">
-                      {profitDetailsTab === 'accruals' && (
-                          <div className="animate-fade-in space-y-2">
-                              {managerProfitAccruals.length === 0 ? <p className="text-center text-slate-400 py-4">Начислений нет за этот период</p> : managerProfitAccruals.map(p => (
-                                  <div key={p.id} className="flex justify-between items-center text-sm p-2 bg-emerald-50 rounded-lg">
-                                      <div className="flex flex-col"><span className="text-slate-800">{p.source}</span><span className="text-xs text-slate-400">{new Date(p.date).toLocaleDateString()}</span></div>
-                                      <span className="font-bold text-emerald-600">+{ p.amount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽</span>
-                                  </div>
-                              ))}
-                          </div>
-                      )}
-                      {profitDetailsTab === 'payouts' && (
-                           <div className="animate-fade-in space-y-2">
-                              {managerProfitPayouts.length === 0 ? <p className="text-center text-slate-400 py-4">Выплат нет за этот период</p> : managerProfitPayouts.map(e => (
-                                  <div key={e.id} className="flex justify-between items-center text-sm p-2 bg-red-50 rounded-lg">
-                                      <div className="flex flex-col"><span className="text-slate-800">{e.title}</span><span className="text-xs text-slate-400">{new Date(e.date).toLocaleDateString()}</span></div>
-                                      <span className="font-bold text-red-600">-{Number(e.amount).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽</span>
-                                  </div>
-                              ))}
-                          </div>
-                      )}
-                  </div>
-                  <div className="p-4 border-t border-slate-100"><button onClick={() => setShowProfitDetails(false)} className="w-full py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200">Закрыть</button></div>
-              </div>
+      {/* Profit Section for Manager */}
+      {isManager && (
+        <div className="space-y-6 pt-8">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-lg">
+              {ICONS.TrendingUp}
+            </div>
+            <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-emerald-800 bg-clip-text text-transparent">
+              Моя прибыль
+            </h3>
           </div>
+
+          {/* Filters */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Фильтр по счету</label>
+                <select
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                  value={profitFilterAccountId}
+                  onChange={e => setProfitFilterAccountId(e.target.value)}
+                >
+                  <option value="ALL">Все счета</option>
+                  {accounts.filter(a => a.type !== 'SHARED').map(acc => (
+                    <option key={acc.id} value={acc.id}>{acc.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Начало периода</label>
+                <input
+                  type="date"
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                  value={myProfitPeriod.start}
+                  onChange={e => setMyProfitPeriod(p => ({...p, start: e.target.value}))}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Конец периода</label>
+                <input
+                  type="date"
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                  value={myProfitPeriod.end}
+                  onChange={e => setMyProfitPeriod(p => ({...p, end: e.target.value}))}
+                />
+              </div>
+            </div>
+
+            {(!myProfitPeriod.start && !myProfitPeriod.end) && (
+              <p className="text-xs text-center text-slate-400 bg-slate-50 py-2 rounded-lg">
+                Показаны данные за все время
+              </p>
+            )}
+          </div>
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-6 rounded-2xl">
+              <p className="text-sm font-medium text-indigo-600 mb-2">Ожидаемая прибыль</p>
+              <p className="text-2xl font-bold text-indigo-900">
+                {calculatedExpectedProfit.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽
+              </p>
+              <p className="text-xs text-indigo-500 mt-2">С активных договоров</p>
+            </div>
+
+            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-6 rounded-2xl">
+              <p className="text-sm font-medium text-emerald-600 mb-2">Полученная прибыль</p>
+              <p className="text-2xl font-bold text-emerald-900">
+                {totalManagerProfitEarned.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽
+              </p>
+              <p className="text-xs text-emerald-500 mt-2">За выбранный период</p>
+            </div>
+
+            <div
+              onClick={() => setShowProfitDetails(true)}
+              className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-2xl cursor-pointer hover:from-slate-700 hover:to-slate-800 transition-all transform hover:scale-105"
+            >
+              <p className="text-sm font-medium text-slate-300 mb-2">Доступно к выводу</p>
+              <p className="text-2xl font-bold text-white">
+                {managerProfitBalance.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽
+              </p>
+              <p className="text-xs text-slate-400 mt-2">Нажмите для деталей</p>
+            </div>
+          </div>
+        </div>
       )}
 
+      {/* Profit Details Modal */}
+      {showProfitDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/90 to-indigo-900/90 backdrop-blur-sm animate-fade-in" onClick={() => setShowProfitDetails(false)}>
+          <div className="bg-white/95 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl flex flex-col max-h-[80vh] border border-white/20" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-slate-100">
+              <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-indigo-800 bg-clip-text text-transparent">Детализация прибыли</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Баланс: <span className="font-bold text-emerald-600">{managerProfitBalance.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽</span>
+              </p>
+            </div>
+
+            <div className="flex border-b border-slate-100 p-1">
+              <button
+                onClick={() => setProfitDetailsTab('accruals')}
+                className={`flex-1 py-3 text-sm font-semibold rounded-xl transition-all ${
+                  profitDetailsTab === 'accruals' 
+                    ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md' 
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Начисления
+              </button>
+              <button
+                onClick={() => setProfitDetailsTab('payouts')}
+                className={`flex-1 py-3 text-sm font-semibold rounded-xl transition-all ${
+                  profitDetailsTab === 'payouts' 
+                    ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-md' 
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Выплаты
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {profitDetailsTab === 'accruals' && (
+                <div className="space-y-2 animate-fade-in">
+                  {managerProfitAccruals.length === 0 ? (
+                    <div className="text-center py-8">
+                      <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                        <span className="text-2xl text-slate-400">{ICONS.TrendingUp}</span>
+                      </div>
+                      <p className="text-slate-500">Нет начислений за этот период</p>
+                    </div>
+                  ) : (
+                    managerProfitAccruals.map(p => (
+                      <div key={p.id} className="flex justify-between items-center p-3 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition-all">
+                        <div>
+                          <p className="font-medium text-slate-800 text-sm">{p.source}</p>
+                          <p className="text-xs text-slate-500">{new Date(p.date).toLocaleDateString('ru-RU')}</p>
+                        </div>
+                        <span className="font-bold text-emerald-600">
+                          +{p.amount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {profitDetailsTab === 'payouts' && (
+                <div className="space-y-2 animate-fade-in">
+                  {managerProfitPayouts.length === 0 ? (
+                    <div className="text-center py-8">
+                      <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                        <span className="text-2xl text-slate-400">{ICONS.Wallet}</span>
+                      </div>
+                      <p className="text-slate-500">Нет выплат за этот период</p>
+                    </div>
+                  ) : (
+                    managerProfitPayouts.map(e => (
+                      <div key={e.id} className="flex justify-between items-center p-3 bg-red-50 rounded-xl hover:bg-red-100 transition-all">
+                        <div>
+                          <p className="font-medium text-slate-800 text-sm">{e.title}</p>
+                          <p className="text-xs text-slate-500">{new Date(e.date).toLocaleDateString('ru-RU')}</p>
+                        </div>
+                        <span className="font-bold text-red-600">
+                          -{Number(e.amount).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50">
+              <button
+                onClick={() => setShowProfitDetails(false)}
+                className="w-full py-3.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-100 transition-all"
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shared Account Details Modal */}
       {selectedSharedAccount && (
-          <SharedAccountDetails 
-            account={selectedSharedAccount}
-            sales={sales}
-            expenses={expenses}
-            investors={investors}
-            onClose={() => setSelectedSharedAccount(null)}
-          />
+        <SharedAccountDetails
+          account={selectedSharedAccount}
+          sales={sales}
+          expenses={expenses}
+          investors={investors}
+          onClose={() => setSelectedSharedAccount(null)}
+        />
       )}
     </div>
   );

@@ -88,7 +88,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
     {
       name: "Стандарт",
       key: "STANDARD",
-      basePrice: 100,
+      basePrice: 1490,
       features: [
         "Все функции Старт",
         "5 инвесторов",
