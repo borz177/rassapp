@@ -1,5 +1,7 @@
 
 require('dotenv').config({ path: '/var/www/env/rassapp.env' });
+console.log('YOOKASSA_SHOP_ID loaded:', process.env.YOOKASSA_SHOP_ID ? '✅ Yes' : '❌ No');
+console.log('YOOKASSA_SECRET_KEY loaded:', process.env.YOOKASSA_SECRET_KEY ? '✅ Yes' : '❌ No');
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
