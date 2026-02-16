@@ -146,9 +146,15 @@ export interface WhatsAppSettings {
   reminderDays: number[];
 }
 
+export interface TermRate {
+    months: number;
+    rate: number;
+}
+
 export interface CalculatorSettings {
     defaultInterestRate: number;
     maxMonths: number;
+    termRates?: TermRate[]; // Array of specific rates for specific terms
 }
 
 export interface AppSettings {
