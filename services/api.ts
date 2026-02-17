@@ -202,13 +202,26 @@ export const api = {
 
     // --- INTEGRATIONS ---
     createWhatsAppInstance: async (): Promise<{ idInstance: string, apiTokenInstance: string }> => {
-        const res = await fetch(`${API_URL}/integrations/whatsapp/create`, {
-            method: 'POST',
-            headers: getAuthHeader()
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.msg || 'Ошибка создания инстанса');
-        return data;
+        try {
+            const res = await fetch(`${API_URL}/integrations/whatsapp/create`, {
+                method: 'POST',
+                headers: getAuthHeader()
+            });
+
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.msg || data.details || 'Ошибка создания инстанса');
+                return data;
+            } else {
+                const text = await res.text();
+                console.error("Non-JSON response from server:", text);
+                throw new Error(`Server returned non-JSON error: ${res.status} ${res.statusText}`);
+            }
+        } catch (error: any) {
+            console.error("Create WhatsApp Instance Error:", error);
+            throw error;
+        }
     },
 
     // --- ADMIN METHODS ---

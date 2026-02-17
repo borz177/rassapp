@@ -152,6 +152,7 @@ const auth = (req, res, next) => {
     req.user = decoded;
     next();
   } catch (e) {
+    console.error("Auth Token Error:", e.message);
     res.status(400).json({ msg: 'Token is not valid' });
   }
 };
@@ -166,8 +167,6 @@ const adminAuth = (req, res, next) => {
     });
 };
 
-
-app.use(express.static('/var/www/rassrochka.pro'));
 // --- HELPER FUNCTIONS ---
 
 const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
@@ -202,6 +201,43 @@ const sendEmail = async (email, subject, text) => {
 // Health Check
 app.get('/', (req, res) => {
     res.send('InstallMate API is running');
+});
+
+// --- INTEGRATIONS (Placed explicitly high to debug routing) ---
+
+app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
+    console.log("Entering WhatsApp Create Route");
+    const partnerToken = process.env.GREEN_API_PARTNER_TOKEN ? process.env.GREEN_API_PARTNER_TOKEN.trim() : null;
+
+    if (!partnerToken) {
+        console.error("Partner Token Missing on Server");
+        return res.status(500).json({ msg: 'Partner Token not configured on server' });
+    }
+
+    try {
+        console.log(`Requesting Green API with token: ${partnerToken.substring(0, 5)}...`);
+        // Call Green API Partner endpoint
+        const response = await axios.post('https://api.green-api.com/partner/createInstance', {
+            type: "whatsapp",
+            mark: `User ${req.user.email} (ID: ${req.user.id})`
+        }, {
+            headers: {
+                'Authorization': `Bearer ${partnerToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        console.log("Green API Success:", response.data);
+        res.json(response.data);
+
+    } catch (error) {
+        const errorMsg = error.response?.data || error.message;
+        console.error('Green API Create Instance Error:', JSON.stringify(errorMsg));
+        res.status(500).json({
+            msg: 'Failed to create WhatsApp instance',
+            details: typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg
+        });
+    }
 });
 
 // 1. Auth Routes
@@ -686,33 +722,6 @@ app.post('/api/admin/set-subscription', adminAuth, async (req, res) => {
     }
 });
 
-// --- INTEGRATIONS (WhatsApp Partner API) ---
-app.post('/api/whatsapp/create-instance', auth, async (req, res) => {
-  const partnerToken = process.env.GREEN_API_PARTNER_TOKEN;
-
-  if (!partnerToken) {
-    return res.status(500).json({ msg: 'Partner token not configured' });
-  }
-
-  try {
-    const url = `https://api.green-api.com/partner/createInstance/${partnerToken}`;
-
-    const response = await axios.post(url, {
-      name: `User ${req.user.email}`,
-      // webhookUrl: `${process.env.BASE_URL}/api/whatsapp/webhook`,
-      // другие параметры по желанию
-    }, {
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-    const { idInstance, apiTokenInstance } = response.data;
-    res.json({ idInstance, apiTokenInstance });
-
-  } catch (error) {
-    console.error('Green API Create Instance Error:', error.response?.data || error.message);
-    res.status(500).json({ msg: 'Failed to create WhatsApp instance' });
-  }
-});
 // --- PAYMENTS (YooKassa) ---
 
 app.post('/api/payment/create', auth, async (req, res) => {
