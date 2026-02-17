@@ -26,7 +26,7 @@ import Integrations from './components/Integrations';
 import Calculator from './components/Calculator';
 import Auth from './components/Auth';
 import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan } from './types';
-import { getAppSettings } from './services/storage';
+import { getAppSettings, saveAppSettings } from './services/storage';
 import { api } from './services/api';
 import { ICONS } from './constants';
 
@@ -133,6 +133,7 @@ const App: React.FC = () => {
 
           if (data.settings) {
               setAppSettings(data.settings);
+              saveAppSettings(data.settings); // Sync server data to local storage
           }
       } catch (error) {
           console.error("Failed to load data", error);
@@ -232,9 +233,13 @@ const App: React.FC = () => {
 
   const handleUpdateSettings = async (newSettings: AppSettings) => {
       setAppSettings(newSettings);
+      // Explicitly save to local storage immediately
+      saveAppSettings(newSettings);
+
       if (user) {
           const settingsId = `settings_${user.id}`;
           try {
+              // Save to database
               await api.saveItem('settings', { id: settingsId, ...newSettings });
           } catch (e) {
               console.error("Failed to save settings to API", e);
