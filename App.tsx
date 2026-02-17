@@ -100,7 +100,7 @@ const App: React.FC = () => {
             const freshUser = await api.getMe();
             setUser(freshUser);
             localStorage.setItem('user', JSON.stringify(freshUser));
-            loadData();
+            loadData(freshUser); // Pass fresh user to merge settings
         } catch (err) {
             console.error('Auth failed, logging out', err);
             localStorage.removeItem('token');
@@ -110,13 +110,14 @@ const App: React.FC = () => {
         } else {
         setIsLoading(false);
         }
+        // Load default local settings first
         setAppSettings(getAppSettings());
     };
 
     initApp();
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (currentUser?: User) => {
       if (customers.length === 0 && sales.length === 0) {
           setIsLoading(true);
       }
@@ -131,10 +132,19 @@ const App: React.FC = () => {
           setPartnerships(data.partnerships);
           setEmployees(data.employees);
 
-          if (data.settings) {
-              setAppSettings(data.settings);
-              saveAppSettings(data.settings); // Sync server data to local storage
+          let loadedSettings = data.settings || getAppSettings();
+
+          // Merge WhatsApp settings from User Profile if available
+          const activeUser = currentUser || user;
+          if (activeUser?.whatsapp_settings) {
+              loadedSettings = {
+                  ...loadedSettings,
+                  whatsapp: activeUser.whatsapp_settings
+              };
           }
+
+          setAppSettings(loadedSettings);
+          saveAppSettings(loadedSettings); // Sync server data to local storage
       } catch (error) {
           console.error("Failed to load data", error);
       } finally {
@@ -177,7 +187,7 @@ const App: React.FC = () => {
 
   const handleAuthSuccess = async (loggedInUser: User) => {
       setUser(loggedInUser);
-      await loadData();
+      await loadData(loggedInUser);
   };
 
   const handleAction = (action: string) => {
@@ -233,14 +243,23 @@ const App: React.FC = () => {
 
   const handleUpdateSettings = async (newSettings: AppSettings) => {
       setAppSettings(newSettings);
-      // Explicitly save to local storage immediately
-      saveAppSettings(newSettings);
+      saveAppSettings(newSettings); // Local Sync
 
       if (user) {
-          const settingsId = `settings_${user.id}`;
           try {
-              // Save to database
+              // 1. Save General Settings to DB (companyName, calculator)
+              // Exclude whatsapp from general settings blob if we want to keep it clean,
+              // or keep it for backward compatibility but authoritative source is User table.
+              // For now, let's update general settings as usual.
+              const settingsId = `settings_${user.id}`;
               await api.saveItem('settings', { id: settingsId, ...newSettings });
+
+              // 2. Save WhatsApp Settings to User Profile if they exist
+              if (newSettings.whatsapp) {
+                  await api.saveWhatsAppSettings(newSettings.whatsapp);
+                  // Update local user state
+                  setUser(prev => prev ? ({ ...prev, whatsapp_settings: newSettings.whatsapp }) : null);
+              }
           } catch (e) {
               console.error("Failed to save settings to API", e);
           }

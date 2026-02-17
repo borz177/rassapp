@@ -66,6 +66,7 @@ const initDB = async () => {
         allowed_investor_ids JSONB,
         phone TEXT,
         subscription JSONB,
+        whatsapp_settings JSONB,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -77,6 +78,9 @@ const initDB = async () => {
         BEGIN 
             IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='subscription') THEN 
                 ALTER TABLE users ADD COLUMN subscription JSONB; 
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='whatsapp_settings') THEN 
+                ALTER TABLE users ADD COLUMN whatsapp_settings JSONB; 
             END IF; 
         END $$;
     `);
@@ -217,14 +221,19 @@ app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
 
     try {
         console.log(`Requesting Green API with token: ${partnerToken.substring(0, 5)}... Phone: ${phoneNumber}`);
+
+        // Ensure phone number is clean
+        const cleanPhone = phoneNumber ? phoneNumber.replace(/\D/g, '') : '';
+
         // Call Green API Partner endpoint
         const response = await axios.post('https://api.green-api.com/partner/createInstance', {
             type: "whatsapp",
-            mark: `User ${req.user.email} (ID: ${req.user.id}) ${phoneNumber ? `[Phone: ${phoneNumber}]` : ''}`
+            mark: `User ${req.user.email} (ID: ${req.user.id}) ${cleanPhone ? `[Phone: ${cleanPhone}]` : ''}`
         }, {
             headers: {
                 'Authorization': `Bearer ${partnerToken}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'User-Agent': 'InstallMate/1.0 (NodeJS)' // Important: Some WAFs block default axios User-Agent
             }
         });
 
@@ -232,11 +241,25 @@ app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
         res.json(response.data);
 
     } catch (error) {
-        const errorMsg = error.response?.data || error.message;
-        console.error('Green API Create Instance Error:', JSON.stringify(errorMsg));
+        // Safe error logging
+        let errorDetails = error.message;
+        if (error.response) {
+            console.error('Green API Response Status:', error.response.status);
+            console.error('Green API Response Headers:', JSON.stringify(error.response.headers));
+            errorDetails = error.response.data;
+
+            // Handle HTML response (usually 403/500 from Nginx)
+            if (typeof errorDetails === 'string' && errorDetails.trim().startsWith('<html')) {
+                console.error('Green API returned HTML error (likely WAF or 403 Forbidden):', errorDetails.substring(0, 200)); // Log only start
+                errorDetails = `Green API returned HTML error (${error.response.status}). Check Partner Token and permissions.`;
+            }
+        } else {
+            console.error('Green API Network Error:', error.message);
+        }
+
         res.status(500).json({
             msg: 'Failed to create WhatsApp instance',
-            details: typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg
+            details: typeof errorDetails === 'object' ? JSON.stringify(errorDetails) : errorDetails
         });
     }
 });
@@ -418,7 +441,8 @@ app.post('/api/auth/login', async (req, res) => {
             managerId: user.manager_id,
             permissions: user.permissions,
             allowedInvestorIds: user.allowed_investor_ids,
-            subscription: user.subscription
+            subscription: user.subscription,
+            whatsapp_settings: user.whatsapp_settings
         }
     });
   } catch (err) {
@@ -432,7 +456,7 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/auth/me', auth, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, name, email, role, manager_id, subscription FROM users WHERE id = $1',
+      'SELECT id, name, email, role, manager_id, subscription, whatsapp_settings FROM users WHERE id = $1',
       [req.user.id]
     );
     if (result.rows.length === 0) {
@@ -446,12 +470,27 @@ app.get('/api/auth/me', auth, async (req, res) => {
       email: user.email,
       role: user.role,
       managerId: user.manager_id,
-      subscription: user.subscription
+      subscription: user.subscription,
+      whatsapp_settings: user.whatsapp_settings
     });
   } catch (err) {
     console.error('Me Error:', err);
     res.status(500).send('Server error');
   }
+});
+
+// Update WhatsApp Settings
+app.post('/api/user/whatsapp', auth, async (req, res) => {
+    const settings = req.body;
+    try {
+        await pool.query('UPDATE users SET whatsapp_settings = $1, updated_at = NOW() WHERE id = $2',
+            [JSON.stringify(settings), req.user.id]
+        );
+        res.json({ success: true });
+    } catch (e) {
+        console.error("WhatsApp settings update error:", e);
+        res.status(500).send('Server Error');
+    }
 });
 
 
@@ -530,40 +569,31 @@ app.get('/api/data', auth, async (req, res) => {
 
 // 3. CRUD Routes for Entities
 app.post('/api/data/:type', auth, async (req, res) => {
-  try {
-    const { type } = req.params;
-    const itemData = req.body;
-    const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.managerId : req.user.id;
+    try {
+        const { type } = req.params;
+        const itemData = req.body;
+        const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.managerId : req.user.id;
 
-    const id = itemData.id;
+        const id = itemData.id;
 
-    // Upsert в data_items
-    await pool.query(`
-      INSERT INTO data_items (id, user_id, type, data, updated_at)
-      VALUES ($1, $2, $3, $4, NOW())
-      ON CONFLICT (id) 
-      DO UPDATE SET 
-        data = EXCLUDED.data, 
-        type = EXCLUDED.type,
-        user_id = EXCLUDED.user_id,
-        updated_at = NOW();
-    `, [id, targetUserId, type, JSON.stringify(itemData)]);
+        // Upsert using ON CONFLICT (Postgres specific)
+        await pool.query(`
+            INSERT INTO data_items (id, user_id, type, data, updated_at)
+            VALUES ($1, $2, $3, $4, NOW())
+            ON CONFLICT (id) 
+            DO UPDATE SET 
+                data = EXCLUDED.data, 
+                type = EXCLUDED.type,
+                user_id = EXCLUDED.user_id,
+                updated_at = NOW();
+        `, [id, targetUserId, type, JSON.stringify(itemData)]);
 
-    // 🔥 Обновляем whatsapp_settings в users, если это настройки
-    if (type === 'settings') {
-      // Извлекаем WhatsApp-настройки (может быть undefined — это нормально)
-      const whatsappSettings = itemData.whatsapp || null;
-      await pool.query(
-        'UPDATE users SET whatsapp_settings = $1 WHERE id = $2',
-        [whatsappSettings ? JSON.stringify(whatsappSettings) : null, targetUserId]
-      );
+        // Return the saved data
+        res.json(itemData);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server Error');
     }
-
-    res.json(itemData);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Server Error');
-  }
 });
 
 app.delete('/api/data/:type/:id', auth, async (req, res) => {

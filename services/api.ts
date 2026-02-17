@@ -1,5 +1,5 @@
 
-import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings } from "../types";
+import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings } from "../types";
 
 // Helper to determine the API URL dynamically
 const getBaseUrl = () => {
@@ -118,6 +118,16 @@ export const api = {
         const data = await res.json();
         if (!res.ok) throw new Error('Failed to update subscription');
         return data.subscription;
+    },
+
+    // WhatsApp Settings
+    saveWhatsAppSettings: async (settings: WhatsAppSettings): Promise<void> => {
+        const res = await fetch(`${API_URL}/user/whatsapp`, {
+            method: 'POST',
+            headers: getAuthHeader(),
+            body: JSON.stringify(settings)
+        });
+        if (!res.ok) throw new Error('Failed to save WhatsApp settings');
     },
 
     // Payments

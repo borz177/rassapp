@@ -18,6 +18,15 @@ export interface UserPermissions {
   canDelete: boolean;
 }
 
+export interface WhatsAppSettings {
+  enabled: boolean;
+  idInstance: string;
+  apiTokenInstance: string;
+  reminderTime: string; // "09:00"
+  // Array of offsets: 0 = due date, -1 = 1 day before, 1 = 1 day after
+  reminderDays: number[];
+}
+
 export interface User {
   id: string;
   name: string;
@@ -29,6 +38,7 @@ export interface User {
   permissions?: UserPermissions; // Only for employees
   allowedInvestorIds?: string[]; // IDs of investors this employee can manage/see
   subscription?: UserSubscription; // New field
+  whatsapp_settings?: WhatsAppSettings; // Saved in users table
   // Admin specific optional fields
   salesCount?: number;
   lastLogin?: string;
@@ -135,15 +145,6 @@ export interface Sale {
   guarantorName?: string;
   guarantorPhone?: string;
   paymentPlan: Payment[];
-}
-
-export interface WhatsAppSettings {
-  enabled: boolean;
-  idInstance: string;
-  apiTokenInstance: string;
-  reminderTime: string; // "09:00"
-  // Array of offsets: 0 = due date, -1 = 1 day before, 1 = 1 day after
-  reminderDays: number[];
 }
 
 export interface TermRate {
