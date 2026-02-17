@@ -122,6 +122,17 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
       );
   };
 
+  const generateTimeOptions = () => {
+  const options = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 5) {
+      const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      options.push(timeStr);
+    }
+  }
+  return options;
+};
+
   return (
     <div className="space-y-6 animate-fade-in pb-20">
       <header className="flex items-center gap-3">
@@ -245,13 +256,17 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                               <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">
                                   Время отправки
                               </label>
-                              <input
-                                  type="time"
-                                  step={300} // ← 300 секунд = 5 минут
-                                  className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-slate-50"
+                              <select
                                   value={reminderTime}
                                   onChange={e => setReminderTime(e.target.value)}
-                              />
+                                  className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-slate-50"
+                              >
+                                  {generateTimeOptions().map(time => (
+                                      <option key={time} value={time}>
+                                          {time}
+                                      </option>
+                                  ))}
+                              </select>
                           </div>
                       </div>
                       <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Когда напоминать?</label>
