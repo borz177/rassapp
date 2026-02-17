@@ -1,23 +1,16 @@
-// whatsapp-reminders.js
+// whatsapp-reminders.js — ГИБРИДНЫЙ ПОДХОД (каждые 5 минут)
 require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 
 const { Pool } = require('pg');
 const axios = require('axios');
 
-// === Настройки ===
-const GREEN_API_BASE_URL = 'https://api.green-api.com'; // ← убраны пробелы
+const GREEN_API_BASE_URL = 'https://api.green-api.com';
 const LOG_PREFIX = '[WHATSAPP REMINDERS]';
 
-// === Инициализация БД ===
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-// === Вспомогательные функции ===
-
-/**
- * Отправка WhatsApp-сообщения через Green API
- */
 async function sendWhatsAppMessage(idInstance, apiTokenInstance, phone, message) {
   if (!phone || !message) return false;
 
@@ -49,31 +42,48 @@ async function sendWhatsAppMessage(idInstance, apiTokenInstance, phone, message)
   }
 }
 
-/**
- * Формирование сообщения о платеже
- */
 function buildPaymentMessage(sale, customer, payment, priorDebt, totalToPay, isDueToday, isOverdue) {
-  const dateStr = new Date(payment.date).toLocaleDateString('ru-RU');
-  let message = `Здравствуйте, ${customer.name}!`;
+  const dateStr = new Date(payment.date).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+
+  let titleEmoji = '🔔';
+  let titleText = 'Напоминание о платеже';
 
   if (isOverdue) {
-    message += ` У вас просрочен платёж по договору "${sale.productName}". Дата была: ${dateStr}. Сумма: ${payment.amount.toLocaleString()} ₽.`;
+    titleEmoji = '⚠️';
+    titleText = 'Просроченный платёж';
   } else if (isDueToday) {
-    message += ` Напоминаем, что сегодня (${dateStr}) день оплаты по договору "${sale.productName}". Сумма текущего платежа: ${payment.amount.toLocaleString()} ₽.`;
-  } else {
-    message += ` Напоминаем о предстоящем платеже по договору "${sale.productName}". Дата: ${dateStr}. Сумма: ${payment.amount.toLocaleString()} ₽.`;
+    titleEmoji = '📅';
+    titleText = 'Сегодня день оплаты';
   }
 
-  if (priorDebt > 0) {
-    message += `\n⚠️ Также есть долг за прошлые периоды: ${priorDebt.toLocaleString()} ₽.\n*Всего к оплате: ${totalToPay.toLocaleString()} ₽*.`;
+  let message = `${titleEmoji} *${titleText}*\n\n`;
+  message += `Здравствуйте, ${customer.name}!\n`;
+  message += `По договору *«${sale.productName}»* `;
+
+  if (isOverdue) {
+    message += `просрочен платёж от *${dateStr}*.`;
+  } else if (isDueToday) {
+    message += `сегодня, *${dateStr}*, необходимо внести платёж.`;
+  } else {
+    message += `ожидается платёж *${dateStr}*.`;
   }
+
+  message += `\n\n💰 *Сумма платежа:* ${payment.amount.toLocaleString()} ₽`;
+
+  if (priorDebt > 0) {
+    message += `\n❗ *Долг за прошлые периоды:* ${priorDebt.toLocaleString()} ₽`;
+    message += `\n💳 *Итого к оплате:* ${totalToPay.toLocaleString()} ₽`;
+  }
+
+  message += `\n\nБлагодарим за сотрудничество! 🙏`;
 
   return message;
 }
 
-/**
- * Обработка напоминаний для одного пользователя
- */
 async function processRemindersForUser(user) {
   const { id, whatsapp_settings } = user;
 
@@ -82,14 +92,18 @@ async function processRemindersForUser(user) {
   }
 
   const settings = whatsapp_settings;
-  const [targetHour] = settings.reminderTime.split(':').map(Number);
-  const currentHour = new Date().getHours();
+  const targetTime = settings.reminderTime; // "22:30"
 
-  if (currentHour !== targetHour) {
+  // Текущее время в формате HH:MM
+  const now = new Date();
+  const currentTime = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  // 🔥 ТОЧНОЕ СРАВНЕНИЕ ВРЕМЕНИ (с поддержкой 5-минутного интервала)
+  if (currentTime !== targetTime) {
     return;
   }
 
-  console.log(`${LOG_PREFIX} Обработка напоминаний для пользователя ${id} в ${settings.reminderTime}`);
+  console.log(`${LOG_PREFIX} Обработка напоминаний для пользователя ${id} в ${targetTime}`);
 
   const [salesRes, customersRes] = await Promise.all([
     pool.query('SELECT data FROM data_items WHERE user_id = $1 AND type = $2', [id, 'sales']),
@@ -117,15 +131,10 @@ async function processRemindersForUser(user) {
       paymentDate.setHours(0, 0, 0, 0);
       const daysUntilPayment = Math.ceil((paymentDate - today) / (1000 * 60 * 60 * 24));
 
-      // 🔥 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: правильное сопоставление diffDays → тип напоминания
       let reminderType;
-      if (daysUntilPayment < 0) {
-        reminderType = 1; // просрочка
-      } else if (daysUntilPayment === 0) {
-        reminderType = 0; // сегодня
-      } else if (daysUntilPayment > 0) {
-        reminderType = -1; // за день до
-      }
+      if (daysUntilPayment < 0) reminderType = 1;   // просрочка
+      else if (daysUntilPayment === 0) reminderType = 0; // сегодня
+      else if (daysUntilPayment > 0) reminderType = -1; // за день до
 
       if (!settings.reminderDays.includes(reminderType)) continue;
 
@@ -163,9 +172,8 @@ async function processRemindersForUser(user) {
   console.log(`${LOG_PREFIX} Завершено для пользователя ${id}: отправлено ${sentCount} напоминаний`);
 }
 
-// === Основная функция ===
 async function runReminders() {
-  console.log(`${LOG_PREFIX} Запуск ежечасной проверки напоминаний...`);
+  console.log(`${LOG_PREFIX} Запуск проверки напоминаний...`);
 
   try {
     const result = await pool.query(`
@@ -196,5 +204,4 @@ async function runReminders() {
   }
 }
 
-// === Запуск ===
 runReminders();

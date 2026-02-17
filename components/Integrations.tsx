@@ -242,13 +242,22 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                       </h4>
                       <div className="grid grid-cols-2 gap-4 mb-4">
                           <div>
-                              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Время отправки</label>
-                              <input type="time" className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-slate-50" value={reminderTime} onChange={e => setReminderTime(e.target.value)} />
+                              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">
+                                  Время отправки
+                              </label>
+                              <input
+                                  type="time"
+                                  step={300} // ← 300 секунд = 5 минут
+                                  className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-slate-50"
+                                  value={reminderTime}
+                                  onChange={e => setReminderTime(e.target.value)}
+                              />
                           </div>
                       </div>
                       <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Когда напоминать?</label>
                       <div className="flex flex-wrap gap-2">
-                          <button onClick={() => toggleDay(0)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(0) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>В день оплаты</button>
+                          <button onClick={() => toggleDay(0)}
+                                  className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(0) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>В день оплаты</button>
                           <button onClick={() => toggleDay(-1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(-1) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>За 1 день</button>
                           <button onClick={() => toggleDay(1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(1) ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-600 border-slate-200'}`}>При просрочке</button>
                       </div>
