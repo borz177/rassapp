@@ -207,6 +207,7 @@ app.get('/', (req, res) => {
 
 app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
     console.log("Entering WhatsApp Create Route");
+    const { phoneNumber } = req.body;
     const partnerToken = process.env.GREEN_API_PARTNER_TOKEN ? process.env.GREEN_API_PARTNER_TOKEN.trim() : null;
 
     if (!partnerToken) {
@@ -215,11 +216,11 @@ app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
     }
 
     try {
-        console.log(`Requesting Green API with token: ${partnerToken.substring(0, 5)}...`);
+        console.log(`Requesting Green API with token: ${partnerToken.substring(0, 5)}... Phone: ${phoneNumber}`);
         // Call Green API Partner endpoint
         const response = await axios.post('https://api.green-api.com/partner/createInstance', {
             type: "whatsapp",
-            mark: `User ${req.user.email} (ID: ${req.user.id})`
+            mark: `User ${req.user.email} (ID: ${req.user.id}) ${phoneNumber ? `[Phone: ${phoneNumber}]` : ''}`
         }, {
             headers: {
                 'Authorization': `Bearer ${partnerToken}`,

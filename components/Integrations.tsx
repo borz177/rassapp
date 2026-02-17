@@ -24,6 +24,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
 
   // Partner Integration State
   const [isCreatingInstance, setIsCreatingInstance] = useState(false);
+  const [inputPhone, setInputPhone] = useState('');
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'IDLE' | 'WAITING_SCAN' | 'AUTHORIZED'>('IDLE');
   const pollingRef = useRef<number | null>(null);
@@ -78,11 +79,15 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
   };
 
   const handleCreatePartnerInstance = async () => {
-      // No description needed, logic handled in backend
+      if (!inputPhone) {
+          alert("Пожалуйста, введите номер телефона, который будете подключать.");
+          return;
+      }
+
       setIsCreatingInstance(true);
       setQrCode(null);
 
-      const credentials = await createPartnerInstance();
+      const credentials = await createPartnerInstance(inputPhone);
 
       if (credentials) {
           setIdInstance(credentials.idInstance);
@@ -181,7 +186,18 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                           {!qrCode ? (
                               <>
                                   <h4 className="font-bold text-indigo-900 mb-2">Подключение устройства</h4>
-                                  <p className="text-xs text-indigo-700 mb-4">Нажмите кнопку ниже, чтобы сгенерировать QR-код для входа.</p>
+                                  <p className="text-xs text-indigo-700 mb-4">Укажите номер телефона, с которого будет идти рассылка, и нажмите кнопку для получения QR-кода.</p>
+
+                                  <div className="max-w-xs mx-auto mb-4">
+                                      <input
+                                        type="tel"
+                                        placeholder="79991234567"
+                                        className="w-full p-3 border border-indigo-200 rounded-xl outline-none focus:border-indigo-500 text-center bg-white"
+                                        value={inputPhone}
+                                        onChange={e => setInputPhone(e.target.value)}
+                                      />
+                                  </div>
+
                                   <button
                                     onClick={handleCreatePartnerInstance}
                                     disabled={isCreatingInstance}
@@ -200,6 +216,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                           ) : (
                               <div className="space-y-4 animate-fade-in">
                                   <h4 className="font-bold text-indigo-900">Сканируйте в WhatsApp</h4>
+                                  <p className="text-xs text-indigo-600">Для номера: <b>{inputPhone}</b></p>
                                   <div className="bg-white p-3 rounded-xl inline-block shadow-md">
                                       <img src={`data:image/png;base64,${qrCode}`} alt="QR Code" className="w-56 h-56 object-contain" />
                                   </div>

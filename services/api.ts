@@ -201,11 +201,12 @@ export const api = {
     },
 
     // --- INTEGRATIONS ---
-    createWhatsAppInstance: async (): Promise<{ idInstance: string, apiTokenInstance: string }> => {
+    createWhatsAppInstance: async (phoneNumber: string): Promise<{ idInstance: string, apiTokenInstance: string }> => {
         try {
             const res = await fetch(`${API_URL}/integrations/whatsapp/create`, {
                 method: 'POST',
-                headers: getAuthHeader()
+                headers: getAuthHeader(),
+                body: JSON.stringify({ phoneNumber })
             });
 
             const contentType = res.headers.get("content-type");

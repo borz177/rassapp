@@ -28,9 +28,9 @@ export const checkGreenApiConnection = async (idInstance: string, apiTokenInstan
 };
 
 // Now calls the backend proxy to create an instance securely
-export const createPartnerInstance = async (): Promise<{ idInstance: string, apiTokenInstance: string } | null> => {
+export const createPartnerInstance = async (phoneNumber: string): Promise<{ idInstance: string, apiTokenInstance: string } | null> => {
     try {
-        const credentials = await api.createWhatsAppInstance();
+        const credentials = await api.createWhatsAppInstance(phoneNumber);
         return credentials;
     } catch (error) {
         console.error("Failed to create partner instance:", error);
