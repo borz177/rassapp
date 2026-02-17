@@ -122,16 +122,15 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
       );
   };
 
-  const generateTimeOptions = () => {
+const generateTimeOptions = () => {
   const options = [];
   for (let h = 0; h < 24; h++) {
-    for (let m = 0; m < 60; m += 5) {
-      const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-      options.push(timeStr);
-    }
+    options.push(`${String(h).padStart(2, '0')}:00`);
+    options.push(`${String(h).padStart(2, '0')}:30`);
   }
   return options;
 };
+
 
   return (
     <div className="space-y-6 animate-fade-in pb-20">

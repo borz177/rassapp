@@ -1,10 +1,10 @@
-// whatsapp-reminders.js — ГИБРИДНЫЙ ПОДХОД (каждые 5 минут)
+// whatsapp-reminders.js — КАЖДЫЕ 30 МИНУТ
 require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 
 const { Pool } = require('pg');
 const axios = require('axios');
 
-const GREEN_API_BASE_URL = 'https://api.green-api.com';
+const GREEN_API_BASE_URL = 'https://api.green-api.com'; // ← убраны пробелы
 const LOG_PREFIX = '[WHATSAPP REMINDERS]';
 
 const pool = new Pool({
@@ -94,11 +94,10 @@ async function processRemindersForUser(user) {
   const settings = whatsapp_settings;
   const targetTime = settings.reminderTime; // "22:30"
 
-  // Текущее время в формате HH:MM
   const now = new Date();
   const currentTime = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-  // 🔥 ТОЧНОЕ СРАВНЕНИЕ ВРЕМЕНИ (с поддержкой 5-минутного интервала)
+  // ТОЧНОЕ СРАВНЕНИЕ ВРЕМЕНИ (поддержка :00 и :30)
   if (currentTime !== targetTime) {
     return;
   }
@@ -164,16 +163,16 @@ async function processRemindersForUser(user) {
           [JSON.stringify(sale), sale.id, id]
         );
         sentCount++;
-        console.log(`${LOG_PREFIX} Отправлено напоминание пользователю ${id}, договор: ${sale.productName}`);
+        console.log(`${LOG_PREFIX} Отправлено напоминание: ${sale.productName}`);
       }
     }
   }
 
-  console.log(`${LOG_PREFIX} Завершено для пользователя ${id}: отправлено ${sentCount} напоминаний`);
+  console.log(`${LOG_PREFIX} Завершено для ${id}: ${sentCount} напоминаний`);
 }
 
 async function runReminders() {
-  console.log(`${LOG_PREFIX} Запуск проверки напоминаний...`);
+  console.log(`${LOG_PREFIX} Запуск...`);
 
   try {
     const result = await pool.query(`
@@ -184,18 +183,13 @@ async function runReminders() {
         AND whatsapp_settings->>'enabled' = 'true'
     `);
 
-    const users = result.rows;
-    console.log(`${LOG_PREFIX} Найдено пользователей с WhatsApp: ${users.length}`);
-
-    for (const user of users) {
+    for (const user of result.rows) {
       try {
         await processRemindersForUser(user);
       } catch (e) {
-        console.error(`${LOG_PREFIX} Ошибка при обработке пользователя ${user.id}:`, e.message);
+        console.error(`${LOG_PREFIX} Ошибка у ${user.id}:`, e.message);
       }
     }
-
-    console.log(`${LOG_PREFIX} Проверка завершена.`);
   } catch (err) {
     console.error(`${LOG_PREFIX} Критическая ошибка:`, err);
   } finally {
