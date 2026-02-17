@@ -51,6 +51,8 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
   // Calculate counts for badges
   const counts = useMemo(() => {
     const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalize to midnight to match Contracts logic
+
     let active = 0;
     let overdue = 0;
     let archive = 0;
@@ -63,7 +65,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
         archive++;
         return;
       }
-      const hasOverduePayment = sale.paymentPlan.filter(p => !p.isPaid).some(p => new Date(p.date) < today);
+      const hasOverduePayment = sale.paymentPlan.some(p => !p.isPaid && new Date(p.date) < today);
       if (hasOverduePayment) {
         overdue++;
       } else {

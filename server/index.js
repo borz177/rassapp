@@ -1,8 +1,13 @@
 
 require('dotenv').config({ path: '/var/www/env/rassapp.env' });
+
+// FORCE TIMEZONE TO MOSCOW
+process.env.TZ = 'Europe/Moscow';
+
 console.log('YOOKASSA_SHOP_ID loaded:', process.env.YOOKASSA_SHOP_ID ? '✅ Yes' : '❌ No');
 console.log('YOOKASSA_SECRET_KEY loaded:', process.env.YOOKASSA_SECRET_KEY ? '✅ Yes' : '❌ No');
 console.log('GREEN_API_PARTNER_TOKEN loaded:', process.env.GREEN_API_PARTNER_TOKEN ? '✅ Yes' : '❌ No');
+console.log('Server Timezone:', new Date().toString());
 
 const express = require('express');
 const { Pool } = require('pg');
@@ -48,6 +53,13 @@ const transporter = nodemailer.createTransport({
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || undefined,
+});
+
+// Force Postgres Session Timezone
+pool.on('connect', (client) => {
+  client.query("SET TIME ZONE 'Europe/Moscow'", (err) => {
+      if(err) console.error("Error setting DB timezone", err);
+  });
 });
 
 // Initialize Database Tables
