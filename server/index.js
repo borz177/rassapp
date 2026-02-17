@@ -166,6 +166,8 @@ const adminAuth = (req, res, next) => {
     });
 };
 
+
+app.use(express.static('/var/www/rassrochka.pro'));
 // --- HELPER FUNCTIONS ---
 
 const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
