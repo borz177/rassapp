@@ -22,8 +22,8 @@ import Partners from './components/Partners';
 import InvestorDashboard from './components/InvestorDashboard';
 import Tariffs from './components/Tariffs';
 import AdminPanel from './components/AdminPanel';
-import Integrations from './components/Integrations'; // New
-import Calculator from './components/Calculator'; // New
+import Integrations from './components/Integrations';
+import Calculator from './components/Calculator';
 import Auth from './components/Auth';
 import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan } from './types';
 import { getAppSettings } from './services/storage';
@@ -79,8 +79,16 @@ const App: React.FC = () => {
   useEffect(() => {
     const initApp = async () => {
         // Check for Public Calculator Link
+        // Support: ?view=public_calc, ?v=calc, OR path /calc/CompanyName
         const searchParams = new URLSearchParams(window.location.search);
-        if (searchParams.get('view') === 'public_calc') {
+        const pathName = window.location.pathname;
+        const decodedPath = decodeURIComponent(pathName);
+
+        if (
+            searchParams.get('view') === 'public_calc' ||
+            searchParams.get('v') === 'calc' ||
+            decodedPath.startsWith('/calc')
+        ) {
             setIsPublicMode(true);
             setIsLoading(false);
             return;
@@ -138,10 +146,7 @@ const App: React.FC = () => {
   const isInvestor = user?.role === 'investor';
   const activeInvestor = isInvestor && user ? investors.find(i => i.id === user.id) : null;
 
-  // ... (checkAccess, showUpgradeAlert, reportData, totalExpectedProfit, realizedPeriodProfit, dashboardStats, accountBalances, workingCapital remain the same) ...
-  // [Due to output size limit, reusing previous implementations for standard calculations]
-  // Assumed these are present from previous file context.
-
+  // ... (Access checks and calculation logic remain the same)
   const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES'): boolean => {
       if (!user) return false;
       if (isEmployee || isInvestor || user.role === 'admin') return true;
@@ -161,10 +166,7 @@ const App: React.FC = () => {
 
   const showUpgradeAlert = (reason: string) => { if(window.confirm(`${reason} Оформите подписку для доступа.`)) { setCurrentView('TARIFFS'); } };
 
-  // ... (Other calculations like reportData, dashboardStats are assumed unchanged) ...
-  // Re-implementing simplified for compilation context if needed, but assuming they exist.
-  // For brevity in response, skipping 200 lines of calculation logic that hasn't changed.
-
+  // ... (Stats calculations omitted for brevity as they are unchanged) ...
   const dashboardStats = useMemo(() => { let totalRevenue = 0; let totalOutstanding = 0; let overdueCount = 0; let installmentSalesTotal = 0; sales.forEach(sale => { totalRevenue += (sale.totalAmount - sale.remainingAmount); totalOutstanding += sale.remainingAmount; const hasOverdue = sale.paymentPlan.some(p => !p.isPaid && new Date(p.date) < new Date()); if (hasOverdue) overdueCount++; if (sale.type === 'INSTALLMENT') { installmentSalesTotal += sale.totalAmount; } }); return { totalRevenue, totalOutstanding, overdueCount, installmentSalesTotal }; }, [sales]);
   const accountBalances = useMemo(() => { const balances: Record<string, number> = {}; accounts.forEach(acc => { let total = 0; const accountSales = sales.filter(s => s.accountId === acc.id); accountSales.forEach(s => { total += s.downPayment; s.paymentPlan.filter(p => p.isPaid).forEach(p => total += p.amount); }); const accountExpenses = expenses.filter(e => e.accountId === acc.id); total -= accountExpenses.reduce((sum, e) => sum + e.amount, 0); balances[acc.id] = total; }); return balances; }, [accounts, sales, expenses]);
   const workingCapital = useMemo(() => { const cashInAccounts = Object.values(accountBalances).reduce((sum: number, bal: number) => sum + bal, 0); return cashInAccounts + dashboardStats.totalOutstanding; }, [accountBalances, dashboardStats.totalOutstanding]);
@@ -178,7 +180,6 @@ const App: React.FC = () => {
   };
 
   const handleAction = (action: string) => {
-      // Access checks same as before...
       switch (action) {
           case 'CREATE_SALE': setDraftSaleData({}); setEditingSale(null); setCurrentView('CREATE_SALE'); break;
           case 'INCOME': setDraftSaleData({}); setCurrentView('CREATE_INCOME'); break;
@@ -190,7 +191,7 @@ const App: React.FC = () => {
       }
   };
 
-  // ... (CRUD helpers: updateList, removeFromList, handleSaveSale, handleDeleteSale, etc. kept same) ...
+  // ... (CRUD helpers updateList, removeFromList, handleSaveSale, etc. kept same) ...
   const updateList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, item: T) => { setter(prev => { const idx = prev.findIndex(i => i.id === item.id); if (idx >= 0) return prev.map(i => i.id === item.id ? item : i); return [item, ...prev]; }); };
   const removeFromList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, id: string) => { setter(prev => prev.filter(i => i.id !== id)); };
 
@@ -252,6 +253,7 @@ const App: React.FC = () => {
 
   return (
     <Layout currentView={currentView} setView={setCurrentView} onAction={handleAction} onContractTabChange={setActiveContractTab} sales={sales} appSettings={appSettings} customers={customers} user={user} activeInvestor={activeInvestor} onNavigateToProfile={() => setCurrentView('PROFILE')}>
+      {/* ... (Layout Children remain exactly the same) ... */}
       {currentView === 'DASHBOARD' && !isInvestor && <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital} accountBalances={accountBalances} onAction={handleAction} onSelectCustomer={handleSelectCustomer} onInitiatePayment={handleInitiateDashboardPayment} accounts={accounts} />}
       {currentView === 'DASHBOARD' && isInvestor && activeInvestor && <InvestorDashboard sales={sales} expenses={expenses} accounts={accounts} investor={activeInvestor} />}
       {currentView === 'CASH_REGISTER' && <CashRegister accounts={accounts} sales={sales} expenses={expenses} investors={investors} onAddAccount={handleAddAccount} onAction={handleAction} onSelectAccount={handleSelectAccountForOperations} onSetMainAccount={handleSetMainAccount} onUpdateAccount={handleUpdateAccount} isManager={isManager} totalExpectedProfit={totalExpectedProfit} realizedPeriodProfit={realizedPeriodProfit} myProfitPeriod={myProfitPeriod} setMyProfitPeriod={setMyProfitPeriod} />}
@@ -304,10 +306,8 @@ const App: React.FC = () => {
       {currentView === 'EMPLOYEES' && <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} />}
       {currentView === 'TARIFFS' && <Tariffs user={user} />}
 
-      {/* Updated Settings with navigation */}
       {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onNavigate={setCurrentView} />}
 
-      {/* New Pages */}
       {currentView === 'INTEGRATIONS' && <Integrations appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onBack={() => setCurrentView('SETTINGS')} />}
       {currentView === 'CALCULATOR' && <Calculator appSettings={appSettings} onBack={() => setCurrentView('SETTINGS')} onSaveSettings={handleUpdateSettings} />}
 

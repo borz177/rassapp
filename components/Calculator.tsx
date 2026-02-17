@@ -13,15 +13,37 @@ interface CalculatorProps {
 const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, onBack, onSaveSettings }) => {
   // Public URL Params parsing
   const searchParams = new URLSearchParams(window.location.search);
-  const publicCompany = searchParams.get('company') || appSettings?.companyName || 'Наша Компания';
-  const publicRate = parseFloat(searchParams.get('rate') || '30');
+  const pathName = window.location.pathname; // /calc/CompanyName
 
-  // Parse Rules from URL for public view
+  // Extract Company Name from Path if available
+  let publicCompany = searchParams.get('c') || searchParams.get('company') || appSettings?.companyName || 'Наша Компания';
+  if (pathName.startsWith('/calc/')) {
+      const parts = pathName.split('/');
+      // /calc/MyCompany -> parts ['', 'calc', 'MyCompany']
+      if (parts.length >= 3 && parts[2]) {
+          publicCompany = decodeURIComponent(parts[2]);
+      }
+  }
+
+  // Support both long 'rate' and short 'r'
+  const publicRate = parseFloat(searchParams.get('r') || searchParams.get('rate') || '30');
+
+  // Parse Rules: Support both long 'rules' (JSON) and short 'l' (compressed format: 3:10,6:20)
   const publicRulesParam = searchParams.get('rules');
+  const shortRulesParam = searchParams.get('l');
+
   let publicRules: TermRate[] = [];
+
+  // Try legacy JSON first
   try {
       if (publicRulesParam) {
           publicRules = JSON.parse(decodeURIComponent(publicRulesParam));
+      } else if (shortRulesParam) {
+          // Parse short format: "3:10,6:15" -> [{months:3, rate:10}, {months:6, rate:15}]
+          publicRules = shortRulesParam.split(',').map(pair => {
+              const [months, rate] = pair.split(':').map(Number);
+              return { months, rate };
+          }).filter(r => !isNaN(r.months) && !isNaN(r.rate));
       }
   } catch (e) {
       console.error("Failed to parse rules from URL", e);
@@ -68,12 +90,26 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   }, [price, months, downPayment, activeRate]);
 
   const handleCopyLink = () => {
-      const rulesString = encodeURIComponent(JSON.stringify(termRates));
-      const url = `${window.location.origin}${window.location.pathname}?view=public_calc&company=${encodeURIComponent(appSettings?.companyName || 'Company')}&rate=${defaultRate}&rules=${rulesString}`;
+      // Compress rules to "months:rate" format separated by comma
+      const rulesString = termRates.map(r => `${r.months}:${r.rate}`).join(',');
+      const companyName = encodeURIComponent(appSettings?.companyName || 'Company');
+
+      // Use clean path format: domain.com/calc/CompanyName
+      const baseUrl = `${window.location.origin}/calc/${companyName}`;
+      let url = `${baseUrl}`;
+
+      // Add query params if needed
+      const params = [];
+      if (defaultRate && defaultRate !== '30') params.push(`r=${defaultRate}`);
+      if (rulesString) params.push(`l=${rulesString}`);
+
+      if (params.length > 0) {
+          url += `?${params.join('&')}`;
+      }
 
       if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(url).then(() => {
-              alert("Ссылка скопирована! Все текущие настройки ставок включены.");
+              alert("Красивая ссылка скопирована!");
           });
       } else {
           // Fallback
@@ -301,10 +337,10 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                                     className="w-full py-3 bg-white border-2 border-indigo-200 text-indigo-700 font-bold rounded-xl hover:bg-indigo-100 flex items-center justify-center gap-2 transition-colors"
                                 >
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                                    Копировать публичную ссылку
+                                    Копировать красивую ссылку
                                 </button>
                                 <p className="text-center text-xs text-indigo-400">
-                                    Ссылка включает все настроенные вами ставки.
+                                    Ссылка будет вида: rassrochka.pro/calc/ВашаКомпания
                                 </p>
                             </div>
                         )}
