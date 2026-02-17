@@ -530,31 +530,40 @@ app.get('/api/data', auth, async (req, res) => {
 
 // 3. CRUD Routes for Entities
 app.post('/api/data/:type', auth, async (req, res) => {
-    try {
-        const { type } = req.params;
-        const itemData = req.body;
-        const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.managerId : req.user.id;
+  try {
+    const { type } = req.params;
+    const itemData = req.body;
+    const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.managerId : req.user.id;
 
-        const id = itemData.id;
+    const id = itemData.id;
 
-        // Upsert using ON CONFLICT (Postgres specific)
-        await pool.query(`
-            INSERT INTO data_items (id, user_id, type, data, updated_at)
-            VALUES ($1, $2, $3, $4, NOW())
-            ON CONFLICT (id) 
-            DO UPDATE SET 
-                data = EXCLUDED.data, 
-                type = EXCLUDED.type,
-                user_id = EXCLUDED.user_id,
-                updated_at = NOW();
-        `, [id, targetUserId, type, JSON.stringify(itemData)]);
+    // Upsert в data_items
+    await pool.query(`
+      INSERT INTO data_items (id, user_id, type, data, updated_at)
+      VALUES ($1, $2, $3, $4, NOW())
+      ON CONFLICT (id) 
+      DO UPDATE SET 
+        data = EXCLUDED.data, 
+        type = EXCLUDED.type,
+        user_id = EXCLUDED.user_id,
+        updated_at = NOW();
+    `, [id, targetUserId, type, JSON.stringify(itemData)]);
 
-        // Return the saved data
-        res.json(itemData);
-    } catch (err) {
-        console.error(err);
-        res.status(500).send('Server Error');
+    // 🔥 Обновляем whatsapp_settings в users, если это настройки
+    if (type === 'settings') {
+      // Извлекаем WhatsApp-настройки (может быть undefined — это нормально)
+      const whatsappSettings = itemData.whatsapp || null;
+      await pool.query(
+        'UPDATE users SET whatsapp_settings = $1 WHERE id = $2',
+        [whatsappSettings ? JSON.stringify(whatsappSettings) : null, targetUserId]
+      );
     }
+
+    res.json(itemData);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server Error');
+  }
 });
 
 app.delete('/api/data/:type/:id', auth, async (req, res) => {
