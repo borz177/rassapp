@@ -1,15 +1,22 @@
-// whatsapp-reminders.js — КАЖДЫЕ 30 МИНУТ
+// whatsapp-reminders.js — с поддержкой кастомных шаблонов
 require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 
 const { Pool } = require('pg');
 const axios = require('axios');
 
-const GREEN_API_BASE_URL = 'https://api.green-api.com'; // ← убраны пробелы
+const GREEN_API_BASE_URL = 'https://api.green-api.com';
 const LOG_PREFIX = '[WHATSAPP REMINDERS]';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
+
+// Стандартные шаблоны (как в UI)
+const DEFAULT_TEMPLATES = {
+  upcoming: "Здравствуйте, {имя}! Напоминаем о предстоящем платеже по договору \"{товар}\". Дата: {дата}. Сумма: {сумма} ₽.",
+  today: "Здравствуйте, {имя}! Напоминаем, что сегодня ({дата}) день оплаты по договору \"{товар}\". Сумма текущего платежа: {сумма} ₽.",
+  overdue: "Здравствуйте, {имя}! У вас просрочен платеж по договору \"{товар}\". Дата была: {дата}. Сумма: {сумма} ₽. Пожалуйста, внесите оплату."
+};
 
 async function sendWhatsAppMessage(idInstance, apiTokenInstance, phone, message) {
   if (!phone || !message) return false;
@@ -37,51 +44,49 @@ async function sendWhatsAppMessage(idInstance, apiTokenInstance, phone, message)
     );
     return !!response.data?.idMessage;
   } catch (err) {
-    console.error(`${LOG_PREFIX} Ошибка отправки WhatsApp на ${phone}:`, err.message);
+    console.error(`${LOG_PREFIX} Ошибка WhatsApp на ${phone}:`, err.message);
     return false;
   }
 }
 
-function buildPaymentMessage(sale, customer, payment, priorDebt, totalToPay, isDueToday, isOverdue) {
+function formatTemplate(template, data) {
+  return template
+    .replace(/{имя}/g, data.customerName || '')
+    .replace(/{товар}/g, data.productName || '')
+    .replace(/{сумма}/g, data.amountStr || '')
+    .replace(/{дата}/g, data.dateStr || '')
+    .replace(/{общий_долг}/g, data.totalDebtStr || '0')
+    .replace(/{компания}/g, data.companyName || '');
+}
+
+function buildPaymentMessage(sale, customer, payment, priorDebt, totalToPay, isDueToday, isOverdue, userTemplates) {
   const dateStr = new Date(payment.date).toLocaleDateString('ru-RU', {
     day: 'numeric',
     month: 'long',
     year: 'numeric'
   });
 
-  let titleEmoji = '🔔';
-  let titleText = 'Напоминание о платеже';
-
+  // Выбираем шаблон
+  let template = DEFAULT_TEMPLATES.today;
   if (isOverdue) {
-    titleEmoji = '⚠️';
-    titleText = 'Просроченный платёж';
+    template = userTemplates?.overdue || DEFAULT_TEMPLATES.overdue;
   } else if (isDueToday) {
-    titleEmoji = '📅';
-    titleText = 'Сегодня день оплаты';
-  }
-
-  let message = `${titleEmoji} *${titleText}*\n\n`;
-  message += `Здравствуйте, ${customer.name}!\n`;
-  message += `По договору *«${sale.productName}»* `;
-
-  if (isOverdue) {
-    message += `просрочен платёж от *${dateStr}*.`;
-  } else if (isDueToday) {
-    message += `сегодня, *${dateStr}*, необходимо внести платёж.`;
+    template = userTemplates?.today || DEFAULT_TEMPLATES.today;
   } else {
-    message += `ожидается платёж *${dateStr}*.`;
+    template = userTemplates?.upcoming || DEFAULT_TEMPLATES.upcoming;
   }
 
-  message += `\n\n💰 *Сумма платежа:* ${payment.amount.toLocaleString()} ₽`;
+  // Подготавливаем данные для подстановки
+  const data = {
+    customerName: customer.name,
+    productName: sale.productName,
+    amountStr: payment.amount.toLocaleString(),
+    dateStr: dateStr,
+    totalDebtStr: totalToPay.toLocaleString(),
+    companyName: '' // вы можете добавить, если захотите
+  };
 
-  if (priorDebt > 0) {
-    message += `\n❗ *Долг за прошлые периоды:* ${priorDebt.toLocaleString()} ₽`;
-    message += `\n💳 *Итого к оплате:* ${totalToPay.toLocaleString()} ₽`;
-  }
-
-  message += `\n\nБлагодарим за сотрудничество! 🙏`;
-
-  return message;
+  return formatTemplate(template, data);
 }
 
 async function processRemindersForUser(user) {
@@ -92,15 +97,12 @@ async function processRemindersForUser(user) {
   }
 
   const settings = whatsapp_settings;
-  const targetTime = settings.reminderTime; // "22:30"
+  const targetTime = settings.reminderTime;
 
   const now = new Date();
   const currentTime = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-  // ТОЧНОЕ СРАВНЕНИЕ ВРЕМЕНИ (поддержка :00 и :30)
-  if (currentTime !== targetTime) {
-    return;
-  }
+  if (currentTime !== targetTime) return;
 
   console.log(`${LOG_PREFIX} Обработка напоминаний для пользователя ${id} в ${targetTime}`);
 
@@ -131,9 +133,9 @@ async function processRemindersForUser(user) {
       const daysUntilPayment = Math.ceil((paymentDate - today) / (1000 * 60 * 60 * 24));
 
       let reminderType;
-      if (daysUntilPayment < 0) reminderType = 1;   // просрочка
-      else if (daysUntilPayment === 0) reminderType = 0; // сегодня
-      else if (daysUntilPayment > 0) reminderType = -1; // за день до
+      if (daysUntilPayment < 0) reminderType = 1;
+      else if (daysUntilPayment === 0) reminderType = 0;
+      else if (daysUntilPayment > 0) reminderType = -1;
 
       if (!settings.reminderDays.includes(reminderType)) continue;
 
@@ -146,7 +148,9 @@ async function processRemindersForUser(user) {
       const isOverdue = daysUntilPayment < 0;
 
       const message = buildPaymentMessage(
-        sale, customer, payment, priorDebt, totalToPay, isDueToday, isOverdue
+        sale, customer, payment, priorDebt, totalToPay,
+        isDueToday, isOverdue,
+        settings.templates // ← передаём шаблоны
       );
 
       const success = await sendWhatsAppMessage(
