@@ -73,14 +73,14 @@ function buildPaymentMessage(sale, customer, payment, priorDebt, totalToPay, com
     message += `\n⚠️ Также есть долг за прошлые периоды: ${priorDebt.toLocaleString()} ₽.\n*Всего к оплате: ${totalToPay.toLocaleString()} ₽*.`;
   }
 
-  return `${message} ${companyName}`;
+  return message;
 }
 
 /**
  * Обработка напоминаний для одного пользователя
  */
 async function processRemindersForUser(user) {
-  const { id, whatsapp_settings, company_name: companyName = 'InstallMate' } = user;
+  const { id, whatsapp_settings } = user;
 
   if (!whatsapp_settings?.enabled || !whatsapp_settings.idInstance || !whatsapp_settings.apiTokenInstance) {
     return;
@@ -170,7 +170,7 @@ async function runReminders() {
 
   try {
     const result = await pool.query(`
-      SELECT id, whatsapp_settings, company_name
+      SELECT id, whatsapp_settings
       FROM users
       WHERE role IN ('manager', 'admin')
         AND whatsapp_settings IS NOT NULL
