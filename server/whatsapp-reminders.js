@@ -5,7 +5,7 @@ const { Pool } = require('pg');
 const axios = require('axios');
 
 // === Настройки ===
-const GREEN_API_BASE_URL = 'https://api.green-api.com';
+const GREEN_API_BASE_URL = 'https://api.green-api.com'; // ← убраны пробелы
 const LOG_PREFIX = '[WHATSAPP REMINDERS]';
 
 // === Инициализация БД ===
@@ -21,21 +21,16 @@ const pool = new Pool({
 async function sendWhatsAppMessage(idInstance, apiTokenInstance, phone, message) {
   if (!phone || !message) return false;
 
-  // Очистка номера: оставляем только цифры
   const cleanPhone = phone.replace(/\D/g, '');
   if (cleanPhone.length < 10) {
     console.warn(`${LOG_PREFIX} Некорректный номер: ${phone}`);
     return false;
   }
 
-  // Приведение к формату 79XXXXXXXXX (для РФ/КЗ)
   let formattedPhone = cleanPhone;
   if (formattedPhone.startsWith('8')) {
     formattedPhone = '7' + formattedPhone.slice(1);
-  } else if (formattedPhone.startsWith('7') || formattedPhone.startsWith('3')) {
-    // Оставляем как есть (предполагаем корректный международный формат)
   } else if (formattedPhone.length === 10) {
-    // Добавляем код страны по умолчанию (РФ)
     formattedPhone = '7' + formattedPhone;
   }
 
@@ -87,19 +82,15 @@ async function processRemindersForUser(user) {
   }
 
   const settings = whatsapp_settings;
-  const [targetHour] = settings.reminderTime.split(':').map(Number); // Используем только час
-
-  // Текущий час по серверному времени (MSK)
+  const [targetHour] = settings.reminderTime.split(':').map(Number);
   const currentHour = new Date().getHours();
 
-  // Отправляем напоминания ТОЛЬКО в указанный час
   if (currentHour !== targetHour) {
     return;
   }
 
   console.log(`${LOG_PREFIX} Обработка напоминаний для пользователя ${id} в ${settings.reminderTime}`);
 
-  // Загрузка данных
   const [salesRes, customersRes] = await Promise.all([
     pool.query('SELECT data FROM data_items WHERE user_id = $1 AND type = $2', [id, 'sales']),
     pool.query('SELECT data FROM data_items WHERE user_id = $1 AND type = $2', [id, 'customers'])
@@ -124,18 +115,27 @@ async function processRemindersForUser(user) {
 
       const paymentDate = new Date(payment.date);
       paymentDate.setHours(0, 0, 0, 0);
-      const diffDays = Math.ceil((paymentDate - today) / (1000 * 60 * 60 * 24));
+      const daysUntilPayment = Math.ceil((paymentDate - today) / (1000 * 60 * 60 * 24));
 
-      if (!settings.reminderDays.includes(diffDays)) continue;
+      // 🔥 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: правильное сопоставление diffDays → тип напоминания
+      let reminderType;
+      if (daysUntilPayment < 0) {
+        reminderType = 1; // просрочка
+      } else if (daysUntilPayment === 0) {
+        reminderType = 0; // сегодня
+      } else if (daysUntilPayment > 0) {
+        reminderType = -1; // за день до
+      }
 
-      // Расчёт долга за предыдущие периоды
+      if (!settings.reminderDays.includes(reminderType)) continue;
+
       const priorDebt = sale.paymentPlan
         .filter(p => !p.isPaid && new Date(p.date) < paymentDate)
         .reduce((sum, p) => sum + p.amount, 0);
 
       const totalToPay = payment.amount + priorDebt;
-      const isDueToday = diffDays === 0;
-      const isOverdue = diffDays < 0;
+      const isDueToday = daysUntilPayment === 0;
+      const isOverdue = daysUntilPayment < 0;
 
       const message = buildPaymentMessage(
         sale, customer, payment, priorDebt, totalToPay, isDueToday, isOverdue
@@ -150,7 +150,6 @@ async function processRemindersForUser(user) {
 
       if (success) {
         payment.lastNotificationDate = todayStr;
-        // Сохраняем обновлённый платёж
         await pool.query(
           `UPDATE data_items SET data = $1 WHERE id = $2 AND user_id = $3`,
           [JSON.stringify(sale), sale.id, id]
