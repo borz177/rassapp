@@ -57,7 +57,7 @@ async function sendWhatsAppMessage(idInstance, apiTokenInstance, phone, message)
 /**
  * Формирование сообщения о платеже
  */
-function buildPaymentMessage(sale, customer, payment, priorDebt, totalToPay, companyName, isDueToday, isOverdue) {
+function buildPaymentMessage(sale, customer, payment, priorDebt, totalToPay, isDueToday, isOverdue) {
   const dateStr = new Date(payment.date).toLocaleDateString('ru-RU');
   let message = `Здравствуйте, ${customer.name}!`;
 
@@ -138,7 +138,7 @@ async function processRemindersForUser(user) {
       const isOverdue = diffDays < 0;
 
       const message = buildPaymentMessage(
-        sale, customer, payment, priorDebt, totalToPay, companyName, isDueToday, isOverdue
+        sale, customer, payment, priorDebt, totalToPay, isDueToday, isOverdue
       );
 
       const success = await sendWhatsAppMessage(
