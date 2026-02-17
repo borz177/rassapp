@@ -24,7 +24,8 @@ app.use(express.json({
     return true;
   }
 }));
-app.use(express.static('public'));
+const path = require('path');
+app.use(express.static(path.resolve(__dirname, '../public')));
 // Logging Middleware
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
