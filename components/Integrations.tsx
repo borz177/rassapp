@@ -10,6 +10,12 @@ interface IntegrationsProps {
   onBack: () => void;
 }
 
+const DEFAULT_TEMPLATES = {
+    upcoming: "Здравствуйте, {имя}! Напоминаем о предстоящем платеже по договору \"{товар}\". Дата: {дата}. Сумма: {сумма} ₽.",
+    today: "Здравствуйте, {имя}! Напоминаем, что сегодня ({дата}) день оплаты по договору \"{товар}\". Сумма текущего платежа: {сумма} ₽.",
+    overdue: "Здравствуйте, {имя}! У вас просрочен платеж по договору \"{товар}\". Дата была: {дата}. Сумма: {сумма} ₽. Пожалуйста, внесите оплату."
+};
+
 const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettings, onBack }) => {
   // WhatsApp State
   const [waEnabled, setWaEnabled] = useState(false);
@@ -17,6 +23,10 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
   const [apiToken, setApiToken] = useState('');
   const [reminderTime, setReminderTime] = useState('10:00');
   const [reminderDays, setReminderDays] = useState<number[]>([0]); // Default: On due date
+
+  // Templates State
+  const [activeTemplateTab, setActiveTemplateTab] = useState<'UPCOMING' | 'TODAY' | 'OVERDUE'>('TODAY');
+  const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
 
   // Connection State
   const [isTesting, setIsTesting] = useState(false);
@@ -33,6 +43,9 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
         setApiToken(appSettings.whatsapp.apiTokenInstance);
         setReminderTime(appSettings.whatsapp.reminderTime);
         setReminderDays(appSettings.whatsapp.reminderDays);
+        if (appSettings.whatsapp.templates) {
+            setTemplates({ ...DEFAULT_TEMPLATES, ...appSettings.whatsapp.templates });
+        }
 
         // Auto-check if credentials exist
         if (appSettings.whatsapp.enabled && appSettings.whatsapp.idInstance && appSettings.whatsapp.apiTokenInstance) {
@@ -68,7 +81,8 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
         idInstance,
         apiTokenInstance: apiToken,
         reminderTime,
-        reminderDays
+        reminderDays,
+        templates
     };
 
     onUpdateSettings({
@@ -78,7 +92,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
 
     if (waEnabled) {
         checkConnection(idInstance, apiToken);
-        alert("Настройки сохранены. Проверяем соединение...");
+        alert("Настройки и шаблоны сохранены. Проверяем соединение...");
     } else {
         alert("Настройки сохранены (Интеграция выключена).");
     }
@@ -122,15 +136,30 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
       );
   };
 
-const generateTimeOptions = () => {
-  const options = [];
-  for (let h = 0; h < 24; h++) {
-    options.push(`${String(h).padStart(2, '0')}:00`);
-    options.push(`${String(h).padStart(2, '0')}:30`);
-  }
-  return options;
-};
+  const updateTemplate = (text: string) => {
+      if (activeTemplateTab === 'UPCOMING') setTemplates({...templates, upcoming: text});
+      if (activeTemplateTab === 'TODAY') setTemplates({...templates, today: text});
+      if (activeTemplateTab === 'OVERDUE') setTemplates({...templates, overdue: text});
+  };
 
+  const getCurrentTemplate = () => {
+      if (activeTemplateTab === 'UPCOMING') return templates.upcoming;
+      if (activeTemplateTab === 'TODAY') return templates.today;
+      return templates.overdue;
+  };
+
+  const insertVariable = (variable: string) => {
+      updateTemplate(getCurrentTemplate() + ` {${variable}}`);
+  };
+
+  const generateTimeOptions = () => {
+    const options = [];
+    for (let h = 0; h < 24; h++) {
+        options.push(`${String(h).padStart(2, '0')}:00`);
+        options.push(`${String(h).padStart(2, '0')}:30`);
+    }
+    return options;
+  };
 
   return (
     <div className="space-y-6 animate-fade-in pb-20">
@@ -173,25 +202,27 @@ const generateTimeOptions = () => {
                           <p>3. Скопируйте <b>idInstance</b> и <b>apiTokenInstance</b> сюда.</p>
                       </div>
 
-                      <div>
-                          <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">idInstance</label>
-                          <input
-                            type="text"
-                            className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm"
-                            value={idInstance}
-                            onChange={e => setIdInstance(e.target.value)}
-                            placeholder="1101000001"
-                          />
-                      </div>
-                      <div>
-                          <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">apiTokenInstance</label>
-                          <input
-                            type="text"
-                            className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm"
-                            value={apiToken}
-                            onChange={e => setApiToken(e.target.value)}
-                            placeholder="Вставьте токен"
-                          />
+                      <div className="grid md:grid-cols-2 gap-4">
+                          <div>
+                              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">idInstance</label>
+                              <input
+                                type="text"
+                                className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm"
+                                value={idInstance}
+                                onChange={e => setIdInstance(e.target.value)}
+                                placeholder="1101000001"
+                              />
+                          </div>
+                          <div>
+                              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">apiTokenInstance</label>
+                              <input
+                                type="text"
+                                className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm"
+                                value={apiToken}
+                                onChange={e => setApiToken(e.target.value)}
+                                placeholder="Вставьте токен"
+                              />
+                          </div>
                       </div>
                   </div>
 
@@ -213,7 +244,7 @@ const generateTimeOptions = () => {
                       </button>
                   </div>
 
-                  {/* QR Code Section (Only if not authorized) */}
+                  {/* QR Code Section */}
                   {connectionStatus === 'NOT_AUTHORIZED' && (
                       <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 text-center animate-fade-in">
                           {!qrCode ? (
@@ -274,6 +305,45 @@ const generateTimeOptions = () => {
                                   className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(0) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>В день оплаты</button>
                           <button onClick={() => toggleDay(-1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(-1) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>За 1 день</button>
                           <button onClick={() => toggleDay(1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(1) ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-600 border-slate-200'}`}>При просрочке</button>
+                      </div>
+                  </div>
+
+                  <hr className="border-slate-100" />
+
+                  {/* Templates Section */}
+                  <div>
+                      <h4 className="font-semibold text-slate-700 mb-3 text-sm flex items-center gap-2">
+                          {ICONS.File} Шаблоны сообщений
+                      </h4>
+
+                      {/* Tabs */}
+                      <div className="flex bg-slate-100 p-1 rounded-xl mb-3">
+                          <button onClick={() => setActiveTemplateTab('UPCOMING')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTemplateTab === 'UPCOMING' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Заранее</button>
+                          <button onClick={() => setActiveTemplateTab('TODAY')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTemplateTab === 'TODAY' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Сегодня</button>
+                          <button onClick={() => setActiveTemplateTab('OVERDUE')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTemplateTab === 'OVERDUE' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Просрочка</button>
+                      </div>
+
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                          <textarea
+                              className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-indigo-400 h-32 resize-none"
+                              value={getCurrentTemplate()}
+                              onChange={e => updateTemplate(e.target.value)}
+                              placeholder="Текст сообщения..."
+                          />
+                          <div className="mt-3">
+                              <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Переменные (нажмите чтобы добавить):</p>
+                              <div className="flex flex-wrap gap-2">
+                                  {['имя', 'товар', 'сумма', 'дата', 'общий_долг', 'компания'].map(v => (
+                                      <button
+                                        key={v}
+                                        onClick={() => insertVariable(v)}
+                                        className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+                                      >
+                                          {`{${v}}`}
+                                      </button>
+                                  ))}
+                              </div>
+                          </div>
                       </div>
                   </div>
 

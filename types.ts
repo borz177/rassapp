@@ -18,6 +18,12 @@ export interface UserPermissions {
   canDelete: boolean;
 }
 
+export interface WhatsAppTemplates {
+  upcoming: string; // За N дней
+  today: string;    // В день оплаты
+  overdue: string;  // При просрочке
+}
+
 export interface WhatsAppSettings {
   enabled: boolean;
   idInstance: string;
@@ -25,6 +31,7 @@ export interface WhatsAppSettings {
   reminderTime: string; // "09:00"
   // Array of offsets: 0 = due date, -1 = 1 day before, 1 = 1 day after
   reminderDays: number[];
+  templates?: WhatsAppTemplates; // New field for custom templates
 }
 
 export interface User {

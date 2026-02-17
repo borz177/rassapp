@@ -111,6 +111,22 @@ export const sendWhatsAppFile = async (
     }
 };
 
+// --- TEMPLATE PROCESSING ---
+
+const DEFAULT_TEMPLATES = {
+    upcoming: "Здравствуйте, {имя}! Напоминаем о предстоящем платеже по договору \"{товар}\". Дата: {дата}. Сумма: {сумма} ₽.",
+    today: "Здравствуйте, {имя}! Напоминаем, что сегодня ({дата}) день оплаты по договору \"{товар}\". Сумма текущего платежа: {сумма} ₽.",
+    overdue: "Здравствуйте, {имя}! У вас просрочен платеж по договору \"{товар}\". Дата была: {дата}. Сумма: {сумма} ₽. Пожалуйста, внесите оплату."
+};
+
+const formatTemplate = (template: string, data: Record<string, string>) => {
+    let result = template;
+    for (const key in data) {
+        result = result.replace(new RegExp(`{${key}}`, 'g'), data[key]);
+    }
+    return result;
+};
+
 // Returns an array of updated sales with new lastNotificationDate
 export const processDailyReminders = async (
     settings: WhatsAppSettings,
@@ -118,7 +134,7 @@ export const processDailyReminders = async (
     customers: Customer[],
     companyName: string
 ): Promise<{ updatedSales: Sale[], sentCount: number, errors: number }> => {
-    
+
     if (!settings.enabled || !settings.idInstance || !settings.apiTokenInstance) {
         return { updatedSales: [], sentCount: 0, errors: 0 };
     }
@@ -145,11 +161,15 @@ export const processDailyReminders = async (
     // Clone sales to avoid direct mutation
     const processedSales = JSON.parse(JSON.stringify(sales)) as Sale[];
 
+    // Use custom templates or defaults
+    const templates = { ...DEFAULT_TEMPLATES, ...(settings.templates || {}) };
+
     for (const sale of processedSales) {
         if (sale.status !== 'ACTIVE') continue;
 
         const customer = customers.find(c => c.id === sale.customerId);
         if (!customer) continue;
+        if (customer.allowWhatsappNotification === false) continue;
 
         let saleModified = false;
 
@@ -161,7 +181,7 @@ export const processDailyReminders = async (
 
             // Calculate day difference
             const diffTime = paymentDate.getTime() - today.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             // 0 = today, 1 = tomorrow, -1 = yesterday
 
             // Check if this specific day offset is in settings
@@ -170,25 +190,43 @@ export const processDailyReminders = async (
                 if (payment.lastNotificationDate === todayStr) continue;
 
                 // Calculate Prior Debt (strictly before this payment's date)
-                // This covers arrears from previous payments that were not fully paid.
                 const priorDebt = sale.paymentPlan
                     .filter(p => !p.isPaid && new Date(p.date) < paymentDate)
                     .reduce((sum, p) => sum + p.amount, 0);
 
                 const totalToPay = payment.amount + priorDebt;
-                
-                let debtMessagePart = "";
-                if (priorDebt > 0) {
-                    debtMessagePart = `\n⚠️ Также есть долг за прошлые периоды: ${priorDebt.toLocaleString()} ₽.\n*Всего к оплате: ${totalToPay.toLocaleString()} ₽*.`;
+
+                // Construct Data for Template
+                const templateData = {
+                    'имя': customer.name,
+                    'товар': sale.productName,
+                    'сумма': payment.amount.toLocaleString(),
+                    'дата': new Date(payment.date).toLocaleDateString(),
+                    'общий_долг': totalToPay.toLocaleString(),
+                    'компания': companyName
+                };
+
+                // Select Template
+                let rawMessage = '';
+                if (diffDays === 0) {
+                    rawMessage = templates.today;
+                } else if (diffDays > 0) {
+                    rawMessage = templates.upcoming;
+                } else {
+                    rawMessage = templates.overdue;
                 }
 
-                let message = '';
-                if (diffDays === 0) {
-                    message = `Здравствуйте, ${customer.name}! Напоминаем, что сегодня (${new Date(payment.date).toLocaleDateString()}) день оплаты по договору "${sale.productName}". Сумма текущего платежа: ${payment.amount.toLocaleString()} ₽.${debtMessagePart} ${companyName}`;
-                } else if (diffDays > 0) {
-                    message = `Здравствуйте, ${customer.name}! Напоминаем о предстоящем платеже по договору "${sale.productName}". Дата: ${new Date(payment.date).toLocaleDateString()}. Сумма: ${payment.amount.toLocaleString()} ₽.${debtMessagePart} ${companyName}`;
-                } else {
-                    message = `Здравствуйте, ${customer.name}! У вас просрочен платеж по договору "${sale.productName}". Дата была: ${new Date(payment.date).toLocaleDateString()}. Сумма: ${payment.amount.toLocaleString()} ₽.${debtMessagePart} Пожалуйста, внесите оплату. ${companyName}`;
+                // Format Message
+                let message = formatTemplate(rawMessage, templateData);
+
+                // Add Debt Info if applicable and not explicitly in template (optional logic)
+                if (priorDebt > 0 && !message.includes(totalToPay.toLocaleString())) {
+                    message += `\n\n⚠️ Также есть долг за прошлые периоды. Всего к оплате: ${totalToPay.toLocaleString()} ₽.`;
+                }
+
+                // Add signature if not present
+                if (!message.includes(companyName)) {
+                    message += `\n\n${companyName}`;
                 }
 
                 const success = await sendWhatsAppMessage(settings.idInstance, settings.apiTokenInstance, customer.phone, message);
