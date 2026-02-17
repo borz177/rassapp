@@ -1,7 +1,8 @@
+
 import { Sale, Customer, WhatsAppSettings } from "../types";
+import { api } from "./api"; // Use API proxy
 
 const GREEN_API_BASE_URL = process.env.REACT_APP_GREEN_API_HOST || "https://api.green-api.com";
-const PARTNER_TOKEN = process.env.REACT_APP_GREEN_API_PARTNER_TOKEN;
 
 // Helper to format phone number to 79XXXXXXXXX format (assuming RU/KZ region primarily, adaptable)
 const formatPhone = (phone: string): string | null => {
@@ -26,34 +27,11 @@ export const checkGreenApiConnection = async (idInstance: string, apiTokenInstan
     }
 };
 
-export const createPartnerInstance = async (description: string = "InstallMate User"): Promise<{ idInstance: string, apiTokenInstance: string } | null> => {
-    if (!PARTNER_TOKEN) {
-        console.error("Partner token not found");
-        return null;
-    }
-
+// Now calls the backend proxy to create an instance securely
+export const createPartnerInstance = async (): Promise<{ idInstance: string, apiTokenInstance: string } | null> => {
     try {
-        const response = await fetch(`${GREEN_API_BASE_URL}/partner/createInstance`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${PARTNER_TOKEN}`
-            },
-            body: JSON.stringify({
-                type: "whatsapp",
-                mark: description
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`API Error: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        return {
-            idInstance: data.idInstance,
-            apiTokenInstance: data.apiTokenInstance
-        };
+        const credentials = await api.createWhatsAppInstance();
+        return credentials;
     } catch (error) {
         console.error("Failed to create partner instance:", error);
         return null;
@@ -64,9 +42,13 @@ export const getQrCode = async (idInstance: string, apiTokenInstance: string): P
     try {
         const response = await fetch(`${GREEN_API_BASE_URL}/waInstance${idInstance}/getQRCode/${apiTokenInstance}`);
         const data = await response.json();
-        // data.message contains the base64 image string in Green API response for getQRCode
-        // However, standard getQRCode usually returns type: "qrCode" and message: "base64..."
-        return data.message || null;
+        
+        // Check if data.message contains the base64 string directly or if it's in a specific field
+        // Standard Green API getQRCode returns: { type: "qrCode", message: "base64String..." }
+        if (data && data.type === 'qrCode' && data.message) {
+            return data.message;
+        }
+        return null;
     } catch (error) {
         console.error("Failed to get QR code:", error);
         return null;
@@ -100,9 +82,9 @@ export const sendWhatsAppMessage = async (
 };
 
 export const sendWhatsAppFile = async (
-    idInstance: string,
-    apiTokenInstance: string,
-    phone: string,
+    idInstance: string, 
+    apiTokenInstance: string, 
+    phone: string, 
     fileBlob: Blob,
     fileName: string
 ): Promise<boolean> => {
@@ -111,7 +93,7 @@ export const sendWhatsAppFile = async (
         if (!formattedPhone) return false;
 
         const chatId = `${formattedPhone}@c.us`;
-
+        
         const formData = new FormData();
         formData.append('chatId', chatId);
         formData.append('file', fileBlob, fileName);

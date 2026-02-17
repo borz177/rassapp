@@ -2,6 +2,8 @@
 require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 console.log('YOOKASSA_SHOP_ID loaded:', process.env.YOOKASSA_SHOP_ID ? '✅ Yes' : '❌ No');
 console.log('YOOKASSA_SECRET_KEY loaded:', process.env.YOOKASSA_SECRET_KEY ? '✅ Yes' : '❌ No');
+console.log('GREEN_API_PARTNER_TOKEN loaded:', process.env.GREEN_API_PARTNER_TOKEN ? '✅ Yes' : '❌ No');
+
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
@@ -24,8 +26,6 @@ app.use(express.json({
     return true;
   }
 }));
-const path = require('path');
-app.use(express.static(path.resolve(__dirname, '../public')));
 // Logging Middleware
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
@@ -681,6 +681,36 @@ app.post('/api/admin/set-subscription', adminAuth, async (req, res) => {
     } catch (e) {
         console.error("Admin set sub error", e);
         res.status(500).send("Server Error");
+    }
+});
+
+// --- INTEGRATIONS (WhatsApp Partner API) ---
+
+app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
+    const partnerToken = process.env.GREEN_API_PARTNER_TOKEN;
+
+    if (!partnerToken) {
+        return res.status(500).json({ msg: 'Partner Token not configured on server' });
+    }
+
+    try {
+        // Call Green API Partner endpoint
+        const response = await axios.post('https://api.green-api.com/partner/createInstance', {
+            type: "whatsapp",
+            mark: `User ${req.user.email} (ID: ${req.user.id})`
+        }, {
+            headers: {
+                'Authorization': `Bearer ${partnerToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        // Response format: { idInstance: "...", apiTokenInstance: "..." }
+        res.json(response.data);
+
+    } catch (error) {
+        console.error('Green API Create Instance Error:', error.response?.data || error.message);
+        res.status(500).json({ msg: 'Failed to create WhatsApp instance' });
     }
 });
 

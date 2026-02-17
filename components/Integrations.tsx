@@ -28,8 +28,6 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
   const [connectionStatus, setConnectionStatus] = useState<'IDLE' | 'WAITING_SCAN' | 'AUTHORIZED'>('IDLE');
   const pollingRef = useRef<number | null>(null);
 
-  const hasPartnerToken = !!process.env.REACT_APP_GREEN_API_PARTNER_TOKEN;
-
   useEffect(() => {
     if (appSettings.whatsapp) {
         setWaEnabled(appSettings.whatsapp.enabled);
@@ -41,12 +39,6 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
             checkGreenApiConnection(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance)
                 .then(isAuth => setConnectionStatus(isAuth ? 'AUTHORIZED' : 'IDLE'));
         }
-    } else {
-        // Load from env if not set in storage (Legacy support)
-        const envId = process.env.REACT_APP_GREEN_API_ID_INSTANCE || '';
-        const envToken = process.env.REACT_APP_GREEN_API_TOKEN_INSTANCE || '';
-        if (envId) setIdInstance(envId);
-        if (envToken) setApiToken(envToken);
     }
 
     return () => {
@@ -86,16 +78,16 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
   };
 
   const handleCreatePartnerInstance = async () => {
-      if (!window.confirm("Создать новое подключение WhatsApp?")) return;
-
+      // No description needed, logic handled in backend
       setIsCreatingInstance(true);
       setQrCode(null);
 
-      const credentials = await createPartnerInstance(appSettings.companyName || "InstallMate User");
+      const credentials = await createPartnerInstance();
 
       if (credentials) {
           setIdInstance(credentials.idInstance);
           setApiToken(credentials.apiTokenInstance);
+          setWaEnabled(true); // Enable automatically
 
           setTimeout(async () => {
               const qr = await getQrCode(credentials.idInstance, credentials.apiTokenInstance);
@@ -104,12 +96,12 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                   setConnectionStatus('WAITING_SCAN');
                   startPolling(credentials.idInstance, credentials.apiTokenInstance);
               } else {
-                  alert("Инстанс создан, но QR-код недоступен. Проверьте ключи вручную.");
+                  alert("Инстанс создан, но QR-код еще не готов. Попробуйте еще раз через пару секунд.");
               }
               setIsCreatingInstance(false);
-          }, 2000);
+          }, 3000); // Wait 3s for Green API to init
       } else {
-          alert("Ошибка создания инстанса.");
+          alert("Ошибка создания подключения. Обратитесь в поддержку.");
           setIsCreatingInstance(false);
       }
   };
@@ -123,6 +115,16 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
               setConnectionStatus('AUTHORIZED');
               setQrCode(null);
               if (pollingRef.current) window.clearInterval(pollingRef.current);
+
+              // Auto save settings
+              const waSettings: WhatsAppSettings = {
+                  enabled: true,
+                  idInstance: id,
+                  apiTokenInstance: token,
+                  reminderTime,
+                  reminderDays
+              };
+              onUpdateSettings({ ...appSettings, whatsapp: waSettings });
               alert("WhatsApp успешно подключен!");
           }
       }, 5000);
@@ -149,7 +151,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                   </div>
                   <div>
                       <h3 className="font-bold text-slate-800">WhatsApp</h3>
-                      <p className="text-xs text-slate-500">Провайдер: Green API</p>
+                      <p className="text-xs text-slate-500">Авто-уведомления клиентов</p>
                   </div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -161,106 +163,98 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
           {waEnabled && (
               <div className="p-5 space-y-6">
                   {/* Status Indicator */}
-                  <div className={`p-4 rounded-xl flex items-center gap-3 ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-slate-50 border border-slate-200 text-slate-600'}`}>
-                      <div className={`w-3 h-3 rounded-full ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></div>
-                      <span className="font-bold text-sm">
-                          {connectionStatus === 'AUTHORIZED' ? 'WhatsApp подключен' : connectionStatus === 'WAITING_SCAN' ? 'Сканируйте QR код' : 'Не подключено'}
-                      </span>
+                  <div className={`p-4 rounded-xl flex items-center justify-between gap-3 ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-slate-50 border border-slate-200 text-slate-600'}`}>
+                      <div className="flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-500 animate-pulse' : connectionStatus === 'WAITING_SCAN' ? 'bg-amber-500 animate-pulse' : 'bg-slate-400'}`}></div>
+                          <div>
+                              <span className="font-bold text-sm block">
+                                  {connectionStatus === 'AUTHORIZED' ? 'Подключено' : connectionStatus === 'WAITING_SCAN' ? 'Ожидание сканирования...' : 'Не подключено'}
+                              </span>
+                              {connectionStatus === 'AUTHORIZED' && <span className="text-xs opacity-70">Сообщения отправляются автоматически</span>}
+                          </div>
+                      </div>
                   </div>
 
-                  {/* Partner Connection Flow */}
-                  {hasPartnerToken && connectionStatus !== 'AUTHORIZED' && (
-                      <div className="bg-indigo-50 p-5 rounded-xl border border-indigo-100 text-center">
-                          <h4 className="font-bold text-indigo-900 mb-2">Быстрое подключение</h4>
+                  {/* Connect Flow */}
+                  {connectionStatus !== 'AUTHORIZED' && (
+                      <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100 text-center animate-fade-in">
                           {!qrCode ? (
-                              <button
-                                onClick={handleCreatePartnerInstance}
-                                disabled={isCreatingInstance}
-                                className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-70 transition-all text-sm"
-                              >
-                                {isCreatingInstance ? 'Создание...' : 'Получить QR код'}
-                              </button>
+                              <>
+                                  <h4 className="font-bold text-indigo-900 mb-2">Подключение устройства</h4>
+                                  <p className="text-xs text-indigo-700 mb-4">Нажмите кнопку ниже, чтобы сгенерировать QR-код для входа.</p>
+                                  <button
+                                    onClick={handleCreatePartnerInstance}
+                                    disabled={isCreatingInstance}
+                                    className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-70 transition-all text-sm flex items-center justify-center gap-2 mx-auto"
+                                  >
+                                    {isCreatingInstance ? (
+                                        <>
+                                            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                            Создание...
+                                        </>
+                                    ) : (
+                                        'Получить QR-код'
+                                    )}
+                                  </button>
+                              </>
                           ) : (
-                              <div className="space-y-3">
-                                  <div className="bg-white p-2 rounded-lg inline-block shadow-sm">
-                                      <img src={`data:image/png;base64,${qrCode}`} alt="QR Code" className="w-48 h-48 object-contain" />
+                              <div className="space-y-4 animate-fade-in">
+                                  <h4 className="font-bold text-indigo-900">Сканируйте в WhatsApp</h4>
+                                  <div className="bg-white p-3 rounded-xl inline-block shadow-md">
+                                      <img src={`data:image/png;base64,${qrCode}`} alt="QR Code" className="w-56 h-56 object-contain" />
                                   </div>
-                                  <p className="text-sm font-medium text-slate-600">Сканируйте в WhatsApp</p>
+                                  <div className="text-sm text-slate-600">
+                                      <ol className="text-left list-decimal list-inside space-y-1 bg-white/50 p-3 rounded-lg text-xs">
+                                          <li>Откройте WhatsApp на телефоне</li>
+                                          <li>Нажмите <b>Меню</b> или <b>Настройки</b></li>
+                                          <li>Выберите <b>Связанные устройства</b></li>
+                                          <li>Нажмите <b>Привязка устройства</b></li>
+                                          <li>Наведите камеру на этот код</li>
+                                      </ol>
+                                  </div>
                               </div>
                           )}
                       </div>
                   )}
 
-                  {/* Manual Config */}
-                  <div className="space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div>
-                              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">idInstance</label>
-                              <input
-                                  type="text"
-                                  className="w-full p-3 border border-slate-200 rounded-xl outline-none text-sm"
-                                  value={idInstance}
-                                  onChange={e => setIdInstance(e.target.value)}
-                              />
-                          </div>
-                          <div>
-                              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">apiTokenInstance</label>
-                              <input
-                                  type="text"
-                                  className="w-full p-3 border border-slate-200 rounded-xl outline-none text-sm"
-                                  value={apiToken}
-                                  onChange={e => setApiToken(e.target.value)}
-                              />
-                          </div>
-                      </div>
-                      <div className="flex justify-end gap-3">
-                          <button onClick={handleTestConnection} disabled={isTesting} className="text-sm text-indigo-600 font-bold hover:underline">
-                              {isTesting ? 'Проверка...' : 'Проверить связь'}
-                          </button>
-                      </div>
-                  </div>
+                  {connectionStatus === 'AUTHORIZED' && (
+                      <div className="space-y-6">
+                          <hr className="border-slate-100" />
 
-                  <hr className="border-slate-100" />
-
-                  {/* Schedule */}
-                  <div>
-                      <h4 className="font-semibold text-slate-700 mb-3 text-sm">Настройки рассылки</h4>
-                      <div className="grid grid-cols-2 gap-4 mb-4">
+                          {/* Schedule Settings */}
                           <div>
-                              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Время отправки</label>
-                              <input type="time" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={reminderTime} onChange={e => setReminderTime(e.target.value)} />
+                              <h4 className="font-semibold text-slate-700 mb-3 text-sm flex items-center gap-2">
+                                  {ICONS.Clock} Время рассылки
+                              </h4>
+                              <div className="grid grid-cols-2 gap-4 mb-4">
+                                  <div>
+                                      <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Время отправки</label>
+                                      <input type="time" className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-slate-50" value={reminderTime} onChange={e => setReminderTime(e.target.value)} />
+                                  </div>
+                              </div>
+                              <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Когда напоминать?</label>
+                              <div className="flex flex-wrap gap-2">
+                                  <button onClick={() => toggleDay(0)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(0) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>В день оплаты</button>
+                                  <button onClick={() => toggleDay(-1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(-1) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>За 1 день</button>
+                                  <button onClick={() => toggleDay(1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(1) ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-600 border-slate-200'}`}>При просрочке</button>
+                              </div>
+                          </div>
+
+                          <div className="flex gap-3">
+                              <button onClick={saveWhatsAppSettings} className="flex-1 py-3 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 transition-all shadow-lg shadow-slate-200">
+                                  Сохранить настройки
+                              </button>
+                              <button
+                                  onClick={handleTestConnection}
+                                  className={`px-4 py-3 rounded-xl border font-bold text-sm transition-all ${testStatus === 'SUCCESS' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                              >
+                                  {isTesting ? '...' : testStatus === 'SUCCESS' ? ICONS.Check : 'Проверить'}
+                              </button>
                           </div>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                          <button onClick={() => toggleDay(0)} className={`px-3 py-1.5 rounded-lg text-xs border ${reminderDays.includes(0) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>В день оплаты</button>
-                          <button onClick={() => toggleDay(-1)} className={`px-3 py-1.5 rounded-lg text-xs border ${reminderDays.includes(-1) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>За 1 день</button>
-                          <button onClick={() => toggleDay(1)} className={`px-3 py-1.5 rounded-lg text-xs border ${reminderDays.includes(1) ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-600 border-slate-200'}`}>Просрочка</button>
-                      </div>
-                  </div>
-
-                  <button onClick={saveWhatsAppSettings} className="w-full py-3 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 transition-all">
-                      Сохранить настройки WhatsApp
-                  </button>
+                  )}
               </div>
           )}
-      </div>
-
-      {/* Placeholders for future integrations */}
-      <div className="opacity-50 pointer-events-none grayscale">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-sky-500 rounded-full flex items-center justify-center text-white font-bold text-xs">TG</div>
-                  <div><h3 className="font-bold text-slate-800">Telegram Bot</h3><p className="text-xs text-slate-500">Скоро</p></div>
-              </div>
-              <div className="w-11 h-6 bg-slate-200 rounded-full"></div>
-          </div>
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center text-white font-bold text-xs">SMS</div>
-                  <div><h3 className="font-bold text-slate-800">SMS Рассылка</h3><p className="text-xs text-slate-500">Скоро</p></div>
-              </div>
-              <div className="w-11 h-6 bg-slate-200 rounded-full"></div>
-          </div>
       </div>
     </div>
   );

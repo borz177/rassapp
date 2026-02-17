@@ -200,6 +200,17 @@ export const api = {
         });
     },
 
+    // --- INTEGRATIONS ---
+    createWhatsAppInstance: async (): Promise<{ idInstance: string, apiTokenInstance: string }> => {
+        const res = await fetch(`${API_URL}/integrations/whatsapp/create`, {
+            method: 'POST',
+            headers: getAuthHeader()
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Ошибка создания инстанса');
+        return data;
+    },
+
     // --- ADMIN METHODS ---
 
     adminGetUsers: async (): Promise<User[]> => {
