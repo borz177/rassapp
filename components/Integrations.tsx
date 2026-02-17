@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AppSettings, WhatsAppSettings } from '../types';
 import { ICONS } from '../constants';
-import { checkGreenApiConnection, createPartnerInstance, getQrCode } from '../services/whatsapp';
+import { checkGreenApiConnection, getQrCode } from '../services/whatsapp';
 
 interface IntegrationsProps {
   appSettings: AppSettings;
@@ -18,15 +18,12 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
   const [reminderTime, setReminderTime] = useState('10:00');
   const [reminderDays, setReminderDays] = useState<number[]>([0]); // Default: On due date
 
-  // Manual Test State
+  // Connection State
   const [isTesting, setIsTesting] = useState(false);
-  const [testStatus, setTestStatus] = useState<'IDLE' | 'SUCCESS' | 'ERROR'>('IDLE');
-
-  // Partner Integration State
-  const [isCreatingInstance, setIsCreatingInstance] = useState(false);
-  const [inputPhone, setInputPhone] = useState('');
+  const [connectionStatus, setConnectionStatus] = useState<'IDLE' | 'AUTHORIZED' | 'NOT_AUTHORIZED' | 'ERROR'>('IDLE');
   const [qrCode, setQrCode] = useState<string | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<'IDLE' | 'WAITING_SCAN' | 'AUTHORIZED'>('IDLE');
+
+  // Polling for QR scan
   const pollingRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -36,9 +33,10 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
         setApiToken(appSettings.whatsapp.apiTokenInstance);
         setReminderTime(appSettings.whatsapp.reminderTime);
         setReminderDays(appSettings.whatsapp.reminderDays);
-        if (appSettings.whatsapp.idInstance) {
-            checkGreenApiConnection(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance)
-                .then(isAuth => setConnectionStatus(isAuth ? 'AUTHORIZED' : 'IDLE'));
+
+        // Auto-check if credentials exist
+        if (appSettings.whatsapp.enabled && appSettings.whatsapp.idInstance && appSettings.whatsapp.apiTokenInstance) {
+            checkConnection(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance);
         }
     }
 
@@ -47,7 +45,24 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
     }
   }, [appSettings]);
 
-  const saveWhatsAppSettings = () => {
+  const checkConnection = async (id: string, token: string) => {
+      if (!id || !token) return;
+      setIsTesting(true);
+      try {
+          const isAuth = await checkGreenApiConnection(id, token);
+          setConnectionStatus(isAuth ? 'AUTHORIZED' : 'NOT_AUTHORIZED');
+          if (isAuth) {
+              setQrCode(null);
+              if (pollingRef.current) window.clearInterval(pollingRef.current);
+          }
+      } catch (e) {
+          setConnectionStatus('ERROR');
+      } finally {
+          setIsTesting(false);
+      }
+  };
+
+  const handleSaveSettings = () => {
     const waSettings: WhatsAppSettings = {
         enabled: waEnabled,
         idInstance,
@@ -60,79 +75,51 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
         ...appSettings,
         whatsapp: waSettings
     });
-    alert("Настройки интеграции сохранены!");
+
+    if (waEnabled) {
+        checkConnection(idInstance, apiToken);
+        alert("Настройки сохранены. Проверяем соединение...");
+    } else {
+        alert("Настройки сохранены (Интеграция выключена).");
+    }
   };
 
-  const handleTestConnection = async () => {
+  const handleGetQrCode = async () => {
+      if (!idInstance || !apiToken) {
+          alert("Сначала введите IdInstance и ApiTokenInstance");
+          return;
+      }
+
       setIsTesting(true);
-      setTestStatus('IDLE');
-      const success = await checkGreenApiConnection(idInstance, apiToken);
-      setTestStatus(success ? 'SUCCESS' : 'ERROR');
-      if (success) setConnectionStatus('AUTHORIZED');
+      const qr = await getQrCode(idInstance, apiToken);
       setIsTesting(false);
+
+      if (qr) {
+          setQrCode(qr);
+          startPolling();
+      } else {
+          alert("Не удалось получить QR-код. Проверьте правильность данных или тариф.");
+      }
+  };
+
+  const startPolling = () => {
+      if (pollingRef.current) window.clearInterval(pollingRef.current);
+
+      pollingRef.current = window.setInterval(async () => {
+          const isAuth = await checkGreenApiConnection(idInstance, apiToken);
+          if (isAuth) {
+              setConnectionStatus('AUTHORIZED');
+              setQrCode(null);
+              if (pollingRef.current) window.clearInterval(pollingRef.current);
+              alert("WhatsApp успешно подключен!");
+          }
+      }, 5000);
   };
 
   const toggleDay = (day: number) => {
       setReminderDays(prev =>
           prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
       );
-  };
-
-  const handleCreatePartnerInstance = async () => {
-      if (!inputPhone) {
-          alert("Пожалуйста, введите номер телефона, который будете подключать.");
-          return;
-      }
-
-      setIsCreatingInstance(true);
-      setQrCode(null);
-
-      const credentials = await createPartnerInstance(inputPhone);
-
-      if (credentials) {
-          setIdInstance(credentials.idInstance);
-          setApiToken(credentials.apiTokenInstance);
-          setWaEnabled(true); // Enable automatically
-
-          setTimeout(async () => {
-              const qr = await getQrCode(credentials.idInstance, credentials.apiTokenInstance);
-              if (qr) {
-                  setQrCode(qr);
-                  setConnectionStatus('WAITING_SCAN');
-                  startPolling(credentials.idInstance, credentials.apiTokenInstance);
-              } else {
-                  alert("Инстанс создан, но QR-код еще не готов. Попробуйте еще раз через пару секунд.");
-              }
-              setIsCreatingInstance(false);
-          }, 3000); // Wait 3s for Green API to init
-      } else {
-          alert("Ошибка создания подключения. Обратитесь в поддержку.");
-          setIsCreatingInstance(false);
-      }
-  };
-
-  const startPolling = (id: string, token: string) => {
-      if (pollingRef.current) window.clearInterval(pollingRef.current);
-
-      pollingRef.current = window.setInterval(async () => {
-          const isAuth = await checkGreenApiConnection(id, token);
-          if (isAuth) {
-              setConnectionStatus('AUTHORIZED');
-              setQrCode(null);
-              if (pollingRef.current) window.clearInterval(pollingRef.current);
-
-              // Auto save settings
-              const waSettings: WhatsAppSettings = {
-                  enabled: true,
-                  idInstance: id,
-                  apiTokenInstance: token,
-                  reminderTime,
-                  reminderDays
-              };
-              onUpdateSettings({ ...appSettings, whatsapp: waSettings });
-              alert("WhatsApp успешно подключен!");
-          }
-      }, 5000);
   };
 
   return (
@@ -143,7 +130,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
         </button>
         <div>
             <h2 className="text-2xl font-bold text-slate-800">Интеграции</h2>
-            <p className="text-slate-500 text-sm">Подключение внешних сервисов</p>
+            <p className="text-slate-500 text-sm">Подключение Green API (WhatsApp)</p>
         </div>
       </header>
 
@@ -156,7 +143,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                   </div>
                   <div>
                       <h3 className="font-bold text-slate-800">WhatsApp</h3>
-                      <p className="text-xs text-slate-500">Авто-уведомления клиентов</p>
+                      <p className="text-xs text-slate-500">Провайдер: Green API</p>
                   </div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -167,56 +154,69 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
 
           {waEnabled && (
               <div className="p-5 space-y-6">
-                  {/* Status Indicator */}
-                  <div className={`p-4 rounded-xl flex items-center justify-between gap-3 ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-slate-50 border border-slate-200 text-slate-600'}`}>
-                      <div className="flex items-center gap-3">
-                          <div className={`w-3 h-3 rounded-full ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-500 animate-pulse' : connectionStatus === 'WAITING_SCAN' ? 'bg-amber-500 animate-pulse' : 'bg-slate-400'}`}></div>
-                          <div>
-                              <span className="font-bold text-sm block">
-                                  {connectionStatus === 'AUTHORIZED' ? 'Подключено' : connectionStatus === 'WAITING_SCAN' ? 'Ожидание сканирования...' : 'Не подключено'}
-                              </span>
-                              {connectionStatus === 'AUTHORIZED' && <span className="text-xs opacity-70">Сообщения отправляются автоматически</span>}
-                          </div>
+
+                  {/* Credentials Inputs */}
+                  <div className="space-y-4">
+                      <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-700">
+                          <p>1. Зарегистрируйтесь на <a href="https://console.green-api.com" target="_blank" rel="noreferrer" className="underline font-bold">Green API Console</a>.</p>
+                          <p>2. Создайте инстанс (можно Developer - бесплатно).</p>
+                          <p>3. Скопируйте <b>idInstance</b> и <b>apiTokenInstance</b> сюда.</p>
+                      </div>
+
+                      <div>
+                          <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">idInstance</label>
+                          <input
+                            type="text"
+                            className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm"
+                            value={idInstance}
+                            onChange={e => setIdInstance(e.target.value)}
+                            placeholder="1101000001"
+                          />
+                      </div>
+                      <div>
+                          <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">apiTokenInstance</label>
+                          <input
+                            type="text"
+                            className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm"
+                            value={apiToken}
+                            onChange={e => setApiToken(e.target.value)}
+                            placeholder="Вставьте токен"
+                          />
                       </div>
                   </div>
 
-                  {/* Connect Flow */}
-                  {connectionStatus !== 'AUTHORIZED' && (
-                      <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100 text-center animate-fade-in">
+                  {/* Status & Actions */}
+                  <div className="flex items-center justify-between gap-4 border-t border-slate-100 pt-4">
+                      <div className="flex items-center gap-2">
+                          <div className={`w-3 h-3 rounded-full ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-500' : connectionStatus === 'ERROR' ? 'bg-red-500' : 'bg-amber-500'}`}></div>
+                          <span className="text-sm font-bold text-slate-700">
+                              {connectionStatus === 'AUTHORIZED' ? 'Подключено' : connectionStatus === 'NOT_AUTHORIZED' ? 'Требуется QR' : 'Не проверено'}
+                          </span>
+                      </div>
+
+                      <button
+                        onClick={() => checkConnection(idInstance, apiToken)}
+                        disabled={isTesting}
+                        className="text-sm text-indigo-600 font-bold hover:underline"
+                      >
+                          {isTesting ? 'Проверка...' : 'Проверить связь'}
+                      </button>
+                  </div>
+
+                  {/* QR Code Section (Only if not authorized) */}
+                  {connectionStatus === 'NOT_AUTHORIZED' && (
+                      <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 text-center animate-fade-in">
                           {!qrCode ? (
-                              <>
-                                  <h4 className="font-bold text-indigo-900 mb-2">Подключение устройства</h4>
-                                  <p className="text-xs text-indigo-700 mb-4">Укажите номер телефона, с которого будет идти рассылка, и нажмите кнопку для получения QR-кода.</p>
-
-                                  <div className="max-w-xs mx-auto mb-4">
-                                      <input
-                                        type="tel"
-                                        placeholder="79991234567"
-                                        className="w-full p-3 border border-indigo-200 rounded-xl outline-none focus:border-indigo-500 text-center bg-white"
-                                        value={inputPhone}
-                                        onChange={e => setInputPhone(e.target.value)}
-                                      />
-                                  </div>
-
-                                  <button
-                                    onClick={handleCreatePartnerInstance}
-                                    disabled={isCreatingInstance}
-                                    className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-70 transition-all text-sm flex items-center justify-center gap-2 mx-auto"
-                                  >
-                                    {isCreatingInstance ? (
-                                        <>
-                                            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                            Создание...
-                                        </>
-                                    ) : (
-                                        'Получить QR-код'
-                                    )}
-                                  </button>
-                              </>
+                              <button
+                                onClick={handleGetQrCode}
+                                disabled={isTesting}
+                                className="bg-slate-800 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:bg-slate-900 disabled:opacity-70 transition-all text-sm"
+                              >
+                                {isTesting ? 'Загрузка...' : 'Получить QR-код для входа'}
+                              </button>
                           ) : (
-                              <div className="space-y-4 animate-fade-in">
-                                  <h4 className="font-bold text-indigo-900">Сканируйте в WhatsApp</h4>
-                                  <p className="text-xs text-indigo-600">Для номера: <b>{inputPhone}</b></p>
+                              <div className="space-y-4">
+                                  <h4 className="font-bold text-slate-900">Сканируйте в WhatsApp</h4>
                                   <div className="bg-white p-3 rounded-xl inline-block shadow-md">
                                       <img src={`data:image/png;base64,${qrCode}`} alt="QR Code" className="w-56 h-56 object-contain" />
                                   </div>
@@ -226,7 +226,6 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                                           <li>Нажмите <b>Меню</b> или <b>Настройки</b></li>
                                           <li>Выберите <b>Связанные устройства</b></li>
                                           <li>Нажмите <b>Привязка устройства</b></li>
-                                          <li>Наведите камеру на этот код</li>
                                       </ol>
                                   </div>
                               </div>
@@ -234,42 +233,30 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                       </div>
                   )}
 
-                  {connectionStatus === 'AUTHORIZED' && (
-                      <div className="space-y-6">
-                          <hr className="border-slate-100" />
+                  <hr className="border-slate-100" />
 
-                          {/* Schedule Settings */}
+                  {/* Schedule Settings */}
+                  <div>
+                      <h4 className="font-semibold text-slate-700 mb-3 text-sm flex items-center gap-2">
+                          {ICONS.Clock} Настройки рассылки
+                      </h4>
+                      <div className="grid grid-cols-2 gap-4 mb-4">
                           <div>
-                              <h4 className="font-semibold text-slate-700 mb-3 text-sm flex items-center gap-2">
-                                  {ICONS.Clock} Время рассылки
-                              </h4>
-                              <div className="grid grid-cols-2 gap-4 mb-4">
-                                  <div>
-                                      <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Время отправки</label>
-                                      <input type="time" className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-slate-50" value={reminderTime} onChange={e => setReminderTime(e.target.value)} />
-                                  </div>
-                              </div>
-                              <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Когда напоминать?</label>
-                              <div className="flex flex-wrap gap-2">
-                                  <button onClick={() => toggleDay(0)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(0) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>В день оплаты</button>
-                                  <button onClick={() => toggleDay(-1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(-1) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>За 1 день</button>
-                                  <button onClick={() => toggleDay(1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(1) ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-600 border-slate-200'}`}>При просрочке</button>
-                              </div>
-                          </div>
-
-                          <div className="flex gap-3">
-                              <button onClick={saveWhatsAppSettings} className="flex-1 py-3 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 transition-all shadow-lg shadow-slate-200">
-                                  Сохранить настройки
-                              </button>
-                              <button
-                                  onClick={handleTestConnection}
-                                  className={`px-4 py-3 rounded-xl border font-bold text-sm transition-all ${testStatus === 'SUCCESS' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-                              >
-                                  {isTesting ? '...' : testStatus === 'SUCCESS' ? ICONS.Check : 'Проверить'}
-                              </button>
+                              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Время отправки</label>
+                              <input type="time" className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-slate-50" value={reminderTime} onChange={e => setReminderTime(e.target.value)} />
                           </div>
                       </div>
-                  )}
+                      <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Когда напоминать?</label>
+                      <div className="flex flex-wrap gap-2">
+                          <button onClick={() => toggleDay(0)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(0) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>В день оплаты</button>
+                          <button onClick={() => toggleDay(-1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(-1) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>За 1 день</button>
+                          <button onClick={() => toggleDay(1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(1) ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-600 border-slate-200'}`}>При просрочке</button>
+                      </div>
+                  </div>
+
+                  <button onClick={handleSaveSettings} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">
+                      Сохранить настройки
+                  </button>
               </div>
           )}
       </div>
