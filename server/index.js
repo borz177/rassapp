@@ -685,35 +685,32 @@ app.post('/api/admin/set-subscription', adminAuth, async (req, res) => {
 });
 
 // --- INTEGRATIONS (WhatsApp Partner API) ---
+app.post('/api/whatsapp/create-instance', auth, async (req, res) => {
+  const partnerToken = process.env.GREEN_API_PARTNER_TOKEN;
 
-app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
-    const partnerToken = process.env.GREEN_API_PARTNER_TOKEN;
+  if (!partnerToken) {
+    return res.status(500).json({ msg: 'Partner token not configured' });
+  }
 
-    if (!partnerToken) {
-        return res.status(500).json({ msg: 'Partner Token not configured on server' });
-    }
+  try {
+    const url = `https://api.green-api.com/partner/createInstance/${partnerToken}`;
 
-    try {
-        // Call Green API Partner endpoint
-        const response = await axios.post('https://api.green-api.com/partner/createInstance', {
-            type: "whatsapp",
-            mark: `User ${req.user.email} (ID: ${req.user.id})`
-        }, {
-            headers: {
-                'Authorization': `Bearer ${partnerToken}`,
-                'Content-Type': 'application/json'
-            }
-        });
+    const response = await axios.post(url, {
+      name: `User ${req.user.email}`,
+      // webhookUrl: `${process.env.BASE_URL}/api/whatsapp/webhook`,
+      // другие параметры по желанию
+    }, {
+      headers: { 'Content-Type': 'application/json' }
+    });
 
-        // Response format: { idInstance: "...", apiTokenInstance: "..." }
-        res.json(response.data);
+    const { idInstance, apiTokenInstance } = response.data;
+    res.json({ idInstance, apiTokenInstance });
 
-    } catch (error) {
-        console.error('Green API Create Instance Error:', error.response?.data || error.message);
-        res.status(500).json({ msg: 'Failed to create WhatsApp instance' });
-    }
+  } catch (error) {
+    console.error('Green API Create Instance Error:', error.response?.data || error.message);
+    res.status(500).json({ msg: 'Failed to create WhatsApp instance' });
+  }
 });
-
 // --- PAYMENTS (YooKassa) ---
 
 app.post('/api/payment/create', auth, async (req, res) => {
