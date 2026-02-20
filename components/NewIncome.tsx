@@ -245,22 +245,27 @@ ${appSettings.companyName}
                   <label className="block text-sm font-medium text-slate-700 mb-1">Сумма прихода</label>
                   <div className="relative">
                       <span className="absolute left-4 top-3.5 text-slate-400 text-lg">₽</span>
-                      <input type="number" placeholder="0" className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={amount} onChange={e => setAmount(e.target.value)} />
+                      <input type="number" placeholder="0"
+                             className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                             value={amount} onChange={e => setAmount(e.target.value)}/>
                   </div>
-                  
+
                   {sourceType === 'CUSTOMER' && selectedSale && (
                       <div className="flex justify-between items-start mt-2">
-                          <p className="text-xs text-slate-400 mt-1">Рек: {recommendedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽</p>
+                          <p className="text-xs text-slate-400 mt-1">Рек: {recommendedAmount.toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2
+                          })} ₽</p>
                           {currentPaymentProfit > 0 && (
                               <div className="bg-emerald-50 px-2 py-1 rounded text-right">
                                   <p className="text-xs text-emerald-600 font-medium">Прибыль с платежа</p>
-                                  <p className="text-sm font-bold text-emerald-700">+{currentPaymentProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })} ₽</p>
+                                  <p className="text-sm font-bold text-emerald-700">+{currentPaymentProfit.toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</p>
                               </div>
                           )}
                       </div>
                   )}
               </div>
-              
+
               {sourceType === 'CUSTOMER' && appSettings.whatsapp?.enabled && (
                   <div className="flex items-center justify-between border-t border-slate-100 pt-3">
                       <div className="flex items-center gap-2">
@@ -268,24 +273,34 @@ ${appSettings.companyName}
                           <span className="text-sm font-medium text-slate-700">Отправить чек в WhatsApp</span>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
-                          <input type="checkbox" checked={sendHistory} onChange={() => setSendHistory(!sendHistory)} className="sr-only peer" />
-                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                          <input type="checkbox" checked={sendHistory} onChange={() => setSendHistory(!sendHistory)}
+                                 className="sr-only peer"/>
+                          <div
+                              className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
                       </label>
                   </div>
               )}
 
-              <div>
+              <div className="ml-3">
                   <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
-                  <input type="date" className="max-w-xs w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={date} onChange={e => setDate(e.target.value)} />
+                  <input
+                      type="date"
+                      className="max-w-xs w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                      value={date}
+                      onChange={e => setDate(e.target.value)}
+                  />
               </div>
           </div>
 
-          <button type="submit" className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-transform active:scale-95">Подтвердить приход</button>
+          <button type="submit"
+                  className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-transform active:scale-95">Подтвердить
+              приход
+          </button>
       </form>
 
-      {/* Confirmation Modal */}
-      {showConfirmModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowConfirmModal(false)}>
+        {/* Confirmation Modal */}
+        {showConfirmModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowConfirmModal(false)}>
               <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
                   <h3 className="text-xl font-bold text-slate-800 text-center">Подтверждение прихода</h3>
                   

@@ -263,17 +263,14 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                       />
                   </div>
               </div>
-
-              <div>
+              <div className="ml-4">
                   <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
-                  <div className="max-w-[200px]"> {/* ← такая же "визуальная" ширина */}
-                      <input
-                          type="date"
-                          className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
-                          value={date}
-                          onChange={e => setDate(e.target.value)}
-                      />
-                  </div>
+                  <input
+                      type="date"
+                      className="max-w-xs w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                      value={date}
+                      onChange={e => setDate(e.target.value)}
+                  />
               </div>
           </div>
 

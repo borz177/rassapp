@@ -439,7 +439,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
           const account = accounts.find(a => a.id === sale.accountId);
           let managerProfitShare = 1;
 
-          if (account && account.type === 'INVESTOR' && account.ownerId) {
+          if (account && account.ownerId) {
               const investor = investors.find(i => i.id === account.ownerId);
               if (investor) {
                   managerProfitShare = (100 - investor.profitPercentage) / 100;
@@ -465,7 +465,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
         const account = accounts.find(a => a.id === sale.accountId);
 
         let managerProfitSharePercent = 1.0;
-        if (account?.type === 'INVESTOR' && account.ownerId) {
+        if (account?.ownerId) {
             const investor = investors.find(i => i.id === account.ownerId);
             if (investor) {
                 managerProfitSharePercent = (100 - investor.profitPercentage) / 100;
@@ -740,15 +740,15 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                 </select>
               </div>
 
-              {/* Date Filters - сетка 2 колонки на мобильных */}
-              <div className="grid grid-cols-2 gap-2 sm:gap-4">
+              {/* Date Filters - отдельные строки */}
+              <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
                     Начало
                   </label>
                   <input
                     type="date"
-                    className="w-48 p-2 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                    className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
                     value={myProfitPeriod.start}
                     onChange={e => setMyProfitPeriod(p => ({...p, start: e.target.value}))}
                   />
@@ -759,7 +759,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                   </label>
                   <input
                     type="date"
-                    className="w-48 p-2 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                    className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
                     value={myProfitPeriod.end}
                     onChange={e => setMyProfitPeriod(p => ({...p, end: e.target.value}))}
                   />
