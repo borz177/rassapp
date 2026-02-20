@@ -267,7 +267,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                   <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
                   <input 
                       type="date"
-                      className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                      className="w-48 p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
                       value={date}
                       onChange={e => setDate(e.target.value)}
                   />

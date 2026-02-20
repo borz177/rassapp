@@ -748,7 +748,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                   </label>
                   <input
                     type="date"
-                    className="w-full p-2 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                    className="w-48 p-2 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
                     value={myProfitPeriod.start}
                     onChange={e => setMyProfitPeriod(p => ({...p, start: e.target.value}))}
                   />
@@ -759,7 +759,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                   </label>
                   <input
                     type="date"
-                    className="w-full p-2 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                    className="w-48 p-2 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
                     value={myProfitPeriod.end}
                     onChange={e => setMyProfitPeriod(p => ({...p, end: e.target.value}))}
                   />
