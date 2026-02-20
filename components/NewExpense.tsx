@@ -231,8 +231,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                    {category === 'Моя выплата' && (
                        <div className="pt-2">
                             <label className="block text-sm font-medium text-slate-700 mb-2">Источник списания</label>
-                            <div className={`grid ${selectedAccount?.type === 'INVESTOR' ? 'grid-cols-1' : 'grid-cols-2'} gap-2`}>
-                                {selectedAccount?.type !== 'INVESTOR' && (
+                            <div className={`grid ${selectedAccount?.ownerId ? 'grid-cols-1' : 'grid-cols-2'} gap-2`}>
+                                {!selectedAccount?.ownerId && (
                                     <button type="button" onClick={() => setManagerPayoutSource('CAPITAL')} className={`p-4 rounded-xl border-2 text-center ${managerPayoutSource === 'CAPITAL' ? 'border-purple-600 bg-purple-50' : 'border-slate-200 bg-white'}`}>
                                         <span className="font-bold text-sm text-purple-800">Из Капитала</span>
                                         <span className="text-xs text-slate-500 block">Личные средства</span>
@@ -263,7 +263,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                       />
                   </div>
               </div>
-              <div className="ml-4">
+              <div className="ml-3">
                   <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
                   <input
                       type="date"
