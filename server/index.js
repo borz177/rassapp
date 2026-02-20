@@ -191,7 +191,7 @@ const sendEmail = async (email, subject, text) => {
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
         try {
             await transporter.sendMail({
-                from: `"InstallMate" <${process.env.SMTP_USER}>`,
+                from: `"FinUchet" <${process.env.SMTP_USER}>`,
                 to: email,
                 subject,
                 text,

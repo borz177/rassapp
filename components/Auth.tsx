@@ -133,7 +133,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
                 {/* Header */}
                 <div className="text-center mb-6">
-                    <h1 className="text-3xl font-bold text-slate-800">InstallMate</h1>
+                    <h1 className="text-3xl font-bold text-slate-800">FinUchet</h1>
                     <p className="text-slate-500 text-sm">
                         {mode === 'LOGIN' && 'Вход в систему'}
                         {mode === 'REGISTER' && 'Регистрация аккаунта'}

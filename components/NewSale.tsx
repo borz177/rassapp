@@ -103,8 +103,8 @@ const NewSale: React.FC<NewSaleProps> = ({
     let monthlyPayment = installments > 0 ? remainingAmount / installments : 0;
 
     if (isRoundingEnabled && monthlyPayment > 0) {
-        // Smart rounding to nearest 100 (up or down)
-        const roundedMonthly = Math.round(monthlyPayment / 100) * 100;
+        // Round down to nearest 100
+        const roundedMonthly = Math.floor(monthlyPayment / 100) * 100;
         if (roundedMonthly > 0) {
             monthlyPayment = roundedMonthly;
             remainingAmount = monthlyPayment * installments;
@@ -331,10 +331,37 @@ const NewSale: React.FC<NewSaleProps> = ({
       <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-100"><button onClick={() => updateMode('INSTALLMENT')} className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${mode === 'INSTALLMENT' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Рассрочка</button><button onClick={() => updateMode('CASH')} className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${mode === 'CASH' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Наличные</button></div>
 
       <form onSubmit={handleFormSubmit} className="space-y-4">
+          {/* 1. Dates Section (Moved to Top) */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Дата продажи</label>
+                      <input type="date" required className="w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-slate-900 text-sm" value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} />
+                  </div>
+                  {mode === 'INSTALLMENT' && (
+                      <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Первый платеж</label>
+                          <input type="date" required className="w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-slate-900 text-sm" value={formData.paymentDate} onChange={handlePaymentDateChange} />
+                      </div>
+                  )}
+              </div>
+          </div>
+
+          {/* 2. Customer Section */}
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"><label className="block text-sm font-medium text-slate-700 mb-1">Клиент</label><div onClick={() => onSelectCustomer({ ...formData, mode })} className={`w-full p-3 border rounded-lg cursor-pointer flex justify-between items-center ${formData.customerId ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-dashed border-slate-300'}`}><div className="flex items-center gap-2">{formData.customerId && <div className="text-indigo-600">{ICONS.Customers}</div>}<span className={formData.customerId ? 'text-slate-800 font-bold' : 'text-slate-400'}>{selectedCustomer ? selectedCustomer.name : 'Выбрать клиента...'}</span></div><span className="text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></div></div>
 
+          {/* 3. Product Section */}
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative"><label className="block text-sm font-medium text-slate-700 mb-1">Товар</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none text-slate-900 placeholder:text-slate-400 bg-white" placeholder="Введите название товара..." value={formData.productName} onChange={(e) => handleProductChange(e.target.value)} />{showSuggestions && suggestions.length > 0 && (<div className="absolute left-4 right-4 top-[72px] bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">{suggestions.map(s => (<div key={s.id} className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0 text-slate-800" onClick={() => handleSuggestionClick(s)}><p className="font-medium text-slate-800">{s.name}</p><p className="text-xs text-slate-500">Цена: {s.price} ₽</p></div>))}</div>)}</div>
 
+          {/* 4. Account/Cash Register Section (Moved here) */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Касса (Приход)</label>
+              <select required className="w-full p-3 bg-white border border-slate-300 rounded-lg outline-none text-slate-900" value={formData.accountId} onChange={e => setFormData({...formData, accountId: e.target.value})}>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+          </div>
+
+          {/* 5. Pricing & Installment Params */}
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -374,31 +401,10 @@ const NewSale: React.FC<NewSaleProps> = ({
                   />
                   {mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && (<p className="text-xs text-indigo-600 mt-1">Автоматически рассчитано: {formData.buyPrice} + {formData.interestRate}%</p>)}
               </div>
-          </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex gap-4">
-                  <div className="flex-1">
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Дата продажи</label>
-                      <input type="date" required className="w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-slate-900 text-sm" value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} />
-                  </div>
-                  {mode === 'INSTALLMENT' && (
-                      <div className="flex-1">
-                          <label className="block text-sm font-medium text-slate-700 mb-1">Первый платеж</label>
-                          <input type="date" required className="w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-slate-900 text-sm" value={formData.paymentDate} onChange={handlePaymentDateChange} />
-                      </div>
-                  )}
-              </div>
-
-              <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Касса (Приход)</label>
-                  <select required className="w-full p-3 bg-white border border-slate-300 rounded-lg outline-none text-slate-900" value={formData.accountId} onChange={e => setFormData({...formData, accountId: e.target.value})}>
-                      {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-              </div>
-
+              {/* Installment Params (Term & Down Payment) - Merged here */}
               {mode === 'INSTALLMENT' && (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4">
                       <div>
                           <label className="block text-sm font-medium text-slate-700 mb-1">Срок (мес.)</label>
                           <input
@@ -426,6 +432,7 @@ const NewSale: React.FC<NewSaleProps> = ({
                   </div>
               )}
           </div>
+
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4"><h3 className="text-sm font-semibold text-slate-600">Поручитель (необязательно)</h3><div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-medium text-slate-500 mb-1">ФИО Поручителя</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900" value={formData.guarantorName} onChange={e => setFormData({...formData, guarantorName: e.target.value})} /></div><div><label className="block text-xs font-medium text-slate-500 mb-1">Телефон поручителя</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900" value={formData.guarantorPhone} onChange={e => setFormData({...formData, guarantorPhone: e.target.value})} /></div></div></div>
 
           <div className={`${mode === 'INSTALLMENT' ? 'bg-indigo-50 border-indigo-100' : 'bg-emerald-50 border-emerald-100'} p-5 rounded-xl space-y-3 border`}>
@@ -436,7 +443,7 @@ const NewSale: React.FC<NewSaleProps> = ({
 
                     {/* Smart Rounding Toggle */}
                     <div className="flex justify-between items-center text-sm pt-3 border-t border-indigo-100">
-                        <span className="text-slate-500">Округлить до 100 ₽</span>
+                        <span className="text-slate-500">Округлить до 100 ₽ (вниз)</span>
                         <label className="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" checked={isRoundingEnabled} onChange={() => setIsRoundingEnabled(!isRoundingEnabled)} className="sr-only peer" />
                             <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>

@@ -61,5 +61,5 @@ export const ICONS: Record<string, ReactNode> = {
   Tariffs: <Crown size={20} />
 };
 
-export const APP_NAME = "InstallMate";
+export const APP_NAME = "FinUchet";
 export const APP_VERSION = "1.0.3";
