@@ -1,5 +1,6 @@
 
 import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings } from "../types";
+import { offlineStorage } from "./offlineStorage";
 
 // Helper to determine the API URL dynamically
 const getBaseUrl = () => {
@@ -21,7 +22,51 @@ const getAuthHeader = () => {
     return token ? { 'x-auth-token': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
 };
 
+let isSyncing = false;
+
 export const api = {
+    // Sync Logic
+    sync: async () => {
+        if (!navigator.onLine || isSyncing) return;
+        isSyncing = true;
+
+        try {
+            const queue = await offlineStorage.getQueue();
+            if (queue.length === 0) return;
+
+            console.log(`Syncing ${queue.length} items...`);
+
+            for (const item of queue) {
+                try {
+                    let res;
+                    if (item.type === 'saveItem') {
+                        res = await fetch(`${API_URL}/data/${item.collection}`, {
+                            method: 'POST',
+                            headers: getAuthHeader(),
+                            body: JSON.stringify(item.payload)
+                        });
+                    } else if (item.type === 'deleteItem') {
+                        res = await fetch(`${API_URL}/data/${item.collection}/${item.itemId}`, {
+                            method: 'DELETE',
+                            headers: getAuthHeader()
+                        });
+                    }
+
+                    if (res && res.ok) {
+                        // Remove from queue on success
+                        await offlineStorage.removeFromQueue(item.id);
+                    } else {
+                        console.error(`Sync failed for item ${item.id}: Server returned ${res?.status}`);
+                    }
+                } catch (error) {
+                    console.error(`Failed to sync item ${item.id}`, error);
+                }
+            }
+        } finally {
+            isSyncing = false;
+        }
+    },
+
     // Auth
     sendCode: async (email: string, type: 'REGISTER' | 'RESET'): Promise<void> => {
         const res = await fetch(`${API_URL}/auth/send-code`, {
@@ -89,11 +134,21 @@ export const api = {
     },
 
     getMe: async (): Promise<User> => {
-        const res = await fetch(`${API_URL}/auth/me`, {
-            headers: getAuthHeader()
-        });
-        if (!res.ok) throw new Error('Failed to fetch user');
-        return res.json();
+        try {
+            const res = await fetch(`${API_URL}/auth/me`, {
+                headers: getAuthHeader()
+            });
+            if (!res.ok) throw new Error('Failed to fetch user');
+            const user = await res.json();
+            // Cache user data
+            await offlineStorage.setCache('user_me', user);
+            return user;
+        } catch (error) {
+            // Try cache
+            const cachedUser = await offlineStorage.getCache('user_me');
+            if (cachedUser) return cachedUser;
+            throw error;
+        }
     },
 
     // User Management - Create Sub-User (Protected, No Login Side-effect)
@@ -148,40 +203,110 @@ export const api = {
         expenses: Expense[], accounts: Account[], investors: Investor[],
         partnerships: Partnership[], employees: User[], settings?: AppSettings
     }> => {
+        let data: any = null;
         try {
             const res = await fetch(`${API_URL}/data`, { headers: getAuthHeader() });
             if (!res.ok) {
                 if (res.status === 401) {
                     localStorage.removeItem('token');
                     localStorage.removeItem('user');
-                    // We can redirect or reload here, but be careful about loops
                     window.location.reload();
                 }
                 throw new Error('Failed to fetch data');
             }
-            return res.json();
+            data = await res.json();
+            // Cache the data
+            await offlineStorage.setCache('all_data', data);
         } catch (error) {
             console.error("Fetch Data Error:", error);
-            throw error;
+            // Try to load from cache
+            const cachedData = await offlineStorage.getCache('all_data');
+            if (cachedData) {
+                console.log("Loaded data from offline cache");
+                data = cachedData;
+            } else {
+                throw error;
+            }
         }
+
+        // Apply pending offline changes to the data
+        if (data) {
+            try {
+                const queue = await offlineStorage.getQueue();
+                for (const item of queue) {
+                    if (!item.collection || !data[item.collection]) continue;
+
+                    if (item.type === 'saveItem') {
+                        if (Array.isArray(data[item.collection])) {
+                            // Handle Arrays (Sales, Customers, etc.)
+                            const list = data[item.collection] as any[];
+                            const idx = list.findIndex(i => i.id === item.payload.id);
+                            if (idx >= 0) {
+                                list[idx] = item.payload;
+                            } else {
+                                list.unshift(item.payload);
+                            }
+                        } else {
+                            // Handle Objects (Settings)
+                            data[item.collection] = { ...data[item.collection], ...item.payload };
+                        }
+                    } else if (item.type === 'deleteItem') {
+                         if (Array.isArray(data[item.collection])) {
+                            data[item.collection] = (data[item.collection] as any[]).filter(i => i.id !== item.itemId);
+                         }
+                    }
+                }
+            } catch (e) {
+                console.error("Error applying offline queue to data", e);
+            }
+        }
+
+        return data;
     },
 
     // CRUD
     saveItem: async (type: string, item: any): Promise<any> => {
-        const res = await fetch(`${API_URL}/data/${type}`, {
-            method: 'POST',
-            headers: getAuthHeader(),
-            body: JSON.stringify(item)
-        });
-        if (!res.ok) throw new Error(`Failed to save ${type}`);
-        return res.json(); // Returns the saved item
+        // Optimistic update support
+        try {
+            const res = await fetch(`${API_URL}/data/${type}`, {
+                method: 'POST',
+                headers: getAuthHeader(),
+                body: JSON.stringify(item)
+            });
+            if (!res.ok) throw new Error(`Failed to save ${type}`);
+            const savedItem = await res.json();
+
+            // Update cache if possible (simple append/update)
+            // Ideally we should re-fetch or update the specific cache entry
+            // For now, we rely on the UI updating its state via the return value
+            return savedItem;
+        } catch (error) {
+            console.warn("Offline mode: saving to queue", error);
+            // Save to offline queue
+            await offlineStorage.addToQueue({
+                type: 'saveItem',
+                collection: type,
+                payload: item
+            });
+            // Return the item as if it was saved (Optimistic)
+            return item;
+        }
     },
 
     deleteItem: async (type: string, id: string) => {
-        await fetch(`${API_URL}/data/${type}/${id}`, {
-            method: 'DELETE',
-            headers: getAuthHeader()
-        });
+        try {
+            await fetch(`${API_URL}/data/${type}/${id}`, {
+                method: 'DELETE',
+                headers: getAuthHeader()
+            });
+        } catch (error) {
+            console.warn("Offline mode: queuing delete", error);
+            await offlineStorage.addToQueue({
+                type: 'deleteItem',
+                collection: type,
+                itemId: id
+            });
+        }
     },
 
     // Account Reset

@@ -35,6 +35,8 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPublicMode, setIsPublicMode] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // App State
   const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
@@ -74,6 +76,42 @@ const App: React.FC = () => {
   useEffect(() => {
       setReportFilters(prev => ({...prev, period: myProfitPeriod}));
   }, [myProfitPeriod]);
+
+  // Network Status & Sync
+  useEffect(() => {
+      const handleOnline = () => {
+          setIsOnline(true);
+          handleSync();
+      };
+      const handleOffline = () => setIsOnline(false);
+
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+
+      // Initial Sync check
+      if (navigator.onLine) {
+          handleSync();
+      }
+
+      return () => {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+      };
+  }, []);
+
+  const handleSync = async () => {
+      if (!navigator.onLine) return;
+      setIsSyncing(true);
+      try {
+          await api.sync();
+          // Optional: Reload data after sync to ensure consistency with server
+          // await loadData();
+      } catch (e) {
+          console.error("Sync failed", e);
+      } finally {
+          setIsSyncing(false);
+      }
+  };
 
   // Initial Data Load (Auth Check & Fetch)
   useEffect(() => {
@@ -276,7 +314,20 @@ const App: React.FC = () => {
   if (!user) { return <Auth onLogin={handleAuthSuccess} />; }
 
   return (
-    <Layout currentView={currentView} setView={setCurrentView} onAction={handleAction} onContractTabChange={setActiveContractTab} sales={sales} appSettings={appSettings} customers={customers} user={user} activeInvestor={activeInvestor} onNavigateToProfile={() => setCurrentView('PROFILE')}>
+    <Layout
+        currentView={currentView}
+        setView={setCurrentView}
+        onAction={handleAction}
+        onContractTabChange={setActiveContractTab}
+        sales={sales}
+        appSettings={appSettings}
+        customers={customers}
+        user={user}
+        activeInvestor={activeInvestor}
+        onNavigateToProfile={() => setCurrentView('PROFILE')}
+        isOnline={isOnline}
+        isSyncing={isSyncing}
+    >
       {/* ... (Layout Children remain exactly the same) ... */}
       {currentView === 'DASHBOARD' && !isInvestor && <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital} accountBalances={accountBalances} onAction={handleAction} onSelectCustomer={handleSelectCustomer} onInitiatePayment={handleInitiateDashboardPayment} accounts={accounts} />}
       {currentView === 'DASHBOARD' && isInvestor && activeInvestor && <InvestorDashboard sales={sales} expenses={expenses} accounts={accounts} investor={activeInvestor} />}

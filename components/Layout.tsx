@@ -15,6 +15,8 @@ interface LayoutProps {
   user: User | null;
   activeInvestor?: Investor | null;
   onNavigateToProfile: () => void;
+  isOnline?: boolean;
+  isSyncing?: boolean;
 }
 
 const PLAN_NAMES: Record<SubscriptionPlan, string> = {
@@ -24,7 +26,7 @@ const PLAN_NAMES: Record<SubscriptionPlan, string> = {
     'BUSINESS': 'Бизнес'
 };
 
-const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onAction, onContractTabChange, sales = [], appSettings, customers, user, activeInvestor, onNavigateToProfile }) => {
+const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onAction, onContractTabChange, sales = [], appSettings, customers, user, activeInvestor, onNavigateToProfile, isOnline = true, isSyncing = false }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
@@ -225,7 +227,11 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans">
       {/* Mobile Top Navbar */}
       <header className="md:hidden fixed top-0 left-0 right-0 bg-white h-16 flex items-center px-4 shadow-md z-30 border-b border-slate-200">
-        <h1 className="text-xl font-bold tracking-tight text-indigo-600">{appSettings.companyName}</h1>
+        <div className="flex flex-col">
+            <h1 className="text-xl font-bold tracking-tight text-indigo-600">{appSettings.companyName}</h1>
+            {!isOnline && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded w-fit">Офлайн</span>}
+            {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">Синхронизация...</span>}
+        </div>
         {!isInvestor && (
             <div
                 className={`ml-auto text-xs px-2 py-1.5 rounded-lg font-bold flex flex-col items-end leading-tight cursor-pointer
@@ -247,6 +253,10 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
           <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
             {appSettings.companyName}
           </h1>
+          <div className="mt-2 flex gap-2">
+              {!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}
+              {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}
+          </div>
           {user && !isInvestor && user.role !== 'admin' && (
               <div
                 className={`mt-4 p-3 rounded-lg border text-xs font-medium cursor-pointer transition-colors hover:opacity-90 
