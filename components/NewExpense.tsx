@@ -254,7 +254,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                   <label className="block text-sm font-medium text-slate-700 mb-1">Сумма расхода</label>
                   <div className="relative">
                       <span className="absolute left-4 top-3.5 text-slate-400 text-lg">₽</span>
-                      <input 
+                      <input
                           type="number"
                           placeholder="0"
                           className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
@@ -263,22 +263,25 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                       />
                   </div>
               </div>
+
               <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
-                  <input 
-                      type="date"
-                      className="max-w-xs w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
-                      value={date}
-                      onChange={e => setDate(e.target.value)}
-                  />
+                  <div className="max-w-[200px]"> {/* ← такая же "визуальная" ширина */}
+                      <input
+                          type="date"
+                          className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                          value={date}
+                          onChange={e => setDate(e.target.value)}
+                      />
+                  </div>
               </div>
           </div>
 
-          <button 
-            type="submit" 
-            className="w-full bg-red-600 text-white py-4 rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 transition-transform active:scale-95"
+          <button
+              type="submit"
+              className="w-full bg-red-600 text-white py-4 rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 transition-transform active:scale-95"
           >
-            Подтвердить расход
+              Подтвердить расход
           </button>
       </form>
     </div>
