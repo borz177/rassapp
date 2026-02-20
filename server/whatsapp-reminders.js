@@ -1,4 +1,4 @@
-// whatsapp-reminders.js — с поддержкой кастомных шаблонов
+// whatsapp-reminders.js — с учётом задолженности и цитатой
 require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 
 const { Pool } = require('pg');
@@ -13,9 +13,8 @@ const pool = new Pool({
 
 // Стандартные шаблоны (как в UI)
 const DEFAULT_TEMPLATES = {
-  upcoming: "Здравствуйте, {имя}! Напоминаем о предстоящем платеже по договору \"{товар}\". Дата: {дата}. Сумма: {сумма} ₽.",
-  today: "Здравствуйте, {имя}! Напоминаем, что сегодня ({дата}) день оплаты по договору \"{товар}\". Сумма текущего платежа: {сумма} ₽.",
-  overdue: "Здравствуйте, {имя}! У вас просрочен платеж по договору \"{товар}\". Дата была: {дата}. Сумма: {сумма} ₽. Пожалуйста, внесите оплату."
+  today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 Сегодня *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
+  overdue: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 Сегодня *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``
 };
 
 async function sendWhatsAppMessage(idInstance, apiTokenInstance, phone, message) {
@@ -53,10 +52,12 @@ function formatTemplate(template, data) {
   return template
     .replace(/{имя}/g, data.customerName || '')
     .replace(/{товар}/g, data.productName || '')
-    .replace(/{сумма}/g, data.amountStr || '')
+    .replace(/{сумма}/g, data.currentAmountStr || '')
     .replace(/{дата}/g, data.dateStr || '')
-    .replace(/{общий_долг}/g, data.totalDebtStr || '0')
-    .replace(/{компания}/g, data.companyName || '');
+    .replace(/{долг}/g, data.debtStr || '0')
+    .replace(/{итого}/g, data.totalStr || '0')
+    .replace(/{месяцы}/g, data.monthsStr || '0')
+    .replace(/{долг_блок}/g, data.debtBlock || '');
 }
 
 function buildPaymentMessage(sale, customer, payment, priorDebt, totalToPay, isDueToday, isOverdue, userTemplates) {
@@ -66,24 +67,44 @@ function buildPaymentMessage(sale, customer, payment, priorDebt, totalToPay, isD
     year: 'numeric'
   });
 
-  // Выбираем шаблон
-  let template = DEFAULT_TEMPLATES.today;
-  if (isOverdue) {
-    template = userTemplates?.overdue || DEFAULT_TEMPLATES.overdue;
-  } else if (isDueToday) {
-    template = userTemplates?.today || DEFAULT_TEMPLATES.today;
-  } else {
-    template = userTemplates?.upcoming || DEFAULT_TEMPLATES.upcoming;
+  // Расчёт количества месяцев просрочки (для долга)
+  let monthsDiff = 0;
+  if (priorDebt > 0) {
+    const now = new Date();
+    const paymentDate = new Date(payment.date);
+    monthsDiff = Math.max(0, now.getMonth() - paymentDate.getMonth() + (now.getFullYear() - paymentDate.getFullYear()) * 12);
+    // Но если платёж был в этом месяце, но не оплачен — это 1 месяц просрочки
+    if (monthsDiff === 0 && now.getDate() > paymentDate.getDate()) {
+      monthsDiff = 1;
+    }
   }
 
-  // Подготавливаем данные для подстановки
+  const currentAmountStr = payment.amount.toLocaleString();
+  const debtStr = priorDebt.toLocaleString();
+  const totalStr = totalToPay.toLocaleString();
+  const monthsStr = monthsDiff.toString();
+
+  const debtBlock = priorDebt > 0
+    ? `   • Задолженность: *${debtStr} ₽* (${monthsStr} мес.)\n💰 *ИТОГО К ОПЛАТЕ: ${totalStr} ₽*`
+    : '';
+
+  // Выбираем шаблон
+  let template = userTemplates?.today || DEFAULT_TEMPLATES.today;
+  if (isOverdue && userTemplates?.overdue) {
+    template = userTemplates.overdue;
+  } else if (isOverdue) {
+    template = DEFAULT_TEMPLATES.overdue;
+  }
+
   const data = {
     customerName: customer.name,
     productName: sale.productName,
-    amountStr: payment.amount.toLocaleString(),
-    dateStr: dateStr,
-    totalDebtStr: totalToPay.toLocaleString(),
-    companyName: '' // вы можете добавить, если захотите
+    currentAmountStr,
+    dateStr,
+    debtStr,
+    totalStr,
+    monthsStr,
+    debtBlock
   };
 
   return formatTemplate(template, data);
@@ -130,27 +151,33 @@ async function processRemindersForUser(user) {
 
       const paymentDate = new Date(payment.date);
       paymentDate.setHours(0, 0, 0, 0);
-      const daysUntilPayment = Math.ceil((paymentDate - today) / (1000 * 60 * 60 * 24));
+      const diffDays = Math.ceil((paymentDate - today) / (1000 * 60 * 60 * 24));
 
-      let reminderType;
-      if (daysUntilPayment < 0) reminderType = 1;
-      else if (daysUntilPayment === 0) reminderType = 0;
-      else if (daysUntilPayment > 0) reminderType = -1;
+      // 🔑 Точная логика:
+      let shouldSend = false;
+      if (diffDays === 0 && settings.reminderDays.includes(0)) {
+        shouldSend = true; // В день оплаты
+      } else if (diffDays === -1 && settings.reminderDays.includes(-1)) {
+        shouldSend = true; // За 1 день до
+      } else if (diffDays < 0 && settings.reminderDays.includes(1)) {
+        shouldSend = true; // При просрочке
+      }
 
-      if (!settings.reminderDays.includes(reminderType)) continue;
+      if (!shouldSend) continue;
 
+      // Расчёт задолженности: сумма всех неплатёжей **до этой даты**
       const priorDebt = sale.paymentPlan
         .filter(p => !p.isPaid && new Date(p.date) < paymentDate)
         .reduce((sum, p) => sum + p.amount, 0);
 
       const totalToPay = payment.amount + priorDebt;
-      const isDueToday = daysUntilPayment === 0;
-      const isOverdue = daysUntilPayment < 0;
+      const isDueToday = diffDays === 0;
+      const isOverdue = diffDays < 0;
 
       const message = buildPaymentMessage(
         sale, customer, payment, priorDebt, totalToPay,
         isDueToday, isOverdue,
-        settings.templates // ← передаём шаблоны
+        settings.templates
       );
 
       const success = await sendWhatsAppMessage(
@@ -167,7 +194,7 @@ async function processRemindersForUser(user) {
           [JSON.stringify(sale), sale.id, id]
         );
         sentCount++;
-        console.log(`${LOG_PREFIX} Отправлено напоминание: ${sale.productName}`);
+        console.log(`${LOG_PREFIX} Отправлено напоминание: ${sale.productName} (платёж на ${payment.date})`);
       }
     }
   }

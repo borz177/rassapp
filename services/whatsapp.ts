@@ -1,18 +1,14 @@
-
 import { Sale, Customer, WhatsAppSettings } from "../types";
-import { api } from "./api"; // Use API proxy
+import { api } from "./api";
 
-const GREEN_API_BASE_URL = process.env.REACT_APP_GREEN_API_HOST || "https://api.green-api.com";
+const GREEN_API_BASE_URL = process.env.REACT_APP_GREEN_API_HOST || "https://api.green-api.com"; // ← пробелы удалены
 
-// Helper to format phone number to 79XXXXXXXXX format (assuming RU/KZ region primarily, adaptable)
+// Helper to format phone number to 79XXXXXXXXX format
 const formatPhone = (phone: string): string | null => {
     const cleaned = phone.replace(/\D/g, '');
     if (cleaned.length < 10) return null;
-    // Simple logic: if starts with 8, replace with 7. If 7, keep. 
-    // Green API requires country code.
     if (cleaned.startsWith('8')) return '7' + cleaned.slice(1);
     if (cleaned.startsWith('7')) return cleaned;
-    // Fallback for other codes if user entered full code
     return cleaned;
 };
 
@@ -27,7 +23,6 @@ export const checkGreenApiConnection = async (idInstance: string, apiTokenInstan
     }
 };
 
-// Now calls the backend proxy to create an instance securely
 export const createPartnerInstance = async (phoneNumber: string): Promise<{ idInstance: string, apiTokenInstance: string } | null> => {
     try {
         const credentials = await api.createWhatsAppInstance(phoneNumber);
@@ -42,9 +37,6 @@ export const getQrCode = async (idInstance: string, apiTokenInstance: string): P
     try {
         const response = await fetch(`${GREEN_API_BASE_URL}/waInstance${idInstance}/getQRCode/${apiTokenInstance}`);
         const data = await response.json();
-        
-        // Check if data.message contains the base64 string directly or if it's in a specific field
-        // Standard Green API getQRCode returns: { type: "qrCode", message: "base64String..." }
         if (data && data.type === 'qrCode' && data.message) {
             return data.message;
         }
@@ -114,9 +106,8 @@ export const sendWhatsAppFile = async (
 // --- TEMPLATE PROCESSING ---
 
 const DEFAULT_TEMPLATES = {
-    upcoming: "Здравствуйте, {имя}! Напоминаем о предстоящем платеже по договору \"{товар}\". Дата: {дата}. Сумма: {сумма} ₽.",
-    today: "Здравствуйте, {имя}! Напоминаем, что сегодня ({дата}) день оплаты по договору \"{товар}\". Сумма текущего платежа: {сумма} ₽.",
-    overdue: "Здравствуйте, {имя}! У вас просрочен платеж по договору \"{товар}\". Дата была: {дата}. Сумма: {сумма} ₽. Пожалуйста, внесите оплату."
+    today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 Сегодня *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
+    overdue: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 Сегодня *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``
 };
 
 const formatTemplate = (template: string, data: Record<string, string>) => {
@@ -127,7 +118,14 @@ const formatTemplate = (template: string, data: Record<string, string>) => {
     return result;
 };
 
-// Returns an array of updated sales with new lastNotificationDate
+// Helper to calculate months of debt
+const getDebtMonths = (paymentDate: Date): number => {
+    const now = new Date();
+    let months = (now.getFullYear() - paymentDate.getFullYear()) * 12 + (now.getMonth() - paymentDate.getMonth());
+    if (now.getDate() < paymentDate.getDate()) months--;
+    return Math.max(1, months);
+};
+
 export const processDailyReminders = async (
     settings: WhatsAppSettings,
     sales: Sale[],
@@ -143,13 +141,11 @@ export const processDailyReminders = async (
     today.setHours(0, 0, 0, 0);
     const todayStr = today.toISOString().split('T')[0];
 
-    // Check if time condition is met (simple check: is it past reminder time?)
     const now = new Date();
     const [remHour, remMinute] = settings.reminderTime.split(':').map(Number);
     const reminderTime = new Date();
     reminderTime.setHours(remHour, remMinute, 0, 0);
 
-    // If currently earlier than scheduled time, don't send (unless manual trigger)
     if (now < reminderTime) {
         return { updatedSales: [], sentCount: 0, errors: 0 };
     }
@@ -157,87 +153,81 @@ export const processDailyReminders = async (
     let sentCount = 0;
     let errors = 0;
     const salesToUpdate: Sale[] = [];
-
-    // Clone sales to avoid direct mutation
     const processedSales = JSON.parse(JSON.stringify(sales)) as Sale[];
-
-    // Use custom templates or defaults
     const templates = { ...DEFAULT_TEMPLATES, ...(settings.templates || {}) };
 
     for (const sale of processedSales) {
         if (sale.status !== 'ACTIVE') continue;
 
         const customer = customers.find(c => c.id === sale.customerId);
-        if (!customer) continue;
+        if (!customer || !customer.phone) continue;
         if (customer.allowWhatsappNotification === false) continue;
 
         let saleModified = false;
 
         for (const payment of sale.paymentPlan) {
-            if (payment.isPaid) continue;
+            if (payment.isPaid || payment.lastNotificationDate === todayStr) continue;
 
             const paymentDate = new Date(payment.date);
-            paymentDate.setHours(0,0,0,0);
+            paymentDate.setHours(0, 0, 0, 0);
+            const diffDays = Math.ceil((paymentDate - today) / (1000 * 60 * 60 * 24));
 
-            // Calculate day difference
-            const diffTime = paymentDate.getTime() - today.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            // 0 = today, 1 = tomorrow, -1 = yesterday
+            // 🔑 ТОЧНАЯ ЛОГИКА:
+            let shouldSend = false;
+            if (diffDays === 0 && settings.reminderDays.includes(0)) shouldSend = true;      // сегодня
+            else if (diffDays === -1 && settings.reminderDays.includes(-1)) shouldSend = true; // за 1 день
+            else if (diffDays < 0 && settings.reminderDays.includes(1)) shouldSend = true;     // просрочка
 
-            // Check if this specific day offset is in settings
-            if (settings.reminderDays.includes(diffDays)) {
-                // Check if already notified TODAY
-                if (payment.lastNotificationDate === todayStr) continue;
+            if (!shouldSend) continue;
 
-                // Calculate Prior Debt (strictly before this payment's date)
-                const priorDebt = sale.paymentPlan
-                    .filter(p => !p.isPaid && new Date(p.date) < paymentDate)
-                    .reduce((sum, p) => sum + p.amount, 0);
+            const priorDebt = sale.paymentPlan
+                .filter(p => !p.isPaid && new Date(p.date) < paymentDate)
+                .reduce((sum, p) => sum + p.amount, 0);
 
-                const totalToPay = payment.amount + priorDebt;
+            const totalToPay = payment.amount + priorDebt;
+            const isOverdue = diffDays < 0;
 
-                // Construct Data for Template
-                const templateData = {
-                    'имя': customer.name,
-                    'товар': sale.productName,
-                    'сумма': payment.amount.toLocaleString(),
-                    'дата': new Date(payment.date).toLocaleDateString(),
-                    'общий_долг': totalToPay.toLocaleString(),
-                    'компания': companyName
-                };
+            // Подготовка данных для шаблона
+            const dateStr = paymentDate.toLocaleDateString('ru-RU', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+            });
 
-                // Select Template
-                let rawMessage = '';
-                if (diffDays === 0) {
-                    rawMessage = templates.today;
-                } else if (diffDays > 0) {
-                    rawMessage = templates.upcoming;
-                } else {
-                    rawMessage = templates.overdue;
-                }
+            let debtBlock = '';
+            let debtMonths = '0';
+            if (priorDebt > 0) {
+                debtMonths = getDebtMonths(paymentDate).toString();
+                debtBlock = `   • Задолженность: *${priorDebt.toLocaleString()} ₽* (${debtMonths} мес.)\n💰 *ИТОГО К ОПЛАТЕ: ${totalToPay.toLocaleString()} ₽*`;
+            }
 
-                // Format Message
-                let message = formatTemplate(rawMessage, templateData);
+            const templateData = {
+                'имя': customer.name,
+                'товар': sale.productName,
+                'сумма': payment.amount.toLocaleString(),
+                'дата': dateStr,
+                'долг': priorDebt.toLocaleString(),
+                'итого': totalToPay.toLocaleString(),
+                'месяцы': debtMonths,
+                'долг_блок': debtBlock
+            };
 
-                // Add Debt Info if applicable and not explicitly in template (optional logic)
-                if (priorDebt > 0 && !message.includes(totalToPay.toLocaleString())) {
-                    message += `\n\n⚠️ Также есть долг за прошлые периоды. Всего к оплате: ${totalToPay.toLocaleString()} ₽.`;
-                }
+            // Выбор шаблона
+            let rawMessage = templates.today;
+            if (isOverdue) {
+                rawMessage = templates.overdue || templates.today;
+            }
 
-                // Add signature if not present
-                if (!message.includes(companyName)) {
-                    message += `\n\n${companyName}`;
-                }
+            let message = formatTemplate(rawMessage, templateData);
 
-                const success = await sendWhatsAppMessage(settings.idInstance, settings.apiTokenInstance, customer.phone, message);
-                
-                if (success) {
-                    payment.lastNotificationDate = todayStr;
-                    saleModified = true;
-                    sentCount++;
-                } else {
-                    errors++;
-                }
+            const success = await sendWhatsAppMessage(settings.idInstance, settings.apiTokenInstance, customer.phone, message);
+            
+            if (success) {
+                payment.lastNotificationDate = todayStr;
+                saleModified = true;
+                sentCount++;
+            } else {
+                errors++;
             }
         }
 
