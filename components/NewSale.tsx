@@ -118,6 +118,15 @@ const NewSale: React.FC<NewSaleProps> = ({
     return { totalAmount, remainingAmount, monthlyPayment };
   }, [formData.price, formData.downPayment, formData.installments, roundingMode, mode]);
 
+  // Sync price with rounded total
+  useEffect(() => {
+      if (roundingMode !== 'NONE' && mode === 'INSTALLMENT') {
+          if (calculatedValues.totalAmount !== Number(formData.price)) {
+              setFormData(prev => ({ ...prev, price: calculatedValues.totalAmount }));
+          }
+      }
+  }, [calculatedValues.totalAmount, roundingMode, mode]);
+
   const handleProductChange = (val: string) => { setFormData(prev => ({ ...prev, productName: val, productId: '' })); if (val.length > 0) { const matched = products.filter(p => p.name.toLowerCase().includes(val.toLowerCase())); setSuggestions(matched); setShowSuggestions(true); } else { setShowSuggestions(false); } };
   const handleSuggestionClick = (product: Product) => { setFormData(prev => ({ ...prev, productName: product.name, productId: product.id, price: product.price, buyPrice: 0 })); setShowSuggestions(false); };
   const handlePaymentDateChange = (e: React.ChangeEvent<HTMLInputElement>) => { const dateVal = e.target.value; setFormData(prev => ({ ...prev, paymentDate: dateVal, paymentDay: dateVal ? new Date(dateVal).getDate().toString() : '' })); };
@@ -336,7 +345,7 @@ const NewSale: React.FC<NewSaleProps> = ({
       <form onSubmit={handleFormSubmit} className="space-y-4">
           {/* 1. Dates Section (Moved to Top) */}
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <div className="flex flex-wrap gap-4">
+              <div className="flex flex-wrap gap-6">
                   <div className="w-40">
                       <label className="block text-sm font-medium text-slate-700 mb-1">Дата продажи</label>
                       <input type="date" required className="w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-slate-900 text-sm" value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} />
