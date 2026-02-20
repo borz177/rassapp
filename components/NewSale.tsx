@@ -20,7 +20,7 @@ const NewSale: React.FC<NewSaleProps> = ({
     onClose, onSelectCustomer, onSubmit
 }) => {
   const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(initialData.type || 'INSTALLMENT');
-  const [isRoundingEnabled, setIsRoundingEnabled] = useState(false);
+  const [roundingMode, setRoundingMode] = useState<'NONE' | 'DOWN' | 'UP'>('NONE');
 
   // Modals State
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -102,9 +102,12 @@ const NewSale: React.FC<NewSaleProps> = ({
     let remainingAmount = totalAmount - downPayment;
     let monthlyPayment = installments > 0 ? remainingAmount / installments : 0;
 
-    if (isRoundingEnabled && monthlyPayment > 0) {
-        // Round down to nearest 100
-        const roundedMonthly = Math.floor(monthlyPayment / 100) * 100;
+    if (roundingMode !== 'NONE' && monthlyPayment > 0) {
+        // Round to nearest 100
+        const roundedMonthly = roundingMode === 'DOWN'
+            ? Math.floor(monthlyPayment / 100) * 100
+            : Math.ceil(monthlyPayment / 100) * 100;
+
         if (roundedMonthly > 0) {
             monthlyPayment = roundedMonthly;
             remainingAmount = monthlyPayment * installments;
@@ -113,7 +116,7 @@ const NewSale: React.FC<NewSaleProps> = ({
     }
 
     return { totalAmount, remainingAmount, monthlyPayment };
-  }, [formData.price, formData.downPayment, formData.installments, isRoundingEnabled, mode]);
+  }, [formData.price, formData.downPayment, formData.installments, roundingMode, mode]);
 
   const handleProductChange = (val: string) => { setFormData(prev => ({ ...prev, productName: val, productId: '' })); if (val.length > 0) { const matched = products.filter(p => p.name.toLowerCase().includes(val.toLowerCase())); setSuggestions(matched); setShowSuggestions(true); } else { setShowSuggestions(false); } };
   const handleSuggestionClick = (product: Product) => { setFormData(prev => ({ ...prev, productName: product.name, productId: product.id, price: product.price, buyPrice: 0 })); setShowSuggestions(false); };
@@ -333,13 +336,13 @@ const NewSale: React.FC<NewSaleProps> = ({
       <form onSubmit={handleFormSubmit} className="space-y-4">
           {/* 1. Dates Section (Moved to Top) */}
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
+              <div className="flex flex-wrap gap-4">
+                  <div className="w-40">
                       <label className="block text-sm font-medium text-slate-700 mb-1">Дата продажи</label>
                       <input type="date" required className="w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-slate-900 text-sm" value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} />
                   </div>
                   {mode === 'INSTALLMENT' && (
-                      <div>
+                      <div className="w-40">
                           <label className="block text-sm font-medium text-slate-700 mb-1">Первый платеж</label>
                           <input type="date" required className="w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-slate-900 text-sm" value={formData.paymentDate} onChange={handlePaymentDateChange} />
                       </div>
@@ -442,12 +445,31 @@ const NewSale: React.FC<NewSaleProps> = ({
                     <div className="flex justify-between text-sm"><span className="text-slate-500">Чистая прибыль</span><span className="font-medium text-emerald-600">+{Math.round(calculatedValues.totalAmount - Number(formData.buyPrice)).toLocaleString()} ₽</span></div>
 
                     {/* Smart Rounding Toggle */}
-                    <div className="flex justify-between items-center text-sm pt-3 border-t border-indigo-100">
-                        <span className="text-slate-500">Округлить до 100 ₽ (вниз)</span>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" checked={isRoundingEnabled} onChange={() => setIsRoundingEnabled(!isRoundingEnabled)} className="sr-only peer" />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                        </label>
+                    <div className="flex flex-col gap-2 text-sm pt-3 border-t border-indigo-100">
+                        <span className="text-slate-500 font-medium">Округление платежа (до 100 ₽)</span>
+                        <div className="flex bg-slate-100 p-1 rounded-lg">
+                            <button
+                                type="button"
+                                onClick={() => setRoundingMode('NONE')}
+                                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'NONE' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                            >
+                                Нет
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setRoundingMode('DOWN')}
+                                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'DOWN' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                            >
+                                Вниз
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setRoundingMode('UP')}
+                                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'UP' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                            >
+                                Вверх
+                            </button>
+                        </div>
                     </div>
 
                     <div className="flex justify-between text-sm pt-3 border-t border-indigo-100"><span className="text-indigo-800 font-semibold">Платёж в месяц</span><span className="text-indigo-800 font-bold">{calculatedValues.monthlyPayment.toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</span></div>
