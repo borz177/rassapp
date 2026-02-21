@@ -428,10 +428,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
         reader.readAsBinaryString(file);
     };
 
-    const downloadTemplate = async () => {
-        alert("Для импорта используйте файл выгрузки системы (с листами 'Обзор клиентов' и 'История платежей').");
-    };
-
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
             <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 space-y-5" onClick={e => e.stopPropagation()}>
