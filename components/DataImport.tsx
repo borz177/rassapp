@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { api } from '@/services/api';
 import { Customer, Product, Sale, Account, Investor, Payment } from '../types';
 
+// Объявляем тип для глобальной переменной XLSX (из CDN)
 declare const XLSX: any;
 
 interface DataImportProps {
@@ -24,6 +25,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
     const addLog = (msg: string) => setLogs(prev => [...prev, msg]);
 
+    // Загрузка библиотеки XLSX
     const getXLSX = async () => {
         try {
             const module = await import('xlsx');
@@ -36,15 +38,46 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
         }
     };
 
-    // Парсинг дат (Excel serial date или строка)
+    // --- УЛУЧШЕННЫЙ ПАРСИНГ ДАТ (Поддержка ДД.ММ.ГГГГ) ---
     const parseExcelDate = (val: any): string => {
         if (!val) return new Date().toISOString();
+
+        // 1. Если это число (формат даты Excel)
         if (typeof val === 'number') {
             const dateObj = new Date((val - (25567 + 2)) * 86400 * 1000);
-            return dateObj.toISOString();
+            if (!isNaN(dateObj.getTime())) {
+                return dateObj.toISOString();
+            }
         }
-        const parsed = new Date(val);
-        return isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+
+        // 2. Если это строка (например, "03.07.2025")
+        if (typeof val === 'string') {
+            const trimmed = val.trim();
+            // Регулярка для ДД.ММ.ГГГГ
+            const dateRegex = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/;
+            const match = trimmed.match(dateRegex);
+
+            if (match) {
+                const day = parseInt(match[1], 10);
+                const month = parseInt(match[2], 10) - 1; // Месяцы в JS от 0 до 11
+                const year = parseInt(match[3], 10);
+
+                const dateObj = new Date(year, month, day);
+                if (!isNaN(dateObj.getTime())) {
+                    return dateObj.toISOString();
+                }
+            }
+
+            // Попытка стандартного парсинга (для ГГГГ-ММ-ДД)
+            const parsed = new Date(trimmed);
+            if (!isNaN(parsed.getTime())) {
+                return parsed.toISOString();
+            }
+        }
+
+        // Fallback
+        console.warn(`Не удалось распарсить дату: ${val}, используется текущая`);
+        return new Date().toISOString();
     };
 
     // Парсинг денег
@@ -100,7 +133,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                 const createdSalesMap = new Map<string, any>();
 
-                // === ЭТАП 1: Создание клиентов, инвесторов и договоров (Плановый график) ===
+                // === ЭТАП 1: Создание клиентов, инвесторов и договоров ===
                 addLog("Этап 1: Создание клиентов, инвесторов и договоров...");
 
                 for (const row of overviewData) {
@@ -179,17 +212,37 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const totalPrice = parseMoney(row['Цена рассрочки']);
                     const downPayment = parseMoney(row['Взнос']);
                     const installmentsCount = Number(row['Срок (мес)']) || 1;
-                    const saleDateStr = row['Дата оформления'];
+
+                    // Получаем сырое значение даты оформления
+                    const saleDateRaw = row['Дата оформления'];
 
                     // === РАСЧЕТ ДАТЫ ПЕРВОГО ПЛАТЕЖА ===
-                    // 1. Пробуем взять из колонки "Дата первого платежа" (если добавите её в Excel)
                     let firstPaymentDateStr = row['Дата первого платежа'] || row['First Payment Date'];
 
-                    // 2. Если нет, считаем Дата оформления + 1 месяц
-                    if (!firstPaymentDateStr && saleDateStr) {
-                        const d = new Date(parseExcelDate(saleDateStr));
-                        d.setMonth(d.getMonth() + 1);
-                        firstPaymentDateStr = d.toISOString();
+                    if (!firstPaymentDateStr && saleDateRaw) {
+                        // Парсим дату оформления с улучшенной функцией
+                        const saleDateObj = new Date(parseExcelDate(saleDateRaw));
+
+                        // Проверка на корректность (чтобы не стало сегодня из-за ошибки)
+                        const currentYear = new Date().getFullYear();
+                        const fileYear = saleDateObj.getFullYear();
+
+                        if (fileYear !== currentYear || Math.abs(Date.now() - saleDateObj.getTime()) > 86400000 * 2) {
+                             // Дата верная, прибавляем 1 месяц
+                             saleDateObj.setMonth(saleDateObj.getMonth() + 1);
+                             firstPaymentDateStr = saleDateObj.toISOString();
+                        } else {
+                             // Попытка форсированного парсинга через regex
+                             const strVal = String(saleDateRaw);
+                             const match = strVal.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+                             if (match) {
+                                 const d = new Date(parseInt(match[3]), parseInt(match[2])-1, parseInt(match[1]));
+                                 d.setMonth(d.getMonth() + 1);
+                                 firstPaymentDateStr = d.toISOString();
+                             } else {
+                                 firstPaymentDateStr = new Date().toISOString();
+                             }
+                        }
                     } else if (!firstPaymentDateStr) {
                         firstPaymentDateStr = new Date().toISOString();
                     }
@@ -213,7 +266,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             saleId: '',
                             amount: Number(monthlyAvg.toFixed(2)),
                             date: pDate.toISOString(),
-                            isPaid: false, // По умолчанию не оплачено
+                            isPaid: false,
                             actualDate: null,
                             note: "План"
                         });
@@ -232,7 +285,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         remainingAmount: remainingAfterDown, // Временно
                         installments: installmentsCount,
                         interestRate: 0,
-                        startDate: startDate,
+                        startDate: startDate, // Правильная дата из файла
                         status: statusStr.includes('Завершен') ? 'COMPLETED' : (statusStr.includes('Оформлен') ? 'DRAFT' : 'ACTIVE'),
                         type: 'INSTALLMENT',
                         paymentPlan: tempPaymentPlan,
@@ -248,7 +301,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                 addLog(`Создано: Клиентов=${newCustomersCount}, Инвесторов=${newInvestorsCount}, Договоров=${newSalesCount}`);
                 addLog("Этап 2: Обработка реальных платежей из истории...");
 
-                // === ЭТАП 2: Добавление РЕАЛЬНЫХ платежей (из листа История платежей) ===
+                // === ЭТАП 2: Добавление РЕАЛЬНЫХ платежей ===
                 let skippedDeleted = 0;
                 let skippedNotFound = 0;
 
@@ -300,14 +353,11 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         const isDateClose = dateDiff < 5 * 86400000;
 
                         if (isDateClose) {
-                            // Помечаем существующий пункт плана как оплаченный
                             planItem.isPaid = true;
                             planItem.actualDate = paymentDateIso;
                             planItem.note = `Импорт (№${paymentNum})`;
-                            // Если сумма факта отличается, можно записать в заметку или обновить amount
                             if (Math.abs(planItem.amount - amount) > 0.5) {
                                 planItem.note += ` (Факт: ${amount})`;
-                                // Опционально: planItem.amount = amount;
                             }
                             matched = true;
                             break;
@@ -316,7 +366,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                     if (!matched) {
                         // Если не нашли匹配 в плане (досрочный платеж или другая дата)
-                        // Добавляем новую запись в план с реальной датой
                         sale.paymentPlan.push({
                             id: `pay_imp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
                             saleId: sale.id,
