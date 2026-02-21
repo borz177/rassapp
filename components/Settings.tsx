@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AppSettings, ViewState } from '../types';
-import { ICONS, APP_VERSION } from '../constants';
+import { ICONS, APP_VERSION, THEMES } from '../constants';
 import { PrivacyPolicy, DataProcessingAgreement } from './LegalDocs';
 import { api } from '../services/api';
 import DataImport from './DataImport';
@@ -33,6 +33,13 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
         companyName
     });
     alert("Настройки сохранены!");
+  };
+
+  const handleThemeChange = (themeKey: 'PURPLE' | 'BLUE' | 'GREEN' | 'BLACK') => {
+      onUpdateSettings({
+          ...appSettings,
+          theme: themeKey
+      });
   };
 
   const handleClearData = async () => {
@@ -91,6 +98,35 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                 OK
             </button>
         </div>
+      </div>
+
+      {/* Theme Selection */}
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+          <h3 className="text-lg font-semibold text-slate-800 mb-1">Цветовая тема</h3>
+          <p className="text-sm text-slate-500 mb-4">Выберите основной цвет приложения.</p>
+          <div className="grid grid-cols-2 gap-3">
+              {(Object.keys(THEMES) as Array<keyof typeof THEMES>).map((themeKey) => (
+                  <button
+                      key={themeKey}
+                      onClick={() => handleThemeChange(themeKey)}
+                      className={`p-3 rounded-xl border-2 transition-all flex items-center gap-3 ${
+                          (appSettings.theme || 'PURPLE') === themeKey 
+                              ? 'border-indigo-600 bg-indigo-50' 
+                              : 'border-slate-100 hover:border-indigo-200'
+                      }`}
+                  >
+                      <div
+                          className="w-8 h-8 rounded-full shadow-sm"
+                          style={{ backgroundColor: THEMES[themeKey].primary[600] }}
+                      ></div>
+                      <span className={`text-sm font-medium ${
+                          (appSettings.theme || 'PURPLE') === themeKey ? 'text-indigo-900' : 'text-slate-600'
+                      }`}>
+                          {THEMES[themeKey].name}
+                      </span>
+                  </button>
+              ))}
+          </div>
       </div>
 
       {/* Tools & Integrations */}

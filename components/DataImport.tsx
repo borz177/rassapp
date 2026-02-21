@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 import { api } from '@/services/api';
 import { Customer, Product, Sale, Account, Investor, Payment } from '../types';
 
-// Объявляем тип для глобальной переменной XLSX (из CDN)
 declare const XLSX: any;
 
 interface DataImportProps {
@@ -25,7 +24,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
     const addLog = (msg: string) => setLogs(prev => [...prev, msg]);
 
-    // Загрузка библиотеки XLSX
     const getXLSX = async () => {
         try {
             const module = await import('xlsx');
@@ -53,34 +51,28 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
         // 2. Если это строка (например, "03.07.2025")
         if (typeof val === 'string') {
             const trimmed = val.trim();
-            // Регулярка для ДД.ММ.ГГГГ
             const dateRegex = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/;
             const match = trimmed.match(dateRegex);
 
             if (match) {
                 const day = parseInt(match[1], 10);
-                const month = parseInt(match[2], 10) - 1; // Месяцы в JS от 0 до 11
+                const month = parseInt(match[2], 10) - 1;
                 const year = parseInt(match[3], 10);
-
                 const dateObj = new Date(year, month, day);
                 if (!isNaN(dateObj.getTime())) {
                     return dateObj.toISOString();
                 }
             }
 
-            // Попытка стандартного парсинга (для ГГГГ-ММ-ДД)
             const parsed = new Date(trimmed);
             if (!isNaN(parsed.getTime())) {
                 return parsed.toISOString();
             }
         }
 
-        // Fallback
-        console.warn(`Не удалось распарсить дату: ${val}, используется текущая`);
         return new Date().toISOString();
     };
 
-    // Парсинг денег
     const parseMoney = (val: any): number => {
         if (typeof val === 'number') return val;
         if (!val) return 0;
@@ -129,17 +121,18 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                 let newCustomersCount = 0;
                 let newSalesCount = 0;
                 let newInvestorsCount = 0;
-                let realPaymentsCreated = 0;
+                let realPaymentsCount = 0;
 
                 const createdSalesMap = new Map<string, any>();
 
-                // === ЭТАП 1: Создание клиентов, инвесторов и договоров ===
-                addLog("Этап 1: Создание клиентов, инвесторов и договоров...");
+                // === ЭТАП 1: Создание договоров и планов ===
+                addLog("Этап 1: Создание клиентов и договоров...");
 
                 for (const row of overviewData) {
                     const clientName = String(row['Клиент'] || '').trim();
                     const productName = String(row['Товар'] || '').trim();
-                    const investorName = String(row['Инвестор'] || '').trim();
+                    const investorNameRaw = row['Инвестор'];
+                    const investorName = investorNameRaw ? String(investorNameRaw).trim() : '';
 
                     if (!clientName || !productName) continue;
 
@@ -164,10 +157,14 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         newCustomersCount++;
                     }
 
-                    // 2. Инвестор и Счет (Автоматическое создание)
-                    let accountId = accounts.find(a => a.type === 'MAIN')?.id || '';
+                    // 2. Инвестор и Счет
+                    let accountId = '';
+                    const mainAccount = accounts.find(a => a.type === 'MAIN');
+                    if (mainAccount) {
+                        accountId = mainAccount.id; // По умолчанию Основной счет
+                    }
 
-                    if (investorName && investorName.trim() !== '') {
+                    if (investorName && investorName !== '') {
                         let investor = investors.find(i => i.name.toLowerCase() === investorName.toLowerCase());
 
                         if (!investor) {
@@ -179,8 +176,8 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                                 notes: 'Создан автоматически при импорте',
                                 color: '#' + Math.floor(Math.random()*16777215).toString(16),
                                 email: '',
-                                initialAmount: 0, // Значение по умолчанию
-                                profitPercentage: 0, // Значение по умолчанию
+                                initialAmount: 0,
+                                profitPercentage: 0,
                                 permissions: { canViewContracts: false, canViewHistory: false }
                             };
                             await api.saveItem('investors', newInvestor);
@@ -212,27 +209,19 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const totalPrice = parseMoney(row['Цена рассрочки']);
                     const downPayment = parseMoney(row['Взнос']);
                     const installmentsCount = Number(row['Срок (мес)']) || 1;
-
-                    // Получаем сырое значение даты оформления
                     const saleDateRaw = row['Дата оформления'];
 
-                    // === РАСЧЕТ ДАТЫ ПЕРВОГО ПЛАТЕЖА ===
+                    // Расчет даты первого платежа
                     let firstPaymentDateStr = row['Дата первого платежа'] || row['First Payment Date'];
-
                     if (!firstPaymentDateStr && saleDateRaw) {
-                        // Парсим дату оформления с улучшенной функцией
                         const saleDateObj = new Date(parseExcelDate(saleDateRaw));
-
-                        // Проверка на корректность (чтобы не стало сегодня из-за ошибки)
                         const currentYear = new Date().getFullYear();
                         const fileYear = saleDateObj.getFullYear();
 
                         if (fileYear !== currentYear || Math.abs(Date.now() - saleDateObj.getTime()) > 86400000 * 2) {
-                             // Дата верная, прибавляем 1 месяц
                              saleDateObj.setMonth(saleDateObj.getMonth() + 1);
                              firstPaymentDateStr = saleDateObj.toISOString();
                         } else {
-                             // Попытка форсированного парсинга через regex
                              const strVal = String(saleDateRaw);
                              const match = strVal.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
                              if (match) {
@@ -249,17 +238,16 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                     const startDate = parseExcelDate(firstPaymentDateStr);
                     const statusStr = String(row['Статус'] || '');
-
                     const saleKey = `${clientName}__${productName}`;
 
-                    // Генерируем ПЛАНОВЫЙ график (все isPaid: false)
+                    // Генерация ПЛАНОВОГО графика (все isPaid: false)
                     const remainingAfterDown = Math.max(0, totalPrice - downPayment);
                     const monthlyAvg = installmentsCount > 0 ? remainingAfterDown / installmentsCount : 0;
 
                     const tempPaymentPlan: Payment[] = [];
                     for (let i = 0; i < installmentsCount; i++) {
                         const pDate = new Date(startDate);
-                        pDate.setMonth(pDate.getMonth() + i); // Сдвиг от даты первого платежа
+                        pDate.setMonth(pDate.getMonth() + i);
 
                         tempPaymentPlan.push({
                             id: `plan_pay_${i}`,
@@ -282,10 +270,10 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         buyPrice: buyPrice,
                         totalAmount: totalPrice,
                         downPayment: downPayment,
-                        remainingAmount: remainingAfterDown, // Временно
+                        remainingAmount: remainingAfterDown,
                         installments: installmentsCount,
                         interestRate: 0,
-                        startDate: startDate, // Правильная дата из файла
+                        startDate: startDate,
                         status: statusStr.includes('Завершен') ? 'COMPLETED' : (statusStr.includes('Оформлен') ? 'DRAFT' : 'ACTIVE'),
                         type: 'INSTALLMENT',
                         paymentPlan: tempPaymentPlan,
@@ -298,11 +286,12 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     newSalesCount++;
                 }
 
-                                // === ЭТАП 2: Обработка реальных платежей (Логика "Жадного погашения") ===
-                                // === ЭТАП 2: Импорт реальных платежей (Точные суммы) ===
+                addLog(`Создано: Клиентов=${newCustomersCount}, Инвесторов=${newInvestorsCount}, Договоров=${newSalesCount}`);
                 addLog("Этап 2: Импорт реальных платежей...");
-                let realPaymentsCount = 0;
+
+                // === ЭТАП 2: Импорт реальных платежей (ТОЧНЫЕ СУММЫ И ДАТЫ) ===
                 let skippedDeleted = 0;
+                let skippedNotFound = 0;
 
                 for (const row of paymentsData) {
                     const clientName = String(row['Клиент'] || '').trim();
@@ -317,7 +306,10 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const saleKey = `${clientName}__${productName}`;
                     const sale = createdSalesMap.get(saleKey);
 
-                    if (!sale) continue;
+                    if (!sale) {
+                        skippedNotFound++;
+                        continue;
+                    }
 
                     if (paymentStatus === 'Удалён') {
                         skippedDeleted++;
@@ -330,14 +322,14 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const exists = sale.paymentPlan.some((p: any) =>
                         p.isPaid &&
                         p.note?.includes(`Импорт №${paymentNum}`) &&
-                        Math.abs(p.amount - amount) < 1.0
+                        Math.abs(p.amount - amount) < 1.0 &&
+                        Math.abs(new Date(p.date).getTime() - new Date(paymentDateIso).getTime()) < 86400000
                     );
 
                     if (exists) continue;
 
                     // 1. ДОБАВЛЯЕМ РЕАЛЬНЫЙ ПЛАТЕЖ В ИСТОРИЮ
-                    // Мы создаем новую запись в плане со статусом "Оплачено" и ТОЧНОЙ суммой из файла.
-                    // Это обеспечит правильное отображение в "Истории поступлений".
+                    // Создаем новую запись со статусом "Оплачено" и ТОЧНОЙ суммой из файла.
                     sale.paymentPlan.push({
                         id: `pay_real_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
                         saleId: sale.id,
@@ -346,7 +338,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         isPaid: true,
                         actualDate: paymentDateIso,
                         note: `Импорт №${paymentNum}`,
-                        isRealPayment: true // Флаг, что это реальный ввод, а не план
+                        isRealPayment: true // Флаг, что это реальный ввод
                     });
 
                     realPaymentsCount++;
@@ -354,23 +346,22 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                 addLog(`Добавлено реальных платежей: ${realPaymentsCount}`);
 
-                // === ЭТАП 3: Распределение денег по плану (Waterfall) и Пересчет ===
+                // === ЭТАП 3: Распределение денег (Waterfall) и Пересчет ===
                 addLog("Этап 3: Распределение платежей и пересчет остатков...");
 
                 for (const [key, sale] of createdSalesMap.entries()) {
-                    // 1. Собираем все реальные платежи (которые мы только что добавили)
+                    // Собираем все реальные платежи
                     const realPayments = sale.paymentPlan.filter((p: any) => p.isRealPayment);
 
-                    // 2. Собираем все плановые платежи (которые были созданы на Этапе 1)
-                    // Сортируем их по дате (от старых к новым)
+                    // Собираем все плановые платежи
                     const planPayments = sale.paymentPlan
                         .filter((p: any) => !p.isRealPayment)
                         .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-                    // 3. Считаем общую сумму всех реальных денег, которые внес клиент
+                    // Считаем общую сумму всех реальных денег
                     const totalRealMoney = realPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
-                    // 4. ЗАПУСКАЕМ ВОДОПАД (Распределяем деньги по плановым месяцам)
+                    // ЗАПУСКАЕМ ВОДОПАД (Распределяем деньги по плановым месяцам)
                     let moneyLeft = totalRealMoney;
 
                     for (const planItem of planPayments) {
@@ -381,36 +372,27 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         if (moneyLeft >= debt) {
                             // Денег хватает на весь месяц -> Помечаем как оплаченный
                             planItem.isPaid = true;
-                            // Дату оплаты ставим равной дате последнего реального платежа, который покрыл этот месяц
-                            // Или можно оставить плановую дату, но лучше поставить реальную дату покрытия
-                            // Для простоты оставим плановую дату, но статус isPaid=true
                             moneyLeft -= debt;
                         } else {
-                            // Денег меньше, чем долг месяца -> Частичная оплата
-                            // В вашей системе, вероятно, нет флага "частично", поэтому мы просто уменьшаем общий остаток долга.
-                            // Сам месяц остается isPaid=false (висит в графике), но математически долг уменьшен.
-
-                            // Опционально: Можно записать в заметку, сколько внесено
+                            // Денег меньше -> Частичная оплата (месяц остается неоплаченным в графике)
                             planItem.note = `Частично внесено: ${moneyLeft} ₽`;
                             moneyLeft = 0;
                         }
                     }
 
-                    // 5. ФИНАЛЬНЫЙ ПЕРЕСЧЕТ ОСТАТКА
-                    // Остаток долга = (Цена - Взнос) - ВСЕ реальные деньги
+                    // ФИНАЛЬНЫЙ ПЕРЕСЧЕТ ОСТАТКА
                     const debtBeforePayments = sale.totalAmount - sale.downPayment;
                     const currentRemaining = Math.max(0, debtBeforePayments - totalRealMoney);
 
                     sale.remainingAmount = currentRemaining;
 
-                    // Обновляем статус договора
                     if (currentRemaining < 1 && sale.status !== 'COMPLETED') {
                         sale.status = 'COMPLETED';
                     } else if (currentRemaining > 0 && sale.status === 'COMPLETED') {
                         sale.status = 'ACTIVE';
                     }
 
-                    // Сортируем весь план по дате для красивого отображения
+                    // Сортируем весь план по дате
                     sale.paymentPlan.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
                     await api.saveItem('sales', sale);
@@ -418,6 +400,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                 addLog("✅ Импорт завершен успешно!");
                 addLog(`Пропущено (удаленные): ${skippedDeleted}`);
+                addLog(`Пропущено (не найдены договоры): ${skippedNotFound}`);
                 addLog(`Всего договоров обновлено: ${createdSalesMap.size}`);
 
                 setTimeout(() => {
@@ -435,6 +418,10 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
         reader.readAsBinaryString(file);
     };
 
+    const downloadTemplate = async () => {
+        alert("Для импорта используйте файл выгрузки системы (с листами 'Обзор клиентов' и 'История платежей').");
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
             <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 space-y-5" onClick={e => e.stopPropagation()}>
@@ -449,8 +436,8 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         <ul className="list-disc list-inside space-y-1">
                             <li>Загрузите файл выгрузки с двумя листами.</li>
                             <li>Лист 1: <b>Обзор клиентов</b> (создает договоры).</li>
-                            <li>Дата первого платежа берется из файла или считается как <b>Дата оформления + 1 мес</b>.</li>
-                            <li>Лист 2: <b>История платежей</b> (добавляет реальные оплаты по датам из файла).</li>
+                            <li>Лист 2: <b>История платежей</b> (добавляет реальные оплаты).</li>
+                            <li>Если инвестор не указан, используется Основной счет.</li>
                             <li>Платежи со статусом "Удалён" игнорируются.</li>
                         </ul>
                     </div>

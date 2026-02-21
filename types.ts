@@ -169,6 +169,7 @@ export interface AppSettings {
   companyName: string;
   whatsapp?: WhatsAppSettings;
   calculator?: CalculatorSettings;
+  theme?: 'PURPLE' | 'BLUE' | 'GREEN' | 'BLACK';
 }
 
 export type ViewState =

@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
-import { ICONS, APP_NAME } from '../constants';
+import { ICONS, APP_NAME, THEMES } from '../constants';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -32,6 +32,24 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
 
   const isInvestor = user?.role === 'investor';
   const investorPermissions = activeInvestor?.permissions;
+
+  // Apply Theme
+  useEffect(() => {
+      const themeKey = appSettings.theme || 'PURPLE';
+      const theme = THEMES[themeKey];
+
+      if (theme) {
+          const root = document.documentElement;
+          // Apply Primary Colors
+          Object.entries(theme.primary).forEach(([shade, value]) => {
+              root.style.setProperty(`--color-primary-${shade}`, value);
+          });
+          // Apply Secondary Colors
+          Object.entries(theme.secondary).forEach(([shade, value]) => {
+              root.style.setProperty(`--color-secondary-${shade}`, value);
+          });
+      }
+  }, [appSettings.theme]);
 
   // Subscription Calc
   const subStatus = useMemo(() => {
