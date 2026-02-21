@@ -4,7 +4,7 @@ const getXLSX = async () => {
   const module = await import('xlsx');
   return module.default || module;
 };
-import { api } from '../../services/api';
+import { api } from '@/services/api';
 import { ICONS } from '../constants';
 import { Customer, Product, Sale, Account, Investor } from '../types';
 
