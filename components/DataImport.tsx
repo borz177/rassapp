@@ -1,12 +1,10 @@
 import React, { useState, useRef } from 'react';
-// ✅ ДОБАВИТЬ:
-const getXLSX = async () => {
-  const module = await import('xlsx');
-  return module.default || module;
-};
 import { api } from '@/services/api';
 import { ICONS } from '../constants';
 import { Customer, Product, Sale, Account, Investor } from '../types';
+
+// Объявляем тип для глобальной переменной XLSX (на случай использования CDN напрямую)
+declare const XLSX: any;
 
 interface DataImportProps {
     onClose: () => void;
@@ -18,6 +16,21 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
     const [isProcessing, setIsProcessing] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // ✅ Функция загрузки вынесена внутрь компонента или выше, но ПОСЛЕ импортов
+    const getXLSX = async () => {
+        try {
+            const module = await import('xlsx');
+            return module.default || module;
+        } catch (error) {
+            console.error("Failed to load XLSX dynamically, trying global...", error);
+            // Фоллбэк на глобальную переменную из CDN, если динамический импорт не сработал
+            if (typeof window !== 'undefined' && (window as any).XLSX) {
+                return (window as any).XLSX;
+            }
+            throw new Error("XLSX library not found");
+        }
+    };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -35,19 +48,27 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
         setIsProcessing(true);
         addLog("Начало обработки файла...");
 
-        const XLSX = await getXLSX();
+        let XLSX_LIB: any;
+        try {
+            XLSX_LIB = await getXLSX();
+        } catch (err) {
+            addLog("Ошибка: Не удалось загрузить библиотеку Excel.");
+            setIsProcessing(false);
+            return;
+        }
+
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
                 const data = e.target?.result;
-                const workbook = XLSX.read(data, { type: 'binary' });
+                // Используем загруженную библиотеку
+                const workbook = XLSX_LIB.read(data, { type: 'binary' });
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
-                const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
+                const jsonData: any[] = XLSX_LIB.utils.sheet_to_json(worksheet);
 
                 addLog(`Найдено ${jsonData.length} строк.`);
 
-                // Fetch existing data to avoid duplicates
                 const { customers, products, accounts, investors } = await api.fetchAllData();
 
                 let newCustomersCount = 0;
@@ -55,7 +76,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                 let newProductsCount = 0;
 
                 for (const row of jsonData) {
-                    // 1. Extract Fields (Flexible mapping)
                     const clientName = row['ФИО Клиента'] || row['Client Name'] || row['Name'] || row['Клиент'];
                     const phone = row['Телефон'] || row['Phone'] || row['Mobile'];
                     const productName = row['Товар'] || row['Product'] || row['Item'];
@@ -72,7 +92,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         continue;
                     }
 
-                    // 2. Find or Create Customer
                     let customer = customers.find(c => c.phone === phone || c.name === clientName);
                     if (!customer) {
                         const newCustomer: Customer = {
@@ -80,9 +99,9 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             userId: 'import',
                             name: clientName,
                             phone: phone || '',
-                            email: '', // Added missing field
+                            email: '',
                             address: '',
-                            trustScore: 100, // Added missing field
+                            trustScore: 100,
                             notes: 'Imported'
                         };
                         await api.saveItem('customers', newCustomer);
@@ -91,11 +110,8 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         newCustomersCount++;
                     }
 
-                    // 3. Find or Create Product (Optional, just for reference)
-                    // We don't strictly need a product ID for a sale, but good to have
                     let product = products.find(p => p.name === productName);
                     if (!product) {
-                         // Create dummy product
                          const newProduct: Product = {
                              id: `prod_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                              userId: 'import',
@@ -110,28 +126,21 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                          newProductsCount++;
                     }
 
-                    // 4. Handle Investor / Account
                     let accountId = accounts.find(a => a.type === 'MAIN')?.id || '';
                     if (investorName) {
-                        // Try to find investor account
                         const investor = investors.find(i => i.name === investorName);
                         if (investor) {
                             const invAccount = accounts.find(a => a.ownerId === investor.id);
                             if (invAccount) accountId = invAccount.id;
                         } else {
-                            // If investor doesn't exist, we might skip creating them automatically to avoid mess,
-                            // or default to Main account and log warning.
                             addLog(`Внимание: Инвестор "${investorName}" не найден. Продажа привязана к основному счету.`);
                         }
                     }
 
-                    // 5. Create Sale
                     const saleId = `sale_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-                    // Parse Date
                     let startDate = new Date().toISOString();
+
                     if (saleDateStr) {
-                        // Handle Excel serial date or string
                         if (typeof saleDateStr === 'number') {
                             const dateObj = new Date((saleDateStr - (25567 + 2)) * 86400 * 1000);
                              startDate = dateObj.toISOString();
@@ -143,22 +152,15 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                     const remainingAmount = Math.max(0, price - downPayment);
                     const monthlyPayment = installments > 0 ? remainingAmount / installments : 0;
-
-                    // Generate Payment Plan
                     const paymentPlan = [];
-                    let paidSoFar = 0;
-
-                    // If "Total Paid" is provided (excluding down payment), we mark installments as paid
-                    // Usually "Total Paid" in exports includes down payment. Let's assume it DOES.
-                    // So paidForInstallments = TotalPaid - DownPayment
                     let paidForInstallments = Math.max(0, totalPaid - downPayment);
 
                     for (let i = 0; i < installments; i++) {
                         const pDate = new Date(startDate);
-                        pDate.setMonth(pDate.getMonth() + 1 + i); // First payment usually next month
+                        pDate.setMonth(pDate.getMonth() + 1 + i);
 
                         let isPaid = false;
-                        if (paidForInstallments >= monthlyPayment - 1) { // Tolerance for rounding
+                        if (paidForInstallments >= monthlyPayment - 1) {
                             isPaid = true;
                             paidForInstallments -= monthlyPayment;
                         }
@@ -172,7 +174,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         });
                     }
 
-                    // Recalculate remaining based on plan
                     const actualRemaining = paymentPlan.filter(p => !p.isPaid).reduce((sum, p) => sum + p.amount, 0);
 
                     const newSale: Sale = {
@@ -183,12 +184,11 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         productName: productName,
                         accountId: accountId,
                         buyPrice: buyPrice,
-                        // price: price, // Removed legacy field
                         totalAmount: price,
                         downPayment: downPayment,
                         remainingAmount: actualRemaining,
                         installments: installments,
-                        interestRate: 0, // Hard to calc, set 0
+                        interestRate: 0,
                         startDate: startDate,
                         status: actualRemaining < 1 ? 'COMPLETED' : 'ACTIVE',
                         type: 'INSTALLMENT',
@@ -220,8 +220,15 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
     };
 
     const downloadTemplate = async () => {
-        const XLSX = await getXLSX();
-        const ws = XLSX.utils.json_to_sheet([
+        let XLSX_LIB: any;
+        try {
+            XLSX_LIB = await getXLSX();
+        } catch (err) {
+            alert("Ошибка загрузки библиотеки Excel");
+            return;
+        }
+
+        const ws = XLSX_LIB.utils.json_to_sheet([
             {
                 'ФИО Клиента': 'Иван Иванов',
                 'Телефон': '89990000000',
@@ -235,9 +242,9 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                 'Оплачено всего': 30000
             }
         ]);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Template");
-        XLSX.writeFile(wb, "import_template.xlsx");
+        const wb = XLSX_LIB.utils.book_new();
+        XLSX_LIB.utils.book_append_sheet(wb, ws, "Template");
+        XLSX_LIB.writeFile(wb, "import_template.xlsx");
     };
 
     return (
