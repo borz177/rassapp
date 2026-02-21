@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 import { api } from '@/services/api';
 import { Customer, Product, Sale, Account, Investor, Payment } from '../types';
 
-// Объявляем тип для глобальной переменной XLSX (из CDN)
 declare const XLSX: any;
 
 interface DataImportProps {
@@ -23,11 +22,8 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
         }
     };
 
-    const addLog = (msg: string) => {
-        setLogs(prev => [...prev, msg]);
-    };
+    const addLog = (msg: string) => setLogs(prev => [...prev, msg]);
 
-    // Функция загрузки библиотеки
     const getXLSX = async () => {
         try {
             const module = await import('xlsx');
@@ -40,7 +36,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
         }
     };
 
-    // Парсинг дат (Excel serial date или строка)
     const parseExcelDate = (val: any): string => {
         if (!val) return new Date().toISOString();
         if (typeof val === 'number') {
@@ -51,7 +46,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
         return isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
     };
 
-    // Парсинг денег (убирает "₽", пробелы, запятые)
     const parseMoney = (val: any): number => {
         if (typeof val === 'number') return val;
         if (!val) return 0;
@@ -100,11 +94,12 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                 let newCustomersCount = 0;
                 let newSalesCount = 0;
                 let newInvestorsCount = 0;
+                let realPaymentsCreated = 0;
 
                 const createdSalesMap = new Map<string, any>();
 
-                // === ЭТАП 1: Создание клиентов, инвесторов и продаж ===
-                addLog("Этап 1: Создание клиентов, инвесторов и товаров...");
+                // === ЭТАП 1: Создание клиентов, инвесторов и договоров (Плановый график) ===
+                addLog("Этап 1: Создание клиентов, инвесторов и договоров...");
 
                 for (const row of overviewData) {
                     const clientName = String(row['Клиент'] || '').trim();
@@ -134,7 +129,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         newCustomersCount++;
                     }
 
-                    // 2. Инвестор и Счет (Автоматическое создание)
+                    // 2. Инвестор и Счет
                     let accountId = accounts.find(a => a.type === 'MAIN')?.id || '';
 
                     if (investorName && investorName.trim() !== '') {
@@ -143,18 +138,22 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         if (!investor) {
                             addLog(`Создание нового инвестора: ${investorName}...`);
                             const newInvestor: Investor = {
-                                id: `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                                name: investorName,
-                                phone: '',
-                                notes: 'Создан автоматически при импорте',
-                                color: '#' + Math.floor(Math.random()*16777215).toString(16)
-                            };
+    id: `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    name: investorName,
+    phone: '',
+    notes: 'Создан автоматически при импорте. Требуется настройка суммы и %.',
+    color: '#' + Math.floor(Math.random()*16777215).toString(16),
+    email: '',
+    // ✅ ДОБАВЛЕНО: Значения по умолчанию, чтобы форма была валидной
+    initialAmount: 0,
+    profitPercentage: 0,
+    permissions: { canViewContracts: false, canViewHistory: false }
+};
                             await api.saveItem('investors', newInvestor);
                             investors.push(newInvestor);
                             investor = newInvestor;
                             newInvestorsCount++;
 
-                            // Создаем счет инвестора
                             const newAccount: Account = {
                                 id: `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                                 userId: 'import',
@@ -177,13 +176,11 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     // 3. Данные о продаже
                     const buyPrice = parseMoney(row['Цена закупа']);
                     const totalPrice = parseMoney(row['Цена рассрочки']);
-                    const downPayment = parseMoney(row['Взнос']); // Первый взнос
-
-                    // Срок и даты
+                    const downPayment = parseMoney(row['Взнос']);
                     const installmentsCount = Number(row['Срок (мес)']) || 1;
                     const saleDateStr = row['Дата оформления'];
 
-                    // Дата первого платежа: либо из колонки "Дата первого платежа", либо Дата оформления + 1 мес
+                    // Дата первого платежа (ФИКСИРУЕМ как поле, но не создаем оплату)
                     let firstPaymentDateStr = row['Дата первого платежа'] || row['First Payment Date'];
                     if (!firstPaymentDateStr && saleDateStr) {
                         const d = new Date(parseExcelDate(saleDateStr));
@@ -196,21 +193,21 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                     const saleKey = `${clientName}__${productName}`;
 
-                    // Генерация плана платежей (пока пустого/чернового, заполним на этапе 2)
+                    // Генерируем ПЛАНОВЫЙ график (все isPaid: false)
                     const remainingAfterDown = Math.max(0, totalPrice - downPayment);
                     const monthlyAvg = installmentsCount > 0 ? remainingAfterDown / installmentsCount : 0;
 
                     const tempPaymentPlan: Payment[] = [];
                     for (let i = 0; i < installmentsCount; i++) {
                         const pDate = new Date(startDate);
-                        pDate.setMonth(pDate.getMonth() + i); // Сдвиг по месяцам от даты первого платежа
+                        pDate.setMonth(pDate.getMonth() + i);
 
                         tempPaymentPlan.push({
-                            id: `temp_pay_${i}`,
-                            saleId: '', // Заполним позже
+                            id: `plan_pay_${i}`,
+                            saleId: '',
                             amount: Number(monthlyAvg.toFixed(2)),
                             date: pDate.toISOString(),
-                            isPaid: false,
+                            isPaid: false, // По умолчанию все не оплачено
                             actualDate: null,
                             note: "План"
                         });
@@ -225,8 +222,8 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         accountId: accountId,
                         buyPrice: buyPrice,
                         totalAmount: totalPrice,
-                        downPayment: downPayment, // Сохраняем первый взнос
-                        remainingAmount: remainingAfterDown, // Временно, пересчитаем после импорта платежей
+                        downPayment: downPayment,
+                        remainingAmount: remainingAfterDown, // Временно
                         installments: installmentsCount,
                         interestRate: 0,
                         startDate: startDate,
@@ -242,14 +239,13 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     newSalesCount++;
                 }
 
-                addLog(`Создано: Клиентов=${newCustomersCount}, Инвесторов=${newInvestorsCount}, Товаров=${newSalesCount}`);
-                addLog("Этап 2: Обработка истории платежей...");
+                addLog(`Создано: Клиентов=${newCustomersCount}, Инвесторов=${newInvestorsCount}, Договоров=${newSalesCount}`);
+                addLog("Этап 2: Обработка реальных платежей из истории...");
 
-                                // === ЭТАП 2: Обработка истории платежей (ОБНОВЛЕННАЯ ЛОГИКА) ===
-                addLog("Этап 2: Обработка истории платежей...");
-                let processedPayments = 0;
+                // === ЭТАП 2: Добавление РЕАЛЬНЫХ платежей (из листа История платежей) ===
+                // Здесь мы не меняем план, а добавляем факты оплаты
                 let skippedDeleted = 0;
-                let extraPaymentsCreated = 0;
+                let skippedNotFound = 0;
 
                 for (const row of paymentsData) {
                     const clientName = String(row['Клиент'] || '').trim();
@@ -257,15 +253,16 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const paymentStatus = String(row['Статус платежа'] || '');
                     const amount = parseMoney(row['Сумма']);
                     const dateVal = row['Дата платежа'];
-                    const paymentNum = row['Платёж №']; // Номер платежа из файла
+                    const paymentNum = row['Платёж №'];
 
+                    // Пропуск служебных строк
                     if (!clientName || !productName || paymentStatus === 'Нет платежей' || !amount) continue;
 
                     const saleKey = `${clientName}__${productName}`;
                     const sale = createdSalesMap.get(saleKey);
 
                     if (!sale) {
-                        // addLog(`Предупреждение: Продажа не найдена для ${clientName} - ${productName}`);
+                        skippedNotFound++;
                         continue;
                     }
 
@@ -275,14 +272,11 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         continue;
                     }
 
-                    // === НОВАЯ ЛОГИКА: Создание записи под конкретный платеж ===
-                    // Мы не ищем старый элемент в плане, а создаем новый или расширяем план
-
                     const paymentDateIso = parseExcelDate(dateVal);
 
-                    // Проверяем, есть ли уже такой платеж (защита от дублей при повторном импорте)
-                    // Сравниваем дату и сумму с допуском
+                    // Проверка на дубликаты (чтобы при повторном импорте не задвоить)
                     const exists = sale.paymentPlan.some((p: any) =>
+                        p.isPaid &&
                         Math.abs(new Date(p.date).getTime() - new Date(paymentDateIso).getTime()) < 86400000 && // +/- 1 день
                         Math.abs(p.amount - amount) < 1.0
                     );
@@ -291,23 +285,57 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         continue;
                     }
 
-                    // Добавляем платеж в план
-                    // Если это досрочный платеж или платеж большей суммы, он просто добавляется в конец или сортируется позже
-                    sale.paymentPlan.push({
-                        id: `pay_imp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                        saleId: sale.id,
-                        amount: amount, // Берем ТОЧНУЮ сумму из файла (хоть 13000, хоть 6500)
-                        date: paymentDateIso, // Точную дату
-                        isPaid: true,
-                        actualDate: paymentDateIso,
-                        note: `Импорт (№${paymentNum})`
-                    });
+                    // === ВАЖНО: Мы не ищем совпадение в плане, мы ДОБАВЛЯЕМ факт оплаты ===
+                    // Если в плане есть такой месяц (по дате или сумме), помечаем его оплаченным.
+                    // Если нет (клиент платил досрочно или другой суммой) — добавляем новую запись в план как "Факт".
 
-                    processedPayments++;
-                    extraPaymentsCreated++;
+                    let matched = false;
+
+                    // Ищем ближайший неоплаченный платеж в плане (сортируем по дате)
+                    const unpaidPlans = sale.paymentPlan
+                        .filter((p: any) => !p.isPaid)
+                        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                    for (const planItem of unpaidPlans) {
+                        // Если даты близки (в пределах 5 дней) ИЛИ сумма очень похожа
+                        const dateDiff = Math.abs(new Date(planItem.date).getTime() - new Date(paymentDateIso).getTime());
+                        const isDateClose = dateDiff < 5 * 86400000;
+                        const isAmountClose = Math.abs(planItem.amount - amount) < 1.0;
+
+                        if (isDateClose || isAmountClose) {
+                            // Помечаем существующий пункт плана как оплаченный
+                            planItem.isPaid = true;
+                            planItem.actualDate = paymentDateIso;
+                            planItem.note = `Импорт (№${paymentNum})`;
+                            // Можно обновить сумму факта, если она отличается от плана
+                            if (!isAmountClose) {
+                                // Если сумма факта другая, можно создать отдельную запись,
+                                // но для простоты пока оставим плановую сумму, а разницу учтем в остатке ниже
+                                planItem.note += ` (Факт: ${amount})`;
+                            }
+                            matched = true;
+                            break;
+                        }
+                    }
+
+                    if (!matched) {
+                        // Если не нашли匹配 в плане (например, досрочное погашение или лишняя сумма)
+                        // Добавляем новую запись в конец плана
+                        sale.paymentPlan.push({
+                            id: `pay_imp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                            saleId: sale.id,
+                            amount: amount,
+                            date: paymentDateIso,
+                            isPaid: true,
+                            actualDate: paymentDateIso,
+                            note: `Импорт факт (№${paymentNum})`
+                        });
+                    }
+
+                    realPaymentsCreated++;
                 }
 
-                // Сортируем план платежей по дате, чтобы график был красивым
+                // Сортируем весь план по дате для красоты
                 for (const [key, sale] of createdSalesMap.entries()) {
                     sale.paymentPlan.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
                 }
@@ -316,34 +344,29 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                 addLog("Этап 3: Пересчет остатков и сохранение...");
 
                 for (const [key, sale] of createdSalesMap.entries()) {
-                    // Считаем общую сумму всех оплаченных платежей (фактических)
                     const totalPaidInPlan = sale.paymentPlan
                         .filter((p: any) => p.isPaid)
                         .reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
 
-                    // Остаток = (Цена товара - Первый взнос) - ВСЕ ОПЛАЧЕННЫЕ деньги
                     const debtBeforePayments = sale.totalAmount - sale.downPayment;
                     const currentRemaining = Math.max(0, debtBeforePayments - totalPaidInPlan);
 
                     sale.remainingAmount = currentRemaining;
 
-                    // Обновляем статус
                     if (currentRemaining < 1 && sale.status !== 'COMPLETED') {
                         sale.status = 'COMPLETED';
                     } else if (currentRemaining > 0 && sale.status === 'COMPLETED') {
                         sale.status = 'ACTIVE';
                     }
 
-                    // ВАЖНО: Обновляем количество платежей в объекте продажи, если оно хранилось отдельно
-                    // sale.installments = sale.paymentPlan.length; // Можно раскомментировать, если нужно динамически менять срок
-
                     await api.saveItem('sales', sale);
                 }
 
                 addLog("✅ Импорт завершен успешно!");
-                addLog(`Обработано платежей: ${processedPayments}`);
+                addLog(`Добавлено реальных платежей: ${realPaymentsCreated}`);
                 addLog(`Пропущено (удаленные): ${skippedDeleted}`);
-                addLog(`Всего товаров обновлено: ${newSalesCount}`);
+                addLog(`Пропущено (не найдены договоры): ${skippedNotFound}`);
+                addLog(`Всего договоров обновлено: ${newSalesCount}`);
 
                 setTimeout(() => {
                     setIsProcessing(false);
@@ -361,7 +384,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
     };
 
     const downloadTemplate = async () => {
-        alert("Для импорта используйте файл выгрузки системы (с листами 'Обзор клиентов' и 'История платежей'). Убедитесь, что в файле есть колонка 'Взнос'.");
+        alert("Для импорта используйте файл выгрузки системы (с листами 'Обзор клиентов' и 'История платежей').");
     };
 
     return (
@@ -377,10 +400,10 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         <p className="font-bold mb-1">Инструкция:</p>
                         <ul className="list-disc list-inside space-y-1">
                             <li>Загрузите файл выгрузки с двумя листами.</li>
-                            <li>Лист 1: <b>Обзор клиентов</b> (должен содержать колонку <b>Взнос</b>).</li>
-                            <li>Лист 2: <b>История платежей</b> (расставляет даты оплат).</li>
-                            <li>Инвесторы создаются автоматически по имени.</li>
+                            <li>Лист 1: <b>Обзор клиентов</b> (создает договоры и план).</li>
+                            <li>Лист 2: <b>История платежей</b> (добавляет реальные оплаты по датам).</li>
                             <li>Платежи со статусом "Удалён" игнорируются.</li>
+                            <li>Дата первого платежа фиксируется, но не считается оплатой, пока нет записи в Истории.</li>
                         </ul>
                     </div>
 
