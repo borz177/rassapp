@@ -75,7 +75,9 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             userId: 'import',
                             name: clientName,
                             phone: phone || '',
+                            email: '', // Added missing field
                             address: '',
+                            trustScore: 100, // Added missing field
                             notes: 'Imported'
                         };
                         await api.saveItem('customers', newCustomer);
@@ -176,7 +178,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         productName: productName,
                         accountId: accountId,
                         buyPrice: buyPrice,
-                        price: price, // Legacy field
+                        // price: price, // Removed legacy field
                         totalAmount: price,
                         downPayment: downPayment,
                         remainingAmount: actualRemaining,
