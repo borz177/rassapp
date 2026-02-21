@@ -4,6 +4,7 @@ import { AppSettings, ViewState } from '../types';
 import { ICONS, APP_VERSION } from '../constants';
 import { PrivacyPolicy, DataProcessingAgreement } from './LegalDocs';
 import { api } from '../services/api';
+import DataImport from './DataImport';
 
 interface SettingsProps {
   appSettings: AppSettings;
@@ -17,6 +18,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
   // Clear Data Modal State
   const [showClearModal, setShowClearModal] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Legal Docs View State
   const [legalView, setLegalView] = useState<'NONE' | 'PRIVACY' | 'AGREEMENT'>('NONE');
@@ -120,6 +122,19 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
           </button>
       </div>
 
+      {/* Data Import Section */}
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+          <h3 className="text-lg font-semibold text-slate-800 mb-1">Импорт данных</h3>
+          <p className="text-sm text-slate-500 mb-4">Загрузите данные из Excel файла (клиенты, продажи, история).</p>
+          <button
+              onClick={() => setShowImportModal(true)}
+              className="w-full py-3 bg-indigo-50 text-indigo-600 font-bold rounded-xl hover:bg-indigo-100 border border-indigo-100 flex items-center justify-center gap-2 transition-colors"
+          >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Импортировать Excel
+          </button>
+      </div>
+
       {/* Legal Information Section */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 mb-2">Правовая информация</h3>
@@ -179,6 +194,18 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                   </div>
               </div>
           </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+          <DataImport
+              onClose={() => setShowImportModal(false)}
+              onImportSuccess={() => {
+                  setShowImportModal(false);
+                  alert("Данные успешно импортированы! Страница будет перезагружена.");
+                  window.location.reload();
+              }}
+          />
       )}
 
     </div>
