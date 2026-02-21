@@ -298,10 +298,9 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     newSalesCount++;
                 }
 
-                addLog(`Создано: Клиентов=${newCustomersCount}, Инвесторов=${newInvestorsCount}, Договоров=${newSalesCount}`);
-                addLog("Этап 2: Обработка реальных платежей из истории...");
-
-                // === ЭТАП 2: Добавление РЕАЛЬНЫХ платежей ===
+                                // === ЭТАП 2: Обработка реальных платежей (Логика "Жадного погашения") ===
+                addLog("Этап 2: Распределение платежей по месяцам...");
+                let processedPaymentsCount = 0;
                 let skippedDeleted = 0;
                 let skippedNotFound = 0;
 
@@ -309,11 +308,12 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const clientName = String(row['Клиент'] || '').trim();
                     const productName = String(row['Товар'] || '').trim();
                     const paymentStatus = String(row['Статус платежа'] || '');
-                    const amount = parseMoney(row['Сумма']);
+                    const totalAmountPaid = parseMoney(row['Сумма']); // Полная сумма из файла
                     const dateVal = row['Дата платежа'];
                     const paymentNum = row['Платёж №'];
 
-                    if (!clientName || !productName || paymentStatus === 'Нет платежей' || !amount) continue;
+                    // Пропуск служебных строк
+                    if (!clientName || !productName || paymentStatus === 'Нет платежей' || !totalAmountPaid) continue;
 
                     const saleKey = `${clientName}__${productName}`;
                     const sale = createdSalesMap.get(saleKey);
@@ -323,61 +323,94 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         continue;
                     }
 
+                    // Пропускаем удаленные платежи
                     if (paymentStatus === 'Удалён') {
                         skippedDeleted++;
                         continue;
                     }
 
                     const paymentDateIso = parseExcelDate(dateVal);
+                    let remainingAmountToDistribute = totalAmountPaid; // Остаток денег для распределения
 
-                    // Проверка на дубликаты
-                    const exists = sale.paymentPlan.some((p: any) =>
-                        p.isPaid &&
-                        Math.abs(new Date(p.date).getTime() - new Date(paymentDateIso).getTime()) < 86400000 &&
-                        Math.abs(p.amount - amount) < 1.0
-                    );
-
-                    if (exists) continue;
-
-                    // === ЛОГИКА ПРИВЯЗКИ ===
-                    let matched = false;
-
-                    // Ищем ближайший неоплаченный платеж в плане
+                    // Получаем все неоплаченные пункты плана, отсортированные по дате (от старых к новым)
                     const unpaidPlans = sale.paymentPlan
                         .filter((p: any) => !p.isPaid)
                         .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-                    for (const planItem of unpaidPlans) {
-                        // Сравниваем даты (допуск 5 дней)
-                        const dateDiff = Math.abs(new Date(planItem.date).getTime() - new Date(paymentDateIso).getTime());
-                        const isDateClose = dateDiff < 5 * 86400000;
+                    if (unpaidPlans.length === 0 && remainingAmountToDistribute > 0) {
+                        // Если все оплачено, а деньги еще есть -> создаем запись "Переплата/Досрочно"
+                        sale.paymentPlan.push({
+                            id: `pay_extra_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                            saleId: sale.id,
+                            amount: remainingAmountToDistribute,
+                            date: paymentDateIso,
+                            isPaid: true,
+                            actualDate: paymentDateIso,
+                            note: `Переплата от ${paymentDateIso.split('T')[0]} (№${paymentNum})`
+                        });
+                        processedPaymentsCount++;
+                        continue;
+                    }
 
-                        if (isDateClose) {
+                    // === ЦИКЛ РАСПРЕДЕЛЕНИЯ (WATERFALL) ===
+                    // Проходим по каждому неоплаченному месяцу и гасим его, пока есть деньги
+                    for (const planItem of unpaidPlans) {
+                        if (remainingAmountToDistribute <= 0.5) break; // Деньги кончились (с учетом копеек)
+
+                        const debtForThisMonth = planItem.amount;
+
+                        if (remainingAmountToDistribute >= debtForThisMonth) {
+                            // 1. Денег хватает на полный месяц
                             planItem.isPaid = true;
-                            planItem.actualDate = paymentDateIso;
-                            planItem.note = `Импорт (№${paymentNum})`;
-                            if (Math.abs(planItem.amount - amount) > 0.5) {
-                                planItem.note += ` (Факт: ${amount})`;
-                            }
-                            matched = true;
+                            planItem.actualDate = paymentDateIso; // Ставим реальную дату оплаты
+                            planItem.note = `Оплачено ${paymentDateIso.split('T')[0]} (№${paymentNum})`;
+
+                            remainingAmountToDistribute -= debtForThisMonth; // Вычитаем сумму долга
+                        } else {
+                            // 2. Денег меньше, чем нужно (частичное погашение)
+                            // В этой логике мы либо считаем месяц оплаченным частично,
+                            // либо (если система не поддерживает частичную оплату месяца) оставляем как есть.
+                            // Но обычно в рассрочках: если внесли часть, долг уменьшается.
+
+                            // Вариант А: Помечаем как частично оплаченный (если ваша система поддерживает флаг isPartial)
+                            // planItem.isPaid = false;
+                            // planItem.paidAmount = (planItem.paidAmount || 0) + remainingAmountToDistribute;
+
+                            // Вариант Б (Простой): Считаем, что платеж пошел в счет этого месяца, но месяц остался висеть.
+                            // Чтобы не усложнять, просто вычтем сумму из общего остатка продажи,
+                            // а в плане оставим месяц неоплаченным, но запишем в лог, что были деньги.
+
+                            // Для вашей задачи (чтобы график показывал верно), лучше всего создать
+                            // отдельную запись о частичном платеже или уменьшить сумму текущего плана?
+                            // Давайте сделаем так: уменьшим сумму текущего плана (как будто клиент должен меньше в этом месяце).
+                            // НО это ломает структуру плана.
+
+                            // ✅ ЛУЧШИЙ ВАРИАНТ ДЛЯ ВАС:
+                            // Если денег не хватает на весь месяц, мы НЕ закрываем этот месяц (isPaid=false),
+                            // но создаем запись о платеже, которая покроет часть долга в общей математике.
+                            // Однако, чтобы график был красивым, давайте просто запишем факт оплаты в заметку и остановимся.
+                            // Остаток долга (remainingAmount) пересчитается в Этапе 3 корректно.
+
+                            planItem.note = `Частично оплачено ${remainingAmountToDistribute} ₽ (${paymentDateIso.split('T')[0]})`;
+                            remainingAmountToDistribute = 0;
                             break;
                         }
                     }
 
-                    if (!matched) {
-                        // Если не нашли匹配 в плане (досрочный платеж или другая дата)
-                        sale.paymentPlan.push({
-                            id: `pay_imp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                    // Если после прохода по всем месяцам деньги еще остались -> Переплата
+                    if (remainingAmountToDistribute > 0.5) {
+                         sale.paymentPlan.push({
+                            id: `pay_over_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
                             saleId: sale.id,
-                            amount: amount,
+                            amount: remainingAmountToDistribute,
                             date: paymentDateIso,
                             isPaid: true,
                             actualDate: paymentDateIso,
-                            note: `Импорт факт (№${paymentNum})`
+                            note: `Аванс от ${paymentDateIso.split('T')[0]} (№${paymentNum})`
                         });
                     }
 
-                    realPaymentsCreated++;
+                    processedPaymentsCount++;
                 }
 
                 // Сортируем весь план по дате
