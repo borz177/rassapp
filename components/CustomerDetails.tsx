@@ -152,33 +152,62 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
   const { paidPayments, paymentSchedule } = useMemo(() => {
     if (!selectedSale) return { paidPayments: [], paymentSchedule: [] };
 
+    // 1. Получаем все оплаченные платежи
     const paid = selectedSale.paymentPlan
       .filter(p => p.isPaid)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const scheduled = selectedSale.paymentPlan
+    // 2. Получаем все запланированные (неоплаченные) платежи
+    const scheduledRaw = selectedSale.paymentPlan
       .filter(p => !p.isPaid)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    let paymentPool = paid.reduce((sum, p) => sum + p.amount, 0);
+    // 3. Считаем общую сумму всех оплат (включая досрочные)
+    const totalPaidAmount = paid.reduce((sum, p) => sum + p.amount, 0);
 
-    const scheduleForDisplay = scheduled.map(p => {
+    // 4. Считаем общую сумму всех запланированных платежей (долг по графику)
+    const totalScheduledAmount = scheduledRaw.reduce((sum, p) => sum + p.amount, 0);
+
+    // 5. Рассчитываем реальный остаток долга (График - Оплата)
+    // Если клиент заплатил больше, чем осталось по графику, остаток будет 0 (или отрицательным, но мы покажем 0)
+    let realRemainingDebt = Math.max(0, totalScheduledAmount - totalPaidAmount);
+
+    // 6. Формируем оптимизированный график для отображения
+    let paymentPool = totalPaidAmount; // "Котел" с деньгами клиента
+
+    const scheduleForDisplay = scheduledRaw.map(p => {
       const paymentDue = p.amount;
-      const amountPaidThisMonth = Math.min(paymentDue, paymentPool);
-      
-      paymentPool -= amountPaidThisMonth;
-      
-      return {
-        ...p,
-        amountToPay: paymentDue - amountPaidThisMonth,
-      };
-    }).filter(p => p.amountToPay > 0.01); 
 
-    return { 
+      // Если у нас есть деньги в "котле", гасим этот платеж полностью или частично
+      if (paymentPool >= paymentDue) {
+          // Денег хватает на весь платеж -> гасим полностью, остаток долга 0
+          paymentPool -= paymentDue;
+          return null; // Скрываем этот платеж из списка будущих, т.к. он уже покрыт
+      } else if (paymentPool > 0) {
+          // Денег меньше, чем нужно -> гасим часть, остальное показываем как долг
+          const covered = paymentPool;
+          paymentPool = 0; // Котел пуст
+
+          return {
+            ...p,
+            amountToPay: paymentDue - covered, // Показываем только непокрытый остаток
+            isPartiallyPaid: true
+          };
+      } else {
+          // Денег нет -> показываем полный платеж
+          return {
+            ...p,
+            amountToPay: paymentDue,
+            isPartiallyPaid: false
+          };
+      }
+    }).filter(p => p !== null && p.amountToPay > 0.5); // Оставляем только те, где есть долг > 0.5 руб
+
+    return {
         paidPayments: paid,
-        paymentSchedule: scheduleForDisplay
+        paymentSchedule: scheduleForDisplay as any[]
     };
-  }, [selectedSale]);
+}, [selectedSale]);
 
   const getInvestorInfo = (sale: Sale) => {
       const account = accounts.find(a => a.id === sale.accountId);
