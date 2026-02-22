@@ -101,6 +101,54 @@ const Operations: React.FC<OperationsProps> = ({
     return all;
   }, [sales, expenses, filterType, filterAccountId, customers, accounts]);
 
+  const groupedOperations = useMemo(() => {
+    const groups: { title: string; items: typeof operations }[] = [];
+    const now = new Date();
+
+    const getMskDateString = (date: Date) => {
+        return date.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' });
+    };
+
+    const todayStr = getMskDateString(now);
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = getMskDateString(yesterday);
+
+    operations.forEach(op => {
+        const opDate = new Date(op.date);
+        const opDateStr = getMskDateString(opDate);
+
+        let title = opDate.toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            timeZone: 'Europe/Moscow'
+        });
+
+        if (opDateStr === todayStr) {
+            title = 'Сегодня';
+        } else if (opDateStr === yesterdayStr) {
+            title = 'Вчера';
+        }
+
+        const lastGroup = groups[groups.length - 1];
+        if (lastGroup && lastGroup.title === title) {
+            lastGroup.items.push(op);
+        } else {
+            groups.push({ title, items: [op] });
+        }
+    });
+
+    return groups;
+  }, [operations]);
+
+  const getTimeMsk = (dateStr: string) => {
+      return new Date(dateStr).toLocaleTimeString('ru-RU', {
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Europe/Moscow'
+      });
+  };
+
   return (
     <div className="space-y-4 animate-fade-in pb-20 w-full">
       <header>
@@ -123,20 +171,28 @@ const Operations: React.FC<OperationsProps> = ({
           </div>
       </div>
 
-      <div className="space-y-3">
-          {operations.length === 0 && (<div className="text-center py-10 text-slate-400 border border-dashed border-slate-200 rounded-xl">Операций не найдено</div>)}
-          {operations.map(op => (
-              <div key={op.id} onClick={() => setSelectedOp(op)} className="bg-white p-4 rounded-xl shadow-sm flex items-center justify-between cursor-pointer hover:bg-slate-50 active:scale-[0.99] transition-transform">
-                  <div className="flex items-center gap-3">
-                      <div className={`p-2.5 rounded-full ${op.type === 'EXPENSE' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>{op.type === 'EXPENSE' ? ICONS.Expense : ICONS.Income}</div>
-                      <div>
-                          <p className="font-bold text-slate-800 text-sm">{op.title}</p>
-                          <p className="text-xs text-slate-500">{new Date(op.date).toLocaleDateString()} • {op.description}</p>
-                      </div>
-                  </div>
-                  <div className="text-right">
-                      <span className={`font-bold block ${op.type === 'EXPENSE' ? 'text-slate-800' : 'text-emerald-600'}`}>{op.type === 'EXPENSE' ? '-' : '+'}{op.amount.toLocaleString()} ₽</span>
-                      <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{getAccountName(op.accountId)}</span>
+      <div className="space-y-6">
+          {groupedOperations.length === 0 && (<div className="text-center py-10 text-slate-400 border border-dashed border-slate-200 rounded-xl">Операций не найдено</div>)}
+
+          {groupedOperations.map((group, idx) => (
+              <div key={idx} className="space-y-2">
+                  <h3 className="text-sm font-bold text-slate-400 px-2 uppercase tracking-wider">{group.title}</h3>
+                  <div className="space-y-2">
+                      {group.items.map(op => (
+                          <div key={op.id} onClick={() => setSelectedOp(op)} className="bg-white p-4 rounded-xl shadow-sm flex items-center justify-between cursor-pointer hover:bg-slate-50 active:scale-[0.99] transition-transform">
+                              <div className="flex items-center gap-3">
+                                  <div className={`p-2.5 rounded-full ${op.type === 'EXPENSE' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>{op.type === 'EXPENSE' ? ICONS.Expense : ICONS.Income}</div>
+                                  <div>
+                                      <p className="font-bold text-slate-800 text-sm">{op.title}</p>
+                                      <p className="text-xs text-slate-500">{getTimeMsk(op.date)} • {op.description}</p>
+                                  </div>
+                              </div>
+                              <div className="text-right">
+                                  <span className={`font-bold block ${op.type === 'EXPENSE' ? 'text-slate-800' : 'text-emerald-600'}`}>{op.type === 'EXPENSE' ? '-' : '+'}{op.amount.toLocaleString()} ₽</span>
+                                  <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{getAccountName(op.accountId)}</span>
+                              </div>
+                          </div>
+                      ))}
                   </div>
               </div>
           ))}
@@ -148,7 +204,7 @@ const Operations: React.FC<OperationsProps> = ({
                   <div className={`p-6 text-white ${selectedOp.type === 'EXPENSE' ? 'bg-red-500' : 'bg-emerald-500'}`}>
                       <p className="text-white/80 text-sm font-medium mb-1">{selectedOp.type === 'EXPENSE' ? 'Расходная операция' : 'Приходная операция'}</p>
                       <h3 className="text-3xl font-bold">{selectedOp.type === 'EXPENSE' ? '-' : '+'}{selectedOp.amount.toLocaleString()} ₽</h3>
-                      <p className="text-white/80 text-sm mt-2 flex items-center gap-1 opacity-80">{ICONS.Clock} {new Date(selectedOp.date).toLocaleString()}</p>
+                      <p className="text-white/80 text-sm mt-2 flex items-center gap-1 opacity-80">{ICONS.Clock} {new Date(selectedOp.date).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} (МСК)</p>
                   </div>
                   <div className="p-6 space-y-4">
                       <div className="flex justify-between border-b border-slate-100 pb-2"><span className="text-slate-500 text-sm">Счет</span><span className="font-semibold text-slate-800">{getAccountName(selectedOp.accountId)}</span></div>

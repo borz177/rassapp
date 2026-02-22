@@ -202,21 +202,35 @@ const NewSale: React.FC<NewSaleProps> = ({
 
   // --- PDF Generation Logic ---
 
-  const generatePDFBlob = (): Blob => {
+  const generatePDFBlob = async (): Promise<Blob> => {
       const doc = new jsPDF();
+
+      // Load Cyrillic Font (Roboto)
+      try {
+          const fontUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf';
+          const response = await fetch(fontUrl);
+          if (response.ok) {
+              const buffer = await response.arrayBuffer();
+              const bytes = new Uint8Array(buffer);
+              let binary = '';
+              for (let i = 0; i < bytes.byteLength; i++) {
+                  binary += String.fromCharCode(bytes[i]);
+              }
+              const base64 = window.btoa(binary);
+
+              doc.addFileToVFS('Roboto-Regular.ttf', base64);
+              doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+              doc.setFont('Roboto');
+          } else {
+              console.error("Failed to fetch font:", response.statusText);
+          }
+      } catch (error) {
+          console.error("Error loading font for PDF:", error);
+      }
+
       const sale = createdSale;
       const customer = selectedCustomer;
       const company = appSettings.companyName;
-
-      // Font Setup (Standard Courier to support basic Latin/Cyrillic if env supports, otherwise default)
-      // Note: jsPDF default fonts don't support Cyrillic well without adding a custom font.
-      // Since we can't easily add a font file in this constraints, we rely on the environment.
-      // If Cyrillic turns to gibberish, we'd need a base64 font string.
-      // For this demo, assuming a browser environment that might handle system fonts or we act as if it works.
-      // *Correction*: Standard jsPDF needs a custom font for Cyrillic.
-      // I will generate the PDF but be aware that without a specific font added via `doc.addFileToVFS`
-      // and `doc.addFont`, Cyrillic might not render correctly.
-      // However, for this task, I will implement the logic.
 
       doc.setFontSize(16);
       doc.text("ДОГОВОР КУПЛИ-ПРОДАЖИ", 105, 20, { align: "center" });
@@ -246,11 +260,20 @@ const NewSale: React.FC<NewSaleProps> = ({
           doc.text("График платежей:", 20, 135);
           let y = 145;
           sale.paymentPlan.forEach((p: any, i: number) => {
+              // Check for page break
+              if (y > 270) {
+                  doc.addPage();
+                  y = 20;
+              }
               doc.text(`${i + 1}. Дата: ${new Date(p.date).toLocaleDateString()} — Сумма: ${p.amount.toLocaleString()} руб.`, 30, y);
               y += 8;
           });
 
           y += 10;
+          if (y > 270) {
+              doc.addPage();
+              y = 20;
+          }
           doc.setFontSize(10);
           doc.text("Покупатель обязуется вносить платежи согласно графику.", 20, y);
           doc.text("Товар остается собственностью продавца до полной оплаты.", 20, y + 5);
@@ -268,19 +291,24 @@ const NewSale: React.FC<NewSaleProps> = ({
   const handleSendContract = async () => {
       if (!createdSale || !selectedCustomer || !appSettings.whatsapp?.enabled) return;
 
-      const blob = generatePDFBlob();
-      const fileName = `Contract_${selectedCustomer.name.replace(/\s/g, '_')}.pdf`;
+      try {
+          const blob = await generatePDFBlob();
+          const fileName = `Contract_${selectedCustomer.name.replace(/\s/g, '_')}.pdf`;
 
-      const success = await sendWhatsAppFile(
-          appSettings.whatsapp.idInstance,
-          appSettings.whatsapp.apiTokenInstance,
-          selectedCustomer.phone,
-          blob,
-          fileName
-      );
+          const success = await sendWhatsAppFile(
+              appSettings.whatsapp.idInstance,
+              appSettings.whatsapp.apiTokenInstance,
+              selectedCustomer.phone,
+              blob,
+              fileName
+          );
 
-      if (success) alert("Договор успешно отправлен!");
-      else alert("Ошибка отправки WhatsApp (проверьте подключение)");
+          if (success) alert("Договор успешно отправлен!");
+          else alert("Ошибка отправки WhatsApp (проверьте подключение)");
+      } catch (error) {
+          console.error("Error generating or sending PDF:", error);
+          alert("Ошибка при создании или отправке файла.");
+      }
   };
 
   const handlePrintContract = () => {
@@ -345,7 +373,7 @@ const NewSale: React.FC<NewSaleProps> = ({
       <form onSubmit={handleFormSubmit} className="space-y-4">
           {/* 1. Dates Section (Moved to Top) */}
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <div className="flex flex-wrap gap-8">
+              <div className="flex flex-wrap gap-6">
                   <div className="w-40">
                       <label className="block text-sm font-medium text-slate-700 mb-1">Дата продажи</label>
                       <input type="date" required className="w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-slate-900 text-sm" value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} />
