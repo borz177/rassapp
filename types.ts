@@ -49,6 +49,7 @@ export interface User {
   // Admin specific optional fields
   salesCount?: number;
   lastLogin?: string;
+  apiKey?: string;
 }
 
 export interface InvestorPermissions {

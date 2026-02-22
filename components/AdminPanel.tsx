@@ -15,6 +15,10 @@ const AdminPanel: React.FC = () => {
     const [months, setMonths] = useState(1);
     const [actionLoading, setActionLoading] = useState(false);
 
+    // API Key Modal
+    const [apiModalUser, setApiModalUser] = useState<User | null>(null);
+    const [generatedKey, setGeneratedKey] = useState<string | null>(null);
+
     useEffect(() => {
         loadUsers();
     }, []);
@@ -36,6 +40,29 @@ const AdminPanel: React.FC = () => {
         setSelectedUser(user);
         setPlan(user.subscription?.plan || 'START');
         setMonths(1);
+    };
+
+    const handleOpenApiModal = (user: User) => {
+        setApiModalUser(user);
+        setGeneratedKey(user.apiKey || null);
+    };
+
+    const handleGenerateApiKey = async () => {
+        if (!apiModalUser) return;
+        if (!window.confirm("Сгенерировать новый API ключ? Старый перестанет работать.")) return;
+
+        setActionLoading(true);
+        try {
+            const newKey = await api.adminGenerateUserApiKey(apiModalUser.id);
+            setGeneratedKey(newKey);
+            // Update local state
+            setUsers(prev => prev.map(u => u.id === apiModalUser.id ? { ...u, apiKey: newKey } : u));
+            alert("Ключ сгенерирован!");
+        } catch (e) {
+            alert("Ошибка генерации ключа");
+        } finally {
+            setActionLoading(false);
+        }
     };
 
     const handleUpdateSubscription = async () => {
@@ -136,14 +163,66 @@ const AdminPanel: React.FC = () => {
                             )}
 
                             {/* Actions */}
-                            <button
-                                onClick={() => handleOpenModal(user)}
-                                className="w-full mt-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-bold hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <span className="text-yellow-400">{ICONS.Crown}</span> Управление тарифом
-                            </button>
+                            <div className="flex gap-2 mt-4">
+                                <button
+                                    onClick={() => handleOpenModal(user)}
+                                    className="flex-1 py-2 bg-slate-800 text-white rounded-lg text-sm font-bold hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <span className="text-yellow-400">{ICONS.Crown}</span> Тариф
+                                </button>
+                                <button
+                                    onClick={() => handleOpenApiModal(user)}
+                                    className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    {ICONS.Settings} API
+                                </button>
+                            </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* API Key Modal */}
+            {apiModalUser && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setApiModalUser(null)}>
+                    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-xl font-bold text-slate-800 mb-1">API Доступ</h3>
+                        <p className="text-sm text-slate-500 mb-4">Для пользователя: <span className="font-bold">{apiModalUser.name}</span></p>
+
+                        <div className="space-y-4">
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Текущий API Ключ</label>
+                                {generatedKey ? (
+                                    <div className="flex items-center gap-2">
+                                        <code className="flex-1 bg-white p-2 rounded border border-slate-200 text-xs font-mono break-all">
+                                            {generatedKey}
+                                        </code>
+                                        <button
+                                            onClick={() => { navigator.clipboard.writeText(generatedKey); alert("Скопировано!"); }}
+                                            className="p-2 text-indigo-600 hover:bg-indigo-50 rounded"
+                                        >
+                                            {ICONS.File}
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-slate-400 italic">Ключ не сгенерирован</p>
+                                )}
+                            </div>
+
+                            <div className="text-xs text-slate-500 space-y-1">
+                                <p>🔑 Ключ дает полный доступ к данным пользователя через API.</p>
+                                <p>⚠️ При перегенерации старый ключ перестанет работать.</p>
+                            </div>
+
+                            <button
+                                onClick={handleGenerateApiKey}
+                                disabled={actionLoading}
+                                className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {actionLoading ? 'Генерация...' : (generatedKey ? 'Перегенерировать ключ' : 'Сгенерировать ключ')}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 

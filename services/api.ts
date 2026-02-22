@@ -377,5 +377,16 @@ export const api = {
         const data = await res.json();
         if (!res.ok) throw new Error('Failed to set subscription');
         return data.subscription;
+    },
+
+    adminGenerateUserApiKey: async (userId: string): Promise<string> => {
+        const res = await fetch(`${API_URL}/admin/generate-user-api-key`, {
+            method: 'POST',
+            headers: getAuthHeader(),
+            body: JSON.stringify({ userId })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error('Failed to generate API Key');
+        return data.apiKey;
     }
 };

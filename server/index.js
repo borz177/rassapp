@@ -94,6 +94,9 @@ const initDB = async () => {
             IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='whatsapp_settings') THEN 
                 ALTER TABLE users ADD COLUMN whatsapp_settings JSONB; 
             END IF; 
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='api_key') THEN 
+                ALTER TABLE users ADD COLUMN api_key TEXT UNIQUE; 
+            END IF;
         END $$;
     `);
 
@@ -191,7 +194,7 @@ const sendEmail = async (email, subject, text) => {
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
         try {
             await transporter.sendMail({
-                from: `"FinUchet" <${process.env.SMTP_USER}>`,
+                from: `"InstallMate" <${process.env.SMTP_USER}>`,
                 to: email,
                 subject,
                 text,
@@ -483,7 +486,8 @@ app.get('/api/auth/me', auth, async (req, res) => {
       role: user.role,
       managerId: user.manager_id,
       subscription: user.subscription,
-      whatsapp_settings: user.whatsapp_settings
+      whatsapp_settings: user.whatsapp_settings,
+      apiKey: user.role === 'admin' ? user.api_key : undefined // Only expose to admin for now
     });
   } catch (err) {
     console.error('Me Error:', err);
@@ -726,7 +730,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
         // Fetch all users and count their sales from data_items
         const query = `
             SELECT 
-                u.id, u.name, u.email, u.role, u.phone, u.subscription, u.created_at,
+                u.id, u.name, u.email, u.role, u.phone, u.subscription, u.created_at, u.api_key,
                 (SELECT COUNT(*) FROM data_items WHERE user_id = u.id AND type = 'sales') as sales_count
             FROM users u
             ORDER BY u.created_at DESC
@@ -742,7 +746,8 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
             phone: r.phone,
             subscription: r.subscription,
             salesCount: parseInt(r.sales_count || '0'),
-            createdAt: r.created_at
+            createdAt: r.created_at,
+            apiKey: r.api_key
         }));
 
         res.json(users);
@@ -771,6 +776,19 @@ app.post('/api/admin/set-subscription', adminAuth, async (req, res) => {
     } catch (e) {
         console.error("Admin set sub error", e);
         res.status(500).send("Server Error");
+    }
+});
+
+// Admin Generate API Key for User
+app.post('/api/admin/generate-user-api-key', adminAuth, async (req, res) => {
+    const { userId } = req.body;
+    try {
+        const newKey = `sk_${uuidv4().replace(/-/g, '')}`;
+        await pool.query('UPDATE users SET api_key = $1 WHERE id = $2', [newKey, userId]);
+        res.json({ apiKey: newKey });
+    } catch (err) {
+        console.error("Admin Generate API Key Error:", err);
+        res.status(500).send('Server Error');
     }
 });
 
@@ -867,6 +885,150 @@ app.post('/api/payment/webhook', async (req, res) => {
     }
 
     res.status(200).send('OK');
+});
+
+// --- API KEY ROUTES ---
+
+const apiKeyAuth = async (req, res, next) => {
+    const apiKey = req.header('x-api-key');
+    if (!apiKey) return res.status(401).json({ msg: 'No API key, authorization denied' });
+
+    try {
+        const result = await pool.query('SELECT * FROM users WHERE api_key = $1', [apiKey]);
+        if (result.rows.length === 0) {
+            return res.status(401).json({ msg: 'Invalid API key' });
+        }
+        req.user = result.rows[0]; // Set full user object
+        next();
+    } catch (err) {
+        console.error("API Key Auth Error:", err);
+        res.status(500).json({ msg: 'Server Error' });
+    }
+};
+
+// Generate API Key
+app.post('/api/auth/generate-api-key', auth, async (req, res) => {
+    try {
+        const newKey = `sk_${uuidv4().replace(/-/g, '')}`;
+        await pool.query('UPDATE users SET api_key = $1 WHERE id = $2', [newKey, req.user.id]);
+        res.json({ apiKey: newKey });
+    } catch (err) {
+        console.error("Generate API Key Error:", err);
+        res.status(500).send('Server Error');
+    }
+});
+
+// --- PUBLIC API V1 ---
+
+// List Customers
+app.get('/api/v1/customers', apiKeyAuth, async (req, res) => {
+    try {
+        const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.manager_id : req.user.id;
+        const result = await pool.query("SELECT data FROM data_items WHERE user_id = $1 AND type = 'customers'", [targetUserId]);
+        const customers = result.rows.map(r => r.data);
+        res.json(customers);
+    } catch (err) {
+        console.error("API Customers Error:", err);
+        res.status(500).json({ msg: 'Server Error' });
+    }
+});
+
+// List Contracts (Sales)
+app.get('/api/v1/contracts', apiKeyAuth, async (req, res) => {
+    try {
+        const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.manager_id : req.user.id;
+        const result = await pool.query("SELECT data FROM data_items WHERE user_id = $1 AND type = 'sales'", [targetUserId]);
+        const sales = result.rows.map(r => r.data);
+        res.json(sales);
+    } catch (err) {
+        console.error("API Contracts Error:", err);
+        res.status(500).json({ msg: 'Server Error' });
+    }
+});
+
+// Create Contract (Sale)
+app.post('/api/v1/contracts', apiKeyAuth, async (req, res) => {
+    try {
+        const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.manager_id : req.user.id;
+        const saleData = req.body;
+
+        // Basic Validation
+        if (!saleData.customerId || !saleData.totalAmount || !saleData.productName) {
+            return res.status(400).json({ msg: 'Missing required fields: customerId, totalAmount, productName' });
+        }
+
+        // Generate ID if not provided
+        const saleId = saleData.id || `sale_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+        // Ensure structure matches Sale interface
+        const newSale = {
+            ...saleData,
+            id: saleId,
+            userId: targetUserId,
+            status: saleData.status || 'ACTIVE',
+            paymentPlan: saleData.paymentPlan || [],
+            startDate: saleData.startDate || new Date().toISOString()
+        };
+
+        // Save to DB
+        await pool.query(`
+            INSERT INTO data_items (id, user_id, type, data, updated_at)
+            VALUES ($1, $2, 'sales', $3, NOW())
+            ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+        `, [saleId, targetUserId, JSON.stringify(newSale)]);
+
+        res.json(newSale);
+    } catch (err) {
+        console.error("API Create Contract Error:", err);
+        res.status(500).json({ msg: 'Server Error' });
+    }
+});
+
+// Create Payment
+app.post('/api/v1/payments', apiKeyAuth, async (req, res) => {
+    try {
+        const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.manager_id : req.user.id;
+        const { contractId, amount, date } = req.body;
+
+        if (!contractId || !amount) {
+            return res.status(400).json({ msg: 'Missing contractId or amount' });
+        }
+
+        // Fetch Sale
+        const saleResult = await pool.query("SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'sales'", [contractId, targetUserId]);
+        if (saleResult.rows.length === 0) {
+            return res.status(404).json({ msg: 'Contract not found' });
+        }
+
+        const sale = saleResult.rows[0].data;
+
+        // Add Payment
+        const payment = {
+            id: `pay_${Date.now()}_api`,
+            saleId: contractId,
+            amount: Number(amount),
+            date: date || new Date().toISOString(),
+            isPaid: true,
+            actualDate: new Date().toISOString()
+        };
+
+        sale.paymentPlan.push(payment);
+        sale.remainingAmount = Math.max(0, sale.remainingAmount - Number(amount));
+        if (sale.remainingAmount === 0) {
+            sale.status = 'COMPLETED';
+        }
+
+        // Save Updated Sale
+        await pool.query(`
+            UPDATE data_items SET data = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3
+        `, [JSON.stringify(sale), contractId, targetUserId]);
+
+        res.json({ msg: 'Payment processed', payment, remainingAmount: sale.remainingAmount });
+
+    } catch (err) {
+        console.error("API Payment Error:", err);
+        res.status(500).json({ msg: 'Server Error' });
+    }
 });
 
 app.listen(PORT, '0.0.0.0', () => console.log(`Server started on port ${PORT} (0.0.0.0)`));

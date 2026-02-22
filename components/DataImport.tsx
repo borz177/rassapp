@@ -123,14 +123,16 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                 const { customers, products, accounts, investors } = await api.fetchAllData();
 
                 let newCustomersCount = 0;
+                let updatedPhonesCount = 0;
                 let newSalesCount = 0;
                 let newInvestorsCount = 0;
                 let realPaymentsCount = 0;
+                let skippedDuplicates = 0;
 
                 const createdSalesMap = new Map<string, any>();
 
-                // === ЭТАП 1: Создание договоров ===
-                addLog("Этап 1: Создание клиентов и договоров...");
+                // === ЭТАП 1: Создание договоров и обновление клиентов ===
+                addLog("Этап 1: Обработка клиентов и договоров...");
 
                 for (const row of overviewData) {
                     const clientName = String(row['Клиент'] || '').trim();
@@ -140,7 +142,10 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                     if (!clientName || !productName) continue;
 
-                    const phone = String(row['Телефон'] || row['Mobile'] || '').trim();
+                    // 1. Клиент + Телефон
+                    const phoneRaw = row['Телефон'] || row['Mobile'] || '';
+                    const phone = phoneRaw ? String(phoneRaw).trim() : '';
+
                     let customer = customers.find(c => c.name === clientName);
 
                     if (!customer) {
@@ -158,8 +163,16 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         customers.push(newCustomer);
                         customer = newCustomer;
                         newCustomersCount++;
+                    } else {
+                        // Если клиент есть, но в файле указан телефон и он отличается -> Обновляем
+                        if (phone && customer.phone !== phone) {
+                            customer.phone = phone;
+                            await api.saveItem('customers', customer);
+                            updatedPhonesCount++;
+                        }
                     }
 
+                    // 2. Инвестор и Счет
                     let accountId = '';
                     const mainAccount = accounts.find(a => a.type === 'MAIN');
                     if (mainAccount) {
@@ -206,6 +219,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         }
                     }
 
+                    // 3. Данные о продаже
                     const buyPrice = parseMoney(row['Цена закупа']);
                     const totalPrice = parseMoney(row['Цена рассрочки']);
                     const downPayment = parseMoney(row['Взнос']);
@@ -272,10 +286,10 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     newSalesCount++;
                 }
 
-                addLog(`Создано: Клиентов=${newCustomersCount}, Инвесторов=${newInvestorsCount}, Договоров=${newSalesCount}`);
+                addLog(`Создано: Клиентов=${newCustomersCount}, Обновлено телефонов=${updatedPhonesCount}, Инвесторов=${newInvestorsCount}, Договоров=${newSalesCount}`);
                 addLog("Этап 2: Импорт реальных платежей...");
 
-                // === ЭТАП 2: Импорт реальных платежей ===
+                // === ЭТАП 2: Импорт реальных платежей (с защитой от дублей) ===
                 let skippedDeleted = 0;
                 let skippedNotFound = 0;
 
@@ -285,7 +299,8 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const paymentStatus = String(row['Статус платежа'] || '');
                     const amount = parseMoney(row['Сумма']);
                     const dateVal = row['Дата платежа'];
-                    const paymentNum = row['Платёж №'];
+                    const paymentNumRaw = row['Платёж №'];
+                    const paymentNum = paymentNumRaw ? String(paymentNumRaw).trim() : '';
 
                     if (!clientName || !productName || paymentStatus === 'Нет платежей' || !amount) continue;
 
@@ -304,17 +319,30 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                     const paymentDateIso = parseExcelDate(dateVal);
 
-                    // Проверка на дубликаты
-                    const exists = sale.paymentPlan.some((p: any) =>
-                        p.isPaid &&
-                        p.note?.includes(`Импорт №${paymentNum}`) &&
-                        Math.abs(p.amount - amount) < 1.0 &&
-                        Math.abs(new Date(p.date).getTime() - new Date(paymentDateIso).getTime()) < 86400000
-                    );
+                    // === ЖЕСТКАЯ ПРОВЕРКА НА ДУБЛИКАТЫ ===
+                    const exists = sale.paymentPlan.some((p: any) => {
+                        if (!p.isPaid) return false;
 
-                    if (exists) continue;
+                        // 1. Проверка по номеру платежа (если есть)
+                        if (paymentNum && p.note?.includes(`Импорт №${paymentNum}`)) {
+                            return true;
+                        }
 
-                    // Добавляем РЕАЛЬНЫЙ платеж в историю с ТОЧНОЙ суммой и датой из файла
+                        // 2. Проверка по точной дате и сумме (допуск 1 день и 1 рубль)
+                        const pDate = new Date(p.date).getTime();
+                        const inputDate = new Date(paymentDateIso).getTime();
+                        const dateDiff = Math.abs(pDate - inputDate);
+                        const amountDiff = Math.abs(p.amount - amount);
+
+                        return dateDiff < 86400000 && amountDiff < 1.0;
+                    });
+
+                    if (exists) {
+                        skippedDuplicates++;
+                        continue;
+                    }
+
+                    // Добавляем РЕАЛЬНЫЙ платеж
                     sale.paymentPlan.push({
                         id: `pay_real_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
                         saleId: sale.id,
@@ -322,7 +350,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         date: paymentDateIso,
                         isPaid: true,
                         actualDate: paymentDateIso,
-                        note: `Импорт №${paymentNum}`,
+                        note: paymentNum ? `Импорт №${paymentNum}` : 'Импорт',
                         isRealPayment: true
                     });
 
@@ -330,79 +358,57 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                 }
 
                 addLog(`Добавлено реальных платежей: ${realPaymentsCount}`);
+                if (skippedDuplicates > 0) addLog(`Пропущено дубликатов: ${skippedDuplicates}`);
 
-                // === ЭТАП 3: УМНОЕ РАСПРЕДЕЛЕНИЕ ПО ДАТАМ ===
-                addLog("Этап 3: Привязка платежей к месяцам по датам...");
+                // === ЭТАП 3: УМНОЕ РАСПРЕДЕЛЕНИЕ ПО ДАТАМ (Waterfall) ===
+                addLog("Этап 3: Распределение платежей и пересчет...");
 
                 for (const [key, sale] of createdSalesMap.entries()) {
-                    // 1. Разделяем реальные платежи и плановые месяцы
                     const realPayments = sale.paymentPlan
                         .filter((p: any) => p.isRealPayment)
-                        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Сортируем реальные платежи по дате (от ранних к поздним)
+                        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
                     const planPayments = sale.paymentPlan
                         .filter((p: any) => !p.isRealPayment)
-                        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Сортируем план по дате
+                        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-                    // 2. Проходим по каждому РЕАЛЬНОМУ платежу и пытаемся найти ему пару в ПЛАНЕ
+                    // Проходим по каждому реальному платежу
                     for (const realPay of realPayments) {
-                        const realDate = new Date(realPay.date).getTime();
                         let amountLeftToCover = realPay.amount;
 
-                        // Ищем подходящий месяц в плане
-                        // Логика: Платеж должен закрывать тот месяц, дата которого ближе всего к дате платежа,
-                        // либо самый ранний неоплаченный месяц, если платеж досрочный.
+                        // Ищем первый неоплаченный плановый месяц
+                        // Логика: берем самый ранний неоплаченный, независимо от даты платежа (досрочное гашение)
+                        // Но если даты близки, стараемся попасть в этот месяц
+                        let targetPlanItem = planPayments.find((p: any) => !p.isPaid);
 
-                        // Сначала пробуем найти точное совпадение по месяцу (разница дат < 15 дней)
-                        let matchedPlanItem = planPayments.find((p: any) => {
-                            if (p.isPaid) return false; // Уже оплачен другим платежом
-                            const planDate = new Date(p.date).getTime();
-                            const diff = Math.abs(realDate - planDate);
-                            return diff < 15 * 86400000; // +/- 15 дней от плановой даты
-                        });
+                        while (targetPlanItem && amountLeftToCover > 0.5) {
+                            const debt = targetPlanItem.amount;
 
-                        // Если точного совпадения нет (например, досрочный платеж), берем самый ранний неоплаченный
-                        if (!matchedPlanItem) {
-                            matchedPlanItem = planPayments.find((p: any) => !p.isPaid);
+                            if (amountLeftToCover >= debt) {
+                                // Полное погашение месяца
+                                targetPlanItem.isPaid = true;
+                                targetPlanItem.actualDate = realPay.date; // Записываем дату фактического платежа
+                                if (!targetPlanItem.note?.includes('Импорт')) {
+                                    targetPlanItem.note = `Оплачено ${realPay.date.split('T')[0]}`;
+                                }
+                                amountLeftToCover -= debt;
+
+                                // Ищем следующий неоплаченный
+                                targetPlanItem = planPayments.find((p: any) => !p.isPaid);
+                            } else {
+                                // Частичное погашение
+                                targetPlanItem.note = `Частично внесено: ${amountLeftToCover} ₽ (${realPay.date.split('T')[0]})`;
+                                amountLeftToCover = 0;
+                            }
                         }
 
-                        if (matchedPlanItem) {
-                            // Помечаем месяц как оплаченный
-                            matchedPlanItem.isPaid = true;
-                            matchedPlanItem.actualDate = realPay.date; // Записываем реальную дату оплаты
-
-                            // Если сумма платежа больше суммы месяца (переплата)
-                            if (amountLeftToCover > matchedPlanItem.amount) {
-                                amountLeftToCover -= matchedPlanItem.amount;
-
-                                // Остаток пытаемся перекинуть на следующий неоплаченный месяц
-                                while (amountLeftToCover > 0.5) {
-                                    const nextPlanItem = planPayments.find((p: any) => !p.isPaid);
-                                    if (!nextPlanItem) break; // Больше нет месяцев для покрытия
-
-                                    if (amountLeftToCover >= nextPlanItem.amount) {
-                                        nextPlanItem.isPaid = true;
-                                        nextPlanItem.actualDate = realPay.date; // Тот же день оплаты
-                                        amountLeftToCover -= nextPlanItem.amount;
-                                    } else {
-                                        // Частичное покрытие следующего месяца
-                                        nextPlanItem.note = `Частично внесено: ${amountLeftToCover} ₽ (${realPay.date.split('T')[0]})`;
-                                        amountLeftToCover = 0;
-                                    }
-                                }
-                            } else {
-                                // Если сумма меньше (недоплата за месяц)
-                                matchedPlanItem.note = `Частично внесено: ${amountLeftToCover} ₽ (${realPay.date.split('T')[0]})`;
-                                // Месяц остается isPaid=false визуально, но долг уменьшен (учтется в общем остатке)
-                            }
-                        } else {
-                            // Если вообще нет неоплаченных месяцев в плане, а платеж есть -> это переплата/аванс
-                            // Он останется в истории как оплаченный, но не покроет никакой плановый месяц
-                            realPay.note += " (Аванс/Переплата)";
+                        // Если деньги остались, а плановых месяцев нет -> Переплата
+                        if (amountLeftToCover > 0.5) {
+                            realPay.note += ` (Переплата: ${amountLeftToCover} ₽)`;
                         }
                     }
 
-                    // 3. Финальный пересчет остатка долга
+                    // Финальный пересчет остатка
                     const totalRealMoney = realPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
                     const debtBeforePayments = sale.totalAmount - sale.downPayment;
                     const currentRemaining = Math.max(0, debtBeforePayments - totalRealMoney);
@@ -415,7 +421,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         sale.status = 'ACTIVE';
                     }
 
-                    // Сортируем весь план по дате для отображения
                     sale.paymentPlan.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
                     await api.saveItem('sales', sale);
@@ -458,8 +463,9 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         <p className="font-bold mb-1">Инструкция:</p>
                         <ul className="list-disc list-inside space-y-1">
                             <li>Загрузите файл выгрузки с двумя листами.</li>
-                            <li>Платежи будут привязаны к месяцам согласно их датам.</li>
-                            <li>Досрочные платежи закроют ближайшие будущие месяцы.</li>
+                            <li>Колонка <b>Телефон</b> обновит данные клиента, если изменится.</li>
+                            <li>Платежи распределяются на самые старые долги (водопад).</li>
+                            <li>Дубликаты платежей автоматически пропускаются.</li>
                         </ul>
                     </div>
 
