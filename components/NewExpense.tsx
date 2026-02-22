@@ -70,7 +70,20 @@ const NewExpense: React.FC<NewExpenseProps> = ({
           return;
       }
 
-      const commonData = { amount: numAmount, date };
+      // Handle Date with Time
+      let finalDate = date;
+      const now = new Date();
+      const selectedDate = new Date(date);
+
+      const isToday = selectedDate.getDate() === now.getDate() &&
+                      selectedDate.getMonth() === now.getMonth() &&
+                      selectedDate.getFullYear() === now.getFullYear();
+
+      if (isToday) {
+          finalDate = now.toISOString();
+      }
+
+      const commonData = { amount: numAmount, date: finalDate };
 
       if (sourceType === 'INVESTOR') {
           if (!selectedInvestorId || !sourceAccountId) {
@@ -128,13 +141,13 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
       {/* Switcher */}
       <div className="flex bg-slate-100 p-1 rounded-xl">
-          <button 
+          <button
              onClick={() => { setSourceType('OTHER'); setAmount(''); }}
              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'OTHER' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500'}`}
           >
               Общие расходы
           </button>
-          <button 
+          <button
              onClick={() => { setSourceType('INVESTOR'); setAmount(''); }}
              className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'INVESTOR' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500'}`}
           >
@@ -143,13 +156,13 @@ const NewExpense: React.FC<NewExpenseProps> = ({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-          
+
           {/* INVESTOR FORM */}
           {sourceType === 'INVESTOR' && (
               <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
                   <div>
                        <label className="block text-sm font-medium text-slate-700 mb-1">Выберите инвестора</label>
-                       <select 
+                       <select
                           className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
                           value={selectedInvestorId}
                           onChange={e => setSelectedInvestorId(e.target.value)}
@@ -158,10 +171,10 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                            {investors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
                        </select>
                    </div>
-                   
+
                    <div>
                        <label className="block text-sm font-medium text-slate-700 mb-1">Списать со счета</label>
-                       <select 
+                       <select
                           className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
                           value={sourceAccountId}
                           onChange={e => setSourceAccountId(e.target.value)}
@@ -191,7 +204,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                   {category !== 'Моя выплата' && (
                       <div>
                            <label className="block text-sm font-medium text-slate-700 mb-1">Название / Назначение</label>
-                           <input 
+                           <input
                               placeholder="Например: Аренда офиса"
                               className="w-full p-3 border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
                               value={title}
@@ -199,10 +212,10 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                            />
                        </div>
                   )}
-                   
+
                    <div>
                        <label className="block text-sm font-medium text-slate-700 mb-1">Категория</label>
-                       <select 
+                       <select
                           className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
                           value={category}
                           onChange={e => setCategory(e.target.value)}
@@ -219,7 +232,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
                    <div>
                        <label className="block text-sm font-medium text-slate-700 mb-1">Списать со счета</label>
-                       <select 
+                       <select
                           className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
                           value={sourceAccountId}
                           onChange={e => setSourceAccountId(e.target.value)}
@@ -227,7 +240,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                        </select>
                    </div>
-                   
+
                    {category === 'Моя выплата' && (
                        <div className="pt-2">
                             <label className="block text-sm font-medium text-slate-700 mb-2">Источник списания</label>
@@ -263,11 +276,11 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                       />
                   </div>
               </div>
-              <div className="ml-3">
+              <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
                   <input
                       type="date"
-                      className="max-w-xs w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                      className="max-w-xs w-full p-3text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
                       value={date}
                       onChange={e => setDate(e.target.value)}
                   />
@@ -275,10 +288,10 @@ const NewExpense: React.FC<NewExpenseProps> = ({
           </div>
 
           <button
-              type="submit"
-              className="w-full bg-red-600 text-white py-4 rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 transition-transform active:scale-95"
+            type="submit"
+            className="w-full bg-red-600 text-white py-4 rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 transition-transform active:scale-95"
           >
-              Подтвердить расход
+            Подтвердить расход
           </button>
       </form>
     </div>

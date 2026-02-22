@@ -146,9 +146,33 @@ const NewSale: React.FC<NewSaleProps> = ({
     // Generate ID here so we can use it for printing/sending before App.tsx updates
     const saleId = formData.id || Date.now().toString();
 
+    // Handle Date with Time
+    let finalStartDate = formData.startDate;
+    const now = new Date();
+    const selectedDate = new Date(formData.startDate);
+
+    // Check if selected date is today (ignoring time)
+    const isToday = selectedDate.getDate() === now.getDate() &&
+                    selectedDate.getMonth() === now.getMonth() &&
+                    selectedDate.getFullYear() === now.getFullYear();
+
+    if (isToday) {
+        // Use current ISO string to preserve time
+        finalStartDate = now.toISOString();
+    } else {
+        // For past/future dates, maybe set to noon to avoid timezone shifts or keep as YYYY-MM-DD (which parses to UTC midnight)
+        // If we want it to show up correctly in local time, we might want to set it to 12:00 local time
+        // But for now, let's just append T12:00:00.000Z to ensure it's not 00:00 if that's confusing
+        // Actually, let's just leave it as YYYY-MM-DD for non-today dates,
+        // as the user specifically asked for "Today" and "Yesterday" sorting/time correctness.
+        // If they backdate, 00:00 is acceptable.
+        finalStartDate = formData.startDate;
+    }
+
     const submissionData = {
         ...formData,
         id: saleId,
+        startDate: finalStartDate,
         paymentDay: pDay,
         buyPrice: Number(formData.buyPrice),
         price: Number(formData.price),
