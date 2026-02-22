@@ -40,35 +40,21 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
     const parseExcelDate = (val: any): string => {
         if (!val) return new Date().toISOString();
 
-        // 1. Если это число (серийный номер даты Excel)
         if (typeof val === 'number') {
-            // Excel epoch is 1899-12-30, but has a bug for 1900, so we use 25569 days offset usually,
-            // but standard formula: (val - 25567) * 86400 * 1000 works for most modern Excel files.
-            // Using robust conversion:
-            const utcDays = val - 25567; // 25567 for 1970-01-01
+            const utcDays = val - 25567;
             const ms = utcDays * 86400 * 1000;
             const dateObj = new Date(ms);
-
-            // Корректировка часового пояса (чтобы дата не уехала на вчера/завтра)
-            // Мы хотим получить дату именно так, как она написана в ячейке (локальную)
             const userTimezoneOffset = dateObj.getTimezoneOffset() * 60000;
             const correctedDate = new Date(dateObj.getTime() + userTimezoneOffset);
-
             if (!isNaN(correctedDate.getTime())) {
-                // Check if date is way too far in the future (e.g. > 2050) which might indicate bad parsing
-                if (correctedDate.getFullYear() > 2050) {
-                     console.warn(`Date too far in future: ${correctedDate.toISOString()}, original: ${val}`);
-                }
                 return correctedDate.toISOString();
             }
         }
 
-        // 2. Если это строка
         if (typeof val === 'string') {
             const trimmed = val.trim();
             if (!trimmed) return new Date().toISOString();
 
-            // Пробуем формат ДД.ММ.ГГГГ
             const dmyRegex = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/;
             const match = trimmed.match(dmyRegex);
 
@@ -82,34 +68,12 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                 }
             }
 
-            // Пробуем формат ГГГГ-ММ-ДД (ISO)
-            const isoRegex = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
-            const isoMatch = trimmed.match(isoRegex);
-            if (isoMatch) {
-                 const dateObj = new Date(trimmed);
-                 if (!isNaN(dateObj.getTime())) return dateObj.toISOString();
-            }
-
-            // Try MM/DD/YYYY (common in some exports)
-            const mdyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
-            const mdyMatch = trimmed.match(mdyRegex);
-            if (mdyMatch) {
-                const month = parseInt(mdyMatch[1], 10) - 1;
-                const day = parseInt(mdyMatch[2], 10);
-                const year = parseInt(mdyMatch[3], 10);
-                const dateObj = new Date(year, month, day);
-                if (!isNaN(dateObj.getTime())) return dateObj.toISOString();
-            }
-
-            // Попытка стандартного парсера JS
             const parsed = new Date(trimmed);
             if (!isNaN(parsed.getTime())) {
                 return parsed.toISOString();
             }
         }
 
-        // Если ничего не подошло
-        console.warn(`Не удалось распарсить дату: ${val}`);
         return new Date().toISOString();
     };
 
@@ -119,28 +83,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
         const str = String(val).replace(/[^\d.,-]/g, '').replace(',', '.');
         const num = parseFloat(str);
         return isNaN(num) ? 0 : num;
-    };
-
-    const parsePhone = (val: any): string => {
-        if (!val) return '';
-        const str = String(val).trim();
-        // Remove all non-digit characters except +
-        let cleaned = str.replace(/[^\d+]/g, '');
-
-        // If it starts with 8, replace with +7
-        if (cleaned.startsWith('8') && cleaned.length === 11) {
-            cleaned = '+7' + cleaned.substring(1);
-        }
-        // If it starts with 9, add +7
-        if (cleaned.startsWith('9') && cleaned.length === 10) {
-            cleaned = '+7' + cleaned;
-        }
-        // If no +, add +
-        if (!cleaned.startsWith('+')) {
-             cleaned = '+' + cleaned;
-        }
-
-        return cleaned;
     };
 
     const processImport = async () => {
@@ -161,7 +103,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
         reader.onload = async (e) => {
             try {
                 const data = e.target?.result;
-                // Читаем файл, преобразуя даты в строки там, где это возможно, но оставляем числа для надежного парсинга
                 const workbook = XLSX_LIB.read(data, { type: 'binary', cellDates: false });
 
                 const sheetOverview = workbook.Sheets["Обзор клиентов"];
@@ -199,9 +140,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                     if (!clientName || !productName) continue;
 
-                    // 1. Клиент
-                    const phoneRaw = row['Телефон'] || row['Mobile'] || row['Phone'] || '';
-                    const phone = parsePhone(phoneRaw);
+                    const phone = String(row['Телефон'] || row['Mobile'] || '').trim();
                     let customer = customers.find(c => c.name === clientName);
 
                     if (!customer) {
@@ -221,7 +160,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         newCustomersCount++;
                     }
 
-                    // 2. Инвестор и Счет
                     let accountId = '';
                     const mainAccount = accounts.find(a => a.type === 'MAIN');
                     if (mainAccount) {
@@ -268,21 +206,17 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         }
                     }
 
-                    // 3. Данные о продаже
                     const buyPrice = parseMoney(row['Цена закупа']);
                     const totalPrice = parseMoney(row['Цена рассрочки']);
                     const downPayment = parseMoney(row['Взнос']);
                     const installmentsCount = Number(row['Срок (мес)']) || 1;
 
-                    // === КЛЮЧЕВОЙ МОМЕНТ: Парсинг даты оформления ===
                     const saleDateRaw = row['Дата оформления'];
                     const saleDateIso = parseExcelDate(saleDateRaw);
 
-                    // Расчет даты первого платежа
                     let firstPaymentDateStr = row['Дата первого платежа'] || row['First Payment Date'];
 
                     if (!firstPaymentDateStr) {
-                        // Если нет явной даты первого платежа, считаем: Дата оформления + 1 месяц
                         const d = new Date(saleDateIso);
                         d.setMonth(d.getMonth() + 1);
                         firstPaymentDateStr = d.toISOString();
@@ -293,7 +227,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const statusStr = String(row['Статус'] || '');
                     const saleKey = `${clientName}__${productName}`;
 
-                    // Генерация ПЛАНОВОГО графика
                     const remainingAfterDown = Math.max(0, totalPrice - downPayment);
                     const monthlyAvg = installmentsCount > 0 ? remainingAfterDown / installmentsCount : 0;
 
@@ -326,7 +259,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         remainingAmount: remainingAfterDown,
                         installments: installmentsCount,
                         interestRate: 0,
-                        startDate: saleDateIso, // Сохраняем точную дату оформления из файла
+                        startDate: saleDateIso,
                         status: statusStr.includes('Завершен') ? 'COMPLETED' : (statusStr.includes('Оформлен') ? 'DRAFT' : 'ACTIVE'),
                         type: 'INSTALLMENT',
                         paymentPlan: tempPaymentPlan,
@@ -369,7 +302,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         continue;
                     }
 
-                    // === КЛЮЧЕВОЙ МОМЕНТ: Парсинг даты платежа ===
                     const paymentDateIso = parseExcelDate(dateVal);
 
                     // Проверка на дубликаты
@@ -399,39 +331,79 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                 addLog(`Добавлено реальных платежей: ${realPaymentsCount}`);
 
-                // === ЭТАП 3: Распределение денег (Waterfall) и Пересчет ===
-                addLog("Этап 3: Распределение платежей и пересчет остатков...");
+                // === ЭТАП 3: УМНОЕ РАСПРЕДЕЛЕНИЕ ПО ДАТАМ ===
+                addLog("Этап 3: Привязка платежей к месяцам по датам...");
 
                 for (const [key, sale] of createdSalesMap.entries()) {
-                    const realPayments = sale.paymentPlan.filter((p: any) => p.isRealPayment);
+                    // 1. Разделяем реальные платежи и плановые месяцы
+                    const realPayments = sale.paymentPlan
+                        .filter((p: any) => p.isRealPayment)
+                        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Сортируем реальные платежи по дате (от ранних к поздним)
 
                     const planPayments = sale.paymentPlan
                         .filter((p: any) => !p.isRealPayment)
-                        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Сортируем план по дате
 
-                    const totalRealMoney = realPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+                    // 2. Проходим по каждому РЕАЛЬНОМУ платежу и пытаемся найти ему пару в ПЛАНЕ
+                    for (const realPay of realPayments) {
+                        const realDate = new Date(realPay.date).getTime();
+                        let amountLeftToCover = realPay.amount;
 
-                    // ВОДОПАД: Гасим самые старые долги первыми
-                    let moneyLeft = totalRealMoney;
+                        // Ищем подходящий месяц в плане
+                        // Логика: Платеж должен закрывать тот месяц, дата которого ближе всего к дате платежа,
+                        // либо самый ранний неоплаченный месяц, если платеж досрочный.
 
-                    for (const planItem of planPayments) {
-                        if (moneyLeft <= 0) break;
+                        // Сначала пробуем найти точное совпадение по месяцу (разница дат < 15 дней)
+                        let matchedPlanItem = planPayments.find((p: any) => {
+                            if (p.isPaid) return false; // Уже оплачен другим платежом
+                            const planDate = new Date(p.date).getTime();
+                            const diff = Math.abs(realDate - planDate);
+                            return diff < 15 * 86400000; // +/- 15 дней от плановой даты
+                        });
 
-                        const debt = planItem.amount;
+                        // Если точного совпадения нет (например, досрочный платеж), берем самый ранний неоплаченный
+                        if (!matchedPlanItem) {
+                            matchedPlanItem = planPayments.find((p: any) => !p.isPaid);
+                        }
 
-                        if (moneyLeft >= debt) {
-                            planItem.isPaid = true;
-                            // Можно записать дату фактического погашения этого месяца (дата последнего платежа, который его закрыл)
-                            // Но лучше оставить плановую дату в графике, а факт видеть в истории
-                            moneyLeft -= debt;
+                        if (matchedPlanItem) {
+                            // Помечаем месяц как оплаченный
+                            matchedPlanItem.isPaid = true;
+                            matchedPlanItem.actualDate = realPay.date; // Записываем реальную дату оплаты
+
+                            // Если сумма платежа больше суммы месяца (переплата)
+                            if (amountLeftToCover > matchedPlanItem.amount) {
+                                amountLeftToCover -= matchedPlanItem.amount;
+
+                                // Остаток пытаемся перекинуть на следующий неоплаченный месяц
+                                while (amountLeftToCover > 0.5) {
+                                    const nextPlanItem = planPayments.find((p: any) => !p.isPaid);
+                                    if (!nextPlanItem) break; // Больше нет месяцев для покрытия
+
+                                    if (amountLeftToCover >= nextPlanItem.amount) {
+                                        nextPlanItem.isPaid = true;
+                                        nextPlanItem.actualDate = realPay.date; // Тот же день оплаты
+                                        amountLeftToCover -= nextPlanItem.amount;
+                                    } else {
+                                        // Частичное покрытие следующего месяца
+                                        nextPlanItem.note = `Частично внесено: ${amountLeftToCover} ₽ (${realPay.date.split('T')[0]})`;
+                                        amountLeftToCover = 0;
+                                    }
+                                }
+                            } else {
+                                // Если сумма меньше (недоплата за месяц)
+                                matchedPlanItem.note = `Частично внесено: ${amountLeftToCover} ₽ (${realPay.date.split('T')[0]})`;
+                                // Месяц остается isPaid=false визуально, но долг уменьшен (учтется в общем остатке)
+                            }
                         } else {
-                            // Частичное погашение
-                            planItem.note = `Частично внесено: ${moneyLeft} ₽`;
-                            moneyLeft = 0;
+                            // Если вообще нет неоплаченных месяцев в плане, а платеж есть -> это переплата/аванс
+                            // Он останется в истории как оплаченный, но не покроет никакой плановый месяц
+                            realPay.note += " (Аванс/Переплата)";
                         }
                     }
 
-                    // Финальный пересчет
+                    // 3. Финальный пересчет остатка долга
+                    const totalRealMoney = realPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
                     const debtBeforePayments = sale.totalAmount - sale.downPayment;
                     const currentRemaining = Math.max(0, debtBeforePayments - totalRealMoney);
 
@@ -443,6 +415,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         sale.status = 'ACTIVE';
                     }
 
+                    // Сортируем весь план по дате для отображения
                     sale.paymentPlan.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
                     await api.saveItem('sales', sale);
@@ -485,8 +458,8 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         <p className="font-bold mb-1">Инструкция:</p>
                         <ul className="list-disc list-inside space-y-1">
                             <li>Загрузите файл выгрузки с двумя листами.</li>
-                            <li>Даты будут взяты точно из файла (поддержка формата ДД.ММ.ГГГГ).</li>
-                            <li>Платежи распределяются на самые старые долги.</li>
+                            <li>Платежи будут привязаны к месяцам согласно их датам.</li>
+                            <li>Досрочные платежи закроют ближайшие будущие месяцы.</li>
                         </ul>
                     </div>
 
