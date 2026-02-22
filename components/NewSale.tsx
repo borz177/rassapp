@@ -255,59 +255,148 @@ const NewSale: React.FC<NewSaleProps> = ({
       const sale = createdSale;
       const customer = selectedCustomer;
       const company = appSettings.companyName;
+      const sellerPhone = appSettings.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance.slice(0, 11)}` : ''; // Approximate phone from ID instance or user profile if available
 
-      doc.setFontSize(16);
-      doc.text("ДОГОВОР КУПЛИ-ПРОДАЖИ", 105, 20, { align: "center" });
+      const pageWidth = doc.internal.pageSize.width;
+      const margin = 20;
+      const contentWidth = pageWidth - (margin * 2);
+      let y = 20;
 
-      doc.setFontSize(10);
-      doc.text(`Дата: ${new Date(sale.startDate).toLocaleDateString()}`, 180, 30, { align: "right" });
-
-      doc.setFontSize(12);
-      doc.text(`Продавец: ${company}`, 20, 40);
-      doc.text(`Покупатель: ${customer?.name}`, 20, 48);
-      if (customer?.phone) doc.text(`Телефон: ${customer.phone}`, 20, 56);
-      if (customer?.address) doc.text(`Адрес: ${customer.address}`, 20, 64);
-
-      doc.line(20, 70, 190, 70);
-
+      // 1. Title
       doc.setFontSize(14);
-      doc.text("Предмет договора", 20, 80);
-      doc.setFontSize(12);
-      doc.text(`Товар: ${sale.productName}`, 20, 90);
-      doc.text(`Стоимость товара: ${sale.totalAmount.toLocaleString()} руб.`, 20, 98);
+      doc.setFont('Roboto', 'bold');
+      doc.text("ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ", pageWidth / 2, y, { align: "center" });
+      y += 10;
 
-      if (mode === 'INSTALLMENT') {
-          doc.text(`Первоначальный взнос: ${sale.downPayment.toLocaleString()} руб.`, 20, 106);
-          doc.text(`Остаток долга: ${sale.remainingAmount.toLocaleString()} руб.`, 20, 114);
-          doc.text(`Срок рассрочки: ${sale.installments} мес.`, 20, 122);
+      // 2. Date
+      doc.setFontSize(10);
+      doc.setFont('Roboto', 'normal');
+      doc.text(`Дата: ${new Date(sale.startDate).toLocaleDateString()}`, pageWidth - margin, y, { align: "right" });
+      y += 10;
 
-          doc.text("График платежей:", 20, 135);
-          let y = 145;
-          sale.paymentPlan.forEach((p: any, i: number) => {
-              // Check for page break
-              if (y > 270) {
-                  doc.addPage();
-                  y = 20;
-              }
-              doc.text(`${i + 1}. Дата: ${new Date(p.date).toLocaleDateString()} — Сумма: ${p.amount.toLocaleString()} руб.`, 30, y);
-              y += 8;
-          });
+      // 3. Parties
+      const drawField = (label: string, value: string, x: number, y: number, w: number) => {
+          doc.setFont('Roboto', 'bold');
+          doc.text(label, x, y);
+          const labelWidth = doc.getTextWidth(label);
+          doc.setFont('Roboto', 'normal');
+          doc.text(value, x + labelWidth + 2, y);
+      };
 
-          y += 10;
+      // Row 1: Seller
+      drawField("Продавец:", company, margin, y, contentWidth / 2);
+      drawField("Тел:", sellerPhone, margin + contentWidth / 2, y, contentWidth / 2);
+      y += 6;
+
+      // Row 2: Buyer
+      drawField("Покупатель:", customer?.name || '', margin, y, contentWidth / 2);
+      drawField("Тел:", customer?.phone || '', margin + contentWidth / 2, y, contentWidth / 2);
+      y += 6;
+
+      // Row 3: Guarantor (if exists)
+      if (sale.guarantorName) {
+          drawField("Поручитель:", sale.guarantorName, margin, y, contentWidth / 2);
+          drawField("Тел:", sale.guarantorPhone || '', margin + contentWidth / 2, y, contentWidth / 2);
+          y += 6;
+      }
+      y += 4;
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 10;
+
+      // 4. Product Info
+      drawField("Товар:", sale.productName, margin, y, contentWidth);
+      y += 6;
+
+      drawField("Срок рассрочки:", `${sale.installments} мес.`, margin, y, contentWidth / 2);
+      drawField("Стоимость:", `${sale.totalAmount.toLocaleString()} ₽`, margin + contentWidth / 2, y, contentWidth / 2);
+      y += 6;
+
+      const monthlyPayment = sale.paymentPlan.length > 0 ? sale.paymentPlan[0].amount : 0;
+      drawField("Ежемесячный платеж:", `${monthlyPayment.toLocaleString()} ₽`, margin, y, contentWidth / 2);
+      drawField("Первый взнос:", `${sale.downPayment.toLocaleString()} ₽`, margin + contentWidth / 2, y, contentWidth / 2);
+      y += 10;
+
+      // 5. Table
+      const headers = ["№", "Дата", "Сумма", "Остаток долга"];
+      const colWidths = [15, 40, 40, 45]; // Total 140, adjust to fit contentWidth (~170)
+      // Let's scale colWidths to fit contentWidth
+      const totalColWidth = colWidths.reduce((a, b) => a + b, 0);
+      const scale = contentWidth / totalColWidth;
+      const scaledWidths = colWidths.map(w => w * scale);
+
+      const startX = margin;
+
+      // Draw Header
+      doc.setFillColor(240, 240, 240);
+      doc.rect(startX, y - 4, contentWidth, 8, 'F');
+      doc.setFont('Roboto', 'bold');
+      let currentX = startX;
+      headers.forEach((h, i) => {
+          doc.text(h, currentX + 2, y + 1);
+          currentX += scaledWidths[i];
+      });
+      y += 6;
+
+      // Draw Rows
+      doc.setFont('Roboto', 'normal');
+      let currentDebt = sale.totalAmount - sale.downPayment;
+
+      sale.paymentPlan.forEach((p: any, i: number) => {
+          // Page break check
           if (y > 270) {
               doc.addPage();
               y = 20;
           }
-          doc.setFontSize(10);
-          doc.text("Покупатель обязуется вносить платежи согласно графику.", 20, y);
-          doc.text("Товар остается собственностью продавца до полной оплаты.", 20, y + 5);
-      } else {
-          doc.text("Оплата произведена полностью.", 20, 110);
-      }
 
-      doc.line(20, 250, 190, 250);
-      doc.text("Подпись Продавца: _______________", 20, 260);
-      doc.text("Подпись Покупателя: _______________", 110, 260);
+          currentDebt -= p.amount;
+          const displayDebt = Math.max(0, currentDebt); // Avoid negative due to rounding
+
+          const rowData = [
+              (i + 1).toString(),
+              new Date(p.date).toLocaleDateString(),
+              `${p.amount.toLocaleString()} ₽`,
+              `${displayDebt.toLocaleString()} ₽`
+          ];
+
+          currentX = startX;
+          rowData.forEach((d, colIdx) => {
+              doc.text(d, currentX + 2, y + 1);
+              currentX += scaledWidths[colIdx];
+          });
+
+          // Horizontal line
+          doc.setDrawColor(200, 200, 200);
+          doc.line(startX, y + 3, startX + contentWidth, y + 3);
+
+          y += 8;
+      });
+
+      y += 5;
+
+      // 6. Footer Text
+      if (y > 260) { doc.addPage(); y = 20; }
+      doc.setFontSize(9);
+      doc.text("Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку.", margin, y);
+      y += 20;
+
+      // 7. Signatures
+      const sigY = y;
+      const sigWidth = contentWidth / (sale.guarantorName ? 3 : 2);
+
+      const drawSig = (label: string, x: number) => {
+          doc.setDrawColor(0, 0, 0);
+          doc.line(x, sigY, x + sigWidth - 10, sigY);
+          doc.setFontSize(8);
+          doc.text(label, x + (sigWidth - 10)/2, sigY + 5, { align: "center" });
+      };
+
+      drawSig("Продавец", margin);
+      if (sale.guarantorName) {
+          drawSig("Поручитель", margin + sigWidth);
+          drawSig("Покупатель", margin + sigWidth * 2);
+      } else {
+          drawSig("Покупатель", margin + sigWidth);
+      }
 
       return doc.output('blob');
   };

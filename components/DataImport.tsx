@@ -45,7 +45,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
             // Excel epoch is 1899-12-30, but has a bug for 1900, so we use 25569 days offset usually,
             // but standard formula: (val - 25567) * 86400 * 1000 works for most modern Excel files.
             // Using robust conversion:
-            const utcDays = val - 25567;
+            const utcDays = val - 25567; // 25567 for 1970-01-01
             const ms = utcDays * 86400 * 1000;
             const dateObj = new Date(ms);
 
@@ -55,6 +55,10 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
             const correctedDate = new Date(dateObj.getTime() + userTimezoneOffset);
 
             if (!isNaN(correctedDate.getTime())) {
+                // Check if date is way too far in the future (e.g. > 2050) which might indicate bad parsing
+                if (correctedDate.getFullYear() > 2050) {
+                     console.warn(`Date too far in future: ${correctedDate.toISOString()}, original: ${val}`);
+                }
                 return correctedDate.toISOString();
             }
         }
@@ -86,6 +90,17 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                  if (!isNaN(dateObj.getTime())) return dateObj.toISOString();
             }
 
+            // Try MM/DD/YYYY (common in some exports)
+            const mdyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+            const mdyMatch = trimmed.match(mdyRegex);
+            if (mdyMatch) {
+                const month = parseInt(mdyMatch[1], 10) - 1;
+                const day = parseInt(mdyMatch[2], 10);
+                const year = parseInt(mdyMatch[3], 10);
+                const dateObj = new Date(year, month, day);
+                if (!isNaN(dateObj.getTime())) return dateObj.toISOString();
+            }
+
             // Попытка стандартного парсера JS
             const parsed = new Date(trimmed);
             if (!isNaN(parsed.getTime())) {
@@ -104,6 +119,28 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
         const str = String(val).replace(/[^\d.,-]/g, '').replace(',', '.');
         const num = parseFloat(str);
         return isNaN(num) ? 0 : num;
+    };
+
+    const parsePhone = (val: any): string => {
+        if (!val) return '';
+        const str = String(val).trim();
+        // Remove all non-digit characters except +
+        let cleaned = str.replace(/[^\d+]/g, '');
+
+        // If it starts with 8, replace with +7
+        if (cleaned.startsWith('8') && cleaned.length === 11) {
+            cleaned = '+7' + cleaned.substring(1);
+        }
+        // If it starts with 9, add +7
+        if (cleaned.startsWith('9') && cleaned.length === 10) {
+            cleaned = '+7' + cleaned;
+        }
+        // If no +, add +
+        if (!cleaned.startsWith('+')) {
+             cleaned = '+' + cleaned;
+        }
+
+        return cleaned;
     };
 
     const processImport = async () => {
@@ -163,7 +200,8 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     if (!clientName || !productName) continue;
 
                     // 1. Клиент
-                    const phone = String(row['Телефон'] || row['Mobile'] || '').trim();
+                    const phoneRaw = row['Телефон'] || row['Mobile'] || row['Phone'] || '';
+                    const phone = parsePhone(phoneRaw);
                     let customer = customers.find(c => c.name === clientName);
 
                     if (!customer) {
