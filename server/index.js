@@ -194,7 +194,7 @@ const sendEmail = async (email, subject, text) => {
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
         try {
             await transporter.sendMail({
-                from: `"InstallMate" <${process.env.SMTP_USER}>`,
+                from: `"FinUchet" <${process.env.SMTP_USER}>`,
                 to: email,
                 subject,
                 text,
@@ -308,7 +308,7 @@ app.post('/api/auth/send-code', async (req, res) => {
         `, [email, code, expiresAt]);
 
         const subject = type === 'REGISTER' ? 'Код подтверждения регистрации' : 'Код восстановления пароля';
-        const message = `Ваш код подтверждения для InstallMate: ${code}. Код действителен 10 минут.`;
+        const message = `Ваш код подтверждения для FinUchet: ${code}. Код действителен 10 минут.`;
 
         await sendEmail(email, subject, message);
 

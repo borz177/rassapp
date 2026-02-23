@@ -126,8 +126,8 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
 
 ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLocaleString()} ₽ до ${new Date(nextPayment.date).toLocaleDateString()}` : ''}
 
-
-
+С уважением,
+Команда InstallMate.
       `.trim().replace(/^\s+/gm, '');
 
       const phone = customer.phone.replace(/[^0-9]/g, '');
@@ -148,85 +148,35 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
       const url = `https://wa.me/${phone}?text=${encodeURIComponent(report)}`;
       window.open(url, '_blank');
   };
-  
-   const { paidPayments, paymentSchedule } = useMemo(() => {
+
+  const { paidPayments, paymentSchedule } = useMemo(() => {
     if (!selectedSale) return { paidPayments: [], paymentSchedule: [] };
 
-    // 1. ИСТОРИЯ ПОСТУПЛЕНИЙ
-    // Показываем ТОЛЬКО реальные платежи (флаги isRealPayment или заметка "Импорт"/"Оплачено")
-    // Скрываем плановые месяцы, которые просто стали isPaid=true из-за распределения денег
     const paid = selectedSale.paymentPlan
-      .filter(p => {
-        // Если это явно реальный платеж из импорта
-        if (p.isRealPayment) return true;
-
-        // Если это ручной платеж (нет флага isRealPayment, но есть сумма и дата, и нет слова "План")
-        // Обычно ручные платежи тоже стоит показывать.
-        // Но чтобы избежать дублей с планом, проверяем: если сумма НЕ равна стандартному ежемесячному платежу -> это точно реальный платеж.
-        // ИЛИ если в заметке есть слово "Импорт" или "Оплачено"
-        if (p.note && (p.note.includes('Импорт') || p.note.includes('Оплачено'))) return true;
-
-        // Дополнительная защита: если сумма сильно отличается от средней по плану, скорее всего это реальный ввод
-        const avgPlanAmount = selectedSale.totalAmount / selectedSale.installments;
-        if (Math.abs(p.amount - avgPlanAmount) > (avgPlanAmount * 0.1)) return true; // Отличие больше 10%
-
-        return false;
-      })
+      .filter(p => p.isPaid)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // 2. ГРАФИК ПЛАТЕЖЕЙ (БУДУЩЕЕ)
-    // Берем все элементы, которые НЕ являются реальными платежами (исключаем строки импорта из графика)
-    const planItems = selectedSale.paymentPlan
-      .filter(p => !p.isRealPayment)
+    const scheduled = selectedSale.paymentPlan
+      .filter(p => !p.isPaid)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    // 3. РАСЧЕТ ОСТАТКОВ ДЛЯ ГРАФИКА
-    // Считаем общую сумму всех РЕАЛЬНЫХ денег, которые уже внесли
-    const totalRealMoney = selectedSale.paymentPlan
-        .filter(p => p.isRealPayment || (p.note && p.note.includes('Импорт')))
-        .reduce((sum, p) => sum + (p.amount || 0), 0);
+    let paymentPool = paid.reduce((sum, p) => sum + p.amount, 0);
 
-    let moneyPool = totalRealMoney;
+    const scheduleForDisplay = scheduled.map(p => {
+      const paymentDue = p.amount;
+      const amountPaidThisMonth = Math.min(paymentDue, paymentPool);
 
-    const scheduleForDisplay = planItems.map(p => {
-      // Если плановый месяц уже помечен как оплаченный (isPaid=true) благодаря деньгам из пула -> скрываем его
-      if (p.isPaid) {
-          // Но если деньги в пуле еще есть, значит этот месяц закрыт ими. Вычитаем сумму.
-          if (moneyPool >= p.amount) {
-              moneyPool -= p.amount;
-              return null; // Скрыть из графика, т.к. оплачено
-          }
-      }
+      paymentPool -= amountPaidThisMonth;
 
-      // Если месяц не оплачен, проверяем, есть ли деньги в пуле (досрочное погашение)
-      if (moneyPool > 0) {
-          if (moneyPool >= p.amount) {
-              // Денег хватает на весь этот месяц -> скрываем его, вычитаем из пула
-              moneyPool -= p.amount;
-              return null;
-          } else {
-              // Частичное погашение
-              const covered = moneyPool;
-              moneyPool = 0;
-              return {
-                ...p,
-                amountToPay: p.amount - covered,
-                isPartiallyPaid: true
-              };
-          }
-      }
-
-      // Денег нет -> показываем полный платеж
       return {
         ...p,
-        amountToPay: p.amount,
-        isPartiallyPaid: false
+        amountToPay: paymentDue - amountPaidThisMonth,
       };
-    }).filter(p => p !== null && p.amountToPay > 0.5); // Показываем только где есть долг
+    }).filter(p => p.amountToPay > 0.01);
 
     return {
         paidPayments: paid,
-        paymentSchedule: scheduleForDisplay as any[]
+        paymentSchedule: scheduleForDisplay
     };
   }, [selectedSale]);
 
