@@ -933,6 +933,177 @@ app.get('/api/v1/customers', apiKeyAuth, async (req, res) => {
     }
 });
 
+// Create Customer
+app.post('/api/v1/customers', apiKeyAuth, async (req, res) => {
+    try {
+        const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.manager_id : req.user.id;
+        const customerData = req.body;
+
+        // Basic Validation
+        if (!customerData.name || !customerData.phone) {
+            return res.status(400).json({ msg: 'Missing required fields: name, phone' });
+        }
+
+        // Generate ID if not provided
+        const customerId = customerData.id || `cust_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+        // Ensure structure matches Customer interface
+        const newCustomer = {
+            ...customerData,
+            id: customerId,
+            userId: targetUserId,
+            trustScore: customerData.trustScore || 50,
+            notes: customerData.notes || '',
+            totalPurchases: 0
+        };
+
+        // Save to DB
+        await pool.query(`
+            INSERT INTO data_items (id, user_id, type, data, updated_at)
+            VALUES ($1, $2, 'customers', $3, NOW())
+            ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+        `, [customerId, targetUserId, JSON.stringify(newCustomer)]);
+
+        res.json(newCustomer);
+    } catch (err) {
+        console.error("API Create Customer Error:", err);
+        res.status(500).json({ msg: 'Server Error' });
+    }
+});
+
+// List Accounts (Cash Register) with Calculated Balance
+app.get('/api/v1/accounts', apiKeyAuth, async (req, res) => {
+    try {
+        const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.manager_id : req.user.id;
+
+        // Fetch Accounts, Sales, Expenses
+        const accountsResult = await pool.query("SELECT data FROM data_items WHERE user_id = $1 AND type = 'accounts'", [targetUserId]);
+        const salesResult = await pool.query("SELECT data FROM data_items WHERE user_id = $1 AND type = 'sales'", [targetUserId]);
+        const expensesResult = await pool.query("SELECT data FROM data_items WHERE user_id = $1 AND type = 'expenses'", [targetUserId]);
+
+        const accounts = accountsResult.rows.map(r => r.data);
+        const sales = salesResult.rows.map(r => r.data);
+        const expenses = expensesResult.rows.map(r => r.data);
+
+        // Calculate Balances
+        const accountsWithBalance = accounts.map(acc => {
+            let total = 0;
+
+            // Add Sales Income
+            const accountSales = sales.filter(s => s.accountId === acc.id);
+            accountSales.forEach(s => {
+                total += (s.downPayment || 0);
+                if (s.paymentPlan) {
+                    s.paymentPlan.filter(p => p.isPaid).forEach(p => total += (p.amount || 0));
+                }
+            });
+
+            // Subtract Expenses
+            const accountExpenses = expenses.filter(e => e.accountId === acc.id);
+            total -= accountExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+
+            return {
+                ...acc,
+                calculatedBalance: total
+            };
+        });
+
+        res.json(accountsWithBalance);
+    } catch (err) {
+        console.error("API Accounts Error:", err);
+        res.status(500).json({ msg: 'Server Error' });
+    }
+});
+
+// Create Income (Cash Transaction)
+app.post('/api/v1/income', apiKeyAuth, async (req, res) => {
+    try {
+        const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.manager_id : req.user.id;
+        const { amount, accountId, note, date } = req.body;
+
+        if (!amount || !accountId) {
+            return res.status(400).json({ msg: 'Missing required fields: amount, accountId' });
+        }
+
+        const incomeId = `inc_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        const newIncome = {
+            id: incomeId,
+            userId: targetUserId,
+            type: 'CASH',
+            customerId: 'system_income',
+            productName: note || 'Приход через API',
+            buyPrice: 0,
+            accountId: accountId,
+            totalAmount: Number(amount),
+            downPayment: Number(amount),
+            remainingAmount: 0,
+            interestRate: 0,
+            installments: 0,
+            startDate: date || new Date().toISOString(),
+            status: 'COMPLETED',
+            paymentPlan: []
+        };
+
+        await pool.query(`
+            INSERT INTO data_items (id, user_id, type, data, updated_at)
+            VALUES ($1, $2, 'sales', $3, NOW())
+            ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+        `, [incomeId, targetUserId, JSON.stringify(newIncome)]);
+
+        res.json(newIncome);
+    } catch (err) {
+        console.error("API Create Income Error:", err);
+        res.status(500).json({ msg: 'Server Error' });
+    }
+});
+
+// List Expenses
+app.get('/api/v1/expenses', apiKeyAuth, async (req, res) => {
+    try {
+        const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.manager_id : req.user.id;
+        const result = await pool.query("SELECT data FROM data_items WHERE user_id = $1 AND type = 'expenses'", [targetUserId]);
+        const expenses = result.rows.map(r => r.data);
+        res.json(expenses);
+    } catch (err) {
+        console.error("API Expenses Error:", err);
+        res.status(500).json({ msg: 'Server Error' });
+    }
+});
+
+// Create Expense
+app.post('/api/v1/expenses', apiKeyAuth, async (req, res) => {
+    try {
+        const targetUserId = (req.user.role === 'employee' || req.user.role === 'investor') ? req.user.manager_id : req.user.id;
+        const { amount, accountId, title, category, date } = req.body;
+
+        if (!amount || !accountId || !title) {
+            return res.status(400).json({ msg: 'Missing required fields: amount, accountId, title' });
+        }
+
+        const expenseId = `exp_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        const newExpense = {
+            id: expenseId,
+            userId: targetUserId,
+            accountId: accountId,
+            title: title,
+            amount: Number(amount),
+            category: category || 'Прочее',
+            date: date || new Date().toISOString()
+        };
+
+        await pool.query(`
+            INSERT INTO data_items (id, user_id, type, data, updated_at)
+            VALUES ($1, $2, 'expenses', $3, NOW())
+            ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+        `, [expenseId, targetUserId, JSON.stringify(newExpense)]);
+
+        res.json(newExpense);
+    } catch (err) {
+        console.error("API Create Expense Error:", err);
+        res.status(500).json({ msg: 'Server Error' });
+    }
+});
+
 // List Contracts (Sales)
 app.get('/api/v1/contracts', apiKeyAuth, async (req, res) => {
     try {
