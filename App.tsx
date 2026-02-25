@@ -356,7 +356,7 @@ const App: React.FC = () => {
             accounts={accounts}
             sales={sales}
             expenses={expenses}
-            onAddPartnership={handleAddPartnership}
+            onAddPartnership={handleAddPartnership}я
             onSelectAccount={handleSelectAccountForOperations}
           />
       )}
