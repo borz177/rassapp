@@ -114,9 +114,17 @@ export interface Payment {
   id: string;
   saleId: string;
   amount: number;
-  date: string; // ISO String
+  date: string; // ISO String (плановая дата платежа)
   isPaid: boolean;
-  lastNotificationDate?: string; // ISO String (YYYY-MM-DD) of last sent reminder
+
+  // === НОВЫЕ ПОЛЯ ДЛЯ ИМПОРТА ===
+  isRealPayment?: boolean;        // true = реальный платёж из импорта, false/undefined = плановый
+  actualDate?: string | null;     // фактическая дата оплаты (если отличается от плановой)
+  note?: string;                  // примечание: "Импорт №123", "Частично", и т.д.
+  importedAt?: string;            // когда добавлен при импорте (для отладки)
+
+  // === СУЩЕСТВУЮЩЕЕ ПОЛЕ ===
+  lastNotificationDate?: string;  // ISO String (YYYY-MM-DD) of last sent reminder
 }
 
 export interface Expense {
