@@ -413,7 +413,8 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       const accountSales = sales.filter(s => s.accountId === acc.id);
       accountSales.forEach(s => {
           total += Number(s.downPayment);
-          s.paymentPlan.filter(p => p.isPaid).forEach(p => total += Number(p.amount));
+          // Only sum REAL payments (exclude plan items)
+          s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false).forEach(p => total += Number(p.amount));
       });
 
       const accountExpenses = expenses.filter(e => e.accountId === acc.id);
@@ -428,9 +429,10 @@ const CashRegister: React.FC<CashRegisterProps> = ({
   const calculatedExpectedProfit = useMemo(() => {
       let totalProfit = 0;
 
-      const activeSales = sales.filter(s => s.status === 'ACTIVE' && s.buyPrice > 0);
+      // Include both ACTIVE and COMPLETED sales
+      const salesWithProfit = sales.filter(s => (s.status === 'ACTIVE' || s.status === 'COMPLETED') && s.buyPrice > 0);
 
-      activeSales.forEach(sale => {
+      salesWithProfit.forEach(sale => {
           if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
 
           const saleProfit = sale.totalAmount - sale.buyPrice;
@@ -474,9 +476,10 @@ const CashRegister: React.FC<CashRegisterProps> = ({
             return;
         }
 
+        // Use only REAL payments for profit calculation
         const allPayments = [
-            { date: sale.startDate, amount: Number(sale.downPayment), id: `${sale.id}_dp` },
-            ...sale.paymentPlan.filter(p => p.isPaid)
+            { date: sale.startDate, amount: Number(sale.downPayment), id: `${sale.id}_dp`, isRealPayment: true },
+            ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
         ];
 
         allPayments.forEach(p => {
