@@ -61,7 +61,7 @@ const Operations: React.FC<OperationsProps> = ({
             }
             // 2. Paid installments
             s.paymentPlan.forEach(p => {
-                if (p.isPaid) {
+                if (p.isPaid && p.isRealPayment !== false) {
                     incomeOps.push({
                         id: p.id,
                         date: p.date,
