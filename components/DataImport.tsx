@@ -154,7 +154,9 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                 let skippedDeleted = 0;
                 let skippedNotFound = 0;
 
-                const processedSalesMap = new Map<string, Sale>();
+                // Map to store sales by "Client__Product" key.
+                // Since one client can have multiple "iPhone 13", we store an array of sales.
+                const processedSalesMap = new Map<string, Sale[]>();
 
                 // === ЭТАП 1: Обработка клиентов и создание/обновление продаж ===
                 addLog("📦 Этап 1: Обработка клиентов и договоров...");
@@ -261,12 +263,17 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     }
 
                     const statusStr = String(row['Статус'] || '');
-                    const saleKey = `${clientName}__${productName}`.toLowerCase();
 
-                    // === ПРОВЕРКА: существует ли уже продажа ===
+                    // Base key for grouping
+                    const groupKey = `${clientName}__${productName}`.toLowerCase();
+
+                    // === ПРОВЕРКА: существует ли уже ТАКАЯ ЖЕ продажа (по дате) ===
+                    // We check existingSales from DB to see if we already have this specific sale
                     let sale = existingSales.find(s =>
                         s.customerId === customer.id &&
-                        s.productName.toLowerCase() === productName.toLowerCase()
+                        s.productName.toLowerCase() === productName.toLowerCase() &&
+                        // Match by date (ignoring time) to distinguish multiple "iPhone 13" sales
+                        s.startDate.substring(0, 10) === saleDateIso.substring(0, 10)
                     );
 
                     if (sale) {
@@ -281,7 +288,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         sale.notes = 'Обновлено при импорте';
                         await api.saveItem('sales', sale);
                         updatedSalesCount++;
-                        addLog(`✏️ Обновлена продажа: ${productName}`);
+                        addLog(`✏️ Обновлена продажа: ${productName} (${new Date(saleDateIso).toLocaleDateString()})`);
                     } else {
                         // Создаём новую продажу с планом платежей
                         const remainingAfterDown = Math.max(0, totalPrice - downPayment);
@@ -345,10 +352,13 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         existingSales.push(newSale);
                         sale = newSale;
                         newSalesCount++;
-                        addLog(`➕ Новая продажа: ${productName}`);
+                        addLog(`➕ Новая продажа: ${productName} (${new Date(saleDateIso).toLocaleDateString()})`);
                     }
 
-                    processedSalesMap.set(saleKey, sale);
+                    // Add to map for Step 2
+                    const groupList = processedSalesMap.get(groupKey) || [];
+                    groupList.push(sale);
+                    processedSalesMap.set(groupKey, groupList);
                 }
 
                 addLog(`✅ Этап 1 завершён: Клиентов=${newCustomersCount}, Телефонов обновлено=${updatedPhonesCount}, Инвесторов=${newInvestorsCount}, Продаж создано=${newSalesCount}, обновлено=${updatedSalesCount}`);
@@ -360,6 +370,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const clientName = String(row['Клиент'] || '').trim();
                     const productName = String(row['Товар'] || '').trim();
                     const paymentStatus = String(row['Статус платежа'] || '');
+                    const productStatus = String(row['Статус товар'] || ''); // New field for matching
                     const amount = parseMoney(row['Сумма']);
                     const dateVal = row['Дата платежа'];
                     const paymentNumRaw = row['Платёж №'];
@@ -371,10 +382,58 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         continue;
                     }
 
-                    const saleKey = `${clientName}__${productName}`.toLowerCase();
-                    const sale = processedSalesMap.get(saleKey);
+                    const groupKey = `${clientName}__${productName}`.toLowerCase();
+                    const candidates = processedSalesMap.get(groupKey);
 
-                    if (!sale) {
+                    if (!candidates || candidates.length === 0) {
+                        skippedNotFound++;
+                        continue;
+                    }
+
+                    // === SELECT THE CORRECT SALE ===
+                    let selectedSale: Sale | undefined;
+
+                    if (candidates.length === 1) {
+                        selectedSale = candidates[0];
+                    } else {
+                        // Multiple sales found (e.g. 2x iPhone 13). We need to pick one.
+
+                        // 1. Filter by Product Status (if available in payments sheet)
+                        let filtered = candidates;
+                        if (productStatus) {
+                            const targetStatus = productStatus.includes('Завершен') ? 'COMPLETED' : 'ACTIVE';
+                            filtered = candidates.filter(s => s.status === targetStatus);
+                        }
+
+                        // 2. If still multiple, filter by Date (Payment Date >= Sale Start Date)
+                        const paymentDateIso = parseExcelDate(dateVal);
+                        const paymentTime = new Date(paymentDateIso).getTime();
+
+                        // Filter out sales that started AFTER the payment (impossible)
+                        // Allow 1 day buffer for timezone issues
+                        filtered = filtered.filter(s => new Date(s.startDate).getTime() <= paymentTime + 86400000);
+
+                        if (filtered.length === 1) {
+                            selectedSale = filtered[0];
+                        } else if (filtered.length > 1) {
+                            // Still ambiguous. Pick the one with the closest start date?
+                            // Or if one is COMPLETED and we are paying it off?
+                            // Default to the most recent one that fits?
+                            // Actually, usually you pay for the *earliest* contract first if both are active.
+                            // But if one is Completed and one Active, the status filter should have handled it.
+
+                            // Sort by start date descending (newest first)
+                            filtered.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+                            selectedSale = filtered[0]; // Pick newest? Or oldest?
+                            // Let's pick the one that matches the status best if we didn't filter by status yet.
+                        } else {
+                            // No sales fit the date criteria? Maybe data error.
+                            // Fallback to the first candidate.
+                            selectedSale = candidates[0];
+                        }
+                    }
+
+                    if (!selectedSale) {
                         skippedNotFound++;
                         continue;
                     }
@@ -382,15 +441,15 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const paymentDateIso = parseExcelDate(dateVal);
 
                     // === ЖЁСТКАЯ ПРОВЕРКА НА ДУБЛИКАТЫ ===
-                    if (isDuplicatePayment(sale, amount, paymentDateIso, paymentNum)) {
+                    if (isDuplicatePayment(selectedSale, amount, paymentDateIso, paymentNum)) {
                         skippedDuplicates++;
                         continue;
                     }
 
                     // Добавляем РЕАЛЬНЫЙ платёж
-                    sale.paymentPlan.push({
+                    selectedSale.paymentPlan.push({
                         id: `pay_real_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                        saleId: sale.id,
+                        saleId: selectedSale.id,
                         amount: amount,
                         date: paymentDateIso,
                         isPaid: true,
@@ -404,8 +463,11 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                 }
 
                 // Сохраняем все обновлённые продажи с платежами
-                for (const sale of processedSalesMap.values()) {
-                    await api.saveItem('sales', sale);
+                // Iterate over all lists in the map
+                for (const salesList of processedSalesMap.values()) {
+                    for (const sale of salesList) {
+                        await api.saveItem('sales', sale);
+                    }
                 }
 
                 addLog(`✅ Этап 2 завершён: Добавлено платежей=${realPaymentsCount}, Пропущено дублей=${skippedDuplicates}, Удалённых=${skippedDeleted}, Не найдено продаж=${skippedNotFound}`);
@@ -413,70 +475,72 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                 // === ЭТАП 3: Распределение платежей (Waterfall) и пересчёт остатка ===
                 addLog("🔄 Этап 3: Распределение платежей и пересчёт остатков...");
 
-                for (const [key, sale] of processedSalesMap.entries()) {
-                    // Получаем реальные платежи, отсортированные по дате
-                    const realPayments = sale.paymentPlan
-                        .filter((p: Payment) => p.isRealPayment && p.isPaid)
-                        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                for (const salesList of processedSalesMap.values()) {
+                    for (const sale of salesList) {
+                        // Получаем реальные платежи, отсортированные по дате
+                        const realPayments = sale.paymentPlan
+                            .filter((p: Payment) => p.isRealPayment && p.isPaid)
+                            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-                    // Получаем плановые платежи, отсортированные по дате
-                    const planPayments = sale.paymentPlan
-                        .filter((p: Payment) => !p.isRealPayment)
-                        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                        // Получаем плановые платежи, отсортированные по дате
+                        const planPayments = sale.paymentPlan
+                            .filter((p: Payment) => !p.isRealPayment)
+                            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-                    // Waterfall: каждый реальный платёж покрывает самые старые неоплаченные плановые
-                    for (const realPay of realPayments) {
-                        let amountLeft = realPay.amount;
+                        // Waterfall: каждый реальный платёж покрывает самые старые неоплаченные плановые
+                        for (const realPay of realPayments) {
+                            let amountLeft = realPay.amount;
 
-                        // Ищем первый неоплаченный плановый платёж
-                        let targetPlan = planPayments.find((p: Payment) => !p.isPaid);
+                            // Ищем первый неоплаченный плановый платёж
+                            let targetPlan = planPayments.find((p: Payment) => !p.isPaid);
 
-                        while (targetPlan && amountLeft > 0.5) {
-                            const debt = targetPlan.amount;
+                            while (targetPlan && amountLeft > 0.5) {
+                                const debt = targetPlan.amount;
 
-                            if (amountLeft >= debt - 0.01) {
-                                // Полное погашение месяца
-                                targetPlan.isPaid = true;
-                                targetPlan.actualDate = realPay.date;
-                                if (!targetPlan.note?.includes('Оплачено')) {
-                                    targetPlan.note = `Оплачено ${new Date(realPay.date).toLocaleDateString()}`;
+                                if (amountLeft >= debt - 0.01) {
+                                    // Полное погашение месяца
+                                    targetPlan.isPaid = true;
+                                    targetPlan.actualDate = realPay.date;
+                                    if (!targetPlan.note?.includes('Оплачено')) {
+                                        targetPlan.note = `Оплачено ${new Date(realPay.date).toLocaleDateString()}`;
+                                    }
+                                    amountLeft -= debt;
+                                    targetPlan = planPayments.find((p: Payment) => !p.isPaid);
+                                } else {
+                                    // Частичное погашение
+                                    targetPlan.note = `Частично: ${amountLeft} ₽ (${new Date(realPay.date).toLocaleDateString()})`;
+                                    amountLeft = 0;
                                 }
-                                amountLeft -= debt;
-                                targetPlan = planPayments.find((p: Payment) => !p.isPaid);
-                            } else {
-                                // Частичное погашение
-                                targetPlan.note = `Частично: ${amountLeft} ₽ (${new Date(realPay.date).toLocaleDateString()})`;
-                                amountLeft = 0;
+                            }
+
+                            // Если остались деньги после покрытия всех плановых — переплата
+                            if (amountLeft > 0.5) {
+                                realPay.note = `${realPay.note || ''} (Переплата: ${amountLeft.toFixed(2)} ₽)`.trim();
                             }
                         }
 
-                        // Если остались деньги после покрытия всех плановых — переплата
-                        if (amountLeft > 0.5) {
-                            realPay.note = `${realPay.note || ''} (Переплата: ${amountLeft.toFixed(2)} ₽)`.trim();
+                        // Пересчитываем остаток долга ТОЛЬКО по реальным платежам
+                        const totalRealPaid = sale.paymentPlan
+                            .filter((p: Payment) => p.isRealPayment && p.isPaid)
+                            .reduce((sum, p) => sum + p.amount, 0);
+
+                        const debtBefore = sale.totalAmount - sale.downPayment;
+                        const currentRemaining = Math.max(0, debtBefore - totalRealPaid);
+
+                        sale.remainingAmount = Number(currentRemaining.toFixed(2));
+
+                        // Обновляем статус
+                        if (currentRemaining < 1 && sale.status !== 'COMPLETED') {
+                            sale.status = 'COMPLETED';
+                        } else if (currentRemaining >= 1 && sale.status === 'COMPLETED') {
+                            sale.status = 'ACTIVE';
                         }
+
+                        // Сортируем paymentPlan по дате для удобства
+                        sale.paymentPlan.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                        await api.saveItem('sales', sale);
                     }
-
-                    // Пересчитываем остаток долга ТОЛЬКО по реальным платежам
-                    const totalRealPaid = sale.paymentPlan
-                        .filter((p: Payment) => p.isRealPayment && p.isPaid)
-                        .reduce((sum, p) => sum + p.amount, 0);
-
-                    const debtBefore = sale.totalAmount - sale.downPayment;
-                    const currentRemaining = Math.max(0, debtBefore - totalRealPaid);
-
-                    sale.remainingAmount = Number(currentRemaining.toFixed(2));
-
-                    // Обновляем статус
-                    if (currentRemaining < 1 && sale.status !== 'COMPLETED') {
-                        sale.status = 'COMPLETED';
-                    } else if (currentRemaining >= 1 && sale.status === 'COMPLETED') {
-                        sale.status = 'ACTIVE';
-                    }
-
-                    // Сортируем paymentPlan по дате для удобства
-                    sale.paymentPlan.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-                    await api.saveItem('sales', sale);
                 }
 
                 addLog("✅ Импорт успешно завершён!");
