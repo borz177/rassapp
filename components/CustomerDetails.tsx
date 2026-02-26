@@ -153,14 +153,19 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
     if (!selectedSale || !selectedSale.paymentPlan) return { paidPayments: [], paymentSchedule: [] };
 
     const paid = selectedSale.paymentPlan
-      .filter(p => p.isRealPayment && p.isPaid)
+      .filter(p => p.isPaid && p.isRealPayment !== false)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const scheduled = selectedSale.paymentPlan
-      .filter(p => !p.isRealPayment && !p.isPaid)
+      .filter(p => !p.isPaid && p.isRealPayment !== true)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    let paymentPool = paid.reduce((sum, p) => sum + p.amount, 0);
+    const allocatedAmount = selectedSale.paymentPlan
+      .filter(p => p.isPaid && p.isRealPayment === false)
+      .reduce((sum, p) => sum + p.amount, 0);
+
+    let paymentPool = paid.reduce((sum, p) => sum + p.amount, 0) - allocatedAmount;
+    paymentPool = Math.max(0, paymentPool);
 
     const scheduleForDisplay = scheduled.map(p => {
       const paymentDue = p.amount;

@@ -296,8 +296,8 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                                 date: pDate.toISOString(),
                                 isPaid: false,
                                 actualDate: null,
-                                note: "План"
-                                // isRealPayment не указан = плановый платеж
+                                note: "План",
+                                isRealPayment: false // Explicitly mark as plan
                             });
                         }
 
