@@ -136,7 +136,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
   };
 
   const handleSendFullReport = () => {
-      let report = `Здравствуйте, ${customer.name}!\n\nВаш полный отчет по всем рассрочкам:\n\n`;
+      let report = `Здравствуйте, ${customer.name}!\n\nВаш полный отчет по всем рассрочкам в InstallMate:\n\n`;
       customerSales.forEach((sale, index) => {
           report += `*Рассрочка №${index + 1}: ${sale.productName}*\n`;
           report += ` - Статус: ${sale.remainingAmount === 0 ? '✅ Закрыто' : '⏳ Активно'}\n`;
@@ -150,14 +150,14 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
   };
 
   const { paidPayments, paymentSchedule } = useMemo(() => {
-    if (!selectedSale) return { paidPayments: [], paymentSchedule: [] };
+    if (!selectedSale || !selectedSale.paymentPlan) return { paidPayments: [], paymentSchedule: [] };
 
     const paid = selectedSale.paymentPlan
-      .filter(p => p.isPaid)
+      .filter(p => p.isRealPayment && p.isPaid)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const scheduled = selectedSale.paymentPlan
-      .filter(p => !p.isPaid)
+      .filter(p => !p.isRealPayment && !p.isPaid)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     let paymentPool = paid.reduce((sum, p) => sum + p.amount, 0);
@@ -166,7 +166,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
       const paymentDue = p.amount;
       const amountPaidThisMonth = Math.min(paymentDue, paymentPool);
 
-      paymentPool -= amountPaidThisMonth;
+      paymentPool = Math.max(0, paymentPool - amountPaidThisMonth);
 
       return {
         ...p,

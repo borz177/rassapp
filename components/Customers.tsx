@@ -1,16 +1,36 @@
 
 import React, { useState } from 'react';
-import { Customer } from '../types';
+import { Customer, Sale, Account, Investor, Payment } from '../types';
 import { ICONS } from '../constants';
+import CustomerDetails from './CustomerDetails';
 
 interface CustomersProps {
   customers: Customer[];
+  accounts: Account[];
+  investors: Investor[];
+  sales: Sale[];
   onAddCustomer: (name: string, phone: string, photo: string, address: string) => void;
-  onSelectCustomer: (id: string) => void;
+  onSelectCustomer: (id: string) => void; // Kept for compatibility but unused for internal nav
+  onInitiatePayment: (sale: Sale, payment: Payment) => void;
+  onUndoPayment: (saleId: string, paymentId: string) => void;
+  onEditPayment: (saleId: string, paymentId: string, newDate: string) => void;
+  onUpdateCustomer: (customer: Customer) => void;
 }
 
-const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onSelectCustomer }) => {
+const Customers: React.FC<CustomersProps> = ({
+  customers,
+  accounts,
+  investors,
+  sales,
+  onAddCustomer,
+  onSelectCustomer,
+  onInitiatePayment,
+  onUndoPayment,
+  onEditPayment,
+  onUpdateCustomer
+}) => {
   const [isAdding, setIsAdding] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newAddress, setNewAddress] = useState('');
@@ -18,6 +38,25 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onSelec
 
   // Search State
   const [searchTerm, setSearchTerm] = useState('');
+
+  if (selectedCustomerId) {
+    const customer = customers.find(c => c.id === selectedCustomerId);
+    if (customer) {
+      return (
+        <CustomerDetails
+          customer={customer}
+          sales={sales}
+          accounts={accounts}
+          investors={investors}
+          onBack={() => setSelectedCustomerId(null)}
+          onInitiatePayment={onInitiatePayment}
+          onUndoPayment={onUndoPayment}
+          onEditPayment={onEditPayment}
+          onUpdateCustomer={onUpdateCustomer}
+        />
+      );
+    }
+  }
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -123,9 +162,9 @@ const Customers: React.FC<CustomersProps> = ({ customers, onAddCustomer, onSelec
             <div className="text-center py-8 text-slate-400">Клиенты не найдены</div>
         )}
         {filteredCustomers.map(c => (
-          <div 
-            key={c.id} 
-            onClick={() => onSelectCustomer(c.id)}
+          <div
+            key={c.id}
+            onClick={() => setSelectedCustomerId(c.id)}
             className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors"
           >
             <div className="w-12 h-12 rounded-full bg-slate-200 flex-shrink-0 overflow-hidden">

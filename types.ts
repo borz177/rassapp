@@ -68,6 +68,8 @@ export interface Investor {
   initialAmount: number;
   profitPercentage: number;
   permissions?: InvestorPermissions;
+  notes?: string;
+  color?: string;
 }
 
 export interface Account {
@@ -77,6 +79,9 @@ export interface Account {
   type: 'MAIN' | 'INVESTOR' | 'CUSTOM' | 'SHARED';
   ownerId?: string; // If type is INVESTOR, points to Investor User ID
   partners?: string[]; // IDs of Investors for SHARED accounts
+  balance?: number;
+  currency?: string;
+  isArchived?: boolean;
 }
 
 export interface Partnership {
@@ -99,6 +104,9 @@ export interface Customer {
   notes: string;
   photo?: string; // Base64 string
   allowWhatsappNotification?: boolean; // New field for toggle
+  totalPurchases?: number;
+  activeContracts?: number;
+  overdueContracts?: number;
 }
 
 export interface Product {
@@ -114,17 +122,13 @@ export interface Payment {
   id: string;
   saleId: string;
   amount: number;
-  date: string; // ISO String (плановая дата платежа)
+  date: string; // ISO String
   isPaid: boolean;
-
-  // === НОВЫЕ ПОЛЯ ДЛЯ ИМПОРТА ===
-  isRealPayment?: boolean;        // true = реальный платёж из импорта, false/undefined = плановый
-  actualDate?: string | null;     // фактическая дата оплаты (если отличается от плановой)
-  note?: string;                  // примечание: "Импорт №123", "Частично", и т.д.
-  importedAt?: string;            // когда добавлен при импорте (для отладки)
-
-  // === СУЩЕСТВУЮЩЕЕ ПОЛЕ ===
-  lastNotificationDate?: string;  // ISO String (YYYY-MM-DD) of last sent reminder
+  lastNotificationDate?: string; // ISO String (YYYY-MM-DD) of last sent reminder
+  actualDate?: string | null;
+  note?: string;
+  isRealPayment?: boolean;
+  importedAt?: string;
 }
 
 export interface Expense {
@@ -157,10 +161,12 @@ export interface Sale {
   installments: number;
   startDate: string;
   paymentDay?: number;
-  status: 'ACTIVE' | 'COMPLETED' | 'DEFAULTED';
+  status: 'ACTIVE' | 'COMPLETED' | 'DEFAULTED' | 'DRAFT';
   guarantorName?: string;
   guarantorPhone?: string;
   paymentPlan: Payment[];
+  notes?: string;
+  price?: number;
 }
 
 export interface TermRate {

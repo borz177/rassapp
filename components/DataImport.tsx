@@ -204,6 +204,8 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             addLog(`➕ Новый инвестор: ${investorName}`);
                             const newInvestor: Investor = {
                                 id: `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                                userId: 'import',
+                                joinedDate: new Date().toISOString(),
                                 name: investorName,
                                 phone: '',
                                 notes: 'Создан автоматически при импорте',

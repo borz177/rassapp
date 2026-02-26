@@ -255,7 +255,17 @@ const App: React.FC = () => {
   const handleDeleteEmployee = async (id: string) => { if (isManager) { await api.deleteUser(id); removeFromList(setEmployees, id); } };
   const handleAddInvestor = async (name: string, phone: string, email: string, pass: string, amount: number, profitPercentage: number, permissions: InvestorPermissions) => { if (user && isManager) { if (!checkAccess('INVESTORS')) { showUpgradeAlert("Превышен лимит инвесторов для вашего тарифа."); return; } try { const newInvestorUser = await api.createSubUser({ name, email, password: pass, role: 'investor', phone }); const newInvestor: Investor = { id: newInvestorUser.id, userId: user.id, name, phone, email, initialAmount: amount, joinedDate: new Date().toISOString(), profitPercentage, permissions }; const savedInv = await api.saveItem('investors', newInvestor); updateList(setInvestors, savedInv); const newAccount: Account = { id: `acc_${newInvestorUser.id}`, userId: user.id, name: `Счет: ${name}`, type: 'INVESTOR', ownerId: newInvestorUser.id }; const savedAcc = await api.saveItem('accounts', newAccount); updateList(setAccounts, savedAcc); const depositTransaction: Sale = { id: `dep_${Date.now()}`, userId: user.id, type: 'CASH', customerId: `system_deposit_${newInvestorUser.id}`, productName: 'Начальный депозит', buyPrice: 0, accountId: newAccount.id, totalAmount: amount, downPayment: amount, remainingAmount: 0, interestRate: 0, installments: 0, startDate: new Date().toISOString(), status: 'COMPLETED', paymentPlan: [] }; const savedTx = await api.saveItem('sales', depositTransaction); updateList(setSales, savedTx); alert("Инвестор создан!"); } catch(e) { alert("Ошибка создания инвестора"); console.error(e); } } };
   const handleUpdateInvestor = async (updated: Investor) => { if (isManager) { const saved = await api.saveItem('investors', updated); updateList(setInvestors, saved); } };
-  const handleDeleteInvestor = async (id: string) => { if (isManager) { await api.deleteUser(id); removeFromList(setInvestors, id); const acc = accounts.find(a => a.ownerId === id); if(acc) removeFromList(setAccounts, acc.id); } };
+  const handleDeleteInvestor = async (id: string) => {
+      if (isManager) {
+          await api.deleteUser(id);
+          removeFromList(setInvestors, id);
+          const acc = accounts.find(a => a.ownerId === id);
+          if(acc) {
+              await api.deleteItem('accounts', acc.id);
+              removeFromList(setAccounts, acc.id);
+          }
+      }
+  };
   const handleAddProduct = async (name: string, price: number, stock: number) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } if (user) { const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newProd = { id: Date.now().toString(), userId: ownerId, name, price, category: 'Общее', stock }; const saved = await api.saveItem('products', newProd); updateList(setProducts, saved); } };
   const handleUpdateProduct = async (updated: Product) => { if (isEmployee && !user?.permissions?.canEdit) return; const saved = await api.saveItem('products', updated); updateList(setProducts, saved); };
   const handleDeleteProduct = async (id: string) => { if (isEmployee && !user?.permissions?.canDelete) return; await api.deleteItem('products', id); removeFromList(setProducts, id); };
@@ -263,6 +273,70 @@ const App: React.FC = () => {
   const handleUpdateCustomer = async (updated: Customer) => { const saved = await api.saveItem('customers', updated); updateList(setCustomers, saved); };
   const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', partners?: string[]) => { if (user && isManager) { const newAcc = { id: `acc_${Date.now()}`, userId: user.id, name, type, partners }; const saved = await api.saveItem('accounts', newAcc); updateList(setAccounts, saved); } };
   const handleSetMainAccount = async (accountId: string) => { if (user && isManager) { const updatedAccounts = accounts.map(acc => { if (acc.id === accountId) { return { ...acc, type: 'MAIN' as const }; } if (acc.type === 'MAIN') { return { ...acc, type: 'CUSTOM' as const }; } return acc; }); setAccounts(updatedAccounts); for(const acc of updatedAccounts) await api.saveItem('accounts', acc); } };
+
+  const handleImportData = async (data: {
+      customers: Customer[];
+      products: Product[];
+      sales: Sale[];
+      accounts: Account[];
+      investors: Investor[];
+  }) => {
+      if (!user) return;
+      setIsLoading(true);
+      try {
+          // Import Customers
+          for (const customer of data.customers) {
+              const exists = customers.some(c => c.name === customer.name);
+              if (!exists) {
+                  const saved = await api.saveItem('customers', { ...customer, userId: user.id });
+                  updateList(setCustomers, saved);
+              }
+          }
+
+          // Import Products
+          for (const product of data.products) {
+              const exists = products.some(p => p.name === product.name);
+              if (!exists) {
+                  const saved = await api.saveItem('products', { ...product, userId: user.id });
+                  updateList(setProducts, saved);
+              }
+          }
+
+          // Import Accounts
+          for (const account of data.accounts) {
+              const exists = accounts.some(a => a.name === account.name);
+              if (!exists) {
+                  const saved = await api.saveItem('accounts', { ...account, userId: user.id });
+                  updateList(setAccounts, saved);
+              }
+          }
+
+          // Import Investors
+          for (const investor of data.investors) {
+              // Check by name/phone to avoid duplicates
+              const exists = investors.some(i => i.name === investor.name);
+              if (!exists) {
+                  const saved = await api.saveItem('investors', { ...investor, userId: user.id });
+                  updateList(setInvestors, saved);
+              }
+          }
+
+          // Import Sales (and their payment plans)
+          for (const sale of data.sales) {
+              // Ensure IDs are unique or mapped correctly if we were doing a real DB sync
+              // For now, we trust the importer generated unique temp IDs
+              const saved = await api.saveItem('sales', { ...sale, userId: user.id });
+              updateList(setSales, saved);
+          }
+
+          alert(`Импорт завершен! Загружено ${data.sales.length} продаж.`);
+      } catch (error) {
+          console.error("Import failed", error);
+          alert("Ошибка при импорте данных.");
+      } finally {
+          setIsLoading(false);
+      }
+  };
   const handleUpdateAccount = async (updatedAccount: Account) => { if (user && isManager) { const saved = await api.saveItem('accounts', updatedAccount); updateList(setAccounts, saved); } };
   const handleUndoPayment = async (saleId: string, paymentId: string) => { if (isEmployee && !user?.permissions?.canDelete) { alert("Нет прав на удаление"); return; } const sale = sales.find(s => s.id === saleId); if(sale) { const payment = sale.paymentPlan.find(p => p.id === paymentId); if (payment) { const updatedSale = { ...sale, remainingAmount: sale.remainingAmount + payment.amount, paymentPlan: sale.paymentPlan.filter(p => p.id !== paymentId), status: 'ACTIVE' as const }; const saved = await api.saveItem('sales', updatedSale); updateList(setSales, saved); } } };
   const handleEditPayment = async (saleId: string, paymentId: string, newDate: string) => { if (isEmployee && !user?.permissions?.canEdit) { alert("Нет прав на редактирование"); return; } const sale = sales.find(s => s.id === saleId); if (sale) { const updatedSale = { ...sale, paymentPlan: sale.paymentPlan.map(p => p.id === paymentId ? { ...p, date: newDate } : p) }; const saved = await api.saveItem('sales', updatedSale); updateList(setSales, saved); } };
@@ -356,11 +430,24 @@ const App: React.FC = () => {
             accounts={accounts}
             sales={sales}
             expenses={expenses}
-            onAddPartnership={handleAddPartnership}я
+            onAddPartnership={handleAddPartnership}
             onSelectAccount={handleSelectAccountForOperations}
           />
       )}
-      {currentView === 'CUSTOMERS' && <Customers customers={customers} onAddCustomer={handleAddCustomer} onSelectCustomer={handleSelectCustomer} />}
+      {currentView === 'CUSTOMERS' && (
+        <Customers
+          customers={customers}
+          accounts={accounts}
+          investors={investors}
+          sales={sales}
+          onAddCustomer={handleAddCustomer}
+          onSelectCustomer={handleSelectCustomer}
+          onInitiatePayment={handleInitiateCustomerPayment}
+          onUndoPayment={handleUndoPayment}
+          onEditPayment={handleEditPayment}
+          onUpdateCustomer={handleUpdateCustomer}
+        />
+      )}
       {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId && <CustomerDetails customer={customers.find(c => c.id === selectedCustomerId)!} sales={sales} accounts={accounts} investors={investors} onBack={() => setCurrentView(previousView)} onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment} onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer} initialSaleId={initialSaleIdForDetails} />}
       {currentView === 'MANAGE_PRODUCTS' && <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} />}
       {currentView === 'OPERATIONS' && (
@@ -381,7 +468,7 @@ const App: React.FC = () => {
       {currentView === 'EMPLOYEES' && <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} />}
       {currentView === 'TARIFFS' && <Tariffs user={user} />}
 
-      {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onNavigate={setCurrentView} />}
+      {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onNavigate={setCurrentView} onImportData={handleImportData} />}
 
       {currentView === 'INTEGRATIONS' && <Integrations appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onBack={() => setCurrentView('SETTINGS')} />}
       {currentView === 'CALCULATOR' && <Calculator appSettings={appSettings} onBack={() => setCurrentView('SETTINGS')} onSaveSettings={handleUpdateSettings} />}
