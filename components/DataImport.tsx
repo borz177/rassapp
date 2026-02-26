@@ -267,13 +267,15 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     // Base key for grouping
                     const groupKey = `${clientName}__${productName}`.toLowerCase();
 
-                    // === ПРОВЕРКА: существует ли уже ТАКАЯ ЖЕ продажа (по дате) ===
+                    // === ПРОВЕРКА: существует ли уже ТАКАЯ ЖЕ продажа (по дате и инвестору) ===
                     // We check existingSales from DB to see if we already have this specific sale
                     let sale = existingSales.find(s =>
                         s.customerId === customer.id &&
                         s.productName.toLowerCase() === productName.toLowerCase() &&
-                        // Match by date (ignoring time) to distinguish multiple "iPhone 13" sales
-                        s.startDate.substring(0, 10) === saleDateIso.substring(0, 10)
+                        // Match by date (ignoring time)
+                        s.startDate.substring(0, 10) === saleDateIso.substring(0, 10) &&
+                        // Match by Account (Investor) to distinguish sales to same client/product but different investors
+                        s.accountId === accountId
                     );
 
                     if (sale) {
@@ -393,6 +395,8 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const paymentDateIso = parseExcelDate(dateVal);
                     const paymentTime = new Date(paymentDateIso).getTime();
 
+                    const paymentInvestor = String(row['Инвестор'] || '').trim();
+
                     // === SELECT THE CORRECT SALE ===
                     let selectedSale: Sale | undefined;
 
@@ -415,6 +419,20 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     if (!selectedSale) {
                         // 2. Filter candidates
                         let filtered = candidates;
+
+                        // Filter by Investor (Strongest Signal)
+                        if (paymentInvestor) {
+                            const inv = investors.find(i => i.name.toLowerCase() === paymentInvestor.toLowerCase());
+                            if (inv) {
+                                const invAccount = accounts.find(a => a.ownerId === inv.id);
+                                if (invAccount) {
+                                     const accountMatches = filtered.filter(s => s.accountId === invAccount.id);
+                                     if (accountMatches.length > 0) {
+                                         filtered = accountMatches;
+                                     }
+                                }
+                            }
+                        }
 
                         // Filter by Product Status (if available)
                         if (productStatus) {
