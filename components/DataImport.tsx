@@ -373,7 +373,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const productStatus = String(row['Статус товар'] || ''); // New field for matching
                     const amount = parseMoney(row['Сумма']);
                     const dateVal = row['Дата платежа'];
-                    const paymentNumRaw = row['Платёж №'];
+                    const paymentNumRaw = row['Платёж'] || row['Платёж №'];
                     const paymentNum = paymentNumRaw && paymentNumRaw !== '-' && paymentNumRaw !== 'Нет платежей' ? String(paymentNumRaw).trim() : '';
 
                     // Пропускаем пустые и удалённые платежи
@@ -390,46 +390,70 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         continue;
                     }
 
+                    const paymentDateIso = parseExcelDate(dateVal);
+                    const paymentTime = new Date(paymentDateIso).getTime();
+
                     // === SELECT THE CORRECT SALE ===
                     let selectedSale: Sale | undefined;
 
-                    if (candidates.length === 1) {
-                        selectedSale = candidates[0];
-                    } else {
-                        // Multiple sales found (e.g. 2x iPhone 13). We need to pick one.
+                    // 1. Check for EXACT duplicate (Number + Date + Amount match)
+                    // If found, we select it so the duplicate checker can skip it properly.
+                    if (paymentNum) {
+                        const exactDuplicateSale = candidates.find(s =>
+                            s.paymentPlan.some(p =>
+                                p.isRealPayment &&
+                                p.note?.includes(`Импорт №${paymentNum}`) &&
+                                Math.abs(new Date(p.date).getTime() - paymentTime) < 86400000 && // ±1 day
+                                Math.abs(p.amount - amount) < 1.0 // ±1 ruble
+                            )
+                        );
+                        if (exactDuplicateSale) {
+                            selectedSale = exactDuplicateSale;
+                        }
+                    }
 
-                        // 1. Filter by Product Status (if available in payments sheet)
+                    if (!selectedSale) {
+                        // 2. Filter candidates
                         let filtered = candidates;
+
+                        // Filter by Product Status (if available)
                         if (productStatus) {
                             const targetStatus = productStatus.includes('Завершен') ? 'COMPLETED' : 'ACTIVE';
-                            filtered = candidates.filter(s => s.status === targetStatus);
+                            filtered = filtered.filter(s => s.status === targetStatus);
                         }
 
-                        // 2. If still multiple, filter by Date (Payment Date >= Sale Start Date)
-                        const paymentDateIso = parseExcelDate(dateVal);
-                        const paymentTime = new Date(paymentDateIso).getTime();
-
-                        // Filter out sales that started AFTER the payment (impossible)
-                        // Allow 1 day buffer for timezone issues
+                        // Filter by Date (Payment cannot be before Sale Start - allow 1 day buffer)
                         filtered = filtered.filter(s => new Date(s.startDate).getTime() <= paymentTime + 86400000);
+
+                        // Filter by Payment Number Availability
+                        // If a sale already has "Payment #1", it can't have another "Payment #1" (unless it was the duplicate we checked above)
+                        if (paymentNum) {
+                            const withoutNum = filtered.filter(s => !s.paymentPlan.some(p => p.isRealPayment && p.note?.includes(`Импорт №${paymentNum}`)));
+                            // Only apply this filter if it doesn't remove all candidates (safety fallback)
+                            if (withoutNum.length > 0) {
+                                filtered = withoutNum;
+                            }
+                        }
 
                         if (filtered.length === 1) {
                             selectedSale = filtered[0];
                         } else if (filtered.length > 1) {
-                            // Still ambiguous. Pick the one with the closest start date?
-                            // Or if one is COMPLETED and we are paying it off?
-                            // Default to the most recent one that fits?
-                            // Actually, usually you pay for the *earliest* contract first if both are active.
-                            // But if one is Completed and one Active, the status filter should have handled it.
-
-                            // Sort by start date descending (newest first)
+                            // If still multiple, sort by start date descending (newest first)
+                            // This assumes newer sales are processed first or we prefer assigning to newer sales?
+                            // Actually, if we have Payment 1 for Sale A and Payment 1 for Sale B, the "withoutNum" filter handles it.
+                            // This fallback is for when numbering is missing or ambiguous.
                             filtered.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
-                            selectedSale = filtered[0]; // Pick newest? Or oldest?
-                            // Let's pick the one that matches the status best if we didn't filter by status yet.
+                            selectedSale = filtered[0];
                         } else {
-                            // No sales fit the date criteria? Maybe data error.
-                            // Fallback to the first candidate.
-                            selectedSale = candidates[0];
+                            // No candidates left?
+                            // This might happen if payment date is way before sale date, or status mismatch.
+                            // Fallback: Try to find ANY sale that fits the payment number criteria
+                            if (paymentNum) {
+                                const fallback = candidates.find(s => !s.paymentPlan.some(p => p.isRealPayment && p.note?.includes(`Импорт №${paymentNum}`)));
+                                if (fallback) selectedSale = fallback;
+                            }
+
+                            if (!selectedSale) selectedSale = candidates[0]; // Absolute fallback
                         }
                     }
 
@@ -437,8 +461,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         skippedNotFound++;
                         continue;
                     }
-
-                    const paymentDateIso = parseExcelDate(dateVal);
 
                     // === ЖЁСТКАЯ ПРОВЕРКА НА ДУБЛИКАТЫ ===
                     if (isDuplicatePayment(selectedSale, amount, paymentDateIso, paymentNum)) {
