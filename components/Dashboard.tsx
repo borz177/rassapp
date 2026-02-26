@@ -73,7 +73,11 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
           const isSystemTransaction = sale.customerId.startsWith('system_');
 
           if (!isSystemTransaction) {
-              const collected = sale.downPayment + sale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
+              // Only sum REAL payments for revenue
+              const collected = sale.downPayment + sale.paymentPlan
+                  .filter(p => p.isPaid && p.isRealPayment !== false)
+                  .reduce((sum, p) => sum + p.amount, 0);
+
               totalRevenue += collected;
               totalOutstanding += sale.remainingAmount;
               if (sale.type === 'INSTALLMENT') {
@@ -122,18 +126,22 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
     today.setHours(0,0,0,0); // Reset today to start of day for accurate comparison
     todayEnd.setHours(23, 59, 59, 999);
     const todayStr = today.toDateString();
-    
+
     const payments: { sale: Sale, customerName: string, totalDue: number, isTomorrow: boolean, isToday: boolean, isOverdue: boolean }[] = [];
 
     sales.forEach(sale => {
       if (sale.status !== 'ACTIVE') return;
 
-      // Pool Logic to handle partial payments correctly in the view
-      const paidTotal = sale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
-      let paymentPool = paidTotal;
+      // Pool Logic: Use ONLY Real Payments to determine what's covered
+      const realInstallmentPayments = sale.paymentPlan
+          .filter(p => p.isPaid && p.isRealPayment !== false)
+          .reduce((sum, p) => sum + p.amount, 0);
 
-      const scheduledPayments = sale.paymentPlan
-          .filter(p => !p.isPaid)
+      let paymentPool = realInstallmentPayments;
+
+      // Target: Plan items (exclude real payments from the target list)
+      const planItems = sale.paymentPlan
+          .filter(p => p.isRealPayment === false || p.isRealPayment === undefined)
           .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
       let relevantAmount = 0;
@@ -141,7 +149,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
       let isTodayPayment = false;
       let isOverduePayment = false;
 
-      scheduledPayments.forEach(p => {
+      planItems.forEach(p => {
           // Calculate actual due for this installment
           const amountDue = p.amount;
           const coveredByPool = Math.min(amountDue, paymentPool);
@@ -151,7 +159,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
           if (actualDue > 0.01) {
               const paymentDate = new Date(p.date);
               paymentDate.setHours(0,0,0,0);
-              
+
               const isPast = paymentDate < today;
               const isToday = paymentDate.toDateString() === todayStr;
               const isTomorrow = paymentDate >= tomorrow && paymentDate <= tomorrowEnd;
@@ -170,7 +178,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                   relevantAmount += actualDue;
                   if (isTomorrow) isTomorrowPayment = true;
                   if (isToday) isTodayPayment = true;
-                  // We track isOverduePayment just in case, but if we filter out 'isPast', this will only be true if 'isToday' counts as overdue (usually not)
                   if (isPast) isOverduePayment = true; 
               }
           }
