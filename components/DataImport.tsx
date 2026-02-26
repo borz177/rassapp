@@ -453,6 +453,29 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             }
                         }
 
+                        // Filter by Amount Match (Heuristic)
+                        // If we still have multiple candidates, prefer the one where the payment amount matches the plan
+                        if (filtered.length > 1) {
+                            const amountMatches = filtered.filter(s => {
+                                // 1. Check if amount matches the calculated monthly installment
+                                if (s.installments > 0) {
+                                    const monthly = (s.totalAmount - s.downPayment) / s.installments;
+                                    if (Math.abs(monthly - amount) < 50) return true; // Allow small variance
+                                }
+                                // 2. Check if amount matches ANY plan item amount (more robust for custom plans)
+                                const planMatch = s.paymentPlan.some(p => !p.isRealPayment && Math.abs(p.amount - amount) < 1.0);
+                                if (planMatch) return true;
+
+                                return false;
+                            });
+
+                            // If we found specific matches, use them.
+                            // If NO matches found (e.g. partial payment), keep the previous list.
+                            if (amountMatches.length > 0) {
+                                filtered = amountMatches;
+                            }
+                        }
+
                         if (filtered.length === 1) {
                             selectedSale = filtered[0];
                         } else if (filtered.length > 1) {
