@@ -152,38 +152,43 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
   const { paidPayments, paymentSchedule } = useMemo(() => {
     if (!selectedSale || !selectedSale.paymentPlan) return { paidPayments: [], paymentSchedule: [] };
 
-    const paid = selectedSale.paymentPlan
-      .filter(p => p.isPaid)
+    // 1. History: Show Real Payments (for new data) OR Paid Plan Items (for legacy data)
+    const paidPayments = selectedSale.paymentPlan
+      .filter(p => p.isPaid && p.isRealPayment !== false)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const scheduled = selectedSale.paymentPlan
-      .filter(p => !p.isPaid)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    const allocatedAmount = selectedSale.paymentPlan
-      .filter(p => p.isPaid && p.isRealPayment === false)
+    // 2. Schedule Calculation
+    // Calculate total money actually received (Real Payments)
+    const totalRealMoney = selectedSale.paymentPlan
+      .filter(p => p.isRealPayment === true)
       .reduce((sum, p) => sum + p.amount, 0);
 
-    // For display in schedule, we subtract what's already covered by the "plan" payments
-    // But for history, we show EVERYTHING that is paid.
+    // Calculate total plan amount already marked as paid
+    const totalAllocated = selectedSale.paymentPlan
+      .filter(p => p.isPaid && p.isRealPayment !== true) // Plan items (false or undefined)
+      .reduce((sum, p) => sum + p.amount, 0);
 
-    let paymentPool = paid.reduce((sum, p) => sum + p.amount, 0) - allocatedAmount;
-    paymentPool = Math.max(0, paymentPool);
+    // Determine surplus (money received but not yet allocated to a specific plan item)
+    // For legacy data, totalRealMoney is 0, so surplus is 0.
+    let surplus = Math.max(0, totalRealMoney - totalAllocated);
+
+    const scheduled = selectedSale.paymentPlan
+      .filter(p => !p.isPaid && p.isRealPayment !== true) // Unpaid Plan Items
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     const scheduleForDisplay = scheduled.map(p => {
-      const paymentDue = p.amount;
-      const amountPaidThisMonth = Math.min(paymentDue, paymentPool);
-
-      paymentPool = Math.max(0, paymentPool - amountPaidThisMonth);
+      const amountDue = p.amount;
+      const covered = Math.min(amountDue, surplus);
+      surplus = Math.max(0, surplus - covered);
 
       return {
         ...p,
-        amountToPay: paymentDue - amountPaidThisMonth,
+        amountToPay: amountDue - covered,
       };
     }).filter(p => p.amountToPay > 0.01);
 
     return {
-        paidPayments: paid.filter(p => p.isRealPayment !== false), // Only show REAL payments in history list
+        paidPayments,
         paymentSchedule: scheduleForDisplay
     };
   }, [selectedSale]);

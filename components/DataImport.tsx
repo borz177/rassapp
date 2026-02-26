@@ -90,6 +90,9 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
         const inputDate = new Date(dateIso).getTime();
 
         return sale.paymentPlan.some((p: Payment) => {
+            // Игнорируем плановые платежи при проверке дубликатов реальных
+            if (p.isRealPayment === false) return false;
+
             // 1. Проверка по номеру платежа (самый надёжный способ)
             if (paymentNum && p.note?.includes(`Импорт №${paymentNum}`)) {
                 return true;
