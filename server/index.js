@@ -705,13 +705,19 @@ app.post('/api/users/manage', auth, async (req, res) => {
         }
 
         if (action === 'update') {
-            const { id, name, email, permissions, allowedInvestorIds } = userData;
+            const { id, name, email, permissions, allowedInvestorIds, password } = userData;
             // Simple update, usually password change is separate or handled specifically
             await pool.query(`
                 UPDATE users 
                 SET name = $1, email = $2, permissions = $3, allowed_investor_ids = $4, updated_at = NOW()
                 WHERE id = $5 AND manager_id = $6
             `, [name, email, JSON.stringify(permissions), JSON.stringify(allowedInvestorIds), id, req.user.id]);
+
+            if (password && password.trim().length > 0) {
+                const salt = await bcrypt.genSalt(10);
+                const hashedPassword = await bcrypt.hash(password, salt);
+                await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, id]);
+            }
 
             return res.json({ success: true });
         }

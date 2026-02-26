@@ -417,7 +417,25 @@ const App: React.FC = () => {
   const handleUpdateEmployee = async (updatedData: User) => { if (isManager) { await api.updateUser(updatedData); updateList(setEmployees, updatedData); } };
   const handleDeleteEmployee = async (id: string) => { if (isManager) { await api.deleteUser(id); removeFromList(setEmployees, id); } };
   const handleAddInvestor = async (name: string, phone: string, email: string, pass: string, amount: number, profitPercentage: number, permissions: InvestorPermissions) => { if (user && isManager) { if (!checkAccess('INVESTORS')) { showUpgradeAlert("Превышен лимит инвесторов для вашего тарифа."); return; } try { const newInvestorUser = await api.createSubUser({ name, email, password: pass, role: 'investor', phone }); const newInvestor: Investor = { id: newInvestorUser.id, userId: user.id, name, phone, email, initialAmount: amount, joinedDate: new Date().toISOString(), profitPercentage, permissions }; const savedInv = await api.saveItem('investors', newInvestor); updateList(setInvestors, savedInv); const newAccount: Account = { id: `acc_${newInvestorUser.id}`, userId: user.id, name: `Счет: ${name}`, type: 'INVESTOR', ownerId: newInvestorUser.id }; const savedAcc = await api.saveItem('accounts', newAccount); updateList(setAccounts, savedAcc); const depositTransaction: Sale = { id: `dep_${Date.now()}`, userId: user.id, type: 'CASH', customerId: `system_deposit_${newInvestorUser.id}`, productName: 'Начальный депозит', buyPrice: 0, accountId: newAccount.id, totalAmount: amount, downPayment: amount, remainingAmount: 0, interestRate: 0, installments: 0, startDate: new Date().toISOString(), status: 'COMPLETED', paymentPlan: [] }; const savedTx = await api.saveItem('sales', depositTransaction); updateList(setSales, savedTx); alert("Инвестор создан!"); } catch(e) { alert("Ошибка создания инвестора"); console.error(e); } } };
-  const handleUpdateInvestor = async (updated: Investor) => { if (isManager) { const saved = await api.saveItem('investors', updated); updateList(setInvestors, saved); } };
+  const handleUpdateInvestor = async (updated: Investor, password?: string) => {
+      if (isManager) {
+          const saved = await api.saveItem('investors', updated);
+          updateList(setInvestors, saved);
+
+          // Also update the User record
+          const userUpdateData: any = {
+              id: updated.id,
+              name: updated.name,
+              email: updated.email,
+              permissions: updated.permissions,
+              allowedInvestorIds: []
+          };
+          if (password) {
+              userUpdateData.password = password;
+          }
+          await api.updateUser(userUpdateData);
+      }
+  };
   const handleDeleteInvestor = async (id: string) => {
       if (isManager) {
           await api.deleteUser(id);

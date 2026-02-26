@@ -57,7 +57,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, account, sa
       let total = 0;
       sales.filter(s => s.accountId === account.id).forEach(s => {
           total += s.downPayment;
-          s.paymentPlan.filter(p => p.isPaid).forEach(p => total += p.amount);
+          s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false).forEach(p => total += p.amount);
       });
       expenses.filter(e => e.accountId === account.id).forEach(e => total -= e.amount);
       return total;
@@ -65,7 +65,8 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, account, sa
 
   const expectedTotalProfit = useMemo(() => {
     if (!account || !investor.profitPercentage) return 0;
-    const activeSales = sales.filter(s => s.accountId === account.id && s.status === 'ACTIVE' && s.buyPrice > 0);
+    // Include both ACTIVE and COMPLETED sales
+    const activeSales = sales.filter(s => s.accountId === account.id && (s.status === 'ACTIVE' || s.status === 'COMPLETED') && s.buyPrice > 0);
     const totalProfitFromActiveSales = activeSales.reduce((sum, sale) => {
         const saleProfit = sale.totalAmount - sale.buyPrice;
         return sum + (saleProfit > 0 ? saleProfit : 0);
@@ -75,7 +76,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, account, sa
 
   const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
       if (!account) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, profitAccruals: [] };
-      
+
       const investorSales = sales.filter(s => s.accountId === account.id && s.buyPrice > 0);
       let profitSum = 0;
       const accruals: {id: string, date: string, amount: number, source: string}[] = [];
@@ -85,9 +86,9 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, account, sa
           if (sale.totalAmount <= 0 || totalSaleProfit <= 0) return;
           const profitMargin = totalSaleProfit / sale.totalAmount;
 
-          const allPayments: (Payment | {date: string, amount: number, id: string})[] = [
-              { date: sale.startDate, amount: sale.downPayment, id: `${sale.id}_dp` },
-              ...sale.paymentPlan.filter(p => p.isPaid)
+          const allPayments: (Payment | {date: string, amount: number, id: string, isRealPayment?: boolean})[] = [
+              { date: sale.startDate, amount: sale.downPayment, id: `${sale.id}_dp`, isRealPayment: true },
+              ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
           ];
           
           allPayments.forEach(p => {

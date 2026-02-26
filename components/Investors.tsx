@@ -5,13 +5,13 @@ import { ICONS } from '../constants';
 interface InvestorsProps {
   investors: Investor[];
   onAddInvestor: (name: string, phone: string, email: string, password: string, amount: number, profitPercentage: number, permissions: InvestorPermissions) => void;
-  onUpdateInvestor?: (investor: Investor) => void;
+  onUpdateInvestor?: (investor: Investor, password?: string) => void;
   onDeleteInvestor?: (id: string) => void;
   onViewDetails?: (investor: Investor) => void;
 }
 
-const Investors: React.FC<InvestorsProps> = ({ 
-    investors, onAddInvestor, onUpdateInvestor, onDeleteInvestor, onViewDetails 
+const Investors: React.FC<InvestorsProps> = ({
+    investors, onAddInvestor, onUpdateInvestor, onDeleteInvestor, onViewDetails
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -69,7 +69,7 @@ const Investors: React.FC<InvestorsProps> = ({
                     initialAmount: Number(formAmount),
                     profitPercentage: Number(formProfitPercentage),
                     permissions: formPermissions
-                });
+                }, formPassword);
             }
         } else {
             if (!formPassword) {
@@ -97,8 +97,8 @@ const Investors: React.FC<InvestorsProps> = ({
             <p className="text-slate-500 text-sm">Партнеры и их счета</p>
         </div>
         {!isAdding && (
-            <button 
-                onClick={(e) => { e.stopPropagation(); setIsAdding(true); }} 
+            <button
+                onClick={(e) => { e.stopPropagation(); setIsAdding(true); }}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg shadow-indigo-200"
             >
                 {ICONS.AddSmall} Добавить
@@ -111,40 +111,38 @@ const Investors: React.FC<InvestorsProps> = ({
               <h3 className="font-bold text-slate-800 border-b border-slate-100 pb-2">
                   {editingId ? 'Редактировать инвестора' : 'Новый инвестор'}
               </h3>
-              
+
               <div className="space-y-3">
-                  <input 
-                    placeholder="Имя Фамилия" 
+                  <input
+                    placeholder="Имя Фамилия"
                     className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                     value={formName}
                     onChange={e => setFormName(e.target.value)}
                     required
                   />
-                  <input 
-                    placeholder="Телефон" 
+                  <input
+                    placeholder="Телефон"
                     className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                     value={formPhone}
                     onChange={e => setFormPhone(e.target.value)}
                   />
                   <div className="grid grid-cols-2 gap-3">
-                    <input 
+                    <input
                         type="email"
-                        placeholder="Email (Логин)" 
+                        placeholder="Email (Логин)"
                         className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                         value={formEmail}
                         onChange={e => setFormEmail(e.target.value)}
                         required
                     />
-                    {!editingId && (
-                        <input 
-                            type="text" // Visible for creation
-                            placeholder="Пароль" 
-                            className="w-full p-3 border border-slate-200 rounded-xl outline-none"
-                            value={formPassword}
-                            onChange={e => setFormPassword(e.target.value)}
-                            required={!editingId}
-                        />
-                    )}
+                    <input
+                        type="text" // Visible for creation
+                        placeholder={editingId ? "Новый пароль (необязательно)" : "Пароль"}
+                        className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                        value={formPassword}
+                        onChange={e => setFormPassword(e.target.value)}
+                        required={!editingId}
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="relative">
