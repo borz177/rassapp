@@ -153,16 +153,19 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
     if (!selectedSale || !selectedSale.paymentPlan) return { paidPayments: [], paymentSchedule: [] };
 
     const paid = selectedSale.paymentPlan
-      .filter(p => p.isPaid && p.isRealPayment !== false)
+      .filter(p => p.isPaid)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const scheduled = selectedSale.paymentPlan
-      .filter(p => !p.isPaid && p.isRealPayment !== true)
+      .filter(p => !p.isPaid)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     const allocatedAmount = selectedSale.paymentPlan
       .filter(p => p.isPaid && p.isRealPayment === false)
       .reduce((sum, p) => sum + p.amount, 0);
+
+    // For display in schedule, we subtract what's already covered by the "plan" payments
+    // But for history, we show EVERYTHING that is paid.
 
     let paymentPool = paid.reduce((sum, p) => sum + p.amount, 0) - allocatedAmount;
     paymentPool = Math.max(0, paymentPool);
@@ -180,7 +183,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
     }).filter(p => p.amountToPay > 0.01);
 
     return {
-        paidPayments: paid,
+        paidPayments: paid.filter(p => p.isRealPayment !== false), // Only show REAL payments in history list
         paymentSchedule: scheduleForDisplay
     };
   }, [selectedSale]);

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { api } from '@/services/api';
-import { Customer, Product, Sale, Account, Investor, Payment } from '../types';
+import { Customer, Product, Sale, Account, Investor, Payment, Expense } from '../types';
 
 declare const XLSX: any;
 
@@ -321,8 +321,24 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             paymentDay: new Date(firstPaymentDateStr).getDate(),
                             notes: 'Импорт из Excel'
                         };
+                        newSale.paymentPlan.forEach(p => p.saleId = newSale.id);
 
                         await api.saveItem('sales', newSale);
+
+                        // Create expense for buy price
+                        if (buyPrice > 0) {
+                            const buyPriceExpense: Expense = {
+                                id: `exp_${newSale.id}`,
+                                userId: 'import',
+                                accountId: accountId,
+                                title: `Закуп: ${productName}`,
+                                amount: buyPrice,
+                                category: 'Себестоимость',
+                                date: saleDateIso
+                            };
+                            await api.saveItem('expenses', buyPriceExpense);
+                        }
+
                         existingSales.push(newSale);
                         sale = newSale;
                         newSalesCount++;
