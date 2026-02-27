@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Customer, Product, Account, AppSettings, Sale } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
-import { jsPDF } from "jspdf";
+import jsPDF from "jspdf";
+import html2canvas from 'html2canvas';
 
 interface NewSaleProps {
   initialData: any;
@@ -26,6 +27,7 @@ const NewSale: React.FC<NewSaleProps> = ({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdSale, setCreatedSale] = useState<any>(null);
+  const contractRef = useRef<HTMLDivElement>(null);
 
   const mainAccount = accounts.find(a => a.type === 'MAIN');
   const appSettings = getAppSettings();
@@ -153,175 +155,205 @@ const NewSale: React.FC<NewSaleProps> = ({
 
   const updateMode = (newMode: 'INSTALLMENT' | 'CASH') => { setMode(newMode); setFormData(prev => ({ ...prev, mode: newMode })); };
 
-  // === ИСПРАВЛЕННАЯ generatePDFBlob ===
-  const generatePDFBlob = async (): Promise<Blob> => {
-      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-
-      // === ИСПРАВЛЕНИЕ: Используем встроенный шрифт с поддержкой кириллицы ===
-      // Стандартный шрифт Helvetica в jsPDF поддерживает кодировку win1251 (кириллица)
-      doc.setFont("helvetica", "normal");
+  // === renderContractContent (Скрытый рендер для PDF) ===
+  const renderContractContent = () => {
+      if (!createdSale || !selectedCustomer) return null;
 
       const sale = createdSale;
-      const customer = selectedCustomer;
-      const company = appSettings?.companyName || "Компания";
-      // Получаем телефон из настроек, так как user может быть не определен
+      const companyName = appSettings?.companyName || "Компания";
+      const hasGuarantor = !!sale.guarantorName;
       const sellerPhone = appSettings?.sellerPhone || (appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance}` : '+7 (___) ___-__-__');
 
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 20;
-      const contentWidth = pageWidth - (margin * 2);
-
-      const SIGNATURES_Y = 250;
-      const SIGNATURE_HEIGHT = 25;
-      let y = 20;
-
-      // Вспомогательные функции рисования
-      const drawField = (label: string, value: string, x: number, y: number, maxWidth: number) => {
-          doc.setFont("helvetica", "bold");
-          doc.text(label, x, y);
-          const labelWidth = doc.getTextWidth(label);
-          doc.setFont("helvetica", "normal");
-          doc.text(value, x + labelWidth + 2, y, { maxWidth: maxWidth - labelWidth - 2 });
+      const styles = {
+          page: {
+              width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
+              fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '12pt', lineHeight: '1.5',
+              display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
+              position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
+          },
+          contentWrapper: { flex: 1 },
+          h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
+          headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
+          fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
+          fieldLabel: { fontWeight: 'bold' as const },
+          phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
+          section: { margin: '0 0 20px 0' },
+          sectionItem: { marginBottom: '12px' },
+          sectionItemLast: { marginBottom: 0 },
+          table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
+          th: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
+          td: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
+          footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
+          footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
+          signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
+          signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
+          signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
       };
 
-      const drawFieldWithRightValue = (label: string, value: string, x: number, y: number, colWidth: number) => {
-          const colEnd = x + colWidth;
-          doc.setFont("helvetica", "bold");
-          doc.text(label, x, y);
-          const labelWidth = doc.getTextWidth(label);
-          doc.setFont("helvetica", "normal");
-          doc.text(value, colEnd - 2, y, { align: 'right', maxWidth: colWidth - 10 });
-      };
-
-      // 1. Заголовок
-      doc.setFontSize(14);
-      doc.setFont("helvetica", "bold");
-      doc.text("ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ", pageWidth / 2, y, { align: "center" });
-      y += 10;
-
-      // 2. Дата
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Дата: ${new Date(sale.startDate).toLocaleDateString()}`, pageWidth - margin, y, { align: "right" });
-      y += 12;
-
-      // 3. Стороны (с телефонами справа)
-      const halfWidth = contentWidth / 2;
-      drawFieldWithRightValue("Продавец:", company, margin, y, halfWidth);
-      drawFieldWithRightValue("Тел:", sellerPhone, margin + halfWidth, y, halfWidth);
-      y += 7;
-
-      drawFieldWithRightValue("Покупатель:", customer?.name || '', margin, y, halfWidth);
-      drawFieldWithRightValue("Тел:", customer?.phone || '', margin + halfWidth, y, halfWidth);
-      y += 7;
-
-      if (sale.guarantorName) {
-          drawFieldWithRightValue("Поручитель:", sale.guarantorName, margin, y, halfWidth);
-          drawFieldWithRightValue("Тел:", sale.guarantorPhone || '', margin + halfWidth, y, halfWidth);
-          y += 7;
-      }
-      y += 3;
-      doc.line(margin, y, pageWidth - margin, y);
-      y += 12;
-
-      // 4. Информация о товаре
-      drawField("Товар:", sale.productName, margin, y, contentWidth);
-      y += 7;
-
-      drawField("Срок рассрочки:", `${sale.installments} мес.`, margin, y, halfWidth);
-      drawField("Стоимость:", `${sale.totalAmount.toLocaleString()} ₽`, margin + halfWidth, y, halfWidth);
-      y += 7;
-
-      const monthlyPayment = sale.paymentPlan.length > 0 ? sale.paymentPlan[0].amount : 0;
-      drawField("Ежемесячный платеж:", `${monthlyPayment.toLocaleString()} ₽`, margin, y, halfWidth);
-      drawField("Первый взнос:", `${sale.downPayment.toLocaleString()} ₽`, margin + halfWidth, y, halfWidth);
-      y += 12;
-
-      // 5. Таблица
-      const headers = ["№", "Дата", "Сумма", "Остаток долга"];
-      const colWidths = [15, 40, 40, 45];
-      const totalColWidth = colWidths.reduce((a, b) => a + b, 0);
-      const scale = contentWidth / totalColWidth;
-      const scaledWidths = colWidths.map(w => w * scale);
-      const startX = margin;
-
-      if (y > 200) { doc.addPage(); y = 20; }
-
-      doc.setFillColor(240, 240, 240);
-      doc.rect(startX, y - 4, contentWidth, 8, 'F');
-      doc.setFont("helvetica", "bold");
-      let currentX = startX;
-      headers.forEach((h, i) => { doc.text(h, currentX + 2, y + 1); currentX += scaledWidths[i]; });
-      y += 7;
-
-      doc.setFont("helvetica", "normal");
       let currentDebt = sale.totalAmount - sale.downPayment;
 
-      sale.paymentPlan.forEach((p: any, i: number) => {
-          if (y > 260) {
-              doc.addPage(); y = 20;
-              doc.setFillColor(240, 240, 240);
-              doc.rect(startX, y - 4, contentWidth, 8, 'F');
-              doc.setFont("helvetica", "bold");
-              currentX = startX;
-              headers.forEach((h, idx) => { doc.text(h, currentX + 2, y + 1); currentX += scaledWidths[idx]; });
-              y += 7;
-              doc.setFont("helvetica", "normal");
-          }
-          currentDebt -= p.amount;
-          const displayDebt = Math.max(0, currentDebt);
-          const rowData = [(i + 1).toString(), new Date(p.date).toLocaleDateString(), `${p.amount.toLocaleString()} ₽`, `${displayDebt.toLocaleString()} ₽`];
-          currentX = startX;
-          rowData.forEach((d, colIdx) => { doc.text(d, currentX + 2, y + 1, { maxWidth: scaledWidths[colIdx] - 4 }); currentX += scaledWidths[colIdx]; });
-          doc.setDrawColor(220, 220, 220);
-          doc.line(startX, y + 3, startX + contentWidth, y + 3);
-          y += 7;
-      });
-      y += 8;
+      return (
+          <div ref={contractRef} style={styles.page}>
+              <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ<br/>ТОВАРА В РАССРОЧКУ</h1>
+              <div style={styles.headerInfo}>Дата: {new Date(sale.startDate).toLocaleDateString()}</div>
 
-      // 6. Текст обязательств
-      if (y > 240) { doc.addPage(); y = 20; }
-      doc.setFontSize(9);
-      doc.text("Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку.", margin, y, { maxWidth: contentWidth, align: 'justify' });
-      y += 15;
+              <div style={styles.contentWrapper}>
+                  <div style={styles.section}>
+                      <div style={styles.fieldRow}>
+                          <span><span style={styles.fieldLabel}>Продавец:</span> {companyName}</span>
+                          <span style={styles.phoneField}>Тел: {sellerPhone}</span>
+                      </div>
+                      <div style={styles.fieldRow}>
+                          <span><span style={styles.fieldLabel}>Покупатель:</span> {selectedCustomer.name}</span>
+                          <span style={styles.phoneField}>Тел: {selectedCustomer.phone}</span>
+                      </div>
+                      {hasGuarantor && (
+                          <div style={styles.fieldRow}>
+                              <span><span style={styles.fieldLabel}>Поручитель:</span> {sale.guarantorName}</span>
+                              <span style={styles.phoneField}>Тел: {sale.guarantorPhone}</span>
+                          </div>
+                      )}
+                  </div>
 
-      // 7. Подписи (всегда внизу)
-      if (y < SIGNATURES_Y) { y = SIGNATURES_Y; }
-      else if (y + SIGNATURE_HEIGHT > pageHeight - margin) { doc.addPage(); y = SIGNATURES_Y; }
+                  <div style={styles.section}>
+                      <div style={styles.sectionItem}><span style={styles.fieldLabel}>Товар:</span> {sale.productName}</div>
+                      <div style={{...styles.sectionItem, display: 'flex', justifyContent: 'space-between', marginTop: '10px'}}>
+                          <span><span style={styles.fieldLabel}>Срок рассрочки:</span> {sale.installments} мес.</span>
+                          <span><span style={styles.fieldLabel}>Стоимость:</span> {sale.totalAmount.toLocaleString()} ₽</span>
+                      </div>
+                      <div style={{...styles.sectionItemLast, display: 'flex', justifyContent: 'space-between'}}>
+                          <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {(sale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
+                          <span><span style={styles.fieldLabel}>Первый взнос:</span> {sale.downPayment.toLocaleString()} ₽</span>
+                      </div>
+                  </div>
 
-      const sigY = y;
-      const hasGuarantor = !!sale.guarantorName;
-      const sigCount = hasGuarantor ? 3 : 2;
-      const sigBlockWidth = (contentWidth - (sigCount - 1) * 10) / sigCount;
+                  <table style={styles.table}>
+                      <thead>
+                          <tr>
+                              <th style={{...styles.th, width: '10%'}}>№</th>
+                              <th style={{...styles.th, width: '30%'}}>Дата</th>
+                              <th style={{...styles.th, width: '25%'}}>Сумма</th>
+                              <th style={{...styles.th, width: '35%'}}>Остаток долга</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {sale.paymentPlan.map((p: any, index: number) => {
+                              currentDebt -= p.amount;
+                              const displayDebt = Math.max(0, currentDebt);
+                              return (
+                                  <tr key={index}>
+                                      <td style={styles.td}>{index + 1}</td>
+                                      <td style={styles.td}>{new Date(p.date).toLocaleDateString()}</td>
+                                      <td style={styles.td}>{p.amount.toLocaleString()} ₽</td>
+                                      <td style={styles.td}>{displayDebt.toLocaleString()} ₽</td>
+                                  </tr>
+                              );
+                          })}
+                      </tbody>
+                  </table>
 
-      const drawSignature = (label: string, x: number, width: number) => {
-          doc.setDrawColor(0, 0, 0);
-          doc.setLineWidth(0.3);
-          doc.line(x, sigY, x + width, sigY);
-          doc.setFontSize(8);
-          doc.setFont("helvetica", "italic");
-          doc.text(label, x + width / 2, sigY + 5, { align: "center" });
+                  <div style={{ margin: '25px 0', fontSize: '11pt', lineHeight: 1.4 }}>
+                      Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку на указанных выше условиях.
+                  </div>
+              </div>
+
+              <div style={styles.footerContainer}>
+                  <div style={styles.footer}>
+                      <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
+                          <div style={styles.signatureLine}></div>
+                          <div style={styles.signatureLabel}>Продавец</div>
+                      </div>
+                      {hasGuarantor && (
+                          <div style={styles.signatureBlock('30%')}>
+                              <div style={styles.signatureLine}></div>
+                              <div style={styles.signatureLabel}>Поручитель</div>
+                          </div>
+                      )}
+                      <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
+                          <div style={styles.signatureLine}></div>
+                          <div style={styles.signatureLabel}>Покупатель</div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      );
+  };
+
+  // === generatePDFBlob using html2canvas ===
+  const generatePDFBlob = async (): Promise<Blob> => {
+      if (!contractRef.current) throw new Error("Contract element not found");
+      const element = contractRef.current;
+
+      const originalStyle = {
+          display: element.style.display,
+          position: element.style.position,
+          left: element.style.left,
+          top: element.style.top,
+          visibility: element.style.visibility,
+          zIndex: element.style.zIndex
       };
 
-      if (hasGuarantor) {
-          drawSignature("Продавец", margin, sigBlockWidth);
-          drawSignature("Поручитель", margin + sigBlockWidth + 10, sigBlockWidth);
-          drawSignature("Покупатель", margin + (sigBlockWidth + 10) * 2, sigBlockWidth);
-      } else {
-          const twoSigWidth = (contentWidth - 10) / 2;
-          drawSignature("Продавец", margin, twoSigWidth);
-          drawSignature("Покупатель", margin + twoSigWidth + 10, twoSigWidth);
-      }
+      // Temporarily make visible for capture
+      element.style.display = 'block';
+      element.style.position = 'absolute';
+      element.style.left = '0';
+      element.style.top = '0';
+      element.style.visibility = 'visible';
+      element.style.zIndex = '9999'; // Bring to front to ensure no overlays
+      element.style.background = 'white'; // Ensure background is white
 
-      return doc.output('blob');
+      try {
+          // Wait for render
+          await new Promise(resolve => setTimeout(resolve, 300));
+
+          const canvas = await html2canvas(element, {
+              scale: 2, // Higher scale for better quality
+              useCORS: true,
+              logging: false,
+              backgroundColor: '#ffffff'
+          });
+
+          const imgData = canvas.toDataURL('image/jpeg', 0.8);
+          const pdf = new jsPDF('p', 'mm', 'a4');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+          pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+          return pdf.output('blob');
+      } finally {
+          // Restore original styles
+          element.style.display = originalStyle.display;
+          element.style.position = originalStyle.position;
+          element.style.left = originalStyle.left;
+          element.style.top = originalStyle.top;
+          element.style.visibility = originalStyle.visibility;
+          element.style.zIndex = originalStyle.zIndex;
+      }
+  };
+
+  const transliterate = (text: string) => {
+      const map: Record<string, string> = {
+          'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
+          'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
+          'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts',
+          'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu',
+          'я': 'ya',
+          'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'Yo', 'Ж': 'Zh',
+          'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N', 'О': 'O',
+          'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U', 'Ф': 'F', 'Х': 'Kh', 'Ц': 'Ts',
+          'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Shch', 'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu',
+          'Я': 'Ya'
+      };
+      return text.split('').map(char => map[char] || char).join('');
   };
 
   const handleSendContract = async () => {
       if (!createdSale || !selectedCustomer || !appSettings.whatsapp?.enabled) return;
       try {
           const blob = await generatePDFBlob();
-          const fileName = `Contract_${selectedCustomer.name.replace(/\s/g, '_')}.pdf`;
+          const safeName = transliterate(selectedCustomer.name).replace(/[^a-zA-Z0-9]/g, '_');
+          const fileName = `Contract_${safeName}.pdf`;
+
           const success = await sendWhatsAppFile(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance, selectedCustomer.phone, blob, fileName);
           if (success) alert("Договор успешно отправлен!");
           else alert("Ошибка отправки WhatsApp");
@@ -358,7 +390,7 @@ const NewSale: React.FC<NewSaleProps> = ({
             <style>
                 * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                 body { 
-                    font-family: 'Times New Roman', Times, serif; 
+                    font-family: 'Arial', Helvetica, sans-serif; 
                     font-size: 12pt; 
                     line-height: 1.5; 
                     padding: 30px 25px;
@@ -383,7 +415,7 @@ const NewSale: React.FC<NewSaleProps> = ({
                 .section > div:last-child { margin-bottom: 0; }
                 
                 table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 10.5pt; }
-                th, td { border: 1px solid #000; padding: 6px 8px; text-align: center; }
+                th, td { border: 1px solid #000; padding: 10px; text-align: center; }
                 th { font-weight: bold; background: #f9f9f9; }
                 
                 .content-wrapper { flex: 1 0 auto; }
@@ -501,6 +533,9 @@ const NewSale: React.FC<NewSaleProps> = ({
 
   return (
     <div className="space-y-4 animate-fade-in pb-20">
+      {/* === СКРЫТЫЙ КОНТРАКТ ДЛЯ PDF === */}
+      {renderContractContent()}
+
       <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
           <button onClick={onClose} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
           <h2 className="text-xl font-bold text-slate-800">{formData.id ? 'Редактирование' : 'Новое оформление'}</h2>

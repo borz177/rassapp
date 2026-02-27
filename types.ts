@@ -182,6 +182,7 @@ export interface CalculatorSettings {
 
 export interface AppSettings {
   companyName: string;
+  sellerPhone?: string;
   whatsapp?: WhatsAppSettings;
   calculator?: CalculatorSettings;
   theme?: 'PURPLE' | 'BLUE' | 'GREEN' | 'BLACK';
