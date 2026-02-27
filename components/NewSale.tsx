@@ -227,179 +227,235 @@ const NewSale: React.FC<NewSaleProps> = ({
   // --- PDF Generation Logic ---
 
   const generatePDFBlob = async (): Promise<Blob> => {
-      const doc = new jsPDF();
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
 
-      // Load Cyrillic Font (Roboto)
-      try {
-          const fontUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf';
-          const response = await fetch(fontUrl);
-          if (response.ok) {
-              const buffer = await response.arrayBuffer();
-              const bytes = new Uint8Array(buffer);
-              let binary = '';
-              for (let i = 0; i < bytes.byteLength; i++) {
-                  binary += String.fromCharCode(bytes[i]);
-              }
-              const base64 = window.btoa(binary);
+    // === Загрузка кириллического шрифта (Roboto) ===
+    try {
+        const fontUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf';
+        const response = await fetch(fontUrl);
+        if (response.ok) {
+            const buffer = await response.arrayBuffer();
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            const base64 = window.btoa(binary);
+            doc.addFileToVFS('Roboto-Regular.ttf', base64);
+            doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+            doc.setFont('Roboto');
+        }
+    } catch (error) {
+        console.error("Error loading font for PDF:", error);
+    }
 
-              doc.addFileToVFS('Roboto-Regular.ttf', base64);
-              doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
-              doc.setFont('Roboto');
-          } else {
-              console.error("Failed to fetch font:", response.statusText);
-          }
-      } catch (error) {
-          console.error("Error loading font for PDF:", error);
-      }
+    const sale = createdSale;
+    const customer = selectedCustomer;
+    const company = appSettings?.companyName || "Компания";
+    const sellerPhone = user?.phone || '+7 (___) ___-__-__';
 
-      const sale = createdSale;
-      const customer = selectedCustomer;
-      const company = appSettings.companyName;
-      const sellerPhone = appSettings.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance.slice(0, 11)}` : ''; // Approximate phone from ID instance or user profile if available
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight(); // 297mm for A4
+    const margin = 20;
+    const contentWidth = pageWidth - (margin * 2);
 
-      const pageWidth = doc.internal.pageSize.width;
-      const margin = 20;
-      const contentWidth = pageWidth - (margin * 2);
-      let y = 20;
+    // === НАСТРОЙКИ ПОЗИЦИОНИРОВАНИЯ ===
+    const SIGNATURES_Y = 250; // Позиция подписей (внизу страницы A4)
+    const SIGNATURE_HEIGHT = 25; // Место под подписи
+    let y = 20;
 
-      // 1. Title
-      doc.setFontSize(14);
-      doc.setFont('Roboto', 'bold');
-      doc.text("ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ", pageWidth / 2, y, { align: "center" });
-      y += 10;
+    // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 
-      // 2. Date
-      doc.setFontSize(10);
-      doc.setFont('Roboto', 'normal');
-      doc.text(`Дата: ${new Date(sale.startDate).toLocaleDateString()}`, pageWidth - margin, y, { align: "right" });
-      y += 10;
+    // Стандартное поле: метка + значение слева
+    const drawField = (label: string, value: string, x: number, y: number, maxWidth: number) => {
+        doc.setFont('Roboto', 'bold');
+        doc.text(label, x, y);
+        const labelWidth = doc.getTextWidth(label);
+        doc.setFont('Roboto', 'normal');
+        doc.text(value, x + labelWidth + 2, y, { maxWidth: maxWidth - labelWidth - 2 });
+    };
 
-      // 3. Parties
-      const drawField = (label: string, value: string, x: number, y: number, w: number) => {
-          doc.setFont('Roboto', 'bold');
-          doc.text(label, x, y);
-          const labelWidth = doc.getTextWidth(label);
-          doc.setFont('Roboto', 'normal');
-          doc.text(value, x + labelWidth + 2, y);
-      };
+    // Поле с телефоном: метка слева, телефон ВЫРАВНЕН СПРАВА в своей колонке
+    const drawFieldWithRightValue = (label: string, value: string, x: number, y: number, colWidth: number) => {
+        const colEnd = x + colWidth;
 
-      // Row 1: Seller
-      drawField("Продавец:", company, margin, y, contentWidth / 2);
-      drawField("Тел:", sellerPhone, margin + contentWidth / 2, y, contentWidth / 2);
-      y += 6;
+        // Рисуем метку слева
+        doc.setFont('Roboto', 'bold');
+        doc.text(label, x, y);
+        const labelWidth = doc.getTextWidth(label);
 
-      // Row 2: Buyer
-      drawField("Покупатель:", customer?.name || '', margin, y, contentWidth / 2);
-      drawField("Тел:", customer?.phone || '', margin + contentWidth / 2, y, contentWidth / 2);
-      y += 6;
+        // Рисуем значение телефона СПРАВА в колонке
+        doc.setFont('Roboto', 'normal');
+        doc.text(value, colEnd - 2, y, { align: 'right', maxWidth: colWidth - 10 });
+    };
 
-      // Row 3: Guarantor (if exists)
-      if (sale.guarantorName) {
-          drawField("Поручитель:", sale.guarantorName, margin, y, contentWidth / 2);
-          drawField("Тел:", sale.guarantorPhone || '', margin + contentWidth / 2, y, contentWidth / 2);
-          y += 6;
-      }
-      y += 4;
-      doc.line(margin, y, pageWidth - margin, y);
-      y += 10;
+    // === 1. ЗАГОЛОВОК ===
+    doc.setFontSize(14);
+    doc.setFont('Roboto', 'bold');
+    doc.text("ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ", pageWidth / 2, y, { align: "center" });
+    y += 10;
 
-      // 4. Product Info
-      drawField("Товар:", sale.productName, margin, y, contentWidth);
-      y += 6;
+    // === 2. ДАТА ===
+    doc.setFontSize(10);
+    doc.setFont('Roboto', 'normal');
+    doc.text(`Дата: ${new Date(sale.startDate).toLocaleDateString()}`, pageWidth - margin, y, { align: "right" });
+    y += 12;
 
-      drawField("Срок рассрочки:", `${sale.installments} мес.`, margin, y, contentWidth / 2);
-      drawField("Стоимость:", `${sale.totalAmount.toLocaleString()} ₽`, margin + contentWidth / 2, y, contentWidth / 2);
-      y += 6;
+    // === 3. СТОРОНЫ (с телефонами справа) ===
+    const halfWidth = contentWidth / 2;
 
-      const monthlyPayment = sale.paymentPlan.length > 0 ? sale.paymentPlan[0].amount : 0;
-      drawField("Ежемесячный платеж:", `${monthlyPayment.toLocaleString()} ₽`, margin, y, contentWidth / 2);
-      drawField("Первый взнос:", `${sale.downPayment.toLocaleString()} ₽`, margin + contentWidth / 2, y, contentWidth / 2);
-      y += 10;
+    // Продавец
+    drawFieldWithRightValue("Продавец:", company, margin, y, halfWidth);
+    drawFieldWithRightValue("Тел:", sellerPhone, margin + halfWidth, y, halfWidth);
+    y += 7; // === ОДИНАКОВЫЙ ОТСТУП ===
 
-      // 5. Table
-      const headers = ["№", "Дата", "Сумма", "Остаток долга"];
-      const colWidths = [15, 40, 40, 45]; // Total 140, adjust to fit contentWidth (~170)
-      // Let's scale colWidths to fit contentWidth
-      const totalColWidth = colWidths.reduce((a, b) => a + b, 0);
-      const scale = contentWidth / totalColWidth;
-      const scaledWidths = colWidths.map(w => w * scale);
+    // Покупатель
+    drawFieldWithRightValue("Покупатель:", customer?.name || '', margin, y, halfWidth);
+    drawFieldWithRightValue("Тел:", customer?.phone || '', margin + halfWidth, y, halfWidth);
+    y += 7; // === ОДИНАКОВЫЙ ОТСТУП ===
 
-      const startX = margin;
+    // Поручитель (если есть)
+    if (sale.guarantorName) {
+        drawFieldWithRightValue("Поручитель:", sale.guarantorName, margin, y, halfWidth);
+        drawFieldWithRightValue("Тел:", sale.guarantorPhone || '', margin + halfWidth, y, halfWidth);
+        y += 7; // === ОДИНАКОВЫЙ ОТСТУП ===
+    }
 
-      // Draw Header
-      doc.setFillColor(240, 240, 240);
-      doc.rect(startX, y - 4, contentWidth, 8, 'F');
-      doc.setFont('Roboto', 'bold');
-      let currentX = startX;
-      headers.forEach((h, i) => {
-          doc.text(h, currentX + 2, y + 1);
-          currentX += scaledWidths[i];
-      });
-      y += 6;
+    y += 3;
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 12;
 
-      // Draw Rows
-      doc.setFont('Roboto', 'normal');
-      let currentDebt = sale.totalAmount - sale.downPayment;
+    // === 4. ИНФОРМАЦИЯ О ТОВАРЕ (с одинаковыми отступами) ===
+    drawField("Товар:", sale.productName, margin, y, contentWidth);
+    y += 7; // === ОДИНАКОВЫЙ ОТСТУП ===
 
-      sale.paymentPlan.forEach((p: any, i: number) => {
-          // Page break check
-          if (y > 270) {
-              doc.addPage();
-              y = 20;
-          }
+    // Срок и Стоимость (две колонки)
+    drawField("Срок рассрочки:", `${sale.installments} мес.`, margin, y, halfWidth);
+    drawField("Стоимость:", `${sale.totalAmount.toLocaleString()} ₽`, margin + halfWidth, y, halfWidth);
+    y += 7; // === ОДИНАКОВЫЙ ОТСТУП ===
 
-          currentDebt -= p.amount;
-          const displayDebt = Math.max(0, currentDebt); // Avoid negative due to rounding
+    // Платеж и Взнос (две колонки)
+    const monthlyPayment = sale.paymentPlan.length > 0 ? sale.paymentPlan[0].amount : 0;
+    drawField("Ежемесячный платеж:", `${monthlyPayment.toLocaleString()} ₽`, margin, y, halfWidth);
+    drawField("Первый взнос:", `${sale.downPayment.toLocaleString()} ₽`, margin + halfWidth, y, halfWidth);
+    y += 12; // Чуть больший отступ после секции
 
-          const rowData = [
-              (i + 1).toString(),
-              new Date(p.date).toLocaleDateString(),
-              `${p.amount.toLocaleString()} ₽`,
-              `${displayDebt.toLocaleString()} ₽`
-          ];
+    // === 5. ТАБЛИЦА ПЛАТЕЖЕЙ ===
+    const headers = ["№", "Дата", "Сумма", "Остаток долга"];
+    const colWidths = [15, 40, 40, 45];
+    const totalColWidth = colWidths.reduce((a, b) => a + b, 0);
+    const scale = contentWidth / totalColWidth;
+    const scaledWidths = colWidths.map(w => w * scale);
+    const startX = margin;
 
-          currentX = startX;
-          rowData.forEach((d, colIdx) => {
-              doc.text(d, currentX + 2, y + 1);
-              currentX += scaledWidths[colIdx];
-          });
+    // Проверка переноса страницы перед таблицей
+    if (y > 200) { doc.addPage(); y = 20; }
 
-          // Horizontal line
-          doc.setDrawColor(200, 200, 200);
-          doc.line(startX, y + 3, startX + contentWidth, y + 3);
+    // Заголовок таблицы
+    doc.setFillColor(240, 240, 240);
+    doc.rect(startX, y - 4, contentWidth, 8, 'F');
+    doc.setFont('Roboto', 'bold');
+    let currentX = startX;
+    headers.forEach((h, i) => {
+        doc.text(h, currentX + 2, y + 1);
+        currentX += scaledWidths[i];
+    });
+    y += 7;
 
-          y += 8;
-      });
+    // Строки таблицы
+    doc.setFont('Roboto', 'normal');
+    let currentDebt = sale.totalAmount - sale.downPayment;
 
-      y += 5;
+    sale.paymentPlan.forEach((p: any, i: number) => {
+        // === ПРОВЕРКА ПЕРЕНОСА СТРАНИЦЫ ===
+        if (y > 260) {
+            doc.addPage();
+            y = 20;
+            // Перерисовываем заголовок таблицы на новой странице
+            doc.setFillColor(240, 240, 240);
+            doc.rect(startX, y - 4, contentWidth, 8, 'F');
+            doc.setFont('Roboto', 'bold');
+            currentX = startX;
+            headers.forEach((h, idx) => {
+                doc.text(h, currentX + 2, y + 1);
+                currentX += scaledWidths[idx];
+            });
+            y += 7;
+            doc.setFont('Roboto', 'normal');
+        }
 
-      // 6. Footer Text
-      if (y > 260) { doc.addPage(); y = 20; }
-      doc.setFontSize(9);
-      doc.text("Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку.", margin, y);
-      y += 20;
+        currentDebt -= p.amount;
+        const displayDebt = Math.max(0, currentDebt);
 
-      // 7. Signatures
-      const sigY = y;
-      const sigWidth = contentWidth / (sale.guarantorName ? 3 : 2);
+        const rowData = [
+            (i + 1).toString(),
+            new Date(p.date).toLocaleDateString(),
+            `${p.amount.toLocaleString()} ₽`,
+            `${displayDebt.toLocaleString()} ₽`
+        ];
 
-      const drawSig = (label: string, x: number) => {
-          doc.setDrawColor(0, 0, 0);
-          doc.line(x, sigY, x + sigWidth - 10, sigY);
-          doc.setFontSize(8);
-          doc.text(label, x + (sigWidth - 10)/2, sigY + 5, { align: "center" });
-      };
+        currentX = startX;
+        rowData.forEach((d, colIdx) => {
+            doc.text(d, currentX + 2, y + 1, { maxWidth: scaledWidths[colIdx] - 4 });
+            currentX += scaledWidths[colIdx];
+        });
 
-      drawSig("Продавец", margin);
-      if (sale.guarantorName) {
-          drawSig("Поручитель", margin + sigWidth);
-          drawSig("Покупатель", margin + sigWidth * 2);
-      } else {
-          drawSig("Покупатель", margin + sigWidth);
-      }
+        // Линия раздела
+        doc.setDrawColor(220, 220, 220);
+        doc.line(startX, y + 3, startX + contentWidth, y + 3);
+        y += 7; // === ОДИНАКОВЫЙ ОТСТУП между строками ===
+    });
 
-      return doc.output('blob');
-  };
+    y += 8;
+
+    // === 6. ТЕКСТ ОБЯЗАТЕЛЬСТВ ===
+    if (y > 240) { doc.addPage(); y = 20; }
+    doc.setFontSize(9);
+    doc.text("Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку.", margin, y, { maxWidth: contentWidth, align: 'justify' });
+    y += 15;
+
+    // === 7. ПОДПИСИ (ВСЕГДА ВНИЗУ СТРАНИЦЫ) ===
+
+    // Если контента мало — "дотягиваем" до позиции подписей
+    if (y < SIGNATURES_Y) {
+        y = SIGNATURES_Y;
+    }
+    // Если контента много и не помещается — новая страница с подписями внизу
+    else if (y + SIGNATURE_HEIGHT > pageHeight - margin) {
+        doc.addPage();
+        y = SIGNATURES_Y;
+    }
+
+    const sigY = y;
+    const hasGuarantor = !!sale.guarantorName;
+    const sigCount = hasGuarantor ? 3 : 2;
+    const sigBlockWidth = (contentWidth - (sigCount - 1) * 10) / sigCount; // 10mm gap between blocks
+
+    const drawSignature = (label: string, x: number, width: number) => {
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.3);
+        // Линия подписи
+        doc.line(x, sigY, x + width, sigY);
+        // Текст под линией
+        doc.setFontSize(8);
+        doc.setFont('Roboto', 'italic');
+        doc.text(label, x + width / 2, sigY + 5, { align: "center" });
+    };
+
+    // Рисуем блоки подписей
+    if (hasGuarantor) {
+        drawSignature("Продавец", margin, sigBlockWidth);
+        drawSignature("Поручитель", margin + sigBlockWidth + 10, sigBlockWidth);
+        drawSignature("Покупатель", margin + (sigBlockWidth + 10) * 2, sigBlockWidth);
+    } else {
+        // Два блока: центрируем их
+        const twoSigWidth = (contentWidth - 10) / 2;
+        drawSignature("Продавец", margin, twoSigWidth);
+        drawSignature("Покупатель", margin + twoSigWidth + 10, twoSigWidth);
+    }
+
+    return doc.output('blob');
+};
 
   const handleSendContract = async () => {
       if (!createdSale || !selectedCustomer || !appSettings.whatsapp?.enabled) return;
