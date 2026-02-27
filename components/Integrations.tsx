@@ -33,6 +33,10 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
   const [connectionStatus, setConnectionStatus] = useState<'IDLE' | 'AUTHORIZED' | 'NOT_AUTHORIZED' | 'ERROR'>('IDLE');
   const [qrCode, setQrCode] = useState<string | null>(null);
 
+  // Bot State
+  const [botEnabled, setBotEnabled] = useState(false);
+  const [botButtons, setBotButtons] = useState({ debt: true, paymentDate: true, conditions: true });
+
   // UI State
   const [isExpanded, setIsExpanded] = useState(false);
   const pollingRef = useRef<number | null>(null);
@@ -44,6 +48,10 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
       setApiToken(appSettings.whatsapp.apiTokenInstance);
       setReminderTime(appSettings.whatsapp.reminderTime);
       setReminderDays(appSettings.whatsapp.reminderDays);
+      setBotEnabled(appSettings.whatsapp.botEnabled || false);
+      if (appSettings.whatsapp.botButtons) {
+          setBotButtons(appSettings.whatsapp.botButtons);
+      }
       if (appSettings.whatsapp.templates) {
         setTemplates({ ...DEFAULT_TEMPLATES, ...appSettings.whatsapp.templates });
       }
@@ -82,7 +90,9 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
       apiTokenInstance: apiToken,
       reminderTime,
       reminderDays,
-      templates
+      templates,
+      botEnabled,
+      botButtons
     };
 
     onUpdateSettings({
@@ -370,6 +380,88 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                   При просрочке
                 </button>
               </div>
+            </div>
+
+            <hr className="border-slate-100" />
+
+            {/* Bot Settings */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-slate-700 text-sm flex items-center gap-2">
+                  🤖 Чат-бот (Автоответчик)
+                </h4>
+                <div className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={botEnabled}
+                    onChange={() => setBotEnabled(!botEnabled)}
+                  />
+                  <div className={`w-11 h-6 rounded-full peer peer-checked:bg-indigo-600 peer-focus:outline-none transition-colors ${botEnabled ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                    <div className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform ${botEnabled ? 'translate-x-full' : ''}`}></div>
+                  </div>
+                </div>
+              </div>
+
+              {botEnabled && (
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4 animate-fade-in">
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Webhook URL (для Green API)</label>
+                    <div className="flex gap-2">
+                      <input
+                        readOnly
+                        className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white text-slate-600 font-mono select-all"
+                        value={`${window.location.origin}/api/integrations/whatsapp/webhook`}
+                      />
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(`${window.location.origin}/api/integrations/whatsapp/webhook`);
+                          alert("Скопировано!");
+                        }}
+                        className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 whitespace-nowrap"
+                      >
+                        Копировать
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Укажите этот URL в настройках инстанса Green API в поле "Webhook URL"
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Активные кнопки</label>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 p-1 rounded-lg -ml-1 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={botButtons.debt}
+                          onChange={e => setBotButtons({ ...botButtons, debt: e.target.checked })}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 border-slate-300"
+                        />
+                        <span className="text-sm text-slate-700">📊 Мой долг</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 p-1 rounded-lg -ml-1 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={botButtons.paymentDate}
+                          onChange={e => setBotButtons({ ...botButtons, paymentDate: e.target.checked })}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 border-slate-300"
+                        />
+                        <span className="text-sm text-slate-700">📅 Дата платежа</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 p-1 rounded-lg -ml-1 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={botButtons.conditions}
+                          onChange={e => setBotButtons({ ...botButtons, conditions: e.target.checked })}
+                          className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 border-slate-300"
+                        />
+                        <span className="text-sm text-slate-700">📝 Условия рассрочки</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <hr className="border-slate-100" />

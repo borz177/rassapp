@@ -137,19 +137,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       element.style.left = '0';
       element.style.top = '0';
       element.style.visibility = 'visible';
-      element.style.zIndex = '9999';
-      element.style.background = 'white';
+      element.style.zIndex = '-1';
 
       try {
           // Небольшая задержка для применения стилей
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise(resolve => setTimeout(resolve, 100));
 
-          const canvas = await html2canvas(element, {
-              scale: 2,
-              useCORS: true,
-              logging: false,
-              backgroundColor: '#ffffff'
-          });
+          const canvas = await html2canvas(element, { scale: 1.5, useCORS: true, logging: false });
           const imgData = canvas.toDataURL('image/jpeg', 0.7);
           const pdf = new jsPDF('p', 'mm', 'a4');
           const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -193,7 +187,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
               try {
                   const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
                   const safeProductName = transliterate(selectedSale.productName);
-                  const fileName = `contract_${safeProductName}.pdf`;
+                  const fileName = `Договор_${safeProductName}.pdf`;
                   const success = await sendWhatsAppFile(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance, selectedCustomer.phone, pdfBlob, fileName);
                   if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
                   else { alert("Ошибка отправки PDF в WhatsApp"); }
@@ -216,7 +210,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
       const companyName = appSettings?.companyName || "Компания";
       const hasGuarantor = !!selectedSale.guarantorName;
-      const sellerPhone = appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance.slice(0, 11)}` : (appSettings?.sellerPhone || '+7 (___) ___-__-__');
+      const sellerPhone = appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance.slice(0, 11)}` : (user?.phone || '+7 (___) ___-__-__');
 
       const existingPayments = selectedSale.paymentPlan
           ? selectedSale.paymentPlan.filter(p => p.isPaid).map(p => ({ date: new Date(p.date), amount: p.amount }))
@@ -227,7 +221,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       const styles = {
           page: {
               width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
-              fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '12pt', lineHeight: '1.5',
+              fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5',
               display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
               // === СКРЫТИЕ: не влияет на layout ===
               position: 'absolute' as const,
@@ -245,8 +239,8 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           sectionItem: { marginBottom: '12px' },
           sectionItemLast: { marginBottom: 0 },
           table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
-          th: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
-          td: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
+          th: { border: '1px solid #000', padding: '6px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
+          td: { border: '1px solid #000', padding: '6px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
           footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
           footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
           signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
@@ -258,7 +252,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
       return (
           <div ref={contractRef} style={styles.page}>
-              <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ<br/>ТОВАРА В РАССРОЧКУ</h1>
+              <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
               <div style={styles.headerInfo}>Дата: {new Date(selectedSale.startDate).toLocaleDateString()}</div>
 
               <div style={styles.contentWrapper}>

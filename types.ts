@@ -32,6 +32,12 @@ export interface WhatsAppSettings {
   // Array of offsets: 0 = due date, -1 = 1 day before, 1 = 1 day after
   reminderDays: number[];
   templates?: WhatsAppTemplates; // New field for custom templates
+  botEnabled?: boolean; // Enable/Disable auto-reply bot
+  botButtons?: {
+      debt: boolean;
+      paymentDate: boolean;
+      conditions: boolean;
+  };
 }
 
 export interface User {
