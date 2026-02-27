@@ -344,6 +344,21 @@ const Contracts: React.FC<ContractsProps> = ({
                     font-style: italic;
                 }
 
+                .no-print {
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    padding: 10px 20px;
+                    background: #ef4444;
+                    color: white;
+                    border: none;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    font-family: sans-serif;
+                    font-weight: bold;
+                    z-index: 1000;
+                }
+
                 @media print {
                     @page { margin: 1.0cm; size: A4; }
                     .footer-container {
@@ -354,10 +369,12 @@ const Contracts: React.FC<ContractsProps> = ({
                         background: white;
                         padding-top: 20px;
                     }
+                    .no-print { display: none; }
                 }
             </style>
         </head>
         <body>
+            <button class="no-print" onclick="window.close()">ЗАКРЫТЬ ОКНО</button>
             <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
             
             <div class="header-info">
@@ -438,7 +455,7 @@ const Contracts: React.FC<ContractsProps> = ({
       printWindow.document.write(htmlContent);
       printWindow.document.close();
   };
-  
+
   return (
     <div className="space-y-4 pb-20 w-full">
       {activeTab !== 'OVERDUE' && (
@@ -449,7 +466,7 @@ const Contracts: React.FC<ContractsProps> = ({
             </div>
         </div>
       )}
-      
+
        {activeTab === 'OVERDUE' && (
           <div className="bg-gradient-to-r from-red-50 to-white border border-red-100 p-5 rounded-2xl shadow-sm animate-fade-in mb-4">
               <div className="flex justify-between items-start">
@@ -472,28 +489,28 @@ const Contracts: React.FC<ContractsProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="relative">
                   <span className="absolute left-3 top-3 text-slate-400 scale-90">{ICONS.Users}</span>
-                  <input 
-                    type="text" 
-                    placeholder="Поиск по имени или товару..." 
-                    className="w-full pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm focus:border-indigo-500 bg-white text-slate-900" 
-                    value={searchTerm} 
-                    onChange={e => setSearchTerm(e.target.value)} 
+                  <input
+                    type="text"
+                    placeholder="Поиск по имени или товару..."
+                    className="w-full pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm focus:border-indigo-500 bg-white text-slate-900"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
                   />
               </div>
               <div className="relative">
                   <span className="absolute left-3 top-3 text-slate-400 scale-75">{ICONS.Clock}</span>
-                  <input 
-                    type="date" 
-                    className="w-full max-w-[130px] pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm text-slate-900 bg-white focus:border-indigo-500" 
-                    value={filterDate} 
-                    onChange={e => setFilterDate(e.target.value)} 
+                  <input
+                    type="date"
+                    className="w-full max-w-[130px] pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm text-slate-900 bg-white focus:border-indigo-500"
+                    value={filterDate}
+                    onChange={e => setFilterDate(e.target.value)}
                   />
               </div>
               <div className="relative">
                   <span className="absolute left-3 top-3 text-slate-400 scale-75">{ICONS.Wallet}</span>
-                  <select 
-                    className="w-full pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm text-slate-900 bg-white focus:border-indigo-500" 
-                    value={filterAccountId} 
+                  <select
+                    className="w-full pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm text-slate-900 bg-white focus:border-indigo-500"
+                    value={filterAccountId}
                     onChange={e => setFilterAccountId(e.target.value)}
                   >
                       <option value="">Все счета / Инвесторы</option>
@@ -504,7 +521,7 @@ const Contracts: React.FC<ContractsProps> = ({
       </div>
 
       <div className="space-y-3 pt-2" onClick={() => setActiveMenuId(null)}>
-        {filteredList.length === 0 ? (<div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">Ничего не найдено</div>) : 
+        {filteredList.length === 0 ? (<div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">Ничего не найдено</div>) :
         (filteredList.map((sale, index) => {
             const progress = sale.totalAmount > 0 ? ((sale.totalAmount - sale.remainingAmount) / sale.totalAmount) * 100 : 0;
             let statusLabel = 'АКТИВНО';
@@ -514,13 +531,13 @@ const Contracts: React.FC<ContractsProps> = ({
 
             // Reverse numbering logic: Top is highest number, Bottom is 1
             const displayNumber = filteredList.length - index;
-            
+
             // Calculate REAL overdue based on payments made vs expected
             const overdueSum = calculateSaleOverdue(sale);
 
             return (
-              <div 
-                key={sale.id} 
+              <div
+                key={sale.id}
                 className="bg-white rounded-xl shadow-sm p-4 relative animate-fade-in transition-transform"
               >
                 <div className="flex justify-between items-start mb-2">
@@ -536,7 +553,7 @@ const Contracts: React.FC<ContractsProps> = ({
                     <div>
                       <span className={`inline-block px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span>
                       {activeTab === 'OVERDUE' ? (
-                          <p className="text-sm font-bold text-red-600 mt-1">Долг: {overdueSum.toLocaleString()} ₽</p>
+                          <p className="text-sm font-bold text-red-600 mt-1">Просрочка: {overdueSum.toLocaleString()} ₽</p>
                       ) : (
                           <p className="text-sm font-semibold mt-1">{sale.totalAmount.toLocaleString()} ₽</p>
                       )}
@@ -546,9 +563,9 @@ const Contracts: React.FC<ContractsProps> = ({
                     )}
                   </div>
                 </div>
-                
+
                 <div className="w-full bg-slate-100 rounded-full h-2 mt-3"><div className={`h-2 rounded-full ${activeTab === 'OVERDUE' ? 'bg-red-500' : 'bg-indigo-600'}`} style={{ width: `${progress}%` }}></div></div>
-                <div className="flex justify-between text-xs text-slate-400 mt-1"><span>Оплачено: {(sale.totalAmount - sale.remainingAmount).toLocaleString()} ₽</span><span>Остаток: {sale.remainingAmount.toLocaleString()} ₽</span></div>
+                <div className="flex justify-between text-xs text-slate-400 mt-1"><span>Оплачено: {(sale.totalAmount - sale.remainingAmount).toLocaleString()} ₽</span>{activeTab !== 'OVERDUE' && <span>Остаток: {sale.remainingAmount.toLocaleString()} ₽</span>}</div>
 
                 {!readOnly && activeMenuId === sale.id && (
                   <div className="absolute right-4 top-14 bg-white shadow-xl rounded-xl z-20 w-48 overflow-hidden animate-fade-in" onClick={e => e.stopPropagation()}>

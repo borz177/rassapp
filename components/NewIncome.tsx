@@ -159,6 +159,36 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           // Process WhatsApp Sending if enabled
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
               const newRemaining = Math.max(0, selectedSale.remainingAmount - numAmount);
+
+              // Construct History for Message
+              let historyText = '';
+              if (selectedSale.paymentPlan) {
+                  // Get existing paid payments
+                  const existingPayments = selectedSale.paymentPlan.filter(p => p.isPaid).map(p => ({
+                      date: new Date(p.date),
+                      amount: p.amount
+                  }));
+
+                  // Add current payment
+                  existingPayments.push({
+                      date: new Date(date),
+                      amount: numAmount
+                  });
+
+                  // Sort by date
+                  existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+                  // Generate rows
+                  let currentDebt = selectedSale.totalAmount - selectedSale.downPayment;
+                  const historyRows = existingPayments.map((p, index) => {
+                      currentDebt -= p.amount;
+                      const displayDebt = Math.max(0, currentDebt);
+                      return `${index + 1}. ${p.date.toLocaleDateString()} - ${p.amount.toLocaleString()} ₽ (Долг: ${displayDebt.toLocaleString()} ₽)`;
+                  });
+
+                  historyText = historyRows.join('\n');
+              }
+
               const message = `
 Здравствуйте, ${selectedCustomer.name}!
 
@@ -167,6 +197,10 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 Дата: ${new Date(date).toLocaleDateString()}
 
 📄 Договор: ${selectedSale.productName}
+
+📜 *История платежей:*
+${historyText}
+
 💰 Остаток долга: *${newRemaining.toLocaleString()} ₽*
 
 Спасибо, что вы с нами!
@@ -290,7 +324,7 @@ ${appSettings.companyName}
 
               <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
-                  <input type="date" className="max-w-xs w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={date} onChange={e => setDate(e.target.value)} />
+                  <input type="date" className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={date} onChange={e => setDate(e.target.value)} />
               </div>
           </div>
 
