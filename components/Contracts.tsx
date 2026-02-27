@@ -312,18 +312,25 @@ const Contracts: React.FC<ContractsProps> = ({
           <title>Договор купли-продажи</title>
           <style>
               * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              
               body { 
                   font-family: 'Times New Roman', Times, serif; 
                   font-size: 12pt; 
                   line-height: 1.5; 
                   padding: 30px 25px;
-                  padding-bottom: 200px;
+                  padding-bottom: 180px;
                   width: 100%;
                   max-width: 210mm;
                   margin: 0 auto;
                   zoom: 1 !important;
                   -webkit-text-size-adjust: 100%;
+                  
+                  /* === FIX: Подписи всегда внизу === */
+                  display: flex;
+                  flex-direction: column;
+                  min-height: 297mm; /* Высота A4 */
               }
+              
               h1 { text-align: center; font-size: 15pt; font-weight: bold; margin: 0 0 25px 0; text-transform: uppercase; line-height: 1.3; }
               .header-info { text-align: right; margin-bottom: 20px; font-size: 11pt; }
               
@@ -342,11 +349,23 @@ const Contracts: React.FC<ContractsProps> = ({
               th, td { border: 1px solid #000; padding: 6px 8px; text-align: center; }
               th { font-weight: bold; background: #f9f9f9; }
               
+              .content-wrapper {
+                  flex: 1 0 auto; /* Занимает доступное место, толкает футер вниз */
+              }
+              
+              .footer-container {
+                  /* === FIX: Прижимаем футер к низу === */
+                  margin-top: auto;
+                  padding-top: 20px;
+                  width: 100%;
+                  break-inside: avoid;
+                  page-break-inside: avoid;
+              }
+              
               .footer { 
                   display: flex; 
                   justify-content: space-between; 
                   align-items: flex-end;
-                  margin-top: 10px;
                   width: 100%;
               }
               .signature-block { 
@@ -384,12 +403,15 @@ const Contracts: React.FC<ContractsProps> = ({
               /* === PRINT STYLES === */
               @media print {
                   @page { margin: 1cm; size: A4 portrait; }
+                  
                   body { 
                       padding: 0 1cm; 
                       margin: 0; 
                       width: 100%; 
                       max-width: none; 
-                      padding-bottom: 180px !important;
+                      min-height: 297mm;
+                      display: flex;
+                      flex-direction: column;
                   }
                   
                   /* Force phone numbers to stay on the right */
@@ -398,29 +420,28 @@ const Contracts: React.FC<ContractsProps> = ({
                       gap: 0 !important;
                       justify-content: space-between !important;
                   }
-                  .field-row > span:first-child { 
-                      flex-shrink: 0; 
-                  }
+                  .field-row > span:first-child { flex-shrink: 0; }
                   .field-row > span:last-child { 
                       text-align: right; 
                       flex-shrink: 0;
                       margin-left: 10px;
                   }
                   
-                  /* Footer with signatures - always visible on print */
+                  /* === FIX: Footer absolutely at bottom on print === */
                   .footer-container {
-                      position: relative !important;
-                      bottom: auto !important;
-                      left: auto !important;
-                      right: auto !important;
-                      width: 100% !important;
+                      position: absolute !important;
+                      bottom: 1cm !important;
+                      left: 1cm !important;
+                      right: 1cm !important;
+                      width: calc(100% - 2cm) !important;
+                      margin: 0 !important;
+                      padding-top: 10px !important;
                       background: white !important;
-                      padding-top: 30px !important;
-                      margin-top: 40px !important;
                       page-break-inside: avoid;
                       break-inside: avoid;
                       display: block !important;
                   }
+                  
                   .footer {
                       display: flex !important;
                       justify-content: space-between !important;
@@ -432,6 +453,11 @@ const Contracts: React.FC<ContractsProps> = ({
                       opacity: 1 !important;
                   }
                   
+                  .content-wrapper {
+                      flex: none !important;
+                      margin-bottom: 170px; /* Reserve space for absolute footer */
+                  }
+                  
                   .no-print { display: none !important; }
                   h1 { font-size: 14pt; }
                   table { font-size: 10pt; }
@@ -439,7 +465,7 @@ const Contracts: React.FC<ContractsProps> = ({
               
               /* === MOBILE SCREEN (not print) === */
               @media screen and (max-width: 768px) {
-                  body { font-size: 11pt; padding: 20px 15px; }
+                  body { font-size: 11pt; padding: 20px 15px; min-height: 100vh; }
                   h1 { font-size: 13pt; }
                   .field-row { flex-wrap: wrap; gap: 5px; }
                   .field-row > span:last-child { 
@@ -455,16 +481,11 @@ const Contracts: React.FC<ContractsProps> = ({
                   body { 
                       font-size: 10.5pt; 
                       padding: 15px 10px !important; 
-                      padding-bottom: 190px !important;
+                      min-height: 297mm;
                   }
                   h1 { font-size: 12pt; }
-                  .field-row { 
-                      flex-wrap: nowrap !important; 
-                      gap: 0 !important;
-                  }
-                  .field-row > span { 
-                      font-size: 10pt;
-                  }
+                  .field-row { flex-wrap: nowrap !important; gap: 0 !important; }
+                  .field-row > span { font-size: 10pt; }
                   .field-row > span:last-child { 
                       text-align: right !important;
                       margin-left: 8px;
@@ -472,18 +493,14 @@ const Contracts: React.FC<ContractsProps> = ({
                   table { font-size: 9pt; }
                   th, td { padding: 4px 5px; }
                   
-                  /* Ensure signatures show on mobile print */
                   .footer-container {
-                      position: relative !important;
-                      margin-top: 30px !important;
-                      padding-top: 20px !important;
+                      bottom: 0.8cm !important;
+                      left: 0.8cm !important;
+                      right: 0.8cm !important;
+                      width: calc(100% - 1.6cm) !important;
                   }
-                  .signature-line { 
-                      margin: 25px 0 3px 0 !important; 
-                  }
-                  .signature-label { 
-                      font-size: 9pt !important; 
-                  }
+                  .signature-line { margin: 25px 0 3px 0 !important; }
+                  .signature-label { font-size: 9pt !important; }
               }
           </style>
       </head>
@@ -495,50 +512,52 @@ const Contracts: React.FC<ContractsProps> = ({
               Дата: ${new Date(sale.startDate).toLocaleDateString()}
           </div>
 
-          <div class="section">
-              <div class="field-row">
-                  <span><span class="field-label">Продавец:</span> ${companyName}</span>
-                  <span>Тел: ${sellerPhone || '+7 (___) ___-__-__'}</span>
+          <div class="content-wrapper">
+              <div class="section">
+                  <div class="field-row">
+                      <span><span class="field-label">Продавец:</span> ${companyName}</span>
+                      <span>Тел: ${sellerPhone || '+7 (___) ___-__-__'}</span>
+                  </div>
+                  <div class="field-row">
+                      <span><span class="field-label">Покупатель:</span> ${customer?.name || '__________________'}</span>
+                      <span>Тел: ${customer?.phone || '+7 (___) ___-__-__'}</span>
+                  </div>
+                  ${hasGuarantor ? `
+                  <div class="field-row">
+                      <span><span class="field-label">Поручитель:</span> ${sale.guarantorName}</span>
+                      <span>Тел: ${sale.guarantorPhone || ''}</span>
+                  </div>` : ''}
               </div>
-              <div class="field-row">
-                  <span><span class="field-label">Покупатель:</span> ${customer?.name || '__________________'}</span>
-                  <span>Тел: ${customer?.phone || '+7 (___) ___-__-__'}</span>
-              </div>
-              ${hasGuarantor ? `
-              <div class="field-row">
-                  <span><span class="field-label">Поручитель:</span> ${sale.guarantorName}</span>
-                  <span>Тел: ${sale.guarantorPhone || ''}</span>
-              </div>` : ''}
-          </div>
 
-          <div class="section">
-              <div><span class="field-label">Товар:</span> ${sale.productName}</div>
-              <div style="display: flex; justify-content: space-between; margin-top: 10px;">
-                  <span><span class="field-label">Срок рассрочки:</span> ${sale.installments} мес.</span>
-                  <span><span class="field-label">Стоимость:</span> ${sale.totalAmount.toLocaleString()} ₽</span>
+              <div class="section">
+                  <div><span class="field-label">Товар:</span> ${sale.productName}</div>
+                  <div style="display: flex; justify-content: space-between; margin-top: 10px;">
+                      <span><span class="field-label">Срок рассрочки:</span> ${sale.installments} мес.</span>
+                      <span><span class="field-label">Стоимость:</span> ${sale.totalAmount.toLocaleString()} ₽</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between;">
+                      <span><span class="field-label">Ежемесячный платеж:</span> ${(sale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
+                      <span><span class="field-label">Первый взнос:</span> ${sale.downPayment.toLocaleString()} ₽</span>
+                  </div>
               </div>
-              <div style="display: flex; justify-content: space-between;">
-                  <span><span class="field-label">Ежемесячный платеж:</span> ${(sale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
-                  <span><span class="field-label">Первый взнос:</span> ${sale.downPayment.toLocaleString()} ₽</span>
+
+              <table>
+                  <thead>
+                      <tr>
+                          <th style="width: 10%;">№</th>
+                          <th style="width: 30%;">Дата</th>
+                          <th style="width: 25%;">Сумма</th>
+                          <th style="width: 35%;">Остаток долга</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                      ${rows}
+                  </tbody>
+              </table>
+
+              <div style="margin: 25px 0; font-size: 11pt; line-height: 1.4;">
+                  Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку на указанных выше условиях.
               </div>
-          </div>
-
-          <table>
-              <thead>
-                  <tr>
-                      <th style="width: 10%;">№</th>
-                      <th style="width: 30%;">Дата</th>
-                      <th style="width: 25%;">Сумма</th>
-                      <th style="width: 35%;">Остаток долга</th>
-                  </tr>
-              </thead>
-              <tbody>
-                  ${rows}
-              </tbody>
-          </table>
-
-          <div style="margin: 25px 0; font-size: 11pt; line-height: 1.4;">
-              Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку на указанных выше условиях.
           </div>
 
           <div class="footer-container">
