@@ -342,9 +342,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   return (
     <div className="space-y-4 animate-fade-in pb-20">
         {/* === СКРЫТЫЙ КОНТРАКТ ДЛЯ PDF (не влияет на layout) === */}
-        <div style={{ display: 'none' }}>
-            {renderContractContent()}
-        </div>
+        {renderContractContent()}
 
         <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
             <button onClick={onClose} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>

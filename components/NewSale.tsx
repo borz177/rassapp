@@ -173,7 +173,8 @@ const NewSale: React.FC<NewSaleProps> = ({
       const sale = createdSale;
       const customer = selectedCustomer;
       const company = appSettings?.companyName || "Компания";
-      const sellerPhone = user?.phone || '+7 (___) ___-__-__';
+      const sellerPhone = appSettings?.sellerPhone
+        || (appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance}` : '+7 (___) ___-__-__');
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 20;
@@ -340,7 +341,8 @@ const NewSale: React.FC<NewSaleProps> = ({
       const sale = createdSale;
       const customer = selectedCustomer;
       const companyName = appSettings?.companyName || "Компания";
-      const sellerPhone = user?.phone || '+7 (___) ___-__-__';
+      const sellerPhone = appSettings?.sellerPhone
+        || (appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance}` : '+7 (___) ___-__-__');
       const hasGuarantor = !!sale.guarantorName;
 
       const printWindow = window.open('', '_blank');
