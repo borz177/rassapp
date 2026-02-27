@@ -281,6 +281,19 @@ app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
 
 // --- WHATSAPP WEBHOOK ---
 
+// Helper to normalize phone number
+const normalizePhone = (phone) => {
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length === 10) {
+        if (cleaned.startsWith('9')) return '7' + cleaned;
+    }
+    if (cleaned.length === 11) {
+        if (cleaned.startsWith('8')) return '7' + cleaned.slice(1);
+        if (cleaned.startsWith('7')) return cleaned;
+    }
+    return cleaned;
+};
+
 app.post('/api/integrations/whatsapp/webhook', async (req, res) => {
     try {
         const body = req.body;
@@ -298,10 +311,18 @@ app.post('/api/integrations/whatsapp/webhook', async (req, res) => {
         }
 
         const chatId = senderData.chatId;
-        const senderPhone = chatId.replace('@c.us', ''); // 79991234567
+
+        // Ignore Group Messages
+        if (chatId.includes('@g.us')) {
+            console.log(`[WhatsApp Bot] Ignoring group message from ${chatId}`);
+            return res.status(200).send('OK');
+        }
+
+        const rawSenderPhone = chatId.replace('@c.us', ''); // 79991234567
+        const senderPhone = normalizePhone(rawSenderPhone);
         const senderName = senderData.senderName || 'Клиент';
 
-        console.log(`[WhatsApp Webhook] Type: ${typeWebhook}, Sender: ${senderPhone}`);
+        console.log(`[WhatsApp Webhook] Type: ${typeWebhook}, Sender: ${senderPhone} (Raw: ${rawSenderPhone})`);
 
         // 1. Find the Manager (User) who owns this customer
         // We search in data_items where type='customers' and phone matches
