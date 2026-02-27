@@ -261,200 +261,218 @@ const Contracts: React.FC<ContractsProps> = ({
       }
   }
 
-  const printContract = (sale: Sale) => {
-      const customer = customers.find(c => c.id === sale.customerId);
-      const companyName = appSettings?.companyName || "Компания";
-      const sellerPhone = user?.phone || "";
-      const hasGuarantor = !!sale.guarantorName;
+ const printContract = (sale: Sale) => {
+    const customer = customers.find(c => c.id === sale.customerId);
+    const companyName = appSettings?.companyName || "Компания";
+    const sellerPhone = user?.phone || "";
+    const hasGuarantor = !!sale.guarantorName;
 
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-          alert("Разрешите всплывающие окна для печати");
-          return;
-      }
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        alert("Разрешите всплывающие окна для печати");
+        return;
+    }
 
-      // Filter ONLY REAL PAID PAYMENTS
-      const paidPlan = sale.paymentPlan
-          .filter(p => p.isPaid)
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const paidPlan = sale.paymentPlan
+        .filter(p => p.isPaid)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-      let rows = '';
+    let rows = '';
+    if (paidPlan.length > 0) {
+        let currentDebt = sale.totalAmount - sale.downPayment;
+        rows = paidPlan.map((p, index) => {
+            currentDebt -= p.amount;
+            const displayDebt = Math.max(0, currentDebt);
+            return `
+              <tr>
+                  <td style="text-align: center;">${index + 1}</td>
+                  <td style="text-align: center;">${new Date(p.date).toLocaleDateString()}</td>
+                  <td style="text-align: center;">${p.amount.toLocaleString()} ₽</td>
+                  <td style="text-align: center;">${displayDebt.toLocaleString()} ₽</td>
+              </tr>
+            `;
+        }).join('');
+    } else {
+        rows = Array.from({ length: sale.installments || 1 }).map((_, index) => `
+          <tr>
+              <td style="text-align: center;">${index + 1}</td>
+              <td style="text-align: center; height: 30px;"></td>
+              <td style="text-align: center;"></td>
+              <td style="text-align: center;"></td>
+          </tr>
+        `).join('');
+    }
 
-      if (paidPlan.length > 0) {
-          let currentDebt = sale.totalAmount - sale.downPayment;
-          rows = paidPlan.map((p, index) => {
-              currentDebt -= p.amount;
-              const displayDebt = Math.max(0, currentDebt);
-              return `
-                <tr>
-                    <td style="text-align: center;">${index + 1}</td>
-                    <td style="text-align: center;">${new Date(p.date).toLocaleDateString()}</td>
-                    <td style="text-align: center;">${p.amount.toLocaleString()} ₽</td>
-                    <td style="text-align: center;">${displayDebt.toLocaleString()} ₽</td>
-                </tr>
-              `;
-          }).join('');
-      } else {
-          rows = Array.from({ length: sale.installments || 1 }).map((_, index) => `
-            <tr>
-                <td style="text-align: center;">${index + 1}</td>
-                <td style="text-align: center; height: 30px;"></td>
-                <td style="text-align: center;"></td>
-                <td style="text-align: center;"></td>
-            </tr>
-          `).join('');
-      }
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+          <title>Договор купли-продажи</title>
+          <style>
+              * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              body { 
+                  font-family: 'Times New Roman', Times, serif; 
+                  font-size: 12pt; 
+                  line-height: 1.5; 
+                  padding: 30px 25px;
+                  padding-bottom: 160px;
+                  width: 100%;
+                  max-width: 210mm;
+                  margin: 0 auto;
+                  zoom: 1 !important;
+                  -webkit-text-size-adjust: 100%;
+              }
+              h1 { text-align: center; font-size: 15pt; font-weight: bold; margin: 0 0 25px 0; text-transform: uppercase; line-height: 1.3; }
+              .header-info { text-align: right; margin-bottom: 20px; font-size: 11pt; }
+              .field-row { display: flex; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 5px; }
+              .field-label { font-weight: bold; }
+              
+              .section { margin: 0 0 20px 0; }
+              .section > div { margin-bottom: 12px; }
+              .section > div:last-child { margin-bottom: 0; }
+              
+              table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 10.5pt; }
+              th, td { border: 1px solid #000; padding: 6px 8px; text-align: center; }
+              th { font-weight: bold; background: #f9f9f9; }
+              
+              .footer { 
+                  display: flex; 
+                  justify-content: space-between; 
+                  align-items: flex-end;
+                  margin-top: 10px;
+              }
+              .signature-block { text-align: center; }
+              .signature-line { border-bottom: 1px solid #000; margin: 35px 0 5px 0; min-height: 1px; }
+              .signature-label { font-size: 10pt; font-style: italic; }
 
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Договор купли-продажи</title>
-            <style>
-                body { 
-                    font-family: 'Times New Roman', serif; 
-                    font-size: 12pt; 
-                    line-height: 1.5; 
-                    padding: 40px;
-                    padding-bottom: 150px; 
-                }
-                h1 { text-align: center; font-size: 16pt; font-weight: bold; margin-bottom: 30px; text-transform: uppercase; }
-                .header-info { text-align: right; margin-bottom: 20px; }
-                .field-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
-                .field-label { font-weight: bold; }
-                .section { margin: 20px 0; }
-                table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-                th, td { border: 1px solid #000; padding: 5px 10px; font-size: 11pt; }
-                
-                .footer { 
-                    display: flex; 
-                    justify-content: space-between; 
-                    align-items: flex-end;
-                }
-                
-                .signature-block { 
-                    text-align: center;
-                }
-                .signature-line { 
-                    border-bottom: 1px solid #000; 
-                    margin-top: 40px; 
-                    margin-bottom: 5px;
-                }
-                .signature-label {
-                    font-size: 10pt;
-                    font-style: italic;
-                }
+              .no-print {
+                  position: fixed;
+                  top: 15px;
+                  right: 15px;
+                  padding: 10px 18px;
+                  background: #ef4444;
+                  color: white;
+                  border: none;
+                  border-radius: 6px;
+                  cursor: pointer;
+                  font-family: sans-serif;
+                  font-weight: 600;
+                  font-size: 13px;
+                  z-index: 1000;
+                  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+              }
 
-                .no-print {
-                    position: fixed;
-                    top: 20px;
-                    right: 20px;
-                    padding: 10px 20px;
-                    background: #ef4444;
-                    color: white;
-                    border: none;
-                    border-radius: 5px;
-                    cursor: pointer;
-                    font-family: sans-serif;
-                    font-weight: bold;
-                    z-index: 1000;
-                }
+              @media print {
+                  @page { margin: 1cm; size: A4 portrait; }
+                  body { padding: 0; margin: 0; width: 100%; max-width: none; }
+                  .footer-container {
+                      position: fixed;
+                      bottom: 1cm;
+                      left: 1cm;
+                      right: 1cm;
+                      width: auto;
+                      background: white;
+                      padding-top: 15px;
+                  }
+                  .no-print { display: none !important; }
+                  h1 { font-size: 14pt; }
+                  table { font-size: 10pt; }
+              }
+              
+              @media print and (max-width: 768px) {
+                  body { font-size: 11pt; padding: 20px 15px; }
+                  h1 { font-size: 13pt; }
+                  .field-row { flex-direction: column; gap: 3px; }
+                  table { font-size: 9.5pt; }
+                  th, td { padding: 4px 6px; }
+              }
+          </style>
+      </head>
+      <body>
+          <button class="no-print" onclick="window.close()">✕ Закрыть</button>
+          <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ<br>ТОВАРА В РАССРОЧКУ</h1>
+          
+          <div class="header-info">
+              Дата: ${new Date(sale.startDate).toLocaleDateString()}
+          </div>
 
-                @media print {
-                    @page { margin: 1.0cm; size: A4; }
-                    .footer-container {
-                        position: fixed;
-                        bottom: 0;
-                        left: 0;
-                        width: 100%;
-                        background: white;
-                        padding-top: 20px;
-                    }
-                    .no-print { display: none; }
-                }
-            </style>
-        </head>
-        <body>
-            <button class="no-print" onclick="window.close()">ЗАКРЫТЬ ОКНО</button>
-            <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
-            
-            <div class="header-info">
-                Дата: ${new Date(sale.startDate).toLocaleDateString()}
-            </div>
+          <div class="section">
+              <div class="field-row">
+                  <span><span class="field-label">Продавец:</span> ${companyName}</span>
+                  <span>Тел: ${sellerPhone || '+7 (___) ___-__-__'}</span>
+              </div>
+              <div class="field-row">
+                  <span><span class="field-label">Покупатель:</span> ${customer?.name || '__________________'}</span>
+                  <span>Тел: ${customer?.phone || '+7 (___) ___-__-__'}</span>
+              </div>
+              ${hasGuarantor ? `
+              <div class="field-row">
+                  <span><span class="field-label">Поручитель:</span> ${sale.guarantorName}</span>
+                  <span>Тел: ${sale.guarantorPhone || ''}</span>
+              </div>` : ''}
+          </div>
 
-            <div class="section">
-                <div class="field-row">
-                    <span><span class="field-label">Продавец:</span> ${companyName}</span>
-                    <span>Тел: ${sellerPhone || '+7 (___) ___-__-__'}</span>
-                </div>
-                <div class="field-row">
-                    <span><span class="field-label">Покупатель:</span> ${customer?.name || '__________________'}</span>
-                    <span>Тел: ${customer?.phone || '+7 (___) ___-__-__'}</span>
-                </div>
-                ${hasGuarantor ? `
-                <div class="field-row">
-                    <span><span class="field-label">Поручитель:</span> ${sale.guarantorName}</span>
-                    <span>Тел: ${sale.guarantorPhone || ''}</span>
-                </div>` : ''}
-            </div>
+          <div class="section">
+              <div><span class="field-label">Товар:</span> ${sale.productName}</div>
+              <div style="display: flex; justify-content: space-between; margin-top: 10px; flex-wrap: wrap; gap: 8px;">
+                  <span><span class="field-label">Срок рассрочки:</span> ${sale.installments} мес.</span>
+                  <span><span class="field-label">Стоимость:</span> ${sale.totalAmount.toLocaleString()} ₽</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                  <span><span class="field-label">Ежемесячный платеж:</span> ${(sale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
+                  <span><span class="field-label">Первый взнос:</span> ${sale.downPayment.toLocaleString()} ₽</span>
+              </div>
+          </div>
 
-            <div class="section">
-                <div><span class="field-label">Товар:</span> ${sale.productName}</div>
-                <div style="display: flex; justify-content: space-between; margin-top: 10px;">
-                    <span><span class="field-label">Срок рассрочки:</span> ${sale.installments} мес.</span>
-                    <span><span class="field-label">Стоимость:</span> ${sale.totalAmount.toLocaleString()} ₽</span>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span><span class="field-label">Ежемесячный платеж:</span> ${(sale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
-                    <span><span class="field-label">Первый взнос:</span> ${sale.downPayment.toLocaleString()} ₽</span>
-                </div>
-            </div>
+          <table>
+              <thead>
+                  <tr>
+                      <th style="width: 10%;">№</th>
+                      <th style="width: 30%;">Дата</th>
+                      <th style="width: 25%;">Сумма</th>
+                      <th style="width: 35%;">Остаток долга</th>
+                  </tr>
+              </thead>
+              <tbody>
+                  ${rows}
+              </tbody>
+          </table>
 
-            <table>
-                <thead>
-                    <tr>
-                        <th>№</th>
-                        <th>Дата</th>
-                        <th>Сумма</th>
-                        <th>Остаток долга</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rows}
-                </tbody>
-            </table>
+          <div style="margin: 25px 0; font-size: 11pt; line-height: 1.4;">
+              Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку на указанных выше условиях.
+          </div>
 
-            <div style="margin-top: 20px;">
-                Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку.
-            </div>
+          <div class="footer-container">
+              <div class="footer">
+                  <div class="signature-block" style="width: ${hasGuarantor ? '30%' : '45%'}">
+                      <div class="signature-line"></div>
+                      <div class="signature-label">Продавец</div>
+                  </div>
+                  ${hasGuarantor ? `
+                  <div class="signature-block" style="width: 30%">
+                      <div class="signature-line"></div>
+                      <div class="signature-label">Поручитель</div>
+                  </div>` : ''}
+                  <div class="signature-block" style="width: ${hasGuarantor ? '30%' : '45%'}">
+                      <div class="signature-line"></div>
+                      <div class="signature-label">Покупатель</div>
+                  </div>
+              </div>
+          </div>
 
-            <div class="footer-container">
-                <div class="footer">
-                    <div class="signature-block" style="width: ${hasGuarantor ? '30%' : '45%'}">
-                        <div class="signature-line"></div>
-                        <div class="signature-label">Продавец</div>
-                    </div>
-                    ${hasGuarantor ? `
-                    <div class="signature-block" style="width: 30%">
-                        <div class="signature-line"></div>
-                        <div class="signature-label">Поручитель</div>
-                    </div>` : ''}
-                    <div class="signature-block" style="width: ${hasGuarantor ? '30%' : '45%'}">
-                        <div class="signature-line"></div>
-                        <div class="signature-label">Покупатель</div>
-                    </div>
-                </div>
-            </div>
+          <script>
+              window.onload = function() { 
+                  setTimeout(() => { window.print(); }, 300); 
+              }
+          </script>
+      </body>
+      </html>
+    `;
 
-            <script>
-                window.onload = function() { window.print(); }
-            </script>
-        </body>
-        </html>
-      `;
-
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
   };
 
   return (

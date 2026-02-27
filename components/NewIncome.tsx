@@ -124,6 +124,18 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       return numAmount * margin;
   }, [selectedSale, amount]);
 
+  // Helper for filename transliteration
+  const transliterate = (text: string) => {
+      const map: Record<string, string> = {
+          'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
+          'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
+          'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts',
+          'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu',
+          'я': 'ya', ' ': '_'
+      };
+      return text.toLowerCase().split('').map(char => map[char] || char).join('').replace(/[^a-z0-9_]/g, '');
+  };
+
   const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
       if (!contractRef.current) throw new Error("Contract element not found");
 
@@ -138,14 +150,16 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       element.style.left = '-9999px';
 
       try {
-          const canvas = await html2canvas(element, { scale: 2 });
-          const imgData = canvas.toDataURL('image/png');
+          // Use slightly lower scale for better performance/size, 1.5 is usually enough for screen/print
+          const canvas = await html2canvas(element, { scale: 1.5 });
+          // Use JPEG with 0.7 quality to drastically reduce file size compared to PNG
+          const imgData = canvas.toDataURL('image/jpeg', 0.7);
 
           const pdf = new jsPDF('p', 'mm', 'a4');
           const pdfWidth = pdf.internal.pageSize.getWidth();
           const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-          pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+          pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
           return pdf.output('blob');
       } finally {
           element.style.display = originalDisplay;
@@ -193,7 +207,9 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
               try {
                   const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-                  const fileName = `Договор_${selectedSale.productName.replace(/\s+/g, '_')}.pdf`;
+                  // Use transliterated name to avoid encoding issues
+                  const safeProductName = transliterate(selectedSale.productName);
+                  const fileName = `contract_${safeProductName}.pdf`;
 
                   const success = await sendWhatsAppFile(
                       appSettings.whatsapp.idInstance,
@@ -286,10 +302,10 @@ const NewIncome: React.FC<NewIncomeProps> = ({
               <table style={{ width: '100%', borderCollapse: 'collapse', margin: '20px 0' }}>
                   <thead>
                       <tr>
-                          <th style={{ border: '1px solid #000', padding: '5px 10px' }}>№</th>
-                          <th style={{ border: '1px solid #000', padding: '5px 10px' }}>Дата</th>
-                          <th style={{ border: '1px solid #000', padding: '5px 10px' }}>Сумма</th>
-                          <th style={{ border: '1px solid #000', padding: '5px 10px' }}>Остаток долга</th>
+                          <th style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>№</th>
+                          <th style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>Дата</th>
+                          <th style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>Сумма</th>
+                          <th style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>Остаток долга</th>
                       </tr>
                   </thead>
                   <tbody>
@@ -298,10 +314,10 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                           const displayDebt = Math.max(0, currentDebt);
                           return (
                               <tr key={index}>
-                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center' }}>{index + 1}</td>
-                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center' }}>{p.date.toLocaleDateString()}</td>
-                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center' }}>{p.amount.toLocaleString()} ₽</td>
-                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center' }}>{displayDebt.toLocaleString()} ₽</td>
+                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>{index + 1}</td>
+                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>{p.date.toLocaleDateString()}</td>
+                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>{p.amount.toLocaleString()} ₽</td>
+                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>{displayDebt.toLocaleString()} ₽</td>
                               </tr>
                           );
                       })}
