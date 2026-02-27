@@ -279,7 +279,189 @@ app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
     }
 });
 
-// 1. Auth Routes
+// --- WHATSAPP WEBHOOK ---
+
+app.post('/api/integrations/whatsapp/webhook', async (req, res) => {
+    try {
+        const body = req.body;
+
+        // Green API sends different types of notifications
+        // We care about: incomingMessageReceived, incomingBlock (button click)
+        const typeWebhook = body.typeWebhook;
+        const senderData = body.senderData;
+        const messageData = body.messageData;
+        const instanceId = body.instanceData?.idInstance;
+        const apiToken = body.instanceData?.apiTokenInstance; // Note: Green API usually doesn't send token in webhook, we need to find it in our DB
+
+        if (!senderData || !senderData.chatId) {
+            return res.status(200).send('OK'); // Ignore system messages
+        }
+
+        const chatId = senderData.chatId;
+        const senderPhone = chatId.replace('@c.us', ''); // 79991234567
+        const senderName = senderData.senderName || 'Клиент';
+
+        console.log(`[WhatsApp Webhook] Type: ${typeWebhook}, Sender: ${senderPhone}`);
+
+        // 1. Find the Manager (User) who owns this customer
+        // We search in data_items where type='customers' and phone matches
+        // Normalize phone search: last 10 digits
+        const phoneSearch = senderPhone.slice(-10);
+
+        const customerQuery = `
+            SELECT user_id, data 
+            FROM data_items 
+            WHERE type = 'customers' 
+            AND data->>'phone' LIKE $1
+            LIMIT 1
+        `;
+        const customerResult = await pool.query(customerQuery, [`%${phoneSearch}%`]);
+
+        if (customerResult.rows.length === 0) {
+            console.log(`[WhatsApp Bot] Customer not found for phone ${senderPhone}`);
+            return res.status(200).send('OK');
+        }
+
+        const { user_id: managerId, data: customer } = customerResult.rows[0];
+
+        // 2. Get Manager's Settings
+        const userQuery = 'SELECT whatsapp_settings, name FROM users WHERE id = $1';
+        const userResult = await pool.query(userQuery, [managerId]);
+
+        if (userResult.rows.length === 0) return res.status(200).send('OK');
+
+        const manager = userResult.rows[0];
+        const settings = manager.whatsapp_settings;
+
+        if (!settings || !settings.botEnabled) {
+            console.log(`[WhatsApp Bot] Bot disabled for manager ${managerId}`);
+            return res.status(200).send('OK');
+        }
+
+        const { idInstance, apiTokenInstance } = settings;
+
+        // Helper to send message
+        const sendMessage = async (chatId, text) => {
+            try {
+                await axios.post(`https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiTokenInstance}`, {
+                    chatId,
+                    message: text
+                });
+            } catch (e) {
+                console.error("Send Message Error", e.message);
+            }
+        };
+
+        // Helper to send buttons
+        const sendButtons = async (chatId, text, buttons) => {
+            try {
+                await axios.post(`https://api.green-api.com/waInstance${idInstance}/sendInteractiveButtons/${apiTokenInstance}`, {
+                    chatId,
+                    message: text,
+                    buttons: buttons.map(b => ({ type: 'reply', id: b.id, title: b.title }))
+                });
+            } catch (e) {
+                console.error("Send Buttons Error", e.message);
+            }
+        };
+
+        // 3. Handle Incoming Message
+        if (typeWebhook === 'incomingMessageReceived') {
+            // Check if it's a text message
+            if (messageData.typeMessage === 'textMessage') {
+                const text = messageData.textMessageData.textMessage;
+                console.log(`[WhatsApp Bot] Received text: ${text}`);
+
+                // Send Greeting & Buttons
+                const greeting = `Здравствуйте 👋 Я ассистент ${manager.name}. Чем могу помочь?`;
+
+                const buttons = [];
+                if (settings.botButtons?.debt !== false) buttons.push({ id: 'debt', title: '📊 Мой долг' });
+                if (settings.botButtons?.paymentDate !== false) buttons.push({ id: 'payment_date', title: '📅 Дата платежа' });
+                if (settings.botButtons?.conditions !== false) buttons.push({ id: 'conditions', title: 'Условия рассрочки' });
+
+                if (buttons.length > 0) {
+                    await sendButtons(chatId, greeting, buttons);
+                } else {
+                    await sendMessage(chatId, greeting);
+                }
+            }
+        }
+        // 4. Handle Button Click
+        else if (typeWebhook === 'incomingBlock') {
+             // Green API sends button clicks as 'incomingBlock' with typeBlock='interactiveMessage' usually,
+             // OR sometimes as 'incomingMessageReceived' with typeMessage='buttonsResponseMessage'.
+             // Let's handle generic button response.
+             // Note: The payload structure depends on Green API version.
+             // Assuming standard structure for button reply.
+
+             // Check for button response
+             let buttonId = null;
+             if (messageData && messageData.typeMessage === 'buttonsResponseMessage') {
+                 buttonId = messageData.buttonsResponseMessageData.selectedButtonId;
+             } else if (body.typeBlock === 'interactiveMessage' && body.interactiveMessageData) {
+                 // Some versions use this
+                 buttonId = body.interactiveMessageData.selectedButtonId;
+             }
+
+             if (buttonId) {
+                 console.log(`[WhatsApp Bot] Button clicked: ${buttonId}`);
+
+                 // Fetch Sales Data
+                 const salesQuery = `
+                    SELECT data 
+                    FROM data_items 
+                    WHERE type = 'sales' 
+                    AND user_id = $1 
+                    AND data->>'customerId' = $2
+                 `;
+                 const salesResult = await pool.query(salesQuery, [managerId, customer.id]);
+                 const sales = salesResult.rows.map(r => r.data);
+
+                 // Filter active sales
+                 const activeSales = sales.filter(s => s.status === 'ACTIVE' && s.remainingAmount > 0);
+
+                 if (buttonId === 'debt') {
+                     if (activeSales.length === 0) {
+                         await sendMessage(chatId, "У вас нет активных задолженностей. Спасибо! 🎉");
+                     } else {
+                         let totalDebt = 0;
+                         let details = "";
+                         activeSales.forEach(s => {
+                             totalDebt += s.remainingAmount;
+                             details += `\n- ${s.productName}: ${s.remainingAmount.toLocaleString()} ₽`;
+                         });
+                         await sendMessage(chatId, `Ваш общий долг: ${totalDebt.toLocaleString()} ₽${details}`);
+                     }
+                 } else if (buttonId === 'payment_date') {
+                     if (activeSales.length === 0) {
+                         await sendMessage(chatId, "У вас нет активных платежей.");
+                     } else {
+                         let msg = "Ближайшие платежи:\n";
+                         activeSales.forEach(s => {
+                             // Find next unpaid payment
+                             const nextPayment = s.paymentPlan.find(p => !p.isPaid);
+                             if (nextPayment) {
+                                 msg += `- ${s.productName}: ${new Date(nextPayment.date).toLocaleDateString()} (${nextPayment.amount.toLocaleString()} ₽)\n`;
+                             }
+                         });
+                         await sendMessage(chatId, msg);
+                     }
+                 } else if (buttonId === 'conditions') {
+                     // Send calculator link (assuming generic link for now, or specific if user has one)
+                     // Using the app URL as base
+                     const calcUrl = `https://ais-pre-7jeyavkqpkyngbf37vzo2l-28364293087.europe-west2.run.app/calculator`; // Hardcoded for now based on context
+                     await sendMessage(chatId, `Вы можете рассчитать условия рассрочки здесь: ${calcUrl}`);
+                 }
+             }
+        }
+
+        res.status(200).send('OK');
+    } catch (error) {
+        console.error("Webhook Error:", error);
+        res.status(500).send('Error');
+    }
+});
 
 // Send Verification Code
 app.post('/api/auth/send-code', async (req, res) => {
@@ -1208,4 +1390,26 @@ app.post('/api/v1/payments', apiKeyAuth, async (req, res) => {
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`Server started on port ${PORT} (0.0.0.0)`));
+// --- VITE MIDDLEWARE ---
+const startServer = async () => {
+    if (process.env.NODE_ENV !== 'production') {
+        const viteModule = await import('vite');
+        const vite = await viteModule.createServer({
+            server: { middlewareMode: true },
+            appType: 'spa',
+        });
+        app.use(vite.middlewares);
+    } else {
+        const path = require('path');
+        app.use(express.static(path.join(__dirname, '../dist'))); // Adjust path to point to root dist
+        app.get('*', (req, res) => {
+            res.sendFile(path.join(__dirname, '../dist', 'index.html'));
+        });
+    }
+
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+    });
+};
+
+startServer();
