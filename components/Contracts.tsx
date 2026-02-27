@@ -317,7 +317,7 @@ const Contracts: React.FC<ContractsProps> = ({
                   font-size: 12pt; 
                   line-height: 1.5; 
                   padding: 30px 25px;
-                  padding-bottom: 160px;
+                  padding-bottom: 200px;
                   width: 100%;
                   max-width: 210mm;
                   margin: 0 auto;
@@ -326,7 +326,12 @@ const Contracts: React.FC<ContractsProps> = ({
               }
               h1 { text-align: center; font-size: 15pt; font-weight: bold; margin: 0 0 25px 0; text-transform: uppercase; line-height: 1.3; }
               .header-info { text-align: right; margin-bottom: 20px; font-size: 11pt; }
-              .field-row { display: flex; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 5px; }
+              
+              .field-row { 
+                  display: flex; 
+                  justify-content: space-between; 
+                  margin-bottom: 10px; 
+              }
               .field-label { font-weight: bold; }
               
               .section { margin: 0 0 20px 0; }
@@ -342,10 +347,22 @@ const Contracts: React.FC<ContractsProps> = ({
                   justify-content: space-between; 
                   align-items: flex-end;
                   margin-top: 10px;
+                  width: 100%;
               }
-              .signature-block { text-align: center; }
-              .signature-line { border-bottom: 1px solid #000; margin: 35px 0 5px 0; min-height: 1px; }
-              .signature-label { font-size: 10pt; font-style: italic; }
+              .signature-block { 
+                  text-align: center; 
+                  break-inside: avoid;
+                  page-break-inside: avoid;
+              }
+              .signature-line { 
+                  border-bottom: 1px solid #000; 
+                  margin: 35px 0 5px 0; 
+                  min-height: 1px; 
+              }
+              .signature-label { 
+                  font-size: 10pt; 
+                  font-style: italic; 
+              }
 
               .no-print {
                   position: fixed;
@@ -364,35 +381,115 @@ const Contracts: React.FC<ContractsProps> = ({
                   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
               }
 
+              /* === PRINT STYLES === */
               @media print {
                   @page { margin: 1cm; size: A4 portrait; }
-                  body { padding: 0; margin: 0; width: 100%; max-width: none; }
-                  .footer-container {
-                      position: fixed;
-                      bottom: 1cm;
-                      left: 1cm;
-                      right: 1cm;
-                      width: auto;
-                      background: white;
-                      padding-top: 15px;
+                  body { 
+                      padding: 0 1cm; 
+                      margin: 0; 
+                      width: 100%; 
+                      max-width: none; 
+                      padding-bottom: 180px !important;
                   }
+                  
+                  /* Force phone numbers to stay on the right */
+                  .field-row { 
+                      flex-wrap: nowrap !important; 
+                      gap: 0 !important;
+                      justify-content: space-between !important;
+                  }
+                  .field-row > span:first-child { 
+                      flex-shrink: 0; 
+                  }
+                  .field-row > span:last-child { 
+                      text-align: right; 
+                      flex-shrink: 0;
+                      margin-left: 10px;
+                  }
+                  
+                  /* Footer with signatures - always visible on print */
+                  .footer-container {
+                      position: relative !important;
+                      bottom: auto !important;
+                      left: auto !important;
+                      right: auto !important;
+                      width: 100% !important;
+                      background: white !important;
+                      padding-top: 30px !important;
+                      margin-top: 40px !important;
+                      page-break-inside: avoid;
+                      break-inside: avoid;
+                      display: block !important;
+                  }
+                  .footer {
+                      display: flex !important;
+                      justify-content: space-between !important;
+                      width: 100% !important;
+                  }
+                  .signature-block {
+                      display: block !important;
+                      visibility: visible !important;
+                      opacity: 1 !important;
+                  }
+                  
                   .no-print { display: none !important; }
                   h1 { font-size: 14pt; }
                   table { font-size: 10pt; }
               }
               
-              @media print and (max-width: 768px) {
+              /* === MOBILE SCREEN (not print) === */
+              @media screen and (max-width: 768px) {
                   body { font-size: 11pt; padding: 20px 15px; }
                   h1 { font-size: 13pt; }
-                  .field-row { flex-direction: column; gap: 3px; }
+                  .field-row { flex-wrap: wrap; gap: 5px; }
+                  .field-row > span:last-child { 
+                      text-align: right; 
+                      min-width: 120px;
+                  }
                   table { font-size: 9.5pt; }
                   th, td { padding: 4px 6px; }
+              }
+              
+              /* === MOBILE PRINT FIXES === */
+              @media print and (max-width: 768px) {
+                  body { 
+                      font-size: 10.5pt; 
+                      padding: 15px 10px !important; 
+                      padding-bottom: 190px !important;
+                  }
+                  h1 { font-size: 12pt; }
+                  .field-row { 
+                      flex-wrap: nowrap !important; 
+                      gap: 0 !important;
+                  }
+                  .field-row > span { 
+                      font-size: 10pt;
+                  }
+                  .field-row > span:last-child { 
+                      text-align: right !important;
+                      margin-left: 8px;
+                  }
+                  table { font-size: 9pt; }
+                  th, td { padding: 4px 5px; }
+                  
+                  /* Ensure signatures show on mobile print */
+                  .footer-container {
+                      position: relative !important;
+                      margin-top: 30px !important;
+                      padding-top: 20px !important;
+                  }
+                  .signature-line { 
+                      margin: 25px 0 3px 0 !important; 
+                  }
+                  .signature-label { 
+                      font-size: 9pt !important; 
+                  }
               }
           </style>
       </head>
       <body>
           <button class="no-print" onclick="window.close()">✕ Закрыть</button>
-          <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ<br>ТОВАРА В РАССРОЧКУ</h1>
+          <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
           
           <div class="header-info">
               Дата: ${new Date(sale.startDate).toLocaleDateString()}
@@ -416,11 +513,11 @@ const Contracts: React.FC<ContractsProps> = ({
 
           <div class="section">
               <div><span class="field-label">Товар:</span> ${sale.productName}</div>
-              <div style="display: flex; justify-content: space-between; margin-top: 10px; flex-wrap: wrap; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; margin-top: 10px;">
                   <span><span class="field-label">Срок рассрочки:</span> ${sale.installments} мес.</span>
                   <span><span class="field-label">Стоимость:</span> ${sale.totalAmount.toLocaleString()} ₽</span>
               </div>
-              <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+              <div style="display: flex; justify-content: space-between;">
                   <span><span class="field-label">Ежемесячный платеж:</span> ${(sale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
                   <span><span class="field-label">Первый взнос:</span> ${sale.downPayment.toLocaleString()} ₽</span>
               </div>
@@ -473,7 +570,7 @@ const Contracts: React.FC<ContractsProps> = ({
 
     printWindow.document.write(htmlContent);
     printWindow.document.close();
-  };
+};
 
   return (
     <div className="space-y-4 pb-20 w-full">
