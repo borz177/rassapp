@@ -378,11 +378,11 @@ app.post('/api/integrations/whatsapp/webhook', async (req, res) => {
             try {
                 await axios.post(`https://api.green-api.com/waInstance${idInstance}/sendInteractiveButtons/${apiTokenInstance}`, {
                     chatId,
-                    message: text,
-                    buttons: buttons.map(b => ({ type: 'reply', id: b.id, title: b.title }))
+                    messageBody: text,
+                    buttons: buttons.map(b => ({ buttonId: b.id, buttonText: b.title }))
                 });
             } catch (e) {
-                console.error("Send Buttons Error", e.message);
+                console.error("Send Buttons Error", e.message, e.response?.data);
             }
         };
 
