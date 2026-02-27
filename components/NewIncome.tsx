@@ -33,7 +33,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   // New Features State
   const [sendHistory, setSendHistory] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const contractRef = useRef<HTMLDivElement>(null); // Ref for hidden contract div
+  const contractRef = useRef<HTMLDivElement>(null);
 
   const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
   const activeCustomerSales = useMemo(() => sales.filter(s => s.customerId === selectedCustomerId && s.remainingAmount > 0), [sales, selectedCustomerId]);
@@ -74,7 +74,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
               }
           }
 
-          if (!amount) { // Only set amount if it's not already set by the user
+          if (!amount) {
               setAmount(suggestedAmount > 0 ? suggestedAmount.toFixed(2) : '');
           }
           setTargetAccountId(selectedSale.accountId);
@@ -117,14 +117,11 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       if (!selectedSale || !amount) return 0;
       const numAmount = Number(amount);
       if (selectedSale.totalAmount <= 0) return 0;
-
       const totalProfit = selectedSale.totalAmount - selectedSale.buyPrice;
       const margin = totalProfit / selectedSale.totalAmount;
-
       return numAmount * margin;
   }, [selectedSale, amount]);
 
-  // Helper for filename transliteration
   const transliterate = (text: string) => {
       const map: Record<string, string> = {
           'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
@@ -138,8 +135,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
       if (!contractRef.current) throw new Error("Contract element not found");
-
-      // Temporarily show the element to capture it
       const element = contractRef.current;
       const originalDisplay = element.style.display;
       const originalPosition = element.style.position;
@@ -150,15 +145,11 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       element.style.left = '-9999px';
 
       try {
-          // Use slightly lower scale for better performance/size, 1.5 is usually enough for screen/print
           const canvas = await html2canvas(element, { scale: 1.5 });
-          // Use JPEG with 0.7 quality to drastically reduce file size compared to PNG
           const imgData = canvas.toDataURL('image/jpeg', 0.7);
-
           const pdf = new jsPDF('p', 'mm', 'a4');
           const pdfWidth = pdf.internal.pageSize.getWidth();
           const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
           pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
           return pdf.output('blob');
       } finally {
@@ -172,45 +163,31 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       e.preventDefault();
       const numAmount = Number(amount);
       if (numAmount <= 0) { alert("Введите сумму больше нуля"); return; }
-
-      // Validate inputs before showing modal
       if (sourceType === 'CUSTOMER' && !selectedSaleId) { alert("Выберите договор"); return; }
       if (sourceType === 'INVESTOR' && (!selectedInvestorId || !targetAccountId)) { alert("Ошибка выбора инвестора или счета"); return; }
       if (sourceType === 'OTHER' && !targetAccountId) { alert("Выберите счет"); return; }
-
       setShowConfirmModal(true);
   };
 
   const handleConfirm = async () => {
       const numAmount = Number(amount);
-
-      // Handle Date with Time
       let finalDate = date;
       const now = new Date();
       const selectedDate = new Date(date);
-
       const isToday = selectedDate.getDate() === now.getDate() &&
                       selectedDate.getMonth() === now.getMonth() &&
                       selectedDate.getFullYear() === now.getFullYear();
-
-      if (isToday) {
-          finalDate = now.toISOString();
-      }
+      if (isToday) { finalDate = now.toISOString(); }
 
       const commonData = { amount: numAmount, date: finalDate };
 
-      // Process Submission
       if (sourceType === 'CUSTOMER') {
           onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
-
-          // Process WhatsApp Sending if enabled
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
               try {
                   const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-                  // Use transliterated name to avoid encoding issues
                   const safeProductName = transliterate(selectedSale.productName);
                   const fileName = `contract_${safeProductName}.pdf`;
-
                   const success = await sendWhatsAppFile(
                       appSettings.whatsapp.idInstance,
                       appSettings.whatsapp.apiTokenInstance,
@@ -218,130 +195,144 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                       pdfBlob,
                       fileName
                   );
-
-                  if (success) {
-                      alert("Договор (PDF) отправлен клиенту в WhatsApp");
-                  } else {
-                      alert("Ошибка отправки PDF в WhatsApp");
-                  }
+                  if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
+                  else { alert("Ошибка отправки PDF в WhatsApp"); }
               } catch (error) {
                   console.error("Error generating/sending PDF:", error);
                   alert("Ошибка при создании или отправке PDF");
               }
           }
-
       } else if (sourceType === 'INVESTOR') {
           onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
       } else {
           onSubmit({ ...commonData, type: 'OTHER_INCOME', accountId: targetAccountId, note: note || "Прочий приход" });
       }
-
       setShowConfirmModal(false);
   };
 
-  // Helper to render contract content for PDF generation
+  // === ОБНОВЛЁННАЯ renderContractContent ===
   const renderContractContent = () => {
       if (!selectedSale || !selectedCustomer) return null;
 
       const companyName = appSettings?.companyName || "Компания";
       const hasGuarantor = !!selectedSale.guarantorName;
+      const sellerPhone = appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance.slice(0, 11)}` : (user?.phone || '+7 (___) ___-__-__');
 
-      // Construct History Data
-      const existingPayments = selectedSale.paymentPlan ? selectedSale.paymentPlan.filter(p => p.isPaid).map(p => ({
-          date: new Date(p.date),
-          amount: p.amount
-      })) : [];
-
-      // Add current payment (preview)
-      existingPayments.push({
-          date: new Date(date),
-          amount: Number(amount)
-      });
-
+      const existingPayments = selectedSale.paymentPlan
+          ? selectedSale.paymentPlan.filter(p => p.isPaid).map(p => ({ date: new Date(p.date), amount: p.amount }))
+          : [];
+      existingPayments.push({ date: new Date(date), amount: Number(amount) });
       existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+      // === СТИЛИ (как в printContract) ===
+      const styles = {
+          page: {
+              width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
+              fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5',
+              display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto'
+          },
+          contentWrapper: { flex: 1 },
+          h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
+          headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
+          fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
+          fieldLabel: { fontWeight: 'bold' as const },
+          phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
+          section: { margin: '0 0 20px 0' },
+          sectionItem: { marginBottom: '12px' },
+          sectionItemLast: { marginBottom: 0 },
+          table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
+          th: { border: '1px solid #000', padding: '6px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
+          td: { border: '1px solid #000', padding: '6px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
+          footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
+          footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
+          signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
+          signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
+          signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
+      };
 
       let currentDebt = selectedSale.totalAmount - selectedSale.downPayment;
 
       return (
-          <div ref={contractRef} style={{ display: 'none', width: '210mm', padding: '20mm', background: 'white', color: 'black', fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5' }}>
-              <h1 style={{ textAlign: 'center', fontSize: '16pt', fontWeight: 'bold', marginBottom: '30px', textTransform: 'uppercase' }}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
+          <div ref={contractRef} style={styles.page}>
+              <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ<br/>ТОВАРА В РАССРОЧКУ</h1>
+              <div style={styles.headerInfo}>Дата: {new Date(selectedSale.startDate).toLocaleDateString()}</div>
 
-              <div style={{ textAlign: 'right', marginBottom: '20px' }}>
-                  Дата: {new Date(selectedSale.startDate).toLocaleDateString()}
-              </div>
-
-              <div style={{ margin: '20px 0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                      <span><span style={{ fontWeight: 'bold' }}>Продавец:</span> {companyName}</span>
-                      <span></span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                      <span><span style={{ fontWeight: 'bold' }}>Покупатель:</span> {selectedCustomer.name}</span>
-                      <span>Тел: {selectedCustomer.phone}</span>
-                  </div>
-                  {hasGuarantor && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                          <span><span style={{ fontWeight: 'bold' }}>Поручитель:</span> {selectedSale.guarantorName}</span>
-                          <span>Тел: {selectedSale.guarantorPhone}</span>
+              <div style={styles.contentWrapper}>
+                  <div style={styles.section}>
+                      <div style={styles.fieldRow}>
+                          <span><span style={styles.fieldLabel}>Продавец:</span> {companyName}</span>
+                          <span style={styles.phoneField}>Тел: {sellerPhone}</span>
                       </div>
-                  )}
-              </div>
-
-              <div style={{ margin: '20px 0' }}>
-                  <div><span style={{ fontWeight: 'bold' }}>Товар:</span> {selectedSale.productName}</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px' }}>
-                      <span><span style={{ fontWeight: 'bold' }}>Срок рассрочки:</span> {selectedSale.installments} мес.</span>
-                      <span><span style={{ fontWeight: 'bold' }}>Стоимость:</span> {selectedSale.totalAmount.toLocaleString()} ₽</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span><span style={{ fontWeight: 'bold' }}>Ежемесячный платеж:</span> {(selectedSale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
-                      <span><span style={{ fontWeight: 'bold' }}>Первый взнос:</span> {selectedSale.downPayment.toLocaleString()} ₽</span>
-                  </div>
-              </div>
-
-              <table style={{ width: '100%', borderCollapse: 'collapse', margin: '20px 0' }}>
-                  <thead>
-                      <tr>
-                          <th style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>№</th>
-                          <th style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>Дата</th>
-                          <th style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>Сумма</th>
-                          <th style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>Остаток долга</th>
-                      </tr>
-                  </thead>
-                  <tbody>
-                      {existingPayments.map((p, index) => {
-                          currentDebt -= p.amount;
-                          const displayDebt = Math.max(0, currentDebt);
-                          return (
-                              <tr key={index}>
-                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>{index + 1}</td>
-                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>{p.date.toLocaleDateString()}</td>
-                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>{p.amount.toLocaleString()} ₽</td>
-                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center', verticalAlign: 'middle' }}>{displayDebt.toLocaleString()} ₽</td>
-                              </tr>
-                          );
-                      })}
-                  </tbody>
-              </table>
-
-              <div style={{ marginTop: '20px' }}>
-                  Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку.
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '40px' }}>
-                  <div style={{ textAlign: 'center', width: hasGuarantor ? '30%' : '45%' }}>
-                      <div style={{ borderBottom: '1px solid #000', marginBottom: '5px' }}></div>
-                      <div style={{ fontSize: '10pt', fontStyle: 'italic' }}>Продавец</div>
-                  </div>
-                  {hasGuarantor && (
-                      <div style={{ textAlign: 'center', width: '30%' }}>
-                          <div style={{ borderBottom: '1px solid #000', marginBottom: '5px' }}></div>
-                          <div style={{ fontSize: '10pt', fontStyle: 'italic' }}>Поручитель</div>
+                      <div style={styles.fieldRow}>
+                          <span><span style={styles.fieldLabel}>Покупатель:</span> {selectedCustomer.name}</span>
+                          <span style={styles.phoneField}>Тел: {selectedCustomer.phone}</span>
                       </div>
-                  )}
-                  <div style={{ textAlign: 'center', width: hasGuarantor ? '30%' : '45%' }}>
-                      <div style={{ borderBottom: '1px solid #000', marginBottom: '5px' }}></div>
-                      <div style={{ fontSize: '10pt', fontStyle: 'italic' }}>Покупатель</div>
+                      {hasGuarantor && (
+                          <div style={styles.fieldRow}>
+                              <span><span style={styles.fieldLabel}>Поручитель:</span> {selectedSale.guarantorName}</span>
+                              <span style={styles.phoneField}>Тел: {selectedSale.guarantorPhone}</span>
+                          </div>
+                      )}
+                  </div>
+
+                  <div style={styles.section}>
+                      <div style={styles.sectionItem}><span style={styles.fieldLabel}>Товар:</span> {selectedSale.productName}</div>
+                      <div style={{...styles.sectionItem, display: 'flex', justifyContent: 'space-between', marginTop: '10px'}}>
+                          <span><span style={styles.fieldLabel}>Срок рассрочки:</span> {selectedSale.installments} мес.</span>
+                          <span><span style={styles.fieldLabel}>Стоимость:</span> {selectedSale.totalAmount.toLocaleString()} ₽</span>
+                      </div>
+                      <div style={{...styles.sectionItemLast, display: 'flex', justifyContent: 'space-between'}}>
+                          <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {(selectedSale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
+                          <span><span style={styles.fieldLabel}>Первый взнос:</span> {selectedSale.downPayment.toLocaleString()} ₽</span>
+                      </div>
+                  </div>
+
+                  <table style={styles.table}>
+                      <thead>
+                          <tr>
+                              <th style={{...styles.th, width: '10%'}}>№</th>
+                              <th style={{...styles.th, width: '30%'}}>Дата</th>
+                              <th style={{...styles.th, width: '25%'}}>Сумма</th>
+                              <th style={{...styles.th, width: '35%'}}>Остаток долга</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {existingPayments.map((p, index) => {
+                              currentDebt -= p.amount;
+                              const displayDebt = Math.max(0, currentDebt);
+                              return (
+                                  <tr key={index}>
+                                      <td style={styles.td}>{index + 1}</td>
+                                      <td style={styles.td}>{p.date.toLocaleDateString()}</td>
+                                      <td style={styles.td}>{p.amount.toLocaleString()} ₽</td>
+                                      <td style={styles.td}>{displayDebt.toLocaleString()} ₽</td>
+                                  </tr>
+                              );
+                          })}
+                      </tbody>
+                  </table>
+
+                  <div style={{ margin: '25px 0', fontSize: '11pt', lineHeight: 1.4 }}>
+                      Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку на указанных выше условиях.
+                  </div>
+              </div>
+
+              <div style={styles.footerContainer}>
+                  <div style={styles.footer}>
+                      <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
+                          <div style={styles.signatureLine}></div>
+                          <div style={styles.signatureLabel}>Продавец</div>
+                      </div>
+                      {hasGuarantor && (
+                          <div style={styles.signatureBlock('30%')}>
+                              <div style={styles.signatureLine}></div>
+                              <div style={styles.signatureLabel}>Поручитель</div>
+                          </div>
+                      )}
+                      <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
+                          <div style={styles.signatureLine}></div>
+                          <div style={styles.signatureLabel}>Покупатель</div>
+                      </div>
                   </div>
               </div>
           </div>
@@ -352,7 +343,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   return (
     <div className="space-y-4 animate-fade-in pb-20">
-      {/* Hidden Contract Render */}
       {renderContractContent()}
 
       <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
@@ -421,7 +411,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                       <span className="absolute left-4 top-3.5 text-slate-400 text-lg">₽</span>
                       <input type="number" placeholder="0" className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={amount} onChange={e => setAmount(e.target.value)} />
                   </div>
-
                   {sourceType === 'CUSTOMER' && selectedSale && (
                       <div className="flex justify-between items-start mt-2">
                           <p className="text-xs text-slate-400 mt-1">Рек: {recommendedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽</p>
@@ -434,7 +423,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                       </div>
                   )}
               </div>
-
               {sourceType === 'CUSTOMER' && appSettings.whatsapp?.enabled && (
                   <div className="flex items-center justify-between border-t border-slate-100 pt-3">
                       <div className="flex items-center gap-2">
@@ -447,22 +435,18 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                       </label>
                   </div>
               )}
-
               <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
                   <input type="date" className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={date} onChange={e => setDate(e.target.value)} />
               </div>
           </div>
-
           <button type="submit" className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-transform active:scale-95">Подтвердить приход</button>
       </form>
 
-      {/* Confirmation Modal */}
       {showConfirmModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowConfirmModal(false)}>
               <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
                   <h3 className="text-xl font-bold text-slate-800 text-center">Подтверждение прихода</h3>
-                  
                   <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
                       {sourceType === 'CUSTOMER' && (
                           <>
@@ -476,26 +460,21 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                       {sourceType === 'OTHER' && (
                           <div className="flex justify-between"><span className="text-slate-500">Назначение:</span><span className="font-medium text-slate-800">{note}</span></div>
                       )}
-                      
                       <div className="my-2 border-t border-slate-200"></div>
-                      
                       <div className="flex justify-between items-center">
                           <span className="text-slate-500">Сумма:</span>
                           <span className="text-xl font-bold text-emerald-600">+{Number(amount).toLocaleString()} ₽</span>
                       </div>
-                      
                       <div className="flex justify-between items-center pt-1">
                           <span className="text-slate-500">Счет:</span>
                           <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-xs font-bold">{getAccountName(targetAccountId)}</span>
                       </div>
-
                       {sourceType === 'CUSTOMER' && sendHistory && (
                           <div className="flex items-center gap-2 mt-2 text-xs text-emerald-600 font-medium bg-white p-2 rounded border border-emerald-100">
                               {ICONS.Send} Будет отправлен отчет в WhatsApp
                           </div>
                       )}
                   </div>
-
                   <div className="flex gap-3 pt-2">
                       <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200">Отмена</button>
                       <button onClick={handleConfirm} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200">Зачислить</button>
