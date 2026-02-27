@@ -384,18 +384,88 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
 
             <hr className="border-slate-100" />
 
+            {/* Templates */}
+            <div>
+              <h4 className="font-semibold text-slate-700 mb-3 text-sm flex items-center gap-2">
+                {ICONS.File} Шаблоны сообщений
+              </h4>
+
+              {/* Tabs */}
+              <div className="flex bg-slate-100 p-1 rounded-xl mb-3">
+                <button
+                  onClick={() => setActiveTemplateTab('UPCOMING')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                    activeTemplateTab === 'UPCOMING'
+                      ? 'bg-white text-slate-800 shadow-sm'
+                      : 'text-slate-500'
+                  }`}
+                >
+                  Заранее
+                </button>
+                <button
+                  onClick={() => setActiveTemplateTab('TODAY')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                    activeTemplateTab === 'TODAY'
+                      ? 'bg-white text-slate-800 shadow-sm'
+                      : 'text-slate-500'
+                  }`}
+                >
+                  Сегодня
+                </button>
+                <button
+                  onClick={() => setActiveTemplateTab('OVERDUE')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                    activeTemplateTab === 'OVERDUE'
+                      ? 'bg-white text-slate-800 shadow-sm'
+                      : 'text-slate-500'
+                  }`}
+                >
+                  Просрочка
+                </button>
+              </div>
+
+              {/* Editor */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <textarea
+                  className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-indigo-400 h-32 resize-none"
+                  value={getCurrentTemplate()}
+                  onChange={e => updateTemplate(e.target.value)}
+                  placeholder="Текст сообщения..."
+                />
+                <div className="mt-3">
+                  <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Переменные (нажмите чтобы добавить):</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['имя', 'товар', 'сумма', 'дата', 'долг', 'итого', 'месяцы', 'долг_блок'].map(v => (
+                      <button
+                        key={v}
+                        onClick={() => insertVariable(v)}
+                        className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+                      >
+                        {`{${v}}`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <hr className="border-slate-100" />
+
             {/* Bot Settings */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-semibold text-slate-700 text-sm flex items-center gap-2">
                   🤖 Чат-бот (Автоответчик)
                 </h4>
-                <div className="relative inline-flex items-center cursor-pointer">
+                <div
+                  className="relative inline-flex items-center cursor-pointer"
+                  onClick={() => setBotEnabled(!botEnabled)}
+                >
                   <input
                     type="checkbox"
                     className="sr-only peer"
                     checked={botEnabled}
-                    onChange={() => setBotEnabled(!botEnabled)}
+                    onChange={() => {}}
                   />
                   <div className={`w-11 h-6 rounded-full peer peer-checked:bg-indigo-600 peer-focus:outline-none transition-colors ${botEnabled ? 'bg-indigo-600' : 'bg-slate-200'}`}>
                     <div className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform ${botEnabled ? 'translate-x-full' : ''}`}></div>
@@ -462,73 +532,6 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                   </div>
                 </div>
               )}
-            </div>
-
-            <hr className="border-slate-100" />
-
-            {/* Templates */}
-            <div>
-              <h4 className="font-semibold text-slate-700 mb-3 text-sm flex items-center gap-2">
-                {ICONS.File} Шаблоны сообщений
-              </h4>
-
-              {/* Tabs */}
-              <div className="flex bg-slate-100 p-1 rounded-xl mb-3">
-                <button
-                  onClick={() => setActiveTemplateTab('UPCOMING')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                    activeTemplateTab === 'UPCOMING'
-                      ? 'bg-white text-slate-800 shadow-sm'
-                      : 'text-slate-500'
-                  }`}
-                >
-                  Заранее
-                </button>
-                <button
-                  onClick={() => setActiveTemplateTab('TODAY')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                    activeTemplateTab === 'TODAY'
-                      ? 'bg-white text-slate-800 shadow-sm'
-                      : 'text-slate-500'
-                  }`}
-                >
-                  Сегодня
-                </button>
-                <button
-                  onClick={() => setActiveTemplateTab('OVERDUE')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                    activeTemplateTab === 'OVERDUE'
-                      ? 'bg-white text-slate-800 shadow-sm'
-                      : 'text-slate-500'
-                  }`}
-                >
-                  Просрочка
-                </button>
-              </div>
-
-              {/* Editor */}
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <textarea
-                  className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-indigo-400 h-32 resize-none"
-                  value={getCurrentTemplate()}
-                  onChange={e => updateTemplate(e.target.value)}
-                  placeholder="Текст сообщения..."
-                />
-                <div className="mt-3">
-                  <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Переменные (нажмите чтобы добавить):</p>
-                  <div className="flex flex-wrap gap-2">
-                    {['имя', 'товар', 'сумма', 'дата', 'долг', 'итого', 'месяцы', 'долг_блок'].map(v => (
-                      <button
-                        key={v}
-                        onClick={() => insertVariable(v)}
-                        className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
-                      >
-                        {`{${v}}`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
             </div>
 
             <button
