@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Customer, Account, Investor, Sale } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
-import { sendWhatsAppMessage } from '../services/whatsapp';
+import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface NewIncomeProps {
   initialData?: any;
@@ -15,11 +17,11 @@ interface NewIncomeProps {
   onSelectCustomer: () => void;
 }
 
-const NewIncome: React.FC<NewIncomeProps> = ({ 
-    initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer 
+const NewIncome: React.FC<NewIncomeProps> = ({
+    initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer
 }) => {
   const [sourceType, setSourceType] = useState<'CUSTOMER' | 'INVESTOR' | 'OTHER'>('CUSTOMER');
-  
+
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId || '');
   const [selectedSaleId, setSelectedSaleId] = useState('');
   const [selectedInvestorId, setSelectedInvestorId] = useState('');
@@ -27,10 +29,11 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  
+
   // New Features State
   const [sendHistory, setSendHistory] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const contractRef = useRef<HTMLDivElement>(null); // Ref for hidden contract div
 
   const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
   const activeCustomerSales = useMemo(() => sales.filter(s => s.customerId === selectedCustomerId && s.remainingAmount > 0), [sales, selectedCustomerId]);
@@ -56,7 +59,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           const scheduledPayments = selectedSale.paymentPlan
               .filter(p => !p.isPaid)
               .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-          
+
           let paymentPool = paidTotal;
           let suggestedAmount = selectedSale.remainingAmount;
 
@@ -70,7 +73,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                   break;
               }
           }
-          
+
           if (!amount) { // Only set amount if it's not already set by the user
               setAmount(suggestedAmount > 0 ? suggestedAmount.toFixed(2) : '');
           }
@@ -90,7 +93,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           setTargetAccountId(accounts[0].id);
       }
   }, [sourceType, accounts, targetAccountId]);
-  
+
   const recommendedAmount = useMemo(() => {
       if (selectedSale) {
           const paidTotal = selectedSale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
@@ -114,12 +117,42 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       if (!selectedSale || !amount) return 0;
       const numAmount = Number(amount);
       if (selectedSale.totalAmount <= 0) return 0;
-      
+
       const totalProfit = selectedSale.totalAmount - selectedSale.buyPrice;
       const margin = totalProfit / selectedSale.totalAmount;
-      
+
       return numAmount * margin;
   }, [selectedSale, amount]);
+
+  const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
+      if (!contractRef.current) throw new Error("Contract element not found");
+
+      // Temporarily show the element to capture it
+      const element = contractRef.current;
+      const originalDisplay = element.style.display;
+      const originalPosition = element.style.position;
+      const originalLeft = element.style.left;
+
+      element.style.display = 'block';
+      element.style.position = 'absolute';
+      element.style.left = '-9999px';
+
+      try {
+          const canvas = await html2canvas(element, { scale: 2 });
+          const imgData = canvas.toDataURL('image/png');
+
+          const pdf = new jsPDF('p', 'mm', 'a4');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+          pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+          return pdf.output('blob');
+      } finally {
+          element.style.display = originalDisplay;
+          element.style.position = originalPosition;
+          element.style.left = originalLeft;
+      }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
@@ -158,62 +191,27 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
           // Process WhatsApp Sending if enabled
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
-              const newRemaining = Math.max(0, selectedSale.remainingAmount - numAmount);
+              try {
+                  const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
+                  const fileName = `Договор_${selectedSale.productName.replace(/\s+/g, '_')}.pdf`;
 
-              // Construct History for Message
-              let historyText = '';
-              if (selectedSale.paymentPlan) {
-                  // Get existing paid payments
-                  const existingPayments = selectedSale.paymentPlan.filter(p => p.isPaid).map(p => ({
-                      date: new Date(p.date),
-                      amount: p.amount
-                  }));
+                  const success = await sendWhatsAppFile(
+                      appSettings.whatsapp.idInstance,
+                      appSettings.whatsapp.apiTokenInstance,
+                      selectedCustomer.phone,
+                      pdfBlob,
+                      fileName
+                  );
 
-                  // Add current payment
-                  existingPayments.push({
-                      date: new Date(date),
-                      amount: numAmount
-                  });
-
-                  // Sort by date
-                  existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
-
-                  // Generate rows
-                  let currentDebt = selectedSale.totalAmount - selectedSale.downPayment;
-                  const historyRows = existingPayments.map((p, index) => {
-                      currentDebt -= p.amount;
-                      const displayDebt = Math.max(0, currentDebt);
-                      return `${index + 1}. ${p.date.toLocaleDateString()} - ${p.amount.toLocaleString()} ₽ (Долг: ${displayDebt.toLocaleString()} ₽)`;
-                  });
-
-                  historyText = historyRows.join('\n');
+                  if (success) {
+                      alert("Договор (PDF) отправлен клиенту в WhatsApp");
+                  } else {
+                      alert("Ошибка отправки PDF в WhatsApp");
+                  }
+              } catch (error) {
+                  console.error("Error generating/sending PDF:", error);
+                  alert("Ошибка при создании или отправке PDF");
               }
-
-              const message = `
-Здравствуйте, ${selectedCustomer.name}!
-
-✅ *Оплата получена*
-Сумма: ${numAmount.toLocaleString()} ₽
-Дата: ${new Date(date).toLocaleDateString()}
-
-📄 Договор: ${selectedSale.productName}
-
-📜 *История платежей:*
-${historyText}
-
-💰 Остаток долга: *${newRemaining.toLocaleString()} ₽*
-
-Спасибо, что вы с нами!
-${appSettings.companyName}
-              `.trim();
-
-              const success = await sendWhatsAppMessage(
-                  appSettings.whatsapp.idInstance,
-                  appSettings.whatsapp.apiTokenInstance,
-                  selectedCustomer.phone,
-                  message
-              );
-              if (success) alert("Уведомление отправлено клиенту в WhatsApp");
           }
 
       } else if (sourceType === 'INVESTOR') {
@@ -225,10 +223,122 @@ ${appSettings.companyName}
       setShowConfirmModal(false);
   };
 
+  // Helper to render contract content for PDF generation
+  const renderContractContent = () => {
+      if (!selectedSale || !selectedCustomer) return null;
+
+      const companyName = appSettings?.companyName || "Компания";
+      const hasGuarantor = !!selectedSale.guarantorName;
+
+      // Construct History Data
+      const existingPayments = selectedSale.paymentPlan ? selectedSale.paymentPlan.filter(p => p.isPaid).map(p => ({
+          date: new Date(p.date),
+          amount: p.amount
+      })) : [];
+
+      // Add current payment (preview)
+      existingPayments.push({
+          date: new Date(date),
+          amount: Number(amount)
+      });
+
+      existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+      let currentDebt = selectedSale.totalAmount - selectedSale.downPayment;
+
+      return (
+          <div ref={contractRef} style={{ display: 'none', width: '210mm', padding: '20mm', background: 'white', color: 'black', fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5' }}>
+              <h1 style={{ textAlign: 'center', fontSize: '16pt', fontWeight: 'bold', marginBottom: '30px', textTransform: 'uppercase' }}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
+
+              <div style={{ textAlign: 'right', marginBottom: '20px' }}>
+                  Дата: {new Date(selectedSale.startDate).toLocaleDateString()}
+              </div>
+
+              <div style={{ margin: '20px 0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <span><span style={{ fontWeight: 'bold' }}>Продавец:</span> {companyName}</span>
+                      <span></span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <span><span style={{ fontWeight: 'bold' }}>Покупатель:</span> {selectedCustomer.name}</span>
+                      <span>Тел: {selectedCustomer.phone}</span>
+                  </div>
+                  {hasGuarantor && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                          <span><span style={{ fontWeight: 'bold' }}>Поручитель:</span> {selectedSale.guarantorName}</span>
+                          <span>Тел: {selectedSale.guarantorPhone}</span>
+                      </div>
+                  )}
+              </div>
+
+              <div style={{ margin: '20px 0' }}>
+                  <div><span style={{ fontWeight: 'bold' }}>Товар:</span> {selectedSale.productName}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px' }}>
+                      <span><span style={{ fontWeight: 'bold' }}>Срок рассрочки:</span> {selectedSale.installments} мес.</span>
+                      <span><span style={{ fontWeight: 'bold' }}>Стоимость:</span> {selectedSale.totalAmount.toLocaleString()} ₽</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span><span style={{ fontWeight: 'bold' }}>Ежемесячный платеж:</span> {(selectedSale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
+                      <span><span style={{ fontWeight: 'bold' }}>Первый взнос:</span> {selectedSale.downPayment.toLocaleString()} ₽</span>
+                  </div>
+              </div>
+
+              <table style={{ width: '100%', borderCollapse: 'collapse', margin: '20px 0' }}>
+                  <thead>
+                      <tr>
+                          <th style={{ border: '1px solid #000', padding: '5px 10px' }}>№</th>
+                          <th style={{ border: '1px solid #000', padding: '5px 10px' }}>Дата</th>
+                          <th style={{ border: '1px solid #000', padding: '5px 10px' }}>Сумма</th>
+                          <th style={{ border: '1px solid #000', padding: '5px 10px' }}>Остаток долга</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                      {existingPayments.map((p, index) => {
+                          currentDebt -= p.amount;
+                          const displayDebt = Math.max(0, currentDebt);
+                          return (
+                              <tr key={index}>
+                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center' }}>{index + 1}</td>
+                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center' }}>{p.date.toLocaleDateString()}</td>
+                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center' }}>{p.amount.toLocaleString()} ₽</td>
+                                  <td style={{ border: '1px solid #000', padding: '5px 10px', textAlign: 'center' }}>{displayDebt.toLocaleString()} ₽</td>
+                              </tr>
+                          );
+                      })}
+                  </tbody>
+              </table>
+
+              <div style={{ marginTop: '20px' }}>
+                  Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку.
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '40px' }}>
+                  <div style={{ textAlign: 'center', width: hasGuarantor ? '30%' : '45%' }}>
+                      <div style={{ borderBottom: '1px solid #000', marginBottom: '5px' }}></div>
+                      <div style={{ fontSize: '10pt', fontStyle: 'italic' }}>Продавец</div>
+                  </div>
+                  {hasGuarantor && (
+                      <div style={{ textAlign: 'center', width: '30%' }}>
+                          <div style={{ borderBottom: '1px solid #000', marginBottom: '5px' }}></div>
+                          <div style={{ fontSize: '10pt', fontStyle: 'italic' }}>Поручитель</div>
+                      </div>
+                  )}
+                  <div style={{ textAlign: 'center', width: hasGuarantor ? '30%' : '45%' }}>
+                      <div style={{ borderBottom: '1px solid #000', marginBottom: '5px' }}></div>
+                      <div style={{ fontSize: '10pt', fontStyle: 'italic' }}>Покупатель</div>
+                  </div>
+              </div>
+          </div>
+      );
+  };
+
   const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Неизвестный счет';
 
   return (
     <div className="space-y-4 animate-fade-in pb-20">
+      {/* Hidden Contract Render */}
+      {renderContractContent()}
+
       <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
           <button onClick={onClose} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
           <h2 className="text-xl font-bold text-slate-800">Оформление прихода</h2>

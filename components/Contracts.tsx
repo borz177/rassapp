@@ -169,9 +169,10 @@ const Contracts: React.FC<ContractsProps> = ({
       
       // 1. Calculate Total Expected to be paid by TODAY
       // Include DownPayment + All Installments strictly before today
+      // IMPORTANT: Only count PLAN items (isRealPayment !== true), ignore real payments in this sum
       let expectedTotal = sale.downPayment;
       sale.paymentPlan.forEach(p => {
-          if (new Date(p.date) < today) {
+          if (!p.isRealPayment && new Date(p.date) < today) {
               expectedTotal += p.amount;
           }
       });
@@ -188,7 +189,7 @@ const Contracts: React.FC<ContractsProps> = ({
   const { filteredList } = useMemo(() => {
     const today = new Date();
     today.setHours(0,0,0,0);
-    
+
     const active: Sale[] = [];
     const overdue: Sale[] = [];
     const archive: Sale[] = [];
@@ -229,12 +230,12 @@ const Contracts: React.FC<ContractsProps> = ({
     if (filterAccountId) {
         list = list.filter(sale => sale.accountId === filterAccountId);
     }
-    
-    return { 
+
+    return {
         filteredList: list.sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
     };
   }, [sales, customers, activeTab, searchTerm, filterDate, filterAccountId]);
-  
+
   const totalOverdueSum = useMemo(() => {
     if (activeTab !== 'OVERDUE') return 0;
     return filteredList.reduce((sum, s) => sum + calculateSaleOverdue(s), 0);
@@ -252,7 +253,7 @@ const Contracts: React.FC<ContractsProps> = ({
       e.stopPropagation();
       setActiveMenuId(prev => prev === saleId ? null : saleId);
   };
-  
+
   const handleDeleteConfirm = () => {
       if (deletingSale) {
           onDeleteSale(deletingSale.id);
@@ -265,7 +266,7 @@ const Contracts: React.FC<ContractsProps> = ({
       const companyName = appSettings?.companyName || "Компания";
       const sellerPhone = user?.phone || "";
       const hasGuarantor = !!sale.guarantorName;
-      
+
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
           alert("Разрешите всплывающие окна для печати");
