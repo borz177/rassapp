@@ -12,7 +12,7 @@ interface NewSaleProps {
   accounts: Account[];
   onClose: () => void;
   onSelectCustomer: (currentData: any) => void;
-  onSubmit: (data: any) => void;
+  onSubmit: ( any) => void;
 }
 
 const NewSale: React.FC<NewSaleProps> = ({
@@ -22,6 +22,7 @@ const NewSale: React.FC<NewSaleProps> = ({
   const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(initialData.type || 'INSTALLMENT');
   const [roundingMode, setRoundingMode] = useState<'NONE' | 'DOWN' | 'UP'>('NONE');
 
+  // Modals State
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdSale, setCreatedSale] = useState<any>(null);
@@ -152,29 +153,20 @@ const NewSale: React.FC<NewSaleProps> = ({
 
   const updateMode = (newMode: 'INSTALLMENT' | 'CASH') => { setMode(newMode); setFormData(prev => ({ ...prev, mode: newMode })); };
 
-  // === ОБНОВЛЁННАЯ generatePDFBlob ===
+  // === ИСПРАВЛЕННАЯ generatePDFBlob ===
   const generatePDFBlob = async (): Promise<Blob> => {
       const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-      try {
-          const fontUrl = 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf';
-          const response = await fetch(fontUrl);
-          if (response.ok) {
-              const buffer = await response.arrayBuffer();
-              const bytes = new Uint8Array(buffer);
-              let binary = '';
-              for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-              const base64 = window.btoa(binary);
-              doc.addFileToVFS('Roboto-Regular.ttf', base64);
-              doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
-              doc.setFont('Roboto');
-          }
-      } catch (error) { console.error("Error loading font for PDF:", error); }
+
+      // === ИСПРАВЛЕНИЕ: Используем встроенный шрифт с поддержкой кириллицы ===
+      // Стандартный шрифт Helvetica в jsPDF поддерживает кодировку win1251 (кириллица)
+      doc.setFont("helvetica", "normal");
 
       const sale = createdSale;
       const customer = selectedCustomer;
       const company = appSettings?.companyName || "Компания";
-      const sellerPhone = appSettings?.sellerPhone
-        || (appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance}` : '+7 (___) ___-__-__');
+      // Получаем телефон из настроек, так как user может быть не определен
+      const sellerPhone = appSettings?.sellerPhone || (appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance}` : '+7 (___) ___-__-__');
+
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 20;
@@ -184,36 +176,37 @@ const NewSale: React.FC<NewSaleProps> = ({
       const SIGNATURE_HEIGHT = 25;
       let y = 20;
 
+      // Вспомогательные функции рисования
       const drawField = (label: string, value: string, x: number, y: number, maxWidth: number) => {
-          doc.setFont('Roboto', 'bold');
+          doc.setFont("helvetica", "bold");
           doc.text(label, x, y);
           const labelWidth = doc.getTextWidth(label);
-          doc.setFont('Roboto', 'normal');
+          doc.setFont("helvetica", "normal");
           doc.text(value, x + labelWidth + 2, y, { maxWidth: maxWidth - labelWidth - 2 });
       };
 
       const drawFieldWithRightValue = (label: string, value: string, x: number, y: number, colWidth: number) => {
           const colEnd = x + colWidth;
-          doc.setFont('Roboto', 'bold');
+          doc.setFont("helvetica", "bold");
           doc.text(label, x, y);
           const labelWidth = doc.getTextWidth(label);
-          doc.setFont('Roboto', 'normal');
+          doc.setFont("helvetica", "normal");
           doc.text(value, colEnd - 2, y, { align: 'right', maxWidth: colWidth - 10 });
       };
 
-      // Title
+      // 1. Заголовок
       doc.setFontSize(14);
-      doc.setFont('Roboto', 'bold');
+      doc.setFont("helvetica", "bold");
       doc.text("ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ", pageWidth / 2, y, { align: "center" });
       y += 10;
 
-      // Date
+      // 2. Дата
       doc.setFontSize(10);
-      doc.setFont('Roboto', 'normal');
+      doc.setFont("helvetica", "normal");
       doc.text(`Дата: ${new Date(sale.startDate).toLocaleDateString()}`, pageWidth - margin, y, { align: "right" });
       y += 12;
 
-      // Parties - с телефонами справа
+      // 3. Стороны (с телефонами справа)
       const halfWidth = contentWidth / 2;
       drawFieldWithRightValue("Продавец:", company, margin, y, halfWidth);
       drawFieldWithRightValue("Тел:", sellerPhone, margin + halfWidth, y, halfWidth);
@@ -232,7 +225,7 @@ const NewSale: React.FC<NewSaleProps> = ({
       doc.line(margin, y, pageWidth - margin, y);
       y += 12;
 
-      // Product Info - с одинаковыми отступами
+      // 4. Информация о товаре
       drawField("Товар:", sale.productName, margin, y, contentWidth);
       y += 7;
 
@@ -245,7 +238,7 @@ const NewSale: React.FC<NewSaleProps> = ({
       drawField("Первый взнос:", `${sale.downPayment.toLocaleString()} ₽`, margin + halfWidth, y, halfWidth);
       y += 12;
 
-      // Table
+      // 5. Таблица
       const headers = ["№", "Дата", "Сумма", "Остаток долга"];
       const colWidths = [15, 40, 40, 45];
       const totalColWidth = colWidths.reduce((a, b) => a + b, 0);
@@ -257,12 +250,12 @@ const NewSale: React.FC<NewSaleProps> = ({
 
       doc.setFillColor(240, 240, 240);
       doc.rect(startX, y - 4, contentWidth, 8, 'F');
-      doc.setFont('Roboto', 'bold');
+      doc.setFont("helvetica", "bold");
       let currentX = startX;
       headers.forEach((h, i) => { doc.text(h, currentX + 2, y + 1); currentX += scaledWidths[i]; });
       y += 7;
 
-      doc.setFont('Roboto', 'normal');
+      doc.setFont("helvetica", "normal");
       let currentDebt = sale.totalAmount - sale.downPayment;
 
       sale.paymentPlan.forEach((p: any, i: number) => {
@@ -270,11 +263,11 @@ const NewSale: React.FC<NewSaleProps> = ({
               doc.addPage(); y = 20;
               doc.setFillColor(240, 240, 240);
               doc.rect(startX, y - 4, contentWidth, 8, 'F');
-              doc.setFont('Roboto', 'bold');
+              doc.setFont("helvetica", "bold");
               currentX = startX;
               headers.forEach((h, idx) => { doc.text(h, currentX + 2, y + 1); currentX += scaledWidths[idx]; });
               y += 7;
-              doc.setFont('Roboto', 'normal');
+              doc.setFont("helvetica", "normal");
           }
           currentDebt -= p.amount;
           const displayDebt = Math.max(0, currentDebt);
@@ -287,13 +280,13 @@ const NewSale: React.FC<NewSaleProps> = ({
       });
       y += 8;
 
-      // Footer text
+      // 6. Текст обязательств
       if (y > 240) { doc.addPage(); y = 20; }
       doc.setFontSize(9);
       doc.text("Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку.", margin, y, { maxWidth: contentWidth, align: 'justify' });
       y += 15;
 
-      // === Signatures ALWAYS at bottom ===
+      // 7. Подписи (всегда внизу)
       if (y < SIGNATURES_Y) { y = SIGNATURES_Y; }
       else if (y + SIGNATURE_HEIGHT > pageHeight - margin) { doc.addPage(); y = SIGNATURES_Y; }
 
@@ -307,7 +300,7 @@ const NewSale: React.FC<NewSaleProps> = ({
           doc.setLineWidth(0.3);
           doc.line(x, sigY, x + width, sigY);
           doc.setFontSize(8);
-          doc.setFont('Roboto', 'italic');
+          doc.setFont("helvetica", "italic");
           doc.text(label, x + width / 2, sigY + 5, { align: "center" });
       };
 
@@ -335,14 +328,12 @@ const NewSale: React.FC<NewSaleProps> = ({
       } catch (error) { console.error("Error:", error); alert("Ошибка при создании или отправке файла."); }
   };
 
-  // === ОБНОВЛЁННАЯ handlePrintContract ===
   const handlePrintContract = () => {
       if (!createdSale) return;
       const sale = createdSale;
       const customer = selectedCustomer;
       const companyName = appSettings?.companyName || "Компания";
-      const sellerPhone = appSettings?.sellerPhone
-        || (appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance}` : '+7 (___) ___-__-__');
+      const sellerPhone = appSettings?.sellerPhone || (appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance}` : '+7 (___) ___-__-__');
       const hasGuarantor = !!sale.guarantorName;
 
       const printWindow = window.open('', '_blank');

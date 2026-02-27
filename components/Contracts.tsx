@@ -261,335 +261,247 @@ const Contracts: React.FC<ContractsProps> = ({
       }
   }
 
- const printContract = (sale: Sale) => {
-    const customer = customers.find(c => c.id === sale.customerId);
-    const companyName = appSettings?.companyName || "Компания";
-    const sellerPhone = user?.phone || "";
-    const hasGuarantor = !!sale.guarantorName;
+   const printContract = (sale: Sale) => {
+      const customer = customers.find(c => c.id === sale.customerId);
+      const companyName = appSettings?.companyName || "Компания";
+      const sellerPhone = user?.phone || "";
+      const hasGuarantor = !!sale.guarantorName;
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-        alert("Разрешите всплывающие окна для печати");
-        return;
-    }
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+          alert("Разрешите всплывающие окна для печати");
+          return;
+      }
 
-    const paidPlan = sale.paymentPlan
-        .filter(p => p.isPaid)
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      const paidPlan = sale.paymentPlan
+          .filter(p => p.isPaid)
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    let rows = '';
-    if (paidPlan.length > 0) {
-        let currentDebt = sale.totalAmount - sale.downPayment;
-        rows = paidPlan.map((p, index) => {
-            currentDebt -= p.amount;
-            const displayDebt = Math.max(0, currentDebt);
-            return `
-              <tr>
-                  <td style="text-align: center;">${index + 1}</td>
-                  <td style="text-align: center;">${new Date(p.date).toLocaleDateString()}</td>
-                  <td style="text-align: center;">${p.amount.toLocaleString()} ₽</td>
-                  <td style="text-align: center;">${displayDebt.toLocaleString()} ₽</td>
-              </tr>
-            `;
-        }).join('');
-    } else {
-        rows = Array.from({ length: sale.installments || 1 }).map((_, index) => `
-          <tr>
-              <td style="text-align: center;">${index + 1}</td>
-              <td style="text-align: center; height: 30px;"></td>
-              <td style="text-align: center;"></td>
-              <td style="text-align: center;"></td>
-          </tr>
-        `).join('');
-    }
+      let rows = '';
+      if (paidPlan.length > 0) {
+          let currentDebt = sale.totalAmount - sale.downPayment;
+          rows = paidPlan.map((p, index) => {
+              currentDebt -= p.amount;
+              const displayDebt = Math.max(0, currentDebt);
+              return `
+                <tr>
+                    <td style="text-align: center;">${index + 1}</td>
+                    <td style="text-align: center;">${new Date(p.date).toLocaleDateString()}</td>
+                    <td style="text-align: center;">${p.amount.toLocaleString()} ₽</td>
+                    <td style="text-align: center;">${displayDebt.toLocaleString()} ₽</td>
+                </tr>
+              `;
+          }).join('');
+      } else {
+          rows = Array.from({ length: sale.installments || 1 }).map((_, index) => `
+            <tr>
+                <td style="text-align: center;">${index + 1}</td>
+                <td style="text-align: center; height: 30px;"></td>
+                <td style="text-align: center;"></td>
+                <td style="text-align: center;"></td>
+            </tr>
+          `).join('');
+      }
 
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-          <title>Договор купли-продажи</title>
-          <style>
-              * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              
-              body { 
-                  font-family: 'Times New Roman', Times, serif; 
-                  font-size: 12pt; 
-                  line-height: 1.5; 
-                  padding: 30px 25px;
-                  padding-bottom: 180px;
-                  width: 100%;
-                  max-width: 210mm;
-                  margin: 0 auto;
-                  zoom: 1 !important;
-                  -webkit-text-size-adjust: 100%;
-                  
-                  /* === FIX: Подписи всегда внизу === */
-                  display: flex;
-                  flex-direction: column;
-                  min-height: 297mm; /* Высота A4 */
-              }
-              
-              h1 { text-align: center; font-size: 15pt; font-weight: bold; margin: 0 0 25px 0; text-transform: uppercase; line-height: 1.3; }
-              .header-info { text-align: right; margin-bottom: 20px; font-size: 11pt; }
-              
-              .field-row { 
-                  display: flex; 
-                  justify-content: space-between; 
-                  margin-bottom: 10px; 
-              }
-              .field-label { font-weight: bold; }
-              
-              .section { margin: 0 0 20px 0; }
-              .section > div { margin-bottom: 12px; }
-              .section > div:last-child { margin-bottom: 0; }
-              
-              table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 10.5pt; }
-              th, td { border: 1px solid #000; padding: 6px 8px; text-align: center; }
-              th { font-weight: bold; background: #f9f9f9; }
-              
-              .content-wrapper {
-                  flex: 1 0 auto; /* Занимает доступное место, толкает футер вниз */
-              }
-              
-              .footer-container {
-                  /* === FIX: Прижимаем футер к низу === */
-                  margin-top: auto;
-                  padding-top: 20px;
-                  width: 100%;
-                  break-inside: avoid;
-                  page-break-inside: avoid;
-              }
-              
-              .footer { 
-                  display: flex; 
-                  justify-content: space-between; 
-                  align-items: flex-end;
-                  width: 100%;
-              }
-              .signature-block { 
-                  text-align: center; 
-                  break-inside: avoid;
-                  page-break-inside: avoid;
-              }
-              .signature-line { 
-                  border-bottom: 1px solid #000; 
-                  margin: 35px 0 5px 0; 
-                  min-height: 1px; 
-              }
-              .signature-label { 
-                  font-size: 10pt; 
-                  font-style: italic; 
-              }
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Договор купли-продажи</title>
+            <style>
+                * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                body { 
+                    font-family: 'Times New Roman', Times, serif; 
+                    font-size: 12pt; 
+                    line-height: 1.5; 
+                    padding: 30px 25px;
+                    width: 100%;
+                    max-width: 210mm;
+                    margin: 0 auto;
+                    display: flex;
+                    flex-direction: column;
+                    min-height: 297mm; /* Высота A4 */
+                }
+                h1 { text-align: center; font-size: 15pt; font-weight: bold; margin: 0 0 25px 0; text-transform: uppercase; line-height: 1.3; }
+                .header-info { text-align: right; margin-bottom: 20px; font-size: 11pt; }
+                
+                .field-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
+                .field-label { font-weight: bold; }
+                
+                .section { margin: 0 0 20px 0; }
+                .section > div { margin-bottom: 12px; }
+                .section > div:last-child { margin-bottom: 0; }
+                
+                table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 10.5pt; }
+                th, td { border: 1px solid #000; padding: 6px 8px; text-align: center; }
+                th { font-weight: bold; background: #f9f9f9; }
+                
+                /* Контейнер контента занимает все свободное место */
+                .content-wrapper { 
+                    flex: 1 0 auto; 
+                    /* Важно: разрешаем разрыв только внутри таблицы/текста, но не насильно */
+                }
+                
+                /* === ИСПРАВЛЕНИЕ ПОДПИСЕЙ === */
+                .footer-container {
+                    margin-top: auto; /* Прижимает к низу, если есть место */
+                    padding-top: 20px;
+                    width: 100%;
+                    /* ГЛАВНОЕ: Запрещаем разрыв внутри блока подписей */
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                    /* Если места мало, этот блок целиком перенесется на след. страницу */
+                }
+                
+                .footer { 
+                    display: flex; 
+                    justify-content: space-between; 
+                    align-items: flex-end; 
+                    width: 100%;
+                }
+                .signature-block { 
+                    text-align: center; 
+                    /* Дополнительно защищаем каждую подпись */
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                }
+                .signature-line { border-bottom: 1px solid #000; margin: 35px 0 5px 0; min-height: 1px; }
+                .signature-label { font-size: 10pt; font-style: italic; }
 
-              .no-print {
-                  position: fixed;
-                  top: 15px;
-                  right: 15px;
-                  padding: 10px 18px;
-                  background: #ef4444;
-                  color: white;
-                  border: none;
-                  border-radius: 6px;
-                  cursor: pointer;
-                  font-family: sans-serif;
-                  font-weight: 600;
-                  font-size: 13px;
-                  z-index: 1000;
-                  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-              }
+                .no-print {
+                    position: fixed; top: 15px; right: 15px; padding: 10px 18px;
+                    background: #ef4444; color: white; border: none; border-radius: 6px;
+                    cursor: pointer; font-family: sans-serif; font-weight: 600; z-index: 1000;
+                }
 
-              /* === PRINT STYLES === */
-              @media print {
-                  @page { margin: 1cm; size: A4 portrait; }
-                  
-                  body { 
-                      padding: 0 1cm; 
-                      margin: 0; 
-                      width: 100%; 
-                      max-width: none; 
-                      min-height: 297mm;
-                      display: flex;
-                      flex-direction: column;
-                  }
-                  
-                  /* Force phone numbers to stay on the right */
-                  .field-row { 
-                      flex-wrap: nowrap !important; 
-                      gap: 0 !important;
-                      justify-content: space-between !important;
-                  }
-                  .field-row > span:first-child { flex-shrink: 0; }
-                  .field-row > span:last-child { 
-                      text-align: right; 
-                      flex-shrink: 0;
-                      margin-left: 10px;
-                  }
-                  
-                  /* === FIX: Footer absolutely at bottom on print === */
-                  .footer-container {
-                      position: absolute !important;
-                      bottom: 1cm !important;
-                      left: 1cm !important;
-                      right: 1cm !important;
-                      width: calc(100% - 2cm) !important;
-                      margin: 0 !important;
-                      padding-top: 10px !important;
-                      background: white !important;
-                      page-break-inside: avoid;
-                      break-inside: avoid;
-                      display: block !important;
-                  }
-                  
-                  .footer {
-                      display: flex !important;
-                      justify-content: space-between !important;
-                      width: 100% !important;
-                  }
-                  .signature-block {
-                      display: block !important;
-                      visibility: visible !important;
-                      opacity: 1 !important;
-                  }
-                  
-                  .content-wrapper {
-                      flex: none !important;
-                      margin-bottom: 170px; /* Reserve space for absolute footer */
-                  }
-                  
-                  .no-print { display: none !important; }
-                  h1 { font-size: 14pt; }
-                  table { font-size: 10pt; }
-              }
-              
-              /* === MOBILE SCREEN (not print) === */
-              @media screen and (max-width: 768px) {
-                  body { font-size: 11pt; padding: 20px 15px; min-height: 100vh; }
-                  h1 { font-size: 13pt; }
-                  .field-row { flex-wrap: wrap; gap: 5px; }
-                  .field-row > span:last-child { 
-                      text-align: right; 
-                      min-width: 120px;
-                  }
-                  table { font-size: 9.5pt; }
-                  th, td { padding: 4px 6px; }
-              }
-              
-              /* === MOBILE PRINT FIXES === */
-              @media print and (max-width: 768px) {
-                  body { 
-                      font-size: 10.5pt; 
-                      padding: 15px 10px !important; 
-                      min-height: 297mm;
-                  }
-                  h1 { font-size: 12pt; }
-                  .field-row { flex-wrap: nowrap !important; gap: 0 !important; }
-                  .field-row > span { font-size: 10pt; }
-                  .field-row > span:last-child { 
-                      text-align: right !important;
-                      margin-left: 8px;
-                  }
-                  table { font-size: 9pt; }
-                  th, td { padding: 4px 5px; }
-                  
-                  .footer-container {
-                      bottom: 0.8cm !important;
-                      left: 0.8cm !important;
-                      right: 0.8cm !important;
-                      width: calc(100% - 1.6cm) !important;
-                  }
-                  .signature-line { margin: 25px 0 3px 0 !important; }
-                  .signature-label { font-size: 9pt !important; }
-              }
-          </style>
-      </head>
-      <body>
-          <button class="no-print" onclick="window.close()">✕ Закрыть</button>
-          <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
-          
-          <div class="header-info">
-              Дата: ${new Date(sale.startDate).toLocaleDateString()}
-          </div>
+                @media print {
+                    @page { margin: 1.5cm; size: A4 portrait; } /* Чуть большие поля для надежности */
+                    body { 
+                        padding: 0; 
+                        margin: 0; 
+                        width: 100%; 
+                        max-width: none; 
+                        min-height: auto; /* Сбрасываем мин. высоту при печати, пусть течет естественно */
+                        display: block; /* Важно: сбрасываем flex для потока печати */
+                    }
+                    
+                    .field-row { flex-wrap: nowrap !important; gap: 0 !important; justify-content: space-between !important; }
+                    .field-row > span:first-child { flex-shrink: 0; }
+                    .field-row > span:last-child { text-align: right !important; flex-shrink: 0; margin-left: 10px; }
+                    
+                    /* Логика прижатия к низу через отступы, так как display: block */
+                    .content-wrapper {
+                        margin-bottom: 150px; /* Резервируем место под подписи внизу страницы */
+                    }
+                    
+                    .footer-container {
+                        position: relative; /* Возвращаем в поток, но с отступом сверху если нужно */
+                        margin-top: -130px; /* Подтягиваем вверх, чтобы встать в зарезервированное место */
+                        padding-top: 0;
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                    }
 
-          <div class="content-wrapper">
-              <div class="section">
-                  <div class="field-row">
-                      <span><span class="field-label">Продавец:</span> ${companyName}</span>
-                      <span>Тел: ${sellerPhone || '+7 (___) ___-__-__'}</span>
-                  </div>
-                  <div class="field-row">
-                      <span><span class="field-label">Покупатель:</span> ${customer?.name || '__________________'}</span>
-                      <span>Тел: ${customer?.phone || '+7 (___) ___-__-__'}</span>
-                  </div>
-                  ${hasGuarantor ? `
-                  <div class="field-row">
-                      <span><span class="field-label">Поручитель:</span> ${sale.guarantorName}</span>
-                      <span>Тел: ${sale.guarantorPhone || ''}</span>
-                  </div>` : ''}
-              </div>
+                    .no-print { display: none !important; }
+                    h1 { font-size: 14pt; }
+                    table { font-size: 10pt; }
+                }
+                
+                @media screen and (max-width: 768px) {
+                    body { font-size: 11pt; padding: 20px 15px; min-height: 100vh; }
+                    h1 { font-size: 13pt; }
+                    .field-row { flex-wrap: wrap; gap: 5px; }
+                    .field-row > span:last-child { text-align: right; min-width: 120px; }
+                    table { font-size: 9.5pt; }
+                }
+            </style>
+        </head>
+        <body>
+            <button class="no-print" onclick="window.close()">✕ Закрыть</button>
+            <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ<br>ТОВАРА В РАССРОЧКУ</h1>
+            
+            <div class="header-info">
+                Дата: ${new Date(sale.startDate).toLocaleDateString()}
+            </div>
 
-              <div class="section">
-                  <div><span class="field-label">Товар:</span> ${sale.productName}</div>
-                  <div style="display: flex; justify-content: space-between; margin-top: 10px;">
-                      <span><span class="field-label">Срок рассрочки:</span> ${sale.installments} мес.</span>
-                      <span><span class="field-label">Стоимость:</span> ${sale.totalAmount.toLocaleString()} ₽</span>
-                  </div>
-                  <div style="display: flex; justify-content: space-between;">
-                      <span><span class="field-label">Ежемесячный платеж:</span> ${(sale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
-                      <span><span class="field-label">Первый взнос:</span> ${sale.downPayment.toLocaleString()} ₽</span>
-                  </div>
-              </div>
+            <div class="content-wrapper">
+                <div class="section">
+                    <div class="field-row">
+                        <span><span class="field-label">Продавец:</span> ${companyName}</span>
+                        <span>Тел: ${sellerPhone || '+7 (___) ___-__-__'}</span>
+                    </div>
+                    <div class="field-row">
+                        <span><span class="field-label">Покупатель:</span> ${customer?.name || '__________________'}</span>
+                        <span>Тел: ${customer?.phone || '+7 (___) ___-__-__'}</span>
+                    </div>
+                    ${hasGuarantor ? `
+                    <div class="field-row">
+                        <span><span class="field-label">Поручитель:</span> ${sale.guarantorName}</span>
+                        <span>Тел: ${sale.guarantorPhone || ''}</span>
+                    </div>` : ''}
+                </div>
 
-              <table>
-                  <thead>
-                      <tr>
-                          <th style="width: 10%;">№</th>
-                          <th style="width: 30%;">Дата</th>
-                          <th style="width: 25%;">Сумма</th>
-                          <th style="width: 35%;">Остаток долга</th>
-                      </tr>
-                  </thead>
-                  <tbody>
-                      ${rows}
-                  </tbody>
-              </table>
+                <div class="section">
+                    <div><span class="field-label">Товар:</span> ${sale.productName}</div>
+                    <div style="display: flex; justify-content: space-between; margin-top: 10px;">
+                        <span><span class="field-label">Срок рассрочки:</span> ${sale.installments} мес.</span>
+                        <span><span class="field-label">Стоимость:</span> ${sale.totalAmount.toLocaleString()} ₽</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span><span class="field-label">Ежемесячный платеж:</span> ${(sale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
+                        <span><span class="field-label">Первый взнос:</span> ${sale.downPayment.toLocaleString()} ₽</span>
+                    </div>
+                </div>
 
-              <div style="margin: 25px 0; font-size: 11pt; line-height: 1.4;">
-                  Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку на указанных выше условиях.
-              </div>
-          </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 10%;">№</th>
+                            <th style="width: 30%;">Дата</th>
+                            <th style="width: 25%;">Сумма</th>
+                            <th style="width: 35%;">Остаток долга</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
 
-          <div class="footer-container">
-              <div class="footer">
-                  <div class="signature-block" style="width: ${hasGuarantor ? '30%' : '45%'}">
-                      <div class="signature-line"></div>
-                      <div class="signature-label">Продавец</div>
-                  </div>
-                  ${hasGuarantor ? `
-                  <div class="signature-block" style="width: 30%">
-                      <div class="signature-line"></div>
-                      <div class="signature-label">Поручитель</div>
-                  </div>` : ''}
-                  <div class="signature-block" style="width: ${hasGuarantor ? '30%' : '45%'}">
-                      <div class="signature-line"></div>
-                      <div class="signature-label">Покупатель</div>
-                  </div>
-              </div>
-          </div>
+                <div style="margin: 25px 0; font-size: 11pt; line-height: 1.4;">
+                    Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку.
+                </div>
+            </div>
 
-          <script>
-              window.onload = function() { 
-                  setTimeout(() => { window.print(); }, 300); 
-              }
-          </script>
-      </body>
-      </html>
-    `;
+            <div class="footer-container">
+                <div class="footer">
+                    <div class="signature-block" style="width: ${hasGuarantor ? '30%' : '45%'}">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Продавец</div>
+                    </div>
+                    ${hasGuarantor ? `
+                    <div class="signature-block" style="width: 30%">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Поручитель</div>
+                    </div>` : ''}
+                    <div class="signature-block" style="width: ${hasGuarantor ? '30%' : '45%'}">
+                        <div class="signature-line"></div>
+                        <div class="signature-label">Покупатель</div>
+                    </div>
+                </div>
+            </div>
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-};
+            <script>
+                window.onload = function() { setTimeout(() => { window.print(); }, 300); }
+            </script>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+  };
 
   return (
     <div className="space-y-4 pb-20 w-full">
