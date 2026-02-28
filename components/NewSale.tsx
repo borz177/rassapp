@@ -331,61 +331,75 @@ const NewSale: React.FC<NewSaleProps> = ({
       }
   };
 
-  const transliterate = (text: string) => {
-      const map: Record<string, string> = {
-          'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
-          'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
-          'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts',
-          'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu',
-          'я': 'ya',
-          'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'Yo', 'Ж': 'Zh',
-          'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N', 'О': 'O',
-          'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U', 'Ф': 'F', 'Х': 'Kh', 'Ц': 'Ts',
-          'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Shch', 'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu',
-          'Я': 'Ya'
-      };
-      return text.split('').map(char => map[char] || char).join('');
-  };
 
-  const handleSendContract = async () => {
+
+   const handleSendContract = async () => {
       if (!createdSale || !selectedCustomer || !appSettings.whatsapp?.enabled) return;
       try {
           const blob = await generatePDFBlob();
-          const safeName = transliterate(selectedCustomer.name).replace(/[^a-zA-Z0-9]/g, '_');
-          const fileName = `Contract_${safeName}.pdf`;
 
-          const success = await sendWhatsAppFile(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance, selectedCustomer.phone, blob, fileName);
+          // Функция транслитерации (уже есть у вас в коде выше)
+          const transliterate = (text: string) => {
+              const map: Record<string, string> = {
+                  'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
+                  'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
+                  'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts',
+                  'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu',
+                  'я': 'ya', ' ': '_'
+              };
+              // Переводим в нижний регистр, транслитерируем и удаляем ВСЁ лишнее (кроме a-z, 0-9, _)
+              return text.toLowerCase().split('').map(char => map[char] || char).join('').replace(/[^a-z0-9_]/g, '');
+          };
+
+          // Формируем чистое имя: Договор_НазваниеТовара.pdf
+          const safeProductName = transliterate(createdSale.productName);
+
+          // Если название товара после очистки пустое (например, были только спецсимволы), ставим заглушку
+          const fileName = `Договор_${safeProductName || 'tovar'}.pdf`;
+
+          const success = await sendWhatsAppFile(
+              appSettings.whatsapp.idInstance,
+              appSettings.whatsapp.apiTokenInstance,
+              selectedCustomer.phone,
+              blob,
+              fileName
+          );
+
           if (success) alert("Договор успешно отправлен!");
           else alert("Ошибка отправки WhatsApp");
-      } catch (error) { console.error("Error:", error); alert("Ошибка при создании или отправке файла."); }
+      } catch (error) {
+          console.error("Error generating or sending PDF:", error);
+          alert("Ошибка при создании или отправке файла.");
+      }
   };
 
   const handlePrintContract = () => {
-      if (!createdSale) return;
-      const sale = createdSale;
-      const customer = selectedCustomer;
-      const companyName = appSettings?.companyName || "Компания";
-      const sellerPhone = appSettings?.sellerPhone || (appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance}` : '+7 (___) ___-__-__');
-      const hasGuarantor = !!sale.guarantorName;
+    if (!createdSale) return;
+    const sale = createdSale;
+    const customer = selectedCustomer;
+    const companyName = appSettings?.companyName || "Компания";
+    // Исправлено: получение телефона без ошибки user
+    const sellerPhone = appSettings?.sellerPhone || (appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance}` : '+7 (___) ___-__-__');
+    const hasGuarantor = !!sale.guarantorName;
 
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }
 
-      const rows = Array.from({ length: sale.installments || 1 }).map((_, index) => `
+    const rows = Array.from({ length: sale.installments || 1 }).map((_, index) => `
         <tr>
             <td style="text-align: center;">${index + 1}</td>
             <td style="text-align: center; height: 30px;"></td>
             <td style="text-align: center;"></td>
             <td style="text-align: center;"></td>
         </tr>
-      `).join('');
+    `).join('');
 
-      const htmlContent = `
+    const htmlContent = `
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Договор купли-продажи</title>
             <style>
                 * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -393,18 +407,13 @@ const NewSale: React.FC<NewSaleProps> = ({
                     font-family: 'Arial', Helvetica, sans-serif; 
                     font-size: 12pt; 
                     line-height: 1.5; 
-                    padding: 30px 25px;
-                    padding-bottom: 180px;
+                    padding: 20mm;
                     width: 100%;
                     max-width: 210mm;
                     margin: 0 auto;
-                    zoom: 1 !important;
-                    -webkit-text-size-adjust: 100%;
-                    display: flex;
-                    flex-direction: column;
-                    min-height: 297mm;
+                    /* Убрали flex/min-height, чтобы работал естественный поток страницы */
                 }
-                h1 { text-align: center; font-size: 15pt; font-weight: bold; margin: 0 0 25px 0; text-transform: uppercase; line-height: 1.3; }
+                h1 { text-align: center; font-size: 15pt; font-weight: bold; margin: 0 0 25px 0; text-transform: uppercase; }
                 .header-info { text-align: right; margin-bottom: 20px; font-size: 11pt; }
                 
                 .field-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
@@ -415,30 +424,75 @@ const NewSale: React.FC<NewSaleProps> = ({
                 .section > div:last-child { margin-bottom: 0; }
                 
                 table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 10.5pt; }
-                th, td { border: 1px solid #000; padding: 10px; text-align: center; }
+                th, td { border: 1px solid #000; padding: 8px; text-align: center; }
                 th { font-weight: bold; background: #f9f9f9; }
                 
-                .content-wrapper { flex: 1 0 auto; }
-                
-                .footer-container { margin-top: auto; padding-top: 20px; width: 100%; break-inside: avoid; page-break-inside: avoid; }
+                /* Контейнер контента */
+                .content-wrapper { 
+                    width: 100%;
+                }
+
+                /* Футер с подписями */
+                .footer-container {
+                    width: 100%;
+                    margin-top: 40px; /* Отступ от текста */
+                    /* Запрещаем разрыв внутри блока подписей */
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                }
                 .footer { display: flex; justify-content: space-between; align-items: flex-end; width: 100%; }
-                .signature-block { text-align: center; break-inside: avoid; page-break-inside: avoid; }
-                .signature-line { border-bottom: 1px solid #000; margin: 35px 0 5px 0; min-height: 1px; }
+                .signature-block { 
+                    text-align: center; 
+                    break-inside: avoid;
+                    page-break-inside: avoid;
+                }
+                .signature-line { border-bottom: 1px solid #000; margin: 40px 0 5px 0; min-height: 1px; }
                 .signature-label { font-size: 10pt; font-style: italic; }
 
-                .no-print { position: fixed; top: 15px; right: 15px; padding: 10px 18px; background: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-family: sans-serif; font-weight: 600; font-size: 13px; z-index: 1000; }
+                .no-print { 
+                    position: fixed; top: 15px; right: 15px; padding: 10px 18px;
+                    background: #ef4444; color: white; border: none; border-radius: 6px;
+                    cursor: pointer; font-family: sans-serif; font-weight: 600; z-index: 1000;
+                }
 
                 @media print {
-                    @page { margin: 1cm; size: A4 portrait; }
-                    body { padding: 0 1cm; margin: 0; width: 100%; max-width: none; min-height: 297mm; }
-                    .field-row { flex-wrap: nowrap !important; gap: 0 !important; justify-content: space-between !important; }
-                    .field-row > span:first-child { flex-shrink: 0; }
-                    .field-row > span:last-child { text-align: right !important; flex-shrink: 0; margin-left: 10px; }
+                    @page { margin: 1.5cm; size: A4 portrait; }
                     
-                    .footer-container { position: absolute !important; bottom: 1cm !important; left: 1cm !important; right: 1cm !important; width: calc(100% - 2cm) !important; margin: 0 !important; padding-top: 10px !important; background: white !important; }
-                    .footer { display: flex !important; justify-content: space-between !important; width: 100% !important; }
-                    .signature-block { display: block !important; visibility: visible !important; opacity: 1 !important; }
-                    .content-wrapper { flex: none !important; margin-bottom: 170px; }
+                    body { 
+                        padding: 0; 
+                        margin: 0; 
+                        width: 100%; 
+                        max-width: none; 
+                    }
+
+                    .field-row { flex-wrap: nowrap !important; gap: 0 !important; }
+                    .field-row > span:last-child { text-align: right !important; margin-left: 10px; }
+                    
+                    /* === ГЛАВНОЕ ИСПРАВЛЕНИЕ === */
+                    /* 1. Резервируем место внизу страницы под подписи (высота ~170px) */
+                    .content-wrapper {
+                        margin-bottom: 170px; 
+                    }
+                    
+                    /* 2. Возвращаем футер в поток (убираем absolute) */
+                    .footer-container {
+                        position: relative !important;
+                        bottom: auto !important;
+                        left: auto !important;
+                        right: auto !important;
+                        width: 100% !important;
+                        margin: 0 !important;
+                        padding-top: 0 !important;
+                        /* Тянем его вверх, чтобы он встал в зарезервированное место */
+                        margin-top: -150px !important; 
+                        
+                        /* Гарантируем, что он не разорвется */
+                        break-inside: avoid !important;
+                        page-break-inside: avoid !important;
+                    }
+
+                    .footer { display: flex !important; justify-content: space-between !important; }
+                    .signature-block { display: block !important; visibility: visible !important; }
                     
                     .no-print { display: none !important; }
                     h1 { font-size: 14pt; }
@@ -446,31 +500,16 @@ const NewSale: React.FC<NewSaleProps> = ({
                 }
                 
                 @media screen and (max-width: 768px) {
-                    body { font-size: 11pt; padding: 20px 15px; min-height: 100vh; }
-                    h1 { font-size: 13pt; }
+                    body { font-size: 11pt; padding: 15px; }
                     .field-row { flex-wrap: wrap; gap: 5px; }
-                    .field-row > span:last-child { text-align: right; min-width: 120px; }
                     table { font-size: 9.5pt; }
-                    th, td { padding: 4px 6px; }
-                }
-                
-                @media print and (max-width: 768px) {
-                    body { font-size: 10.5pt; padding: 15px 10px !important; min-height: 297mm; }
-                    h1 { font-size: 12pt; }
-                    .field-row { flex-wrap: nowrap !important; gap: 0 !important; }
-                    .field-row > span { font-size: 10pt; }
-                    .field-row > span:last-child { text-align: right !important; margin-left: 8px; }
-                    table { font-size: 9pt; }
-                    th, td { padding: 4px 5px; }
-                    .footer-container { bottom: 0.8cm !important; left: 0.8cm !important; right: 0.8cm !important; width: calc(100% - 1.6cm) !important; }
-                    .signature-line { margin: 25px 0 3px 0 !important; }
-                    .signature-label { font-size: 9pt !important; }
                 }
             </style>
         </head>
         <body>
             <button class="no-print" onclick="window.close()">✕ Закрыть</button>
             <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ<br>ТОВАРА В РАССРОЧКУ</h1>
+            
             <div class="header-info">Дата: ${new Date(sale.startDate).toLocaleDateString()}</div>
 
             <div class="content-wrapper">
@@ -525,11 +564,11 @@ const NewSale: React.FC<NewSaleProps> = ({
             <script>window.onload = function() { setTimeout(() => { window.print(); }, 300); }</script>
         </body>
         </html>
-      `;
+    `;
 
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-  };
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+};
 
   return (
     <div className="space-y-4 animate-fade-in pb-20">

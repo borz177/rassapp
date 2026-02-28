@@ -171,26 +171,48 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       setShowConfirmModal(true);
   };
 
-  const handleConfirm = async () => {
+    const handleConfirm = async () => {
       const numAmount = Number(amount);
       let finalDate = date;
       const now = new Date();
       const selectedDate = new Date(date);
-      const isToday = selectedDate.getDate() === now.getDate() && selectedDate.getMonth() === now.getMonth() && selectedDate.getFullYear() === now.getFullYear();
+      const isToday = selectedDate.getDate() === now.getDate() &&
+                      selectedDate.getMonth() === now.getMonth() &&
+                      selectedDate.getFullYear() === now.getFullYear();
+
       if (isToday) { finalDate = now.toISOString(); }
 
       const commonData = { amount: numAmount, date: finalDate };
 
       if (sourceType === 'CUSTOMER') {
           onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
+
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
               try {
                   const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
+
+                  // Транслитерируем название товара
                   const safeProductName = transliterate(selectedSale.productName);
-                  const fileName = `Договор_${safeProductName}.pdf`;
-                  const success = await sendWhatsAppFile(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance, selectedCustomer.phone, pdfBlob, fileName);
-                  if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
-                  else { alert("Ошибка отправки PDF в WhatsApp"); }
+
+                  // Если название пустое (например, были только спецсимволы), ставим заглушку
+                  const finalName = safeProductName || 'oplata';
+
+                  // Формируем имя файла: Договор_Название.pdf
+                  const fileName = `Договор_${finalName}.pdf`;
+
+                  const success = await sendWhatsAppFile(
+                      appSettings.whatsapp.idInstance,
+                      appSettings.whatsapp.apiTokenInstance,
+                      selectedCustomer.phone,
+                      pdfBlob,
+                      fileName
+                  );
+
+                  if (success) {
+                      alert("Договор (PDF) отправлен клиенту в WhatsApp");
+                  } else {
+                      alert("Ошибка отправки PDF в WhatsApp");
+                  }
               } catch (error) {
                   console.error("Error generating/sending PDF:", error);
                   alert("Ошибка при создании или отправке PDF");
