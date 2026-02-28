@@ -162,7 +162,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       setShowConfirmModal(true);
   };
 
-    const handleConfirm = async () => {
+      const handleConfirm = async () => {
       const numAmount = Number(amount);
       let finalDate = date;
       const now = new Date();
@@ -182,13 +182,18 @@ const NewIncome: React.FC<NewIncomeProps> = ({
               try {
                   const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
 
-                  // Транслитерируем название товара
-                  const safeProductName = transliterate(selectedSale.productName);
+                  // === ИСПРАВЛЕНИЕ: Оставляем русские буквы ===
+                  // 1. Берем название товара
+                  // 2. Заменяем все недопустимые символы (кроме букв и цифр) на "_"
+                  // 3. Заменяем пробелы на "_"
+                  let cleanName = selectedSale.productName
+                      .replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_')
+                      .replace(/\s+/g, '_');
 
-                  // Если название пустое (например, были только спецсимволы), ставим заглушку
-                  const finalName = safeProductName || 'oplata';
+                  // Если после очистки имя пустое, ставим заглушку
+                  const finalName = cleanName || 'oplata';
 
-                  // Формируем имя файла: Договор_Название.pdf
+                  // Формируем имя: Договор_Название.pdf (на русском!)
                   const fileName = `Договор_${finalName}.pdf`;
 
                   const success = await sendWhatsAppFile(
