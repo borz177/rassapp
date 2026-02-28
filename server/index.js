@@ -32,13 +32,7 @@ app.use(express.json({
   }
 }));
 
-app.post(
-  '/api/integrations/whatsapp/webhook',
-  express.json({ limit: '15mb' }), // применяем JSON только к этому маршруту
-  async (req, res) => {
-     // твоя логика
-  }
-);
+
 // Logging Middleware
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
@@ -302,176 +296,189 @@ const normalizePhone = (phone) => {
     return cleaned;
 };
 
-app.post('/api/integrations/whatsapp/webhook', async (req, res) => {
-  try {
-    console.log("==== WHATSAPP WEBHOOK START ====");
-    console.log("Incoming body:", JSON.stringify(req.body, null, 2));
+app.post(
+  '/api/integrations/whatsapp/webhook',
+  express.json({ limit: '15mb' }),
+  async (req, res) => {
+    try {
+      console.log("==== WHATSAPP WEBHOOK START ====");
+      console.log("Incoming body:", JSON.stringify(req.body, null, 2));
 
-    const body = req.body;
-    const { typeWebhook, senderData, messageData, instanceData } = body;
+      const body = req.body;
+      const { typeWebhook, senderData, messageData, instanceData } = body;
 
-    if (!senderData?.chatId) {
-      console.log("No chatId found, skipping...");
-      return res.status(200).send('OK');
-    }
+      // Быстрый ответ Green API, чтобы не было повторных отправок
+      res.status(200).send('OK');
 
-    const chatId = senderData.chatId;
-
-    console.log("chatId received:", chatId);
-
-    // Ignore group
-    if (chatId.includes('@g.us')) {
-      console.log("Ignoring group message:", chatId);
-      return res.status(200).send('OK');
-    }
-
-    const rawPhone = chatId.replace('@c.us', '');
-    const senderPhone = normalizePhone(rawPhone);
-
-    console.log("Raw phone:", rawPhone);
-    console.log("Normalized phone:", senderPhone);
-
-    // ===== FIND MANAGER BY INSTANCE =====
-    const instanceId = instanceData?.idInstance;
-    console.log("Instance ID:", instanceId);
-
-    const managerResult = await pool.query(`
-      SELECT id, name, whatsapp_settings
-      FROM users
-      WHERE whatsapp_settings->>'idInstance' = $1
-      LIMIT 1
-    `, [String(instanceId)]);
-
-    if (managerResult.rows.length === 0) {
-      console.log("Manager not found for instance:", instanceId);
-      return res.status(200).send('OK');
-    }
-
-    const manager = managerResult.rows[0];
-    const managerId = manager.id;
-    const settings = manager.whatsapp_settings;
-
-    console.log("Manager found:", manager.name);
-
-    if (!settings?.botEnabled) {
-      console.log("Bot disabled for manager:", managerId);
-      return res.status(200).send('OK');
-    }
-
-    const { idInstance, apiTokenInstance } = settings;
-
-    console.log("Using idInstance:", idInstance);
-
-    // ===== FIND CUSTOMER =====
-    const customerResult = await pool.query(`
-      SELECT id, data
-      FROM data_items
-      WHERE type = 'customers'
-      AND user_id = $1
-      AND phone_normalized = $2
-      LIMIT 1
-    `, [managerId, senderPhone]);
-
-    if (customerResult.rows.length === 0) {
-      console.log("Customer not found for:", senderPhone);
-      return res.status(200).send('OK');
-    }
-
-    const customer = customerResult.rows[0];
-    console.log("Customer found:", customer.id);
-
-    // ===== SEND MESSAGE =====
-    const sendMessage = async (text) => {
-      try {
-        const payload = {
-          chatId,
-          message: text
-        };
-
-        console.log("Sending TEXT payload:", JSON.stringify(payload, null, 2));
-
-        const response = await axios.post(
-          `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiTokenInstance}`,
-          payload
-        );
-
-        console.log("Green API TEXT response:", response.data);
-      } catch (e) {
-        console.error("TEXT SEND ERROR FULL:", {
-          status: e.response?.status,
-          data: e.response?.data,
-          message: e.message
-        });
-      }
-    };
-
-    // ===== SEND BUTTONS =====
-    const sendButtons = async (text, buttons) => {
-      try {
-        const payload = {
-          chatId,
-          body: text,
-          buttons: buttons.slice(0, 3).map(b => ({
-            buttonId: b.id,
-            buttonText: { displayText: b.title },
-            type: 1
-          }))
-        };
-
-        console.log("Sending BUTTON payload:", JSON.stringify(payload, null, 2));
-
-        const response = await axios.post(
-          `https://api.green-api.com/waInstance${idInstance}/sendInteractiveButtons/${apiTokenInstance}`,
-          payload
-        );
-
-        console.log("Green API BUTTON response:", response.data);
-      } catch (e) {
-        console.error("BUTTON SEND ERROR FULL:", {
-          status: e.response?.status,
-          data: e.response?.data,
-          message: e.message
-        });
-      }
-    };
-
-    // ===== HANDLE TEXT =====
-    if (typeWebhook === 'incomingMessageReceived') {
-
-      if (messageData?.typeMessage === 'textMessage') {
-        const text = messageData.textMessageData.textMessage;
-
-        console.log("Received text:", text);
-
-        const greeting = `Здравствуйте 👋 Я ассистент ${manager.name}. Чем могу помочь?`;
-
-        const buttons = [
-          { id: 'debt', title: '📊 Мой долг' },
-          { id: 'payment_date', title: '📅 Дата платежа' },
-          { id: 'conditions', title: 'Условия рассрочки' }
-        ];
-
-        console.log("About to send buttons...");
-        await sendButtons(greeting, buttons);
+      if (!senderData?.chatId) {
+        console.log("No chatId found, skipping...");
+        return;
       }
 
-      if (messageData?.typeMessage === 'buttonsResponseMessage') {
-        const buttonId = messageData.buttonsResponseMessageData.selectedButtonId;
+      const chatId = senderData.chatId;
+      console.log("chatId received:", chatId);
 
-        console.log("Button clicked:", buttonId);
-
-        await sendMessage(`Вы нажали: ${buttonId}`);
+      // Игнорируем групповые чаты
+      if (chatId.includes('@g.us')) {
+        console.log("Ignoring group message:", chatId);
+        return;
       }
+
+      const rawPhone = chatId.replace('@c.us', '');
+      const senderPhone = normalizePhone(rawPhone);
+      console.log("Normalized phone:", senderPhone);
+
+      // ===== FIND MANAGER BY INSTANCE =====
+      const instanceId = instanceData?.idInstance;
+      console.log("Instance ID:", instanceId);
+
+      const managerResult = await pool.query(`
+        SELECT id, name, whatsapp_settings
+        FROM users
+        WHERE whatsapp_settings->>'idInstance' = $1
+        LIMIT 1
+      `, [String(instanceId)]);
+
+      if (managerResult.rows.length === 0) {
+        console.log("Manager not found for instance:", instanceId);
+        return;
+      }
+
+      const manager = managerResult.rows[0];
+      const managerId = manager.id;
+      const settings = manager.whatsapp_settings;
+
+      console.log("Manager found:", manager.name);
+
+      if (!settings?.botEnabled) {
+        console.log("Bot disabled for manager:", managerId);
+        return;
+      }
+
+      const { idInstance, apiTokenInstance } = settings;
+      console.log("Using idInstance:", idInstance);
+
+      // ===== FIND CUSTOMER =====
+      const customerResult = await pool.query(`
+        SELECT id, data
+        FROM data_items
+        WHERE type = 'customers'
+        AND user_id = $1
+        AND phone_normalized = $2
+        LIMIT 1
+      `, [managerId, senderPhone]);
+
+      if (customerResult.rows.length === 0) {
+        console.log("Customer not found for:", senderPhone);
+        return;
+      }
+
+      const customer = customerResult.rows[0];
+      console.log("Customer found:", customer.id);
+
+      // ===== SEND MESSAGE =====
+      const sendMessage = async (text) => {
+        try {
+          const payload = { chatId, message: text };
+          console.log("Sending TEXT payload:", JSON.stringify(payload, null, 2));
+
+          const response = await axios.post(
+            `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiTokenInstance}`, // ✅ FIX: убраны пробелы
+            payload,
+            { timeout: 10000 } // ✅ FIX: таймаут 10 сек
+          );
+          console.log("Green API TEXT response:", response.data);
+        } catch (e) {
+          console.error("TEXT SEND ERROR:", {
+            url: `waInstance${idInstance}/sendMessage`,
+            status: e.response?.status,
+            data: e.response?.data,
+            message: e.message
+          });
+        }
+      };
+
+      // ===== SEND BUTTONS =====
+      const sendButtons = async (text, buttons) => {
+        try {
+          if (!buttons || buttons.length === 0) {
+            await sendMessage(text); // fallback на текст
+            return;
+          }
+
+          const payload = {
+            chatId,
+            body: text,
+            buttons: buttons.slice(0, 3).map(b => ({
+              buttonId: b.id,
+              buttonText: { displayText: b.title },
+              type: 1
+            }))
+          };
+
+          console.log("Sending BUTTON payload:", JSON.stringify(payload, null, 2));
+
+          const response = await axios.post(
+            `https://api.green-api.com/waInstance${idInstance}/sendInteractiveButtons/${apiTokenInstance}`, // ✅ FIX: убраны пробелы
+            payload,
+            { timeout: 10000 } // ✅ FIX: таймаут 10 сек
+          );
+          console.log("Green API BUTTON response:", response.data);
+        } catch (e) {
+          console.error("BUTTON SEND ERROR:", {
+            url: `waInstance${idInstance}/sendInteractiveButtons`,
+            status: e.response?.status,
+            data: e.response?.data,
+            message: e.message
+          });
+        }
+      };
+
+      // ===== HANDLE INCOMING MESSAGE =====
+      if (typeWebhook === 'incomingMessageReceived') {
+
+        // Обработка текстового сообщения
+        if (messageData?.typeMessage === 'textMessage') {
+          const text = messageData.textMessageData.textMessage;
+          console.log("Received text:", text);
+
+          const greeting = `Здравствуйте 👋 Я ассистент ${manager.name}. Чем могу помочь?`;
+
+          // Формируем кнопки (можно расширить фильтрацией по settings.botButtons)
+          const buttons = [
+            { id: 'debt', title: '📊 Мой долг' },
+            { id: 'payment_date', title: '📅 Дата платежа' },
+            { id: 'conditions', title: 'Условия рассрочки' }
+          ];
+
+          console.log("About to send buttons...");
+          await sendButtons(greeting, buttons);
+        }
+
+        // Обработка нажатия на кнопку
+        if (messageData?.typeMessage === 'buttonsResponseMessage') {
+          const buttonId = messageData.buttonsResponseMessageData.selectedButtonId;
+          console.log("Button clicked:", buttonId);
+
+          // Здесь можно добавить логику ответов на конкретные кнопки
+          const responses = {
+            'debt': '📊 Ваш долг: рассчитывается...',
+            'payment_date': '📅 Ближайшая дата платежа: ...',
+            'conditions': '📝 Условия: первый взнос 20%, срок до 12 мес.'
+          };
+
+          await sendMessage(responses[buttonId] || `Вы нажали: ${buttonId}`);
+        }
+      }
+
+      console.log("==== WHATSAPP WEBHOOK END ====");
+
+    } catch (error) {
+      console.error("WEBHOOK CRASH:", error);
+      // Не отправляем статус 500, так как ответ уже отправлен выше
     }
-
-    console.log("==== WHATSAPP WEBHOOK END ====");
-    return res.status(200).send('OK');
-
-  } catch (error) {
-    console.error("WEBHOOK CRASH:", error);
-    return res.status(500).send('Error');
   }
-});
+);
 
 // Send Verification Code
 app.post('/api/auth/send-code', async (req, res) => {
