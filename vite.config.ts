@@ -1,10 +1,10 @@
-import path from 'path'
-import { defineConfig, loadEnv } from 'vite'
-import react from '@vitejs/plugin-react'
-import { VitePWA } from 'vite-plugin-pwa'
+import path from 'path';
+import { defineConfig, loadEnv } from 'vite';
+import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, '.', '')
+  const env = loadEnv(mode, '.', '');
 
   return {
     server: {
@@ -14,50 +14,65 @@ export default defineConfig(({ mode }) => {
 
     plugins: [
       react(),
-
-      // 🔥 PWA поддержка офлайн-режима
       VitePWA({
         registerType: 'autoUpdate',
-        injectRegister: 'auto',
-
-        includeAssets: [
-          'icon-192.png',
-          'icon-512.png'
-        ],
-
+        includeAssets: ['icon.svg'],
+        manifestFilename: 'manifest.json',
+        devOptions: {
+          enabled: true
+        },
         manifest: {
-          name: 'FinUchet',
-          short_name: 'FinUchet',
-          description: 'Умный учет рассрочек и клиентов',
-          theme_color: '#4F46E5',
-          background_color: '#f8fafc',
+          name: 'InstallMate',
+          short_name: 'InstallMate',
+          description: 'Управление рассрочками и продажами',
+          theme_color: '#ffffff',
+          background_color: '#ffffff',
           display: 'standalone',
           start_url: '/',
+          scope: '/',
+          orientation: 'portrait',
           icons: [
             {
-              src: '/icon-192.png',
+              src: 'icon.svg',
               sizes: '192x192',
-              type: 'image/png'
+              type: 'image/svg+xml',
+              purpose: 'any maskable'
             },
             {
-              src: '/icon-512.png',
+              src: 'icon.svg',
               sizes: '512x512',
-              type: 'image/png'
+              type: 'image/svg+xml',
+              purpose: 'any maskable'
             }
           ]
         },
-
         workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+          globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+          navigateFallback: '/index.html',
           runtimeCaching: [
             {
-              urlPattern: /^https:\/\/esm\.sh\/.*/i,
+              urlPattern: ({ url }) => url.pathname.startsWith('/api'),
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'api-cache',
+                expiration: {
+                  maxEntries: 100,
+                  maxAgeSeconds: 60 * 60 * 24 * 7 // 1 week
+                },
+                networkTimeoutSeconds: 3
+              }
+            },
+            {
+              urlPattern: /^https:\/\/cdn\.sheetjs\.com\/.*/i,
               handler: 'CacheFirst',
               options: {
-                cacheName: 'esm-cache',
+                cacheName: 'sheetjs-cache',
                 expiration: {
-                  maxEntries: 50,
-                  maxAgeSeconds: 60 * 60 * 24 * 30
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+                },
+                cacheableResponse: {
+                  statuses: [0, 200]
                 }
               }
             }
@@ -77,21 +92,22 @@ export default defineConfig(({ mode }) => {
       }
     },
 
-    // исключаем xlsx из сборки (как у тебя было)
+    // 🔹 Исключаем xlsx из предсборки
     optimizeDeps: {
       exclude: ['xlsx']
     },
 
+    // 🔹 Настройки сборки
     build: {
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
-        external: ['xlsx'],
+        external: ['xlsx'], // Используется как внешняя библиотека (CDN)
         output: {
           globals: {
-            xlsx: 'XLSX'
+            xlsx: 'XLSX' // Глобальная переменная из CDN
           }
         }
       }
     }
-  }
-})
+  };
+});
