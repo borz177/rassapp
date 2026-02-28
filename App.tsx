@@ -141,6 +141,7 @@ const App: React.FC = () => {
                 if (localUser) {
                     console.log("Restoring user from local storage...");
                     setUser(localUser);
+                    setIsLoading(false); // <--- IMPORTANT: Stop loading immediately
                     // Load data immediately using local user context
                     await loadData(localUser).catch(e => console.warn("Local data load warning:", e));
                 }
