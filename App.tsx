@@ -140,10 +140,23 @@ const App: React.FC = () => {
             localStorage.setItem('user', JSON.stringify(freshUser));
             loadData(freshUser); // Pass fresh user to merge settings
         } catch (err) {
-            console.error('Auth failed, logging out', err);
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            setIsLoading(false);
+            console.error('Auth failed', err);
+
+            // Fallback to local user if offline
+            const localUser = localStorage.getItem('user');
+            if (localUser && !navigator.onLine) {
+                console.log("Offline mode: using cached user");
+                const parsedUser = JSON.parse(localUser);
+                setUser(parsedUser);
+                loadData(parsedUser);
+            } else {
+                 // Only clear if we are online (token invalid) or no local data
+                 if (navigator.onLine) {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                 }
+                 setIsLoading(false);
+            }
         }
         } else {
         setIsLoading(false);

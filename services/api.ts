@@ -91,6 +91,10 @@ export const api = {
             // Stores token automatically (Log in)
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
+
+            // Cache user for offline access
+            await offlineStorage.setCache('user_me', data.user);
+
             return data.user;
         } catch (error: any) {
             console.error("API Register Error:", error);
@@ -123,6 +127,10 @@ export const api = {
 
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
+
+            // Cache user for offline access
+            await offlineStorage.setCache('user_me', data.user);
+
             return data.user;
         } catch (error: any) {
             console.error("API Login Error:", error);
