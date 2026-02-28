@@ -359,21 +359,25 @@ app.post(
       console.log("Using idInstance:", idInstance);
 
       // ===== FIND CUSTOMER =====
-      const customerResult = await pool.query(`
+      // Fetch all customers for this manager and find the matching phone
+      const customersResult = await pool.query(`
         SELECT id, data
         FROM data_items
         WHERE type = 'customers'
         AND user_id = $1
-        AND phone_normalized = $2
-        LIMIT 1
-      `, [managerId, senderPhone]);
+      `, [managerId]);
 
-      if (customerResult.rows.length === 0) {
+      const customerRow = customersResult.rows.find(row => {
+          const p = row.data.phone || '';
+          return normalizePhone(p) === senderPhone;
+      });
+
+      if (!customerRow) {
         console.log("Customer not found for:", senderPhone);
         return;
       }
 
-      const customer = customerResult.rows[0];
+      const customer = customerRow;
       console.log("Customer found:", customer.id);
 
       // ===== SEND MESSAGE =====
@@ -431,6 +435,11 @@ app.post(
             data: e.response?.data,
             message: e.message
           });
+
+          // Fallback to text if buttons fail (e.g. not supported on some devices or API error)
+          console.log("Falling back to text message due to button error...");
+          const fallbackText = `${text}\n\n${buttons.map((b, i) => `${i+1}. ${b.title}`).join('\n')}\n\n(Ответьте цифрой или текстом)`;
+          await sendMessage(fallbackText);
         }
       };
 

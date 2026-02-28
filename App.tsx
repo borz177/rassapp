@@ -132,35 +132,51 @@ const App: React.FC = () => {
             return;
         }
 
-        const token = localStorage.getItem('token');
-        if (token) {
-        try {
-            const freshUser = await api.getMe();
-            setUser(freshUser);
-            localStorage.setItem('user', JSON.stringify(freshUser));
-            loadData(freshUser); // Pass fresh user to merge settings
-        } catch (err) {
-            console.error('Auth failed', err);
-
-            // Fallback to local user if offline
-            const localUser = localStorage.getItem('user');
-            if (localUser && !navigator.onLine) {
-                console.log("Offline mode: using cached user");
-                const parsedUser = JSON.parse(localUser);
-                setUser(parsedUser);
-                loadData(parsedUser);
-            } else {
-                 // Only clear if we are online (token invalid) or no local data
-                 if (navigator.onLine) {
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('user');
-                 }
-                 setIsLoading(false);
+        // 1. Restore Local User FIRST (Offline Priority)
+        const localUserStr = localStorage.getItem('user');
+        let localUser: User | null = null;
+        if (localUserStr) {
+            try {
+                localUser = JSON.parse(localUserStr);
+                if (localUser) {
+                    console.log("Restoring user from local storage...");
+                    setUser(localUser);
+                    // Load data immediately using local user context
+                    await loadData(localUser).catch(e => console.warn("Local data load warning:", e));
+                }
+            } catch (e) {
+                console.error("Failed to parse local user", e);
             }
         }
-        } else {
-        setIsLoading(false);
+
+        // 2. If Online, try to refresh from server
+        const token = localStorage.getItem('token');
+        if (token && navigator.onLine) {
+            try {
+                const freshUser = await api.getMe();
+                setUser(freshUser);
+                localStorage.setItem('user', JSON.stringify(freshUser));
+                // Refresh data with fresh permissions/settings, skip loading spinner if we already have data
+                await loadData(freshUser, !!localUser);
+            } catch (err) {
+                console.error('Auth refresh failed', err);
+                // Only logout if we DON'T have a local user to fall back on
+                if (!localUser) {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    setUser(null);
+                }
+            }
+        } else if (!token && !localUser) {
+            // No token and no local user -> Stop loading to show Auth
+            setIsLoading(false);
         }
+
+        // Ensure loading is turned off
+        if (!token && !localUser) {
+             setIsLoading(false);
+        }
+
         // Load default local settings first
         setAppSettings(getAppSettings());
     };
@@ -168,8 +184,8 @@ const App: React.FC = () => {
     initApp();
   }, []);
 
-  const loadData = async (currentUser?: User) => {
-      if (customers.length === 0 && sales.length === 0) {
+  const loadData = async (currentUser?: User, skipLoading = false) => {
+      if (!skipLoading && customers.length === 0 && sales.length === 0) {
           setIsLoading(true);
       }
       try {
@@ -547,6 +563,65 @@ const App: React.FC = () => {
   const contractCounts = useMemo(() => { const today = new Date(); let active = 0, overdue = 0, archive = 0; const customerIdSet = new Set(customers.map(c => c.id)); const actualSales = sales.filter(sale => customerIdSet.has(sale.customerId)); actualSales.forEach(sale => { if (sale.status === 'COMPLETED' || sale.remainingAmount === 0) { archive++; return; } if (sale.paymentPlan.filter(p => !p.isPaid).some(p => new Date(p.date) < today)) { overdue++; } else { active++; } }); return { active, overdue, archive }; }, [sales, customers]);
   const toggleMoreSection = (section: string) => { setMoreExpandedSection(moreExpandedSection === section ? null : section); };
 
+  const handleDeleteOperation = async (op: any) => {
+      if (!user) return;
+      if (isEmployee && !user.permissions?.canDelete) {
+          alert("Нет прав на удаление");
+          return;
+      }
+
+      if (!window.confirm("Вы уверены, что хотите удалить эту операцию?")) return;
+
+      if (op.type === 'EXPENSE') {
+          await api.deleteItem('expenses', op.id);
+          removeFromList(setExpenses, op.id);
+      } else if (op.type === 'INCOME') {
+          const sale = sales.find(s => s.id === op.raw.id);
+          if (!sale) return;
+
+          if (op.id === sale.id) {
+             // CASH Sale
+             await api.deleteItem('sales', sale.id);
+             removeFromList(setSales, sale.id);
+             // Also delete associated expense if any
+             await api.deleteItem('expenses', `exp_sale_${sale.id}`);
+             setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${sale.id}`));
+             // Restore stock
+             if (sale.productId) {
+                 const prod = products.find(p => p.id === sale.productId);
+                 if(prod) {
+                     const updatedProd = { ...prod, stock: prod.stock + 1 };
+                     const savedProd = await api.saveItem('products', updatedProd);
+                     updateList(setProducts, savedProd);
+                 }
+             }
+          } else if (op.id.endsWith('_dp')) {
+              // Down Payment
+              const updatedSale = {
+                  ...sale,
+                  downPayment: 0,
+                  remainingAmount: sale.remainingAmount + op.amount,
+                  status: 'ACTIVE' as const
+              };
+              const saved = await api.saveItem('sales', updatedSale);
+              updateList(setSales, saved);
+          } else {
+              // Installment Payment
+              const payment = sale.paymentPlan.find(p => p.id === op.id);
+              if (payment) {
+                  const updatedSale = {
+                      ...sale,
+                      remainingAmount: sale.remainingAmount + payment.amount,
+                      paymentPlan: sale.paymentPlan.filter(p => p.id !== op.id),
+                      status: 'ACTIVE' as const
+                  };
+                  const saved = await api.saveItem('sales', updatedSale);
+                  updateList(setSales, saved);
+              }
+          }
+      }
+  };
+
   const handleUpdateSettings = async (newSettings: AppSettings) => {
       setAppSettings(newSettings);
       saveAppSettings(newSettings); // Local Sync
@@ -651,6 +726,7 @@ const App: React.FC = () => {
             accounts={accounts}
             customers={customers}
             initialAccountId={operationsAccountId}
+            onDelete={handleDeleteOperation}
         />
       )}
       {currentView === 'REPORTS' && reportData && <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters} data={reportData} />}
