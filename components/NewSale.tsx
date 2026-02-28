@@ -331,31 +331,19 @@ const NewSale: React.FC<NewSaleProps> = ({
       }
   };
 
-
-
    const handleSendContract = async () => {
       if (!createdSale || !selectedCustomer || !appSettings.whatsapp?.enabled) return;
       try {
           const blob = await generatePDFBlob();
 
-          // Функция транслитерации (уже есть у вас в коде выше)
-          const transliterate = (text: string) => {
-              const map: Record<string, string> = {
-                  'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
-                  'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
-                  'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts',
-                  'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu',
-                  'я': 'ya', ' ': '_'
-              };
-              // Переводим в нижний регистр, транслитерируем и удаляем ВСЁ лишнее (кроме a-z, 0-9, _)
-              return text.toLowerCase().split('').map(char => map[char] || char).join('').replace(/[^a-z0-9_]/g, '');
-          };
+          // Очищаем название товара: оставляем только буквы (рус/анг), цифры и пробелы
+          // Заменяем все лишние символы (/, \, :, *, ?, ", <, >, |) на подчеркивание
+          let cleanProductName = createdSale.productName
+              .replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_')
+              .replace(/\s+/g, '_'); // Заменяем пробелы на подчеркивание
 
-          // Формируем чистое имя: Договор_НазваниеТовара.pdf
-          const safeProductName = transliterate(createdSale.productName);
-
-          // Если название товара после очистки пустое (например, были только спецсимволы), ставим заглушку
-          const fileName = `Договор_${safeProductName || 'tovar'}.pdf`;
+          // Формируем имя: Договор_НазваниеТовара.pdf
+          const fileName = `Договор_${cleanProductName}.pdf`;
 
           const success = await sendWhatsAppFile(
               appSettings.whatsapp.idInstance,
