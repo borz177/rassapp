@@ -39,7 +39,7 @@ app.use((req, res, next) => {
     next();
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'secret_key_change_this';
 
 // Nodemailer Transporter
