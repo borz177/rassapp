@@ -16,14 +16,14 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg'],
+        includeAssets: ['icon-192.png'],
         manifestFilename: 'manifest.json',
         devOptions: {
           enabled: true
         },
         manifest: {
-          name: 'InstallMate',
-          short_name: 'InstallMate',
+          name: 'FinUchet',
+          short_name: 'Insta',
           description: 'Управление рассрочками и продажами',
           theme_color: '#ffffff',
           background_color: '#ffffff',
@@ -33,15 +33,15 @@ export default defineConfig(({ mode }) => {
           orientation: 'portrait',
           icons: [
             {
-              src: 'icon.svg',
+              src: '/icon-192.png',
               sizes: '192x192',
-              type: 'image/svg+xml',
+              type: 'image/png',
               purpose: 'any maskable'
             },
             {
-              src: 'icon.svg',
+              src: '/icon-512.png',
               sizes: '512x512',
-              type: 'image/svg+xml',
+              type: 'image/png',
               purpose: 'any maskable'
             }
           ]
