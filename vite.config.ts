@@ -1,6 +1,7 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
@@ -14,6 +15,7 @@ export default defineConfig(({ mode }) => {
 
     plugins: [
       react(),
+      tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['icon-192.png'],
@@ -23,7 +25,7 @@ export default defineConfig(({ mode }) => {
         },
         manifest: {
           name: 'FinUchet',
-          short_name: 'InstallMate',
+          short_name: 'FinUchet',
           description: 'Управление рассрочками и продажами',
           theme_color: '#ffffff',
           background_color: '#ffffff',
@@ -39,7 +41,7 @@ export default defineConfig(({ mode }) => {
               purpose: 'any maskable'
             },
             {
-              src: 'icon.svg',
+              src: 'icon-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any maskable'
