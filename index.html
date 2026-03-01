@@ -4,18 +4,100 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#0f172a" />
     <meta name="description" content="Manage installments with AI" />
-    <link rel="apple-touch-icon" href="/icon-192.png">
-
-    <!-- Prevent Caching -->
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-    <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
+    <link rel="manifest" href="/manifest.json">
 
 
-    <title>InstallMate</title>
+
+
+   <title>InstallMate</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              indigo: {
+                50: 'var(--color-primary-50)',
+                100: 'var(--color-primary-100)',
+                200: 'var(--color-primary-200)',
+                300: 'var(--color-primary-300)',
+                400: 'var(--color-primary-400)',
+                500: 'var(--color-primary-500)',
+                600: 'var(--color-primary-600)',
+                700: 'var(--color-primary-700)',
+                800: 'var(--color-primary-800)',
+                900: 'var(--color-primary-900)',
+                950: 'var(--color-primary-950)',
+              },
+              // We map purple to secondary variables or keep it static if needed.
+              // But since the previous theme mapped purple to blueish colors, let's keep it consistent or map to secondary.
+              // For now, let's map purple to the same primary variables to ensure consistency where 'purple' was used as an accent.
+              purple: {
+                50: 'var(--color-secondary-50)',
+                100: 'var(--color-secondary-100)',
+                200: 'var(--color-secondary-200)',
+                300: 'var(--color-secondary-300)',
+                400: 'var(--color-secondary-400)',
+                500: 'var(--color-secondary-500)',
+                600: 'var(--color-secondary-600)',
+                700: 'var(--color-secondary-700)',
+                800: 'var(--color-secondary-800)',
+                900: 'var(--color-secondary-900)',
+                950: 'var(--color-secondary-950)',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      :root {
+        /* Default Theme (Purple) */
+        --color-primary-50: #f5f3ff;
+        --color-primary-100: #ede9fe;
+        --color-primary-200: #ddd6fe;
+        --color-primary-300: #c4b5fd;
+        --color-primary-400: #a78bfa;
+        --color-primary-500: #8b5cf6;
+        --color-primary-600: #7c3aed;
+        --color-primary-700: #6d28d9;
+        --color-primary-800: #5b21b6;
+        --color-primary-900: #4c1d95;
+        --color-primary-950: #2e1065;
+
+        /* Secondary (usually complementary or lighter version) */
+        --color-secondary-50: #eff6ff;
+        --color-secondary-100: #dbeafe;
+        --color-secondary-200: #bfdbfe;
+        --color-secondary-300: #93c5fd;
+        --color-secondary-400: #60a5fa;
+        --color-secondary-500: #3b82f6;
+        --color-secondary-600: #2563eb;
+        --color-secondary-700: #1d4ed8;
+        --color-secondary-800: #1e40af;
+        --color-secondary-900: #1e3a8a;
+        --color-secondary-950: #172554;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background-color: #f8fafc;
+        -webkit-tap-highlight-color: transparent;
+      }
+      /* Hide scrollbar for Chrome, Safari and Opera */
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      /* Hide scrollbar for IE, Edge and Firefox */
+      .no-scrollbar {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;  /* Firefox */
+      }
+    </style>
   <script type="importmap">
 {
   "imports": {
@@ -29,6 +111,7 @@
   }
 }
 </script>
+<link rel="stylesheet" href="/index.css">
 </head>
   <body>
     <div id="root"></div>
