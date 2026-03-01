@@ -1,7 +1,7 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
-// import { VitePWA } from 'vite-plugin-pwa';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
@@ -16,14 +16,14 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon-192.png'],
+        includeAssets: ['icon.svg'],
         manifestFilename: 'manifest.json',
         devOptions: {
           enabled: true
         },
         manifest: {
-          name: 'FinUchet',
-          short_name: 'Insta',
+          name: 'InstallMate',
+          short_name: 'InstallMate',
           description: 'Управление рассрочками и продажами',
           theme_color: '#ffffff',
           background_color: '#ffffff',
@@ -33,15 +33,15 @@ export default defineConfig(({ mode }) => {
           orientation: 'portrait',
           icons: [
             {
-              src: '/icon-192.png',
+              src: 'icon.svg',
               sizes: '192x192',
-              type: 'image/png',
+              type: 'image/svg+xml',
               purpose: 'any maskable'
             },
             {
-              src: '/icon-512.png',
+              src: 'icon.svg',
               sizes: '512x512',
-              type: 'image/png',
+              type: 'image/svg+xml',
               purpose: 'any maskable'
             }
           ]
