@@ -1,33 +1,11 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-@theme {
-  --color-indigo-50: var(--color-primary-50);
-  --color-indigo-100: var(--color-primary-100);
-  --color-indigo-200: var(--color-primary-200);
-  --color-indigo-300: var(--color-primary-300);
-  --color-indigo-400: var(--color-primary-400);
-  --color-indigo-500: var(--color-primary-500);
-  --color-indigo-600: var(--color-primary-600);
-  --color-indigo-700: var(--color-primary-700);
-  --color-indigo-800: var(--color-primary-800);
-  --color-indigo-900: var(--color-primary-900);
-  --color-indigo-950: var(--color-primary-950);
-
-  --color-purple-50: var(--color-secondary-50);
-  --color-purple-100: var(--color-secondary-100);
-  --color-purple-200: var(--color-secondary-200);
-  --color-purple-300: var(--color-secondary-300);
-  --color-purple-400: var(--color-secondary-400);
-  --color-purple-500: var(--color-secondary-500);
-  --color-purple-600: var(--color-secondary-600);
-  --color-purple-700: var(--color-secondary-700);
-  --color-purple-800: var(--color-secondary-800);
-  --color-purple-900: var(--color-secondary-900);
-  --color-purple-950: var(--color-secondary-950);
-}
-
+/* ====== ТЕМЫ ====== */
 :root {
-  /* Default Theme (Purple) */
+
+  /* ===== PRIMARY (Фиолетовый) ===== */
   --color-primary-50: #f5f3ff;
   --color-primary-100: #ede9fe;
   --color-primary-200: #ddd6fe;
@@ -40,7 +18,7 @@
   --color-primary-900: #4c1d95;
   --color-primary-950: #2e1065;
 
-  /* Secondary (usually complementary or lighter version) */
+  /* ===== SECONDARY (Синий) ===== */
   --color-secondary-50: #eff6ff;
   --color-secondary-100: #dbeafe;
   --color-secondary-200: #bfdbfe;
@@ -52,19 +30,47 @@
   --color-secondary-800: #1e40af;
   --color-secondary-900: #1e3a8a;
   --color-secondary-950: #172554;
+
+  /* ===== GREEN (Успех / прибыль) ===== */
+  --color-green-50: #ecfdf5;
+  --color-green-100: #d1fae5;
+  --color-green-200: #a7f3d0;
+  --color-green-300: #6ee7b7;
+  --color-green-400: #34d399;
+  --color-green-500: #10b981;
+  --color-green-600: #059669;
+  --color-green-700: #047857;
+  --color-green-800: #065f46;
+  --color-green-900: #064e3b;
+  --color-green-950: #022c22;
+
+  /* ===== DARK / BLACK ===== */
+  --color-dark-50: #f8fafc;
+  --color-dark-100: #e2e8f0;
+  --color-dark-200: #cbd5e1;
+  --color-dark-300: #94a3b8;
+  --color-dark-400: #64748b;
+  --color-dark-500: #475569;
+  --color-dark-600: #334155;
+  --color-dark-700: #1e293b;
+  --color-dark-800: #0f172a;
+  --color-dark-900: #020617;
+  --color-dark-950: #000000;
 }
+
+/* ===== Глобальные стили ===== */
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background-color: #f8fafc;
+  background-color: var(--color-dark-50);
   -webkit-tap-highlight-color: transparent;
 }
-/* Hide scrollbar for Chrome, Safari and Opera */
+
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
-/* Hide scrollbar for IE, Edge and Firefox */
+
 .no-scrollbar {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
