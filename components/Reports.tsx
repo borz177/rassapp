@@ -1,6 +1,7 @@
 import React from 'react';
-import { Investor } from '../types';
+import { Investor, AppSettings } from '../types';
 import { ICONS } from '../constants';
+import { formatCurrency } from '../src/utils';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
 interface ReportFilters {
@@ -24,11 +25,12 @@ interface ReportsProps {
     filters: ReportFilters;
     onFiltersChange: React.Dispatch<React.SetStateAction<ReportFilters>>;
     data: ReportData;
+    appSettings: AppSettings;
 }
 
 const COLORS = ['#10B981', '#6366F1'];
 
-const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, data }) => {
+const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, data, appSettings }) => {
 
     const handleFilterChange = (key: 'investorId' | 'period', value: any) => {
         onFiltersChange(prev => ({...prev, [key]: value}));
@@ -50,7 +52,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                     <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Инвестор</label>
-                    <select 
+                    <select
                         className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm"
                         value={filters.investorId}
                         onChange={e => handleFilterChange('investorId', e.target.value)}
@@ -63,7 +65,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                 </div>
                 <div>
                     <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Начало периода</label>
-                    <input 
+                    <input
                         type="date"
                         className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm"
                         value={filters.period.start}
@@ -72,7 +74,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                 </div>
                 <div>
                     <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Конец периода</label>
-                    <input 
+                    <input
                         type="date"
                         className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm"
                         value={filters.period.end}
@@ -88,7 +90,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                         <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">{ICONS.Income}</div>
                         <h3 className="font-semibold text-slate-700">Поступления</h3>
                     </div>
-                    <p className="text-2xl font-bold text-emerald-700">{data.customerPaymentsInPeriod.toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</p>
+                    <p className="text-2xl font-bold text-emerald-700">{formatCurrency(data.customerPaymentsInPeriod, appSettings.showCents)} ₽</p>
                     <p className="text-xs text-slate-400 mt-1">Оплачено клиентами за период</p>
                 </div>
                  <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
@@ -96,7 +98,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                         <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">{ICONS.Dashboard}</div>
                         <h3 className="font-semibold text-slate-700">Ожидаемая прибыль</h3>
                     </div>
-                    <p className="text-2xl font-bold text-indigo-700">{(data.expectedManagerProfit + data.expectedInvestorProfit).toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</p>
+                    <p className="text-2xl font-bold text-indigo-700">{formatCurrency(data.expectedManagerProfit + data.expectedInvestorProfit, appSettings.showCents)} ₽</p>
                     <p className="text-xs text-slate-400 mt-1">С активных договоров</p>
                 </div>
                  <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
@@ -104,7 +106,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                         <div className="p-2 bg-sky-100 text-sky-600 rounded-lg">{ICONS.Users}</div>
                         <h3 className="font-semibold text-slate-700">Моя доля (ожид.)</h3>
                     </div>
-                    <p className="text-2xl font-bold text-sky-700">{data.expectedManagerProfit.toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</p>
+                    <p className="text-2xl font-bold text-sky-700">{formatCurrency(data.expectedManagerProfit, appSettings.showCents)} ₽</p>
                     <p className="text-xs text-slate-400 mt-1">С активных договоров</p>
                 </div>
                  <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
@@ -112,7 +114,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                         <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">{ICONS.Users}</div>
                         <h3 className="font-semibold text-slate-700">Доля инвесторов (ожид.)</h3>
                     </div>
-                    <p className="text-2xl font-bold text-purple-700">{data.expectedInvestorProfit.toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</p>
+                    <p className="text-2xl font-bold text-purple-700">{formatCurrency(data.expectedInvestorProfit, appSettings.showCents)} ₽</p>
                     <p className="text-xs text-slate-400 mt-1">С активных договоров</p>
                 </div>
             </div>
@@ -125,11 +127,11 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                         <div className="space-y-4">
                             <div>
                                 <p className="text-sm text-slate-500">Прибыль инвестора</p>
-                                <p className="text-3xl font-bold text-indigo-600">{data.realizedInvestorProfit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} ₽</p>
+                                <p className="text-3xl font-bold text-indigo-600">{formatCurrency(data.realizedInvestorProfit, appSettings.showCents)} ₽</p>
                             </div>
                              <div>
                                 <p className="text-sm text-slate-500">Моя прибыль</p>
-                                <p className="text-3xl font-bold text-emerald-600">{data.realizedManagerProfit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} ₽</p>
+                                <p className="text-3xl font-bold text-emerald-600">{formatCurrency(data.realizedManagerProfit, appSettings.showCents)} ₽</p>
                             </div>
                         </div>
                     </div>
@@ -139,7 +141,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                                 <Pie data={profitChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={60} fill="#8884d8" paddingAngle={5}>
                                     {profitChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                                 </Pie>
-                                <Tooltip formatter={(value: number) => `${value.toFixed(2)} ₽`} />
+                                <Tooltip formatter={(value: number) => `${formatCurrency(value, appSettings.showCents)} ₽`} />
                                 <Legend verticalAlign="bottom" height={36}/>
                             </PieChart>
                         </ResponsiveContainer>

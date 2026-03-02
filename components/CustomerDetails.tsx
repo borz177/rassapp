@@ -1,13 +1,15 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Customer, Sale, Payment, Account, Investor } from '../types';
+import { Customer, Sale, Payment, Account, Investor, AppSettings } from '../types';
 import { ICONS } from '../constants';
+import { formatCurrency } from '../src/utils';
 
 interface CustomerDetailsProps {
   customer: Customer;
   sales: Sale[];
   accounts: Account[]; // Added
   investors: Investor[]; // Added
+  appSettings: AppSettings;
   onBack: () => void;
   onInitiatePayment: (sale: Sale, payment: Payment) => void;
   onUndoPayment?: (saleId: string, paymentId: string) => void;
@@ -57,7 +59,7 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
                         <label className="block text-sm font-medium text-slate-700 mb-1">Заметки</label>
                         <textarea className="w-full p-3 border border-slate-200 rounded-xl outline-none resize-none" rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
                     </div>
-                    
+
                     {/* WhatsApp Setting */}
                     <div className="flex items-center justify-between bg-emerald-50 p-3 rounded-xl border border-emerald-100">
                         <div className="flex items-center gap-2">
@@ -83,8 +85,8 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
     );
 };
 
-const CustomerDetails: React.FC<CustomerDetailsProps> = ({ 
-    customer, sales, accounts, investors, onBack, onInitiatePayment, onUndoPayment, onEditPayment, onUpdateCustomer, initialSaleId
+const CustomerDetails: React.FC<CustomerDetailsProps> = ({
+    customer, sales, accounts, investors, appSettings, onBack, onInitiatePayment, onUndoPayment, onEditPayment, onUpdateCustomer, initialSaleId
 }) => {
   const [activeTab, setActiveTab] = useState<'INFO' | 'INSTALLMENTS'>('INFO');
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
@@ -113,18 +115,18 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
       if (!selectedSale) return;
       const upcomingPayments = selectedSale.paymentPlan.filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       const nextPayment = upcomingPayments[0];
-      
+
       const message = `
 Здравствуйте, ${customer.name}!
 
 Напоминание по вашей рассрочке на "${selectedSale.productName}".
 
 *Детали:*
-- *Общая сумма:* ${selectedSale.totalAmount.toLocaleString()} ₽
-- *Уже оплачено:* ${(selectedSale.totalAmount - selectedSale.remainingAmount).toLocaleString()} ₽
-- *Остаток долга:* *${selectedSale.remainingAmount.toLocaleString()} ₽*
+- *Общая сумма:* ${formatCurrency(selectedSale.totalAmount, appSettings.showCents)} ₽
+- *Уже оплачено:* ${formatCurrency(selectedSale.totalAmount - selectedSale.remainingAmount, appSettings.showCents)} ₽
+- *Остаток долга:* *${formatCurrency(selectedSale.remainingAmount, appSettings.showCents)} ₽*
 
-${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLocaleString()} ₽ до ${new Date(nextPayment.date).toLocaleDateString()}` : ''}
+${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayment.amount, appSettings.showCents)} ₽ до ${new Date(nextPayment.date).toLocaleDateString()}` : ''}
 
 С уважением,
 Команда InstallMate.
@@ -140,8 +142,8 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
       customerSales.forEach((sale, index) => {
           report += `*Рассрочка №${index + 1}: ${sale.productName}*\n`;
           report += ` - Статус: ${sale.remainingAmount === 0 ? '✅ Закрыто' : '⏳ Активно'}\n`;
-          report += ` - Остаток долга: *${sale.remainingAmount.toLocaleString()} ₽*\n`;
-          report += ` - Всего выплачено: ${(sale.totalAmount - sale.remainingAmount).toLocaleString()} ₽\n\n`;
+          report += ` - Остаток долга: *${formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽*\n`;
+          report += ` - Всего выплачено: ${formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings.showCents)} ₽\n\n`;
       });
       report += `Спасибо, что выбираете нас!`;
       const phone = customer.phone.replace(/[^0-9]/g, '');
@@ -207,7 +209,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
       const profit = selectedSale.buyPrice > 0 ? selectedSale.totalAmount - selectedSale.buyPrice : 0;
       const monthlyProfit = selectedSale.installments > 0 && profit > 0 ? profit / selectedSale.installments : 0;
       const firstPaymentDate = selectedSale.paymentPlan.length > 0 ? selectedSale.paymentPlan[0].date : null;
-      
+
       return (
           <div className="space-y-4 animate-fade-in pb-20 relative">
               <div className="flex items-center justify-between border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
@@ -227,13 +229,13 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
                           <span className="font-medium text-slate-800">{new Date(firstPaymentDate).toLocaleDateString()}</span>
                       </div>
                   )}
-                  <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Цена закупа</span><span className="font-medium text-slate-800">{selectedSale.buyPrice.toLocaleString()} ₽</span></div>
-                  <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Цена в рассрочку</span><span className="font-bold text-indigo-600">{selectedSale.totalAmount.toLocaleString()} ₽</span></div>
+                  <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Цена закупа</span><span className="font-medium text-slate-800">{formatCurrency(selectedSale.buyPrice, appSettings.showCents)} ₽</span></div>
+                  <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Цена в рассрочку</span><span className="font-bold text-indigo-600">{formatCurrency(selectedSale.totalAmount, appSettings.showCents)} ₽</span></div>
                   {selectedSale.downPayment > 0 && (
-                     <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Первый взнос</span><span className="font-bold text-slate-800">{selectedSale.downPayment.toLocaleString()} ₽</span></div>
+                     <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Первый взнос</span><span className="font-bold text-slate-800">{formatCurrency(selectedSale.downPayment, appSettings.showCents)} ₽</span></div>
                   )}
-                  <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Остаток долга</span><span className="font-bold text-amber-600">{selectedSale.remainingAmount.toLocaleString()} ₽</span></div>
-                  <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Оплачено</span><span className="font-bold text-emerald-600">{paidAmount.toLocaleString()} ₽</span></div>
+                  <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Остаток долга</span><span className="font-bold text-amber-600">{formatCurrency(selectedSale.remainingAmount, appSettings.showCents)} ₽</span></div>
+                  <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Оплачено</span><span className="font-bold text-emerald-600">{formatCurrency(paidAmount, appSettings.showCents)} ₽</span></div>
                   {selectedSale.guarantorName && (
                     <>
                         <div className="flex justify-between border-b border-slate-50 pb-2 pt-2"><span className="text-slate-500">Поручитель</span><span className="font-medium text-slate-800">{selectedSale.guarantorName}</span></div>
@@ -241,8 +243,8 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
                     </>
                   )}
                   <div className="pt-2 mt-2 border-t border-slate-100 grid grid-cols-2 gap-4">
-                      <div className="bg-emerald-50 p-3 rounded-xl"><p className="text-xs text-emerald-600 mb-1">Прибыль (Общ)</p><p className="font-bold text-emerald-800">{profit.toLocaleString()} ₽</p></div>
-                      <div className="bg-blue-50 p-3 rounded-xl"><p className="text-xs text-blue-600 mb-1">Прибыль / мес</p><p className="font-bold text-blue-800">~{Math.round(monthlyProfit).toLocaleString()} ₽</p></div>
+                      <div className="bg-emerald-50 p-3 rounded-xl"><p className="text-xs text-emerald-600 mb-1">Прибыль (Общ)</p><p className="font-bold text-emerald-800">{formatCurrency(profit, appSettings.showCents)} ₽</p></div>
+                      <div className="bg-blue-50 p-3 rounded-xl"><p className="text-xs text-blue-600 mb-1">Прибыль / мес</p><p className="font-bold text-blue-800">~{formatCurrency(Math.round(monthlyProfit), appSettings.showCents)} ₽</p></div>
                   </div>
               </div>
 
@@ -251,7 +253,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
                   {paidPayments.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Нет поступлений</div> : (
                       <table className="w-full text-sm text-left">
                           <thead className="text-xs text-slate-500 uppercase bg-slate-50"><tr><th className="px-4 py-3">Дата</th><th className="px-4 py-3">Сумма</th><th className="px-4 py-3 text-right">Действия</th></tr></thead>
-                          <tbody>{paidPayments.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className="px-4 py-3 text-slate-700">{new Date(payment.date).toLocaleDateString()}</td><td className="px-4 py-3 font-bold text-emerald-600">+{payment.amount.toLocaleString()}</td><td className="px-4 py-3 text-right"><div className="flex justify-end gap-2"><button onClick={() => handleEditClick(payment)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded">{ICONS.Edit}</button><button onClick={() => handleDeleteClick(payment.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded">{ICONS.Delete}</button></div></td></tr>))}</tbody>
+                          <tbody>{paidPayments.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className="px-4 py-3 text-slate-700">{new Date(payment.date).toLocaleDateString()}</td><td className="px-4 py-3 font-bold text-emerald-600">+{formatCurrency(payment.amount, appSettings.showCents)}</td><td className="px-4 py-3 text-right"><div className="flex justify-end gap-2"><button onClick={() => handleEditClick(payment)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded">{ICONS.Edit}</button><button onClick={() => handleDeleteClick(payment.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded">{ICONS.Delete}</button></div></td></tr>))}</tbody>
                       </table>
                   )}
               </div>
@@ -261,12 +263,12 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
                   {paymentSchedule.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Все оплачено! 🎉</div> : (
                       <table className="w-full text-sm text-left">
                           <thead className="text-xs text-slate-500 uppercase bg-slate-50"><tr><th className="px-4 py-3">Дата</th><th className="px-4 py-3">Осталось</th><th className="px-4 py-3">Действие</th></tr></thead>
-                          <tbody>{paymentSchedule.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className={`px-4 py-3 ${new Date(payment.date) < new Date() ? 'text-red-500 font-bold' : 'text-slate-700'}`}>{new Date(payment.date).toLocaleDateString()}</td><td className="px-4 py-3 font-bold text-slate-800">{payment.amountToPay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td className="px-4 py-3"><button onClick={() => onInitiatePayment(selectedSale, { ...payment, amount: payment.amountToPay })} className="text-indigo-600 font-bold text-xs border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition-colors">Принять</button></td></tr>))}</tbody>
+                          <tbody>{paymentSchedule.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className={`px-4 py-3 ${new Date(payment.date) < new Date() ? 'text-red-500 font-bold' : 'text-slate-700'}`}>{new Date(payment.date).toLocaleDateString()}</td><td className="px-4 py-3 font-bold text-slate-800">{formatCurrency(payment.amountToPay, appSettings.showCents)}</td><td className="px-4 py-3"><button onClick={() => onInitiatePayment(selectedSale, { ...payment, amount: payment.amountToPay })} className="text-indigo-600 font-bold text-xs border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition-colors">Принять</button></td></tr>))}</tbody>
                       </table>
                   )}
               </div>
 
-              {editingPayment && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl"><h3 className="text-lg font-bold text-slate-800 mb-4">Изменить дату платежа</h3><p className="text-sm text-slate-500 mb-4">Сумма: {editingPayment.amount.toLocaleString()} ₽</p><input type="date" className="w-full p-3 border border-slate-300 rounded-xl mb-6 outline-none" value={editDate} onChange={(e) => setEditDate(e.target.value)} /><div className="flex gap-3"><button onClick={() => setEditingPayment(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Отмена</button><button onClick={saveEdit} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button></div></div></div>)}
+              {editingPayment && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl"><h3 className="text-lg font-bold text-slate-800 mb-4">Изменить дату платежа</h3><p className="text-sm text-slate-500 mb-4">Сумма: {formatCurrency(editingPayment.amount, appSettings.showCents)} ₽</p><input type="date" className="w-full p-3 border border-slate-300 rounded-xl mb-6 outline-none" value={editDate} onChange={(e) => setEditDate(e.target.value)} /><div className="flex gap-3"><button onClick={() => setEditingPayment(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Отмена</button><button onClick={saveEdit} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button></div></div></div>)}
               {deletingPaymentId && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl"><div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">{ICONS.Delete}</div><h3 className="text-lg font-bold text-slate-800 text-center mb-2">Отменить платеж?</h3><p className="text-center text-slate-500 mb-6 text-sm">Сумма вернется в долг, а статус платежа изменится на "Не оплачено".</p><div className="flex gap-3"><button onClick={() => setDeletingPaymentId(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Нет</button><button onClick={confirmDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold">Да, отменить</button></div></div></div>)}
           </div>
       );
@@ -279,11 +281,11 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
       {activeTab === 'INFO' && (
           <div className="space-y-4 pt-2">
               <div className="flex justify-center"><div className="w-32 h-32 rounded-full bg-slate-200 overflow-hidden border-4 border-white shadow-lg">{customer.photo ? <img src={customer.photo} alt={customer.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-400 text-4xl font-bold">{customer.name.charAt(0)}</div>}</div></div>
-              
+
               {/* Info Card with Edit Button */}
               <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 space-y-4 relative">
                   {onUpdateCustomer && (
-                      <button 
+                      <button
                         onClick={() => setShowEditModal(true)}
                         className="absolute top-4 right-4 p-2 bg-slate-50 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
                       >
@@ -330,7 +332,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${nextPayment.amount.toLoc
                         )}
                         <div className="flex justify-between text-sm mt-3 pt-3 border-t border-slate-100">
                             <span className="text-slate-500">Остаток:</span>
-                            <span className="font-bold text-slate-800">{sale.remainingAmount.toLocaleString()} ₽</span>
+                            <span className="font-bold text-slate-800">{formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽</span>
                         </div>
                     </div>
                   );

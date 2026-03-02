@@ -192,6 +192,7 @@ export interface AppSettings {
   whatsapp?: WhatsAppSettings;
   calculator?: CalculatorSettings;
   theme?: 'PURPLE' | 'BLUE' | 'GREEN' | 'BLACK';
+  showCents?: boolean;
 }
 
 export type ViewState =

@@ -1,22 +1,24 @@
 import React, { useMemo } from 'react';
-import { Sale, Expense, Account, Investor } from '../types';
+import { Sale, Expense, Account, Investor, AppSettings } from '../types';
 import { ICONS } from '../constants';
+import { formatCurrency } from '../src/utils';
 
 interface InvestorDashboardProps {
   sales: Sale[];
   expenses: Expense[];
   accounts: Account[];
   investor: Investor;
+  appSettings: AppSettings;
 }
 
-const InvestorDashboard: React.FC<InvestorDashboardProps> = ({ sales, expenses, accounts, investor }) => {
+const InvestorDashboard: React.FC<InvestorDashboardProps> = ({ sales, expenses, accounts, investor, appSettings }) => {
   // Calculate Balance: (DownPayments + Collected Payments) - Expenses (Withdrawals)
   const balance = useMemo(() => {
       const totalIncome = sales.reduce((acc, s) => {
           const collected = s.downPayment + s.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
           return acc + collected;
       }, 0);
-      
+
       const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
       return totalIncome - totalExpenses;
   }, [sales, expenses]);
@@ -59,7 +61,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({ sales, expenses, 
                 <h3 className="font-semibold text-slate-700">Текущий баланс</h3>
             </div>
             <p className="text-sm text-slate-500 mb-1">Инвестиции + Накопленная прибыль</p>
-            <h3 className="text-3xl font-bold text-indigo-600">{balance.toLocaleString()} ₽</h3>
+            <h3 className="text-3xl font-bold text-indigo-600">{formatCurrency(balance, appSettings.showCents)} ₽</h3>
           </div>
 
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
@@ -68,7 +70,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({ sales, expenses, 
                 <h3 className="font-semibold text-slate-700">Полученная прибыль</h3>
             </div>
             <p className="text-sm text-slate-500 mb-1">Фактически заработано</p>
-            <h3 className="text-3xl font-bold text-emerald-600">{realizedProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })} ₽</h3>
+            <h3 className="text-3xl font-bold text-emerald-600">{formatCurrency(realizedProfit, appSettings.showCents)} ₽</h3>
           </div>
 
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
@@ -77,7 +79,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({ sales, expenses, 
                 <h3 className="font-semibold text-slate-700">Ожидаемая прибыль</h3>
             </div>
             <p className="text-sm text-slate-500 mb-1">С активных договоров</p>
-            <h3 className="text-3xl font-bold text-purple-600">{expectedProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })} ₽</h3>
+            <h3 className="text-3xl font-bold text-purple-600">{formatCurrency(expectedProfit, appSettings.showCents)} ₽</h3>
           </div>
       </div>
 
@@ -101,15 +103,15 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({ sales, expenses, 
                                     </span>
                                 </div>
                                 <p className="text-xs text-slate-500 mb-4">Дата оформления: {new Date(sale.startDate).toLocaleDateString()}</p>
-                                
+
                                 <div className="space-y-2 mb-4">
                                     <div className="flex justify-between text-sm">
                                         <span className="text-slate-500">Сумма продажи:</span>
-                                        <span className="font-medium">{sale.totalAmount.toLocaleString()} ₽</span>
+                                        <span className="font-medium">{formatCurrency(sale.totalAmount, appSettings.showCents)} ₽</span>
                                     </div>
                                     <div className="flex justify-between text-sm">
                                         <span className="text-slate-500">Остаток долга:</span>
-                                        <span className="font-bold text-slate-800">{sale.remainingAmount.toLocaleString()} ₽</span>
+                                        <span className="font-bold text-slate-800">{formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽</span>
                                     </div>
                                 </div>
                             </div>

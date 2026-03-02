@@ -1,7 +1,8 @@
 
 import React, { useMemo, useState } from 'react';
-import { Sale, Account, Expense, Investor } from '../types';
+import { Sale, Account, Expense, Investor, AppSettings } from '../types';
 import { ICONS } from '../constants';
+import { formatCurrency } from '../src/utils';
 
 interface CashRegisterProps {
   accounts: Account[];
@@ -18,6 +19,7 @@ interface CashRegisterProps {
   realizedPeriodProfit: number;
   myProfitPeriod: { start: string; end: string; };
   setMyProfitPeriod: React.Dispatch<React.SetStateAction<{ start: string; end: string; }>>;
+  appSettings: AppSettings;
 }
 
 const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubmit: (name: string, type: Account['type']) => void }) => {
@@ -125,7 +127,7 @@ const EditAccountModal = ({ account, onClose, onUpdate }: { account: Account, on
     )
 }
 
-const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: { account: Account, sales: Sale[], expenses: Expense[], investors: Investor[], onClose: () => void }) => {
+const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, appSettings }: { account: Account, sales: Sale[], expenses: Expense[], investors: Investor[], onClose: () => void, appSettings: AppSettings }) => {
     const accountSales = sales.filter(s => s.accountId === account.id);
     const accountExpenses = expenses.filter(e => e.accountId === account.id);
 
@@ -189,20 +191,20 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-4 rounded-2xl">
                             <p className="text-xs text-emerald-700 font-medium mb-1">Кэш в кассе</p>
-                            <p className="text-xl font-bold text-emerald-800">{cashBalance.toLocaleString()} ₽</p>
+                            <p className="text-xl font-bold text-emerald-800">{formatCurrency(cashBalance, appSettings.showCents)} ₽</p>
                         </div>
                         <div className="bg-gradient-to-br from-amber-50 to-amber-100 p-4 rounded-2xl">
                             <p className="text-xs text-amber-700 font-medium mb-1">В товаре (Долги)</p>
-                            <p className="text-xl font-bold text-amber-800">{receivables.toLocaleString()} ₽</p>
+                            <p className="text-xl font-bold text-amber-800">{formatCurrency(receivables, appSettings.showCents)} ₽</p>
                         </div>
                     </div>
 
                     <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-5 rounded-2xl">
                         <p className="text-slate-400 text-sm mb-2">Общая стоимость активов</p>
-                        <p className="text-3xl font-bold mb-3">{totalAccountEquity.toLocaleString()} ₽</p>
+                        <p className="text-3xl font-bold mb-3">{formatCurrency(totalAccountEquity, appSettings.showCents)} ₽</p>
                         <div className="flex justify-between text-xs border-t border-slate-700 pt-3">
-                            <span className="text-slate-400">Вложено: <span className="text-white font-medium">{totalNetCapital.toLocaleString()} ₽</span></span>
-                            <span className="text-emerald-400">Прибыль: +{totalProfitGenerated.toLocaleString()} ₽</span>
+                            <span className="text-slate-400">Вложено: <span className="text-white font-medium">{formatCurrency(totalNetCapital, appSettings.showCents)} ₽</span></span>
+                            <span className="text-emerald-400">Прибыль: +{formatCurrency(totalProfitGenerated, appSettings.showCents)} ₽</span>
                         </div>
                     </div>
 
@@ -233,17 +235,17 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose }: 
                                         <div className="grid grid-cols-2 text-sm gap-3">
                                             <div>
                                                 <span className="text-slate-400 text-xs block">Вложено</span>
-                                                <span className="font-medium text-slate-800">{p.netCapital.toLocaleString()} ₽</span>
+                                                <span className="font-medium text-slate-800">{formatCurrency(p.netCapital, appSettings.showCents)} ₽</span>
                                             </div>
                                             <div className="text-right">
                                                 <span className="text-slate-400 text-xs block">Доля в активах</span>
-                                                <span className="font-bold text-slate-800">{Math.round(equityValue).toLocaleString()} ₽</span>
+                                                <span className="font-bold text-slate-800">{formatCurrency(Math.round(equityValue), appSettings.showCents)} ₽</span>
                                             </div>
                                         </div>
                                         {profitShare > 0 && (
                                             <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between text-sm">
                                                 <span className="text-emerald-600 font-medium">Доступная прибыль</span>
-                                                <span className="font-bold text-emerald-600">+{Math.round(profitShare).toLocaleString()} ₽</span>
+                                                <span className="font-bold text-emerald-600">+{formatCurrency(Math.round(profitShare), appSettings.showCents)} ₽</span>
                                             </div>
                                         )}
                                     </div>
@@ -275,7 +277,8 @@ const AccountActionModal = ({
     onEdit,
     onSetMain,
     isManager,
-    onUpdateAccount
+    onUpdateAccount,
+    appSettings
 }: {
     account: Account;
     balance: number;
@@ -285,6 +288,7 @@ const AccountActionModal = ({
     onSetMain: (id: string) => void;
     isManager: boolean;
     onUpdateAccount?: (acc: Account) => void;
+    appSettings: AppSettings;
 }) => {
     const getAccountTypeColor = (type: Account['type']) => {
         switch(type) {
@@ -326,7 +330,7 @@ const AccountActionModal = ({
                                  account.type === 'SHARED' ? 'Общий счет' : 'Дополнительный счет'}
                             </p>
                             <p className="text-sm font-bold text-indigo-600 mt-1">
-                                {balance.toLocaleString()} ₽
+                                {formatCurrency(balance, appSettings.showCents)} ₽
                             </p>
                         </div>
                     </div>
@@ -393,7 +397,7 @@ const AccountActionModal = ({
 
 const CashRegister: React.FC<CashRegisterProps> = ({
     accounts, sales, expenses, investors, onAddAccount, onAction, onSelectAccount, onSetMainAccount, onUpdateAccount,
-    isManager, myProfitPeriod, setMyProfitPeriod
+    isManager, myProfitPeriod, setMyProfitPeriod, appSettings
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -660,7 +664,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                   <div>
                     <h3 className="font-bold text-lg sm:text-xl text-slate-800 mb-1 truncate">{acc.name}</h3>
                     <p className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
-                      {(accountBalances[acc.id] || 0).toLocaleString()} ₽
+                      {formatCurrency(accountBalances[acc.id] || 0, appSettings.showCents)} ₽
                     </p>
                   </div>
 
@@ -708,6 +712,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
           onSetMain={onSetMainAccount}
           isManager={isManager}
           onUpdateAccount={onUpdateAccount}
+          appSettings={appSettings}
         />
       )}
 
@@ -782,7 +787,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
             <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
               <p className="text-xs sm:text-sm font-medium text-indigo-600 mb-1 sm:mb-2">Ожидаемая прибыль</p>
               <p className="text-lg sm:text-2xl font-bold text-indigo-900 break-words">
-                {calculatedExpectedProfit.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽
+                {formatCurrency(calculatedExpectedProfit, appSettings.showCents)} ₽
               </p>
               <p className="text-[10px] sm:text-xs text-indigo-500 mt-1 sm:mt-2">С активных договоров</p>
             </div>
@@ -790,7 +795,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
             <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
               <p className="text-xs sm:text-sm font-medium text-emerald-600 mb-1 sm:mb-2">Полученная прибыль</p>
               <p className="text-lg sm:text-2xl font-bold text-emerald-900 break-words">
-                {totalManagerProfitEarned.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽
+                {formatCurrency(totalManagerProfitEarned, appSettings.showCents)} ₽
               </p>
               <p className="text-[10px] sm:text-xs text-emerald-500 mt-1 sm:mt-2">За выбранный период</p>
             </div>
@@ -801,7 +806,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
             >
               <p className="text-xs sm:text-sm font-medium text-slate-300 mb-1 sm:mb-2">Доступно к выводу</p>
               <p className="text-lg sm:text-2xl font-bold text-white break-words">
-                {managerProfitBalance.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽
+                {formatCurrency(managerProfitBalance, appSettings.showCents)} ₽
               </p>
               <p className="text-[10px] sm:text-xs text-slate-400 mt-1 sm:mt-2">Нажмите для деталей</p>
             </div>
@@ -816,7 +821,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
             <div className="p-5 sm:p-6 border-b border-slate-100">
               <h3 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-slate-800 to-indigo-800 bg-clip-text text-transparent">Детализация прибыли</h3>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Баланс: <span className="font-bold text-emerald-600">{managerProfitBalance.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽</span>
+                Баланс: <span className="font-bold text-emerald-600">{formatCurrency(managerProfitBalance, appSettings.showCents)} ₽</span>
               </p>
             </div>
 
@@ -861,7 +866,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                           <p className="text-[10px] sm:text-xs text-slate-500">{new Date(p.date).toLocaleDateString('ru-RU')}</p>
                         </div>
                         <span className="font-bold text-emerald-600 text-xs sm:text-sm whitespace-nowrap">
-                          +{p.amount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽
+                          +{formatCurrency(p.amount, appSettings.showCents)} ₽
                         </span>
                       </div>
                     ))
@@ -886,7 +891,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                           <p className="text-[10px] sm:text-xs text-slate-500">{new Date(e.date).toLocaleDateString('ru-RU')}</p>
                         </div>
                         <span className="font-bold text-red-600 text-xs sm:text-sm whitespace-nowrap">
-                          -{Number(e.amount).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} ₽
+                          -{formatCurrency(Number(e.amount), appSettings.showCents)} ₽
                         </span>
                       </div>
                     ))
@@ -915,6 +920,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
           expenses={expenses}
           investors={investors}
           onClose={() => setSelectedSharedAccount(null)}
+          appSettings={appSettings}
         />
       )}
     </div>

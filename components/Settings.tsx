@@ -100,6 +100,26 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
         </div>
       </div>
 
+      {/* Display Settings */}
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+          <h3 className="text-lg font-semibold text-slate-800 mb-1">Отображение</h3>
+          <div className="flex items-center justify-between">
+              <div>
+                  <p className="font-medium text-slate-700">Показывать копейки</p>
+                  <p className="text-sm text-slate-500">Отображать дробную часть в суммах (например, 100.50 ₽)</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={appSettings.showCents ?? true}
+                      onChange={(e) => onUpdateSettings({ ...appSettings, showCents: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+              </label>
+          </div>
+      </div>
+
       {/* Theme Selection */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 mb-1">Цветовая тема</h3>

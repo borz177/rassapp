@@ -673,9 +673,9 @@ const App: React.FC = () => {
         isSyncing={isSyncing}
     >
       {/* ... (Layout Children remain exactly the same) ... */}
-      {currentView === 'DASHBOARD' && !isInvestor && <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital} accountBalances={accountBalances} onAction={handleAction} onSelectCustomer={handleSelectCustomer} onInitiatePayment={handleInitiateDashboardPayment} accounts={accounts} />}
-      {currentView === 'DASHBOARD' && isInvestor && activeInvestor && <InvestorDashboard sales={sales} expenses={expenses} accounts={accounts} investor={activeInvestor} />}
-      {currentView === 'CASH_REGISTER' && <CashRegister accounts={accounts} sales={sales} expenses={expenses} investors={investors} onAddAccount={handleAddAccount} onAction={handleAction} onSelectAccount={handleSelectAccountForOperations} onSetMainAccount={handleSetMainAccount} onUpdateAccount={handleUpdateAccount} isManager={isManager} totalExpectedProfit={totalExpectedProfit} realizedPeriodProfit={realizedPeriodProfit} myProfitPeriod={myProfitPeriod} setMyProfitPeriod={setMyProfitPeriod} />}
+      {currentView === 'DASHBOARD' && !isInvestor && <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital} accountBalances={accountBalances} onAction={handleAction} onSelectCustomer={handleSelectCustomer} onInitiatePayment={handleInitiateDashboardPayment} accounts={accounts} appSettings={appSettings} />}
+      {currentView === 'DASHBOARD' && isInvestor && activeInvestor && <InvestorDashboard sales={sales} expenses={expenses} accounts={accounts} investor={activeInvestor} appSettings={appSettings} />}
+      {currentView === 'CASH_REGISTER' && <CashRegister accounts={accounts} sales={sales} expenses={expenses} investors={investors} onAddAccount={handleAddAccount} onAction={handleAction} onSelectAccount={handleSelectAccountForOperations} onSetMainAccount={handleSetMainAccount} onUpdateAccount={handleUpdateAccount} isManager={isManager} totalExpectedProfit={totalExpectedProfit} realizedPeriodProfit={realizedPeriodProfit} myProfitPeriod={myProfitPeriod} setMyProfitPeriod={setMyProfitPeriod} appSettings={appSettings} />}
       {currentView === 'CONTRACTS' && (
         <Contracts
             sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
@@ -691,8 +691,8 @@ const App: React.FC = () => {
             appSettings={appSettings}
         />
       )}
-      {currentView === 'INVESTORS' && <Investors investors={investors} onAddInvestor={handleAddInvestor} onUpdateInvestor={handleUpdateInvestor} onDeleteInvestor={handleDeleteInvestor} onViewDetails={handleSelectInvestor} />}
-      {currentView === 'INVESTOR_DETAILS' && selectedInvestorId && <InvestorDetails investor={investors.find(i => i.id === selectedInvestorId)!} account={accounts.find(a => a.ownerId === selectedInvestorId)} sales={sales} expenses={expenses} onBack={() => setCurrentView('INVESTORS')} />}
+      {currentView === 'INVESTORS' && <Investors investors={investors} onAddInvestor={handleAddInvestor} onUpdateInvestor={handleUpdateInvestor} onDeleteInvestor={handleDeleteInvestor} onViewDetails={handleSelectInvestor} appSettings={appSettings} />}
+      {currentView === 'INVESTOR_DETAILS' && selectedInvestorId && <InvestorDetails investor={investors.find(i => i.id === selectedInvestorId)!} account={accounts.find(a => a.ownerId === selectedInvestorId)} sales={sales} expenses={expenses} onBack={() => setCurrentView('INVESTORS')} appSettings={appSettings} />}
       {currentView === 'PARTNERS' && (
           <Partners
             partnerships={partnerships}
@@ -702,6 +702,7 @@ const App: React.FC = () => {
             expenses={expenses}
             onAddPartnership={handleAddPartnership}
             onSelectAccount={handleSelectAccountForOperations}
+            appSettings={appSettings}
           />
       )}
       {currentView === 'CUSTOMERS' && (
@@ -716,10 +717,11 @@ const App: React.FC = () => {
           onUndoPayment={handleUndoPayment}
           onEditPayment={handleEditPayment}
           onUpdateCustomer={handleUpdateCustomer}
+          appSettings={appSettings}
         />
       )}
-      {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId && <CustomerDetails customer={customers.find(c => c.id === selectedCustomerId)!} sales={sales} accounts={accounts} investors={investors} onBack={() => setCurrentView(previousView)} onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment} onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer} initialSaleId={initialSaleIdForDetails} />}
-      {currentView === 'MANAGE_PRODUCTS' && <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} />}
+      {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId && <CustomerDetails customer={customers.find(c => c.id === selectedCustomerId)!} sales={sales} accounts={accounts} investors={investors} onBack={() => setCurrentView(previousView)} onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment} onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer} initialSaleId={initialSaleIdForDetails} appSettings={appSettings} />}
+      {currentView === 'MANAGE_PRODUCTS' && <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} appSettings={appSettings} />}
       {currentView === 'OPERATIONS' && (
         <Operations
             sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
@@ -728,15 +730,16 @@ const App: React.FC = () => {
             customers={customers}
             initialAccountId={operationsAccountId}
             onDelete={handleDeleteOperation}
+            appSettings={appSettings}
         />
       )}
-      {currentView === 'REPORTS' && reportData && <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters} data={reportData} />}
+      {currentView === 'REPORTS' && reportData && <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters} data={reportData} appSettings={appSettings} />}
 
-      {currentView === 'CREATE_INCOME' && <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts} sales={sales} onClose={() => setCurrentView('DASHBOARD')} onSubmit={handleIncomeSubmit} onSelectCustomer={() => openSelection('SELECT_CUSTOMER', draftSaleData)} />}
-      {currentView === 'CREATE_EXPENSE' && <NewExpense investors={investors} accounts={accounts} onClose={() => setCurrentView('DASHBOARD')} onSubmit={handleExpenseSubmit} />}
-      {currentView === 'CREATE_SALE' && <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products} accounts={accounts} onClose={() => { setCurrentView('DASHBOARD'); setEditingSale(null); }} onSelectCustomer={(data) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} />}
+      {currentView === 'CREATE_INCOME' && <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts} sales={sales} onClose={() => setCurrentView('DASHBOARD')} onSubmit={handleIncomeSubmit} onSelectCustomer={() => openSelection('SELECT_CUSTOMER', draftSaleData)} appSettings={appSettings} />}
+      {currentView === 'CREATE_EXPENSE' && <NewExpense investors={investors} accounts={accounts} onClose={() => setCurrentView('DASHBOARD')} onSubmit={handleExpenseSubmit} appSettings={appSettings} />}
+      {currentView === 'CREATE_SALE' && <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products} accounts={accounts} onClose={() => { setCurrentView('DASHBOARD'); setEditingSale(null); }} onSelectCustomer={(data) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} appSettings={appSettings} />}
       {currentView === 'SELECT_CUSTOMER' && <SelectionList title="Выберите клиента" items={customers.map(c => ({ id: c.id, title: c.name, subtitle: c.phone }))} onSelect={(id) => handleSelection('customerId', id)} onCancel={() => setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE')} onAddNew={handleQuickAddCustomer} />}
-      {currentView === 'EMPLOYEES' && <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} />}
+      {currentView === 'EMPLOYEES' && <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} appSettings={appSettings} />}
       {currentView === 'TARIFFS' && <Tariffs user={user} />}
 
       {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onNavigate={setCurrentView} onImportData={handleImportData} />}

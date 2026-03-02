@@ -3,6 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { Sale, Customer, Account, User, AppSettings } from '../types';
 import { ICONS } from '../constants';
 import { Phone } from 'lucide-react';
+import { formatCurrency } from '../src/utils';
 
 interface ContractsProps {
   sales: Sale[];
@@ -18,14 +19,14 @@ interface ContractsProps {
   appSettings?: AppSettings;
 }
 
-const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?: Customer, onClose: () => void }) => {
+const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sale, customer?: Customer, onClose: () => void, appSettings?: AppSettings }) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     // Calculations
     const monthlyPayment = sale.paymentPlan.length > 0 ? sale.paymentPlan[0].amount : 0;
     const paidMonths = sale.paymentPlan.filter(p => p.isPaid).length;
-    
+
     // Calculate Actual Overdue based on expected vs paid
     let expectedPaidByNow = sale.downPayment;
     sale.paymentPlan.forEach(p => {
@@ -33,7 +34,7 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
             expectedPaidByNow += p.amount;
         }
     });
-    
+
     const actualPaidTotal = sale.totalAmount - sale.remainingAmount;
     const realOverdueAmount = Math.max(0, expectedPaidByNow - actualPaidTotal);
 
@@ -54,7 +55,7 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
     const handleWhatsApp = () => {
         if (customer?.phone) {
             const phone = customer.phone.replace(/[^0-9]/g, '');
-            const text = `Здравствуйте, ${customer.name}. Напоминаем о задолженности по договору "${sale.productName}" в размере ${realOverdueAmount.toLocaleString()} ₽.`;
+            const text = `Здравствуйте, ${customer.name}. Напоминаем о задолженности по договору "${sale.productName}" в размере ${formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽.`;
             window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
         }
     };
@@ -79,7 +80,7 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
                             <label className="text-xs text-slate-500 block mb-1">Общий срок</label>
                             <p className="font-bold text-slate-800">{sale.installments} мес.</p>
                         </div>
-                        
+
                         <div>
                             <label className="text-xs text-slate-500 block mb-1">Оплачено</label>
                             <p className="font-bold text-emerald-600">{paidMonths} мес.</p>
@@ -91,21 +92,21 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
 
                         <div>
                             <label className="text-xs text-slate-500 block mb-1">Ежемесячный платёж</label>
-                            <p className="font-bold text-slate-800">{monthlyPayment.toLocaleString()} ₽</p>
+                            <p className="font-bold text-slate-800">{formatCurrency(monthlyPayment, appSettings?.showCents)} ₽</p>
                         </div>
                         <div>
                             <label className="text-xs text-slate-500 block mb-1">След. платеж</label>
                             <p className="font-bold text-indigo-600">{nextPaymentDate}</p>
                         </div>
-                        
+
                         <div className="col-span-2 border-t border-slate-100 pt-4 mt-2">
                             <div className="flex justify-between items-center">
                                 <label className="text-xs text-slate-500 block">Сумма просрочки (по факту)</label>
-                                <p className="font-bold text-red-600 text-xl">{realOverdueAmount.toLocaleString()} ₽</p>
+                                <p className="font-bold text-red-600 text-xl">{formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽</p>
                             </div>
                             <div className="flex justify-between items-center mt-1">
                                 <label className="text-xs text-slate-500 block">Общий остаток долга</label>
-                                <p className="font-bold text-slate-800">{sale.remainingAmount.toLocaleString()} ₽</p>
+                                <p className="font-bold text-slate-800">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
                             </div>
                         </div>
                     </div>
@@ -118,7 +119,7 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
                                 {overduePaymentsList.map(p => (
                                     <div key={p.id} className="flex justify-between text-sm">
                                         <span className="text-red-600 font-medium">{new Date(p.date).toLocaleDateString()}</span>
-                                        <span className="text-slate-400 text-xs">План: {p.amount.toLocaleString()} ₽</span>
+                                        <span className="text-slate-400 text-xs">План: {formatCurrency(p.amount, appSettings?.showCents)} ₽</span>
                                     </div>
                                 ))}
                             </div>
@@ -128,27 +129,27 @@ const ContractInfoModal = ({ sale, customer, onClose }: { sale: Sale, customer?:
 
                 {/* Actions Footer */}
                 <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-3">
-                    <button 
+                    <button
                         onClick={handleCall}
                         className="flex-1 py-3 bg-blue-600 text-white rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors"
                     >
                         <Phone size={18} /> Позвонить
                     </button>
-                    <button 
+                    <button
                         onClick={handleWhatsApp}
                         className="flex-1 py-3 bg-emerald-600 text-white rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors"
                     >
                         {ICONS.Send} Написать
                     </button>
                 </div>
-                
+
                 <button onClick={onClose} className="w-full py-3 text-slate-400 text-sm hover:text-slate-600">Закрыть</button>
             </div>
         </div>
     );
 };
 
-const Contracts: React.FC<ContractsProps> = ({ 
+const Contracts: React.FC<ContractsProps> = ({
     sales, customers, accounts, activeTab, onTabChange,
     onViewSchedule, onEditSale, onDeleteSale, readOnly = false,
     user, appSettings
@@ -166,7 +167,7 @@ const Contracts: React.FC<ContractsProps> = ({
   const calculateSaleOverdue = (sale: Sale) => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
+
       // 1. Calculate Total Expected to be paid by TODAY
       // Include DownPayment + All Installments strictly before today
       // IMPORTANT: Only count PLAN items (isRealPayment !== true), ignore real payments in this sum
@@ -287,8 +288,8 @@ const Contracts: React.FC<ContractsProps> = ({
                 <tr>
                     <td style="text-align: center;">${index + 1}</td>
                     <td style="text-align: center;">${new Date(p.date).toLocaleDateString()}</td>
-                    <td style="text-align: center;">${p.amount.toLocaleString()} ₽</td>
-                    <td style="text-align: center;">${displayDebt.toLocaleString()} ₽</td>
+                    <td style="text-align: center;">${formatCurrency(p.amount, appSettings?.showCents)} ₽</td>
+                    <td style="text-align: center;">${formatCurrency(displayDebt, appSettings?.showCents)} ₽</td>
                 </tr>
               `;
           }).join('');
@@ -447,11 +448,11 @@ const Contracts: React.FC<ContractsProps> = ({
                     <div><span class="field-label">Товар:</span> ${sale.productName}</div>
                     <div style="display: flex; justify-content: space-between; margin-top: 10px;">
                         <span><span class="field-label">Срок рассрочки:</span> ${sale.installments} мес.</span>
-                        <span><span class="field-label">Стоимость:</span> ${sale.totalAmount.toLocaleString()} ₽</span>
+                        <span><span class="field-label">Стоимость:</span> ${formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</span>
                     </div>
                     <div style="display: flex; justify-content: space-between;">
-                        <span><span class="field-label">Ежемесячный платеж:</span> ${(sale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
-                        <span><span class="field-label">Первый взнос:</span> ${sale.downPayment.toLocaleString()} ₽</span>
+                        <span><span class="field-label">Ежемесячный платеж:</span> ${formatCurrency(sale.paymentPlan[0]?.amount || 0, appSettings?.showCents)} ₽</span>
+                        <span><span class="field-label">Первый взнос:</span> ${formatCurrency(sale.downPayment, appSettings?.showCents)} ₽</span>
                     </div>
                 </div>
 
@@ -470,7 +471,7 @@ const Contracts: React.FC<ContractsProps> = ({
                 </table>
 
                 <div style="margin: 25px 0; font-size: 11pt; line-height: 1.4;">
-                  Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку на указанных выше условиях.
+                    Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку.
                 </div>
             </div>
 
@@ -527,7 +528,7 @@ const Contracts: React.FC<ContractsProps> = ({
               </div>
               <div className="mt-4 pt-4 border-t border-red-100">
                   <p className="text-xs text-slate-400 font-medium mb-1">Общая сумма просрочки (по факту)</p>
-                  <p className="text-3xl font-bold text-red-600">{totalOverdueSum.toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</p>
+                  <p className="text-3xl font-bold text-red-600">{formatCurrency(totalOverdueSum, appSettings?.showCents)} ₽</p>
               </div>
           </div>
         )}
@@ -600,9 +601,9 @@ const Contracts: React.FC<ContractsProps> = ({
                     <div>
                       <span className={`inline-block px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span>
                       {activeTab === 'OVERDUE' ? (
-                          <p className="text-sm font-bold text-red-600 mt-1">Просрочка: {overdueSum.toLocaleString()} ₽</p>
+                          <p className="text-sm font-bold text-red-600 mt-1">Просрочка: {formatCurrency(overdueSum, appSettings?.showCents)} ₽</p>
                       ) : (
-                          <p className="text-sm font-semibold mt-1">{sale.totalAmount.toLocaleString()} ₽</p>
+                          <p className="text-sm font-semibold mt-1">{formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</p>
                       )}
                     </div>
                     {!readOnly && (
@@ -612,7 +613,7 @@ const Contracts: React.FC<ContractsProps> = ({
                 </div>
 
                 <div className="w-full bg-slate-100 rounded-full h-2 mt-3"><div className={`h-2 rounded-full ${activeTab === 'OVERDUE' ? 'bg-red-500' : 'bg-indigo-600'}`} style={{ width: `${progress}%` }}></div></div>
-                <div className="flex justify-between text-xs text-slate-400 mt-1"><span>Оплачено: {(sale.totalAmount - sale.remainingAmount).toLocaleString()} ₽</span>{activeTab !== 'OVERDUE' && <span>Остаток: {sale.remainingAmount.toLocaleString()} ₽</span>}</div>
+                <div className="flex justify-between text-xs text-slate-400 mt-1"><span>Оплачено: {formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings?.showCents)} ₽</span>{activeTab !== 'OVERDUE' && <span>Остаток: {formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</span>}</div>
 
                 {!readOnly && activeMenuId === sale.id && (
                   <div className="absolute right-4 top-14 bg-white shadow-xl rounded-xl z-20 w-48 overflow-hidden animate-fade-in" onClick={e => e.stopPropagation()}>
@@ -643,10 +644,11 @@ const Contracts: React.FC<ContractsProps> = ({
         )}
 
         {selectedSaleForInfo && (
-            <ContractInfoModal 
-                sale={selectedSaleForInfo} 
+            <ContractInfoModal
+                sale={selectedSaleForInfo}
                 customer={customers.find(c => c.id === selectedSaleForInfo.customerId)}
                 onClose={() => setSelectedSaleForInfo(null)}
+                appSettings={appSettings}
             />
         )}
     </div>

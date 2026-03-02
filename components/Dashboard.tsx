@@ -1,7 +1,8 @@
 
 import React, { useMemo, useState } from 'react';
-import { Sale, Customer, Account } from '../types';
+import { Sale, Customer, Account, AppSettings } from '../types';
 import { ICONS } from '../constants';
+import { formatCurrency } from '../src/utils';
 
 interface DashboardProps {
   sales: Sale[];
@@ -18,9 +19,10 @@ interface DashboardProps {
   onSelectCustomer: (id: string) => void;
   onInitiatePayment: (sale: Sale, amount: number) => void;
   accounts: Account[];
+  appSettings: AppSettings;
 }
 
-const SaleDetailsModal = ({ sale, customerName, onClose }: { sale: Sale, customerName: string, onClose: () => void }) => {
+const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: Sale, customerName: string, onClose: () => void, appSettings: AppSettings }) => {
     const statusMap: Record<string, string> = {
         'ACTIVE': 'Активен',
         'COMPLETED': 'Завершен',
@@ -36,9 +38,9 @@ const SaleDetailsModal = ({ sale, customerName, onClose }: { sale: Sale, custome
                 </div>
                 <div className="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
                     <div className="flex justify-between text-sm"><span className="text-slate-500">Дата оформления</span><span className="font-medium">{new Date(sale.startDate).toLocaleDateString()}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-slate-500">Общая сумма</span><span className="font-bold text-indigo-600">{sale.totalAmount.toLocaleString()} ₽</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-slate-500">Первый взнос</span><span className="font-medium">{sale.downPayment.toLocaleString()} ₽</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-slate-500">Остаток долга</span><span className="font-bold text-amber-600">{sale.remainingAmount.toLocaleString()} ₽</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-slate-500">Общая сумма</span><span className="font-bold text-indigo-600">{formatCurrency(sale.totalAmount, appSettings.showCents)} ₽</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-slate-500">Первый взнос</span><span className="font-medium">{formatCurrency(sale.downPayment, appSettings.showCents)} ₽</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-slate-500">Остаток долга</span><span className="font-bold text-amber-600">{formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽</span></div>
                     <div className="flex justify-between text-sm"><span className="text-slate-500">Срок</span><span className="font-medium">{sale.installments} мес.</span></div>
                     <div className="flex justify-between text-sm"><span className="text-slate-500">Статус</span><span className={`font-bold ${sale.status === 'COMPLETED' ? 'text-emerald-600' : 'text-blue-600'}`}>{statusMap[sale.status] || sale.status}</span></div>
                 </div>
@@ -48,11 +50,11 @@ const SaleDetailsModal = ({ sale, customerName, onClose }: { sale: Sale, custome
     );
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalStats, workingCapital: globalWorkingCapital, accountBalances, onAction, onSelectCustomer, onInitiatePayment, accounts }) => {
+const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalStats, workingCapital: globalWorkingCapital, accountBalances, onAction, onSelectCustomer, onInitiatePayment, accounts, appSettings }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
   const [selectedSaleForModal, setSelectedSaleForModal] = useState<Sale | null>(null);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
-  
+
   // Filters
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [paymentDateFilter, setPaymentDateFilter] = useState<'ALL' | 'TODAY' | 'TOMORROW'>('ALL');
@@ -60,8 +62,8 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
   // --- STATS CALCULATION (FILTERED) ---
   const calculatedStats = useMemo(() => {
       // Filter sales by selected account if needed
-      const filteredSales = selectedAccountId 
-          ? sales.filter(s => s.accountId === selectedAccountId) 
+      const filteredSales = selectedAccountId
+          ? sales.filter(s => s.accountId === selectedAccountId)
           : sales;
 
       let totalRevenue = 0;
@@ -178,11 +180,11 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                   relevantAmount += actualDue;
                   if (isTomorrow) isTomorrowPayment = true;
                   if (isToday) isTodayPayment = true;
-                  if (isPast) isOverduePayment = true; 
+                  if (isPast) isOverduePayment = true;
               }
           }
       });
-      
+
       if (relevantAmount > 0) {
         payments.push({
           sale: sale,
@@ -222,18 +224,18 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
       {/* Overview Tab */}
       {activeTab === 'overview' && (
           <div className="space-y-6 animate-fade-in">
-              
+
               {/* Account Filter */}
               <div className="overflow-x-auto pb-2 no-scrollbar">
                   <div className="flex gap-2">
-                      <button 
+                      <button
                         onClick={() => setSelectedAccountId(null)}
                         className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${!selectedAccountId ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
                       >
                           Все счета
                       </button>
                       {accounts.map(acc => (
-                          <button 
+                          <button
                             key={acc.id}
                             onClick={() => setSelectedAccountId(acc.id)}
                             className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${selectedAccountId === acc.id ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
@@ -245,17 +247,17 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Собрано средств (Клиенты)</p><p className="text-2xl font-bold text-emerald-600">{calculatedStats.totalRevenue.toLocaleString()} ₽</p></div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Долг клиентов</p><p className="text-2xl font-bold text-amber-600">{calculatedStats.totalOutstanding.toLocaleString()} ₽</p></div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Оборотные средства</p><p className="text-2xl font-bold text-blue-600">{currentWorkingCapital.toLocaleString()} ₽</p></div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Продажи в рассрочку</p><p className="text-2xl font-bold text-indigo-600">{calculatedStats.installmentSalesTotal.toLocaleString()} ₽</p></div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Собрано средств (Клиенты)</p><p className="text-2xl font-bold text-emerald-600">{formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)} ₽</p></div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Долг клиентов</p><p className="text-2xl font-bold text-amber-600">{formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)} ₽</p></div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Оборотные средства</p><p className="text-2xl font-bold text-blue-600">{formatCurrency(currentWorkingCapital, appSettings.showCents)} ₽</p></div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm"><p className="text-sm font-medium text-slate-500">Продажи в рассрочку</p><p className="text-2xl font-bold text-indigo-600">{formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)} ₽</p></div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white p-6 rounded-2xl shadow-sm">
                     <h3 className="text-lg font-semibold text-slate-700 mb-4">Последние договоры</h3>
                     <div className="space-y-3">
-                        {lastFiveSales.length === 0 ? <p className="text-center text-slate-400 py-4 text-sm">Нет договоров</p> : 
+                        {lastFiveSales.length === 0 ? <p className="text-center text-slate-400 py-4 text-sm">Нет договоров</p> :
                         lastFiveSales.map(sale => (
                             <div key={sale.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                                 <div>
@@ -267,7 +269,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                         ))}
                     </div>
                 </div>
-                
+
                 <div className="bg-white p-6 rounded-2xl shadow-sm">
                      <h3 className="text-lg font-semibold text-slate-700 mb-4">Быстрые действия</h3>
                      <div className="space-y-4">
@@ -285,23 +287,23 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
       {/* Upcoming Payments Tab */}
       {activeTab === 'upcoming' && (
         <div className="space-y-4 animate-fade-in" onClick={() => setActiveActionMenu(null)}>
-            
+
             {/* Date Filters */}
             <div className="flex gap-2 mb-2">
-                <button 
-                    onClick={() => setPaymentDateFilter('ALL')} 
+                <button
+                    onClick={() => setPaymentDateFilter('ALL')}
                     className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors border ${paymentDateFilter === 'ALL' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
                 >
                     Все
                 </button>
-                <button 
-                    onClick={() => setPaymentDateFilter('TODAY')} 
+                <button
+                    onClick={() => setPaymentDateFilter('TODAY')}
                     className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors border ${paymentDateFilter === 'TODAY' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200'}`}
                 >
                     Сегодня
                 </button>
-                <button 
-                    onClick={() => setPaymentDateFilter('TOMORROW')} 
+                <button
+                    onClick={() => setPaymentDateFilter('TOMORROW')}
                     className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors border ${paymentDateFilter === 'TOMORROW' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-600 border-slate-200'}`}
                 >
                     Завтра
@@ -325,7 +327,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                             </div>
                             <div className="flex items-center gap-2">
                                 <div className="text-right">
-                                    <p className="text-lg font-bold text-indigo-600">{p.totalDue.toLocaleString()} ₽</p>
+                                    <p className="text-lg font-bold text-indigo-600">{formatCurrency(p.totalDue, appSettings.showCents)} ₽</p>
                                     {!p.isTomorrow && <p className="text-[10px] font-bold text-red-500">К ОПЛАТЕ</p>}
                                 </div>
                                 <button onClick={(e) => handleActionClick(e, p.sale.id)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg">{ICONS.More}</button>
@@ -345,10 +347,11 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
       )}
 
       {selectedSaleForModal && (
-          <SaleDetailsModal 
+          <SaleDetailsModal
               sale={selectedSaleForModal}
               customerName={customers.find(c => c.id === selectedSaleForModal.customerId)?.name || ''}
               onClose={() => setSelectedSaleForModal(null)}
+              appSettings={appSettings}
           />
       )}
     </div>
