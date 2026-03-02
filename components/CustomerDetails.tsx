@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Customer, Sale, Payment, Account, Investor, AppSettings } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency } from '../src/utils';
+import { formatCurrency, formatDate } from '../src/utils';
 
 interface CustomerDetailsProps {
   customer: Customer;
@@ -113,7 +113,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
 
   const handleSendSaleReminder = () => {
       if (!selectedSale) return;
-      const upcomingPayments = selectedSale.paymentPlan.filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      const upcomingPayments = (selectedSale.paymentPlan || []).filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       const nextPayment = upcomingPayments[0];
 
       const message = `
@@ -126,7 +126,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
 - *Уже оплачено:* ${formatCurrency(selectedSale.totalAmount - selectedSale.remainingAmount, appSettings.showCents)} ₽
 - *Остаток долга:* *${formatCurrency(selectedSale.remainingAmount, appSettings.showCents)} ₽*
 
-${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayment.amount, appSettings.showCents)} ₽ до ${new Date(nextPayment.date).toLocaleDateString()}` : ''}
+${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayment.amount, appSettings.showCents)} ₽ до ${formatDate(nextPayment.date)}` : ''}
 
 С уважением,
 Команда InstallMate.
@@ -208,7 +208,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayme
       const paidAmount = selectedSale.totalAmount - selectedSale.remainingAmount;
       const profit = selectedSale.buyPrice > 0 ? selectedSale.totalAmount - selectedSale.buyPrice : 0;
       const monthlyProfit = selectedSale.installments > 0 && profit > 0 ? profit / selectedSale.installments : 0;
-      const firstPaymentDate = selectedSale.paymentPlan.length > 0 ? selectedSale.paymentPlan[0].date : null;
+      const firstPaymentDate = (selectedSale.paymentPlan && selectedSale.paymentPlan.length > 0) ? selectedSale.paymentPlan[0].date : null;
 
       return (
           <div className="space-y-4 animate-fade-in pb-20 relative">
@@ -226,7 +226,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayme
                   {firstPaymentDate && (
                       <div className="flex justify-between border-b border-slate-50 pb-2">
                           <span className="text-slate-500">Первый платеж</span>
-                          <span className="font-medium text-slate-800">{new Date(firstPaymentDate).toLocaleDateString()}</span>
+                          <span className="font-medium text-slate-800">{formatDate(firstPaymentDate)}</span>
                       </div>
                   )}
                   <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Цена закупа</span><span className="font-medium text-slate-800">{formatCurrency(selectedSale.buyPrice, appSettings.showCents)} ₽</span></div>
@@ -253,7 +253,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayme
                   {paidPayments.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Нет поступлений</div> : (
                       <table className="w-full text-sm text-left">
                           <thead className="text-xs text-slate-500 uppercase bg-slate-50"><tr><th className="px-4 py-3">Дата</th><th className="px-4 py-3">Сумма</th><th className="px-4 py-3 text-right">Действия</th></tr></thead>
-                          <tbody>{paidPayments.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className="px-4 py-3 text-slate-700">{new Date(payment.date).toLocaleDateString()}</td><td className="px-4 py-3 font-bold text-emerald-600">+{formatCurrency(payment.amount, appSettings.showCents)}</td><td className="px-4 py-3 text-right"><div className="flex justify-end gap-2"><button onClick={() => handleEditClick(payment)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded">{ICONS.Edit}</button><button onClick={() => handleDeleteClick(payment.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded">{ICONS.Delete}</button></div></td></tr>))}</tbody>
+                          <tbody>{paidPayments.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className="px-4 py-3 text-slate-700">{formatDate(payment.date)}</td><td className="px-4 py-3 font-bold text-emerald-600">+{formatCurrency(payment.amount, appSettings.showCents)}</td><td className="px-4 py-3 text-right"><div className="flex justify-end gap-2"><button onClick={() => handleEditClick(payment)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded">{ICONS.Edit}</button><button onClick={() => handleDeleteClick(payment.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded">{ICONS.Delete}</button></div></td></tr>))}</tbody>
                       </table>
                   )}
               </div>
@@ -263,7 +263,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayme
                   {paymentSchedule.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Все оплачено! 🎉</div> : (
                       <table className="w-full text-sm text-left">
                           <thead className="text-xs text-slate-500 uppercase bg-slate-50"><tr><th className="px-4 py-3">Дата</th><th className="px-4 py-3">Осталось</th><th className="px-4 py-3">Действие</th></tr></thead>
-                          <tbody>{paymentSchedule.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className={`px-4 py-3 ${new Date(payment.date) < new Date() ? 'text-red-500 font-bold' : 'text-slate-700'}`}>{new Date(payment.date).toLocaleDateString()}</td><td className="px-4 py-3 font-bold text-slate-800">{formatCurrency(payment.amountToPay, appSettings.showCents)}</td><td className="px-4 py-3"><button onClick={() => onInitiatePayment(selectedSale, { ...payment, amount: payment.amountToPay })} className="text-indigo-600 font-bold text-xs border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition-colors">Принять</button></td></tr>))}</tbody>
+                          <tbody>{paymentSchedule.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className={`px-4 py-3 ${new Date(payment.date) < new Date() ? 'text-red-500 font-bold' : 'text-slate-700'}`}>{formatDate(payment.date)}</td><td className="px-4 py-3 font-bold text-slate-800">{formatCurrency(payment.amountToPay, appSettings.showCents)}</td><td className="px-4 py-3"><button onClick={() => onInitiatePayment(selectedSale, { ...payment, amount: payment.amountToPay })} className="text-indigo-600 font-bold text-xs border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition-colors">Принять</button></td></tr>))}</tbody>
                       </table>
                   )}
               </div>
@@ -324,7 +324,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayme
                             <h3 className="font-bold text-slate-800">{sale.productName}</h3>
                             <span className={`text-xs px-2 py-1 rounded-full ${sale.remainingAmount === 0 ? 'bg-slate-100 text-slate-600' : 'bg-indigo-100 text-indigo-700'}`}>{sale.remainingAmount === 0 ? 'Закрыто' : 'Активно'}</span>
                         </div>
-                        <p className="text-xs text-slate-500 mb-2">от {new Date(sale.startDate).toLocaleDateString()}</p>
+                        <p className="text-xs text-slate-500 mb-2">от {formatDate(sale.startDate)}</p>
                         {investorName && (
                             <div className="mb-2">
                                 <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold">Инвестор: {investorName}</span>
