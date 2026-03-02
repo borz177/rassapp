@@ -742,7 +742,7 @@ const App: React.FC = () => {
       {currentView === 'EMPLOYEES' && <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} appSettings={appSettings} />}
       {currentView === 'TARIFFS' && <Tariffs user={user} />}
 
-      {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onNavigate={setCurrentView} onImportData={handleImportData} />}
+      {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onNavigate={setCurrentView} onImportData={handleImportData} onSettingsChanged={() => refetchTemplates()} />}
 
       {currentView === 'INTEGRATIONS' && <Integrations appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onBack={() => setCurrentView('SETTINGS')} />}
       {currentView === 'CALCULATOR' && <Calculator appSettings={appSettings} onBack={() => setCurrentView('SETTINGS')} onSaveSettings={handleUpdateSettings} />}

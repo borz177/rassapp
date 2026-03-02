@@ -10,9 +10,10 @@ interface SettingsProps {
   appSettings: AppSettings;
   onUpdateSettings: (settings: AppSettings) => void;
   onNavigate: (view: ViewState) => void;
+  onSettingsChanged?: () => void;
 }
 
-const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNavigate }) => {
+const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNavigate, onSettingsChanged }) => {
   const [companyName, setCompanyName] = useState(appSettings.companyName);
 
   // Clear Data Modal State
@@ -32,6 +33,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
         ...appSettings,
         companyName
     });
+    onSettingsChanged?.();
     alert("Настройки сохранены!");
   };
 
