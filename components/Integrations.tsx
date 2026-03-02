@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppSettings, WhatsAppSettings } from '../types';
 import { ICONS } from '../constants';
-import { checkGreenApiConnection, getQrCode } from '../services/whatsapp';
+import { checkGreenApiConnection } from '../services/whatsapp'; // ← getQrCode удалён
 
 interface IntegrationsProps {
   appSettings: AppSettings;
@@ -9,7 +9,6 @@ interface IntegrationsProps {
   onBack: () => void;
 }
 
-// 🔹 НОВЫЕ шаблоны — с поддержкой долга и цитаты
 const DEFAULT_TEMPLATES = {
   upcoming: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 Сегодня *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
   today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 Сегодня *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
@@ -17,40 +16,34 @@ const DEFAULT_TEMPLATES = {
 };
 
 const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettings, onBack }) => {
-  // WhatsApp State
   const [waEnabled, setWaEnabled] = useState(false);
   const [idInstance, setIdInstance] = useState('');
   const [apiToken, setApiToken] = useState('');
+  const [isTokenVisible, setIsTokenVisible] = useState(true); // для переключения видимости
   const [reminderTime, setReminderTime] = useState('10:00');
   const [reminderDays, setReminderDays] = useState<number[]>([0]);
 
-  // Templates State
   const [activeTemplateTab, setActiveTemplateTab] = useState<'UPCOMING' | 'TODAY' | 'OVERDUE'>('TODAY');
   const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
 
-  // Connection State
   const [isTesting, setIsTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'IDLE' | 'AUTHORIZED' | 'NOT_AUTHORIZED' | 'ERROR'>('IDLE');
-  const [qrCode, setQrCode] = useState<string | null>(null);
 
-  // Bot State
   const [botEnabled, setBotEnabled] = useState(false);
   const [botButtons, setBotButtons] = useState({ debt: true, paymentDate: true, conditions: true });
 
-  // UI State
   const [isExpanded, setIsExpanded] = useState(false);
-  const pollingRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (appSettings.whatsapp) {
       setWaEnabled(appSettings.whatsapp.enabled);
       setIdInstance(appSettings.whatsapp.idInstance);
-      setApiToken(appSettings.whatsapp.apiTokenInstance);
+      setApiToken(appSettings.whatsapp.apiTokenInstance || '');
       setReminderTime(appSettings.whatsapp.reminderTime);
       setReminderDays(appSettings.whatsapp.reminderDays);
       setBotEnabled(appSettings.whatsapp.botEnabled || false);
       if (appSettings.whatsapp.botButtons) {
-          setBotButtons(appSettings.whatsapp.botButtons);
+        setBotButtons(appSettings.whatsapp.botButtons);
       }
       if (appSettings.whatsapp.templates) {
         setTemplates({ ...DEFAULT_TEMPLATES, ...appSettings.whatsapp.templates });
@@ -58,12 +51,9 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
       setIsExpanded(appSettings.whatsapp.enabled);
       if (appSettings.whatsapp.enabled && appSettings.whatsapp.idInstance && appSettings.whatsapp.apiTokenInstance) {
         checkConnection(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance);
+        setIsTokenVisible(false); // после подключения — скрыть токен
       }
     }
-
-    return () => {
-      if (pollingRef.current) window.clearInterval(pollingRef.current);
-    };
   }, [appSettings]);
 
   const checkConnection = async (id: string, token: string) => {
@@ -72,10 +62,6 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
     try {
       const isAuth = await checkGreenApiConnection(id, token);
       setConnectionStatus(isAuth ? 'AUTHORIZED' : 'NOT_AUTHORIZED');
-      if (isAuth) {
-        setQrCode(null);
-        if (pollingRef.current) window.clearInterval(pollingRef.current);
-      }
     } catch (e) {
       setConnectionStatus('ERROR');
     } finally {
@@ -102,41 +88,11 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
 
     if (waEnabled) {
       checkConnection(idInstance, apiToken);
-      alert("Настройки и шаблоны сохранены. Проверяем соединение...");
+      setIsTokenVisible(false); // после сохранения — скрыть токен
+      alert("Настройки сохранены. Проверяем соединение...");
     } else {
-      alert("Настройки сохранены (Интеграция выключена).");
+      alert("Интеграция WhatsApp отключена.");
     }
-  };
-
-  const handleGetQrCode = async () => {
-    if (!idInstance || !apiToken) {
-      alert("Сначала введите IdInstance и ApiTokenInstance");
-      return;
-    }
-
-    setIsTesting(true);
-    const qr = await getQrCode(idInstance, apiToken);
-    setIsTesting(false);
-
-    if (qr) {
-      setQrCode(qr);
-      startPolling();
-    } else {
-      alert("Не удалось получить QR-код. Проверьте правильность данных или тариф.");
-    }
-  };
-
-  const startPolling = () => {
-    if (pollingRef.current) window.clearInterval(pollingRef.current);
-    pollingRef.current = window.setInterval(async () => {
-      const isAuth = await checkGreenApiConnection(idInstance, apiToken);
-      if (isAuth) {
-        setConnectionStatus('AUTHORIZED');
-        setQrCode(null);
-        if (pollingRef.current) window.clearInterval(pollingRef.current);
-        alert("WhatsApp успешно подключен!");
-      }
-    }, 5000);
   };
 
   const toggleDay = (day: number) => {
@@ -196,13 +152,11 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
         </div>
       </header>
 
-      {/* WhatsApp Integration Card */}
       <div
         className={`bg-white rounded-2xl shadow-sm border transition-all duration-300 ${
           waEnabled ? 'border-emerald-200' : 'border-slate-200'
         }`}
       >
-        {/* Header */}
         <div
           className={`p-5 flex justify-between items-center cursor-pointer transition-colors ${
             waEnabled ? 'bg-emerald-50/50 hover:bg-emerald-50' : 'bg-white hover:bg-slate-50'
@@ -242,7 +196,6 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
           </div>
         </div>
 
-        {/* Expanded Content */}
         {waEnabled && isExpanded && (
           <div className="p-5 space-y-6 border-t border-slate-100 animate-fade-in">
             {/* Credentials */}
@@ -266,13 +219,22 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">apiTokenInstance</label>
-                  <input
-                    type="text"
-                    className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm"
-                    value={apiToken}
-                    onChange={e => setApiToken(e.target.value)}
-                    placeholder="Вставьте токен"
-                  />
+                  <div className="relative">
+                    <input
+                      type={isTokenVisible ? "text" : "password"}
+                      className="w-full p-3 pr-10 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm"
+                      value={apiToken}
+                      onChange={e => setApiToken(e.target.value)}
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsTokenVisible(!isTokenVisible)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {isTokenVisible ? '👁️' : '🔒'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -282,7 +244,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
               <div className="flex items-center gap-2">
                 <div className={`w-3 h-3 rounded-full ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-500' : connectionStatus === 'ERROR' ? 'bg-red-500' : 'bg-amber-500'}`}></div>
                 <span className="text-sm font-bold text-slate-700">
-                  {connectionStatus === 'AUTHORIZED' ? 'Подключено' : connectionStatus === 'NOT_AUTHORIZED' ? 'Требуется QR' : 'Не проверено'}
+                  {connectionStatus === 'AUTHORIZED' ? 'Подключено' : connectionStatus === 'NOT_AUTHORIZED' ? 'Не авторизован' : 'Не проверено'}
                 </span>
               </div>
               <button
@@ -293,36 +255,6 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                 {isTesting ? 'Проверка...' : 'Проверить связь'}
               </button>
             </div>
-
-            {/* QR Code */}
-            {connectionStatus === 'NOT_AUTHORIZED' && (
-              <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 text-center">
-                {!qrCode ? (
-                  <button
-                    onClick={handleGetQrCode}
-                    disabled={isTesting}
-                    className="bg-slate-800 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:bg-slate-900 disabled:opacity-70 transition-all text-sm"
-                  >
-                    {isTesting ? 'Загрузка...' : 'Получить QR-код для входа'}
-                  </button>
-                ) : (
-                  <div className="space-y-4">
-                    <h4 className="font-bold text-slate-900">Сканируйте в WhatsApp</h4>
-                    <div className="bg-white p-3 rounded-xl inline-block shadow-md">
-                      <img src={`data:image/png;base64,${qrCode}`} alt="QR Code" className="w-56 h-56 object-contain" />
-                    </div>
-                    <div className="text-sm text-slate-600">
-                      <ol className="text-left list-decimal list-inside space-y-1 bg-white/50 p-3 rounded-lg text-xs">
-                        <li>Откройте WhatsApp на телефоне</li>
-                        <li>Нажмите <b>Меню</b> или <b>Настройки</b></li>
-                        <li>Выберите <b>Связанные устройства</b></li>
-                        <li>Нажмите <b>Привязка устройства</b></li>
-                      </ol>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             <hr className="border-slate-100" />
 
@@ -389,8 +321,6 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
               <h4 className="font-semibold text-slate-700 mb-3 text-sm flex items-center gap-2">
                 {ICONS.File} Шаблоны сообщений
               </h4>
-
-              {/* Tabs */}
               <div className="flex bg-slate-100 p-1 rounded-xl mb-3">
                 <button
                   onClick={() => setActiveTemplateTab('UPCOMING')}
@@ -423,8 +353,6 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                   Просрочка
                 </button>
               </div>
-
-              {/* Editor */}
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <textarea
                   className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-indigo-400 h-32 resize-none"
@@ -433,7 +361,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                   placeholder="Текст сообщения..."
                 />
                 <div className="mt-3">
-                  <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Переменные (нажмите чтобы добавить):</p>
+                  <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Переменные:</p>
                   <div className="flex flex-wrap gap-2">
                     {['имя', 'товар', 'сумма', 'дата', 'долг', 'итого', 'месяцы', 'долг_блок'].map(v => (
                       <button
@@ -476,7 +404,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
               {botEnabled && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4 animate-fade-in">
                   <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Webhook URL (для Green API)</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Webhook URL</label>
                     <div className="flex gap-2">
                       <input
                         readOnly
@@ -494,10 +422,9 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                       </button>
                     </div>
                     <p className="text-[10px] text-slate-400 mt-1">
-                      Укажите этот URL в настройках инстанса Green API в поле "Webhook URL"
+                      Укажите этот URL в настройках инстанса Green API
                     </p>
                   </div>
-
                   <div>
                     <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Активные кнопки</label>
                     <div className="space-y-2">
