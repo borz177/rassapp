@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { Sale, Customer, Account, User, AppSettings } from '../types';
 import { ICONS } from '../constants';
 import { Phone } from 'lucide-react';
-import { formatCurrency } from '../src/utils';
+import { formatCurrency, formatDate } from '../src/utils';
 
 interface ContractsProps {
   sales: Sale[];
@@ -44,7 +44,7 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
 
     // Find next payment date
     const nextUnpaidPayment = sale.paymentPlan.find(p => !p.isPaid && new Date(p.date) >= today);
-    const nextPaymentDate = nextUnpaidPayment ? new Date(nextUnpaidPayment.date).toLocaleDateString() : (sale.remainingAmount > 0 ? 'Просрочен' : 'Закрыт');
+    const nextPaymentDate = nextUnpaidPayment ? formatDate(nextUnpaidPayment.date) : (sale.remainingAmount > 0 ? 'Просрочен' : 'Закрыт');
 
     const handleCall = () => {
         if (customer?.phone) {
@@ -118,7 +118,7 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
                             <div className="space-y-1">
                                 {overduePaymentsList.map(p => (
                                     <div key={p.id} className="flex justify-between text-sm">
-                                        <span className="text-red-600 font-medium">{new Date(p.date).toLocaleDateString()}</span>
+                                        <span className="text-red-600 font-medium">{formatDate(p.date)}</span>
                                         <span className="text-slate-400 text-xs">План: {formatCurrency(p.amount, appSettings?.showCents)} ₽</span>
                                     </div>
                                 ))}
@@ -287,7 +287,7 @@ const Contracts: React.FC<ContractsProps> = ({
               return `
                 <tr>
                     <td style="text-align: center;">${index + 1}</td>
-                    <td style="text-align: center;">${new Date(p.date).toLocaleDateString()}</td>
+                    <td style="text-align: center;">${formatDate(p.date)}</td>
                     <td style="text-align: center;">${formatCurrency(p.amount, appSettings?.showCents)} ₽</td>
                     <td style="text-align: center;">${formatCurrency(displayDebt, appSettings?.showCents)} ₽</td>
                 </tr>
@@ -424,7 +424,7 @@ const Contracts: React.FC<ContractsProps> = ({
             <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ<br>ТОВАРА В РАССРОЧКУ</h1>
             
             <div class="header-info">
-                Дата: ${new Date(sale.startDate).toLocaleDateString()}
+                Дата: ${formatDate(sale.startDate)}
             </div>
 
             <div class="content-wrapper">
@@ -594,7 +594,7 @@ const Contracts: React.FC<ContractsProps> = ({
                     <div>
                       <h3 className="font-bold text-slate-800">{getCustomerName(sale.customerId)}</h3>
                       <p className="text-sm text-slate-500">{sale.productName}</p>
-                      <p className="text-[10px] text-slate-400 mt-1">Оформлен: {new Date(sale.startDate).toLocaleDateString()}</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Оформлен: {formatDate(sale.startDate)}</p>
                     </div>
                   </div>
                   <div className="text-right flex items-center gap-2">

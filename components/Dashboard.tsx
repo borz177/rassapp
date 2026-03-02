@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Sale, Customer, Account, AppSettings } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency } from '../src/utils';
+import { formatCurrency, formatDate } from '../src/utils';
 
 interface DashboardProps {
   sales: Sale[];
@@ -37,7 +37,7 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
                     <p className="text-sm text-slate-500">Клиент: {customerName}</p>
                 </div>
                 <div className="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
-                    <div className="flex justify-between text-sm"><span className="text-slate-500">Дата оформления</span><span className="font-medium">{new Date(sale.startDate).toLocaleDateString()}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-slate-500">Дата оформления</span><span className="font-medium">{formatDate(sale.startDate)}</span></div>
                     <div className="flex justify-between text-sm"><span className="text-slate-500">Общая сумма</span><span className="font-bold text-indigo-600">{formatCurrency(sale.totalAmount, appSettings.showCents)} ₽</span></div>
                     <div className="flex justify-between text-sm"><span className="text-slate-500">Первый взнос</span><span className="font-medium">{formatCurrency(sale.downPayment, appSettings.showCents)} ₽</span></div>
                     <div className="flex justify-between text-sm"><span className="text-slate-500">Остаток долга</span><span className="font-bold text-amber-600">{formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽</span></div>
@@ -262,7 +262,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                             <div key={sale.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                                 <div>
                                     <p className="font-bold text-sm text-slate-800">{customers.find(c=>c.id === sale.customerId)?.name}</p>
-                                    <p className="text-xs text-slate-500">{sale.productName} • {new Date(sale.startDate).toLocaleDateString()}</p>
+                                    <p className="text-xs text-slate-500">{sale.productName} • {formatDate(sale.startDate)}</p>
                                 </div>
                                 <button onClick={() => setSelectedSaleForModal(sale)} className="text-xs bg-indigo-100 text-indigo-700 px-3 py-2 rounded-lg font-semibold">Детали</button>
                             </div>

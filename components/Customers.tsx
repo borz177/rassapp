@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Customer, Sale, Account, Investor, Payment } from '../types';
+import { Customer, Sale, Account, Investor, Payment, AppSettings } from '../types';
 import { ICONS } from '../constants';
 import CustomerDetails from './CustomerDetails';
 
@@ -9,6 +9,7 @@ interface CustomersProps {
   accounts: Account[];
   investors: Investor[];
   sales: Sale[];
+  appSettings: AppSettings;
   onAddCustomer: (name: string, phone: string, photo: string, address: string) => void;
   onSelectCustomer: (id: string) => void; // Kept for compatibility but unused for internal nav
   onInitiatePayment: (sale: Sale, payment: Payment) => void;
@@ -22,6 +23,7 @@ const Customers: React.FC<CustomersProps> = ({
   accounts,
   investors,
   sales,
+  appSettings,
   onAddCustomer,
   onSelectCustomer,
   onInitiatePayment,
@@ -48,6 +50,7 @@ const Customers: React.FC<CustomersProps> = ({
           sales={sales}
           accounts={accounts}
           investors={investors}
+          appSettings={appSettings}
           onBack={() => setSelectedCustomerId(null)}
           onInitiatePayment={onInitiatePayment}
           onUndoPayment={onUndoPayment}

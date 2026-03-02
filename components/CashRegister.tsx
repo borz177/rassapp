@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Sale, Account, Expense, Investor, AppSettings } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency } from '../src/utils';
+import { formatCurrency, formatDate } from '../src/utils';
 
 interface CashRegisterProps {
   accounts: Account[];
@@ -863,7 +863,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                       <div key={p.id} className="flex justify-between items-center p-2.5 sm:p-3 bg-emerald-50 rounded-lg sm:rounded-xl hover:bg-emerald-100 transition-all">
                         <div className="flex-1 min-w-0 mr-2">
                           <p className="font-medium text-slate-800 text-xs sm:text-sm truncate">{p.source}</p>
-                          <p className="text-[10px] sm:text-xs text-slate-500">{new Date(p.date).toLocaleDateString('ru-RU')}</p>
+                          <p className="text-[10px] sm:text-xs text-slate-500">{formatDate(p.date)}</p>
                         </div>
                         <span className="font-bold text-emerald-600 text-xs sm:text-sm whitespace-nowrap">
                           +{formatCurrency(p.amount, appSettings.showCents)} ₽
@@ -888,7 +888,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                       <div key={e.id} className="flex justify-between items-center p-2.5 sm:p-3 bg-red-50 rounded-lg sm:rounded-xl hover:bg-red-100 transition-all">
                         <div className="flex-1 min-w-0 mr-2">
                           <p className="font-medium text-slate-800 text-xs sm:text-sm truncate">{e.title}</p>
-                          <p className="text-[10px] sm:text-xs text-slate-500">{new Date(e.date).toLocaleDateString('ru-RU')}</p>
+                          <p className="text-[10px] sm:text-xs text-slate-500">{formatDate(e.date)}</p>
                         </div>
                         <span className="font-bold text-red-600 text-xs sm:text-sm whitespace-nowrap">
                           -{formatCurrency(Number(e.amount), appSettings.showCents)} ₽

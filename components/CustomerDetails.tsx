@@ -103,13 +103,15 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
     }
   }, [initialSaleId]);
 
-  const customerSales = sales.filter(s => s.customerId === customer.id);
+  const customerSales = Array.isArray(sales) ? sales.filter(s => s.customerId === customer.id) : [];
   const selectedSale = customerSales.find(s => s.id === selectedSaleId);
 
   const handleEditClick = (payment: Payment) => { setEditingPayment(payment); setEditDate(payment.date ? new Date(payment.date).toISOString().split('T')[0] : ''); };
   const saveEdit = () => { if (selectedSale && editingPayment && editDate && onEditPayment) { onEditPayment(selectedSale.id, editingPayment.id, editDate); setEditingPayment(null); } };
   const handleDeleteClick = (paymentId: string) => { setDeletingPaymentId(paymentId); }
   const confirmDelete = () => { if (selectedSale && deletingPaymentId && onUndoPayment) { onUndoPayment(selectedSale.id, deletingPaymentId); setDeletingPaymentId(null); } }
+
+  // ... (handlers remain the same)
 
   const handleSendSaleReminder = () => {
       if (!selectedSale) return;
@@ -196,6 +198,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayme
   }, [selectedSale]);
 
   const getInvestorInfo = (sale: Sale) => {
+      if (!accounts || !investors) return null;
       const account = accounts.find(a => a.id === sale.accountId);
       if (account && account.type === 'INVESTOR' && account.ownerId) {
           const investor = investors.find(i => i.id === account.ownerId);

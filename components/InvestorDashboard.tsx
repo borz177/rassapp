@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Sale, Expense, Account, Investor, AppSettings } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency } from '../src/utils';
+import { formatCurrency, formatDate } from '../src/utils';
 
 interface InvestorDashboardProps {
   sales: Sale[];
@@ -102,7 +102,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({ sales, expenses, 
                                         {sale.remainingAmount === 0 ? 'ЗАКРЫТО' : 'АКТИВНО'}
                                     </span>
                                 </div>
-                                <p className="text-xs text-slate-500 mb-4">Дата оформления: {new Date(sale.startDate).toLocaleDateString()}</p>
+                                <p className="text-xs text-slate-500 mb-4">Дата оформления: {formatDate(sale.startDate)}</p>
 
                                 <div className="space-y-2 mb-4">
                                     <div className="flex justify-between text-sm">
