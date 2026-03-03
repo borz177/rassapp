@@ -52,6 +52,9 @@ const App: React.FC = () => {
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>({ companyName: 'FinUchet' });
 
+  const [whatsappRefreshKey, setWhatsAppRefreshKey] = useState<number>(0);
+  const [templatesRefreshKey, setTemplatesRefreshKey] = useState<number>(0);
+
   // Drafts & Temporary State
   const [draftSaleData, setDraftSaleData] = useState<any>({});
   const [previousView, setPreviousView] = useState<ViewState>('DASHBOARD');
@@ -623,30 +626,80 @@ const App: React.FC = () => {
       }
   };
 
-  const handleUpdateSettings = async (newSettings: AppSettings) => {
-      setAppSettings(newSettings);
-      saveAppSettings(newSettings); // Local Sync
+const handleUpdateSettings = async (newSettings: AppSettings) => {
+    console.log('🔄 handleUpdateSettings вызван, новые whatsapp-настройки:', newSettings.whatsapp);
 
-      if (user) {
-          try {
-              // 1. Save General Settings to DB (companyName, calculator)
-              // Exclude whatsapp from general settings blob if we want to keep it clean,
-              // or keep it for backward compatibility but authoritative source is User table.
-              // For now, let's update general settings as usual.
-              const settingsId = `settings_${user.id}`;
-              await api.saveItem('settings', { id: settingsId, ...newSettings });
+    // 🔹 1. Обновляем appSettings с НОВЫМИ ссылками на объекты (для триггера re-render)
+    setAppSettings(prev => {
+        const updated = {
+            ...prev,
+            ...newSettings,
+            // 🔹 Гарантируем, что whatsapp — новый объект с новыми templates
+            whatsapp: newSettings.whatsapp
+                ? {
+                    ...newSettings.whatsapp,
+                    templates: newSettings.whatsapp.templates
+                        ? { ...newSettings.whatsapp.templates }
+                        : prev.whatsapp?.templates
+                }
+                : prev.whatsapp
+        };
+        return updated;
+    });
 
-              // 2. Save WhatsApp Settings to User Profile if they exist
-              if (newSettings.whatsapp) {
-                  await api.saveWhatsAppSettings(newSettings.whatsapp);
-                  // Update local user state
-                  setUser(prev => prev ? ({ ...prev, whatsapp_settings: newSettings.whatsapp }) : null);
-              }
-          } catch (e) {
-              console.error("Failed to save settings to API", e);
-          }
-      }
-  };
+    // 🔹 2. Сохраняем в localStorage (локальный кэш)
+    saveAppSettings(newSettings);
+
+    if (user) {
+        try {
+            // 🔹 3. Сохраняем общие настройки в БД
+            const settingsId = `settings_${user.id}`;
+            await api.saveItem('settings', {
+                id: settingsId,
+                ...newSettings,
+                // 🔹 Добавляем метку времени для invalidation кэша
+                _updated: Date.now()
+            });
+
+            // 🔹 4. Если есть WhatsApp-настройки — сохраняем их отдельно
+            if (newSettings.whatsapp) {
+                await api.saveWhatsAppSettings({
+                    ...newSettings.whatsapp,
+                    // 🔹 Копируем templates для гарантии новой ссылки
+                    templates: newSettings.whatsapp.templates
+                        ? { ...newSettings.whatsapp.templates }
+                        : undefined
+                });
+
+                // 🔹 5. Обновляем user state с новыми ссылками
+                setUser(prev => {
+                    if (!prev) return null;
+                    return {
+                        ...prev,
+                        whatsapp_settings: newSettings.whatsapp
+                            ? {
+                                ...newSettings.whatsapp,
+                                templates: newSettings.whatsapp.templates
+                                    ? { ...newSettings.whatsapp.templates }
+                                    : prev.whatsapp_settings?.templates
+                            }
+                            : prev.whatsapp_settings
+                    };
+                });
+            }
+
+            console.log('✅ Настройки успешно сохранены на сервере');
+
+        } catch (e) {
+            console.error("❌ Failed to save settings to API", e);
+            alert("Ошибка сохранения настроек. Проверьте подключение к интернету.");
+        }
+    }
+
+    // 🔹 6. Триггер для компонентов, которые зависят от настроек WhatsApp
+    // (например, список шаблонов, отправка сообщений)
+    setWhatsAppRefreshKey(prev => prev + 1);
+};
 
   if (isLoading) { return <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">Загрузка...</div>; }
 
@@ -742,9 +795,13 @@ const App: React.FC = () => {
       {currentView === 'EMPLOYEES' && <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} appSettings={appSettings} />}
       {currentView === 'TARIFFS' && <Tariffs user={user} />}
 
-      {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onNavigate={setCurrentView} onImportData={handleImportData} onSettingsChanged={() => refetchTemplates()} />}
+      {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onNavigate={setCurrentView} onImportData={handleImportData} />}
 
-      {currentView === 'INTEGRATIONS' && <Integrations appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onBack={() => setCurrentView('SETTINGS')} />}
+      {currentView === 'INTEGRATIONS' && <Integrations appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onBack={() => setCurrentView('SETTINGS')} whatsappRefreshKey={whatsappRefreshKey}  // ← Обязательно!
+    onSettingsChanged={() => {
+        // Опционально: дополнительный код после сохранения
+        console.log('Настройки WhatsApp обновлены');
+    }} />}
       {currentView === 'CALCULATOR' && <Calculator appSettings={appSettings} onBack={() => setCurrentView('SETTINGS')} onSaveSettings={handleUpdateSettings} />}
 
       {currentView === 'PROFILE' && user && <Profile user={user} onUpdateProfile={handleUpdateProfile} onBack={() => setCurrentView('MORE')} onLogout={() => { localStorage.removeItem('user'); localStorage.removeItem('token'); setUser(null); }} />}

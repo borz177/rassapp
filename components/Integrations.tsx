@@ -1,34 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { AppSettings, WhatsAppSettings } from '../types';
 import { ICONS } from '../constants';
-import { checkGreenApiConnection } from '../services/whatsapp'; // ← getQrCode удалён
+import { checkGreenApiConnection } from '../services/whatsapp';
 
 interface IntegrationsProps {
   appSettings: AppSettings;
   onUpdateSettings: (settings: AppSettings) => void;
   onBack: () => void;
+  whatsappRefreshKey?: number; // ← Добавлен проп для триггера обновления
+  onSettingsChanged?: () => void; // ← Callback для уведомления родителя
 }
+
 const DEFAULT_TEMPLATES = {
-  // 🔹 ЗАРАНЕЕ (reminderDay: -1) — напоминание за день
   upcoming: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Завтра*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
-
-  // 🔹 СЕГОДНЯ (reminderDay: 0) — оплата сегодня
   today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Сегодня*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
-
-  // 🔹 ПРОСРОЧКА (reminderDay: 1) — долг
   overdue: `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``
 };
 
-const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettings, onBack }) => {
+const Integrations: React.FC<IntegrationsProps> = ({
+    appSettings,
+    onUpdateSettings,
+    onBack,
+    whatsappRefreshKey,
+    onSettingsChanged
+}) => {
   const [waEnabled, setWaEnabled] = useState(false);
   const [idInstance, setIdInstance] = useState('');
   const [apiToken, setApiToken] = useState('');
-  const [isTokenVisible, setIsTokenVisible] = useState(true); // для переключения видимости
+  const [isTokenVisible, setIsTokenVisible] = useState(true);
   const [reminderTime, setReminderTime] = useState('10:00');
   const [reminderDays, setReminderDays] = useState<number[]>([0]);
 
   const [activeTemplateTab, setActiveTemplateTab] = useState<'UPCOMING' | 'TODAY' | 'OVERDUE'>('TODAY');
   const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
+  const [currentTemplates, setCurrentTemplates] = useState(DEFAULT_TEMPLATES); // ← Добавлено состояние
 
   const [isTesting, setIsTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'IDLE' | 'AUTHORIZED' | 'NOT_AUTHORIZED' | 'ERROR'>('IDLE');
@@ -50,15 +55,28 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
         setBotButtons(appSettings.whatsapp.botButtons);
       }
       if (appSettings.whatsapp.templates) {
-        setTemplates({ ...DEFAULT_TEMPLATES, ...appSettings.whatsapp.templates });
+        const mergedTemplates = { ...DEFAULT_TEMPLATES, ...appSettings.whatsapp.templates };
+        setTemplates(mergedTemplates);
+        setCurrentTemplates(mergedTemplates); // ← Обновляем currentTemplates
       }
       setIsExpanded(appSettings.whatsapp.enabled);
       if (appSettings.whatsapp.enabled && appSettings.whatsapp.idInstance && appSettings.whatsapp.apiTokenInstance) {
-        checkConnection(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance);
-        setIsTokenVisible(false); // после подключения — скрыть токен
+        // ← Теперь правильно обрабатываем Promise
+        checkConnection(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance).catch(console.error);
+        setIsTokenVisible(false);
       }
     }
   }, [appSettings]);
+
+  // ← Добавлен эффект для обновления при изменении whatsappRefreshKey
+  useEffect(() => {
+    if (appSettings.whatsapp?.templates) {
+      const mergedTemplates = { ...DEFAULT_TEMPLATES, ...appSettings.whatsapp.templates };
+      setTemplates(mergedTemplates);
+      setCurrentTemplates(mergedTemplates);
+      console.log('🔄 Шаблоны обновлены через refreshKey');
+    }
+  }, [whatsappRefreshKey, appSettings.whatsapp?.templates]);
 
   const checkConnection = async (id: string, token: string) => {
     if (!id || !token) return;
@@ -68,31 +86,38 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
       setConnectionStatus(isAuth ? 'AUTHORIZED' : 'NOT_AUTHORIZED');
     } catch (e) {
       setConnectionStatus('ERROR');
+      console.error('Ошибка проверки соединения:', e);
     } finally {
       setIsTesting(false);
     }
   };
 
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
     const waSettings: WhatsAppSettings = {
       enabled: waEnabled,
       idInstance,
       apiTokenInstance: apiToken,
       reminderTime,
       reminderDays,
-      templates,
+      templates: { ...templates }, // ← Копируем для новой ссылки
       botEnabled,
-      botButtons
+      botButtons: { ...botButtons }
     };
 
     onUpdateSettings({
       ...appSettings,
-      whatsapp: waSettings
+      whatsapp: { ...waSettings }
     });
 
+    // ← Уведомляем родителя об изменении настроек
+    if (onSettingsChanged) {
+      onSettingsChanged();
+    }
+
     if (waEnabled) {
-      checkConnection(idInstance, apiToken);
-      setIsTokenVisible(false); // после сохранения — скрыть токен
+      // ← Правильно обрабатываем Promise
+      await checkConnection(idInstance, apiToken).catch(console.error);
+      setIsTokenVisible(false);
       alert("Настройки сохранены. Проверяем соединение...");
     } else {
       alert("Интеграция WhatsApp отключена.");
@@ -106,9 +131,16 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
   };
 
   const updateTemplate = (text: string) => {
-    if (activeTemplateTab === 'UPCOMING') setTemplates({ ...templates, upcoming: text });
-    if (activeTemplateTab === 'TODAY') setTemplates({ ...templates, today: text });
-    if (activeTemplateTab === 'OVERDUE') setTemplates({ ...templates, overdue: text });
+    const newTemplates = { ...templates };
+    if (activeTemplateTab === 'UPCOMING') {
+      newTemplates.upcoming = text;
+    } else if (activeTemplateTab === 'TODAY') {
+      newTemplates.today = text;
+    } else if (activeTemplateTab === 'OVERDUE') {
+      newTemplates.overdue = text;
+    }
+    setTemplates(newTemplates);
+    setCurrentTemplates(newTemplates); // ← Обновляем currentTemplates
   };
 
   const getCurrentTemplate = () => {
@@ -142,6 +174,12 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
     if (waEnabled) {
       setIsExpanded(!isExpanded);
     }
+  };
+
+  const copyToClipboard = async (text: string) => {
+    // ← Правильно обрабатываем Promise
+    await navigator.clipboard.writeText(text).catch(console.error);
+    alert("Скопировано!");
   };
 
   return (
@@ -252,7 +290,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                 </span>
               </div>
               <button
-                onClick={() => checkConnection(idInstance, apiToken)}
+                onClick={() => checkConnection(idInstance, apiToken).catch(console.error)}
                 disabled={isTesting}
                 className="text-sm text-indigo-600 font-bold hover:underline"
               >
@@ -416,10 +454,7 @@ const Integrations: React.FC<IntegrationsProps> = ({ appSettings, onUpdateSettin
                         value={`${window.location.origin}/api/integrations/whatsapp/webhook`}
                       />
                       <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(`${window.location.origin}/api/integrations/whatsapp/webhook`);
-                          alert("Скопировано!");
-                        }}
+                        onClick={() => copyToClipboard(`${window.location.origin}/api/integrations/whatsapp/webhook`)}
                         className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 whitespace-nowrap"
                       >
                         Копировать
