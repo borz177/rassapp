@@ -56,8 +56,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
 
                 {/* Header with decorative elements */}
                 <div className="relative">
-                    <div className="absolute -top-6 -left-6 w-24 h-24 bg-indigo-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
-                    <div className="absolute -top-6 -right-6 w-24 h-24 bg-emerald-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
+
                     <header className="relative">
                         <h2 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-indigo-400 bg-clip-text text-transparent">
                             Отчеты

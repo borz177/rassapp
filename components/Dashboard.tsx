@@ -341,44 +341,72 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                 )}
 
                 {/* Stats Cards - без индикаторов прогресса, с иконками перед суммой */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="group bg-white p-6 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 hover:-translate-y-1">
-                    <p className="text-sm font-medium text-slate-500 flex items-center gap-2 mb-3">
-                      <span className="text-emerald-500 text-lg">💰</span>
-                      Собрано средств
-                    </p>
-                    <p className="text-2xl font-bold text-emerald-600 flex items-center gap-1">
-                      {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)} ₽
-                    </p>
-                  </div>
-                  <div className="group bg-white p-6 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 hover:-translate-y-1">
-                    <p className="text-sm font-medium text-slate-500 flex items-center gap-2 mb-3">
-                      <span className="text-amber-500 text-lg">📋</span>
-                      Долг клиентов
-                    </p>
-                    <p className="text-2xl font-bold text-amber-600 flex items-center gap-1">
-                      {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)} ₽
-                    </p>
-                  </div>
-                  <div className="group bg-white p-6 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 hover:-translate-y-1">
-                    <p className="text-sm font-medium text-slate-500 flex items-center gap-2 mb-3">
-                      <span className="text-blue-500 text-lg">💼</span>
-                      Оборотные средства
-                    </p>
-                    <p className="text-2xl font-bold text-blue-600 flex items-center gap-1">
-                      {formatCurrency(currentWorkingCapital, appSettings.showCents)} ₽
-                    </p>
-                  </div>
-                  <div className="group bg-white p-6 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 hover:-translate-y-1">
-                    <p className="text-sm font-medium text-slate-500 flex items-center gap-2 mb-3">
-                      <span className="text-indigo-500 text-lg">📦</span>
-                      Продажи в рассрочку
-                    </p>
-                    <p className="text-2xl font-bold text-indigo-600 flex items-center gap-1">
-                      {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)} ₽
-                    </p>
-                  </div>
-                </div>
+                {/* Stats Cards - с заголовком сверху и иконкой слева от суммы */}
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 hover:-translate-y-1">
+    <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">
+      Собрано средств
+    </p>
+    <div className="flex items-center justify-between">
+      <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 group-hover:bg-emerald-200 transition-colors">
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+      <p className="text-2xl font-bold text-slate-800">
+        {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)} ₽
+      </p>
+    </div>
+  </div>
+
+  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 hover:-translate-y-1">
+    <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">
+      Долг клиентов
+    </p>
+    <div className="flex items-center justify-between">
+      <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600 group-hover:bg-amber-200 transition-colors">
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+      </div>
+      <p className="text-2xl font-bold text-slate-800">
+        {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)} ₽
+      </p>
+    </div>
+  </div>
+
+  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 hover:-translate-y-1">
+    <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">
+      Оборотные средства
+    </p>
+    <div className="flex items-center justify-between">
+      <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 group-hover:bg-blue-200 transition-colors">
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+        </svg>
+      </div>
+      <p className="text-2xl font-bold text-slate-800">
+        {formatCurrency(currentWorkingCapital, appSettings.showCents)} ₽
+      </p>
+    </div>
+  </div>
+
+  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 hover:-translate-y-1">
+    <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">
+      Продажи в рассрочку
+    </p>
+    <div className="flex items-center justify-between">
+      <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-200 transition-colors">
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+        </svg>
+      </div>
+      <p className="text-2xl font-bold text-slate-800">
+        {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)} ₽
+      </p>
+    </div>
+  </div>
+</div>
 
                 {/* Two Column Layout */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
