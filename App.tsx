@@ -50,7 +50,7 @@ const App: React.FC = () => {
   const [investors, setInvestors] = useState<Investor[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
-  const [appSettings, setAppSettings] = useState<AppSettings>({ companyName: 'InstallMate' });
+  const [appSettings, setAppSettings] = useState<AppSettings>({ companyName: 'FinUchet' });
 
   // Drafts & Temporary State
   const [draftSaleData, setDraftSaleData] = useState<any>({});
