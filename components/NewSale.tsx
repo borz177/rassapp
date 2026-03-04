@@ -88,32 +88,57 @@ const NewSale: React.FC<NewSaleProps> = ({
     }
   }, [formData.startDate, initialData]);
 
+  // 1. Базовая математическая цена (Закуп + Наценка)
+  const baseCalculatedPrice = useMemo(() => {
+    const bp = Number(formData.buyPrice) || 0;
+    const rate = Number(formData.interestRate) || 0;
+    return Math.round(bp + (bp * (rate / 100)));
+  }, [formData.buyPrice, formData.interestRate]);
+
+  // 2. Расчет итоговых значений и округлений
   const calculatedValues = useMemo(() => {
-    const basePrice = Number(formData.price) || 0;
+    // ВАЖНО: Если округление ВКЛ, считаем от базы. Если ВЫКЛ, берем то, что в инпуте (для ручной правки)
+    const priceBasis = (roundingMode === 'NONE') ? (Number(formData.price) || 0) : baseCalculatedPrice;
     const downPayment = Number(formData.downPayment) || 0;
     const installments = Number(formData.installments) || 1;
-    if (mode === 'CASH') return { totalAmount: basePrice, remainingAmount: 0, monthlyPayment: 0 };
-    let totalAmount = basePrice;
+
+    if (mode === 'CASH') return { totalAmount: Number(formData.price) || 0, remainingAmount: 0, monthlyPayment: 0 };
+
+    let totalAmount = priceBasis;
     let remainingAmount = totalAmount - downPayment;
     let monthlyPayment = installments > 0 ? remainingAmount / installments : 0;
-    if (roundingMode !== 'NONE' && monthlyPayment > 0) {
-        const roundedMonthly = roundingMode === 'DOWN' ? Math.floor(monthlyPayment / 100) * 100 : Math.ceil(monthlyPayment / 100) * 100;
-        if (roundedMonthly > 0) {
-            monthlyPayment = roundedMonthly;
-            remainingAmount = monthlyPayment * installments;
-            totalAmount = remainingAmount + downPayment;
-        }
-    }
-    return { totalAmount, remainingAmount, monthlyPayment };
-  }, [formData.price, formData.downPayment, formData.installments, roundingMode, mode]);
 
+    // Применяем округление платежа, если выбран режим
+    if (roundingMode !== 'NONE' && monthlyPayment > 0) {
+        const roundedMonthly = roundingMode === 'DOWN'
+            ? Math.floor(monthlyPayment / 100) * 100
+            : Math.ceil(monthlyPayment / 100) * 100;
+
+        monthlyPayment = roundedMonthly;
+        remainingAmount = monthlyPayment * installments;
+        totalAmount = remainingAmount + downPayment;
+    }
+
+    return { totalAmount, remainingAmount, monthlyPayment };
+  }, [formData.price, formData.downPayment, formData.installments, roundingMode, mode, baseCalculatedPrice]);
+
+  // 3. Синхронизация поля "Цена" с кнопками округления
   useEffect(() => {
-      if (roundingMode !== 'NONE' && mode === 'INSTALLMENT') {
+      if (mode !== 'INSTALLMENT') return;
+
+      if (roundingMode !== 'NONE') {
+          // Если нажали Вверх/Вниз — меняем цену в инпуте на рассчитанную
           if (calculatedValues.totalAmount !== Number(formData.price)) {
               setFormData(prev => ({ ...prev, price: calculatedValues.totalAmount }));
           }
+      } else {
+          // Если нажали "Нет" — сбрасываем цену к базовой математической
+          if (baseCalculatedPrice > 0 && Number(formData.price) !== baseCalculatedPrice) {
+              setFormData(prev => ({ ...prev, price: baseCalculatedPrice }));
+          }
       }
-  }, [calculatedValues.totalAmount, roundingMode, mode]);
+  }, [roundingMode, calculatedValues.totalAmount, baseCalculatedPrice, mode]);
+
 
   const handleProductChange = (val: string) => { setFormData(prev => ({ ...prev, productName: val, productId: '' })); if (val.length > 0) { const matched = products.filter(p => p.name.toLowerCase().includes(val.toLowerCase())); setSuggestions(matched); setShowSuggestions(true); } else { setShowSuggestions(false); } };
   const handleSuggestionClick = (product: Product) => { setFormData(prev => ({ ...prev, productName: product.name, productId: product.id, price: product.price, buyPrice: 0 })); setShowSuggestions(false); };
