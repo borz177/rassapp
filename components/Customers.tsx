@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react'; // Добавили useMemo
 import { Customer, Sale, Account, Investor, Payment, AppSettings } from '../types';
 import { ICONS } from '../constants';
 import CustomerDetails from './CustomerDetails';
@@ -11,7 +10,7 @@ interface CustomersProps {
   sales: Sale[];
   appSettings: AppSettings;
   onAddCustomer: (name: string, phone: string, photo: string, address: string) => void;
-  onSelectCustomer: (id: string) => void; // Kept for compatibility but unused for internal nav
+  onSelectCustomer: (id: string) => void; 
   onInitiatePayment: (sale: Sale, payment: Payment) => void;
   onUndoPayment: (saleId: string, paymentId: string) => void;
   onEditPayment: (saleId: string, paymentId: string, newDate: string) => void;
@@ -37,9 +36,17 @@ const Customers: React.FC<CustomersProps> = ({
   const [newPhone, setNewPhone] = useState('');
   const [newAddress, setNewAddress] = useState('');
   const [newPhoto, setNewPhoto] = useState('');
-
-  // Search State
   const [searchTerm, setSearchTerm] = useState('');
+
+  // === ЛОГИКА ФИЛЬТРАЦИИ И СОРТИРОВКИ ОТ А ДО Я ===
+  const sortedFilteredCustomers = useMemo(() => {
+    return customers
+      .filter(c =>
+        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.phone.includes(searchTerm)
+      )
+      .sort((a, b) => a.name.localeCompare(b.name)); // Сортировка по алфавиту
+  }, [customers, searchTerm]);
 
   if (selectedCustomerId) {
     const customer = customers.find(c => c.id === selectedCustomerId);
@@ -84,17 +91,14 @@ const Customers: React.FC<CustomersProps> = ({
     }
   };
 
-  const filteredCustomers = customers.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.phone.includes(searchTerm)
-  );
-
   return (
     <div className="space-y-4 pb-20 animate-fade-in">
       <header className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Клиенты</h2>
-          <p className="text-slate-500 text-sm">{filteredCustomers.length} из {customers.length}</p>
+          <p className="text-slate-500 text-sm">
+            {sortedFilteredCustomers.length} из {customers.length}
+          </p>
         </div>
         <button
           onClick={() => setIsAdding(!isAdding)}
@@ -161,10 +165,10 @@ const Customers: React.FC<CustomersProps> = ({
       )}
 
       <div className="grid gap-3">
-        {filteredCustomers.length === 0 && !isAdding && (
+        {sortedFilteredCustomers.length === 0 && !isAdding && (
             <div className="text-center py-8 text-slate-400">Клиенты не найдены</div>
         )}
-        {filteredCustomers.map(c => (
+        {sortedFilteredCustomers.map(c => (
           <div
             key={c.id}
             onClick={() => setSelectedCustomerId(c.id)}
