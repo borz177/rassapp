@@ -155,6 +155,7 @@ const Contracts: React.FC<ContractsProps> = ({
 
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Неизвестно';
 
+  // ✅ ФУНКЦИЯ: расчёт реальной просрочки по сумме, а не по дате
   const calculateSaleOverdue = (sale: Sale) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -189,6 +190,7 @@ const Contracts: React.FC<ContractsProps> = ({
             return;
         }
 
+        // ✅ ИСПОЛЬЗУЕМ calculateSaleOverdue вместо проверки даты
         const overdueAmount = calculateSaleOverdue(sale);
 
         if (overdueAmount > 0) {
@@ -538,93 +540,89 @@ const Contracts: React.FC<ContractsProps> = ({
             const overdueSum = calculateSaleOverdue(sale);
 
             return (
-                <div
-                    key={sale.id}
-                    className="bg-white/95 backdrop-blur rounded-2xl shadow-md p-5 relative animate-fade-in transition-all hover:shadow-xl border border-slate-100 overflow-visible"
-                >
-                    <div className="flex justify-between items-start mb-3">
-                        <div className="flex items-start gap-4 min-w-0 flex-1">
-                            <div
-                                className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md shrink-0">
-                                {displayNumber}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <h3 className="font-bold text-slate-800 text-lg truncate">{getCustomerName(sale.customerId)}</h3>
-                                <p className="text-sm text-slate-500 truncate">{sale.productName}</p>
-                                <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 bg-slate-400 rounded-full shrink-0"></span>
-                                    <span className="truncate">Оформлен: {formatDate(sale.startDate)}</span>
-                                </p>
-                            </div>
-                        </div>
-                        <div className="text-right flex items-center gap-3 shrink-0">
-                            <div>
-                                <span
-                                    className={`inline-block px-3 py-1.5 text-xs font-bold rounded-xl ${statusColor}`}>{statusLabel}</span>
-                                {activeTab === 'OVERDUE' ? (
-                                    <p className="text-sm font-bold text-red-600 mt-2 whitespace-nowrap">{formatCurrency(overdueSum, appSettings?.showCents)} ₽</p>
-                                ) : (
-                                    <p className="text-sm font-semibold mt-2 text-slate-700 whitespace-nowrap">{formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</p>
-                                )}
-                            </div>
-                            {!readOnly && (
-                                <button onClick={(e) => handleActionClick(e, sale.id)}
-                                        className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all self-start shrink-0">
-                                    {ICONS.More}
-                                </button>
-                            )}
-                        </div>
+              <div
+                key={sale.id}
+                id={`sale-card-${sale.id}`}
+                className="bg-white/95 backdrop-blur rounded-2xl shadow-md p-5 relative animate-fade-in transition-all hover:shadow-xl border border-slate-100 overflow-visible"
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-start gap-4 min-w-0 flex-1">
+                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md shrink-0">
+                      {displayNumber}
                     </div>
-
-                    <div className="w-full bg-slate-100 rounded-full h-2.5 mt-4">
-                        <div
-                            className={`h-2.5 rounded-full transition-all duration-500 ${activeTab === 'OVERDUE' ? 'bg-gradient-to-r from-red-500 to-orange-400' : 'bg-gradient-to-r from-blue-500 to-indigo-500'}`}
-                            style={{width: `${progress}%`}}
-                        ></div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-bold text-slate-800 text-lg truncate">{getCustomerName(sale.customerId)}</h3>
+                      <p className="text-sm text-slate-500 truncate">{sale.productName}</p>
+                      <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 bg-slate-400 rounded-full shrink-0"></span>
+                        <span className="truncate">Оформлен: {formatDate(sale.startDate)}</span>
+                      </p>
                     </div>
-                    <div className="flex justify-between text-xs mt-2">
-                        <span className="text-slate-500">Оплачено: <span
-                            className="font-semibold text-emerald-600">{formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
-                        {activeTab !== 'OVERDUE' && (
-                            <span className="text-slate-500">Остаток: <span
-                                className="font-semibold text-slate-700">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
-                        )}
+                  </div>
+                  <div className="text-right flex items-center gap-3 shrink-0">
+                    <div>
+                      <span className={`inline-block px-3 py-1.5 text-xs font-bold rounded-xl ${statusColor}`}>{statusLabel}</span>
+                      {activeTab === 'OVERDUE' ? (
+                          <p className="text-sm font-bold text-red-600 mt-2 whitespace-nowrap">{formatCurrency(overdueSum, appSettings?.showCents)} ₽</p>
+                      ) : (
+                          <p className="text-sm font-semibold mt-2 text-slate-700 whitespace-nowrap">{formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</p>
+                      )}
                     </div>
-
-                    {!readOnly && activeMenuId === sale.id && (
-                        <div
-                            className="absolute right-4 top-full mt-2 bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl z-50 w-56 overflow-hidden animate-scale-in border border-slate-100"
-                            onClick={e => e.stopPropagation()}>
-                            <button onClick={() => setSelectedSaleForInfo(sale)}
-                                    className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors">
-                                <span className="text-blue-500">{ICONS.File}</span> Инфо о договоре
-                            </button>
-                            <button onClick={() => onViewSchedule(sale)}
-                                    className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors">
-                                <span className="text-indigo-500">{ICONS.List}</span> График
-                            </button>
-                            <button onClick={() => onEditSale(sale)}
-                                    className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                                <span className="text-slate-500">{ICONS.Edit}</span> Редактировать
-                            </button>
-                            <button onClick={() => printContract(sale)}
-                                    className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                                <span className="text-slate-500">{ICONS.File}</span> Печать
-                            </button>
-                            <button onClick={() => setDeletingSale(sale)}
-                                    className="w-full text-left px-4 py-3.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors border-t border-slate-100">
-                                <span>{ICONS.Delete}</span> Удалить
-                            </button>
-                        </div>
+                    {!readOnly && (
+                        <button
+                          id={`menu-trigger-${sale.id}`}
+                          onClick={(e) => handleActionClick(e, sale.id)}
+                          className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all self-start shrink-0"
+                        >
+                          {ICONS.More}
+                        </button>
                     )}
+                  </div>
                 </div>
+
+                <div className="w-full bg-slate-100 rounded-full h-2.5 mt-4">
+                  <div
+                    className={`h-2.5 rounded-full transition-all duration-500 ${activeTab === 'OVERDUE' ? 'bg-gradient-to-r from-red-500 to-orange-400' : 'bg-gradient-to-r from-blue-500 to-indigo-500'}`}
+                    style={{ width: `${progress}%` }}
+                  ></div>
+                </div>
+                <div className="flex justify-between text-xs mt-2">
+                  <span className="text-slate-500">Оплачено: <span className="font-semibold text-emerald-600">{formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
+                  {activeTab !== 'OVERDUE' && (
+                    <span className="text-slate-500">Остаток: <span className="font-semibold text-slate-700">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
+                  )}
+                </div>
+
+                {/* ✅ ИСПРАВЛЕНО: меню с z-[9999] и overflow-visible на родителе */}
+                {!readOnly && activeMenuId === sale.id && (
+                  <div
+                    className="absolute right-4 top-0 mt-14 bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl z-[9999] w-56 overflow-hidden animate-scale-in border border-slate-100"
+                    onClick={e => e.stopPropagation()}
+                  >
+                      <button onClick={() => setSelectedSaleForInfo(sale)} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors">
+                        <span className="text-blue-500">{ICONS.File}</span> Инфо о договоре
+                      </button>
+                      <button onClick={() => onViewSchedule(sale)} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors">
+                        <span className="text-indigo-500">{ICONS.List}</span> График
+                      </button>
+                      <button onClick={() => onEditSale(sale)} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                        <span className="text-slate-500">{ICONS.Edit}</span> Редактировать
+                      </button>
+                      <button onClick={() => printContract(sale)} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                        <span className="text-slate-500">{ICONS.File}</span> Печать
+                      </button>
+                      <button onClick={() => setDeletingSale(sale)} className="w-full text-left px-4 py-3.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors border-t border-slate-100">
+                        <span>{ICONS.Delete}</span> Удалить
+                      </button>
+                  </div>
+                )}
+              </div>
             )
         }))}
       </div>
 
         {deletingSale && !readOnly && (
-            <div
-                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/70 to-slate-800/70 backdrop-blur-sm animate-fade-in overflow-hidden" onClick={() => setDeletingSale(null)}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/70 to-slate-800/70 backdrop-blur-sm animate-fade-in overflow-hidden" onClick={() => setDeletingSale(null)}>
                 <div className="bg-white/95 backdrop-blur w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-white/20" onClick={e => e.stopPropagation()}>
                     <div className="w-16 h-16 bg-gradient-to-br from-red-400 to-red-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shrink-0">
                       {ICONS.Delete}

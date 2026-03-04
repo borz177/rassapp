@@ -38,7 +38,18 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const activeCustomerSales = useMemo(() => sales.filter(s => s.customerId === selectedCustomerId && s.remainingAmount > 0), [sales, selectedCustomerId]);
   const selectedSale = useMemo(() => sales.find(s => s.id === selectedSaleId), [sales, selectedSaleId]);
   const selectedInvestor = useMemo(() => investors.find(i => i.id === selectedInvestorId), [investors, selectedInvestorId]);
+
+  // Получаем настройки и определяем флаг показа копеек
   const appSettings = getAppSettings();
+  const showCents = appSettings?.showCents || false;
+
+  // Вспомогательная функция для форматирования чисел в зависимости от настроек
+  const formatNum = (val: number) => {
+    return val.toLocaleString(undefined, {
+      minimumFractionDigits: showCents ? 2 : 0,
+      maximumFractionDigits: showCents ? 2 : 0,
+    });
+  };
 
   useEffect(() => {
     if (initialData?.type === 'CUSTOMER_PAYMENT') {
@@ -62,10 +73,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
               const remainingForThisInstallment = paymentDue - coveredByPool;
               if (remainingForThisInstallment > 0.01) { suggestedAmount = remainingForThisInstallment; break; }
           }
-          if (!amount) { setAmount(suggestedAmount > 0 ? suggestedAmount.toFixed(2) : ''); }
+          if (!amount) {
+              // Округляем подставляемую сумму, если копейки выключены
+              setAmount(suggestedAmount > 0 ? (showCents ? suggestedAmount.toFixed(2) : Math.round(suggestedAmount).toString()) : '');
+          }
           setTargetAccountId(selectedSale.accountId);
       }
-  }, [selectedSale]);
+  }, [selectedSale, showCents]);
 
   useEffect(() => {
       if (selectedInvestor) {
@@ -102,17 +116,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       if (selectedSale.totalAmount <= 0) return 0;
       const totalProfit = selectedSale.totalAmount - selectedSale.buyPrice;
       const margin = totalProfit / selectedSale.totalAmount;
-      return numAmount * margin;
-  }, [selectedSale, amount]);
+      const profit = numAmount * margin;
+      return showCents ? profit : Math.round(profit);
+  }, [selectedSale, amount, showCents]);
 
-
-
-  // === ОБНОВЛЁННАЯ generateContractPDF ===
   const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
       if (!contractRef.current) throw new Error("Contract element not found");
       const element = contractRef.current;
-
-      // Сохраняем исходные стили
       const originalStyle = {
           display: element.style.display,
           position: element.style.position,
@@ -121,8 +131,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           visibility: element.style.visibility,
           zIndex: element.style.zIndex
       };
-
-      // Временно ПОКАЗЫВАЕМ элемент для html2canvas
       element.style.display = 'block';
       element.style.position = 'absolute';
       element.style.left = '0';
@@ -131,9 +139,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       element.style.zIndex = '-1';
 
       try {
-          // Небольшая задержка для применения стилей
           await new Promise(resolve => setTimeout(resolve, 100));
-
           const canvas = await html2canvas(element, { scale: 1.5, useCORS: true, logging: false });
           const imgData = canvas.toDataURL('image/jpeg', 0.7);
           const pdf = new jsPDF('p', 'mm', 'a4');
@@ -142,7 +148,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
           return pdf.output('blob');
       } finally {
-          // Восстанавливаем исходные стили
           element.style.display = originalStyle.display;
           element.style.position = originalStyle.position;
           element.style.left = originalStyle.left;
@@ -162,7 +167,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       setShowConfirmModal(true);
   };
 
-      const handleConfirm = async () => {
+  const handleConfirm = async () => {
       const numAmount = Number(amount);
       let finalDate = date;
       const now = new Date();
@@ -177,25 +182,12 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
       if (sourceType === 'CUSTOMER') {
           onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
-
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
               try {
                   const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-
-                  // === ИСПРАВЛЕНИЕ: Оставляем русские буквы ===
-                  // 1. Берем название товара
-                  // 2. Заменяем все недопустимые символы (кроме букв и цифр) на "_"
-                  // 3. Заменяем пробелы на "_"
-                  let cleanName = selectedSale.productName
-                      .replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_')
-                      .replace(/\s+/g, '_');
-
-                  // Если после очистки имя пустое, ставим заглушку
+                  let cleanName = selectedSale.productName.replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_').replace(/\s+/g, '_');
                   const finalName = cleanName || 'oplata';
-
-                  // Формируем имя: Договор_Название.pdf (на русском!)
                   const fileName = `Договор_${finalName}.pdf`;
-
                   const success = await sendWhatsAppFile(
                       appSettings.whatsapp.idInstance,
                       appSettings.whatsapp.apiTokenInstance,
@@ -203,14 +195,9 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                       pdfBlob,
                       fileName
                   );
-
-                  if (success) {
-                      alert("Договор (PDF) отправлен клиенту в WhatsApp");
-                  } else {
-                      alert("Ошибка отправки PDF в WhatsApp");
-                  }
+                  if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
+                  else { alert("Ошибка отправки PDF в WhatsApp"); }
               } catch (error) {
-                  console.error("Error generating/sending PDF:", error);
                   alert("Ошибка при создании или отправке PDF");
               }
           }
@@ -222,10 +209,8 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       setShowConfirmModal(false);
   };
 
-  // === renderContractContent с правильными стилями скрытия ===
   const renderContractContent = () => {
       if (!selectedSale || !selectedCustomer) return null;
-
       const companyName = appSettings?.companyName || "Компания";
       const hasGuarantor = !!selectedSale.guarantorName;
       const sellerPhone = appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance.slice(0, 11)}` : (selectedCustomer?.phone || '+7 (___) ___-__-__');
@@ -241,11 +226,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
               width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
               fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5',
               display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
-              // === СКРЫТИЕ: не влияет на layout ===
-              position: 'absolute' as const,
-              left: '-9999px',
-              top: '-9999px',
-              visibility: 'hidden' as const
+              position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
           },
           contentWrapper: { flex: 1 },
           h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
@@ -255,7 +236,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
           section: { margin: '0 0 20px 0' },
           sectionItem: { marginBottom: '12px' },
-          sectionItemLast: { marginBottom: 0 },
           table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
           th: { border: '1px solid #000', padding: '6px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
           td: { border: '1px solid #000', padding: '6px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
@@ -272,7 +252,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           <div ref={contractRef} style={styles.page}>
               <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
               <div style={styles.headerInfo}>Дата: {new Date(selectedSale.startDate).toLocaleDateString()}</div>
-
               <div style={styles.contentWrapper}>
                   <div style={styles.section}>
                       <div style={styles.fieldRow}>
@@ -290,19 +269,17 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                           </div>
                       )}
                   </div>
-
                   <div style={styles.section}>
                       <div style={styles.sectionItem}><span style={styles.fieldLabel}>Товар:</span> {selectedSale.productName}</div>
                       <div style={{...styles.sectionItem, display: 'flex', justifyContent: 'space-between', marginTop: '10px'}}>
                           <span><span style={styles.fieldLabel}>Срок рассрочки:</span> {selectedSale.installments} мес.</span>
-                          <span><span style={styles.fieldLabel}>Стоимость:</span> {selectedSale.totalAmount.toLocaleString()} ₽</span>
+                          <span><span style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
                       </div>
-                      <div style={{...styles.sectionItemLast, display: 'flex', justifyContent: 'space-between'}}>
-                          <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {(selectedSale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
-                          <span><span style={styles.fieldLabel}>Первый взнос:</span> {selectedSale.downPayment.toLocaleString()} ₽</span>
+                      <div style={{...styles.sectionItem, display: 'flex', justifyContent: 'space-between'}}>
+                          <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
+                          <span><span style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
                       </div>
                   </div>
-
                   <table style={styles.table}>
                       <thead>
                           <tr>
@@ -320,19 +297,17 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                                   <tr key={index}>
                                       <td style={styles.td}>{index + 1}</td>
                                       <td style={styles.td}>{p.date.toLocaleDateString()}</td>
-                                      <td style={styles.td}>{p.amount.toLocaleString()} ₽</td>
-                                      <td style={styles.td}>{displayDebt.toLocaleString()} ₽</td>
+                                      <td style={styles.td}>{formatNum(p.amount)} ₽</td>
+                                      <td style={styles.td}>{formatNum(displayDebt)} ₽</td>
                                   </tr>
                               );
                           })}
                       </tbody>
                   </table>
-
                   <div style={{ margin: '25px 0', fontSize: '11pt', lineHeight: 1.4 }}>
                       Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку на указанных выше условиях.
                   </div>
               </div>
-
               <div style={styles.footerContainer}>
                   <div style={styles.footer}>
                       <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
@@ -359,7 +334,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   return (
     <div className="space-y-4 animate-fade-in pb-20">
-        {/* === СКРЫТЫЙ КОНТРАКТ ДЛЯ PDF (не влияет на layout) === */}
         {renderContractContent()}
 
         <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
@@ -392,7 +366,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                              {activeCustomerSales.length > 0 ? (
                                  <select className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900" value={selectedSaleId} onChange={e => setSelectedSaleId(e.target.value)}>
                                      <option value="">-- Выберите товар/рассрочку --</option>
-                                     {activeCustomerSales.map(s => <option key={s.id} value={s.id}>{s.productName} (Долг: {s.remainingAmount.toLocaleString()} ₽)</option>)}
+                                     {activeCustomerSales.map(s => <option key={s.id} value={s.id}>{s.productName} (Долг: {formatNum(s.remainingAmount)} ₽)</option>)}
                                  </select>
                              ) : <p className="text-slate-500 italic p-2">Нет активных долгов</p>}
                          </div>
@@ -426,15 +400,22 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                     <label className="block text-sm font-medium text-slate-700 mb-1">Сумма прихода</label>
                     <div className="relative">
                         <span className="absolute left-4 top-3.5 text-slate-400 text-lg">₽</span>
-                        <input type="number" placeholder="0" className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={amount} onChange={e => setAmount(e.target.value)} />
+                        <input
+                            type="number"
+                            step={showCents ? "0.01" : "1"}
+                            placeholder="0"
+                            className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                            value={amount}
+                            onChange={e => setAmount(e.target.value)}
+                        />
                     </div>
                     {sourceType === 'CUSTOMER' && selectedSale && (
                         <div className="flex justify-between items-start mt-2">
-                            <p className="text-xs text-slate-400 mt-1">Рек: {recommendedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽</p>
+                            <p className="text-xs text-slate-400 mt-1">Рек: {formatNum(recommendedAmount)} ₽</p>
                             {currentPaymentProfit > 0 && (
                                 <div className="bg-emerald-50 px-2 py-1 rounded text-right">
                                     <p className="text-xs text-emerald-600 font-medium">Прибыль с платежа</p>
-                                    <p className="text-sm font-bold text-emerald-700">+{currentPaymentProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })} ₽</p>
+                                    <p className="text-sm font-bold text-emerald-700">+{formatNum(currentPaymentProfit)} ₽</p>
                                 </div>
                             )}
                         </div>
@@ -480,17 +461,12 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                         <div className="my-2 border-t border-slate-200"></div>
                         <div className="flex justify-between items-center">
                             <span className="text-slate-500">Сумма:</span>
-                            <span className="text-xl font-bold text-emerald-600">+{Number(amount).toLocaleString()} ₽</span>
+                            <span className="text-xl font-bold text-emerald-600">+{formatNum(Number(amount))} ₽</span>
                         </div>
                         <div className="flex justify-between items-center pt-1">
                             <span className="text-slate-500">Счет:</span>
                             <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-xs font-bold">{getAccountName(targetAccountId)}</span>
                         </div>
-                        {sourceType === 'CUSTOMER' && sendHistory && (
-                            <div className="flex items-center gap-2 mt-2 text-xs text-emerald-600 font-medium bg-white p-2 rounded border border-emerald-100">
-                                {ICONS.Send} Будет отправлен отчет в WhatsApp
-                            </div>
-                        )}
                     </div>
                     <div className="flex gap-3 pt-2">
                         <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200">Отмена</button>
