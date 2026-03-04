@@ -3,7 +3,7 @@ import { Sale, Customer, Account, User, AppSettings } from '../types';
 import { ICONS } from '../constants';
 import { Phone } from 'lucide-react';
 import { formatCurrency, formatDate } from '../src/utils';
-import { createPortal } from 'react-dom'; // 1. Импортируем Portal
+import { createPortal } from 'react-dom';
 
 interface ContractsProps {
   sales: Sale[];
@@ -66,9 +66,9 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
 
                 <div className="p-6 space-y-6">
                     <div className="grid grid-cols-2 gap-y-4 gap-x-3">
-                        <div className="bg-slate-50 p-3 rounded-xl min-w-0">
-                            <label className="text-xs text-slate-500 block mb-1 truncate">Товар</label>
-                            <p className="font-bold text-slate-800 text-sm leading-tight truncate">{sale.productName}</p>
+                        <div className="col-span-2 bg-slate-50 p-3 rounded-xl min-w-0">
+                            <label className="text-xs text-slate-500 block mb-1">Товар</label>
+                            <p className="font-bold text-slate-800 text-sm leading-tight break-words">{sale.productName}</p>
                         </div>
                         <div className="bg-slate-50 p-3 rounded-xl">
                             <label className="text-xs text-slate-500 block mb-1">Общий срок</label>
@@ -95,11 +95,11 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
 
                         <div className="col-span-2 bg-gradient-to-r from-red-50 to-orange-50 p-4 rounded-xl border border-red-100 mt-2">
                             <div className="flex justify-between items-center">
-                                <label className="text-xs text-red-600 font-medium">Сумма просрочки (по факту)</label>
+                                <label className="text-xs text-red-600 font-medium">Сумма просрочки</label>
                                 <p className="font-bold text-red-600 text-xl">{formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽</p>
                             </div>
                             <div className="flex justify-between items-center mt-2">
-                                <label className="text-xs text-slate-600 font-medium">Общий остаток долга</label>
+                                <label className="text-xs text-slate-600 font-medium">Общий остаток</label>
                                 <p className="font-bold text-slate-800">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
                             </div>
                         </div>
@@ -107,12 +107,12 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
 
                     {overduePaymentsList.length > 0 && (
                         <div className="bg-slate-50 p-4 rounded-xl">
-                            <label className="text-xs font-medium text-slate-500 block mb-3">Даты пропущенных платежей</label>
+                            <label className="text-xs font-medium text-slate-500 block mb-3">Пропущенные платежи</label>
                             <div className="space-y-2 max-h-32 overflow-y-auto pr-2">
                                 {overduePaymentsList.map(p => (
                                     <div key={p.id} className="flex justify-between items-center bg-white p-2 rounded-lg min-w-0">
-                                        <span className="text-red-600 font-medium text-sm whitespace-nowrap">{formatDate(p.date)}</span>
-                                        <span className="text-slate-400 text-xs bg-slate-100 px-2 py-1 rounded-full whitespace-nowrap ml-2">{formatCurrency(p.amount, appSettings?.showCents)} ₽</span>
+                                        <span className="text-red-600 font-medium text-sm">{formatDate(p.date)}</span>
+                                        <span className="text-slate-400 text-xs bg-slate-100 px-2 py-1 rounded-full">{formatCurrency(p.amount, appSettings?.showCents)} ₽</span>
                                     </div>
                                 ))}
                             </div>
@@ -121,17 +121,11 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
                 </div>
 
                 <div className="p-4 bg-gradient-to-r from-slate-50 to-white border-t border-slate-100 flex gap-3 shrink-0">
-                    <button
-                        onClick={handleCall}
-                        className="flex-1 py-3.5 bg-blue-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition-all hover:shadow-lg active:scale-95 min-w-0"
-                    >
-                        <Phone size={18} className="shrink-0" /> <span className="truncate">Позвонить</span>
+                    <button onClick={handleCall} className="flex-1 py-3.5 bg-blue-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition-all hover:shadow-lg active:scale-95">
+                        <Phone size={18} /> <span>Позвонить</span>
                     </button>
-                    <button
-                        onClick={handleWhatsApp}
-                        className="flex-1 py-3.5 bg-emerald-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all hover:shadow-lg active:scale-95 min-w-0"
-                    >
-                        {ICONS.Send} <span className="truncate">Написать</span>
+                    <button onClick={handleWhatsApp} className="flex-1 py-3.5 bg-emerald-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all hover:shadow-lg active:scale-95">
+                        {ICONS.Send} <span>Написать</span>
                     </button>
                 </div>
 
@@ -153,7 +147,6 @@ const Contracts: React.FC<ContractsProps> = ({
   const [deletingSale, setDeletingSale] = useState<Sale | null>(null);
   const [selectedSaleForInfo, setSelectedSaleForInfo] = useState<Sale | null>(null);
 
-  // Состояние для координат меню
   const [menuPosition, setMenuPosition] = useState<{ top: number, right: number } | null>(null);
   const [currentMenuSale, setCurrentMenuSale] = useState<Sale | null>(null);
 
@@ -171,9 +164,7 @@ const Contracts: React.FC<ContractsProps> = ({
     });
 
     const totalPaid = sale.totalAmount - sale.remainingAmount;
-    const overdue = expectedTotal - totalPaid;
-
-    return Math.max(0, overdue);
+    return Math.max(0, expectedTotal - totalPaid);
   };
 
   const { filteredList } = useMemo(() => {
@@ -192,14 +183,8 @@ const Contracts: React.FC<ContractsProps> = ({
             archive.push(sale);
             return;
         }
-
-        const overdueAmount = calculateSaleOverdue(sale);
-
-        if (overdueAmount > 0) {
-            overdue.push(sale);
-        } else {
-            active.push(sale);
-        }
+        if (calculateSaleOverdue(sale) > 0) overdue.push(sale);
+        else active.push(sale);
     });
 
     let list = activeTab === 'ACTIVE' ? active : activeTab === 'OVERDUE' ? overdue : archive;
@@ -215,13 +200,8 @@ const Contracts: React.FC<ContractsProps> = ({
         });
     }
 
-    if (filterDate) {
-        list = list.filter(sale => sale.startDate.startsWith(filterDate));
-    }
-
-    if (filterAccountId) {
-        list = list.filter(sale => sale.accountId === filterAccountId);
-    }
+    if (filterDate) list = list.filter(sale => sale.startDate.startsWith(filterDate));
+    if (filterAccountId) list = list.filter(sale => sale.accountId === filterAccountId);
 
     return {
         filteredList: list.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
@@ -244,7 +224,6 @@ const Contracts: React.FC<ContractsProps> = ({
   const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
       e.stopPropagation();
 
-      // Если меню уже открыто для этой продажи - закрываем
       if (activeMenuId === sale.id) {
           setActiveMenuId(null);
           setMenuPosition(null);
@@ -252,14 +231,17 @@ const Contracts: React.FC<ContractsProps> = ({
           return;
       }
 
-      // Получаем координаты кнопки
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const menuHeight = 240;
+      const spaceBelow = window.innerHeight - rect.bottom;
 
-      // Вычисляем позицию: справа от кнопки, с небольшим отступом
-      // Используем window.scrollY чтобы учесть прокрутку страницы
+      const topPosition = spaceBelow < menuHeight
+          ? rect.top + window.scrollY - menuHeight + 30
+          : rect.bottom + window.scrollY + 8;
+
       setMenuPosition({
-          top: rect.top + window.scrollY + 40, // +40px вниз от кнопки
-          right: window.innerWidth - rect.right + 16 // 16px от правого края кнопки
+          top: topPosition,
+          right: window.innerWidth - rect.right
       });
 
       setActiveMenuId(sale.id);
@@ -474,13 +456,12 @@ const Contracts: React.FC<ContractsProps> = ({
       printWindow.document.close();
   };
 
-  // Компонент меню, который будем рендерить через Portal
   const ActionMenu = () => {
       if (!currentMenuSale || !menuPosition) return null;
 
       return (
           <div
-              className="fixed bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl z-[100] w-56 overflow-hidden animate-scale-in border border-slate-100"
+              className="absolute bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl z-[100] w-56 overflow-hidden animate-scale-in border border-slate-100"
               style={{
                   top: `${menuPosition.top}px`,
                   right: `${menuPosition.right}px`
@@ -506,7 +487,6 @@ const Contracts: React.FC<ContractsProps> = ({
       );
   };
 
-  // Закрываем меню при клике вне его
   useEffect(() => {
       const handleClickOutside = () => {
           if (activeMenuId) {
@@ -526,13 +506,7 @@ const Contracts: React.FC<ContractsProps> = ({
   }, [activeMenuId]);
 
   return (
-    <div className="space-y-6 pb-20 w-full max-w-7xl mx-auto px-4 overflow-x-hidden" onClick={() => {
-        if (activeMenuId) {
-            setActiveMenuId(null);
-            setMenuPosition(null);
-            setCurrentMenuSale(null);
-        }
-    }}>
+    <div className="space-y-6 pb-20 w-full max-w-7xl mx-auto px-4 overflow-x-hidden" onClick={() => setActiveMenuId(null)}>
       {activeTab !== 'OVERDUE' && (
         <div className="flex justify-between items-center mb-2">
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent min-w-0">
@@ -594,7 +568,7 @@ const Contracts: React.FC<ContractsProps> = ({
           </div>
       </div>
 
-      <div className="space-y-4 pt-4 overflow-hidden">
+      <div className="space-y-4 pt-4 overflow-hidden relative">
         {filteredList.length === 0 ? (
             <div className="text-center py-16 bg-white/80 backdrop-blur rounded-3xl border border-dashed border-slate-200 overflow-hidden">
                 <div className="text-slate-300 text-6xl mb-4">📄</div>
@@ -604,14 +578,14 @@ const Contracts: React.FC<ContractsProps> = ({
         filteredList.map((sale, index) => {
             const progress = sale.totalAmount > 0 ? ((sale.totalAmount - sale.remainingAmount) / sale.totalAmount) * 100 : 0;
             let statusLabel = 'АКТИВНО';
-            let statusColor = 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md shadow-blue-200';
+            let statusColor = 'bg-blue-100 text-blue-700';
             if (sale.status === 'COMPLETED') {
                 statusLabel = 'ЗАКРЫТО';
-                statusColor = 'bg-gradient-to-r from-slate-500 to-slate-600 text-white';
+                statusColor = 'bg-slate-100 text-slate-600';
             }
             if (activeTab === 'OVERDUE') {
                 statusLabel = 'ПРОСРОЧЕНО';
-                statusColor = 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-md shadow-red-200';
+                statusColor = 'bg-red-100 text-red-700';
             }
 
             const displayNumber = filteredList.length - index;
@@ -620,35 +594,42 @@ const Contracts: React.FC<ContractsProps> = ({
             return (
               <div
                 key={sale.id}
-                className="bg-white/95 backdrop-blur rounded-2xl shadow-md p-5 relative animate-fade-in transition-all hover:shadow-xl border border-slate-100"
+                className="bg-white/95 backdrop-blur rounded-2xl shadow-sm p-4 sm:p-5 relative animate-fade-in transition-all hover:shadow-md border border-slate-100"
               >
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex items-start gap-4 min-w-0 flex-1">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md shrink-0">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4">
+
+                  <div className="flex items-start gap-3 flex-1">
+                    <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-sm shrink-0 mt-1">
                       {displayNumber}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="font-bold text-slate-800 text-lg truncate">{getCustomerName(sale.customerId)}</h3>
-                      <p className="text-sm text-slate-500 truncate">{sale.productName}</p>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-bold text-slate-800 text-base leading-tight break-words pr-2">
+                          {getCustomerName(sale.customerId)}
+                      </h3>
+                      <p className="text-sm text-slate-500 break-words mt-1 leading-snug">{sale.productName}</p>
                       <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 bg-slate-400 rounded-full shrink-0"></span>
-                        <span className="truncate">Оформлен: {formatDate(sale.startDate)}</span>
+                        <span className="w-1.5 h-1.5 bg-slate-300 rounded-full shrink-0"></span>
+                        <span>Оформлен: {formatDate(sale.startDate)}</span>
                       </p>
                     </div>
                   </div>
-                  <div className="text-right flex items-center gap-3 shrink-0">
-                    <div>
-                      <span className={`inline-block px-3 py-1.5 text-xs font-bold rounded-xl ${statusColor}`}>{statusLabel}</span>
+
+                  <div className="flex items-center sm:items-start justify-between sm:justify-end gap-4 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100">
+                    <div className="text-left sm:text-right flex-1 sm:flex-none">
+                      <span className={`inline-block px-2.5 py-1 text-[11px] font-bold tracking-wider rounded-md uppercase ${statusColor}`}>
+                          {statusLabel}
+                      </span>
                       {activeTab === 'OVERDUE' ? (
-                          <p className="text-sm font-bold text-red-600 mt-2 whitespace-nowrap">{formatCurrency(overdueSum, appSettings?.showCents)} ₽</p>
+                          <p className="text-sm font-bold text-red-600 mt-1.5">{formatCurrency(overdueSum, appSettings?.showCents)} ₽</p>
                       ) : (
-                          <p className="text-sm font-semibold mt-2 text-slate-700 whitespace-nowrap">{formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</p>
+                          <p className="text-sm font-semibold mt-1.5 text-slate-700">{formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</p>
                       )}
                     </div>
+
                     {!readOnly && (
                         <button
                           onClick={(e) => handleActionClick(e, sale)}
-                          className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all self-start shrink-0"
+                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all shrink-0 -mt-1 sm:mt-0"
                         >
                           {ICONS.More}
                         </button>
@@ -656,16 +637,16 @@ const Contracts: React.FC<ContractsProps> = ({
                   </div>
                 </div>
 
-                <div className="w-full bg-slate-100 rounded-full h-2.5 mt-4">
+                <div className="w-full bg-slate-100 rounded-full h-2 mt-2">
                   <div
-                    className={`h-2.5 rounded-full transition-all duration-500 ${activeTab === 'OVERDUE' ? 'bg-gradient-to-r from-red-500 to-orange-400' : 'bg-gradient-to-r from-blue-500 to-indigo-500'}`}
+                    className={`h-2 rounded-full transition-all duration-500 ${activeTab === 'OVERDUE' ? 'bg-gradient-to-r from-red-500 to-orange-400' : 'bg-gradient-to-r from-blue-500 to-indigo-500'}`}
                     style={{ width: `${progress}%` }}
                   ></div>
                 </div>
-                <div className="flex justify-between text-xs mt-2">
-                  <span className="text-slate-500">Оплачено: <span className="font-semibold text-emerald-600">{formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
+                <div className="flex justify-between text-[11px] mt-2 font-medium">
+                  <span className="text-slate-500">Оплачено: <span className="text-emerald-600">{formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
                   {activeTab !== 'OVERDUE' && (
-                    <span className="text-slate-500">Остаток: <span className="font-semibold text-slate-700">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
+                    <span className="text-slate-500">Остаток: <span className="text-slate-700">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
                   )}
                 </div>
               </div>
@@ -673,7 +654,6 @@ const Contracts: React.FC<ContractsProps> = ({
         }))}
       </div>
 
-        {/* ✅ РЕНДЕР МЕНЮ ЧЕРЕЗ PORTAL */}
         {activeMenuId && menuPosition && createPortal(
             <ActionMenu />,
             document.body
