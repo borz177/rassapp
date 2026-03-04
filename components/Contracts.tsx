@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState } from 'react';
 import { Sale, Customer, Account, User, AppSettings } from '../types';
 import { ICONS } from '../constants';
@@ -23,11 +22,9 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Calculations
     const monthlyPayment = sale.paymentPlan.length > 0 ? sale.paymentPlan[0].amount : 0;
     const paidMonths = sale.paymentPlan.filter(p => p.isPaid).length;
 
-    // Calculate Actual Overdue based on expected vs paid
     let expectedPaidByNow = sale.downPayment;
     sale.paymentPlan.forEach(p => {
         if (new Date(p.date) < today) {
@@ -38,11 +35,9 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
     const actualPaidTotal = sale.totalAmount - sale.remainingAmount;
     const realOverdueAmount = Math.max(0, expectedPaidByNow - actualPaidTotal);
 
-    // List of technically overdue dates (for display)
     const overduePaymentsList = sale.paymentPlan.filter(p => !p.isPaid && new Date(p.date) < today);
     const overdueMonths = overduePaymentsList.length;
 
-    // Find next payment date
     const nextUnpaidPayment = sale.paymentPlan.find(p => !p.isPaid && new Date(p.date) >= today);
     const nextPaymentDate = nextUnpaidPayment ? formatDate(nextUnpaidPayment.date) : (sale.remainingAmount > 0 ? 'Просрочен' : 'Закрыт');
 
@@ -56,70 +51,67 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
         if (customer?.phone) {
             const phone = customer.phone.replace(/[^0-9]/g, '');
             const text = `Здравствуйте, ${customer.name}. Напоминаем о задолженности по договору "${sale.productName}" в размере ${formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽.`;
-            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`,'_blank');
         }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-                {/* Header */}
-                <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-                    <div className="text-blue-500">{ICONS.File}</div>
-                    <h3 className="text-lg font-bold text-blue-600">Информация о договоре</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/70 to-slate-800/70 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+            <div className="bg-white/95 backdrop-blur w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20" onClick={e => e.stopPropagation()}>
+                <div className="px-6 py-5 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center gap-3">
+                    <div className="text-white bg-white/20 p-2 rounded-xl">{ICONS.File}</div>
+                    <h3 className="text-lg font-bold text-white">Информация о договоре</h3>
                 </div>
 
                 <div className="p-6 space-y-6">
-                    {/* Grid Info */}
                     <div className="grid grid-cols-2 gap-y-6 gap-x-4">
-                        <div>
+                        <div className="bg-slate-50 p-3 rounded-xl">
                             <label className="text-xs text-slate-500 block mb-1">Товар</label>
                             <p className="font-bold text-slate-800 text-sm leading-tight">{sale.productName}</p>
                         </div>
-                        <div>
+                        <div className="bg-slate-50 p-3 rounded-xl">
                             <label className="text-xs text-slate-500 block mb-1">Общий срок</label>
                             <p className="font-bold text-slate-800">{sale.installments} мес.</p>
                         </div>
 
-                        <div>
+                        <div className="bg-slate-50 p-3 rounded-xl">
                             <label className="text-xs text-slate-500 block mb-1">Оплачено</label>
                             <p className="font-bold text-emerald-600">{paidMonths} мес.</p>
                         </div>
-                        <div>
+                        <div className="bg-slate-50 p-3 rounded-xl">
                             <label className="text-xs text-slate-500 block mb-1">Просрочено</label>
                             <p className="font-bold text-red-600">{overdueMonths} платежей</p>
                         </div>
 
-                        <div>
+                        <div className="bg-slate-50 p-3 rounded-xl">
                             <label className="text-xs text-slate-500 block mb-1">Ежемесячный платёж</label>
                             <p className="font-bold text-slate-800">{formatCurrency(monthlyPayment, appSettings?.showCents)} ₽</p>
                         </div>
-                        <div>
+                        <div className="bg-slate-50 p-3 rounded-xl">
                             <label className="text-xs text-slate-500 block mb-1">След. платеж</label>
                             <p className="font-bold text-indigo-600">{nextPaymentDate}</p>
                         </div>
 
-                        <div className="col-span-2 border-t border-slate-100 pt-4 mt-2">
+                        <div className="col-span-2 bg-gradient-to-r from-red-50 to-orange-50 p-4 rounded-xl border border-red-100 mt-2">
                             <div className="flex justify-between items-center">
-                                <label className="text-xs text-slate-500 block">Сумма просрочки (по факту)</label>
+                                <label className="text-xs text-red-600 font-medium">Сумма просрочки (по факту)</label>
                                 <p className="font-bold text-red-600 text-xl">{formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽</p>
                             </div>
-                            <div className="flex justify-between items-center mt-1">
-                                <label className="text-xs text-slate-500 block">Общий остаток долга</label>
+                            <div className="flex justify-between items-center mt-2">
+                                <label className="text-xs text-slate-600 font-medium">Общий остаток долга</label>
                                 <p className="font-bold text-slate-800">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
                             </div>
                         </div>
                     </div>
 
-                    {/* Overdue Dates */}
                     {overduePaymentsList.length > 0 && (
-                        <div className="max-h-32 overflow-y-auto pr-2">
-                            <label className="text-xs text-slate-500 block mb-2 sticky top-0 bg-white">Даты пропущенных платежей</label>
-                            <div className="space-y-1">
+                        <div className="bg-slate-50 p-4 rounded-xl">
+                            <label className="text-xs font-medium text-slate-500 block mb-3">Даты пропущенных платежей</label>
+                            <div className="space-y-2 max-h-32 overflow-y-auto pr-2">
                                 {overduePaymentsList.map(p => (
-                                    <div key={p.id} className="flex justify-between text-sm">
-                                        <span className="text-red-600 font-medium">{formatDate(p.date)}</span>
-                                        <span className="text-slate-400 text-xs">План: {formatCurrency(p.amount, appSettings?.showCents)} ₽</span>
+                                    <div key={p.id} className="flex justify-between items-center bg-white p-2 rounded-lg">
+                                        <span className="text-red-600 font-medium text-sm">{formatDate(p.date)}</span>
+                                        <span className="text-slate-400 text-xs bg-slate-100 px-2 py-1 rounded-full">{formatCurrency(p.amount, appSettings?.showCents)} ₽</span>
                                     </div>
                                 ))}
                             </div>
@@ -127,23 +119,22 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
                     )}
                 </div>
 
-                {/* Actions Footer */}
-                <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-3">
+                <div className="p-4 bg-gradient-to-r from-slate-50 to-white border-t border-slate-100 flex gap-3">
                     <button
                         onClick={handleCall}
-                        className="flex-1 py-3 bg-blue-600 text-white rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors"
+                        className="flex-1 py-3.5 bg-blue-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-blue-700 transition-all hover:shadow-lg active:scale-95"
                     >
                         <Phone size={18} /> Позвонить
                     </button>
                     <button
                         onClick={handleWhatsApp}
-                        className="flex-1 py-3 bg-emerald-600 text-white rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors"
+                        className="flex-1 py-3.5 bg-emerald-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all hover:shadow-lg active:scale-95"
                     >
                         {ICONS.Send} Написать
                     </button>
                 </div>
 
-                <button onClick={onClose} className="w-full py-3 text-slate-400 text-sm hover:text-slate-600">Закрыть</button>
+                <button onClick={onClose} className="w-full py-3 text-slate-400 text-sm hover:text-slate-600 hover:bg-slate-50 transition-colors">Закрыть</button>
             </div>
         </div>
     );
@@ -163,29 +154,22 @@ const Contracts: React.FC<ContractsProps> = ({
 
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Неизвестно';
 
-  // Helper to calculate accurate overdue amount based on actual payments vs expected schedule
   const calculateSaleOverdue = (sale: Sale) => {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-      // 1. Calculate Total Expected to be paid by TODAY
-      // Include DownPayment + All Installments strictly before today
-      // IMPORTANT: Only count PLAN items (isRealPayment !== true), ignore real payments in this sum
-      let expectedTotal = sale.downPayment;
-      sale.paymentPlan.forEach(p => {
-          if (!p.isRealPayment && new Date(p.date) < today) {
-              expectedTotal += p.amount;
-          }
-      });
+    let expectedTotal = sale.downPayment;
+    sale.paymentPlan.forEach(p => {
+        if (!p.isRealPayment && new Date(p.date) < today) {
+            expectedTotal += p.amount;
+        }
+    });
 
-      // 2. Calculate Total Actually Paid
-      const totalPaid = sale.totalAmount - sale.remainingAmount;
+    const totalPaid = sale.totalAmount - sale.remainingAmount;
+    const overdue = expectedTotal - totalPaid;
 
-      // 3. Difference is the real overdue
-      const overdue = expectedTotal - totalPaid;
-
-      return Math.max(0, overdue);
-  };
+    return Math.max(0, overdue);
+};
 
   const { filteredList } = useMemo(() => {
     const today = new Date();
@@ -323,7 +307,7 @@ const Contracts: React.FC<ContractsProps> = ({
                     margin: 0 auto;
                     display: flex;
                     flex-direction: column;
-                    min-height: 297mm; /* Высота A4 */
+                    min-height: 297mm;
                 }
                 h1 { text-align: center; font-size: 15pt; font-weight: bold; margin: 0 0 25px 0; text-transform: uppercase; line-height: 1.3; }
                 .header-info { text-align: right; margin-bottom: 20px; font-size: 11pt; }
@@ -339,21 +323,16 @@ const Contracts: React.FC<ContractsProps> = ({
                 th, td { border: 1px solid #000; padding: 6px 8px; text-align: center; }
                 th { font-weight: bold; background: #f9f9f9; }
                 
-                /* Контейнер контента занимает все свободное место */
                 .content-wrapper { 
                     flex: 1 0 auto; 
-                    /* Важно: разрешаем разрыв только внутри таблицы/текста, но не насильно */
                 }
                 
-                /* === ИСПРАВЛЕНИЕ ПОДПИСЕЙ === */
                 .footer-container {
-                    margin-top: auto; /* Прижимает к низу, если есть место */
+                    margin-top: auto;
                     padding-top: 20px;
                     width: 100%;
-                    /* ГЛАВНОЕ: Запрещаем разрыв внутри блока подписей */
                     break-inside: avoid;
                     page-break-inside: avoid;
-                    /* Если места мало, этот блок целиком перенесется на след. страницу */
                 }
                 
                 .footer { 
@@ -364,7 +343,6 @@ const Contracts: React.FC<ContractsProps> = ({
                 }
                 .signature-block { 
                     text-align: center; 
-                    /* Дополнительно защищаем каждую подпись */
                     break-inside: avoid;
                     page-break-inside: avoid;
                 }
@@ -378,28 +356,27 @@ const Contracts: React.FC<ContractsProps> = ({
                 }
 
                 @media print {
-                    @page { margin: 1.5cm; size: A4 portrait; } /* Чуть большие поля для надежности */
+                    @page { margin: 1.5cm; size: A4 portrait; }
                     body { 
                         padding: 0; 
                         margin: 0; 
                         width: 100%; 
                         max-width: none; 
-                        min-height: auto; /* Сбрасываем мин. высоту при печати, пусть течет естественно */
-                        display: block; /* Важно: сбрасываем flex для потока печати */
+                        min-height: auto;
+                        display: block;
                     }
                     
                     .field-row { flex-wrap: nowrap !important; gap: 0 !important; justify-content: space-between !important; }
                     .field-row > span:first-child { flex-shrink: 0; }
                     .field-row > span:last-child { text-align: right !important; flex-shrink: 0; margin-left: 10px; }
                     
-                    /* Логика прижатия к низу через отступы, так как display: block */
                     .content-wrapper {
-                        margin-bottom: 150px; /* Резервируем место под подписи внизу страницы */
+                        margin-bottom: 150px;
                     }
                     
                     .footer-container {
-                        position: relative; /* Возвращаем в поток, но с отступом сверху если нужно */
-                        margin-top: -130px; /* Подтягиваем вверх, чтобы встать в зарезервированное место */
+                        position: relative;
+                        margin-top: -130px;
                         padding-top: 0;
                         page-break-inside: avoid !important;
                         break-inside: avoid !important;
@@ -505,59 +482,59 @@ const Contracts: React.FC<ContractsProps> = ({
   };
 
   return (
-    <div className="space-y-4 pb-20 w-full">
+    <div className="space-y-6 pb-20 w-full max-w-7xl mx-auto px-4">
       {activeTab !== 'OVERDUE' && (
         <div className="flex justify-between items-center mb-2">
-            <div>
-                <h2 className="text-2xl font-bold text-slate-800">{getTabTitle()}</h2>
-                <p className="text-slate-500 text-sm">Найдено: {filteredList.length}</p>
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                <h2 className="text-3xl font-bold">{getTabTitle()}</h2>
+                <p className="text-slate-500 text-sm mt-1">Найдено: {filteredList.length}</p>
             </div>
         </div>
       )}
 
        {activeTab === 'OVERDUE' && (
-          <div className="bg-gradient-to-r from-red-50 to-white border border-red-100 p-5 rounded-2xl shadow-sm animate-fade-in mb-4">
+          <div className="bg-gradient-to-br from-red-50 via-white to-orange-50 border border-red-200 p-6 rounded-3xl shadow-lg animate-fade-in mb-4">
               <div className="flex justify-between items-start">
                   <div>
-                      <h2 className="text-xl font-bold text-slate-800 mb-1">Просроченные договоры</h2>
+                      <h2 className="text-2xl font-bold text-slate-800 mb-1">Просроченные договоры</h2>
                       <p className="text-slate-500 text-xs uppercase font-bold tracking-wide">Всего договоров: {filteredList.length}</p>
                   </div>
-                  <div className="bg-red-100 p-2 rounded-full text-red-500">
+                  <div className="bg-gradient-to-br from-red-400 to-red-500 p-3 rounded-2xl text-white shadow-lg">
                       {ICONS.Alert}
                   </div>
               </div>
-              <div className="mt-4 pt-4 border-t border-red-100">
-                  <p className="text-xs text-slate-400 font-medium mb-1">Общая сумма просрочки (по факту)</p>
-                  <p className="text-3xl font-bold text-red-600">{formatCurrency(totalOverdueSum, appSettings?.showCents)} ₽</p>
+              <div className="mt-6 pt-4 border-t border-red-200">
+                  <p className="text-xs text-slate-500 font-medium mb-2">Общая сумма просрочки (по факту)</p>
+                  <p className="text-4xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">{formatCurrency(totalOverdueSum, appSettings?.showCents)} ₽</p>
               </div>
           </div>
         )}
 
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="relative">
-                  <span className="absolute left-3 top-3 text-slate-400 scale-90">{ICONS.Users}</span>
+      <div className="bg-white/80 backdrop-blur p-5 rounded-2xl shadow-lg border border-slate-100 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="relative group">
+                  <span className="absolute left-4 top-3.5 text-slate-400 scale-90 group-focus-within:text-blue-500 transition-colors">{ICONS.Users}</span>
                   <input
                     type="text"
                     placeholder="Поиск по имени или товару..."
-                    className="w-full pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm focus:border-indigo-500 bg-white text-slate-900"
+                    className="w-full pl-12 p-3.5 border border-slate-200 rounded-xl outline-none text-sm focus:border-blue-500 bg-white/90 text-slate-900 transition-all group-focus-within:shadow-md"
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                   />
               </div>
-              <div className="relative">
-                  <span className="absolute left-3 top-3 text-slate-400 scale-75">{ICONS.Clock}</span>
+              <div className="relative group">
+                  <span className="absolute left-4 top-3.5 text-slate-400 scale-75 group-focus-within:text-blue-500 transition-colors">{ICONS.Clock}</span>
                   <input
                     type="date"
-                    className="w-full max-w-[130px] pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm text-slate-900 bg-white focus:border-indigo-500"
+                    className="w-full pl-12 p-3.5 border border-slate-200 rounded-xl outline-none text-sm text-slate-900 bg-white/90 focus:border-blue-500 transition-all group-focus-within:shadow-md"
                     value={filterDate}
                     onChange={e => setFilterDate(e.target.value)}
                   />
               </div>
-              <div className="relative">
-                  <span className="absolute left-3 top-3 text-slate-400 scale-75">{ICONS.Wallet}</span>
+              <div className="relative group">
+                  <span className="absolute left-4 top-3.5 text-slate-400 scale-75 group-focus-within:text-blue-500 transition-colors">{ICONS.Wallet}</span>
                   <select
-                    className="w-full pl-10 p-2.5 border border-slate-200 rounded-lg outline-none text-sm text-slate-900 bg-white focus:border-indigo-500"
+                    className="w-full pl-12 p-3.5 border border-slate-200 rounded-xl outline-none text-sm text-slate-900 bg-white/90 focus:border-blue-500 transition-all group-focus-within:shadow-md appearance-none"
                     value={filterAccountId}
                     onChange={e => setFilterAccountId(e.target.value)}
                   >
@@ -568,60 +545,95 @@ const Contracts: React.FC<ContractsProps> = ({
           </div>
       </div>
 
-      <div className="space-y-3 pt-2" onClick={() => setActiveMenuId(null)}>
-        {filteredList.length === 0 ? (<div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">Ничего не найдено</div>) :
-        (filteredList.map((sale, index) => {
+      <div className="space-y-4 pt-4" onClick={() => setActiveMenuId(null)}>
+        {filteredList.length === 0 ? (
+            <div className="text-center py-16 bg-white/80 backdrop-blur rounded-3xl border border-dashed border-slate-200">
+                <div className="text-slate-300 text-6xl mb-4">📄</div>
+                <p className="text-slate-400 text-lg">Ничего не найдено</p>
+            </div>
+        ) : (
+        filteredList.map((sale, index) => {
             const progress = sale.totalAmount > 0 ? ((sale.totalAmount - sale.remainingAmount) / sale.totalAmount) * 100 : 0;
             let statusLabel = 'АКТИВНО';
-            let statusColor = 'bg-blue-100 text-blue-700';
-            if (sale.status === 'COMPLETED') { statusLabel = 'ЗАКРЫТО'; statusColor = 'bg-slate-100 text-slate-700'; }
-            if (activeTab === 'OVERDUE') { statusLabel = 'ПРОСРОЧЕНО'; statusColor = 'bg-red-100 text-red-700'; }
+            let statusColor = 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md shadow-blue-200';
+            if (sale.status === 'COMPLETED') { 
+                statusLabel = 'ЗАКРЫТО'; 
+                statusColor = 'bg-gradient-to-r from-slate-500 to-slate-600 text-white'; 
+            }
+            if (activeTab === 'OVERDUE') { 
+                statusLabel = 'ПРОСРОЧЕНО'; 
+                statusColor = 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-md shadow-red-200'; 
+            }
 
-            // Reverse numbering logic: Top is highest number, Bottom is 1
             const displayNumber = filteredList.length - index;
-
-            // Calculate REAL overdue based on payments made vs expected
             const overdueSum = calculateSaleOverdue(sale);
 
             return (
               <div
                 key={sale.id}
-                className="bg-white rounded-xl shadow-sm p-4 relative animate-fade-in transition-transform"
+                className="bg-white/95 backdrop-blur rounded-2xl shadow-md p-5 relative animate-fade-in transition-all hover:shadow-xl border border-slate-100"
               >
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-start gap-3">
-                    <span className="text-sm font-bold text-slate-400 mt-1">#{displayNumber}</span>
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-start gap-4">
+                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md">
+                      {displayNumber}
+                    </div>
                     <div>
-                      <h3 className="font-bold text-slate-800">{getCustomerName(sale.customerId)}</h3>
+                      <h3 className="font-bold text-slate-800 text-lg">{getCustomerName(sale.customerId)}</h3>
                       <p className="text-sm text-slate-500">{sale.productName}</p>
-                      <p className="text-[10px] text-slate-400 mt-1">Оформлен: {formatDate(sale.startDate)}</p>
+                      <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 bg-slate-400 rounded-full"></span>
+                        Оформлен: {formatDate(sale.startDate)}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right flex items-center gap-2">
+                  <div className="text-right flex items-center gap-3">
                     <div>
-                      <span className={`inline-block px-2 py-1 text-xs font-bold rounded-full ${statusColor}`}>{statusLabel}</span>
+                      <span className={`inline-block px-3 py-1.5 text-xs font-bold rounded-xl ${statusColor}`}>{statusLabel}</span>
                       {activeTab === 'OVERDUE' ? (
-                          <p className="text-sm font-bold text-red-600 mt-1">Просрочка: {formatCurrency(overdueSum, appSettings?.showCents)} ₽</p>
+                          <p className="text-sm font-bold text-red-600 mt-2">Просрочка: {formatCurrency(overdueSum, appSettings?.showCents)} ₽</p>
                       ) : (
-                          <p className="text-sm font-semibold mt-1">{formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</p>
+                          <p className="text-sm font-semibold mt-2 text-slate-700">{formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</p>
                       )}
                     </div>
                     {!readOnly && (
-                        <button onClick={(e) => handleActionClick(e, sale.id)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg self-start">{ICONS.More}</button>
+                        <button onClick={(e) => handleActionClick(e, sale.id)} className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all self-start">
+                          {ICONS.More}
+                        </button>
                     )}
                   </div>
                 </div>
 
-                <div className="w-full bg-slate-100 rounded-full h-2 mt-3"><div className={`h-2 rounded-full ${activeTab === 'OVERDUE' ? 'bg-red-500' : 'bg-indigo-600'}`} style={{ width: `${progress}%` }}></div></div>
-                <div className="flex justify-between text-xs text-slate-400 mt-1"><span>Оплачено: {formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings?.showCents)} ₽</span>{activeTab !== 'OVERDUE' && <span>Остаток: {formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</span>}</div>
+                <div className="w-full bg-slate-100 rounded-full h-2.5 mt-4">
+                  <div 
+                    className={`h-2.5 rounded-full transition-all duration-500 ${activeTab === 'OVERDUE' ? 'bg-gradient-to-r from-red-500 to-orange-400' : 'bg-gradient-to-r from-blue-500 to-indigo-500'}`} 
+                    style={{ width: `${progress}%` }}
+                  ></div>
+                </div>
+                <div className="flex justify-between text-xs mt-2">
+                  <span className="text-slate-500">Оплачено: <span className="font-semibold text-emerald-600">{formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
+                  {activeTab !== 'OVERDUE' && (
+                    <span className="text-slate-500">Остаток: <span className="font-semibold text-slate-700">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
+                  )}
+                </div>
 
                 {!readOnly && activeMenuId === sale.id && (
-                  <div className="absolute right-4 top-14 bg-white shadow-xl rounded-xl z-20 w-48 overflow-hidden animate-fade-in" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => setSelectedSaleForInfo(sale)} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 bg-blue-50/50"><span className="text-blue-500">{ICONS.File}</span> Инфо о договоре</button>
-                      <button onClick={() => onViewSchedule(sale)} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"><span className="text-indigo-500">{ICONS.List}</span> График</button>
-                      <button onClick={() => onEditSale(sale)} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"><span className="text-slate-500">{ICONS.Edit}</span> Редактировать</button>
-                      <button onClick={() => printContract(sale)} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3"><span className="text-slate-500">{ICONS.File}</span> Печать</button>
-                      <button onClick={() => setDeletingSale(sale)} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3"><span>{ICONS.Delete}</span> Удалить</button>
+                  <div className="absolute right-4 top-20 bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl z-20 w-56 overflow-hidden animate-scale-in border border-slate-100" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => setSelectedSaleForInfo(sale)} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors">
+                        <span className="text-blue-500">{ICONS.File}</span> Инфо о договоре
+                      </button>
+                      <button onClick={() => onViewSchedule(sale)} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors">
+                        <span className="text-indigo-500">{ICONS.List}</span> График
+                      </button>
+                      <button onClick={() => onEditSale(sale)} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                        <span className="text-slate-500">{ICONS.Edit}</span> Редактировать
+                      </button>
+                      <button onClick={() => printContract(sale)} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                        <span className="text-slate-500">{ICONS.File}</span> Печать
+                      </button>
+                      <button onClick={() => setDeletingSale(sale)} className="w-full text-left px-4 py-3.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors border-t border-slate-100">
+                        <span>{ICONS.Delete}</span> Удалить
+                      </button>
                   </div>
                 )}
               </div>
@@ -630,14 +642,20 @@ const Contracts: React.FC<ContractsProps> = ({
       </div>
 
         {deletingSale && !readOnly && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={() => setDeletingSale(null)}>
-                <div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl" onClick={e => e.stopPropagation()}>
-                    <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">{ICONS.Delete}</div>
-                    <h3 className="text-lg font-bold text-slate-800 text-center mb-2">Удалить договор?</h3>
-                    <p className="text-center text-slate-500 mb-6 text-sm">Это действие необратимо. Будут удалены все записи о платежах и расходах (закуп), а товар вернется на склад. Вы уверены?</p>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/70 to-slate-800/70 backdrop-blur-sm animate-fade-in" onClick={() => setDeletingSale(null)}>
+                <div className="bg-white/95 backdrop-blur w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-white/20" onClick={e => e.stopPropagation()}>
+                    <div className="w-16 h-16 bg-gradient-to-br from-red-400 to-red-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                      {ICONS.Delete}
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-800 text-center mb-2">Удалить договор?</h3>
+                    <p className="text-center text-slate-500 mb-8 text-sm">Это действие необратимо. Будут удалены все записи о платежах и расходах (закуп), а товар вернется на склад. Вы уверены?</p>
                     <div className="flex gap-3">
-                        <button onClick={() => setDeletingSale(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Отмена</button>
-                        <button onClick={handleDeleteConfirm} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold">Удалить</button>
+                        <button onClick={() => setDeletingSale(null)} className="flex-1 py-3.5 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all active:scale-95">
+                            Отмена
+                        </button>
+                        <button onClick={handleDeleteConfirm} className="flex-1 py-3.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-bold hover:from-red-600 hover:to-red-700 transition-all active:scale-95 shadow-lg shadow-red-200">
+                            Удалить
+                        </button>
                     </div>
                 </div>
             </div>
