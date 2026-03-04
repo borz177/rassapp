@@ -296,6 +296,7 @@ const normalizePhone = (phone) => {
     return cleaned;
 };
 
+// Обработка входящих сообщений от WhatsApp (Green API Webhook)
 app.post(
   '/api/integrations/whatsapp/webhook',
   express.json({ limit: '15mb' }),
@@ -307,7 +308,7 @@ app.post(
       const body = req.body;
       const { typeWebhook, senderData, messageData, instanceData } = body;
 
-      // Быстрый ответ Green API, чтобы не было повторных отправок
+      // Быстрый ответ Green API (обязательно!)
       res.status(200).send('OK');
 
       if (!senderData?.chatId) {
@@ -316,9 +317,6 @@ app.post(
       }
 
       const chatId = senderData.chatId;
-      console.log("chatId received:", chatId);
-
-      // Игнорируем групповые чаты
       if (chatId.includes('@g.us')) {
         console.log("Ignoring group message:", chatId);
         return;
@@ -328,10 +326,8 @@ app.post(
       const senderPhone = normalizePhone(rawPhone);
       console.log("Normalized phone:", senderPhone);
 
-      // ===== FIND MANAGER BY INSTANCE =====
+      // Найти менеджера по idInstance
       const instanceId = instanceData?.idInstance;
-      console.log("Instance ID:", instanceId);
-
       const managerResult = await pool.query(`
         SELECT id, name, whatsapp_settings
         FROM users
@@ -348,28 +344,24 @@ app.post(
       const managerId = manager.id;
       const settings = manager.whatsapp_settings;
 
-      console.log("Manager found:", manager.name);
-
       if (!settings?.botEnabled) {
         console.log("Bot disabled for manager:", managerId);
         return;
       }
 
-      const { idInstance, apiTokenInstance } = settings;
-      console.log("Using idInstance:", idInstance);
+      const { idInstance, apiTokenInstance, botButtons = {} } = settings;
 
-      // ===== FIND CUSTOMER =====
-      // Fetch all customers for this manager and find the matching phone
+      // Найти клиента по номеру
       const customersResult = await pool.query(`
         SELECT id, data
         FROM data_items
         WHERE type = 'customers'
-        AND user_id = $1
+          AND user_id = $1
       `, [managerId]);
 
       const customerRow = customersResult.rows.find(row => {
-          const p = row.data.phone || '';
-          return normalizePhone(p) === senderPhone;
+        const p = row.data.phone || '';
+        return normalizePhone(p) === senderPhone;
       });
 
       if (!customerRow) {
@@ -377,106 +369,96 @@ app.post(
         return;
       }
 
-      const customer = customerRow;
+      const customer = customerRow.data;
       console.log("Customer found:", customer.id);
 
-      // ===== SEND MESSAGE =====
+      // Вспомогательная функция отправки сообщения
       const sendMessage = async (text) => {
         try {
           const payload = { chatId, message: text };
-          console.log("Sending TEXT payload:", JSON.stringify(payload, null, 2));
-
-          const response = await axios.post(
-            `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiTokenInstance}`, // ✅ FIX: убраны пробелы
+          await axios.post(
+            `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiTokenInstance}`,
             payload,
-            { timeout: 10000 } // ✅ FIX: таймаут 10 сек
+            { timeout: 10000 }
           );
-          console.log("Green API TEXT response:", response.data);
         } catch (e) {
-          console.error("TEXT SEND ERROR:", {
-            url: `waInstance${idInstance}/sendMessage`,
-            status: e.response?.status,
-            data: e.response?.data,
-            message: e.message
-          });
+          console.error("TEXT SEND ERROR:", e.message);
         }
       };
 
-      // ===== SEND BUTTONS =====
-      const sendButtons = async (text, buttons) => {
-        try {
-          if (!buttons || buttons.length === 0) {
-            await sendMessage(text); // fallback на текст
-            return;
+      // Получить активные договоры клиента
+      const salesResult = await pool.query(`
+        SELECT data FROM data_items
+        WHERE user_id = $1
+          AND type = 'sales'
+          AND data->>'customerId' = $2
+          AND data->>'status' = '"ACTIVE"'
+      `, [managerId, customer.id]);
+
+      const activeSales = salesResult.rows.map(r => r.data);
+
+      if (activeSales.length === 0) {
+        await sendMessage("У вас нет активных договоров.");
+        return;
+      }
+
+      // Обработка текстового сообщения
+      if (typeWebhook === 'incomingMessageReceived' && messageData?.typeMessage === 'textMessage') {
+        const text = (messageData.textMessageData.textMessage || '').trim().toLowerCase();
+        console.log("Received text:", text);
+
+        if (text === '1' || text.includes('долг') || text.includes('задолженность')) {
+          if (!botButtons.debt) return;
+          const totalDebt = activeSales.reduce((sum, sale) => {
+            return sum + sale.paymentPlan
+              .filter(p => !p.isPaid)
+              .reduce((s, p) => s + p.amount, 0);
+          }, 0);
+          await sendMessage(`📊 Ваш текущий долг: *${totalDebt.toLocaleString()} ₽*`);
+        }
+        else if (text === '2' || text.includes('дата') || text.includes('платеж')) {
+          if (!botButtons.paymentDate) return;
+          const allUnpaid = activeSales
+            .flatMap(sale =>
+              sale.paymentPlan
+                .filter(p => !p.isPaid)
+                .map(p => ({ ...p, productName: sale.productName }))
+            )
+            .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+          if (allUnpaid.length === 0) {
+            await sendMessage("Все платежи оплачены!");
+          } else {
+            const next = allUnpaid[0];
+            const dateStr = new Date(next.date).toLocaleDateString('ru-RU', {
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric'
+            });
+            await sendMessage(
+              `📅 Ближайший платёж:\n• Товар: *${next.productName}*\n• Дата: *${dateStr}*\n• Сумма: *${next.amount.toLocaleString()} ₽*`
+            );
           }
-
-          const payload = {
-            chatId,
-            body: text,
-            buttons: buttons.slice(0, 3).map(b => ({
-              buttonId: b.id,
-              buttonText: { displayText: b.title },
-              type: 1
-            }))
-          };
-
-          console.log("Sending BUTTON payload:", JSON.stringify(payload, null, 2));
-
-          const response = await axios.post(
-            `https://api.green-api.com/waInstance${idInstance}/sendInteractiveButtons/${apiTokenInstance}`, // ✅ FIX: убраны пробелы
-            payload,
-            { timeout: 10000 } // ✅ FIX: таймаут 10 сек
+        }
+        else if (text === '3' || text.includes('условия') || text.includes('рассрочка')) {
+          if (!botButtons.conditions) return;
+          const maxTerm = Math.max(...activeSales.map(s => s.installments || 0));
+          const minRate = Math.min(...activeSales.map(s => s.interestRate || 0));
+          const firstPayment = activeSales[0].downPayment > 0
+            ? activeSales[0].downPayment.toLocaleString()
+            : 'не требуется';
+          await sendMessage(
+            `📝 Условия рассрочки:\n` +
+            `• Срок: до *${maxTerm} мес.*\n` +
+            `• Процентная ставка: от *${minRate}%*\n` +
+            `• Первый взнос: *${firstPayment} ₽*`
           );
-          console.log("Green API BUTTON response:", response.data);
-        } catch (e) {
-          console.error("BUTTON SEND ERROR:", {
-            url: `waInstance${idInstance}/sendInteractiveButtons`,
-            status: e.response?.status,
-            data: e.response?.data,
-            message: e.message
-          });
-
-          // Fallback to text if buttons fail (e.g. not supported on some devices or API error)
-          console.log("Falling back to text message due to button error...");
-          const fallbackText = `${text}\n\n${buttons.map((b, i) => `${i+1}. ${b.title}`).join('\n')}\n\n(Ответьте цифрой или текстом)`;
-          await sendMessage(fallbackText);
         }
-      };
-
-      // ===== HANDLE INCOMING MESSAGE =====
-      if (typeWebhook === 'incomingMessageReceived') {
-
-        // Обработка текстового сообщения
-        if (messageData?.typeMessage === 'textMessage') {
-          const text = messageData.textMessageData.textMessage;
-          console.log("Received text:", text);
-
+        else {
+          // Неизвестная команда — показываем меню
           const greeting = `Здравствуйте 👋 Я ассистент ${manager.name}. Чем могу помочь?`;
-
-          // Формируем кнопки (можно расширить фильтрацией по settings.botButtons)
-          const buttons = [
-            { id: 'debt', title: '📊 Мой долг' },
-            { id: 'payment_date', title: '📅 Дата платежа' },
-            { id: 'conditions', title: 'Условия рассрочки' }
-          ];
-
-          console.log("About to send buttons...");
-          await sendButtons(greeting, buttons);
-        }
-
-        // Обработка нажатия на кнопку
-        if (messageData?.typeMessage === 'buttonsResponseMessage') {
-          const buttonId = messageData.buttonsResponseMessageData.selectedButtonId;
-          console.log("Button clicked:", buttonId);
-
-          // Здесь можно добавить логику ответов на конкретные кнопки
-          const responses = {
-            'debt': '📊 Ваш долг: рассчитывается...',
-            'payment_date': '📅 Ближайшая дата платежа: ...',
-            'conditions': '📝 Условия: первый взнос 20%, срок до 12 мес.'
-          };
-
-          await sendMessage(responses[buttonId] || `Вы нажали: ${buttonId}`);
+          const buttonsText = `\n\n1. 📊 Мой долг\n2. 📅 Дата платежа\n3. Условия рассрочки\n\n(Ответьте цифрой или текстом)`;
+          await sendMessage(greeting + buttonsText);
         }
       }
 
@@ -484,7 +466,6 @@ app.post(
 
     } catch (error) {
       console.error("WEBHOOK CRASH:", error);
-      // Не отправляем статус 500, так как ответ уже отправлен выше
     }
   }
 );
