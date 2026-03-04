@@ -496,7 +496,7 @@ const NewSale: React.FC<NewSaleProps> = ({
         </head>
         <body>
             <button class="no-print" onclick="window.close()">✕ Закрыть</button>
-            <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ<br>ТОВАРА В РАССРОЧКУ</h1>
+            <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
             
             <div class="header-info">Дата: ${new Date(sale.startDate).toLocaleDateString()}</div>
 
@@ -504,7 +504,7 @@ const NewSale: React.FC<NewSaleProps> = ({
                 <div class="section">
                     <div class="field-row">
                         <span><span class="field-label">Продавец:</span> ${companyName}</span>
-                        <span>Тел: ${sellerPhone}</span>
+                        <span>Тел: ${sellerPhone || '+7 (___) ___-__-__'}</span>
                     </div>
                     <div class="field-row">
                         <span><span class="field-label">Покупатель:</span> ${customer?.name || '__________________'}</span>
