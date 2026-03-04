@@ -171,9 +171,9 @@ const Contracts: React.FC<ContractsProps> = ({
     return Math.max(0, overdue);
 };
 
-  const { filteredList } = useMemo(() => {
+const { filteredList } = useMemo(() => {
     const today = new Date();
-    today.setHours(0,0,0,0);
+    today.setHours(0, 0, 0, 0);
 
     const active: Sale[] = [];
     const overdue: Sale[] = [];
@@ -183,16 +183,19 @@ const Contracts: React.FC<ContractsProps> = ({
     const actualSales = sales.filter(sale => customerIdSet.has(sale.customerId));
 
     actualSales.forEach(sale => {
-      if (sale.status === 'COMPLETED' || sale.remainingAmount === 0) {
-        archive.push(sale);
-        return;
-      }
-      const hasOverduePayment = sale.paymentPlan.some(p => !p.isPaid && new Date(p.date) < today);
-      if (hasOverduePayment) {
-        overdue.push(sale);
-      } else {
-        active.push(sale);
-      }
+        if (sale.status === 'COMPLETED' || sale.remainingAmount === 0) {
+            archive.push(sale);
+            return;
+        }
+
+        // ✅ ИСПРАВЛЕНИЕ: используем calculateSaleOverdue вместо проверки даты
+        const overdueAmount = calculateSaleOverdue(sale);
+
+        if (overdueAmount > 0) {
+            overdue.push(sale);
+        } else {
+            active.push(sale);
+        }
     });
 
     let list = activeTab === 'ACTIVE' ? active : activeTab === 'OVERDUE' ? overdue : archive;
@@ -217,14 +220,14 @@ const Contracts: React.FC<ContractsProps> = ({
     }
 
     return {
-        filteredList: list.sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
+        filteredList: list.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
     };
-  }, [sales, customers, activeTab, searchTerm, filterDate, filterAccountId]);
+}, [sales, customers, activeTab, searchTerm, filterDate, filterAccountId]);
 
-  const totalOverdueSum = useMemo(() => {
+const totalOverdueSum = useMemo(() => {
     if (activeTab !== 'OVERDUE') return 0;
     return filteredList.reduce((sum, s) => sum + calculateSaleOverdue(s), 0);
-  }, [filteredList, activeTab]);
+}, [filteredList, activeTab]);
 
   const getTabTitle = () => {
       switch(activeTab) {
@@ -523,10 +526,6 @@ const Contracts: React.FC<ContractsProps> = ({
                   />
               </div>
               <div className="relative group">
-    <span
-        className="absolute left-3 sm:left-4 top-3.5 text-slate-400 scale-75 group-focus-within:text-blue-500 transition-colors">
-        {ICONS.Clock}
-    </span>
                   <input
                       type="date"
                       className="w-full pl-10 sm:pl-12 p-3 sm:p-3.5 border border-slate-200 rounded-xl outline-none text-sm text-slate-900 bg-white/90 focus:border-blue-500 transition-all group-focus-within:shadow-md"

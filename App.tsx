@@ -768,10 +768,16 @@ const handleUpdateSettings = async (newSettings: AppSettings) => {
   if (isLoading) { return <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">Загрузка...</div>; }
 
   // PUBLIC MODE - No Auth required
-  if (isPublicMode) {
-      return <Calculator isPublic={true} />;
-  }
-
+  // PUBLIC MODE - No Auth required
+if (isPublicMode) {
+    return (
+        <Calculator
+            isPublic={true}
+            appSettings={appSettings}
+            userPhone={user?.phone}
+        />
+    );
+}
   if (!user) { return <Auth onLogin={handleAuthSuccess} />; }
 
   return (
@@ -866,7 +872,14 @@ const handleUpdateSettings = async (newSettings: AppSettings) => {
         // Опционально: дополнительный код после сохранения
         console.log('Настройки WhatsApp обновлены');
     }} />}
-      {currentView === 'CALCULATOR' && <Calculator appSettings={appSettings} onBack={() => setCurrentView('SETTINGS')} onSaveSettings={handleUpdateSettings} />}
+      {currentView === 'CALCULATOR' && (
+    <Calculator
+        appSettings={appSettings}
+        userPhone={user?.phone}
+        onBack={() => setCurrentView('SETTINGS')}
+        onSaveSettings={handleUpdateSettings}
+    />
+)}
 
       {currentView === 'PROFILE' && user && <Profile user={user} onUpdateProfile={handleUpdateProfile} onBack={() => setCurrentView('MORE')} onLogout={() => { localStorage.removeItem('user'); localStorage.removeItem('token'); setUser(null); }} />}
       {currentView === 'ADMIN_PANEL' && <AdminPanel />}
