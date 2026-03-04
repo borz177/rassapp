@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, User, AppSettings } from '../types';
 import { ICONS } from '../constants';
 import { Phone } from 'lucide-react';
 import { formatCurrency, formatDate } from '../src/utils';
+import { createPortal } from 'react-dom'; // 1. Импортируем Portal
 
 interface ContractsProps {
   sales: Sale[];
@@ -49,7 +50,6 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
 
     const handleWhatsApp = () => {
         if (customer?.phone) {
-            // ✅ ИСПРАВЛЕНО: убраны лишние пробелы в URL
             const phone = customer.phone.replace(/[^0-9]/g, '');
             const text = `Здравствуйте, ${customer.name}. Напоминаем о задолженности по договору "${sale.productName}" в размере ${formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽.`;
             window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
@@ -57,7 +57,7 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/70 to-slate-800/70 backdrop-blur-sm animate-fade-in overflow-hidden" onClick={onClose}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/70 to-slate-800/70 backdrop-blur-sm animate-fade-in overflow-hidden" onClick={onClose}>
             <div className="bg-white/95 backdrop-blur w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                 <div className="px-6 py-5 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center gap-3 shrink-0">
                     <div className="text-white bg-white/20 p-2 rounded-xl">{ICONS.File}</div>
@@ -153,9 +153,12 @@ const Contracts: React.FC<ContractsProps> = ({
   const [deletingSale, setDeletingSale] = useState<Sale | null>(null);
   const [selectedSaleForInfo, setSelectedSaleForInfo] = useState<Sale | null>(null);
 
+  // Состояние для координат меню
+  const [menuPosition, setMenuPosition] = useState<{ top: number, right: number } | null>(null);
+  const [currentMenuSale, setCurrentMenuSale] = useState<Sale | null>(null);
+
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Неизвестно';
 
-  // ✅ ФУНКЦИЯ: расчёт реальной просрочки по сумме, а не по дате
   const calculateSaleOverdue = (sale: Sale) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -190,7 +193,6 @@ const Contracts: React.FC<ContractsProps> = ({
             return;
         }
 
-        // ✅ ИСПОЛЬЗУЕМ calculateSaleOverdue вместо проверки даты
         const overdueAmount = calculateSaleOverdue(sale);
 
         if (overdueAmount > 0) {
@@ -239,9 +241,29 @@ const Contracts: React.FC<ContractsProps> = ({
       }
   }
 
-  const handleActionClick = (e: React.MouseEvent, saleId: string) => {
+  const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
       e.stopPropagation();
-      setActiveMenuId(prev => prev === saleId ? null : saleId);
+
+      // Если меню уже открыто для этой продажи - закрываем
+      if (activeMenuId === sale.id) {
+          setActiveMenuId(null);
+          setMenuPosition(null);
+          setCurrentMenuSale(null);
+          return;
+      }
+
+      // Получаем координаты кнопки
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+
+      // Вычисляем позицию: справа от кнопки, с небольшим отступом
+      // Используем window.scrollY чтобы учесть прокрутку страницы
+      setMenuPosition({
+          top: rect.top + window.scrollY + 40, // +40px вниз от кнопки
+          right: window.innerWidth - rect.right + 16 // 16px от правого края кнопки
+      });
+
+      setActiveMenuId(sale.id);
+      setCurrentMenuSale(sale);
   };
 
   const handleDeleteConfirm = () => {
@@ -452,9 +474,65 @@ const Contracts: React.FC<ContractsProps> = ({
       printWindow.document.close();
   };
 
+  // Компонент меню, который будем рендерить через Portal
+  const ActionMenu = () => {
+      if (!currentMenuSale || !menuPosition) return null;
+
+      return (
+          <div
+              className="fixed bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl z-[100] w-56 overflow-hidden animate-scale-in border border-slate-100"
+              style={{
+                  top: `${menuPosition.top}px`,
+                  right: `${menuPosition.right}px`
+              }}
+              onClick={e => e.stopPropagation()}
+          >
+              <button onClick={() => { setSelectedSaleForInfo(currentMenuSale); setActiveMenuId(null); }} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors">
+                <span className="text-blue-500">{ICONS.File}</span> Инфо о договоре
+              </button>
+              <button onClick={() => { onViewSchedule(currentMenuSale); setActiveMenuId(null); }} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors">
+                <span className="text-indigo-500">{ICONS.List}</span> График
+              </button>
+              <button onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); }} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                <span className="text-slate-500">{ICONS.Edit}</span> Редактировать
+              </button>
+              <button onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); }} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                <span className="text-slate-500">{ICONS.File}</span> Печать
+              </button>
+              <button onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); }} className="w-full text-left px-4 py-3.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors border-t border-slate-100">
+                <span>{ICONS.Delete}</span> Удалить
+              </button>
+          </div>
+      );
+  };
+
+  // Закрываем меню при клике вне его
+  useEffect(() => {
+      const handleClickOutside = () => {
+          if (activeMenuId) {
+              setActiveMenuId(null);
+              setMenuPosition(null);
+              setCurrentMenuSale(null);
+          }
+      };
+
+      if (activeMenuId) {
+          document.addEventListener('click', handleClickOutside);
+      }
+
+      return () => {
+          document.removeEventListener('click', handleClickOutside);
+      };
+  }, [activeMenuId]);
+
   return (
-    // ✅ ГЛАВНОЕ ИСПРАВЛЕНИЕ: overflow-x-hidden предотвращает горизонтальную прокрутку
-    <div className="space-y-6 pb-20 w-full max-w-7xl mx-auto px-4 overflow-x-hidden">
+    <div className="space-y-6 pb-20 w-full max-w-7xl mx-auto px-4 overflow-x-hidden" onClick={() => {
+        if (activeMenuId) {
+            setActiveMenuId(null);
+            setMenuPosition(null);
+            setCurrentMenuSale(null);
+        }
+    }}>
       {activeTab !== 'OVERDUE' && (
         <div className="flex justify-between items-center mb-2">
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent min-w-0">
@@ -516,7 +594,7 @@ const Contracts: React.FC<ContractsProps> = ({
           </div>
       </div>
 
-      <div className="space-y-4 pt-4 overflow-hidden" onClick={() => setActiveMenuId(null)}>
+      <div className="space-y-4 pt-4 overflow-hidden">
         {filteredList.length === 0 ? (
             <div className="text-center py-16 bg-white/80 backdrop-blur rounded-3xl border border-dashed border-slate-200 overflow-hidden">
                 <div className="text-slate-300 text-6xl mb-4">📄</div>
@@ -542,8 +620,7 @@ const Contracts: React.FC<ContractsProps> = ({
             return (
               <div
                 key={sale.id}
-                id={`sale-card-${sale.id}`}
-                className="bg-white/95 backdrop-blur rounded-2xl shadow-md p-5 relative animate-fade-in transition-all hover:shadow-xl border border-slate-100 overflow-visible"
+                className="bg-white/95 backdrop-blur rounded-2xl shadow-md p-5 relative animate-fade-in transition-all hover:shadow-xl border border-slate-100"
               >
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex items-start gap-4 min-w-0 flex-1">
@@ -570,8 +647,7 @@ const Contracts: React.FC<ContractsProps> = ({
                     </div>
                     {!readOnly && (
                         <button
-                          id={`menu-trigger-${sale.id}`}
-                          onClick={(e) => handleActionClick(e, sale.id)}
+                          onClick={(e) => handleActionClick(e, sale)}
                           className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all self-start shrink-0"
                         >
                           {ICONS.More}
@@ -592,34 +668,16 @@ const Contracts: React.FC<ContractsProps> = ({
                     <span className="text-slate-500">Остаток: <span className="font-semibold text-slate-700">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
                   )}
                 </div>
-
-                {/* ✅ ИСПРАВЛЕНО: меню с z-[9999] и overflow-visible на родителе */}
-                {!readOnly && activeMenuId === sale.id && (
-                  <div
-                    className="absolute right-4 top-0 mt-14 bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl z-[9999] w-56 overflow-hidden animate-scale-in border border-slate-100"
-                    onClick={e => e.stopPropagation()}
-                  >
-                      <button onClick={() => setSelectedSaleForInfo(sale)} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors">
-                        <span className="text-blue-500">{ICONS.File}</span> Инфо о договоре
-                      </button>
-                      <button onClick={() => onViewSchedule(sale)} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors">
-                        <span className="text-indigo-500">{ICONS.List}</span> График
-                      </button>
-                      <button onClick={() => onEditSale(sale)} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                        <span className="text-slate-500">{ICONS.Edit}</span> Редактировать
-                      </button>
-                      <button onClick={() => printContract(sale)} className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                        <span className="text-slate-500">{ICONS.File}</span> Печать
-                      </button>
-                      <button onClick={() => setDeletingSale(sale)} className="w-full text-left px-4 py-3.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors border-t border-slate-100">
-                        <span>{ICONS.Delete}</span> Удалить
-                      </button>
-                  </div>
-                )}
               </div>
             )
         }))}
       </div>
+
+        {/* ✅ РЕНДЕР МЕНЮ ЧЕРЕЗ PORTAL */}
+        {activeMenuId && menuPosition && createPortal(
+            <ActionMenu />,
+            document.body
+        )}
 
         {deletingSale && !readOnly && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/70 to-slate-800/70 backdrop-blur-sm animate-fade-in overflow-hidden" onClick={() => setDeletingSale(null)}>
