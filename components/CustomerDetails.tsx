@@ -113,12 +113,36 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
 
   // ... (handlers remain the same)
 
-  const handleSendSaleReminder = () => {
-      if (!selectedSale) return;
-      const upcomingPayments = (selectedSale.paymentPlan || []).filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      const nextPayment = upcomingPayments[0];
+// Добавьте эту функцию внутри компонента или вынесите в utils
+// Добавьте эту функцию внутри компонента или вынесите в utils
+const normalizePhoneForWhatsApp = (phone: string): string => {
+  // Удаляем все нецифровые символы
+  let cleaned = phone.replace(/[^0-9]/g, '');
 
-      const message = `
+  // Если номер начинается с 8 (российский формат), заменяем на 7
+  if (cleaned.startsWith('8') && cleaned.length === 11) {
+    cleaned = '7' + cleaned.slice(1);
+  }
+
+  // Если номер начинается с +7 (уже с плюсом, но мы удалили его), убеждаемся что первая цифра 7
+  if (cleaned.startsWith('7') && cleaned.length === 11) {
+    return cleaned;
+  }
+
+  // Если номер короче или длиннее 11 цифр — возвращаем как есть (возможно, международный)
+  return cleaned;
+};
+
+// === ИСПРАВЛЕННАЯ handleSendSaleReminder ===
+const handleSendSaleReminder = () => {
+    if (!selectedSale) return; // ✅ Проверка на undefined
+
+    const upcomingPayments = (selectedSale.paymentPlan || [])
+        .filter(p => !p.isPaid)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const nextPayment = upcomingPayments[0];
+
+    const message = `
 Здравствуйте, ${customer.name}!
 
 Напоминание по вашей рассрочке на "${selectedSale.productName}".
@@ -129,28 +153,30 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
 - *Остаток долга:* *${formatCurrency(selectedSale.remainingAmount, appSettings.showCents)} ₽*
 
 ${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayment.amount, appSettings.showCents)} ₽ до ${formatDate(nextPayment.date)}` : ''}
+    `.trim().replace(/^\s+/gm, '');
 
+    // ✅ ИСПРАВЛЕНИЕ: используем нормализацию и убираем пробелы в URL
+    const phone = normalizePhoneForWhatsApp(customer.phone);
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+};
 
-      `.trim().replace(/^\s+/gm, '');
+// === ИСПРАВЛЕННАЯ handleSendFullReport ===
+const handleSendFullReport = () => {
+    let report = `${customer.name}!\n\nВаш полный отчет по всем рассрочкам!\n\n`;
+    customerSales.forEach((sale, index) => {
+        report += `*Рассрочка №${index + 1}: ${sale.productName}*\n`;
+        report += ` - Статус: ${sale.remainingAmount === 0 ? '✅ Закрыто' : '⏳ Активно'}\n`;
+        report += ` - Остаток долга: *${formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽*\n`;
+        report += ` - Всего выплачено: ${formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings.showCents)} ₽\n\n`;
+    });
+    report += `Спасибо, что выбираете нас!`;
 
-      const phone = customer.phone.replace(/[^0-9]/g, '');
-      const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-      window.open(url, '_blank');
-  };
-
-  const handleSendFullReport = () => {
-      let report = `${customer.name}!\n\nВаш полный отчет по всем рассрочкам!\n\n`;
-      customerSales.forEach((sale, index) => {
-          report += `*Рассрочка №${index + 1}: ${sale.productName}*\n`;
-          report += ` - Статус: ${sale.remainingAmount === 0 ? '✅ Закрыто' : '⏳ Активно'}\n`;
-          report += ` - Остаток долга: *${formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽*\n`;
-          report += ` - Всего выплачено: ${formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings.showCents)} ₽\n\n`;
-      });
-      report += `Спасибо, что выбираете нас!`;
-      const phone = customer.phone.replace(/[^0-9]/g, '');
-      const url = `https://wa.me/${phone}?text=${encodeURIComponent(report)}`;
-      window.open(url, '_blank');
-  };
+    // ✅ ИСПРАВЛЕНИЕ: используем нормализацию и убираем пробелы в URL
+    const phone = normalizePhoneForWhatsApp(customer.phone);
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(report)}`;
+    window.open(url, '_blank');
+};
 
   const { paidPayments, paymentSchedule } = useMemo(() => {
     if (!selectedSale || !selectedSale.paymentPlan) return { paidPayments: [], paymentSchedule: [] };

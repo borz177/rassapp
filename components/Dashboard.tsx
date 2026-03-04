@@ -267,9 +267,11 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
             </h1>
             <p className="text-sm text-slate-500">{new Date().toLocaleDateString('ru-RU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
           </div>
-          <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-200">
-            {accounts.find(a => a.id === selectedAccountId)?.name?.[0] || 'A'}
-          </div>
+          <div className="flex items-center gap-3 bg-gradient-to-br from-indigo-500 to-indigo-600 px-4 py-2.5 rounded-xl text-white shadow-lg shadow-indigo-200">
+  {/* Иконка или первые 2 буквы для мини-аватара */}
+  <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-sm font-bold">
+    {(appSettings?.companyName || 'К').slice(0, 1).toUpperCase()}
+  </div>
         </div>
 
         {/* Tabs */}
