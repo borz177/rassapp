@@ -398,7 +398,7 @@ const Contracts: React.FC<ContractsProps> = ({
         </head>
         <body>
             <button class="no-print" onclick="window.close()">✕ Закрыть</button>
-            <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ<br>ТОВАРА В РАССРОЧКУ</h1>
+            <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
             
             <div class="header-info">
                 Дата: ${formatDate(sale.startDate)}
@@ -523,20 +523,24 @@ const Contracts: React.FC<ContractsProps> = ({
                   />
               </div>
               <div className="relative group">
-                  <span className="absolute left-4 top-3.5 text-slate-400 scale-75 group-focus-within:text-blue-500 transition-colors">{ICONS.Clock}</span>
+    <span
+        className="absolute left-3 sm:left-4 top-3.5 text-slate-400 scale-75 group-focus-within:text-blue-500 transition-colors">
+        {ICONS.Clock}
+    </span>
                   <input
-                    type="date"
-                    className="w-full pl-12 p-3.5 border border-slate-200 rounded-xl outline-none text-sm text-slate-900 bg-white/90 focus:border-blue-500 transition-all group-focus-within:shadow-md"
-                    value={filterDate}
-                    onChange={e => setFilterDate(e.target.value)}
+                      type="date"
+                      className="w-full pl-10 sm:pl-12 p-3 sm:p-3.5 border border-slate-200 rounded-xl outline-none text-sm text-slate-900 bg-white/90 focus:border-blue-500 transition-all group-focus-within:shadow-md"
+                      value={filterDate}
+                      onChange={e => setFilterDate(e.target.value)}
                   />
               </div>
               <div className="relative group">
-                  <span className="absolute left-4 top-3.5 text-slate-400 scale-75 group-focus-within:text-blue-500 transition-colors">{ICONS.Wallet}</span>
+                  <span
+                      className="absolute left-4 top-3.5 text-slate-400 scale-75 group-focus-within:text-blue-500 transition-colors">{ICONS.Wallet}</span>
                   <select
-                    className="w-full pl-12 p-3.5 border border-slate-200 rounded-xl outline-none text-sm text-slate-900 bg-white/90 focus:border-blue-500 transition-all group-focus-within:shadow-md appearance-none"
-                    value={filterAccountId}
-                    onChange={e => setFilterAccountId(e.target.value)}
+                      className="w-full pl-12 p-3.5 border border-slate-200 rounded-xl outline-none text-sm text-slate-900 bg-white/90 focus:border-blue-500 transition-all group-focus-within:shadow-md appearance-none"
+                      value={filterAccountId}
+                      onChange={e => setFilterAccountId(e.target.value)}
                   >
                       <option value="">Все счета / Инвесторы</option>
                       {accounts.map(acc => (<option key={acc.id} value={acc.id}>{acc.name}</option>))}
@@ -591,7 +595,7 @@ const Contracts: React.FC<ContractsProps> = ({
                     <div>
                       <span className={`inline-block px-3 py-1.5 text-xs font-bold rounded-xl ${statusColor}`}>{statusLabel}</span>
                       {activeTab === 'OVERDUE' ? (
-                          <p className="text-sm font-bold text-red-600 mt-2">Просрочка: {formatCurrency(overdueSum, appSettings?.showCents)} ₽</p>
+                          <p className="text-sm font-bold text-red-600 mt-2"> {formatCurrency(overdueSum, appSettings?.showCents)} ₽</p>
                       ) : (
                           <p className="text-sm font-semibold mt-2 text-slate-700">{formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</p>
                       )}

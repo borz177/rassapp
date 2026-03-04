@@ -249,8 +249,39 @@ const App: React.FC = () => {
   const showUpgradeAlert = (reason: string) => { if(window.confirm(`${reason} Оформите подписку для доступа.`)) { setCurrentView('TARIFFS'); } };
 
   // ... (Stats calculations omitted for brevity as they are unchanged) ...
-  const dashboardStats = useMemo(() => { let totalRevenue = 0; let totalOutstanding = 0; let overdueCount = 0; let installmentSalesTotal = 0; sales.forEach(sale => { totalRevenue += (sale.totalAmount - sale.remainingAmount); totalOutstanding += sale.remainingAmount; const hasOverdue = sale.paymentPlan.some(p => !p.isPaid && new Date(p.date) < new Date()); if (hasOverdue) overdueCount++; if (sale.type === 'INSTALLMENT') { installmentSalesTotal += sale.totalAmount; } }); return { totalRevenue, totalOutstanding, overdueCount, installmentSalesTotal }; }, [sales]);
-  const accountBalances = useMemo(() => { const balances: Record<string, number> = {}; accounts.forEach(acc => { let total = 0; const accountSales = sales.filter(s => s.accountId === acc.id); accountSales.forEach(s => { total += s.downPayment; s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false).forEach(p => total += p.amount); }); const accountExpenses = expenses.filter(e => e.accountId === acc.id); total -= accountExpenses.reduce((sum, e) => sum + e.amount, 0); balances[acc.id] = total; }); return balances; }, [accounts, sales, expenses]);
+const dashboardStats = useMemo(() => {
+  let totalRevenue = 0;
+  let totalOutstanding = 0;
+  let overdueCount = 0;
+  let installmentSalesTotal = 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // ✅ ФУНКЦИЯ: расчёт реальной просрочки
+  const calculateSaleOverdue = (sale: Sale) => {
+    let expectedTotal = sale.downPayment;
+    sale.paymentPlan.forEach(p => {
+      if (!p.isRealPayment && new Date(p.date) < today) {
+        expectedTotal += p.amount;
+      }
+    });
+    const totalPaid = sale.totalAmount - sale.remainingAmount;
+    const overdue = expectedTotal - totalPaid;
+    return Math.max(0, overdue);
+  };
+
+  sales.forEach(sale => {
+    totalRevenue += (sale.totalAmount - sale.remainingAmount);
+    totalOutstanding += sale.remainingAmount;
+    // ✅ ПРОВЕРКА: реальная сумма просрочки > 0
+    const overdueAmount = calculateSaleOverdue(sale);
+    if (overdueAmount > 0) overdueCount++;
+    if (sale.type === 'INSTALLMENT') {
+      installmentSalesTotal += sale.totalAmount;
+    }
+  });
+  return { totalRevenue, totalOutstanding, overdueCount, installmentSalesTotal };
+}, [sales]);  const accountBalances = useMemo(() => { const balances: Record<string, number> = {}; accounts.forEach(acc => { let total = 0; const accountSales = sales.filter(s => s.accountId === acc.id); accountSales.forEach(s => { total += s.downPayment; s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false).forEach(p => total += p.amount); }); const accountExpenses = expenses.filter(e => e.accountId === acc.id); total -= accountExpenses.reduce((sum, e) => sum + e.amount, 0); balances[acc.id] = total; }); return balances; }, [accounts, sales, expenses]);
   const workingCapital = useMemo(() => { const cashInAccounts = Object.values(accountBalances).reduce((sum: number, bal: number) => sum + bal, 0); return cashInAccounts + dashboardStats.totalOutstanding; }, [accountBalances, dashboardStats.totalOutstanding]);
   const totalExpectedProfit = useMemo(() => {
     if (!isManager) return 0;
@@ -564,8 +595,41 @@ const App: React.FC = () => {
   const handleSelectInvestor = (investor: Investor) => { setSelectedInvestorId(investor.id); setCurrentView('INVESTOR_DETAILS'); };
   const handleAddPartnership = async (name: string, members: string[]) => { if (!user) return; const newAccountId = `acc_part_${Date.now()}`; const newAccount: Account = { id: newAccountId, userId: user.id, name: `Счет: ${name}`, type: 'CUSTOM' }; const newPartnership: Partnership = { id: `part_${Date.now()}`, userId: user.id, name, accountId: newAccountId, partnerIds: members, createdAt: new Date().toISOString() }; const savedAcc = await api.saveItem('accounts', newAccount); updateList(setAccounts, savedAcc); const savedPart = await api.saveItem('partnerships', newPartnership); updateList(setPartnerships, savedPart); };
   const handleUpdateProfile = async (data: any) => { if (!user) return; try { await api.updateUser({ ...user, ...data }); setUser({ ...user, ...data }); alert("Профиль обновлен!"); } catch(e) { alert("Ошибка обновления профиля"); } };
-  const contractCounts = useMemo(() => { const today = new Date(); let active = 0, overdue = 0, archive = 0; const customerIdSet = new Set(customers.map(c => c.id)); const actualSales = sales.filter(sale => customerIdSet.has(sale.customerId)); actualSales.forEach(sale => { if (sale.status === 'COMPLETED' || sale.remainingAmount === 0) { archive++; return; } if (sale.paymentPlan.filter(p => !p.isPaid).some(p => new Date(p.date) < today)) { overdue++; } else { active++; } }); return { active, overdue, archive }; }, [sales, customers]);
-  const toggleMoreSection = (section: string) => { setMoreExpandedSection(moreExpandedSection === section ? null : section); };
+const contractCounts = useMemo(() => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let active = 0, overdue = 0, archive = 0;
+  const customerIdSet = new Set(customers.map(c => c.id));
+  const actualSales = sales.filter(sale => customerIdSet.has(sale.customerId));
+
+  // ✅ ФУНКЦИЯ: расчёт реальной просрочки (как в Contracts)
+  const calculateSaleOverdue = (sale: Sale) => {
+    let expectedTotal = sale.downPayment;
+    sale.paymentPlan.forEach(p => {
+      if (!p.isRealPayment && new Date(p.date) < today) {
+        expectedTotal += p.amount;
+      }
+    });
+    const totalPaid = sale.totalAmount - sale.remainingAmount;
+    const overdue = expectedTotal - totalPaid;
+    return Math.max(0, overdue);
+  };
+
+  actualSales.forEach(sale => {
+    if (sale.status === 'COMPLETED' || sale.remainingAmount === 0) {
+      archive++;
+      return;
+    }
+    // ✅ ПРОВЕРКА: реальная сумма просрочки > 0
+    const overdueAmount = calculateSaleOverdue(sale);
+    if (overdueAmount > 0) {
+      overdue++;
+    } else {
+      active++;
+    }
+  });
+  return { active, overdue, archive };
+}, [sales, customers]);  const toggleMoreSection = (section: string) => { setMoreExpandedSection(moreExpandedSection === section ? null : section); };
 
   const handleDeleteOperation = async (op: any) => {
       if (!user) return;
