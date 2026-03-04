@@ -130,8 +130,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
 
 ${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayment.amount, appSettings.showCents)} ₽ до ${formatDate(nextPayment.date)}` : ''}
 
-С уважением,
-Команда InstallMate.
+
       `.trim().replace(/^\s+/gm, '');
 
       const phone = customer.phone.replace(/[^0-9]/g, '');
@@ -140,7 +139,7 @@ ${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayme
   };
 
   const handleSendFullReport = () => {
-      let report = `Здравствуйте, ${customer.name}!\n\nВаш полный отчет по всем рассрочкам в InstallMate:\n\n`;
+      let report = `${customer.name}!\n\nВаш полный отчет по всем рассрочкам!\n\n`;
       customerSales.forEach((sale, index) => {
           report += `*Рассрочка №${index + 1}: ${sale.productName}*\n`;
           report += ` - Статус: ${sale.remainingAmount === 0 ? '✅ Закрыто' : '⏳ Активно'}\n`;
