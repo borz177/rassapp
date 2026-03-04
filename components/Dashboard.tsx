@@ -260,19 +260,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
 
         {/* Header with greeting and date */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-indigo-400 bg-clip-text text-transparent">
-              Добро пожаловать!
-            </h1>
-            <p className="text-sm text-slate-500">{new Date().toLocaleDateString('ru-RU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-          </div>
-          <div className="flex items-center gap-3 bg-gradient-to-br from-indigo-500 to-indigo-600 px-4 py-2.5 rounded-xl text-white shadow-lg shadow-indigo-200">
-  {/* Иконка или первые 2 буквы для мини-аватара */}
-  <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-sm font-bold">
-    {(appSettings?.companyName || 'К').slice(0, 1).toUpperCase()}
-  </div>
-        </div>
+       
 
         {/* Tabs */}
         <div className="flex bg-white/70 backdrop-blur-sm p-1.5 rounded-2xl shadow-sm border border-white">
