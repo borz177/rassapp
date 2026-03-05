@@ -296,11 +296,6 @@ const normalizePhone = (phone) => {
     return cleaned;
 };
 
-// Обработка входящих сообщений от WhatsApp (Green API Webhook)
-// Вспомогательная функция нормализации номера
-function normalizePhone(phone) {
-  return phone.replace(/\D/g, '').replace(/^8/, '7');
-}
 
 // Функция отправки WhatsApp-сообщения
 async function sendMessage(idInstance, apiTokenInstance, chatId, message) {
