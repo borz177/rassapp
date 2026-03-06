@@ -209,8 +209,14 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     let accountId = '';
                     const mainAccount = accounts.find(a => a.type === 'MAIN');
 
-                    // Если в файле указан инвестор (не пусто, не "-", не пробелы)
-                    if (investorName && investorName !== '-' && investorName.trim() !== '') {
+                    const trimmedInvestor = investorName ? investorName.trim() : '';
+const isEmptyInvestor = !trimmedInvestor ||
+                        trimmedInvestor === '-' ||
+                        trimmedInvestor === '—' || 
+                        trimmedInvestor === '–' ||
+                        trimmedInvestor.toLowerCase() === 'нет';
+
+if (!isEmptyInvestor) {
                         let investor = investors.find(i => i.name.toLowerCase() === investorName.toLowerCase());
 
                         if (!investor) {
