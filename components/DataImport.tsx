@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { api } from '@/services/api';
-import { Customer, Sale, Account, Investor, Payment, Expense } from '../types';
+import { Customer, Product, Sale, Account, Investor, Payment, Expense } from '../types';
 
 declare const XLSX: any;
 
@@ -164,16 +164,12 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                     if (!clientName || !productName) continue;
 
-                    // === ЧТЕНИЕ НОВЫХ ПОЛЕЙ ===
+                    // === ЧТЕНИЕ ПОЛЕЙ: Телефон и Адрес ===
                     const phoneRaw = row['Телефон'] || row['Mobile'] || '';
                     const phone = phoneRaw ? String(phoneRaw).trim() : '';
 
                     const addressRaw = row['Адрес'] || row['Address'] || '';
                     const address = addressRaw ? String(addressRaw).trim() : '';
-
-                    // Внешний ID договора из Excel (для точного поиска)
-                    const contractIdRaw = row['ID Договора'] || row['Contract ID'] || row['ID'];
-                    const externalContractId = contractIdRaw ? String(contractIdRaw).trim() : '';
 
                     // 1. Клиент + Телефон + Адрес
                     let customer = customers.find(c => c.name === clientName);
@@ -209,12 +205,12 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         }
                     }
 
-                    // 2. Инвестор и Счет
+                    // 2. Инвестор и Счет (исправленная логика)
                     let accountId = '';
                     const mainAccount = accounts.find(a => a.type === 'MAIN');
-                    if (mainAccount) accountId = mainAccount.id;
 
-                    if (investorName && investorName !== '') {
+                    // Если в файле указан инвестор (не пусто, не "-", не пробелы)
+                    if (investorName && investorName !== '-' && investorName.trim() !== '') {
                         let investor = investors.find(i => i.name.toLowerCase() === investorName.toLowerCase());
 
                         if (!investor) {
@@ -254,6 +250,27 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             const invAccount = accounts.find(a => a.ownerId === investor.id && a.type === 'INVESTOR');
                             if (invAccount) accountId = invAccount.id;
                         }
+                    } else {
+                        // === НЕТ ИНВЕСТОРА В ФАЙЛЕ ===
+                        // Используем основной счет приложения (MAIN)
+                        if (mainAccount) {
+                            accountId = mainAccount.id;
+                        } else {
+                            // Fallback: если нет MAIN счета, создаём его
+                            const newMainAccount: Account = {
+                                id: `acc_main_${Date.now()}`,
+                                userId: 'import',
+                                name: 'Основной счет',
+                                type: 'MAIN',
+                                balance: 0,
+                                ownerId: null,
+                                currency: 'RUB',
+                                isArchived: false
+                            };
+                            await api.saveItem('accounts', newMainAccount);
+                            accounts.push(newMainAccount);
+                            accountId = newMainAccount.id;
+                        }
                     }
 
                     // 3. Данные о продаже
@@ -277,30 +294,13 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const statusStr = String(row['Статус'] || '');
                     const groupKey = `${clientName}__${productName}`.toLowerCase();
 
-                    // === ПОИСК ПРОДАЖИ: Сначала по внешнему ID, потом по старым критериям ===
-                    let sale: Sale | undefined;
-
-                    // 1. Поиск по внешнему ID договора (самый надежный способ!)
-                    if (externalContractId) {
-                        sale = existingSales.find(s =>
-                            // Проверяем, сохранен ли внешний ID в заметках или это сам ID записи
-                            s.notes?.includes(`ID:${externalContractId}`) ||
-                            s.id === externalContractId
-                        );
-                        if (sale) {
-                            addLog(`🔗 Найдена продажа по ID: ${externalContractId}`);
-                        }
-                    }
-
-                    // 2. Если не нашли по ID, ищем по комбинации полей (старая логика)
-                    if (!sale) {
-                        sale = existingSales.find(s =>
-                            s.customerId === customer.id &&
-                            s.productName.toLowerCase() === productName.toLowerCase() &&
-                            s.startDate.substring(0, 10) === saleDateIso.substring(0, 10) &&
-                            s.accountId === accountId
-                        );
-                    }
+                    // Поиск существующей продажи
+                    let sale = existingSales.find(s =>
+                        s.customerId === customer.id &&
+                        s.productName.toLowerCase() === productName.toLowerCase() &&
+                        s.startDate.substring(0, 10) === saleDateIso.substring(0, 10) &&
+                        s.accountId === accountId
+                    );
 
                     if (sale) {
                         // Обновляем существующую продажу
@@ -311,14 +311,10 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         sale.startDate = saleDateIso;
                         sale.status = statusStr.includes('Завершен') ? 'COMPLETED' : (statusStr.includes('Оформлен') ? 'DRAFT' : 'ACTIVE');
                         sale.accountId = accountId;
-                        // Обновляем внешний ID если появился
-                        if (externalContractId && !sale.notes?.includes(`ID:${externalContractId}`)) {
-                            sale.notes = (sale.notes || '') + ` ID:${externalContractId}`;
-                        }
-                        sale.notes = (sale.notes || '').replace('Импорт из Excel', 'Обновлено при импорте');
+                        sale.notes = 'Обновлено при импорте';
                         await api.saveItem('sales', sale);
                         updatedSalesCount++;
-                        addLog(`✏️ Обновлена продажа: ${productName}`);
+                        addLog(`✏️ Обновлена продажа: ${productName} (${new Date(saleDateIso).toLocaleDateString()})`);
                     } else {
                         // Создаём новую продажу
                         const remainingAfterDown = Math.max(0, totalPrice - downPayment);
@@ -359,8 +355,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             type: 'INSTALLMENT',
                             paymentPlan: tempPaymentPlan,
                             paymentDay: new Date(firstPaymentDateStr).getDate(),
-                            // <-- Сохраняем внешний ID в notes для будущего поиска
-                            notes: externalContractId ? `Импорт из Excel, ID:${externalContractId}` : 'Импорт из Excel'
+                            notes: 'Импорт из Excel'
                         };
                         newSale.paymentPlan.forEach(p => p.saleId = newSale.id);
 
@@ -382,7 +377,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         existingSales.push(newSale);
                         sale = newSale;
                         newSalesCount++;
-                        addLog(`➕ Новая продажа: ${productName} (ID:${externalContractId || 'нет'})`);
+                        addLog(`➕ Новая продажа: ${productName} (${new Date(saleDateIso).toLocaleDateString()})`);
                     }
 
                     // Add to map for Step 2
@@ -391,7 +386,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     processedSalesMap.set(groupKey, groupList);
                 }
 
-                addLog(`✅ Этап 1 завершён: Клиентов=${newCustomersCount}, Адресов обновлено=${updatedAddressesCount}, Продаж создано=${newSalesCount}`);
+                addLog(`✅ Этап 1 завершён: Клиентов=${newCustomersCount}, Адресов обновлено=${updatedAddressesCount}, Инвесторов=${newInvestorsCount}, Продаж создано=${newSalesCount}, обновлено=${updatedSalesCount}`);
 
                 // === ЭТАП 2: Импорт реальных платежей ===
                 addLog("💰 Этап 2: Импорт реальных платежей...");
@@ -426,7 +421,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     // === ВЫБОР ПРОДАЖИ ДЛЯ ПЛАТЕЖА ===
                     let selectedSale: Sale | undefined;
 
-                    // 1. Проверка на точный дубликат по номеру платежа
                     if (paymentNum) {
                         const exactDuplicateSale = candidates.find(s =>
                             s.paymentPlan.some(p =>
@@ -444,7 +438,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     if (!selectedSale) {
                         let filtered = candidates;
 
-                        // Фильтр по Инвестору
                         if (paymentInvestor) {
                             const inv = investors.find(i => i.name.toLowerCase() === paymentInvestor.toLowerCase());
                             if (inv) {
@@ -456,22 +449,18 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             }
                         }
 
-                        // Фильтр по статусу товара
                         if (productStatus) {
                             const targetStatus = productStatus.includes('Завершен') ? 'COMPLETED' : 'ACTIVE';
                             filtered = filtered.filter(s => s.status === targetStatus);
                         }
 
-                        // Фильтр по дате
                         filtered = filtered.filter(s => new Date(s.startDate).getTime() <= paymentTime + 86400000);
 
-                        // Фильтр по номеру платежа
                         if (paymentNum) {
                             const withoutNum = filtered.filter(s => !s.paymentPlan.some(p => p.isRealPayment && p.note?.includes(`Импорт №${paymentNum}`)));
                             if (withoutNum.length > 0) filtered = withoutNum;
                         }
 
-                        // Фильтр по сумме
                         if (filtered.length > 1) {
                             const amountMatches = filtered.filter(s => {
                                 if (s.installments > 0) {
@@ -504,13 +493,11 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         continue;
                     }
 
-                    // Проверка на дубликаты
                     if (isDuplicatePayment(selectedSale, amount, paymentDateIso, paymentNum)) {
                         skippedDuplicates++;
                         continue;
                     }
 
-                    // Добавляем реальный платёж
                     selectedSale.paymentPlan.push({
                         id: `pay_real_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                         saleId: selectedSale.id,
@@ -526,7 +513,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     realPaymentsCount++;
                 }
 
-                // Сохраняем продажи с платежами
                 for (const salesList of processedSalesMap.values()) {
                     for (const sale of salesList) {
                         await api.saveItem('sales', sale);
@@ -626,8 +612,9 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         <p className="font-bold mb-2">📋 Инструкция:</p>
                         <ul className="list-disc list-inside space-y-1 text-xs">
                             <li>Файл должен содержать листы: <b>Обзор клиентов</b> и <b>История платежей</b></li>
-                            <li>Клиенты ищутся по имени, продажи — по <i>ID Договора</i> (если есть) или <i>Клиент+Товар+Дата</i></li>
+                            <li>Клиенты ищутся по имени, продажи — по <i>Клиент+Товар+Дата</i></li>
                             <li>Поля <b>Телефон</b> и <b>Адрес</b> обновляются автоматически</li>
+                            <li>Если инвестор не указан — используется <b>Основной счет</b></li>
                             <li>Платежи с номером <b>не импортируются повторно</b></li>
                         </ul>
                     </div>
