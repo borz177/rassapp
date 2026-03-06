@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { api } from '@/services/api';
-import { Customer, Product, Sale, Account, Investor, Payment, Expense } from '../types';
+import { Customer, Sale, Account, Investor, Payment, Expense } from '../types';
 
 declare const XLSX: any;
 
@@ -85,25 +85,22 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
         return isNaN(num) ? 0 : num;
     };
 
-    // === ПРОВЕРКА НА ДУБЛИКАТ ПЛАТЕЖА (исправленная версия) ===
+    // === ПРОВЕРКА НА ДУБЛИКАТ ПЛАТЕЖА ===
     const isDuplicatePayment = (sale: Sale, amount: number, dateIso: string, paymentNum?: string): boolean => {
         const inputDate = new Date(dateIso).getTime();
 
         return sale.paymentPlan.some((p: Payment) => {
-            // Игнорируем плановые платежи при проверке дубликатов реальных
             if (p.isRealPayment === false) return false;
 
-            // 1. Проверка по номеру платежа (самый надёжный способ)
             if (paymentNum && p.note?.includes(`Импорт №${paymentNum}`)) {
                 return true;
             }
 
-            // 2. Проверка по дате и сумме для ВСЕХ платежей (не только isPaid)
             const pDate = new Date(p.date).getTime();
             const dateDiff = Math.abs(pDate - inputDate);
             const amountDiff = Math.abs(p.amount - amount);
 
-            return dateDiff < 86400000 && amountDiff < 1.0; // ±1 день, ±1 рубль
+            return dateDiff < 86400000 && amountDiff < 1.0;
         });
     };
 
@@ -141,11 +138,11 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                 addLog(`📊 Найдено записей: клиенты=${overviewData.length}, платежи=${paymentsData.length}`);
 
-                // Загружаем текущие данные из базы
                 const { customers, products, accounts, investors, sales: existingSales } = await api.fetchAllData();
 
                 let newCustomersCount = 0;
                 let updatedPhonesCount = 0;
+                let updatedAddressesCount = 0;
                 let newSalesCount = 0;
                 let updatedSalesCount = 0;
                 let newInvestorsCount = 0;
@@ -154,8 +151,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                 let skippedDeleted = 0;
                 let skippedNotFound = 0;
 
-                // Map to store sales by "Client__Product" key.
-                // Since one client can have multiple "iPhone 13", we store an array of sales.
                 const processedSalesMap = new Map<string, Sale[]>();
 
                 // === ЭТАП 1: Обработка клиентов и создание/обновление продаж ===
@@ -169,10 +164,18 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                     if (!clientName || !productName) continue;
 
-                    // 1. Клиент + Телефон
+                    // === ЧТЕНИЕ НОВЫХ ПОЛЕЙ ===
                     const phoneRaw = row['Телефон'] || row['Mobile'] || '';
                     const phone = phoneRaw ? String(phoneRaw).trim() : '';
 
+                    const addressRaw = row['Адрес'] || row['Address'] || '';
+                    const address = addressRaw ? String(addressRaw).trim() : '';
+
+                    // Внешний ID договора из Excel (для точного поиска)
+                    const contractIdRaw = row['ID Договора'] || row['Contract ID'] || row['ID'];
+                    const externalContractId = contractIdRaw ? String(contractIdRaw).trim() : '';
+
+                    // 1. Клиент + Телефон + Адрес
                     let customer = customers.find(c => c.name === clientName);
 
                     if (!customer) {
@@ -182,7 +185,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             name: clientName,
                             phone: phone || '',
                             email: '',
-                            address: '',
+                            address: address,  // <-- Сохраняем адрес
                             trustScore: 100,
                             notes: 'Импорт из Excel'
                         };
@@ -191,10 +194,19 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         customer = newCustomer;
                         newCustomersCount++;
                         addLog(`➕ Новый клиент: ${clientName}`);
-                    } else if (phone && customer.phone !== phone) {
-                        customer.phone = phone;
-                        await api.saveItem('customers', customer);
-                        updatedPhonesCount++;
+                    } else {
+                        // Обновляем телефон если изменился
+                        if (phone && customer.phone !== phone) {
+                            customer.phone = phone;
+                            await api.saveItem('customers', customer);
+                            updatedPhonesCount++;
+                        }
+                        // <-- Обновляем адрес если изменился
+                        if (address && customer.address !== address) {
+                            customer.address = address;
+                            await api.saveItem('customers', customer);
+                            updatedAddressesCount++;
+                        }
                     }
 
                     // 2. Инвестор и Счет
@@ -263,20 +275,32 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     }
 
                     const statusStr = String(row['Статус'] || '');
-
-                    // Base key for grouping
                     const groupKey = `${clientName}__${productName}`.toLowerCase();
 
-                    // === ПРОВЕРКА: существует ли уже ТАКАЯ ЖЕ продажа (по дате и инвестору) ===
-                    // We check existingSales from DB to see if we already have this specific sale
-                    let sale = existingSales.find(s =>
-                        s.customerId === customer.id &&
-                        s.productName.toLowerCase() === productName.toLowerCase() &&
-                        // Match by date (ignoring time)
-                        s.startDate.substring(0, 10) === saleDateIso.substring(0, 10) &&
-                        // Match by Account (Investor) to distinguish sales to same client/product but different investors
-                        s.accountId === accountId
-                    );
+                    // === ПОИСК ПРОДАЖИ: Сначала по внешнему ID, потом по старым критериям ===
+                    let sale: Sale | undefined;
+
+                    // 1. Поиск по внешнему ID договора (самый надежный способ!)
+                    if (externalContractId) {
+                        sale = existingSales.find(s =>
+                            // Проверяем, сохранен ли внешний ID в заметках или это сам ID записи
+                            s.notes?.includes(`ID:${externalContractId}`) ||
+                            s.id === externalContractId
+                        );
+                        if (sale) {
+                            addLog(`🔗 Найдена продажа по ID: ${externalContractId}`);
+                        }
+                    }
+
+                    // 2. Если не нашли по ID, ищем по комбинации полей (старая логика)
+                    if (!sale) {
+                        sale = existingSales.find(s =>
+                            s.customerId === customer.id &&
+                            s.productName.toLowerCase() === productName.toLowerCase() &&
+                            s.startDate.substring(0, 10) === saleDateIso.substring(0, 10) &&
+                            s.accountId === accountId
+                        );
+                    }
 
                     if (sale) {
                         // Обновляем существующую продажу
@@ -287,12 +311,16 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         sale.startDate = saleDateIso;
                         sale.status = statusStr.includes('Завершен') ? 'COMPLETED' : (statusStr.includes('Оформлен') ? 'DRAFT' : 'ACTIVE');
                         sale.accountId = accountId;
-                        sale.notes = 'Обновлено при импорте';
+                        // Обновляем внешний ID если появился
+                        if (externalContractId && !sale.notes?.includes(`ID:${externalContractId}`)) {
+                            sale.notes = (sale.notes || '') + ` ID:${externalContractId}`;
+                        }
+                        sale.notes = (sale.notes || '').replace('Импорт из Excel', 'Обновлено при импорте');
                         await api.saveItem('sales', sale);
                         updatedSalesCount++;
-                        addLog(`✏️ Обновлена продажа: ${productName} (${new Date(saleDateIso).toLocaleDateString()})`);
+                        addLog(`✏️ Обновлена продажа: ${productName}`);
                     } else {
-                        // Создаём новую продажу с планом платежей
+                        // Создаём новую продажу
                         const remainingAfterDown = Math.max(0, totalPrice - downPayment);
                         const monthlyAvg = installmentsCount > 0 ? remainingAfterDown / installmentsCount : 0;
 
@@ -309,7 +337,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                                 isPaid: false,
                                 actualDate: null,
                                 note: "План",
-                                isRealPayment: false // Explicitly mark as plan
+                                isRealPayment: false
                             });
                         }
 
@@ -331,13 +359,13 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             type: 'INSTALLMENT',
                             paymentPlan: tempPaymentPlan,
                             paymentDay: new Date(firstPaymentDateStr).getDate(),
-                            notes: 'Импорт из Excel'
+                            // <-- Сохраняем внешний ID в notes для будущего поиска
+                            notes: externalContractId ? `Импорт из Excel, ID:${externalContractId}` : 'Импорт из Excel'
                         };
                         newSale.paymentPlan.forEach(p => p.saleId = newSale.id);
 
                         await api.saveItem('sales', newSale);
 
-                        // Create expense for buy price
                         if (buyPrice > 0) {
                             const buyPriceExpense: Expense = {
                                 id: `exp_${newSale.id}`,
@@ -354,7 +382,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         existingSales.push(newSale);
                         sale = newSale;
                         newSalesCount++;
-                        addLog(`➕ Новая продажа: ${productName} (${new Date(saleDateIso).toLocaleDateString()})`);
+                        addLog(`➕ Новая продажа: ${productName} (ID:${externalContractId || 'нет'})`);
                     }
 
                     // Add to map for Step 2
@@ -363,7 +391,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     processedSalesMap.set(groupKey, groupList);
                 }
 
-                addLog(`✅ Этап 1 завершён: Клиентов=${newCustomersCount}, Телефонов обновлено=${updatedPhonesCount}, Инвесторов=${newInvestorsCount}, Продаж создано=${newSalesCount}, обновлено=${updatedSalesCount}`);
+                addLog(`✅ Этап 1 завершён: Клиентов=${newCustomersCount}, Адресов обновлено=${updatedAddressesCount}, Продаж создано=${newSalesCount}`);
 
                 // === ЭТАП 2: Импорт реальных платежей ===
                 addLog("💰 Этап 2: Импорт реальных платежей...");
@@ -372,13 +400,12 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const clientName = String(row['Клиент'] || '').trim();
                     const productName = String(row['Товар'] || '').trim();
                     const paymentStatus = String(row['Статус платежа'] || '');
-                    const productStatus = String(row['Статус товар'] || ''); // New field for matching
+                    const productStatus = String(row['Статус товара'] || '');
                     const amount = parseMoney(row['Сумма']);
                     const dateVal = row['Дата платежа'];
                     const paymentNumRaw = row['Платёж'] || row['Платёж №'];
                     const paymentNum = paymentNumRaw && paymentNumRaw !== '-' && paymentNumRaw !== 'Нет платежей' ? String(paymentNumRaw).trim() : '';
 
-                    // Пропускаем пустые и удалённые платежи
                     if (!clientName || !productName || paymentStatus === 'Нет платежей' || paymentStatus === 'Удалён' || !amount) {
                         if (paymentStatus === 'Удалён') skippedDeleted++;
                         continue;
@@ -394,21 +421,19 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                     const paymentDateIso = parseExcelDate(dateVal);
                     const paymentTime = new Date(paymentDateIso).getTime();
-
                     const paymentInvestor = String(row['Инвестор'] || '').trim();
 
-                    // === SELECT THE CORRECT SALE ===
+                    // === ВЫБОР ПРОДАЖИ ДЛЯ ПЛАТЕЖА ===
                     let selectedSale: Sale | undefined;
 
-                    // 1. Check for EXACT duplicate (Number + Date + Amount match)
-                    // If found, we select it so the duplicate checker can skip it properly.
+                    // 1. Проверка на точный дубликат по номеру платежа
                     if (paymentNum) {
                         const exactDuplicateSale = candidates.find(s =>
                             s.paymentPlan.some(p =>
                                 p.isRealPayment &&
                                 p.note?.includes(`Импорт №${paymentNum}`) &&
-                                Math.abs(new Date(p.date).getTime() - paymentTime) < 86400000 && // ±1 day
-                                Math.abs(p.amount - amount) < 1.0 // ±1 ruble
+                                Math.abs(new Date(p.date).getTime() - paymentTime) < 86400000 &&
+                                Math.abs(p.amount - amount) < 1.0
                             )
                         );
                         if (exactDuplicateSale) {
@@ -417,84 +442,60 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     }
 
                     if (!selectedSale) {
-                        // 2. Filter candidates
                         let filtered = candidates;
 
-                        // Filter by Investor (Strongest Signal)
+                        // Фильтр по Инвестору
                         if (paymentInvestor) {
                             const inv = investors.find(i => i.name.toLowerCase() === paymentInvestor.toLowerCase());
                             if (inv) {
                                 const invAccount = accounts.find(a => a.ownerId === inv.id);
                                 if (invAccount) {
                                      const accountMatches = filtered.filter(s => s.accountId === invAccount.id);
-                                     if (accountMatches.length > 0) {
-                                         filtered = accountMatches;
-                                     }
+                                     if (accountMatches.length > 0) filtered = accountMatches;
                                 }
                             }
                         }
 
-                        // Filter by Product Status (if available)
+                        // Фильтр по статусу товара
                         if (productStatus) {
                             const targetStatus = productStatus.includes('Завершен') ? 'COMPLETED' : 'ACTIVE';
                             filtered = filtered.filter(s => s.status === targetStatus);
                         }
 
-                        // Filter by Date (Payment cannot be before Sale Start - allow 1 day buffer)
+                        // Фильтр по дате
                         filtered = filtered.filter(s => new Date(s.startDate).getTime() <= paymentTime + 86400000);
 
-                        // Filter by Payment Number Availability
-                        // If a sale already has "Payment #1", it can't have another "Payment #1" (unless it was the duplicate we checked above)
+                        // Фильтр по номеру платежа
                         if (paymentNum) {
                             const withoutNum = filtered.filter(s => !s.paymentPlan.some(p => p.isRealPayment && p.note?.includes(`Импорт №${paymentNum}`)));
-                            // Only apply this filter if it doesn't remove all candidates (safety fallback)
-                            if (withoutNum.length > 0) {
-                                filtered = withoutNum;
-                            }
+                            if (withoutNum.length > 0) filtered = withoutNum;
                         }
 
-                        // Filter by Amount Match (Heuristic)
-                        // If we still have multiple candidates, prefer the one where the payment amount matches the plan
+                        // Фильтр по сумме
                         if (filtered.length > 1) {
                             const amountMatches = filtered.filter(s => {
-                                // 1. Check if amount matches the calculated monthly installment
                                 if (s.installments > 0) {
                                     const monthly = (s.totalAmount - s.downPayment) / s.installments;
-                                    if (Math.abs(monthly - amount) < 50) return true; // Allow small variance
+                                    if (Math.abs(monthly - amount) < 50) return true;
                                 }
-                                // 2. Check if amount matches ANY plan item amount (more robust for custom plans)
                                 const planMatch = s.paymentPlan.some(p => !p.isRealPayment && Math.abs(p.amount - amount) < 1.0);
                                 if (planMatch) return true;
-
                                 return false;
                             });
-
-                            // If we found specific matches, use them.
-                            // If NO matches found (e.g. partial payment), keep the previous list.
-                            if (amountMatches.length > 0) {
-                                filtered = amountMatches;
-                            }
+                            if (amountMatches.length > 0) filtered = amountMatches;
                         }
 
                         if (filtered.length === 1) {
                             selectedSale = filtered[0];
                         } else if (filtered.length > 1) {
-                            // If still multiple, sort by start date descending (newest first)
-                            // This assumes newer sales are processed first or we prefer assigning to newer sales?
-                            // Actually, if we have Payment 1 for Sale A and Payment 1 for Sale B, the "withoutNum" filter handles it.
-                            // This fallback is for when numbering is missing or ambiguous.
                             filtered.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
                             selectedSale = filtered[0];
                         } else {
-                            // No candidates left?
-                            // This might happen if payment date is way before sale date, or status mismatch.
-                            // Fallback: Try to find ANY sale that fits the payment number criteria
                             if (paymentNum) {
                                 const fallback = candidates.find(s => !s.paymentPlan.some(p => p.isRealPayment && p.note?.includes(`Импорт №${paymentNum}`)));
                                 if (fallback) selectedSale = fallback;
                             }
-
-                            if (!selectedSale) selectedSale = candidates[0]; // Absolute fallback
+                            if (!selectedSale) selectedSale = candidates[0];
                         }
                     }
 
@@ -503,13 +504,13 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         continue;
                     }
 
-                    // === ЖЁСТКАЯ ПРОВЕРКА НА ДУБЛИКАТЫ ===
+                    // Проверка на дубликаты
                     if (isDuplicatePayment(selectedSale, amount, paymentDateIso, paymentNum)) {
                         skippedDuplicates++;
                         continue;
                     }
 
-                    // Добавляем РЕАЛЬНЫЙ платёж
+                    // Добавляем реальный платёж
                     selectedSale.paymentPlan.push({
                         id: `pay_real_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                         saleId: selectedSale.id,
@@ -518,50 +519,42 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         isPaid: true,
                         actualDate: paymentDateIso,
                         note: paymentNum ? `Импорт №${paymentNum}` : 'Импорт',
-                        isRealPayment: true,  // ← КЛЮЧЕВОЙ ФЛАГ
+                        isRealPayment: true,
                         importedAt: new Date().toISOString()
                     });
 
                     realPaymentsCount++;
                 }
 
-                // Сохраняем все обновлённые продажи с платежами
-                // Iterate over all lists in the map
+                // Сохраняем продажи с платежами
                 for (const salesList of processedSalesMap.values()) {
                     for (const sale of salesList) {
                         await api.saveItem('sales', sale);
                     }
                 }
 
-                addLog(`✅ Этап 2 завершён: Добавлено платежей=${realPaymentsCount}, Пропущено дублей=${skippedDuplicates}, Удалённых=${skippedDeleted}, Не найдено продаж=${skippedNotFound}`);
+                addLog(`✅ Этап 2 завершён: Платежей=${realPaymentsCount}, Дублей=${skippedDuplicates}`);
 
-                // === ЭТАП 3: Распределение платежей (Waterfall) и пересчёт остатка ===
-                addLog("🔄 Этап 3: Распределение платежей и пересчёт остатков...");
+                // === ЭТАП 3: Распределение платежей (Waterfall) ===
+                addLog("🔄 Этап 3: Распределение платежей...");
 
                 for (const salesList of processedSalesMap.values()) {
                     for (const sale of salesList) {
-                        // Получаем реальные платежи, отсортированные по дате
                         const realPayments = sale.paymentPlan
                             .filter((p: Payment) => p.isRealPayment && p.isPaid)
                             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-                        // Получаем плановые платежи, отсортированные по дате
                         const planPayments = sale.paymentPlan
                             .filter((p: Payment) => !p.isRealPayment)
                             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-                        // Waterfall: каждый реальный платёж покрывает самые старые неоплаченные плановые
                         for (const realPay of realPayments) {
                             let amountLeft = realPay.amount;
-
-                            // Ищем первый неоплаченный плановый платёж
                             let targetPlan = planPayments.find((p: Payment) => !p.isPaid);
 
                             while (targetPlan && amountLeft > 0.5) {
                                 const debt = targetPlan.amount;
-
                                 if (amountLeft >= debt - 0.01) {
-                                    // Полное погашение месяца
                                     targetPlan.isPaid = true;
                                     targetPlan.actualDate = realPay.date;
                                     if (!targetPlan.note?.includes('Оплачено')) {
@@ -570,19 +563,15 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                                     amountLeft -= debt;
                                     targetPlan = planPayments.find((p: Payment) => !p.isPaid);
                                 } else {
-                                    // Частичное погашение
                                     targetPlan.note = `Частично: ${amountLeft} ₽ (${new Date(realPay.date).toLocaleDateString()})`;
                                     amountLeft = 0;
                                 }
                             }
-
-                            // Если остались деньги после покрытия всех плановых — переплата
                             if (amountLeft > 0.5) {
                                 realPay.note = `${realPay.note || ''} (Переплата: ${amountLeft.toFixed(2)} ₽)`.trim();
                             }
                         }
 
-                        // Пересчитываем остаток долга ТОЛЬКО по реальным платежам
                         const totalRealPaid = sale.paymentPlan
                             .filter((p: Payment) => p.isRealPayment && p.isPaid)
                             .reduce((sum, p) => sum + p.amount, 0);
@@ -592,22 +581,19 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                         sale.remainingAmount = Number(currentRemaining.toFixed(2));
 
-                        // Обновляем статус
                         if (currentRemaining < 1 && sale.status !== 'COMPLETED') {
                             sale.status = 'COMPLETED';
                         } else if (currentRemaining >= 1 && sale.status === 'COMPLETED') {
                             sale.status = 'ACTIVE';
                         }
 
-                        // Сортируем paymentPlan по дате для удобства
                         sale.paymentPlan.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
                         await api.saveItem('sales', sale);
                     }
                 }
 
                 addLog("✅ Импорт успешно завершён!");
-                addLog(`📈 Итог: ${newCustomersCount} новых клиентов, ${newSalesCount + updatedSalesCount} продаж обработано, ${realPaymentsCount} платежей импортировано`);
+                addLog(`📈 Итог: ${newCustomersCount} клиентов, ${newSalesCount + updatedSalesCount} продаж, ${realPaymentsCount} платежей`);
 
                 setTimeout(() => {
                     setIsProcessing(false);
@@ -616,7 +602,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
             } catch (error: any) {
                 console.error("Import error:", error);
-                addLog(`❌ Критическая ошибка: ${error.message || String(error)}`);
+                addLog(`❌ Ошибка: ${error.message || String(error)}`);
                 setIsProcessing(false);
             }
         };
@@ -640,10 +626,9 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         <p className="font-bold mb-2">📋 Инструкция:</p>
                         <ul className="list-disc list-inside space-y-1 text-xs">
                             <li>Файл должен содержать листы: <b>Обзор клиентов</b> и <b>История платежей</b></li>
-                            <li>Клиенты ищутся по имени, продажи — по <i>Клиент + Товар</i></li>
-                            <li>Платежи с номером <b>не импортируются повторно</b> (защита от дублей)</li>
-                            <li>Реальные платежи помечаются флагом <code>isRealPayment</code></li>
-                            <li>При повторном импорте продажи <b>обновляются</b>, а не создаются заново</li>
+                            <li>Клиенты ищутся по имени, продажи — по <i>ID Договора</i> (если есть) или <i>Клиент+Товар+Дата</i></li>
+                            <li>Поля <b>Телефон</b> и <b>Адрес</b> обновляются автоматически</li>
+                            <li>Платежи с номером <b>не импортируются повторно</b></li>
                         </ul>
                     </div>
 
