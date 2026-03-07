@@ -13,6 +13,7 @@ interface SyncItem {
   payload?: any; // The data being saved
   itemId?: string; // ID of the item being deleted
   timestamp: number;
+  retryCount?: number
 }
 
 interface CacheItem {
@@ -90,6 +91,20 @@ class OfflineStorage {
     });
   }
 
+
+  async updateQueueItem(item: any): Promise<void> {
+  const db = await this.dbPromise;
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORES.SYNC_QUEUE, 'readwrite');
+    const store = transaction.objectStore(STORES.SYNC_QUEUE);
+
+    const request = store.put(item);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
   async setCache(key: string, data: any): Promise<void> {
     const db = await this.dbPromise;
     return new Promise((resolve, reject) => {

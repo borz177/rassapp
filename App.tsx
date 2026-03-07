@@ -30,6 +30,22 @@ import { getAppSettings, saveAppSettings } from './services/storage';
 import { api } from './services/api';
 import { ICONS } from './constants';
 
+
+async function enablePersistentStorage() {
+  if (navigator.storage && navigator.storage.persist) {
+
+    const isPersisted = await navigator.storage.persisted();
+
+    if (!isPersisted) {
+      const granted = await navigator.storage.persist();
+      console.log("Persistent storage granted:", granted);
+    } else {
+      console.log("Persistent storage already enabled");
+    }
+
+  }
+}
+
 const App: React.FC = () => {
   // Auth State
   const [user, setUser] = useState<User | null>(null);
@@ -118,6 +134,7 @@ const App: React.FC = () => {
 
   // Initial Data Load (Auth Check & Fetch)
   useEffect(() => {
+    enablePersistentStorage();
     const initApp = async () => {
         // Check for Public Calculator Link
         // Support: ?view=public_calc, ?v=calc, OR path /calc/CompanyName

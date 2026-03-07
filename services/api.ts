@@ -36,32 +36,71 @@ export const api = {
 
             console.log(`Syncing ${queue.length} items...`);
 
-            for (const item of queue) {
-                try {
-                    let res;
-                    if (item.type === 'saveItem') {
-                        res = await fetch(`${API_URL}/data/${item.collection}`, {
-                            method: 'POST',
-                            headers: getAuthHeader(),
-                            body: JSON.stringify(item.payload)
-                        });
-                    } else if (item.type === 'deleteItem') {
-                        res = await fetch(`${API_URL}/data/${item.collection}/${item.itemId}`, {
-                            method: 'DELETE',
-                            headers: getAuthHeader()
-                        });
-                    }
+           for (const item of queue) {
+    try {
+        let res;
 
-                    if (res && res.ok) {
-                        // Remove from queue on success
-                        await offlineStorage.removeFromQueue(item.id);
-                    } else {
-                        console.error(`Sync failed for item ${item.id}: Server returned ${res?.status}`);
-                    }
-                } catch (error) {
-                    console.error(`Failed to sync item ${item.id}`, error);
-                }
+        if (item.type === 'saveItem') {
+            res = await fetch(`${API_URL}/data/${item.collection}`, {
+                method: 'POST',
+                headers: getAuthHeader(),
+                body: JSON.stringify(item.payload)
+            });
+        } else if (item.type === 'deleteItem') {
+            res = await fetch(`${API_URL}/data/${item.collection}/${item.itemId}`, {
+                method: 'DELETE',
+                headers: getAuthHeader()
+            });
+        }
+
+        if (res && res.ok) {
+
+            // ✅ Успешно — удаляем из очереди
+            await offlineStorage.removeFromQueue(item.id);
+
+        } else {
+
+            console.warn(`Sync failed for item ${item.id}: ${res?.status}`);
+
+            // увеличиваем retry
+            item.retryCount = (item.retryCount || 0) + 1;
+
+            if (item.retryCount > 5) {
+
+                console.error("Dropping broken queue item:", item);
+
+                // удаляем сломанный элемент
+                await offlineStorage.removeFromQueue(item.id);
+
+            } else {
+
+                // сохраняем обновлённый retryCount
+                await offlineStorage.updateQueueItem(item);
+
             }
+        }
+
+    } catch (error) {
+
+        console.error(`Failed to sync item ${item.id}`, error);
+
+        // тоже считаем retry
+        item.retryCount = (item.retryCount || 0) + 1;
+
+        if (item.retryCount > 5) {
+
+            await offlineStorage.removeFromQueue(item.id);
+
+        } else {
+
+            await offlineStorage.updateQueueItem(item);
+
+        }
+
+        // ⚠️ останавливаем sync если сеть упала
+        break;
+    }
+}
         } finally {
             isSyncing = false;
         }
