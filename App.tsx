@@ -117,115 +117,8 @@ const isLanding = path === "/"
 
 
 
-useEffect(() => {
 
- async function init() {
 
-  try {
-
-    setLoadingProgress(10)
-
-    // восстановление пользователя из localStorage
-    const savedUser = localStorage.getItem("user")
-
-    if (savedUser) {
-      setUser(JSON.parse(savedUser))
-    }
-
-    const me = await fetch("/api/auth/me", {
-      credentials: "include"
-    })
-
-    if (me.ok) {
-
-      const userData = await me.json()
-
-      setUser(userData)
-
-      // сохраняем сессию
-      localStorage.setItem("user", JSON.stringify(userData))
-
-      setLoadingProgress(40)
-
-      const data = await fetch("/api/data", {
-        credentials: "include"
-      })
-
-      if (data.ok) {
-
-        const parsed = await data.json()
-
-        setCustomers(parsed.customers || [])
-        setProducts(parsed.products || [])
-        setSales(parsed.sales || [])
-        setExpenses(parsed.expenses || [])
-        setAccounts(parsed.accounts || [])
-        setInvestors(parsed.investors || [])
-
-        // кешируем данные для оффлайн режима
-        localStorage.setItem("all_data", JSON.stringify(parsed))
-
-      }
-
-    } else {
-
-      console.log("User not logged in")
-
-      setUser(null)
-
-      // если оффлайн — попробуем загрузить кеш
-      const cached = localStorage.getItem("all_data")
-
-      if (cached) {
-
-        const parsed = JSON.parse(cached)
-
-        setCustomers(parsed.customers || [])
-        setProducts(parsed.products || [])
-        setSales(parsed.sales || [])
-        setExpenses(parsed.expenses || [])
-        setAccounts(parsed.accounts || [])
-        setInvestors(parsed.investors || [])
-
-      }
-
-    }
-
-    setLoadingProgress(90)
-
-  } catch (e) {
-
-    console.log("offline mode", e)
-
-    // загрузка кеша если нет интернета
-    const cached = localStorage.getItem("all_data")
-
-    if (cached) {
-
-      const parsed = JSON.parse(cached)
-
-      setCustomers(parsed.customers || [])
-      setProducts(parsed.products || [])
-      setSales(parsed.sales || [])
-      setExpenses(parsed.expenses || [])
-      setAccounts(parsed.accounts || [])
-      setInvestors(parsed.investors || [])
-
-    }
-
-  }
-
-  setLoadingProgress(100)
-
-  setTimeout(() => {
-    setIsLoading(false)
-  }, 300)
-
-}
-
-init()
-
-}, [])
 
 
 
@@ -952,7 +845,7 @@ if (isPublicMode) {
         />
     );
 }
-  if (!user) { return <Auth onLogin={handleAuthSuccess} />; }
+
 
   return (
       <div {...swipeHandlers}>
