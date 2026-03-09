@@ -31,6 +31,8 @@ import { api } from './services/api';
 import { ICONS } from './constants';
 import SplashScreen from "./components/SplashScreen"
 import { useSwipeable } from "react-swipeable"
+import Landing from './components/Landing.tsx';
+
 
 async function enablePersistentStorage() {
   if (navigator.storage && navigator.storage.persist) {
@@ -48,6 +50,10 @@ async function enablePersistentStorage() {
 }
 
 const App: React.FC = () => {
+    const path = window.location.pathname
+  if (path === "/") {
+  return <Landing />
+}
   // Auth State
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -112,27 +118,37 @@ useEffect(() => {
 
       setLoadingProgress(10)
 
-      const me = await fetch("/api/auth/me")
+     const me = await fetch("/api/auth/me", {
+  credentials: "include"
+})
 
-      if (me.ok) {
-        const userData = await me.json()
-        setUser(userData)
-      }
+if (me.ok) {
 
-      setLoadingProgress(40)
+  const userData = await me.json()
+  setUser(userData)
 
-      const data = await fetch("/api/data")
+} else {
 
-      if (data.ok) {
-        const parsed = await data.json()
+  console.log("not authorized")
 
-        setCustomers(parsed.customers || [])
-        setProducts(parsed.products || [])
-        setSales(parsed.sales || [])
-        setExpenses(parsed.expenses || [])
-        setAccounts(parsed.accounts || [])
-        setInvestors(parsed.investors || [])
-      }
+}
+
+      const data = await fetch("/api/data", {
+  credentials: "include"
+})
+
+if (data.ok) {
+
+  const parsed = await data.json()
+
+  setCustomers(parsed.customers || [])
+  setProducts(parsed.products || [])
+  setSales(parsed.sales || [])
+  setExpenses(parsed.expenses || [])
+  setAccounts(parsed.accounts || [])
+  setInvestors(parsed.investors || [])
+
+}
 
       setLoadingProgress(90)
 
