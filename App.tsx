@@ -62,9 +62,7 @@ const isLanding = path === "/"
 
   // App State
   const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
-  const [viewHistory, setViewHistory] = useState<ViewState[]>(['DASHBOARD'])
-  const [swipeX, setSwipeX] = useState(0)
-  const [isSwiping, setIsSwiping] = useState(false)
+ 
   const [activeContractTab, setActiveContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
 
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -103,69 +101,6 @@ const isLanding = path === "/"
       period: myProfitPeriod
   });
 
-
-// автоматически добавляем экран в историю
-useEffect(() => {
-  setViewHistory(prev => {
-    const last = prev[prev.length - 1]
-
-    if (last === currentView) {
-      return prev
-    }
-
-    return [...prev, currentView]
-  })
-}, [currentView])
-
-// функция возврата назад
-const handleSwipeBack = () => {
-  if (currentView === 'DASHBOARD') return
-
-  setViewHistory(prev => {
-    if (prev.length <= 1) return prev
-
-    const newHistory = prev.slice(0, -1)
-    const previousView = newHistory[newHistory.length - 1]
-
-    setCurrentView(previousView)
-
-    return newHistory
-  })
-}
-
-
-const swipeHandlers = useSwipeable({
-  onSwiping: (event) => {
-    if (currentView === 'DASHBOARD') return
-
-    // свайп только от левого края
-    if (event.initial[0] > 40) return
-
-    // реагируем только на горизонтальный жест
-    if (Math.abs(event.deltaX) > Math.abs(event.deltaY) && event.deltaX > 0) {
-      setIsSwiping(true)
-      setSwipeX(Math.min(event.deltaX, 300))
-    }
-  },
-
-  onSwipedRight: () => {
-    if (swipeX > 120) {
-      handleSwipeBack()
-    }
-
-    setSwipeX(0)
-    setIsSwiping(false)
-  },
-
-  onSwipedLeft: () => {
-    setSwipeX(0)
-    setIsSwiping(false)
-  },
-
-  trackMouse: true,
-  preventScrollOnSwipe: false, // ⬅️ важно
-  delta: 10
-})
 
 
 
@@ -924,20 +859,7 @@ if (isPublicMode) {
           isOnline={isOnline}
           isSyncing={isSyncing}
       >
-          <div
-              {...swipeHandlers}
-              style={{
-                  transform: `translateX(${swipeX}px)`,
-                  transition: isSwiping
-                      ? "none"
-                      : "transform 0.28s cubic-bezier(.22,.61,.36,1)",
-                  willChange: "transform",
-                  position: "relative",
-                  zIndex: 1,
-                  maxWidth: "100%",
-                  overflowX: "hidden"
-              }}
-          >
+
               {/* ... (Layout Children remain exactly the same) ... */}
               {currentView === 'DASHBOARD' && !isInvestor &&
                   <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital}
@@ -1251,7 +1173,7 @@ if (isPublicMode) {
                       </button>
                   </div>
               </div>)}
-          </div>
+
       </Layout>
 
   );
