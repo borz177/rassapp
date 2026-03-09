@@ -134,21 +134,21 @@ const handleSwipeBack = () => {
 }
 
 
-// swipe обработчик
 const swipeHandlers = useSwipeable({
   onSwiping: (event) => {
-      if (event.initial[0] > 40) return
     if (currentView === 'DASHBOARD') return
 
-    if (event.deltaX > 0) {
+    // свайп только от левого края
+    if (event.initial[0] > 40) return
+
+    // реагируем только на горизонтальный жест
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY) && event.deltaX > 0) {
       setIsSwiping(true)
       setSwipeX(Math.min(event.deltaX, 300))
     }
   },
 
   onSwipedRight: () => {
-    if (currentView === 'DASHBOARD') return
-
     if (swipeX > 120) {
       handleSwipeBack()
     }
@@ -163,10 +163,9 @@ const swipeHandlers = useSwipeable({
   },
 
   trackMouse: true,
-  preventScrollOnSwipe: true,
+  preventScrollOnSwipe: false, // ⬅️ важно
   delta: 10
 })
-
 
 
 
