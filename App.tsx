@@ -931,14 +931,14 @@ if (isLoading) {
 if (!user) {
 
   if (isNative) {
-    return <Login />
+    return <Auth />
   }
 
   if (isLanding) {
     return <Landing />
   }
 
-  return <Login />
+  return <Auth />
 }
 
   // PUBLIC MODE - No Auth required
