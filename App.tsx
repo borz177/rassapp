@@ -62,7 +62,7 @@ const isLanding = path === "/"
 
   // App State
   const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
- 
+
   const [activeContractTab, setActiveContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
 
   const [customers, setCustomers] = useState<Customer[]>([]);
