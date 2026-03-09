@@ -103,18 +103,23 @@ const isLanding = path === "/"
       period: myProfitPeriod
   });
 
+
 // автоматически добавляем экран в историю
 useEffect(() => {
   setViewHistory(prev => {
     const last = prev[prev.length - 1]
-    if (last === currentView) return prev
+
+    if (last === currentView) {
+      return prev
+    }
+
     return [...prev, currentView]
   })
 }, [currentView])
 
-// возврат назад
+// функция возврата назад
 const handleSwipeBack = () => {
-  if (currentView === "DASHBOARD") return
+  if (currentView === 'DASHBOARD') return
 
   setViewHistory(prev => {
     if (prev.length <= 1) return prev
@@ -123,16 +128,20 @@ const handleSwipeBack = () => {
     const previousView = newHistory[newHistory.length - 1]
 
     setCurrentView(previousView)
+
     return newHistory
   })
 }
 
-// swipe обработчик
+
 const swipeHandlers = useSwipeable({
   onSwiping: (event) => {
-    if (currentView === "DASHBOARD") return
+    if (currentView === 'DASHBOARD') return
+
+    // свайп только от левого края
     if (event.initial[0] > 40) return
 
+    // реагируем только на горизонтальный жест
     if (Math.abs(event.deltaX) > Math.abs(event.deltaY) && event.deltaX > 0) {
       setIsSwiping(true)
       setSwipeX(Math.min(event.deltaX, 300))
@@ -154,7 +163,7 @@ const swipeHandlers = useSwipeable({
   },
 
   trackMouse: true,
-  preventScrollOnSwipe: false,
+  preventScrollOnSwipe: false, // ⬅️ важно
   delta: 10
 })
 
