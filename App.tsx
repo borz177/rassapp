@@ -137,6 +137,7 @@ const handleSwipeBack = () => {
 // swipe обработчик
 const swipeHandlers = useSwipeable({
   onSwiping: (event) => {
+      if (event.initial[0] > 40) return
     if (currentView === 'DASHBOARD') return
 
     if (event.deltaX > 0) {
