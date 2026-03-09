@@ -931,7 +931,11 @@ if (isPublicMode) {
                   transition: isSwiping
                       ? "none"
                       : "transform 0.28s cubic-bezier(.22,.61,.36,1)",
-                  willChange: "transform"
+                  willChange: "transform",
+                  position: "relative",
+                  zIndex: 1,
+                  maxWidth: "100%",
+                  overflowX: "hidden"
               }}
           >
               {/* ... (Layout Children remain exactly the same) ... */}
@@ -1247,10 +1251,10 @@ if (isPublicMode) {
                       </button>
                   </div>
               </div>)}
-              </div>
+          </div>
       </Layout>
 
-);
+  );
 };
 
 export default App;
