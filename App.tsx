@@ -909,121 +909,348 @@ if (isPublicMode) {
 
 
   return (
-      <div {...swipeHandlers}
-      style={{
-    transform: `translateX(${swipeX}px)`,
-    transition: isSwiping
-      ? 'none'
-      : 'transform 0.28s cubic-bezier(.22,.61,.36,1)',
-    willChange: 'transform'
-  }}
-      >
-    <Layout
-        currentView={currentView}
-        setView={setCurrentView}
-        onAction={handleAction}
-        onContractTabChange={setActiveContractTab}
-        sales={sales}
-        appSettings={appSettings}
-        customers={customers}
-        user={user}
-        activeInvestor={activeInvestor}
-        onNavigateToProfile={() => setCurrentView('PROFILE')}
-        isOnline={isOnline}
-        isSyncing={isSyncing}
-    >
-      {/* ... (Layout Children remain exactly the same) ... */}
-      {currentView === 'DASHBOARD' && !isInvestor && <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital} accountBalances={accountBalances} onAction={handleAction} onSelectCustomer={handleSelectCustomer} onInitiatePayment={handleInitiateDashboardPayment} accounts={accounts} appSettings={appSettings} />}
-      {currentView === 'DASHBOARD' && isInvestor && activeInvestor && <InvestorDashboard sales={sales} expenses={expenses} accounts={accounts} investor={activeInvestor} appSettings={appSettings} />}
-      {currentView === 'CASH_REGISTER' && <CashRegister accounts={accounts} sales={sales} expenses={expenses} investors={investors} onAddAccount={handleAddAccount} onAction={handleAction} onSelectAccount={handleSelectAccountForOperations} onSetMainAccount={handleSetMainAccount} onUpdateAccount={handleUpdateAccount} isManager={isManager} totalExpectedProfit={totalExpectedProfit} realizedPeriodProfit={realizedPeriodProfit} myProfitPeriod={myProfitPeriod} setMyProfitPeriod={setMyProfitPeriod} appSettings={appSettings} />}
-      {currentView === 'CONTRACTS' && (
-        <Contracts
-            sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
-            customers={customers}
-            accounts={accounts}
-            activeTab={activeContractTab}
-            onTabChange={setActiveContractTab}
-            onViewSchedule={handleViewSaleSchedule}
-            onEditSale={handleStartEditSale}
-            onDeleteSale={handleDeleteSale}
-            readOnly={isInvestor}
-            user={user}
-            appSettings={appSettings}
-        />
-      )}
-      {currentView === 'INVESTORS' && <Investors investors={investors} onAddInvestor={handleAddInvestor} onUpdateInvestor={handleUpdateInvestor} onDeleteInvestor={handleDeleteInvestor} onViewDetails={handleSelectInvestor} appSettings={appSettings} />}
-      {currentView === 'INVESTOR_DETAILS' && selectedInvestorId && <InvestorDetails investor={investors.find(i => i.id === selectedInvestorId)!} account={accounts.find(a => a.ownerId === selectedInvestorId)} sales={sales} expenses={expenses} onBack={() => setCurrentView('INVESTORS')} appSettings={appSettings} />}
-      {currentView === 'PARTNERS' && (
-          <Partners
-            partnerships={partnerships}
-            investors={investors}
-            accounts={accounts}
-            sales={sales}
-            expenses={expenses}
-            onAddPartnership={handleAddPartnership}
-            onSelectAccount={handleSelectAccountForOperations}
-            appSettings={appSettings}
-          />
-      )}
-      {currentView === 'CUSTOMERS' && (
-        <Customers
-          customers={customers}
-          accounts={accounts}
-          investors={investors}
+
+      <Layout
+          currentView={currentView}
+          setView={setCurrentView}
+          onAction={handleAction}
+          onContractTabChange={setActiveContractTab}
           sales={sales}
-          onAddCustomer={handleAddCustomer}
-          onSelectCustomer={handleSelectCustomer}
-          onInitiatePayment={handleInitiateCustomerPayment}
-          onUndoPayment={handleUndoPayment}
-          onEditPayment={handleEditPayment}
-          onUpdateCustomer={handleUpdateCustomer}
           appSettings={appSettings}
-        />
-      )}
-      {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId && <CustomerDetails customer={customers.find(c => c.id === selectedCustomerId)!} sales={sales} accounts={accounts} investors={investors} onBack={() => setCurrentView(previousView)} onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment} onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer} initialSaleId={initialSaleIdForDetails} appSettings={appSettings} />}
-      {currentView === 'MANAGE_PRODUCTS' && <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} appSettings={appSettings} />}
-      {currentView === 'OPERATIONS' && (
-        <Operations
-            sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
-            expenses={isInvestor ? expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id) : expenses}
-            accounts={accounts}
-            customers={customers}
-            initialAccountId={operationsAccountId}
-            onDelete={handleDeleteOperation}
-            appSettings={appSettings}
-        />
-      )}
-      {currentView === 'REPORTS' && reportData && <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters} data={reportData} appSettings={appSettings} />}
+          customers={customers}
+          user={user}
+          activeInvestor={activeInvestor}
+          onNavigateToProfile={() => setCurrentView('PROFILE')}
+          isOnline={isOnline}
+          isSyncing={isSyncing}
+      >
+          <div
+              {...swipeHandlers}
+              style={{
+                  transform: `translateX(${swipeX}px)`,
+                  transition: isSwiping
+                      ? "none"
+                      : "transform 0.28s cubic-bezier(.22,.61,.36,1)",
+                  willChange: "transform"
+              }}
+          >
+              {/* ... (Layout Children remain exactly the same) ... */}
+              {currentView === 'DASHBOARD' && !isInvestor &&
+                  <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital}
+                             accountBalances={accountBalances} onAction={handleAction}
+                             onSelectCustomer={handleSelectCustomer} onInitiatePayment={handleInitiateDashboardPayment}
+                             accounts={accounts} appSettings={appSettings}/>}
+              {currentView === 'DASHBOARD' && isInvestor && activeInvestor &&
+                  <InvestorDashboard sales={sales} expenses={expenses} accounts={accounts} investor={activeInvestor}
+                                     appSettings={appSettings}/>}
+              {currentView === 'CASH_REGISTER' &&
+                  <CashRegister accounts={accounts} sales={sales} expenses={expenses} investors={investors}
+                                onAddAccount={handleAddAccount} onAction={handleAction}
+                                onSelectAccount={handleSelectAccountForOperations}
+                                onSetMainAccount={handleSetMainAccount} onUpdateAccount={handleUpdateAccount}
+                                isManager={isManager} totalExpectedProfit={totalExpectedProfit}
+                                realizedPeriodProfit={realizedPeriodProfit} myProfitPeriod={myProfitPeriod}
+                                setMyProfitPeriod={setMyProfitPeriod} appSettings={appSettings}/>}
+              {currentView === 'CONTRACTS' && (
+                  <Contracts
+                      sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
+                      customers={customers}
+                      accounts={accounts}
+                      activeTab={activeContractTab}
+                      onTabChange={setActiveContractTab}
+                      onViewSchedule={handleViewSaleSchedule}
+                      onEditSale={handleStartEditSale}
+                      onDeleteSale={handleDeleteSale}
+                      readOnly={isInvestor}
+                      user={user}
+                      appSettings={appSettings}
+                  />
+              )}
+              {currentView === 'INVESTORS' && <Investors investors={investors} onAddInvestor={handleAddInvestor}
+                                                         onUpdateInvestor={handleUpdateInvestor}
+                                                         onDeleteInvestor={handleDeleteInvestor}
+                                                         onViewDetails={handleSelectInvestor}
+                                                         appSettings={appSettings}/>}
+              {currentView === 'INVESTOR_DETAILS' && selectedInvestorId &&
+                  <InvestorDetails investor={investors.find(i => i.id === selectedInvestorId)!}
+                                   account={accounts.find(a => a.ownerId === selectedInvestorId)} sales={sales}
+                                   expenses={expenses} onBack={() => setCurrentView('INVESTORS')}
+                                   appSettings={appSettings}/>}
+              {currentView === 'PARTNERS' && (
+                  <Partners
+                      partnerships={partnerships}
+                      investors={investors}
+                      accounts={accounts}
+                      sales={sales}
+                      expenses={expenses}
+                      onAddPartnership={handleAddPartnership}
+                      onSelectAccount={handleSelectAccountForOperations}
+                      appSettings={appSettings}
+                  />
+              )}
+              {currentView === 'CUSTOMERS' && (
+                  <Customers
+                      customers={customers}
+                      accounts={accounts}
+                      investors={investors}
+                      sales={sales}
+                      onAddCustomer={handleAddCustomer}
+                      onSelectCustomer={handleSelectCustomer}
+                      onInitiatePayment={handleInitiateCustomerPayment}
+                      onUndoPayment={handleUndoPayment}
+                      onEditPayment={handleEditPayment}
+                      onUpdateCustomer={handleUpdateCustomer}
+                      appSettings={appSettings}
+                  />
+              )}
+              {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId &&
+                  <CustomerDetails customer={customers.find(c => c.id === selectedCustomerId)!} sales={sales}
+                                   accounts={accounts} investors={investors} onBack={() => setCurrentView(previousView)}
+                                   onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment}
+                                   onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer}
+                                   initialSaleId={initialSaleIdForDetails} appSettings={appSettings}/>}
+              {currentView === 'MANAGE_PRODUCTS' &&
+                  <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct}
+                            onDeleteProduct={handleDeleteProduct} appSettings={appSettings}/>}
+              {currentView === 'OPERATIONS' && (
+                  <Operations
+                      sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
+                      expenses={isInvestor ? expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id) : expenses}
+                      accounts={accounts}
+                      customers={customers}
+                      initialAccountId={operationsAccountId}
+                      onDelete={handleDeleteOperation}
+                      appSettings={appSettings}
+                  />
+              )}
+              {currentView === 'REPORTS' && reportData &&
+                  <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters}
+                           data={reportData} appSettings={appSettings}/>}
 
-      {currentView === 'CREATE_INCOME' && <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts} sales={sales} onClose={() => setCurrentView('DASHBOARD')} onSubmit={handleIncomeSubmit} onSelectCustomer={() => openSelection('SELECT_CUSTOMER', draftSaleData)} appSettings={appSettings} />}
-      {currentView === 'CREATE_EXPENSE' && <NewExpense investors={investors} accounts={accounts} onClose={() => setCurrentView('DASHBOARD')} onSubmit={handleExpenseSubmit} appSettings={appSettings} />}
-      {currentView === 'CREATE_SALE' && <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products} accounts={accounts} onClose={() => { setCurrentView('DASHBOARD'); setEditingSale(null); }} onSelectCustomer={(data) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} appSettings={appSettings} />}
-      {currentView === 'SELECT_CUSTOMER' && <SelectionList title="Выберите клиента" items={customers.map(c => ({ id: c.id, title: c.name, subtitle: c.phone }))} onSelect={(id) => handleSelection('customerId', id)} onCancel={() => setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE')} onAddNew={handleQuickAddCustomer} />}
-      {currentView === 'EMPLOYEES' && <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee} onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee} appSettings={appSettings} />}
-      {currentView === 'TARIFFS' && <Tariffs user={user} />}
+              {currentView === 'CREATE_INCOME' &&
+                  <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts}
+                             sales={sales} onClose={() => setCurrentView('DASHBOARD')} onSubmit={handleIncomeSubmit}
+                             onSelectCustomer={() => openSelection('SELECT_CUSTOMER', draftSaleData)}
+                             appSettings={appSettings}/>}
+              {currentView === 'CREATE_EXPENSE' &&
+                  <NewExpense investors={investors} accounts={accounts} onClose={() => setCurrentView('DASHBOARD')}
+                              onSubmit={handleExpenseSubmit} appSettings={appSettings}/>}
+              {currentView === 'CREATE_SALE' &&
+                  <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products}
+                           accounts={accounts} onClose={() => {
+                      setCurrentView('DASHBOARD');
+                      setEditingSale(null);
+                  }} onSelectCustomer={(data) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale}
+                           appSettings={appSettings}/>}
+              {currentView === 'SELECT_CUSTOMER' && <SelectionList title="Выберите клиента" items={customers.map(c => ({
+                  id: c.id,
+                  title: c.name,
+                  subtitle: c.phone
+              }))} onSelect={(id) => handleSelection('customerId', id)}
+                                                                   onCancel={() => setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE')}
+                                                                   onAddNew={handleQuickAddCustomer}/>}
+              {currentView === 'EMPLOYEES' &&
+                  <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee}
+                             onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee}
+                             appSettings={appSettings}/>}
+              {currentView === 'TARIFFS' && <Tariffs user={user}/>}
 
-      {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onNavigate={setCurrentView} onImportData={handleImportData} />}
+              {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings}
+                                                       onNavigate={setCurrentView} onImportData={handleImportData}/>}
 
-      {currentView === 'INTEGRATIONS' && <Integrations appSettings={appSettings} onUpdateSettings={handleUpdateSettings} onBack={() => setCurrentView('SETTINGS')} whatsappRefreshKey={whatsappRefreshKey}  // ← Обязательно!
-    onSettingsChanged={() => {
-        // Опционально: дополнительный код после сохранения
-        console.log('Настройки WhatsApp обновлены');
-    }} />}
-      {currentView === 'CALCULATOR' && (
-    <Calculator
-        appSettings={appSettings}
-        userPhone={user?.phone}
-        onBack={() => setCurrentView('SETTINGS')}
-        onSaveSettings={handleUpdateSettings}
-    />
-)}
+              {currentView === 'INTEGRATIONS' &&
+                  <Integrations appSettings={appSettings} onUpdateSettings={handleUpdateSettings}
+                                onBack={() => setCurrentView('SETTINGS')}
+                                whatsappRefreshKey={whatsappRefreshKey}  // ← Обязательно!
+                                onSettingsChanged={() => {
+                                    // Опционально: дополнительный код после сохранения
+                                    console.log('Настройки WhatsApp обновлены');
+                                }}/>}
+              {currentView === 'CALCULATOR' && (
+                  <Calculator
+                      appSettings={appSettings}
+                      userPhone={user?.phone}
+                      onBack={() => setCurrentView('SETTINGS')}
+                      onSaveSettings={handleUpdateSettings}
+                  />
+              )}
 
-      {currentView === 'PROFILE' && user && <Profile user={user} onUpdateProfile={handleUpdateProfile} onBack={() => setCurrentView('MORE')} onLogout={() => { localStorage.removeItem('user'); localStorage.removeItem('token'); setUser(null); }} />}
-      {currentView === 'ADMIN_PANEL' && <AdminPanel />}
-      {currentView === 'MORE' && !isInvestor && (<div className="space-y-4 animate-fade-in pb-20"><button onClick={() => setCurrentView('PROFILE')} className="w-full bg-slate-900 text-white p-6 rounded-2xl flex items-center gap-4 hover:bg-slate-800"><div className="w-16 h-16 bg-indigo-500 rounded-full flex items-center justify-center text-2xl font-bold">{user.name.charAt(0).toUpperCase()}</div><div><h2 className="text-xl font-bold text-left">{user.name}</h2><p className="text-slate-400 text-sm capitalize text-left">{user.role}</p><p className="text-slate-500 text-xs mt-1 text-left">{user.email}</p></div></button><div className="space-y-2 pt-4"><div className="bg-white rounded-xl border border-slate-100 overflow-hidden"><button onClick={() => toggleMoreSection('CASH')} className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"><div className="flex items-center gap-3"><div className="bg-emerald-100 text-emerald-600 p-2 rounded-lg">{ICONS.Wallet}</div><span className="font-semibold text-slate-800">Касса</span></div><span className={`text-slate-400 transition-transform ${moreExpandedSection === 'CASH' ? 'rotate-90' : ''}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button> {moreExpandedSection === 'CASH' && (<div className="bg-slate-50 border-t border-slate-100 p-2 space-y-1"><button onClick={() => setCurrentView('CASH_REGISTER')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.Wallet}</span> Счета</button><button onClick={() => handleAction('INCOME')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.Income}</span> Приход</button><button onClick={() => handleAction('EXPENSE')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.Expense}</span> Расход</button><button onClick={() => handleAction('OPERATIONS')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.List}</span> История</button></div>)}</div><div className="bg-white rounded-xl border border-slate-100 overflow-hidden"><button onClick={() => toggleMoreSection('CONTRACTS')} className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"><div className="flex items-center gap-3"><div className="bg-indigo-100 text-indigo-600 p-2 rounded-lg">{ICONS.File}</div><span className="font-semibold text-slate-800">Договоры</span></div><span className={`text-slate-400 transition-transform ${moreExpandedSection === 'CONTRACTS' ? 'rotate-90' : ''}`}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button> {moreExpandedSection === 'CONTRACTS' && (<div className="bg-slate-50 border-t border-slate-100 p-2 space-y-1"><button onClick={() => handleAction('CREATE_SALE')} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2"><span className="opacity-70">{ICONS.AddSmall}</span> Оформить</button><button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('ACTIVE'); }} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Check}</span> Активные</div>{contractCounts.active > 0 && <span className="text-xs bg-indigo-100 text-indigo-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.active}</span>}</button><button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('OVERDUE'); }} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Alert}</span> Просроченные</div>{contractCounts.overdue > 0 && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.overdue}</span>}</button><button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('ARCHIVE'); }} className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Clock}</span> Архив</div>{contractCounts.archive > 0 && <span className="text-xs bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.archive}</span>}</button></div>)}</div><button onClick={() => setCurrentView('REPORTS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-sky-100 text-sky-600 p-2 rounded-lg">{ICONS.Dashboard}</div><span className="font-semibold text-slate-800">Отчеты</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button><button onClick={() => setCurrentView('CUSTOMERS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-orange-100 text-orange-600 p-2 rounded-lg">{ICONS.Customers}</div><span className="font-semibold text-slate-800">Клиенты</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button><button onClick={() => setCurrentView('INVESTORS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-purple-100 text-purple-600 p-2 rounded-lg">{ICONS.Users}</div><span className="font-semibold text-slate-800">Инвесторы</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button>  {user.role === 'manager' && (<button onClick={() => setCurrentView('EMPLOYEES')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-blue-100 text-blue-600 p-2 rounded-lg">{ICONS.Employees}</div><span className="font-semibold text-slate-800">Сотрудники</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button>)} <button onClick={() => setCurrentView('TARIFFS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-emerald-100 text-emerald-600 p-2 rounded-lg">{ICONS.Tariffs}</div><span className="font-semibold text-slate-800">Тарифы</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button> {user.role === 'admin' && (<button onClick={() => setCurrentView('ADMIN_PANEL')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-red-100 text-red-600 p-2 rounded-lg">{ICONS.Crown}</div><span className="font-semibold text-slate-800">Админ панель</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button>)} <button onClick={() => setCurrentView('SETTINGS')} className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50"><div className="flex items-center gap-3"><div className="bg-slate-100 text-slate-600 p-2 rounded-lg">{ICONS.Settings}</div><span className="font-semibold text-slate-800">Настройки</span></div><span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></button></div><div className="pt-4"><button onClick={() => { localStorage.removeItem('user'); localStorage.removeItem('token'); setUser(null); }} className="w-full p-4 bg-red-50 text-red-600 rounded-xl font-medium">Выйти из системы</button></div></div>)}
-    </Layout>
-          </div>
-  );
+              {currentView === 'PROFILE' && user &&
+                  <Profile user={user} onUpdateProfile={handleUpdateProfile} onBack={() => setCurrentView('MORE')}
+                           onLogout={() => {
+                               localStorage.removeItem('user');
+                               localStorage.removeItem('token');
+                               setUser(null);
+                           }}/>}
+              {currentView === 'ADMIN_PANEL' && <AdminPanel/>}
+              {currentView === 'MORE' && !isInvestor && (<div className="space-y-4 animate-fade-in pb-20">
+                  <button onClick={() => setCurrentView('PROFILE')}
+                          className="w-full bg-slate-900 text-white p-6 rounded-2xl flex items-center gap-4 hover:bg-slate-800">
+                      <div
+                          className="w-16 h-16 bg-indigo-500 rounded-full flex items-center justify-center text-2xl font-bold">{user.name.charAt(0).toUpperCase()}</div>
+                      <div><h2 className="text-xl font-bold text-left">{user.name}</h2><p
+                          className="text-slate-400 text-sm capitalize text-left">{user.role}</p><p
+                          className="text-slate-500 text-xs mt-1 text-left">{user.email}</p></div>
+                  </button>
+                  <div className="space-y-2 pt-4">
+                      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+                          <button onClick={() => toggleMoreSection('CASH')}
+                                  className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
+                              <div className="flex items-center gap-3">
+                                  <div className="bg-emerald-100 text-emerald-600 p-2 rounded-lg">{ICONS.Wallet}</div>
+                                  <span className="font-semibold text-slate-800">Касса</span></div>
+                              <span
+                                  className={`text-slate-400 transition-transform ${moreExpandedSection === 'CASH' ? 'rotate-90' : ''}`}><svg
+                                  width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline
+                                  points="9 18 15 12 9 6"/></svg></span></button>
+                          {moreExpandedSection === 'CASH' && (
+                              <div className="bg-slate-50 border-t border-slate-100 p-2 space-y-1">
+                                  <button onClick={() => setCurrentView('CASH_REGISTER')}
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                                      <span className="opacity-70">{ICONS.Wallet}</span> Счета
+                                  </button>
+                                  <button onClick={() => handleAction('INCOME')}
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                                      <span className="opacity-70">{ICONS.Income}</span> Приход
+                                  </button>
+                                  <button onClick={() => handleAction('EXPENSE')}
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                                      <span className="opacity-70">{ICONS.Expense}</span> Расход
+                                  </button>
+                                  <button onClick={() => handleAction('OPERATIONS')}
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                                      <span className="opacity-70">{ICONS.List}</span> История
+                                  </button>
+                              </div>)}</div>
+                      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+                          <button onClick={() => toggleMoreSection('CONTRACTS')}
+                                  className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
+                              <div className="flex items-center gap-3">
+                                  <div className="bg-indigo-100 text-indigo-600 p-2 rounded-lg">{ICONS.File}</div>
+                                  <span className="font-semibold text-slate-800">Договоры</span></div>
+                              <span
+                                  className={`text-slate-400 transition-transform ${moreExpandedSection === 'CONTRACTS' ? 'rotate-90' : ''}`}><svg
+                                  width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline
+                                  points="9 18 15 12 9 6"/></svg></span></button>
+                          {moreExpandedSection === 'CONTRACTS' && (
+                              <div className="bg-slate-50 border-t border-slate-100 p-2 space-y-1">
+                                  <button onClick={() => handleAction('CREATE_SALE')}
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                                      <span className="opacity-70">{ICONS.AddSmall}</span> Оформить
+                                  </button>
+                                  <button onClick={() => {
+                                      setCurrentView('CONTRACTS');
+                                      setActiveContractTab('ACTIVE');
+                                  }}
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2"><span
+                                          className="opacity-70">{ICONS.Check}</span> Активные
+                                      </div>
+                                      {contractCounts.active > 0 && <span
+                                          className="text-xs bg-indigo-100 text-indigo-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.active}</span>}
+                                  </button>
+                                  <button onClick={() => {
+                                      setCurrentView('CONTRACTS');
+                                      setActiveContractTab('OVERDUE');
+                                  }}
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2"><span
+                                          className="opacity-70">{ICONS.Alert}</span> Просроченные
+                                      </div>
+                                      {contractCounts.overdue > 0 && <span
+                                          className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.overdue}</span>}
+                                  </button>
+                                  <button onClick={() => {
+                                      setCurrentView('CONTRACTS');
+                                      setActiveContractTab('ARCHIVE');
+                                  }}
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2"><span
+                                          className="opacity-70">{ICONS.Clock}</span> Архив
+                                      </div>
+                                      {contractCounts.archive > 0 && <span
+                                          className="text-xs bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.archive}</span>}
+                                  </button>
+                              </div>)}</div>
+                      <button onClick={() => setCurrentView('REPORTS')}
+                              className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                          <div className="flex items-center gap-3">
+                              <div className="bg-sky-100 text-sky-600 p-2 rounded-lg">{ICONS.Dashboard}</div>
+                              <span className="font-semibold text-slate-800">Отчеты</span></div>
+                          <span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                                                stroke="currentColor" strokeWidth="2"
+                                                                strokeLinecap="round" strokeLinejoin="round"><polyline
+                              points="9 18 15 12 9 6"/></svg></span></button>
+                      <button onClick={() => setCurrentView('CUSTOMERS')}
+                              className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                          <div className="flex items-center gap-3">
+                              <div className="bg-orange-100 text-orange-600 p-2 rounded-lg">{ICONS.Customers}</div>
+                              <span className="font-semibold text-slate-800">Клиенты</span></div>
+                          <span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                                                stroke="currentColor" strokeWidth="2"
+                                                                strokeLinecap="round" strokeLinejoin="round"><polyline
+                              points="9 18 15 12 9 6"/></svg></span></button>
+                      <button onClick={() => setCurrentView('INVESTORS')}
+                              className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                          <div className="flex items-center gap-3">
+                              <div className="bg-purple-100 text-purple-600 p-2 rounded-lg">{ICONS.Users}</div>
+                              <span className="font-semibold text-slate-800">Инвесторы</span></div>
+                          <span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                                                stroke="currentColor" strokeWidth="2"
+                                                                strokeLinecap="round" strokeLinejoin="round"><polyline
+                              points="9 18 15 12 9 6"/></svg></span></button>
+                      {user.role === 'manager' && (<button onClick={() => setCurrentView('EMPLOYEES')}
+                                                           className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                          <div className="flex items-center gap-3">
+                              <div className="bg-blue-100 text-blue-600 p-2 rounded-lg">{ICONS.Employees}</div>
+                              <span className="font-semibold text-slate-800">Сотрудники</span></div>
+                          <span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                                                stroke="currentColor" strokeWidth="2"
+                                                                strokeLinecap="round" strokeLinejoin="round"><polyline
+                              points="9 18 15 12 9 6"/></svg></span></button>)}
+                      <button onClick={() => setCurrentView('TARIFFS')}
+                              className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                          <div className="flex items-center gap-3">
+                              <div className="bg-emerald-100 text-emerald-600 p-2 rounded-lg">{ICONS.Tariffs}</div>
+                              <span className="font-semibold text-slate-800">Тарифы</span></div>
+                          <span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                                                stroke="currentColor" strokeWidth="2"
+                                                                strokeLinecap="round" strokeLinejoin="round"><polyline
+                              points="9 18 15 12 9 6"/></svg></span></button>
+                      {user.role === 'admin' && (<button onClick={() => setCurrentView('ADMIN_PANEL')}
+                                                         className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                          <div className="flex items-center gap-3">
+                              <div className="bg-red-100 text-red-600 p-2 rounded-lg">{ICONS.Crown}</div>
+                              <span className="font-semibold text-slate-800">Админ панель</span></div>
+                          <span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                                                stroke="currentColor" strokeWidth="2"
+                                                                strokeLinecap="round" strokeLinejoin="round"><polyline
+                              points="9 18 15 12 9 6"/></svg></span></button>)}
+                      <button onClick={() => setCurrentView('SETTINGS')}
+                              className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                          <div className="flex items-center gap-3">
+                              <div className="bg-slate-100 text-slate-600 p-2 rounded-lg">{ICONS.Settings}</div>
+                              <span className="font-semibold text-slate-800">Настройки</span></div>
+                          <span className="text-slate-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                                                stroke="currentColor" strokeWidth="2"
+                                                                strokeLinecap="round" strokeLinejoin="round"><polyline
+                              points="9 18 15 12 9 6"/></svg></span></button>
+                  </div>
+                  <div className="pt-4">
+                      <button onClick={() => {
+                          localStorage.removeItem('user');
+                          localStorage.removeItem('token');
+                          setUser(null);
+                      }} className="w-full p-4 bg-red-50 text-red-600 rounded-xl font-medium">Выйти из системы
+                      </button>
+                  </div>
+              </div>)}
+              </div>
+      </Layout>
+
+);
 };
 
 export default App;
