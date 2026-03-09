@@ -824,14 +824,14 @@ if (isLoading) {
 if (!user) {
 
   if (isNative) {
-    return <Auth />
+    return <Auth onLogin={handleAuthSuccess} />
   }
 
   if (isLanding) {
     return <Landing />
   }
 
-  return <Auth />
+  return <Auth onLogin={handleAuthSuccess} />
 }
 
   // PUBLIC MODE - No Auth required
