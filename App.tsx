@@ -51,9 +51,7 @@ async function enablePersistentStorage() {
 
 const App: React.FC = () => {
     const path = window.location.pathname
-  if (path === "/") {
-  return <Landing />
-}
+const isLanding = path === "/"
   // Auth State
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -116,15 +114,7 @@ const App: React.FC = () => {
   navigator.userAgent.includes("wv")
 
 
-useEffect(() => {
 
-  const savedUser = localStorage.getItem("user")
-
-  if (savedUser) {
-    setUser(JSON.parse(savedUser))
-  }
-
-}, [])
 
 
 useEffect(() => {
@@ -932,12 +922,23 @@ const handleUpdateSettings = async (newSettings: AppSettings) => {
 
 
 
-  if (isLoading) {
+
+
+if (isLoading) {
   return <SplashScreen progress={loadingProgress} />
 }
 
 if (!user) {
-  return <Landing />
+
+  if (isNative) {
+    return <Login />
+  }
+
+  if (isLanding) {
+    return <Landing />
+  }
+
+  return <Login />
 }
 
   // PUBLIC MODE - No Auth required
