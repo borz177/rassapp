@@ -117,14 +117,31 @@ useEffect(() => {
   })
 }, [currentView])
 
-
 // функция возврата назад
+const handleSwipeBack = () => {
+  if (currentView === 'DASHBOARD') return
+
+  setViewHistory(prev => {
+    if (prev.length <= 1) return prev
+
+    const newHistory = prev.slice(0, -1)
+    const previousView = newHistory[newHistory.length - 1]
+
+    setCurrentView(previousView)
+
+    return newHistory
+  })
+}
+
+
+// swipe обработчик
 const swipeHandlers = useSwipeable({
   onSwiping: (event) => {
     if (currentView === 'DASHBOARD') return
+
     if (event.deltaX > 0) {
       setIsSwiping(true)
-      setSwipeX(event.deltaX)
+      setSwipeX(Math.min(event.deltaX, 300))
     }
   },
 
@@ -895,7 +912,10 @@ if (isPublicMode) {
       <div {...swipeHandlers}
       style={{
     transform: `translateX(${swipeX}px)`,
-    transition: isSwiping ? 'none' : 'transform 0.25s ease-out'
+    transition: isSwiping
+      ? 'none'
+      : 'transform 0.28s cubic-bezier(.22,.61,.36,1)',
+    willChange: 'transform'
   }}
       >
     <Layout
