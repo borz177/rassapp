@@ -31,6 +31,7 @@ import { api } from './services/api';
 import { ICONS } from './constants';
 import SplashScreen from "./components/SplashScreen"
 import { useSwipeable } from "react-swipeable"
+
 import Landing from './components/Landing.tsx';
 
 
@@ -61,6 +62,7 @@ const isLanding = path === "/"
 
   // App State
   const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
+  const [viewHistory, setViewHistory] = useState<ViewState[]>(['DASHBOARD'])
   const [activeContractTab, setActiveContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
 
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -100,11 +102,21 @@ const isLanding = path === "/"
   });
 
 
-  const swipeHandlers = useSwipeable({
+const navigateTo = (view: ViewState) => {
+  setViewHistory(prev => [...prev, view])
+  setCurrentView(view)
+}
+
+const swipeHandlers = useSwipeable({
   onSwipedRight: () => {
-    if (currentView !== 'DASHBOARD') {
-      setCurrentView('DASHBOARD')
-    }
+    setViewHistory(prev => {
+      if (prev.length <= 1) return prev
+
+      const newHistory = prev.slice(0, -1)
+      setCurrentView(newHistory[newHistory.length - 1])
+
+      return newHistory
+    })
   }
 })
 
@@ -503,17 +515,41 @@ const dashboardStats = useMemo(() => {
       await loadData(loggedInUser);
   };
 
-  const handleAction = (action: string) => {
-      switch (action) {
-          case 'CREATE_SALE': setDraftSaleData({}); setEditingSale(null); setCurrentView('CREATE_SALE'); break;
-          case 'INCOME': setDraftSaleData({}); setCurrentView('CREATE_INCOME'); break;
-          case 'EXPENSE': setCurrentView('CREATE_EXPENSE'); break;
-          case 'OPERATIONS': setOperationsAccountId(null); setCurrentView('OPERATIONS'); break;
-          case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break;
-          case 'ADD_CUSTOMER': setCurrentView('CUSTOMERS'); break;
-          case 'ADD_PRODUCT': setCurrentView('MANAGE_PRODUCTS'); break;
-      }
-  };
+ const handleAction = (action: string) => {
+  switch (action) {
+    case 'CREATE_SALE':
+      setDraftSaleData({})
+      setEditingSale(null)
+      navigateTo('CREATE_SALE')
+      break
+
+    case 'INCOME':
+      setDraftSaleData({})
+      navigateTo('CREATE_INCOME')
+      break
+
+    case 'EXPENSE':
+      navigateTo('CREATE_EXPENSE')
+      break
+
+    case 'OPERATIONS':
+      setOperationsAccountId(null)
+      navigateTo('OPERATIONS')
+      break
+
+    case 'MANAGE_PRODUCTS':
+      navigateTo('MANAGE_PRODUCTS')
+      break
+
+    case 'ADD_CUSTOMER':
+      navigateTo('CUSTOMERS')
+      break
+
+    case 'ADD_PRODUCT':
+      navigateTo('MANAGE_PRODUCTS')
+      break
+  }
+}
 
   // ... (CRUD helpers updateList, removeFromList, handleSaveSale, etc. kept same) ...
   const updateList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, item: T) => { setter(prev => { const idx = prev.findIndex(i => i.id === item.id); if (idx >= 0) return prev.map(i => i.id === item.id ? item : i); return [item, ...prev]; }); };
