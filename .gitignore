@@ -7,16 +7,43 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Node
 node_modules
 dist
 dist-ssr
+.vite
 *.local
 
-# Editor directories and files
+# Electron build
+release
+win-unpacked
+dist-electron
+*.exe
+*.blockmap
+
+# Android build
+android/.gradle
+android/build
+android/app/build
+android/local.properties
+android/.idea
+android/*.iml
+
+# Signing keys (ВАЖНО)
+*.jks
+*.keystore
+android/key.properties
+
+# IDE
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Misc
 *.suo
 *.ntvs*
 *.njsproj

@@ -1,5 +1,5 @@
 {
-"name": "finuchet",
+  "name": "finuchet",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,15 +9,20 @@
     "build": "vite build",
     "preview": "vite preview",
     "start-electron": "electron .",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "apk": "npm run build && npx cap sync android && cd android && gradlew assembleDebug"
   },
-
   "dependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
     "@google/genai": "^1.40.0",
     "jspdf": "^4.2.0",
     "lucide-react": "^0.563.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-swipeable": "^7.0.2",
     "recharts": "^3.7.0"
   },
   "devDependencies": {
@@ -30,16 +35,36 @@
     "vite": "^6.2.0",
     "vite-plugin-pwa": "^1.2.0"
   },
-
   "build": {
     "appId": "com.finuchet.app",
     "productName": "FinUchet",
+    "asar": true,
+    "compression": "maximum",
+    "electronVersion": "40.8.0",
+    "files": [
+      "dist/**/*",
+      "electron.cjs",
+      "build/**/*",
+      "package.json"
+    ],
     "directories": {
-      "buildResources": "build"
+      "buildResources": "build",
+      "output": "release"
     },
     "win": {
-      "target": "nsis",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
-  }
+}

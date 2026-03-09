@@ -50,6 +50,15 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+          // увеличиваем лимит файла для PWA
+  maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+          // игнорируем electron сборки
+  globIgnores: [
+    '**/win-unpacked/**',
+    '**/release/**',
+    '**/android/**',
+    '**/electron.cjs'
+  ],
           navigateFallback: '/index.html',
           runtimeCaching: [
             {

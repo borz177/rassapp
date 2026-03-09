@@ -1,0 +1,33 @@
+.splash {
+  height: 100vh;
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.logo {
+  width: 120px;
+  margin-bottom: 40px;
+}
+
+.loader {
+  width: 220px;
+  height: 6px;
+  background: #1e293b;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bar {
+  height: 100%;
+  background: #22c55e;
+  transition: width .3s ease;
+}
+
+.text {
+  margin-top: 20px;
+  color: #94a3b8;
+  font-size: 14px;
+}
