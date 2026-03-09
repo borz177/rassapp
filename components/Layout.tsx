@@ -265,113 +265,112 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
         )}
       </header>
 
-      {/* Desktop Sidebar */}
 {/* Desktop Top Navbar */}
-<header
-  className="hidden md:flex items-center justify-between px-8 h-16 fixed top-0 left-0 right-0 z-40 shadow-md"
-  style={{ backgroundColor: "#0F71F2" }}
->
-  {/* LEFT SIDE */}
-  <div className="flex items-center gap-10">
+        <header
+            className="hidden md:flex items-center justify-between px-8 h-16 sticky top-0 z-40 shadow-md bg-indigo-600 text-white">
+            {/* LEFT SIDE */}
+            <div className="flex items-center gap-10">
 
-    <h1 className="text-xl font-bold text-white tracking-tight">
-      {appSettings.companyName}
-    </h1>
+                <h1 className="text-xl font-bold tracking-tight">
+                    {appSettings.companyName}
+                </h1>
 
-    <nav className="flex items-center gap-6">
-      {sidebarItems.map((item) => {
-        const hasSubItems = "subItems" in item;
+                <nav className="flex items-center gap-6">
+                    {sidebarItems.map((item) => {
+                        const hasSubItems = "subItems" in item;
 
-        return (
-          <div key={item.id} className="relative group">
+                        return (
+                            <div key={item.id} className="relative group">
 
-            <button
-              onClick={() => !hasSubItems && setView(item.id)}
-              className={`flex items-center gap-2 text-sm font-medium transition-all
+                                <button
+                                    onClick={() => !hasSubItems && setView(item.id)}
+                                    className={`flex items-center gap-2 text-sm font-medium transition-all
                 ${
-                  currentView === item.id
-                    ? "text-white border-b-2 border-white pb-1"
-                    : "text-white/80 hover:text-white"
-                }
+                                        currentView === item.id
+                                            ? "text-white border-b-2 border-white pb-1"
+                                            : "text-white/80 hover:text-white"
+                                    }
               `}
-            >
-              {item.icon}
-              {item.label}
-            </button>
+                                >
+                                    {item.icon}
+                                    {item.label}
+                                </button>
 
-            {/* Dropdown */}
-            {hasSubItems && (
-              <div
-                className="absolute top-full left-0 mt-3 w-56 bg-white rounded-xl shadow-xl
+                                {/* Dropdown */}
+                                {hasSubItems && (
+                                    <div
+                                        className="absolute top-full left-0 mt-3 w-56 bg-white rounded-xl shadow-xl
                 opacity-0 invisible group-hover:opacity-100 group-hover:visible
                 transition-all duration-200"
-              >
-                <div className="py-2">
+                                    >
+                                        <div className="py-2">
 
-                  {item.subItems
-                    .filter((s) => s.visible !== false)
-                    .map((sub, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => handleSubItemClick(item.id, sub)}
-                        className="flex items-center justify-between w-full px-4 py-2 text-sm
+                                            {item.subItems
+                                                .filter((s) => s.visible !== false)
+                                                .map((sub, idx) => (
+                                                    <button
+                                                        key={idx}
+                                                        onClick={() => handleSubItemClick(item.id, sub)}
+                                                        className="flex items-center justify-between w-full px-4 py-2 text-sm
                         text-slate-700 hover:bg-slate-100"
-                      >
-                        <div className="flex items-center gap-2">
-                          {sub.icon}
-                          {sub.label}
-                        </div>
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            {sub.icon}
+                                                            {sub.label}
+                                                        </div>
 
-                        {sub.count > 0 && (
-                          <span className="text-xs bg-slate-200 px-2 py-0.5 rounded-full">
+                                                        {sub.count > 0 && (
+                                                            <span
+                                                                className="text-xs bg-slate-200 px-2 py-0.5 rounded-full">
                             {sub.count}
                           </span>
-                        )}
-                      </button>
-                    ))}
+                                                        )}
+                                                    </button>
+                                                ))}
 
-                </div>
-              </div>
-            )}
+                                        </div>
+                                    </div>
+                                )}
 
-          </div>
-        );
-      })}
-    </nav>
-  </div>
+                            </div>
+                        );
+                    })}
+                </nav>
+            </div>
 
-  {/* RIGHT SIDE */}
-  <div className="flex items-center gap-6 text-white">
+            {/* RIGHT SIDE */}
+            <div className="flex items-center gap-6">
 
-    {!isOnline && (
-      <span className="text-xs bg-yellow-400/20 px-2 py-1 rounded">
+                {!isOnline && (
+                    <span className="text-xs bg-yellow-400/20 px-2 py-1 rounded">
         Офлайн
       </span>
-    )}
+                )}
 
-    {isOnline && isSyncing && (
-      <span className="text-xs bg-white/20 px-2 py-1 rounded">
+                {isOnline && isSyncing && (
+                    <span className="text-xs bg-white/20 px-2 py-1 rounded">
         Синхронизация...
       </span>
-    )}
+                )}
 
-    {user && (
-      <button
-        onClick={onNavigateToProfile}
-        className="flex items-center gap-2 hover:bg-white/10 px-3 py-2 rounded-lg transition"
-      >
-        <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center font-bold">
-          {user.name.charAt(0).toUpperCase()}
-        </div>
+                {user && (
+                    <button
+                        onClick={onNavigateToProfile}
+                        className="flex items-center gap-2 hover:bg-white/10 px-3 py-2 rounded-lg transition"
+                    >
+                        <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center font-bold">
+                            {user.name.charAt(0).toUpperCase()}
+                        </div>
 
-        <span className="text-sm font-medium">{user.name}</span>
-      </button>
-    )}
-  </div>
-</header>
+                        <span className="text-sm font-medium">{user.name}</span>
+                    </button>
+                )}
 
-      {/* Main Content Area - Updated margins and centering */}
-        <main className="flex-1 pt-20 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 flex flex-col h-full bg-slate-50">
+            </div>
+        </header>
+
+        {/* Main Content Area - Updated margins and centering */}
+        <main className="flex-1 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 flex flex-col h-full bg-slate-50">
             <div className="w-full max-w-7xl mx-auto h-full">
                 {children}
             </div>
