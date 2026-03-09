@@ -112,68 +112,70 @@ const App: React.FC = () => {
 
 useEffect(() => {
 
-  async function init() {
+ async function init() {
 
-    try {
+  try {
 
-      setLoadingProgress(10)
+    setLoadingProgress(10)
 
-     const me = await fetch("/api/auth/me", {
-  credentials: "include"
-})
+    const me = await fetch("/api/auth/me", {
+      credentials: "include"
+    })
 
-if (me.ok) {
+    if (me.ok) {
 
-  const userData = await me.json()
-  setUser(userData)
+      const userData = await me.json()
+      setUser(userData)
 
-} else {
-
-  console.log("not authorized")
-
-}
+      setLoadingProgress(40)
 
       const data = await fetch("/api/data", {
-  credentials: "include"
-})
+        credentials: "include"
+      })
 
-if (data.ok) {
+      if (data.ok) {
 
-  const parsed = await data.json()
+        const parsed = await data.json()
 
-  setCustomers(parsed.customers || [])
-  setProducts(parsed.products || [])
-  setSales(parsed.sales || [])
-  setExpenses(parsed.expenses || [])
-  setAccounts(parsed.accounts || [])
-  setInvestors(parsed.investors || [])
+        setCustomers(parsed.customers || [])
+        setProducts(parsed.products || [])
+        setSales(parsed.sales || [])
+        setExpenses(parsed.expenses || [])
+        setAccounts(parsed.accounts || [])
+        setInvestors(parsed.investors || [])
 
-}
+      }
 
-      setLoadingProgress(90)
+    } else {
 
-    } catch (e) {
+      console.log("User not logged in")
 
-      console.log("offline mode")
+      setUser(null)
 
     }
 
-    setLoadingProgress(100)
+    setLoadingProgress(90)
 
-    setTimeout(() => {
-      setIsLoading(false)
-    }, 300)
+  } catch (e) {
+
+    console.log("offline mode", e)
 
   }
 
-  init()
+  setLoadingProgress(100)
+
+  setTimeout(() => {
+    setIsLoading(false)
+  }, 300)
+
+}
+
+init()
 
 }, [])
 
 
-    if (isLoading) {
-  return <SplashScreen progress={loadingProgress} />
-}
+
 
   useEffect(() => {
       setReportFilters(prev => ({...prev, period: myProfitPeriod}));
@@ -865,7 +867,15 @@ const handleUpdateSettings = async (newSettings: AppSettings) => {
     setWhatsAppRefreshKey(prev => prev + 1);
 };
 
-  if (isLoading) { return <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">Загрузка...</div>; }
+
+
+  if (isLoading) {
+  return <SplashScreen progress={loadingProgress} />
+}
+
+if (!user) {
+  return <Landing />
+}
 
   // PUBLIC MODE - No Auth required
   // PUBLIC MODE - No Auth required
