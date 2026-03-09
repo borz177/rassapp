@@ -139,26 +139,41 @@ export default function Landing() {
 
                 <div className="flex justify-center gap-6 mt-10 flex-wrap">
 
-                    <a
-                        href="/downloads/FinUchet Setup.exe"
-                        className="bg-black text-white px-8 py-4 rounded-xl"
-                    >
-                        Windows
-                    </a>
+                    <section className="py-24 text-center">
 
-                    <a
-                        href="/downloads/app-release.apk"
-                        className="bg-green-600 text-white px-8 py-4 rounded-xl"
-                    >
-                        Android
-                    </a>
+                        <h2 className="text-3xl font-bold">
+                            Скачать FinUchet
+                        </h2>
 
-                    <a
-                        href="/app"
-                        className="border px-8 py-4 rounded-xl"
-                    >
-                        Открыть Web
-                    </a>
+                        <div className="flex justify-center gap-6 mt-10 flex-wrap">
+
+                            ```
+                            <a
+                                href="/downloads/finuchet-setup.exe"
+                                className="bg-black text-white px-8 py-4 rounded-xl"
+                            >
+                                Скачать для Windows
+                            </a>
+
+                            <a
+                                href="/downloads/FinUchet.apk"
+                                className="bg-green-600 text-white px-8 py-4 rounded-xl"
+                            >
+                                Скачать для Android
+                            </a>
+
+                            <a
+                                href="/app"
+                                className="border px-8 py-4 rounded-xl"
+                            >
+                                Открыть Web
+                            </a>
+                            ```
+
+                        </div>
+
+                    </section>
+
 
                 </div>
 
