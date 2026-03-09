@@ -63,6 +63,8 @@ const isLanding = path === "/"
   // App State
   const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
   const [viewHistory, setViewHistory] = useState<ViewState[]>(['DASHBOARD'])
+  const [swipeX, setSwipeX] = useState(0)
+  const [isSwiping, setIsSwiping] = useState(false)
   const [activeContractTab, setActiveContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
 
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -117,29 +119,38 @@ useEffect(() => {
 
 
 // функция возврата назад
-const handleSwipeBack = () => {
-  if (currentView === 'DASHBOARD') return
-
-  setViewHistory(prev => {
-    if (prev.length <= 1) return prev
-
-    const newHistory = prev.slice(0, -1)
-    const previousView = newHistory[newHistory.length - 1]
-
-    setCurrentView(previousView)
-
-    return newHistory
-  })
-}
-
-
-// свайп обработчик
 const swipeHandlers = useSwipeable({
-  onSwipedRight: handleSwipeBack,
-  delta: 80,
+  onSwiping: (event) => {
+    if (currentView === 'DASHBOARD') return
+    if (event.deltaX > 0) {
+      setIsSwiping(true)
+      setSwipeX(event.deltaX)
+    }
+  },
+
+  onSwipedRight: () => {
+    if (currentView === 'DASHBOARD') return
+
+    if (swipeX > 120) {
+      handleSwipeBack()
+    }
+
+    setSwipeX(0)
+    setIsSwiping(false)
+  },
+
+  onSwipedLeft: () => {
+    setSwipeX(0)
+    setIsSwiping(false)
+  },
+
   trackMouse: true,
-  preventScrollOnSwipe: true
+  preventScrollOnSwipe: true,
+  delta: 10
 })
+
+
+
 
     const isNative =
   navigator.userAgent.includes("Electron") ||
@@ -881,7 +892,12 @@ if (isPublicMode) {
 
 
   return (
-      <div {...swipeHandlers}>
+      <div {...swipeHandlers}
+      style={{
+    transform: `translateX(${swipeX}px)`,
+    transition: isSwiping ? 'none' : 'transform 0.25s ease-out'
+  }}
+      >
     <Layout
         currentView={currentView}
         setView={setCurrentView}
