@@ -66,7 +66,7 @@ export const APP_VERSION = "1.0.1";
 
 export const THEMES = {
     PURPLE: {
-        name: 'Фиолетовый (По умолчанию)',
+        name: 'Фиолетовый',
         primary: {
             50: '#f5f3ff',
             100: '#ede9fe',
@@ -95,7 +95,7 @@ export const THEMES = {
         }
     },
     BLUE: {
-        name: 'Сапфировый синий',
+        name: 'Синий',
         primary: {
             50: '#eff6ff',
             100: '#dbeafe',
@@ -124,7 +124,7 @@ export const THEMES = {
         }
     },
     GREEN: {
-        name: 'Изумрудный зеленый',
+        name: 'Зеленый',
         primary: {
             50: '#ecfdf5',
             100: '#d1fae5',
@@ -153,7 +153,7 @@ export const THEMES = {
         }
     },
     BLACK: {
-        name: 'Строгий черный',
+        name: 'Черный',
         primary: {
             50: '#f8fafc',
             100: '#f1f5f9',
