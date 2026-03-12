@@ -70,13 +70,13 @@ export default function Landing() {
                     </p>
                     <div className="flex justify-center gap-4 mt-12 flex-wrap fade-up delay-2">
                         <a
-                            href="/downloads/FinUchet Setup.exe"
+                            href="/downloads/FinUchet Setup 1.0.exe"
                             className="group bg-black text-white px-7 py-3.5 rounded-full text-base font-medium shadow-xl hover:bg-slate-800 transition flex items-center gap-2"
                         >
                             <span>⬇️</span> Скачать для Windows
                         </a>
                         <a
-                            href="/downloads/app-release.apk"
+                            href="/downloads/FinUchet.apk"
                             className="group bg-emerald-600 text-white px-7 py-3.5 rounded-full text-base font-medium shadow-xl hover:bg-emerald-700 transition flex items-center gap-2"
                         >
                             <span>📱</span> Скачать Android
