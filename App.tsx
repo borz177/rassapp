@@ -53,6 +53,7 @@ async function enablePersistentStorage() {
 const App: React.FC = () => {
     const path = window.location.pathname
 const isLanding = path === "/"
+const isDownload = path.startsWith("/downloads")
   // Auth State
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -810,7 +811,10 @@ const handleUpdateSettings = async (newSettings: AppSettings) => {
 };
 
 
-
+if (isDownload) {
+  window.location.href = path
+  return null
+}
 
 
 if (isLoading) {
