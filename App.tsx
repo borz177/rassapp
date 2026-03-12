@@ -53,7 +53,6 @@ async function enablePersistentStorage() {
 const App: React.FC = () => {
     const path = window.location.pathname
 const isLanding = path === "/"
-const isDownload = path.startsWith("/downloads")
   // Auth State
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -811,10 +810,16 @@ const handleUpdateSettings = async (newSettings: AppSettings) => {
 };
 
 
-if (isDownload) {
-  window.location.href = path
-  return null
+if (isPublicMode) {
+    return (
+        <Calculator
+            isPublic={true}
+            appSettings={appSettings}
+            userPhone={user?.phone}
+        />
+    );
 }
+
 
 
 if (isLoading) {
@@ -836,15 +841,6 @@ if (!user) {
 
   // PUBLIC MODE - No Auth required
   // PUBLIC MODE - No Auth required
-if (isPublicMode) {
-    return (
-        <Calculator
-            isPublic={true}
-            appSettings={appSettings}
-            userPhone={user?.phone}
-        />
-    );
-}
 
 
   return (

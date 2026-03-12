@@ -60,7 +60,7 @@ export default function Landing() {
                 <div className="max-w-4xl mx-auto">
                     <h1 className="text-5xl md:text-6xl font-extrabold text-slate-900 leading-tight fade-up">
                         Управление рассрочками
-                        <br />
+                        <br/>
                         <span className="bg-gradient-to-r from-indigo-700 to-teal-600 bg-clip-text text-transparent">
                             и клиентами
                         </span>
@@ -69,24 +69,30 @@ export default function Landing() {
                         FinUchet помогает управлять договорами, платежами и инвесторами в одном элегантном приложении.
                     </p>
                     <div className="flex justify-center gap-4 mt-12 flex-wrap fade-up delay-2">
+
                         <a
-                            href="/downloads/FinUchet Setup 1.0.exe"
+                            href="/downloads/finuchet-setup.exe"
+                            download
                             className="group bg-black text-white px-7 py-3.5 rounded-full text-base font-medium shadow-xl hover:bg-slate-800 transition flex items-center gap-2"
                         >
                             <span>⬇️</span> Скачать для Windows
                         </a>
+
                         <a
-                            href="/downloads/FinUchet.apk"
+                            href="/downloads/finuchet.apk"
+                            download
                             className="group bg-emerald-600 text-white px-7 py-3.5 rounded-full text-base font-medium shadow-xl hover:bg-emerald-700 transition flex items-center gap-2"
                         >
                             <span>📱</span> Скачать Android
                         </a>
+
                         <a
                             href="/app"
                             className="border border-slate-300 bg-white/80 backdrop-blur-sm px-7 py-3.5 rounded-full text-base font-medium text-slate-700 shadow-md hover:border-indigo-300 hover:text-indigo-700 transition"
                         >
                             Веб-версия
                         </a>
+
                     </div>
                 </div>
             </section>
@@ -101,7 +107,8 @@ export default function Landing() {
                 </p>
                 <div className="grid md:grid-cols-3 gap-8 lg:gap-10">
                     {/* Вместо изображений используем плейсхолдеры - замените на реальные пути /screens/dashboard.png и т.д. */}
-                    <div className="rounded-2xl shadow-2xl bg-gradient-to-br from-slate-700 to-indigo-900 aspect-[4/3] flex items-center justify-center text-white text-opacity-40 text-2xl font-light hover-grow transition-all duration-300 border border-white/20">
+                    <div
+                        className="rounded-2xl shadow-2xl bg-gradient-to-br from-slate-700 to-indigo-900 aspect-[4/3] flex items-center justify-center text-white text-opacity-40 text-2xl font-light hover-grow transition-all duration-300 border border-white/20">
                         📊 Дашборд
                     </div>
                     <div className="rounded-2xl shadow-2xl bg-gradient-to-br from-indigo-800 to-teal-700 aspect-[4/3] flex items-center justify-center text-white text-opacity-40 text-2xl font-light hover-grow transition-all duration-300 border border-white/20">
@@ -163,7 +170,7 @@ export default function Landing() {
                             <span className="text-2xl">🪟</span> Windows
                         </a>
                         <a
-                            href="/downloads/FinUchet.apk"
+                            href="/downloads/finuchet.apk"
                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-4 rounded-2xl text-lg shadow-2xl flex items-center gap-3 transition hover:scale-105"
                         >
                             <span className="text-2xl">📲</span> Android
