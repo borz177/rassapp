@@ -115,7 +115,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
       ],
       color: "bg-gradient-to-br from-slate-900 to-slate-800 text-white",
       textColor: "text-white",
-      btnColor: "bg-white dark:bg-slate-900 text-slate-900",
+      btnColor: "bg-white text-slate-900",
       highlight: false
     }
   ];
@@ -129,7 +129,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
 
       {/* Duration Switcher */}
       <div className="flex justify-center">
-        <div className="bg-white dark:bg-slate-900 p-1 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 inline-flex">
+        <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 inline-flex">
           {[1, 3, 6, 12].map((m) => (
             <button
               key={m}
@@ -223,7 +223,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
       {/* Confirmation Modal */}
       {confirmData && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !loading && setConfirmData(null)}>
-              <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl p-6 relative overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 relative overflow-hidden" onClick={e => e.stopPropagation()}>
 
                   {/* Decorative Background Element */}
                   <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-50 rounded-full opacity-50 pointer-events-none"></div>
@@ -240,7 +240,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
                           <span className="text-slate-500 text-sm">Период</span>
                           <span className="font-medium text-slate-800">{duration} мес.</span>
                       </div>
-                      <div className="border-t border-slate-200 dark:border-slate-700 my-2"></div>
+                      <div className="border-t border-slate-200 my-2"></div>
                       <div className="flex justify-between items-center text-xs text-slate-400">
                           <span>Цена за месяц</span>
                           <span>{confirmData.monthlyPrice} ₽</span>
@@ -279,7 +279,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
                       <button
                           onClick={() => setConfirmData(null)}
                           disabled={!!loading}
-                          className="w-full py-3 bg-white dark:bg-slate-900 text-slate-500 rounded-xl font-medium hover:bg-slate-50 transition-colors"
+                          className="w-full py-3 bg-white text-slate-500 rounded-xl font-medium hover:bg-slate-50 transition-colors"
                       >
                           Отмена
                       </button>

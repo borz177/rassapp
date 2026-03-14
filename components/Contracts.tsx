@@ -58,9 +58,9 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/70 to-slate-800/70 backdrop-blur-sm animate-fade-in overflow-hidden" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900/95 backdrop-blur w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="bg-white/95 backdrop-blur w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                 <div className="px-6 py-5 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center gap-3 shrink-0">
-                    <div className="text-white bg-white dark:bg-slate-900/20 p-2 rounded-xl">{ICONS.File}</div>
+                    <div className="text-white bg-white/20 p-2 rounded-xl">{ICONS.File}</div>
                     <h3 className="text-lg font-bold text-white">Информация о договоре</h3>
                 </div>
 
@@ -110,7 +110,7 @@ const ContractInfoModal = ({ sale, customer, onClose, appSettings }: { sale: Sal
                             <label className="text-xs font-medium text-slate-500 block mb-3">Пропущенные платежи</label>
                             <div className="space-y-2 max-h-32 overflow-y-auto pr-2">
                                 {overduePaymentsList.map(p => (
-                                    <div key={p.id} className="flex justify-between items-center bg-white dark:bg-slate-900 p-2 rounded-lg min-w-0">
+                                    <div key={p.id} className="flex justify-between items-center bg-white p-2 rounded-lg min-w-0">
                                         <span className="text-red-600 font-medium text-sm">{formatDate(p.date)}</span>
                                         <span className="text-slate-400 text-xs bg-slate-100 px-2 py-1 rounded-full">{formatCurrency(p.amount, appSettings?.showCents)} ₽</span>
                                     </div>
@@ -461,7 +461,7 @@ const Contracts: React.FC<ContractsProps> = ({
 
       return (
           <div
-              className="absolute bg-white dark:bg-slate-900/95 backdrop-blur-xl shadow-2xl rounded-2xl z-[100] w-56 overflow-hidden animate-scale-in border border-slate-100"
+              className="absolute bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl z-[100] w-56 overflow-hidden animate-scale-in border border-slate-100"
               style={{
                   top: `${menuPosition.top}px`,
                   right: `${menuPosition.right}px`
@@ -534,14 +534,14 @@ const Contracts: React.FC<ContractsProps> = ({
           </div>
         )}
 
-      <div className="bg-white dark:bg-slate-900/80 backdrop-blur p-5 rounded-2xl shadow-lg border border-slate-100 space-y-4 overflow-hidden">
+      <div className="bg-white/80 backdrop-blur p-5 rounded-2xl shadow-lg border border-slate-100 space-y-4 overflow-hidden">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="relative group min-w-0">
                   <span className="absolute left-4 top-3.5 text-slate-400 scale-90 group-focus-within:text-blue-500 transition-colors shrink-0">{ICONS.Users}</span>
                   <input
                     type="text"
                     placeholder="Поиск по имени или товару..."
-                    className="w-full pl-12 p-3.5 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm focus:border-blue-500 bg-white dark:bg-slate-900/90 text-slate-900 transition-all group-focus-within:shadow-md"
+                    className="w-full pl-12 p-3.5 border border-slate-200 rounded-xl outline-none text-sm focus:border-blue-500 bg-white/90 text-slate-900 transition-all group-focus-within:shadow-md"
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                   />
@@ -549,7 +549,7 @@ const Contracts: React.FC<ContractsProps> = ({
               <div className="relative group min-w-0">
                   <input
                       type="date"
-                      className="w-full pl-4 sm:pl-12 p-3 sm:p-3.5 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm text-slate-900 bg-white dark:bg-slate-900/90 focus:border-blue-500 transition-all group-focus-within:shadow-md"
+                      className="w-full pl-4 sm:pl-12 p-3 sm:p-3.5 border border-slate-200 rounded-xl outline-none text-sm text-slate-900 bg-white/90 focus:border-blue-500 transition-all group-focus-within:shadow-md"
                       value={filterDate}
                       onChange={e => setFilterDate(e.target.value)}
                   />
@@ -557,7 +557,7 @@ const Contracts: React.FC<ContractsProps> = ({
               <div className="relative group min-w-0">
                   <span className="absolute left-4 top-3.5 text-slate-400 scale-75 group-focus-within:text-blue-500 transition-colors shrink-0">{ICONS.Wallet}</span>
                   <select
-                      className="w-full pl-12 p-3.5 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm text-slate-900 bg-white dark:bg-slate-900/90 focus:border-blue-500 transition-all group-focus-within:shadow-md appearance-none"
+                      className="w-full pl-12 p-3.5 border border-slate-200 rounded-xl outline-none text-sm text-slate-900 bg-white/90 focus:border-blue-500 transition-all group-focus-within:shadow-md appearance-none"
                       value={filterAccountId}
                       onChange={e => setFilterAccountId(e.target.value)}
                   >
@@ -570,7 +570,7 @@ const Contracts: React.FC<ContractsProps> = ({
 
       <div className="space-y-4 pt-4 overflow-hidden relative">
         {filteredList.length === 0 ? (
-            <div className="text-center py-16 bg-white dark:bg-slate-900/80 backdrop-blur rounded-3xl border border-dashed border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="text-center py-16 bg-white/80 backdrop-blur rounded-3xl border border-dashed border-slate-200 overflow-hidden">
                 <div className="text-slate-300 text-6xl mb-4">📄</div>
                 <p className="text-slate-400 text-lg">Ничего не найдено</p>
             </div>
@@ -594,7 +594,7 @@ const Contracts: React.FC<ContractsProps> = ({
             return (
               <div
                 key={sale.id}
-                className="bg-white dark:bg-slate-900/95 backdrop-blur rounded-2xl shadow-sm p-4 sm:p-5 relative animate-fade-in transition-all hover:shadow-md border border-slate-100"
+                className="bg-white/95 backdrop-blur rounded-2xl shadow-sm p-4 sm:p-5 relative animate-fade-in transition-all hover:shadow-md border border-slate-100"
               >
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4">
 
@@ -661,7 +661,7 @@ const Contracts: React.FC<ContractsProps> = ({
 
         {deletingSale && !readOnly && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/70 to-slate-800/70 backdrop-blur-sm animate-fade-in overflow-hidden" onClick={() => setDeletingSale(null)}>
-                <div className="bg-white dark:bg-slate-900/95 backdrop-blur w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-white/20" onClick={e => e.stopPropagation()}>
+                <div className="bg-white/95 backdrop-blur w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-white/20" onClick={e => e.stopPropagation()}>
                     <div className="w-16 h-16 bg-gradient-to-br from-red-400 to-red-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shrink-0">
                       {ICONS.Delete}
                     </div>

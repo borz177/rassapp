@@ -156,30 +156,30 @@ const Operations: React.FC<OperationsProps> = ({
           <p className="text-slate-500 text-sm">Финансовый поток</p>
       </header>
 
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
           <div>
               <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Счет</label>
-              <select className="w-full p-2.5 bg-slate-50 border border-slate-200 dark:border-slate-700 rounded-lg outline-none text-sm text-slate-700" value={filterAccountId} onChange={e => setFilterAccountId(e.target.value)}>
+              <select className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm text-slate-700" value={filterAccountId} onChange={e => setFilterAccountId(e.target.value)}>
                   <option value="">Все счета</option>
                   {accounts.map(acc => (<option key={acc.id} value={acc.id}>{acc.name}</option>))}
               </select>
           </div>
           <div className="flex bg-slate-100 p-1 rounded-lg">
-              <button onClick={() => setFilterType('ALL')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'ALL' ? 'bg-white dark:bg-slate-900 text-slate-800 shadow-sm' : 'text-slate-500'}`}>Все</button>
-              <button onClick={() => setFilterType('INCOME')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'INCOME' ? 'bg-white dark:bg-slate-900 text-emerald-600 shadow-sm' : 'text-slate-500'}`}>Приход</button>
-              <button onClick={() => setFilterType('EXPENSE')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'EXPENSE' ? 'bg-white dark:bg-slate-900 text-red-600 shadow-sm' : 'text-slate-500'}`}>Расход</button>
+              <button onClick={() => setFilterType('ALL')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'ALL' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Все</button>
+              <button onClick={() => setFilterType('INCOME')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'INCOME' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}>Приход</button>
+              <button onClick={() => setFilterType('EXPENSE')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'EXPENSE' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500'}`}>Расход</button>
           </div>
       </div>
 
       <div className="space-y-6">
-          {groupedOperations.length === 0 && (<div className="text-center py-10 text-slate-400 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">Операций не найдено</div>)}
+          {groupedOperations.length === 0 && (<div className="text-center py-10 text-slate-400 border border-dashed border-slate-200 rounded-xl">Операций не найдено</div>)}
 
           {groupedOperations.map((group, idx) => (
               <div key={idx} className="space-y-2">
                   <h3 className="text-sm font-bold text-slate-400 px-2 uppercase tracking-wider">{group.title}</h3>
                   <div className="space-y-2">
                       {group.items.map(op => (
-                          <div key={op.id} onClick={() => setSelectedOp(op)} className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm flex items-center justify-between cursor-pointer hover:bg-slate-50 active:scale-[0.99] transition-transform">
+                          <div key={op.id} onClick={() => setSelectedOp(op)} className="bg-white p-4 rounded-xl shadow-sm flex items-center justify-between cursor-pointer hover:bg-slate-50 active:scale-[0.99] transition-transform">
                               <div className="flex items-center gap-3">
                                   <div className={`p-2.5 rounded-full ${op.type === 'EXPENSE' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>{op.type === 'EXPENSE' ? ICONS.Expense : ICONS.Income}</div>
                                   <div>
@@ -200,7 +200,7 @@ const Operations: React.FC<OperationsProps> = ({
 
       {selectedOp && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedOp(null)}>
-              <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
                   <div className={`p-6 text-white ${selectedOp.type === 'EXPENSE' ? 'bg-red-500' : 'bg-emerald-500'}`}>
                       <p className="text-white/80 text-sm font-medium mb-1">{selectedOp.type === 'EXPENSE' ? 'Расходная операция' : 'Приходная операция'}</p>
                       <h3 className="text-3xl font-bold">{selectedOp.type === 'EXPENSE' ? '-' : '+'}{selectedOp.amount.toLocaleString()} ₽</h3>

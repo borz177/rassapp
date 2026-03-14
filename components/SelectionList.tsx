@@ -42,7 +42,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
 
   return (
     <div className="space-y-4 h-full flex flex-col animate-fade-in">
-      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4">
+      <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
         <button onClick={onCancel} className="text-slate-500 hover:text-slate-800">
            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
         </button>
@@ -55,7 +55,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                 <input
                 type="text"
                 placeholder="Поиск..."
-                className="w-full p-3 pl-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 pl-10 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 autoFocus
@@ -77,7 +77,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                 <div
                     key={item.id}
                     onClick={() => onSelect(item.id)}
-                    className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 shadow-sm active:bg-slate-50 cursor-pointer flex justify-between items-center"
+                    className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm active:bg-slate-50 cursor-pointer flex justify-between items-center"
                 >
                     <div>
                     <h3 className="font-bold text-slate-800">{item.title}</h3>
@@ -94,7 +94,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
             </div>
           </>
       ) : (
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 animate-fade-in">
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 animate-fade-in">
               <div className="flex justify-between items-center mb-4">
                   <h3 className="font-bold text-lg text-slate-800">Новый клиент</h3>
                   <button onClick={() => setIsCreating(false)} className="text-sm text-red-500 font-medium">Отмена</button>
@@ -103,7 +103,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                   <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ФИО</label>
                       <input
-                          className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500"
+                          className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-indigo-500"
                           placeholder="Иванов Иван Иванович"
                           value={newName}
                           onChange={e => setNewName(e.target.value)}
@@ -114,7 +114,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                   <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Телефон</label>
                       <input
-                          className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500"
+                          className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-indigo-500"
                           placeholder="+7"
                           value={newPhone}
                           onChange={e => setNewPhone(e.target.value)}
@@ -124,7 +124,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                   <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Адрес</label>
                       <textarea
-                          className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500 resize-none"
+                          className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 resize-none"
                           placeholder="Город,Село"
                           rows={2}
                           value={newAddress}

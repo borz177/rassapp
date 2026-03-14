@@ -132,7 +132,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
   return (
     <div className="space-y-4 animate-fade-in pb-20">
-      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 bg-white dark:bg-slate-900 sticky top-0 z-10 pt-2">
+      <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
           <button onClick={onClose} className="text-slate-500 hover:text-slate-800">
              {ICONS.Back}
           </button>
@@ -143,13 +143,13 @@ const NewExpense: React.FC<NewExpenseProps> = ({
       <div className="flex bg-slate-100 p-1 rounded-xl">
           <button
              onClick={() => { setSourceType('OTHER'); setAmount(''); }}
-             className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'OTHER' ? 'bg-white dark:bg-slate-900 text-red-600 shadow-sm' : 'text-slate-500'}`}
+             className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'OTHER' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500'}`}
           >
               Общие расходы
           </button>
           <button
              onClick={() => { setSourceType('INVESTOR'); setAmount(''); }}
-             className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'INVESTOR' ? 'bg-white dark:bg-slate-900 text-purple-600 shadow-sm' : 'text-slate-500'}`}
+             className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'INVESTOR' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500'}`}
           >
               Выплата инвестору
           </button>
@@ -159,11 +159,11 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
           {/* INVESTOR FORM */}
           {sourceType === 'INVESTOR' && (
-              <div className="space-y-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in">
+              <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
                   <div>
                        <label className="block text-sm font-medium text-slate-700 mb-1">Выберите инвестора</label>
                        <select
-                          className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900"
+                          className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
                           value={selectedInvestorId}
                           onChange={e => setSelectedInvestorId(e.target.value)}
                        >
@@ -175,7 +175,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                    <div>
                        <label className="block text-sm font-medium text-slate-700 mb-1">Списать со счета</label>
                        <select
-                          className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900"
+                          className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
                           value={sourceAccountId}
                           onChange={e => setSourceAccountId(e.target.value)}
                        >
@@ -185,11 +185,11 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                    <div className="pt-2">
                         <label className="block text-sm font-medium text-slate-700 mb-2">Источник списания</label>
                         <div className="grid grid-cols-2 gap-2">
-                            <button type="button" onClick={() => setPayoutType('INVESTMENT')} className={`p-4 rounded-xl border-2 text-center ${payoutType === 'INVESTMENT' ? 'border-purple-600 bg-purple-50' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`}>
+                            <button type="button" onClick={() => setPayoutType('INVESTMENT')} className={`p-4 rounded-xl border-2 text-center ${payoutType === 'INVESTMENT' ? 'border-purple-600 bg-purple-50' : 'border-slate-200 bg-white'}`}>
                                 <span className="font-bold text-sm text-purple-800">Из Инвестиций</span>
                                 <span className="text-xs text-slate-500 block">Уменьшить тело вклада</span>
                             </button>
-                            <button type="button" onClick={() => setPayoutType('PROFIT')} className={`p-4 rounded-xl border-2 text-center ${payoutType === 'PROFIT' ? 'border-emerald-600 bg-emerald-50' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`}>
+                            <button type="button" onClick={() => setPayoutType('PROFIT')} className={`p-4 rounded-xl border-2 text-center ${payoutType === 'PROFIT' ? 'border-emerald-600 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
                                 <span className="font-bold text-sm text-emerald-800">Из Прибыли</span>
                                 <span className="text-xs text-slate-500 block">Выплатить доход</span>
                             </button>
@@ -200,13 +200,13 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
           {/* OTHER FORM */}
           {sourceType === 'OTHER' && (
-              <div className="space-y-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in">
+              <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
                   {category !== 'Моя выплата' && (
                       <div>
                            <label className="block text-sm font-medium text-slate-700 mb-1">Название / Назначение</label>
                            <input
                               placeholder="Например: Аренда офиса"
-                              className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-900 text-slate-900"
+                              className="w-full p-3 border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
                               value={title}
                               onChange={e => setTitle(e.target.value)}
                            />
@@ -216,7 +216,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                    <div>
                        <label className="block text-sm font-medium text-slate-700 mb-1">Категория</label>
                        <select
-                          className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900"
+                          className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
                           value={category}
                           onChange={e => setCategory(e.target.value)}
                        >
@@ -233,7 +233,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                    <div>
                        <label className="block text-sm font-medium text-slate-700 mb-1">Списать со счета</label>
                        <select
-                          className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900"
+                          className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
                           value={sourceAccountId}
                           onChange={e => setSourceAccountId(e.target.value)}
                        >
@@ -246,12 +246,12 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                             <label className="block text-sm font-medium text-slate-700 mb-2">Источник списания</label>
                             <div className={`grid ${selectedAccount?.ownerId ? 'grid-cols-1' : 'grid-cols-2'} gap-2`}>
                                 {!selectedAccount?.ownerId && (
-                                    <button type="button" onClick={() => setManagerPayoutSource('CAPITAL')} className={`p-4 rounded-xl border-2 text-center ${managerPayoutSource === 'CAPITAL' ? 'border-purple-600 bg-purple-50' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`}>
+                                    <button type="button" onClick={() => setManagerPayoutSource('CAPITAL')} className={`p-4 rounded-xl border-2 text-center ${managerPayoutSource === 'CAPITAL' ? 'border-purple-600 bg-purple-50' : 'border-slate-200 bg-white'}`}>
                                         <span className="font-bold text-sm text-purple-800">Из Капитала</span>
                                         <span className="text-xs text-slate-500 block">Личные средства</span>
                                     </button>
                                 )}
-                                <button type="button" onClick={() => setManagerPayoutSource('PROFIT')} className={`p-4 rounded-xl border-2 text-center ${managerPayoutSource === 'PROFIT' ? 'border-emerald-600 bg-emerald-50' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`}>
+                                <button type="button" onClick={() => setManagerPayoutSource('PROFIT')} className={`p-4 rounded-xl border-2 text-center ${managerPayoutSource === 'PROFIT' ? 'border-emerald-600 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
                                     <span className="font-bold text-sm text-emerald-800">Из Прибыли</span>
                                     <span className="text-xs text-slate-500 block">Заработанные</span>
                                 </button>
@@ -262,7 +262,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
           )}
 
           {/* AMOUNT & DATE INPUT (Shared) */}
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Сумма расхода</label>
                   <div className="relative">
@@ -270,7 +270,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                       <input
                           type="number"
                           placeholder="0"
-                          className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-900 text-slate-900"
+                          className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
                           value={amount}
                           onChange={e => setAmount(e.target.value)}
                       />
@@ -280,7 +280,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                   <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
                   <input
                       type="date"
-                      className="w-full p-3 text-lg border border-slate-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-900 text-slate-900"
+                      className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
                       value={date}
                       onChange={e => setDate(e.target.value)}
                   />

@@ -69,7 +69,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                 </div>
 
                 {/* Filters Card with glass morphism */}
-                <div className="bg-white dark:bg-slate-900/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-white/20 hover:shadow-xl transition-all duration-300">
+                <div className="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-white/20 hover:shadow-xl transition-all duration-300">
                     <div className="flex items-center gap-2 mb-4">
                         <span className="w-1 h-6 bg-indigo-500 rounded-full"></span>
                         <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Фильтры отчета</h3>
@@ -82,7 +82,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                             </label>
                             <div className="relative">
                                 <select
-                                    className="w-full p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm appearance-none cursor-pointer hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
+                                    className="w-full p-3.5 bg-white border border-slate-200 rounded-xl outline-none text-sm appearance-none cursor-pointer hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
                                     value={filters.investorId}
                                     onChange={e => handleFilterChange('investorId', e.target.value)}
                                 >
@@ -104,7 +104,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                             <div className="relative">
                                 <input
                                     type="date"
-                                    className="w-full p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
+                                    className="w-full p-3.5 bg-white border border-slate-200 rounded-xl outline-none text-sm hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
                                     value={filters.period.start}
                                     onChange={e => handleFilterChange('period', {...filters.period, start: e.target.value})}
                                 />
@@ -121,7 +121,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                             <div className="relative">
                                 <input
                                     type="date"
-                                    className="w-full p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
+                                    className="w-full p-3.5 bg-white border border-slate-200 rounded-xl outline-none text-sm hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
                                     value={filters.period.end}
                                     onChange={e => handleFilterChange('period', {...filters.period, end: e.target.value})}
                                 />
@@ -135,7 +135,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
 
                 {!hasData ? (
                     // Empty State
-                    <div className="bg-white dark:bg-slate-900/80 backdrop-blur-sm rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-16 text-center animate-in fade-in">
+                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-dashed border-slate-200 p-16 text-center animate-in fade-in">
                         <div className="text-7xl mb-4 opacity-30">📊</div>
                         <h3 className="text-xl font-bold text-slate-700 mb-2">Нет данных для отображения</h3>
                         <p className="text-slate-400 max-w-md mx-auto">
@@ -163,7 +163,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                         {/* KPI Cards with hover effects */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                             {/* Поступления */}
-                            <div className="group bg-white dark:bg-slate-900/90 backdrop-blur-sm p-6 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 hover:-translate-y-1">
+                            <div className="group bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 hover:-translate-y-1">
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="p-3 bg-gradient-to-br from-emerald-500 to-emerald-400 text-white rounded-xl shadow-lg shadow-emerald-200 group-hover:scale-110 transition-transform">
                                         💰
@@ -178,7 +178,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                             </div>
 
                             {/* Ожидаемая прибыль */}
-                            <div className="group bg-white dark:bg-slate-900/90 backdrop-blur-sm p-6 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 hover:-translate-y-1">
+                            <div className="group bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 hover:-translate-y-1">
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="p-3 bg-gradient-to-br from-indigo-500 to-indigo-400 text-white rounded-xl shadow-lg shadow-indigo-200 group-hover:scale-110 transition-transform">
                                         📈
@@ -193,7 +193,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                             </div>
 
                             {/* Моя доля (ожид.) */}
-                            <div className="group bg-white dark:bg-slate-900/90 backdrop-blur-sm p-6 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-sky-200 hover:-translate-y-1">
+                            <div className="group bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-sky-200 hover:-translate-y-1">
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="p-3 bg-gradient-to-br from-sky-500 to-sky-400 text-white rounded-xl shadow-lg shadow-sky-200 group-hover:scale-110 transition-transform">
                                         👤
@@ -214,7 +214,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                             </div>
 
                             {/* Доля инвесторов (ожид.) */}
-                            <div className="group bg-white dark:bg-slate-900/90 backdrop-blur-sm p-6 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-purple-200 hover:-translate-y-1">
+                            <div className="group bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-purple-200 hover:-translate-y-1">
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="p-3 bg-gradient-to-br from-purple-500 to-purple-400 text-white rounded-xl shadow-lg shadow-purple-200 group-hover:scale-110 transition-transform">
                                         👥
@@ -294,7 +294,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                                 </div>
 
                                 {/* Pie Chart */}
-                                <div className="lg:col-span-2 bg-white dark:bg-slate-900/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100">
+                                <div className="lg:col-span-2 bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100">
                                     <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
                                         <span className="w-1 h-4 bg-indigo-500 rounded-full"></span>
                                         Распределение полученной прибыли
@@ -355,7 +355,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                                     </div>
 
                                     {/* Expected vs Realized comparison */}
-                                    <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+                                    <div className="mt-6 pt-6 border-t border-slate-200">
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="text-center">
                                                 <p className="text-xs text-slate-500 mb-1">Ожидалось</p>
@@ -378,7 +378,7 @@ const Reports: React.FC<ReportsProps> = ({ investors, filters, onFiltersChange, 
                         {/* Additional Insights */}
                         <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
                             {/* Expected Distribution Mini Chart */}
-                            <div className="bg-white dark:bg-slate-900/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm border border-slate-100">
+                            <div className="bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm border border-slate-100">
                                 <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">Ожидаемое распределение</h4>
                                 <div className="h-32">
                                     <ResponsiveContainer width="100%" height="100%">

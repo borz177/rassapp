@@ -114,7 +114,7 @@ const Customers: React.FC<CustomersProps> = ({
               <input
                 type="text"
                 placeholder="Поиск по имени или телефону..."
-                className="w-full pl-10 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500 text-slate-800"
+                className="w-full pl-10 p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-indigo-500 text-slate-800"
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
               />
@@ -125,7 +125,7 @@ const Customers: React.FC<CustomersProps> = ({
       )}
 
       {isAdding && (
-        <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-md border border-slate-100 space-y-4 animate-fade-in">
+        <form onSubmit={handleSubmit} className="bg-white p-5 rounded-2xl shadow-md border border-slate-100 space-y-4 animate-fade-in">
           <div className="flex items-center gap-4">
             <label className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center cursor-pointer border-2 border-dashed border-slate-300 hover:border-indigo-400 overflow-hidden">
                 {newPhoto ? (
@@ -138,7 +138,7 @@ const Customers: React.FC<CustomersProps> = ({
             <div className="flex-1 space-y-2">
                 <input
                     placeholder="ФИО Клиента"
-                    className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none"
+                    className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                     value={newName}
                     onChange={e => setNewName(e.target.value)}
                     required
@@ -147,14 +147,14 @@ const Customers: React.FC<CustomersProps> = ({
           </div>
           <input
             placeholder="Номер телефона"
-            className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none"
+            className="w-full p-3 border border-slate-200 rounded-xl outline-none"
             value={newPhone}
             onChange={e => setNewPhone(e.target.value)}
             required
           />
           <input
             placeholder="Адрес (необязательно)"
-            className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none"
+            className="w-full p-3 border border-slate-200 rounded-xl outline-none"
             value={newAddress}
             onChange={e => setNewAddress(e.target.value)}
           />
@@ -172,7 +172,7 @@ const Customers: React.FC<CustomersProps> = ({
           <div
             key={c.id}
             onClick={() => setSelectedCustomerId(c.id)}
-            className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 shadow-sm flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors"
+            className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors"
           >
             <div className="w-12 h-12 rounded-full bg-slate-200 flex-shrink-0 overflow-hidden">
                 {c.photo ? (

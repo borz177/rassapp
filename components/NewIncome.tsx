@@ -336,20 +336,20 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     <div className="space-y-4 animate-fade-in pb-20">
         {renderContractContent()}
 
-        <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 bg-white dark:bg-slate-900 sticky top-0 z-10 pt-2">
+        <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
             <button onClick={onClose} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
             <h2 className="text-xl font-bold text-slate-800">Оформление прихода</h2>
         </div>
 
         <div className="flex bg-slate-100 p-1 rounded-xl">
-            <button onClick={() => { setSourceType('CUSTOMER'); setAmount(''); }} className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'CUSTOMER' ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Клиент</button>
-            <button onClick={() => { setSourceType('INVESTOR'); setAmount(''); }} className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'INVESTOR' ? 'bg-white dark:bg-slate-900 text-purple-600 shadow-sm' : 'text-slate-500'}`}>Инвестор</button>
-            <button onClick={() => { setSourceType('OTHER'); setAmount(''); }} className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'OTHER' ? 'bg-white dark:bg-slate-900 text-emerald-600 shadow-sm' : 'text-slate-500'}`}>Прочее</button>
+            <button onClick={() => { setSourceType('CUSTOMER'); setAmount(''); }} className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'CUSTOMER' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Клиент</button>
+            <button onClick={() => { setSourceType('INVESTOR'); setAmount(''); }} className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'INVESTOR' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500'}`}>Инвестор</button>
+            <button onClick={() => { setSourceType('OTHER'); setAmount(''); }} className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'OTHER' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}>Прочее</button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
             {sourceType === 'CUSTOMER' && (
-                <div className="space-y-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in">
+                <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
                      <div>
                          <label className="block text-sm font-medium text-slate-700 mb-1">Клиент</label>
                          <div onClick={onSelectCustomer} className={`w-full p-3 border rounded-xl cursor-pointer flex justify-between items-center ${selectedCustomerId ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-dashed border-slate-300'}`}>
@@ -364,7 +364,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                          <div>
                              <label className="block text-sm font-medium text-slate-700 mb-1">Активный договор</label>
                              {activeCustomerSales.length > 0 ? (
-                                 <select className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900" value={selectedSaleId} onChange={e => setSelectedSaleId(e.target.value)}>
+                                 <select className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900" value={selectedSaleId} onChange={e => setSelectedSaleId(e.target.value)}>
                                      <option value="">-- Выберите товар/рассрочку --</option>
                                      {activeCustomerSales.map(s => <option key={s.id} value={s.id}>{s.productName} (Долг: {formatNum(s.remainingAmount)} ₽)</option>)}
                                  </select>
@@ -376,10 +376,10 @@ const NewIncome: React.FC<NewIncomeProps> = ({
             )}
 
             {sourceType === 'INVESTOR' && (
-                <div className="space-y-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in">
+                <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
                     <div>
                          <label className="block text-sm font-medium text-slate-700 mb-1">Выберите инвестора</label>
-                         <select className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900" value={selectedInvestorId} onChange={e => setSelectedInvestorId(e.target.value)}>
+                         <select className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900" value={selectedInvestorId} onChange={e => setSelectedInvestorId(e.target.value)}>
                              <option value="">-- Список инвесторов --</option>
                              {investors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
                          </select>
@@ -389,13 +389,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
             )}
 
             {sourceType === 'OTHER' && (
-                <div className="space-y-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in">
-                    <div><label className="block text-sm font-medium text-slate-700 mb-1">Назначение / Описание</label><input placeholder="Например: Внесение личных средств" className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-900 text-slate-900" value={note} onChange={e => setNote(e.target.value)} /></div>
-                    <div><label className="block text-sm font-medium text-slate-700 mb-1">Счет зачисления</label><select className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900" value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+                <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
+                    <div><label className="block text-sm font-medium text-slate-700 mb-1">Назначение / Описание</label><input placeholder="Например: Внесение личных средств" className="w-full p-3 border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={note} onChange={e => setNote(e.target.value)} /></div>
+                    <div><label className="block text-sm font-medium text-slate-700 mb-1">Счет зачисления</label><select className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900" value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
                 </div>
             )}
 
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Сумма прихода</label>
                     <div className="relative">
@@ -404,7 +404,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                             type="number"
                             step={showCents ? "0.01" : "1"}
                             placeholder="0"
-                            className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-900 text-slate-900"
+                            className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
                             value={amount}
                             onChange={e => setAmount(e.target.value)}
                         />
@@ -429,13 +429,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" checked={sendHistory} onChange={() => setSendHistory(!sendHistory)} className="sr-only peer" />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white dark:bg-slate-900 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
                         </label>
                     </div>
                 )}
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
-                    <input type="date" className="w-full p-3 text-lg border border-slate-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-900 text-slate-900" value={date} onChange={e => setDate(e.target.value)} />
+                    <input type="date" className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={date} onChange={e => setDate(e.target.value)} />
                 </div>
             </div>
             <button type="submit" className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-transform active:scale-95">Подтвердить приход</button>
@@ -443,7 +443,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
         {showConfirmModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowConfirmModal(false)}>
-                <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
+                <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
                     <h3 className="text-xl font-bold text-slate-800 text-center">Подтверждение прихода</h3>
                     <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
                         {sourceType === 'CUSTOMER' && (
@@ -458,7 +458,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                         {sourceType === 'OTHER' && (
                             <div className="flex justify-between"><span className="text-slate-500">Назначение:</span><span className="font-medium text-slate-800">{note}</span></div>
                         )}
-                        <div className="my-2 border-t border-slate-200 dark:border-slate-700"></div>
+                        <div className="my-2 border-t border-slate-200"></div>
                         <div className="flex justify-between items-center">
                             <span className="text-slate-500">Сумма:</span>
                             <span className="text-xl font-bold text-emerald-600">+{formatNum(Number(amount))} ₽</span>

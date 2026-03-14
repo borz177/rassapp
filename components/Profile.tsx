@@ -50,7 +50,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onBack, onLogo
       </header>
 
       {/* Profile Info Form */}
-      <form onSubmit={handleProfileSubmit} className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+      <form onSubmit={handleProfileSubmit} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
         <h3 className="text-lg font-semibold text-slate-800">Личные данные</h3>
         <div>
           <label className="text-sm font-medium text-slate-600 mb-1 block">Имя</label>
@@ -86,7 +86,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onBack, onLogo
       </form>
 
       {/* Change Password Form */}
-      <form onSubmit={handlePasswordSubmit} className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+      <form onSubmit={handlePasswordSubmit} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
         <h3 className="text-lg font-semibold text-slate-800">Смена пароля</h3>
         <div>
           <label className="text-sm font-medium text-slate-600 mb-1 block">Текущий пароль</label>

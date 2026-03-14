@@ -40,24 +40,24 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={e => e.stopPropagation()}>
+            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={e => e.stopPropagation()}>
                 <h3 className="text-lg font-bold text-slate-800 mb-4">Редактировать клиента</h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">ФИО</label>
-                        <input className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} required />
+                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} required />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Телефон</label>
-                        <input className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none" value={phone} onChange={e => setPhone(e.target.value)} required />
+                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={phone} onChange={e => setPhone(e.target.value)} required />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Адрес</label>
-                        <input className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none" value={address} onChange={e => setAddress(e.target.value)} />
+                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={address} onChange={e => setAddress(e.target.value)} />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Заметки</label>
-                        <textarea className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none resize-none" rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
+                        <textarea className="w-full p-3 border border-slate-200 rounded-xl outline-none resize-none" rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
                     </div>
 
                     {/* WhatsApp Setting */}
@@ -71,7 +71,7 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" checked={allowWhatsapp} onChange={() => setAllowWhatsapp(!allowWhatsapp)} className="sr-only peer" />
-                            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white dark:bg-slate-900 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
                         </label>
                     </div>
 
@@ -240,7 +240,7 @@ const handleSendFullReport = () => {
 
       return (
           <div className="space-y-4 animate-fade-in pb-20 relative">
-              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-4 bg-white dark:bg-slate-900 sticky top-0 z-10 pt-2">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
                   <div className="flex items-center gap-3">
                     <button onClick={() => setSelectedSaleId(null)} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
                     <h2 className="text-xl font-bold text-slate-800 truncate">{selectedSale.productName}</h2>
@@ -250,7 +250,7 @@ const handleSendFullReport = () => {
                   </button>
               </div>
 
-              <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-100 space-y-3">
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-3">
                   {firstPaymentDate && (
                       <div className="flex justify-between border-b border-slate-50 pb-2">
                           <span className="text-slate-500">Первый платеж</span>
@@ -276,7 +276,7 @@ const handleSendFullReport = () => {
                   </div>
               </div>
 
-              <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                   <div className="p-4 border-b border-slate-100 bg-emerald-50/50 flex justify-between items-center"><h3 className="font-bold text-emerald-800">История поступлений</h3><span className="bg-emerald-100 text-emerald-700 text-xs px-2 py-1 rounded-full font-bold">{paidPayments.length}</span></div>
                   {paidPayments.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Нет поступлений</div> : (
                       <table className="w-full text-sm text-left">
@@ -286,7 +286,7 @@ const handleSendFullReport = () => {
                   )}
               </div>
 
-              <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                   <div className="p-4 border-b border-slate-100 bg-slate-50"><h3 className="font-bold text-slate-700">График платежей</h3></div>
                   {paymentSchedule.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Все оплачено! 🎉</div> : (
                       <table className="w-full text-sm text-left">
@@ -296,22 +296,22 @@ const handleSendFullReport = () => {
                   )}
               </div>
 
-              {editingPayment && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in"><div className="bg-white dark:bg-slate-900 w-full max-w-sm p-6 rounded-2xl shadow-xl"><h3 className="text-lg font-bold text-slate-800 mb-4">Изменить дату платежа</h3><p className="text-sm text-slate-500 mb-4">Сумма: {formatCurrency(editingPayment.amount, appSettings.showCents)} ₽</p><input type="date" className="w-full p-3 border border-slate-300 rounded-xl mb-6 outline-none" value={editDate} onChange={(e) => setEditDate(e.target.value)} /><div className="flex gap-3"><button onClick={() => setEditingPayment(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Отмена</button><button onClick={saveEdit} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button></div></div></div>)}
-              {deletingPaymentId && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in"><div className="bg-white dark:bg-slate-900 w-full max-w-sm p-6 rounded-2xl shadow-xl"><div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">{ICONS.Delete}</div><h3 className="text-lg font-bold text-slate-800 text-center mb-2">Отменить платеж?</h3><p className="text-center text-slate-500 mb-6 text-sm">Сумма вернется в долг, а статус платежа изменится на "Не оплачено".</p><div className="flex gap-3"><button onClick={() => setDeletingPaymentId(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Нет</button><button onClick={confirmDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold">Да, отменить</button></div></div></div>)}
+              {editingPayment && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl"><h3 className="text-lg font-bold text-slate-800 mb-4">Изменить дату платежа</h3><p className="text-sm text-slate-500 mb-4">Сумма: {formatCurrency(editingPayment.amount, appSettings.showCents)} ₽</p><input type="date" className="w-full p-3 border border-slate-300 rounded-xl mb-6 outline-none" value={editDate} onChange={(e) => setEditDate(e.target.value)} /><div className="flex gap-3"><button onClick={() => setEditingPayment(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Отмена</button><button onClick={saveEdit} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button></div></div></div>)}
+              {deletingPaymentId && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl"><div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">{ICONS.Delete}</div><h3 className="text-lg font-bold text-slate-800 text-center mb-2">Отменить платеж?</h3><p className="text-center text-slate-500 mb-6 text-sm">Сумма вернется в долг, а статус платежа изменится на "Не оплачено".</p><div className="flex gap-3"><button onClick={() => setDeletingPaymentId(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Нет</button><button onClick={confirmDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold">Да, отменить</button></div></div></div>)}
           </div>
       );
   }
 
   return (
     <div className="space-y-4 animate-fade-in pb-20">
-      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 bg-white dark:bg-slate-900 sticky top-0 z-10 pt-2"><button onClick={onBack} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button><h2 className="text-xl font-bold text-slate-800">{customer.name}</h2></div>
-      <div className="flex border-b border-slate-200 dark:border-slate-700"><button onClick={() => setActiveTab('INFO')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INFO' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>Информация</button><button onClick={() => setActiveTab('INSTALLMENTS')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INSTALLMENTS' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>Рассрочки</button></div>
+      <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2"><button onClick={onBack} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button><h2 className="text-xl font-bold text-slate-800">{customer.name}</h2></div>
+      <div className="flex border-b border-slate-200"><button onClick={() => setActiveTab('INFO')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INFO' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>Информация</button><button onClick={() => setActiveTab('INSTALLMENTS')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INSTALLMENTS' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>Рассрочки</button></div>
       {activeTab === 'INFO' && (
           <div className="space-y-4 pt-2">
               <div className="flex justify-center"><div className="w-32 h-32 rounded-full bg-slate-200 overflow-hidden border-4 border-white shadow-lg">{customer.photo ? <img src={customer.photo} alt={customer.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-400 text-4xl font-bold">{customer.name.charAt(0)}</div>}</div></div>
 
               {/* Info Card with Edit Button */}
-              <div className="bg-white dark:bg-slate-900 rounded-xl p-5 shadow-sm border border-slate-100 space-y-4 relative">
+              <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 space-y-4 relative">
                   {onUpdateCustomer && (
                       <button
                         onClick={() => setShowEditModal(true)}
@@ -347,7 +347,7 @@ const handleSendFullReport = () => {
               {customerSales.map(sale => {
                   const investorName = getInvestorInfo(sale);
                   return (
-                    <div key={sale.id} onClick={() => setSelectedSaleId(sale.id)} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm active:bg-slate-50 cursor-pointer">
+                    <div key={sale.id} onClick={() => setSelectedSaleId(sale.id)} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm active:bg-slate-50 cursor-pointer">
                         <div className="flex justify-between items-start mb-2">
                             <h3 className="font-bold text-slate-800">{sale.productName}</h3>
                             <span className={`text-xs px-2 py-1 rounded-full ${sale.remainingAmount === 0 ? 'bg-slate-100 text-slate-600' : 'bg-indigo-100 text-indigo-700'}`}>{sale.remainingAmount === 0 ? 'Закрыто' : 'Активно'}</span>

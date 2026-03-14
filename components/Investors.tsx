@@ -107,7 +107,7 @@ const Investors: React.FC<InvestorsProps> = ({
       </header>
 
       {isAdding && (
-          <form onSubmit={handleSubmit} onClick={e => e.stopPropagation()} className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4 animate-fade-in">
+          <form onSubmit={handleSubmit} onClick={e => e.stopPropagation()} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4 animate-fade-in">
               <h3 className="font-bold text-slate-800 border-b border-slate-100 pb-2">
                   {editingId ? 'Редактировать инвестора' : 'Новый инвестор'}
               </h3>
@@ -115,14 +115,14 @@ const Investors: React.FC<InvestorsProps> = ({
               <div className="space-y-3">
                   <input
                     placeholder="Имя Фамилия"
-                    className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none"
+                    className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                     value={formName}
                     onChange={e => setFormName(e.target.value)}
                     required
                   />
                   <input
                     placeholder="Телефон"
-                    className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none"
+                    className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                     value={formPhone}
                     onChange={e => setFormPhone(e.target.value)}
                   />
@@ -130,7 +130,7 @@ const Investors: React.FC<InvestorsProps> = ({
                     <input
                         type="email"
                         placeholder="Email (Логин)"
-                        className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none"
+                        className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                         value={formEmail}
                         onChange={e => setFormEmail(e.target.value)}
                         required
@@ -138,7 +138,7 @@ const Investors: React.FC<InvestorsProps> = ({
                     <input
                         type="text" // Visible for creation
                         placeholder={editingId ? "Новый пароль (необязательно)" : "Пароль"}
-                        className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none"
+                        className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                         value={formPassword}
                         onChange={e => setFormPassword(e.target.value)}
                         required={!editingId}
@@ -150,7 +150,7 @@ const Investors: React.FC<InvestorsProps> = ({
                        <input 
                           type="number"
                           placeholder="Сумма инвестиций" 
-                          className="w-full p-3 pl-8 border border-slate-200 dark:border-slate-700 rounded-xl outline-none font-bold"
+                          className="w-full p-3 pl-8 border border-slate-200 rounded-xl outline-none font-bold"
                           value={formAmount}
                           onChange={e => setFormAmount(e.target.value)}
                           required
@@ -161,7 +161,7 @@ const Investors: React.FC<InvestorsProps> = ({
                        <input 
                           type="number"
                           placeholder="Процент прибыли" 
-                          className="w-full p-3 pr-8 border border-slate-200 dark:border-slate-700 rounded-xl outline-none font-bold"
+                          className="w-full p-3 pr-8 border border-slate-200 rounded-xl outline-none font-bold"
                           value={formProfitPercentage}
                           onChange={e => setFormProfitPercentage(e.target.value)}
                           required
@@ -173,7 +173,7 @@ const Investors: React.FC<InvestorsProps> = ({
                   <div className="bg-slate-50 p-4 rounded-xl space-y-3">
                       <h4 className="text-sm font-bold text-slate-600">Права доступа</h4>
                       <div className="space-y-2">
-                          <label className="flex items-center gap-3 cursor-pointer p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-indigo-400 transition-colors">
+                          <label className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
                               <input 
                                 type="checkbox" 
                                 className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
@@ -185,7 +185,7 @@ const Investors: React.FC<InvestorsProps> = ({
                                   <span className="text-xs text-slate-500">Доступ к странице "Договоры" (только свои)</span>
                               </div>
                           </label>
-                          <label className="flex items-center gap-3 cursor-pointer p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-indigo-400 transition-colors">
+                          <label className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
                               <input 
                                 type="checkbox" 
                                 className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
@@ -215,7 +215,7 @@ const Investors: React.FC<InvestorsProps> = ({
             <div className="text-center py-8 text-slate-400">Нет инвесторов</div>
         )}
         {investors.map(inv => (
-            <div key={inv.id} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative">
+            <div key={inv.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold text-lg">
@@ -246,7 +246,7 @@ const Investors: React.FC<InvestorsProps> = ({
 
                 {/* Dropdown Menu */}
                 {activeMenuId === inv.id && (
-                    <div className="absolute right-4 top-14 bg-white dark:bg-slate-900 shadow-xl border border-slate-100 rounded-xl z-20 w-40 overflow-hidden animate-fade-in">
+                    <div className="absolute right-4 top-14 bg-white shadow-xl border border-slate-100 rounded-xl z-20 w-40 overflow-hidden animate-fade-in">
                         <button 
                             onClick={(e) => { e.stopPropagation(); onViewDetails?.(inv); }}
                             className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"

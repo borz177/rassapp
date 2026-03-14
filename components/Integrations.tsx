@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+яimport React, { useState, useEffect } from 'react';
 import { AppSettings, WhatsAppSettings } from '../types';
 import { ICONS } from '../constants';
 import { checkGreenApiConnection } from '../services/whatsapp';
@@ -195,13 +195,13 @@ const Integrations: React.FC<IntegrationsProps> = ({
       </header>
 
       <div
-        className={`bg-white dark:bg-slate-900 rounded-2xl shadow-sm border transition-all duration-300 ${
-          waEnabled ? 'border-emerald-200' : 'border-slate-200 dark:border-slate-700'
+        className={`bg-white rounded-2xl shadow-sm border transition-all duration-300 ${
+          waEnabled ? 'border-emerald-200' : 'border-slate-200'
         }`}
       >
         <div
           className={`p-5 flex justify-between items-center cursor-pointer transition-colors ${
-            waEnabled ? 'bg-emerald-50/50 hover:bg-emerald-50' : 'bg-white dark:bg-slate-900 hover:bg-slate-50'
+            waEnabled ? 'bg-emerald-50/50 hover:bg-emerald-50' : 'bg-white hover:bg-slate-50'
           }`}
           onClick={handleCardClick}
         >
@@ -232,7 +232,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
             <div onClick={handleToggleEnable} className="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" className="sr-only peer" checked={waEnabled} onChange={() => {}} />
               <div className={`w-11 h-6 rounded-full peer peer-checked:bg-emerald-500 peer-focus:outline-none ${waEnabled ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-                <div className={`absolute top-[2px] left-[2px] bg-white dark:bg-slate-900 border border-gray-300 rounded-full h-5 w-5 transition-transform peer-checked:translate-x-full`}></div>
+                <div className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform peer-checked:translate-x-full`}></div>
               </div>
             </div>
           </div>
@@ -253,7 +253,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                   <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">idInstance</label>
                   <input
                     type="text"
-                    className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 font-mono text-sm"
+                    className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm"
                     value={idInstance}
                     onChange={e => setIdInstance(e.target.value)}
                     placeholder="1101000001"
@@ -264,7 +264,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                   <div className="relative">
                     <input
                       type={isTokenVisible ? "text" : "password"}
-                      className="w-full p-3 pr-10 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 font-mono text-sm"
+                      className="w-full p-3 pr-10 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm"
                       value={apiToken}
                       onChange={e => setApiToken(e.target.value)}
                       placeholder="••••••••"
@@ -311,7 +311,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                   <select
                     value={reminderTime}
                     onChange={e => setReminderTime(e.target.value)}
-                    className="w-full p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50"
+                    className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-slate-50"
                   >
                     {generateTimeOptions().map(time => (
                       <option key={time} value={time}>
@@ -328,7 +328,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                   className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${
                     reminderDays.includes(0)
                       ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white dark:bg-slate-900 text-slate-600 border-slate-200 dark:border-slate-700'
+                      : 'bg-white text-slate-600 border-slate-200'
                   }`}
                 >
                   В день оплаты
@@ -338,7 +338,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                   className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${
                     reminderDays.includes(-1)
                       ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white dark:bg-slate-900 text-slate-600 border-slate-200 dark:border-slate-700'
+                      : 'bg-white text-slate-600 border-slate-200'
                   }`}
                 >
                   За 1 день
@@ -348,7 +348,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                   className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${
                     reminderDays.includes(1)
                       ? 'bg-red-600 text-white border-red-600'
-                      : 'bg-white dark:bg-slate-900 text-slate-600 border-slate-200 dark:border-slate-700'
+                      : 'bg-white text-slate-600 border-slate-200'
                   }`}
                 >
                   При просрочке
@@ -368,7 +368,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                   onClick={() => setActiveTemplateTab('UPCOMING')}
                   className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                     activeTemplateTab === 'UPCOMING'
-                      ? 'bg-white dark:bg-slate-900 text-slate-800 shadow-sm'
+                      ? 'bg-white text-slate-800 shadow-sm'
                       : 'text-slate-500'
                   }`}
                 >
@@ -378,7 +378,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                   onClick={() => setActiveTemplateTab('TODAY')}
                   className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                     activeTemplateTab === 'TODAY'
-                      ? 'bg-white dark:bg-slate-900 text-slate-800 shadow-sm'
+                      ? 'bg-white text-slate-800 shadow-sm'
                       : 'text-slate-500'
                   }`}
                 >
@@ -388,16 +388,16 @@ const Integrations: React.FC<IntegrationsProps> = ({
                   onClick={() => setActiveTemplateTab('OVERDUE')}
                   className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
                     activeTemplateTab === 'OVERDUE'
-                      ? 'bg-white dark:bg-slate-900 text-slate-800 shadow-sm'
+                      ? 'bg-white text-slate-800 shadow-sm'
                       : 'text-slate-500'
                   }`}
                 >
                   Просрочка
                 </button>
               </div>
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <textarea
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm outline-none focus:border-indigo-400 h-32 resize-none"
+                  className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-indigo-400 h-32 resize-none"
                   value={getCurrentTemplate()}
                   onChange={e => updateTemplate(e.target.value)}
                   placeholder="Текст сообщения..."
@@ -409,7 +409,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                       <button
                         key={v}
                         onClick={() => insertVariable(v)}
-                        className="text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+                        className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
                       >
                         {`{${v}}`}
                       </button>
@@ -438,24 +438,24 @@ const Integrations: React.FC<IntegrationsProps> = ({
                     onChange={() => {}}
                   />
                   <div className={`w-11 h-6 rounded-full peer peer-checked:bg-indigo-600 peer-focus:outline-none transition-colors ${botEnabled ? 'bg-indigo-600' : 'bg-slate-200'}`}>
-                    <div className={`absolute top-[2px] left-[2px] bg-white dark:bg-slate-900 border border-gray-300 rounded-full h-5 w-5 transition-transform ${botEnabled ? 'translate-x-full' : ''}`}></div>
+                    <div className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform ${botEnabled ? 'translate-x-full' : ''}`}></div>
                   </div>
                 </div>
               </div>
 
               {botEnabled && (
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4 animate-fade-in">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4 animate-fade-in">
                   <div>
                     <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Webhook URL</label>
                     <div className="flex gap-2">
                       <input
                         readOnly
-                        className="w-full p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs bg-white dark:bg-slate-900 text-slate-600 font-mono select-all"
+                        className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white text-slate-600 font-mono select-all"
                         value={`${window.location.origin}/api/integrations/whatsapp/webhook`}
                       />
                       <button
                         onClick={() => copyToClipboard(`${window.location.origin}/api/integrations/whatsapp/webhook`)}
-                        className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 whitespace-nowrap"
+                        className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 whitespace-nowrap"
                       >
                         Копировать
                       </button>

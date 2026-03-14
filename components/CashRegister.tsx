@@ -34,7 +34,7 @@ const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubm
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20" onClick={e => e.stopPropagation()}>
+            <div className="bg-white/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-3 mb-6">
                     <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white shadow-lg">
                         {ICONS.Plus}
@@ -49,7 +49,7 @@ const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubm
                             autoFocus
                             value={name}
                             onChange={e => setName(e.target.value)}
-                            className="w-full p-3.5 bg-slate-50 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                            className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
                             placeholder="Например: Касса 1"
                         />
                     </div>
@@ -87,7 +87,7 @@ const EditAccountModal = ({ account, onClose, onUpdate }: { account: Account, on
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20" onClick={e => e.stopPropagation()}>
+            <div className="bg-white/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-3 mb-6">
                     <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-white shadow-lg">
                         {ICONS.Edit}
@@ -102,7 +102,7 @@ const EditAccountModal = ({ account, onClose, onUpdate }: { account: Account, on
                             autoFocus
                             value={name}
                             onChange={e => setName(e.target.value)}
-                            className="w-full p-3.5 bg-slate-50 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-100 transition-all"
+                            className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-100 transition-all"
                         />
                     </div>
 
@@ -174,10 +174,10 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, ap
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900/95 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-white/20" onClick={e => e.stopPropagation()}>
+            <div className="bg-white/95 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-white/20" onClick={e => e.stopPropagation()}>
                 <div className="p-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
                     <div className="flex items-center gap-3 mb-2">
-                        <div className="w-10 h-10 rounded-2xl bg-white dark:bg-slate-900/20 backdrop-blur-sm flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
                             {ICONS.Users}
                         </div>
                         <div>
@@ -222,7 +222,7 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, ap
                                 const profitShare = Math.max(0, equityValue - p.netCapital);
 
                                 return (
-                                    <div key={p.id} className="bg-white dark:bg-slate-900 border border-slate-100 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all">
+                                    <div key={p.id} className="bg-white border border-slate-100 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all">
                                         <div className="flex justify-between items-center mb-3">
                                             <span className="font-bold text-slate-800">{p.name}</span>
                                             <span className="bg-indigo-100 text-indigo-700 text-xs px-3 py-1 rounded-full font-bold">
@@ -258,7 +258,7 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, ap
                 <div className="p-4 border-t border-slate-100 bg-slate-50">
                     <button
                         onClick={onClose}
-                        className="w-full py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 font-bold rounded-xl hover:bg-slate-100 transition-all"
+                        className="w-full py-3.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-100 transition-all"
                     >
                         Закрыть
                     </button>
@@ -312,7 +312,7 @@ const AccountActionModal = ({
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="bg-white w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                 {/* Верхняя полоса с цветом типа счета */}
                 <div className={`h-2 bg-gradient-to-r ${getAccountTypeColor(account.type)}`}></div>
 
@@ -612,7 +612,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       {/* Account Cards */}
       {accounts.length === 0 ? (
         <div className="bg-gradient-to-br from-slate-50 to-indigo-50 rounded-3xl p-8 sm:p-12 text-center border-2 border-dashed border-indigo-200">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg">
             <span className="text-2xl sm:text-3xl text-indigo-400">{ICONS.Wallet}</span>
           </div>
           <h3 className="text-lg sm:text-xl font-bold text-slate-800 mb-2">Нет созданных счетов</h3>
@@ -632,7 +632,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
           {accounts.map(acc => (
             <div
               key={acc.id}
-              className="relative bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden"
+              className="relative bg-white rounded-2xl sm:rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden"
               onClick={() => handleSharedAccountClick(acc)}
             >
               {/* Background Gradient */}
@@ -729,7 +729,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
           </div>
 
           {/* Filters - исправлено для мобильных */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100">
+          <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100">
             <div className="space-y-3">
               {/* Account Filter - полная ширина на мобильных */}
               <div>
@@ -737,7 +737,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                   Фильтр по счету
                 </label>
                 <select
-                  className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                  className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
                   value={profitFilterAccountId}
                   onChange={e => setProfitFilterAccountId(e.target.value)}
                 >
@@ -756,7 +756,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                   </label>
                   <input
                     type="date"
-                    className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                    className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
                     value={myProfitPeriod.start}
                     onChange={e => setMyProfitPeriod(p => ({...p, start: e.target.value}))}
                   />
@@ -767,7 +767,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                   </label>
                   <input
                     type="date"
-                    className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                    className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
                     value={myProfitPeriod.end}
                     onChange={e => setMyProfitPeriod(p => ({...p, end: e.target.value}))}
                   />
@@ -817,7 +817,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       {/* Profit Details Modal */}
       {showProfitDetails && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/90 to-indigo-900/90 backdrop-blur-sm animate-fade-in" onClick={() => setShowProfitDetails(false)}>
-          <div className="bg-white dark:bg-slate-900/95 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl flex flex-col max-h-[80vh] border border-white/20" onClick={e => e.stopPropagation()}>
+          <div className="bg-white/95 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl flex flex-col max-h-[80vh] border border-white/20" onClick={e => e.stopPropagation()}>
             <div className="p-5 sm:p-6 border-b border-slate-100">
               <h3 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-slate-800 to-indigo-800 bg-clip-text text-transparent">Детализация прибыли</h3>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
@@ -903,7 +903,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
             <div className="p-4 sm:p-5 border-t border-slate-100 bg-slate-50">
               <button
                 onClick={() => setShowProfitDetails(false)}
-                className="w-full py-2.5 sm:py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 font-bold rounded-xl hover:bg-slate-100 transition-all text-sm sm:text-base"
+                className="w-full py-2.5 sm:py-3.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-100 transition-all text-sm sm:text-base"
               >
                 Закрыть
               </button>

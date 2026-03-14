@@ -61,11 +61,11 @@ const Products: React.FC<ProductsProps> = ({ products, onAddProduct, onUpdatePro
       </header>
 
       {isAdding && (
-          <form onSubmit={handleAddSubmit} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-indigo-100 shadow-sm space-y-3 animate-fade-in">
+          <form onSubmit={handleAddSubmit} className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm space-y-3 animate-fade-in">
               <h3 className="font-bold text-sm text-indigo-800">Новый товар</h3>
               <input 
                 placeholder="Название" 
-                className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-lg outline-none"
+                className="w-full p-3 border border-slate-200 rounded-lg outline-none"
                 value={addForm.name}
                 onChange={e => setAddForm({...addForm, name: e.target.value})}
                 required
@@ -74,7 +74,7 @@ const Products: React.FC<ProductsProps> = ({ products, onAddProduct, onUpdatePro
                 <input 
                     type="number"
                     placeholder="Цена (₽)" 
-                    className="flex-1 p-3 border border-slate-200 dark:border-slate-700 rounded-lg outline-none"
+                    className="flex-1 p-3 border border-slate-200 rounded-lg outline-none"
                     value={addForm.price}
                     onChange={e => setAddForm({...addForm, price: e.target.value})}
                     required
@@ -82,7 +82,7 @@ const Products: React.FC<ProductsProps> = ({ products, onAddProduct, onUpdatePro
                 <input 
                     type="number"
                     placeholder="Кол-во" 
-                    className="w-24 p-3 border border-slate-200 dark:border-slate-700 rounded-lg outline-none"
+                    className="w-24 p-3 border border-slate-200 rounded-lg outline-none"
                     value={addForm.stock}
                     onChange={e => setAddForm({...addForm, stock: e.target.value})}
                 />
@@ -93,7 +93,7 @@ const Products: React.FC<ProductsProps> = ({ products, onAddProduct, onUpdatePro
 
       <div className="grid gap-4">
         {products.map(p => (
-            <div key={p.id} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+            <div key={p.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 {editingId === p.id ? (
                     <div className="space-y-3">
                         <input 
