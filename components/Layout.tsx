@@ -246,13 +246,12 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
       {/* Mobile Top Navbar */}
         <header className="
 md:hidden fixed top-0 left-0 right-0
-pt-safe
-h-[calc(4rem+env(safe-area-inset-top))]
+pt-[env(safe-area-inset-top)]
+h-[calc(64px+env(safe-area-inset-top))]
 flex items-center px-4
-bg-slate-50/70
+bg-slate-50/80
 backdrop-blur-xl
 border-b border-slate-200/50
-shadow-[0_5px_25px_rgba(0,0,0,0.06)]
 z-30
 ">
             <div className="flex flex-col">
