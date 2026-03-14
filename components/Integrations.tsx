@@ -1,4 +1,4 @@
-яimport React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppSettings, WhatsAppSettings } from '../types';
 import { ICONS } from '../constants';
 import { checkGreenApiConnection } from '../services/whatsapp';
