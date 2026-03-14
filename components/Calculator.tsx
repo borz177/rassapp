@@ -166,7 +166,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   return (
     <div className={`min-h-screen ${isPublic ? 'bg-slate-50 flex items-center justify-center p-4' : 'animate-fade-in pb-20'}`}>
 
-        <div className={`bg-white w-full ${isPublic ? 'max-w-md rounded-3xl shadow-xl' : 'rounded-none bg-transparent'}`}>
+        <div className={`bg-white dark:bg-slate-900 w-full ${isPublic ? 'max-w-md rounded-3xl shadow-xl' : 'rounded-none bg-transparent'}`}>
 
             {/* Header */}
             <div className={`p-6 ${isPublic ? 'bg-indigo-600 rounded-t-3xl text-white' : ''}`}>
@@ -189,13 +189,13 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
             <div className={`space-y-6 ${isPublic ? 'p-6' : ''}`}>
 
                 {/* Inputs */}
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
                     <div>
                         <label className="block text-sm font-bold text-slate-500 mb-1">Стоимость товара</label>
                         <div className="relative">
                             <input
                                 type="number"
-                                className="w-full p-4 pl-4 pr-12 text-xl font-bold border border-slate-200 rounded-xl outline-none focus:border-indigo-500"
+                                className="w-full p-4 pl-4 pr-12 text-xl font-bold border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500"
                                 placeholder="0"
                                 value={price}
                                 onChange={e => setPrice(e.target.value)}
@@ -208,7 +208,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                         <div>
                             <label className="block text-sm font-bold text-slate-500 mb-1">Срок (мес)</label>
                             <select
-                                className="w-full p-4 border border-slate-200 rounded-xl outline-none bg-white font-medium"
+                                className="w-full p-4 border border-slate-200 dark:border-slate-700 rounded-xl outline-none bg-white dark:bg-slate-900 font-medium"
                                 value={months}
                                 onChange={e => setMonths(parseInt(e.target.value))}
                             >
@@ -221,7 +221,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                             <label className="block text-sm font-bold text-slate-500 mb-1">Взнос</label>
                             <input
                                 type="number"
-                                className="w-full p-4 border border-slate-200 rounded-xl outline-none"
+                                className="w-full p-4 border border-slate-200 dark:border-slate-700 rounded-xl outline-none"
                                 placeholder="0"
                                 value={downPayment}
                                 onChange={e => setDownPayment(e.target.value)}
@@ -280,7 +280,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                                     <p className="text-[10px] text-slate-500 mt-1">Применяется, если для срока нет отдельного правила.</p>
                                 </div>
 
-                                <div className="bg-white p-3 rounded-xl border border-indigo-100">
+                                <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-indigo-100">
                                     <label className="block text-xs font-bold text-indigo-400 uppercase mb-2">Специальные ставки по срокам</label>
 
                                     {/* List of existing rules */}
@@ -304,7 +304,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                                         <div className="flex-1">
                                             <label className="text-[10px] text-slate-400 block mb-1">Срок</label>
                                             <select
-                                                className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-slate-50 outline-none"
+                                                className="w-full p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 outline-none"
                                                 value={newRuleMonth}
                                                 onChange={e => setNewRuleMonth(parseInt(e.target.value))}
                                             >
@@ -315,7 +315,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                                             <label className="text-[10px] text-slate-400 block mb-1">Ставка %</label>
                                             <input
                                                 type="number"
-                                                className="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none"
+                                                className="w-full p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none"
                                                 value={newRuleRate}
                                                 onChange={e => setNewRuleRate(e.target.value)}
                                                 placeholder="%"
@@ -335,7 +335,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                             <div className="space-y-3">
                                 <button
                                     onClick={handleCopyLink}
-                                    className="w-full py-3 bg-white border-2 border-indigo-200 text-indigo-700 font-bold rounded-xl hover:bg-indigo-100 flex items-center justify-center gap-2 transition-colors"
+                                    className="w-full py-3 bg-white dark:bg-slate-900 border-2 border-indigo-200 text-indigo-700 font-bold rounded-xl hover:bg-indigo-100 flex items-center justify-center gap-2 transition-colors"
                                 >
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                                     Копировать красивую ссылку

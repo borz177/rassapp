@@ -129,7 +129,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     return (
         <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
-            <div className="bg-white p-8 rounded-2xl w-full max-w-sm shadow-xl animate-fade-in relative">
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl w-full max-w-sm shadow-xl animate-fade-in relative">
 
                 {/* Header */}
                 <div className="text-center mb-6">
@@ -149,14 +149,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     <form onSubmit={handleLogin} className="space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                            <input type="email" className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={email} onChange={e => setEmail(e.target.value)} placeholder="mail@example.com" />
+                            <input type="email" className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={email} onChange={e => setEmail(e.target.value)} placeholder="mail@example.com" />
                         </div>
                         <div>
                             <div className="flex justify-between">
                                 <label className="block text-sm font-medium text-slate-700 mb-1">Пароль</label>
                                 <button type="button" onClick={() => switchMode('RESET')} className="text-xs text-indigo-600 hover:underline">Забыли пароль?</button>
                             </div>
-                            <input type="password" className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" />
+                            <input type="password" className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" />
                         </div>
                         <button type="submit" disabled={isLoading} className="w-full bg-indigo-600 text-white p-4 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-70">
                             {isLoading ? 'Вход...' : 'Войти'}
@@ -176,7 +176,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                             <>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Ваш Email</label>
-                                    <input type="email" className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={email} onChange={e => setEmail(e.target.value)} placeholder="mail@example.com" />
+                                    <input type="email" className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={email} onChange={e => setEmail(e.target.value)} placeholder="mail@example.com" />
                                 </div>
                                 <button onClick={handleSendCode} disabled={isLoading} className="w-full bg-indigo-600 text-white p-4 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-70">
                                     {isLoading ? 'Отправка...' : 'Получить код'}
@@ -191,7 +191,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                                     Мы отправили код на <span className="font-bold text-slate-700">{email}</span>
                                 </div>
                                 <div className="mb-4">
-                                    <input type="text" maxLength={6} className="w-full p-3 text-center text-2xl tracking-widest border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-mono" value={code} onChange={e => setCode(e.target.value.replace(/\D/g,''))} placeholder="000000" />
+                                    <input type="text" maxLength={6} className="w-full p-3 text-center text-2xl tracking-widest border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500 font-mono" value={code} onChange={e => setCode(e.target.value.replace(/\D/g,''))} placeholder="000000" />
                                 </div>
                                 <button onClick={handleVerifyCodeStep} className="w-full bg-indigo-600 text-white p-4 rounded-xl font-bold hover:bg-indigo-700 transition-colors mb-3">
                                     Подтвердить
@@ -211,11 +211,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                             <div className="animate-fade-in space-y-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Ваше Имя</label>
-                                    <input type="text" className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} placeholder="Иван Иванов" />
+                                    <input type="text" className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} placeholder="Иван Иванов" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Придумайте пароль</label>
-                                    <input type="password" className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" />
+                                    <input type="password" className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" />
                                 </div>
                                 <button onClick={handleRegister} disabled={isLoading} className="w-full bg-emerald-600 text-white p-4 rounded-xl font-bold hover:bg-emerald-700 transition-colors disabled:opacity-70">
                                     {isLoading ? 'Создание...' : 'Завершить регистрацию'}
@@ -228,11 +228,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                             <div className="animate-fade-in space-y-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Новый пароль</label>
-                                    <input type="password" className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" />
+                                    <input type="password" className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Подтвердите пароль</label>
-                                    <input type="password" className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="••••••" />
+                                    <input type="password" className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="••••••" />
                                 </div>
                                 <button onClick={handleResetPassword} disabled={isLoading} className="w-full bg-indigo-600 text-white p-4 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-70">
                                     {isLoading ? 'Сохранение...' : 'Сменить пароль'}

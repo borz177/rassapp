@@ -36,10 +36,10 @@ const AIConsultant: React.FC<AIConsultantProps> = ({ customers, sales }) => {
         <p className="text-slate-500 text-sm">Оценка надежности заемщика</p>
       </header>
 
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-sm border border-slate-100">
         <label className="block text-sm font-medium text-slate-700 mb-2">Выберите клиента</label>
         <select 
-          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 mb-4"
+          className="w-full p-3 bg-slate-50 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 mb-4"
           value={selectedCustomer}
           onChange={(e) => setSelectedCustomer(e.target.value)}
         >
@@ -59,7 +59,7 @@ const AIConsultant: React.FC<AIConsultantProps> = ({ customers, sales }) => {
       </div>
 
       {analysis && (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-fade-in">
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100 animate-fade-in">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-slate-800">Результат</h3>
             <span className={`px-3 py-1 rounded-full text-sm font-bold ${

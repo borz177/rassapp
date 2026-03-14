@@ -2,7 +2,7 @@ import React from "react"
 
 export default function Landing() {
     return (
-        <div className="min-h-screen bg-white font-['Inter',sans-serif]">
+        <div className="min-h-screen bg-white dark:bg-slate-900 font-['Inter',sans-serif]">
 
             {/* Стили для шрифта и анимаций добавим через style блок или CDN — в React можно использовать глобальные стили или CSS-файл, но для примера оставим комментарий */}
             <style jsx>{`
@@ -30,7 +30,7 @@ export default function Landing() {
             `}</style>
 
             {/* НАВБАР с эффектом стекла */}
-            <header className="fixed top-0 left-0 w-full z-50 backdrop-blur-md bg-white/70 border-b border-slate-200/60">
+            <header className="fixed top-0 left-0 w-full z-50 backdrop-blur-md bg-white dark:bg-slate-900/70 border-b border-slate-200 dark:border-slate-700/60">
                 <div className="flex justify-between items-center px-6 sm:px-8 py-4 max-w-7xl mx-auto">
                     <div className="text-2xl font-bold bg-gradient-to-r from-indigo-800 to-teal-700 bg-clip-text text-transparent tracking-tight">
                         FinUchet
@@ -38,7 +38,7 @@ export default function Landing() {
                     <div className="flex gap-3 items-center">
                         <a
                             href="/app"
-                            className="px-5 py-2.5 text-sm font-medium text-slate-700 hover:text-indigo-700 border border-slate-300 hover:border-indigo-300 rounded-full transition-all duration-200 bg-white/70 backdrop-blur-sm btn-shadow"
+                            className="px-5 py-2.5 text-sm font-medium text-slate-700 hover:text-indigo-700 border border-slate-300 hover:border-indigo-300 rounded-full transition-all duration-200 bg-white dark:bg-slate-900/70 backdrop-blur-sm btn-shadow"
                         >
                             Войти
                         </a>
@@ -88,7 +88,7 @@ export default function Landing() {
 
                         <a
                             href="/app"
-                            className="border border-slate-300 bg-white/80 backdrop-blur-sm px-7 py-3.5 rounded-full text-base font-medium text-slate-700 shadow-md hover:border-indigo-300 hover:text-indigo-700 transition"
+                            className="border border-slate-300 bg-white dark:bg-slate-900/80 backdrop-blur-sm px-7 py-3.5 rounded-full text-base font-medium text-slate-700 shadow-md hover:border-indigo-300 hover:text-indigo-700 transition"
                         >
                             Веб-версия
                         </a>
@@ -125,7 +125,7 @@ export default function Landing() {
             {/* Преимущества */}
             <section className="bg-slate-50/80 py-28 backdrop-blur-sm">
                 <div className="max-w-7xl mx-auto grid md:grid-cols-3 gap-12 px-6">
-                    <div className="bg-white p-8 rounded-3xl shadow-md hover:shadow-xl transition-shadow border border-slate-100">
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-md hover:shadow-xl transition-shadow border border-slate-100">
                         <div className="w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-800 flex items-center justify-center text-3xl mb-6">
                             💰
                         </div>
@@ -134,7 +134,7 @@ export default function Landing() {
                             Автоматический расчет долгов, пеней и графиков платежей. Никаких пропусков.
                         </p>
                     </div>
-                    <div className="bg-white p-8 rounded-3xl shadow-md hover:shadow-xl transition-shadow border border-slate-100">
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-md hover:shadow-xl transition-shadow border border-slate-100">
                         <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center text-3xl mb-6">
                             👤
                         </div>
@@ -143,7 +143,7 @@ export default function Landing() {
                             Полная история покупок, контакты, напоминания — всё в одном окне.
                         </p>
                     </div>
-                    <div className="bg-white p-8 rounded-3xl shadow-md hover:shadow-xl transition-shadow border border-slate-100">
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-md hover:shadow-xl transition-shadow border border-slate-100">
                         <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center text-3xl mb-6">
                             📈
                         </div>
@@ -177,14 +177,14 @@ export default function Landing() {
                         </a>
                         <a
                             href="/app"
-                            className="border-2 border-indigo-200 bg-white/70 text-indigo-800 px-8 py-4 rounded-2xl text-lg shadow-lg flex items-center gap-3 transition hover:border-indigo-400 hover:bg-white"
+                            className="border-2 border-indigo-200 bg-white dark:bg-slate-900/70 text-indigo-800 px-8 py-4 rounded-2xl text-lg shadow-lg flex items-center gap-3 transition hover:border-indigo-400 hover:bg-white dark:bg-slate-900"
                         >
                             <span className="text-2xl">🌐</span> Web-версия
                         </a>
                     </div>
 
                     {/* iPhone инструкция карточкой */}
-                    <div className="mt-16 p-6 bg-white/80 backdrop-blur-sm rounded-3xl border border-slate-200/60 inline-block text-left shadow-xl">
+                    <div className="mt-16 p-6 bg-white dark:bg-slate-900/80 backdrop-blur-sm rounded-3xl border border-slate-200 dark:border-slate-700/60 inline-block text-left shadow-xl">
                         <div className="flex items-center gap-3 text-slate-700">
                             <span className="text-3xl">📱</span>
                             <span className="font-semibold text-lg">Для iPhone:</span>
@@ -205,7 +205,7 @@ export default function Landing() {
             </section>
 
             {/* Футер */}
-            <footer className="text-center py-12 border-t border-slate-200 text-slate-400 text-sm bg-white">
+            <footer className="text-center py-12 border-t border-slate-200 dark:border-slate-700 text-slate-400 text-sm bg-white dark:bg-slate-900">
                 <div className="space-x-6 mb-3">
                     <a href="#" className="hover:text-indigo-600 transition">
                         Политика

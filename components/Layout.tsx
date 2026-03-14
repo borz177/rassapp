@@ -19,6 +19,17 @@ interface LayoutProps {
   isSyncing?: boolean;
 }
 
+
+const toggleTheme = () => {
+  const html = document.documentElement
+
+  html.classList.toggle("dark")
+
+  const theme = html.classList.contains("dark") ? "dark" : "light"
+
+  localStorage.setItem("theme", theme)
+}
+
 const PLAN_NAMES: Record<SubscriptionPlan, string> = {
     'TRIAL': 'Пробный',
     'START': 'Старт',
@@ -244,60 +255,79 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans">
       {/* Mobile Top Navbar */}
-      <header className="md:hidden fixed top-0 left-0 right-0 bg-white h-16 flex items-center px-4 shadow-md z-30 border-b border-slate-200">
-        <div className="flex flex-col">
-            <h1 className="text-xl font-bold tracking-tight text-indigo-600">{appSettings.companyName}</h1>
-            {!isOnline && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded w-fit">Офлайн</span>}
-            {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">Синхронизация...</span>}
-        </div>
-        {!isInvestor && (
-            <div
-                className={`ml-auto text-xs px-2 py-1.5 rounded-lg font-bold flex flex-col items-end leading-tight cursor-pointer
+        <header
+            className="md:hidden fixed top-0 left-0 right-0 bg-white dark:bg-slate-900 h-16 flex items-center px-4 shadow-md z-30 border-b border-slate-200 dark:border-slate-700">
+            <div className="flex flex-col">
+                <h1 className="text-xl font-bold tracking-tight text-indigo-600">{appSettings.companyName}</h1>
+                {!isOnline && <span
+                    className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded w-fit">Офлайн</span>}
+                {isOnline && isSyncing && <span
+                    className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">Синхронизация...</span>}
+            </div>
+            {!isInvestor && (
+                <div
+                    className={`ml-auto text-xs px-2 py-1.5 rounded-lg font-bold flex flex-col items-end leading-tight cursor-pointer
                     ${subStatus.expired ? 'bg-red-50 text-red-600' : subStatus.isWarning ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}
                 `}
-                onClick={() => setView('TARIFFS')}
-            >
-                <span>{subStatus.planName}</span>
-                <span className="text-[10px] opacity-80">
+                    onClick={() => setView('TARIFFS')}
+                >
+                    <span>{subStatus.planName}</span>
+                    <span className="text-[10px] opacity-80">
                     {subStatus.expired ? 'Истек' : `Осталось: ${subStatus.daysLeft} дн.`}
                 </span>
-            </div>
-        )}
-      </header>
+                </div>
+            )}
+            <button
+                onClick={toggleTheme}
+                className="ml-2 p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"
+            >
+                🌙
+            </button>
+        </header>
 
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto z-20">
-        <div className="p-6 border-b border-slate-800">
-          <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-            {appSettings.companyName}
-          </h1>
-          <div className="mt-2 flex gap-2">
-              {!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}
-              {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}
-          </div>
-          {user && !isInvestor && user.role !== 'admin' && (
-              <div
-                className={`mt-4 p-3 rounded-lg border text-xs font-medium cursor-pointer transition-colors hover:opacity-90 
+        {/* Desktop Sidebar */}
+        <aside
+            className="hidden md:flex flex-col w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto z-20">
+          <div className="p-6 border-b border-slate-800">
+              <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+                  {appSettings.companyName}
+              </h1>
+              <button
+                  onClick={toggleTheme}
+                  className="p-2 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                  🌙
+              </button>
+              <div className="mt-2 flex gap-2">
+                  {!isOnline && <span
+                      className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}
+                  {isOnline && isSyncing && <span
+                      className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}
+              </div>
+              {user && !isInvestor && user.role !== 'admin' && (
+                  <div
+                      className={`mt-4 p-3 rounded-lg border text-xs font-medium cursor-pointer transition-colors hover:opacity-90 
                     ${subStatus.expired ? 'bg-red-900/30 border-red-800 text-red-300' : subStatus.isWarning ? 'bg-amber-900/30 border-amber-800 text-amber-300' : 'bg-emerald-900/30 border-emerald-800 text-emerald-300'}
                 `}
-                onClick={() => setView('TARIFFS')}
-              >
-                  <div className="flex justify-between items-center mb-1">
-                      <span className="opacity-70">Тариф:</span>
-                      <span className="font-bold uppercase tracking-wider">{subStatus.planName}</span>
+                      onClick={() => setView('TARIFFS')}
+                  >
+                      <div className="flex justify-between items-center mb-1">
+                          <span className="opacity-70">Тариф:</span>
+                          <span className="font-bold uppercase tracking-wider">{subStatus.planName}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                          <span className="opacity-70">Статус:</span>
+                          <span
+                              className="font-bold">{subStatus.expired ? 'Истек' : `Активен (${subStatus.daysLeft} дн.)`}</span>
+                      </div>
                   </div>
-                  <div className="flex justify-between items-center">
-                      <span className="opacity-70">Статус:</span>
-                      <span className="font-bold">{subStatus.expired ? 'Истек' : `Активен (${subStatus.daysLeft} дн.)`}</span>
-                  </div>
-              </div>
-          )}
-        </div>
-        <nav className="flex-1 p-4 space-y-2">
-          {sidebarItems.map(item => renderMenuItem(item))}
-        </nav>
+              )}
+          </div>
+          <nav className="flex-1 p-4 space-y-2">
+              {sidebarItems.map(item => renderMenuItem(item))}
+          </nav>
 
-        {user && (
+          {user && (
              <div className="p-4 border-t border-slate-800">
                 <button onClick={onNavigateToProfile} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800 transition-colors">
                     <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center font-bold">
@@ -325,7 +355,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden flex flex-col justify-end pb-24 px-4 animate-fade-in"
           onClick={() => setIsMenuOpen(false)}
         >
-          <div className="bg-white rounded-2xl p-4 shadow-2xl space-y-2 mb-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-2xl space-y-2 mb-4" onClick={e => e.stopPropagation()}>
              <div className="pb-2 mb-2 border-b border-slate-100">
                  <h3 className="text-slate-500 font-bold text-sm uppercase px-2">Быстрые действия</h3>
              </div>
@@ -350,7 +380,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
       )}
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-50 px-2 py-2 flex justify-between items-end safe-area-pb">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-50 px-2 py-2 flex justify-between items-end safe-area-pb">
 
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
             <button onClick={() => setView('DASHBOARD')} className={`flex flex-col items-center p-2 ${currentView === 'DASHBOARD' ? 'text-indigo-600' : 'text-slate-400'}`}>

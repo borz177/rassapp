@@ -115,7 +115,7 @@ const Employees: React.FC<EmployeesProps> = ({
       </header>
 
       {isAdding && (
-          <form onSubmit={handleSubmit} className="bg-white p-5 rounded-2xl shadow-md border border-slate-100 space-y-5 animate-fade-in">
+          <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-md border border-slate-100 space-y-5 animate-fade-in">
               <h3 className="font-bold text-slate-800 border-b border-slate-100 pb-2">
                   {editingId ? 'Редактирование сотрудника' : 'Новый сотрудник'}
               </h3>
@@ -123,7 +123,7 @@ const Employees: React.FC<EmployeesProps> = ({
               <div className="space-y-3">
                   <input 
                     placeholder="Имя Фамилия"
-                    className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                    className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none"
                     value={name}
                     onChange={e => setName(e.target.value)}
                   />
@@ -131,14 +131,14 @@ const Employees: React.FC<EmployeesProps> = ({
                       <input 
                         placeholder="Email (Логин)"
                         type="email"
-                        className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                        className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none"
                         value={email}
                         onChange={e => setEmail(e.target.value)}
                       />
                       <input 
                         placeholder={editingId ? "Новый пароль (необяз.)" : "Пароль"}
                         type="text"
-                        className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                        className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none"
                         value={password}
                         onChange={e => setPassword(e.target.value)}
                       />
@@ -184,7 +184,7 @@ const Employees: React.FC<EmployeesProps> = ({
                   <h4 className="text-sm font-bold text-slate-600">Доступ к инвесторам</h4>
                   <p className="text-xs text-slate-500 mb-2">Отметьте инвесторов, данные которых будет видеть этот сотрудник.</p>
                   
-                  <div className="max-h-40 overflow-y-auto space-y-2 border border-slate-200 rounded-lg p-2 bg-white">
+                  <div className="max-h-40 overflow-y-auto space-y-2 border border-slate-200 dark:border-slate-700 rounded-lg p-2 bg-white dark:bg-slate-900">
                       {investors.length === 0 && <p className="text-xs text-slate-400 p-2">Нет инвесторов</p>}
                       {investors.map(inv => (
                           <label key={inv.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer">
@@ -218,7 +218,7 @@ const Employees: React.FC<EmployeesProps> = ({
               <div className="text-center py-10 text-slate-400">Нет сотрудников</div>
           )}
           {employees.map(emp => (
-              <div key={emp.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div key={emp.id} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
                   <div className="flex items-center gap-3">
                       <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-lg">
                           {emp.name.charAt(0)}

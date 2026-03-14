@@ -734,6 +734,18 @@ const contractCounts = useMemo(() => {
       }
   };
 
+
+
+function toggleTheme() {
+  const html = document.documentElement
+
+  html.classList.toggle("dark")
+
+  const theme = html.classList.contains("dark") ? "dark" : "light"
+
+  localStorage.setItem("theme", theme)
+}
+
 const handleUpdateSettings = async (newSettings: AppSettings) => {
     console.log('🔄 handleUpdateSettings вызван, новые whatsapp-настройки:', newSettings.whatsapp);
 
@@ -1019,7 +1031,7 @@ if (!user) {
                           className="text-slate-500 text-xs mt-1 text-left">{user.email}</p></div>
                   </button>
                   <div className="space-y-2 pt-4">
-                      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+                      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 overflow-hidden">
                           <button onClick={() => toggleMoreSection('CASH')}
                                   className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
                               <div className="flex items-center gap-3">
@@ -1033,23 +1045,23 @@ if (!user) {
                           {moreExpandedSection === 'CASH' && (
                               <div className="bg-slate-50 border-t border-slate-100 p-2 space-y-1">
                                   <button onClick={() => setCurrentView('CASH_REGISTER')}
-                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:bg-slate-900 text-sm text-slate-600 flex items-center gap-2">
                                       <span className="opacity-70">{ICONS.Wallet}</span> Счета
                                   </button>
                                   <button onClick={() => handleAction('INCOME')}
-                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:bg-slate-900 text-sm text-slate-600 flex items-center gap-2">
                                       <span className="opacity-70">{ICONS.Income}</span> Приход
                                   </button>
                                   <button onClick={() => handleAction('EXPENSE')}
-                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:bg-slate-900 text-sm text-slate-600 flex items-center gap-2">
                                       <span className="opacity-70">{ICONS.Expense}</span> Расход
                                   </button>
                                   <button onClick={() => handleAction('OPERATIONS')}
-                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:bg-slate-900 text-sm text-slate-600 flex items-center gap-2">
                                       <span className="opacity-70">{ICONS.List}</span> История
                                   </button>
                               </div>)}</div>
-                      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+                      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 overflow-hidden">
                           <button onClick={() => toggleMoreSection('CONTRACTS')}
                                   className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
                               <div className="flex items-center gap-3">
@@ -1063,14 +1075,14 @@ if (!user) {
                           {moreExpandedSection === 'CONTRACTS' && (
                               <div className="bg-slate-50 border-t border-slate-100 p-2 space-y-1">
                                   <button onClick={() => handleAction('CREATE_SALE')}
-                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:bg-slate-900 text-sm text-slate-600 flex items-center gap-2">
                                       <span className="opacity-70">{ICONS.AddSmall}</span> Оформить
                                   </button>
                                   <button onClick={() => {
                                       setCurrentView('CONTRACTS');
                                       setActiveContractTab('ACTIVE');
                                   }}
-                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2">
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:bg-slate-900 text-sm text-slate-600 flex items-center justify-between gap-2">
                                       <div className="flex items-center gap-2"><span
                                           className="opacity-70">{ICONS.Check}</span> Активные
                                       </div>
@@ -1081,7 +1093,7 @@ if (!user) {
                                       setCurrentView('CONTRACTS');
                                       setActiveContractTab('OVERDUE');
                                   }}
-                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2">
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:bg-slate-900 text-sm text-slate-600 flex items-center justify-between gap-2">
                                       <div className="flex items-center gap-2"><span
                                           className="opacity-70">{ICONS.Alert}</span> Просроченные
                                       </div>
@@ -1092,7 +1104,7 @@ if (!user) {
                                       setCurrentView('CONTRACTS');
                                       setActiveContractTab('ARCHIVE');
                                   }}
-                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2">
+                                          className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:bg-slate-900 text-sm text-slate-600 flex items-center justify-between gap-2">
                                       <div className="flex items-center gap-2"><span
                                           className="opacity-70">{ICONS.Clock}</span> Архив
                                       </div>
@@ -1101,7 +1113,7 @@ if (!user) {
                                   </button>
                               </div>)}</div>
                       <button onClick={() => setCurrentView('REPORTS')}
-                              className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                              className="w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
                           <div className="flex items-center gap-3">
                               <div className="bg-sky-100 text-sky-600 p-2 rounded-lg">{ICONS.Dashboard}</div>
                               <span className="font-semibold text-slate-800">Отчеты</span></div>
@@ -1110,7 +1122,7 @@ if (!user) {
                                                                 strokeLinecap="round" strokeLinejoin="round"><polyline
                               points="9 18 15 12 9 6"/></svg></span></button>
                       <button onClick={() => setCurrentView('CUSTOMERS')}
-                              className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                              className="w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
                           <div className="flex items-center gap-3">
                               <div className="bg-orange-100 text-orange-600 p-2 rounded-lg">{ICONS.Customers}</div>
                               <span className="font-semibold text-slate-800">Клиенты</span></div>
@@ -1119,7 +1131,7 @@ if (!user) {
                                                                 strokeLinecap="round" strokeLinejoin="round"><polyline
                               points="9 18 15 12 9 6"/></svg></span></button>
                       <button onClick={() => setCurrentView('INVESTORS')}
-                              className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                              className="w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
                           <div className="flex items-center gap-3">
                               <div className="bg-purple-100 text-purple-600 p-2 rounded-lg">{ICONS.Users}</div>
                               <span className="font-semibold text-slate-800">Инвесторы</span></div>
@@ -1128,7 +1140,7 @@ if (!user) {
                                                                 strokeLinecap="round" strokeLinejoin="round"><polyline
                               points="9 18 15 12 9 6"/></svg></span></button>
                       {user.role === 'manager' && (<button onClick={() => setCurrentView('EMPLOYEES')}
-                                                           className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                                                           className="w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
                           <div className="flex items-center gap-3">
                               <div className="bg-blue-100 text-blue-600 p-2 rounded-lg">{ICONS.Employees}</div>
                               <span className="font-semibold text-slate-800">Сотрудники</span></div>
@@ -1137,7 +1149,7 @@ if (!user) {
                                                                 strokeLinecap="round" strokeLinejoin="round"><polyline
                               points="9 18 15 12 9 6"/></svg></span></button>)}
                       <button onClick={() => setCurrentView('TARIFFS')}
-                              className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                              className="w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
                           <div className="flex items-center gap-3">
                               <div className="bg-emerald-100 text-emerald-600 p-2 rounded-lg">{ICONS.Tariffs}</div>
                               <span className="font-semibold text-slate-800">Тарифы</span></div>
@@ -1146,7 +1158,7 @@ if (!user) {
                                                                 strokeLinecap="round" strokeLinejoin="round"><polyline
                               points="9 18 15 12 9 6"/></svg></span></button>
                       {user.role === 'admin' && (<button onClick={() => setCurrentView('ADMIN_PANEL')}
-                                                         className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                                                         className="w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
                           <div className="flex items-center gap-3">
                               <div className="bg-red-100 text-red-600 p-2 rounded-lg">{ICONS.Crown}</div>
                               <span className="font-semibold text-slate-800">Админ панель</span></div>
@@ -1155,7 +1167,7 @@ if (!user) {
                                                                 strokeLinecap="round" strokeLinejoin="round"><polyline
                               points="9 18 15 12 9 6"/></svg></span></button>)}
                       <button onClick={() => setCurrentView('SETTINGS')}
-                              className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                              className="w-full bg-white dark:bg-slate-900 rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
                           <div className="flex items-center gap-3">
                               <div className="bg-slate-100 text-slate-600 p-2 rounded-lg">{ICONS.Settings}</div>
                               <span className="font-semibold text-slate-800">Настройки</span></div>

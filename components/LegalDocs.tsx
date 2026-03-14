@@ -7,8 +7,8 @@ interface LegalDocProps {
 
 export const PrivacyPolicy: React.FC<LegalDocProps> = ({ onBack }) => {
     return (
-        <div className="min-h-screen bg-white animate-fade-in">
-            <div className="sticky top-0 bg-white/90 backdrop-blur-sm border-b border-slate-100 p-4 flex items-center gap-3 z-10">
+        <div className="min-h-screen bg-white dark:bg-slate-900 animate-fade-in">
+            <div className="sticky top-0 bg-white dark:bg-slate-900/90 backdrop-blur-sm border-b border-slate-100 p-4 flex items-center gap-3 z-10">
                 <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors">
                     {ICONS.Back}
                 </button>
@@ -74,8 +74,8 @@ export const PrivacyPolicy: React.FC<LegalDocProps> = ({ onBack }) => {
 
 export const DataProcessingAgreement: React.FC<LegalDocProps> = ({ onBack }) => {
     return (
-        <div className="min-h-screen bg-white animate-fade-in">
-            <div className="sticky top-0 bg-white/90 backdrop-blur-sm border-b border-slate-100 p-4 flex items-center gap-3 z-10">
+        <div className="min-h-screen bg-white dark:bg-slate-900 animate-fade-in">
+            <div className="sticky top-0 bg-white dark:bg-slate-900/90 backdrop-blur-sm border-b border-slate-100 p-4 flex items-center gap-3 z-10">
                 <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full text-slate-600 transition-colors">
                     {ICONS.Back}
                 </button>
