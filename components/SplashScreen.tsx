@@ -9,7 +9,7 @@ export default function SplashScreen({ progress }: Props) {
   return (
     <div className="splash">
 
-      <img src="/icon-1024.png" className="logo" />
+      <img src="/splash.png" className="logo" />
 
       <div className="loader">
 
