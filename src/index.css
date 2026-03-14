@@ -63,7 +63,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
       Roboto, Helvetica, Arial, sans-serif;
 
-    background-color: #ffffff;
+   background-color: #f1f5f9;
     -webkit-tap-highlight-color: transparent;
   }
 
@@ -135,8 +135,13 @@
 }
 
 
-  .pt-safe {
+  .pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.pt-safe {
   padding-top: env(safe-area-inset-top);
 }
+
 
 }

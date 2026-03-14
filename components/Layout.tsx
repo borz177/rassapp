@@ -242,17 +242,25 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans">
+    <div className="
+min-h-screen
+flex flex-col
+bg-slate-50
+overflow-hidden
+">
       {/* Mobile Top Navbar */}
         <header className="
-md:hidden fixed top-0 left-0 right-0
-pt-[env(safe-area-inset-top)]
+fixed top-0 left-0 right-0
 h-[calc(64px+env(safe-area-inset-top))]
-flex items-center px-4
-bg-slate-50/80
+pt-[env(safe-area-inset-top)]
+px-4
+flex items-center
+
+bg-white/70
 backdrop-blur-xl
-border-b border-slate-200/50
-z-30
+border-b border-white/30
+
+z-40
 ">
             <div className="flex flex-col">
                 <h1 className="text-xl font-bold tracking-tight text-indigo-600">{appSettings.companyName}</h1>
@@ -325,17 +333,28 @@ z-30
       </aside>
 
       {/* Main Content Area - Updated margins and centering */}
-      <main className="flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-[calc(4rem+env(safe-area-inset-top))] md:mt-0 flex flex-col h-full bg-slate-50">
-        <div className="w-full max-w-7xl mx-auto h-full">
-            {children}
-        </div>
-      </main>
+        <main
+            className="
+flex-1 md:ml-64
+overflow-y-auto
+overflow-x-hidden
 
-      {/* Mobile Quick Actions Menu (Triggered by FAB) - ONLY FOR MANAGER/EMPLOYEE */}
-      {!isInvestor && isMenuOpen && (
-        <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden flex flex-col justify-end pb-24 px-4 animate-fade-in"
-          onClick={() => setIsMenuOpen(false)}
+mt-[calc(64px+env(safe-area-inset-top))]
+mb-[calc(80px+env(safe-area-inset-bottom))]
+
+p-4 md:p-10
+"
+        >
+            <div className="max-w-7xl mx-auto w-full">
+                {children}
+            </div>
+        </main>
+
+        {/* Mobile Quick Actions Menu (Triggered by FAB) - ONLY FOR MANAGER/EMPLOYEE */}
+        {!isInvestor && isMenuOpen && (
+            <div
+                className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden flex flex-col justify-end pb-24 px-4 animate-fade-in"
+                onClick={() => setIsMenuOpen(false)}
         >
           <div className="bg-white rounded-2xl p-4 shadow-2xl space-y-2 mb-4" onClick={e => e.stopPropagation()}>
              <div className="pb-2 mb-2 border-b border-slate-100">
@@ -362,46 +381,60 @@ z-30
       )}
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-50 px-2 py-2 flex justify-between items-end safe-area-pb">
+        <nav className="
+fixed bottom-0 left-0 right-0
+h-[calc(64px+env(safe-area-inset-bottom))]
+pb-[env(safe-area-inset-bottom)]
 
-        <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
-            <button onClick={() => setView('DASHBOARD')} className={`flex flex-col items-center p-2 ${currentView === 'DASHBOARD' ? 'text-indigo-600' : 'text-slate-400'}`}>
-                {ICONS.Dashboard}
-                <span className="text-[10px] mt-1 font-medium">Главная</span>
-            </button>
+bg-white/70
+backdrop-blur-xl
+border-t border-white/30
+
+z-40
+">
+
+            <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
+                <button onClick={() => setView('DASHBOARD')}
+                        className={`flex flex-col items-center p-2 ${currentView === 'DASHBOARD' ? 'text-indigo-600' : 'text-slate-400'}`}>
+                    {ICONS.Dashboard}
+                    <span className="text-[10px] mt-1 font-medium">Главная</span>
+                </button>
+                {!isInvestor && (
+                    <button onClick={() => setView('CASH_REGISTER')}
+                            className={`flex flex-col items-center p-2 ${currentView === 'CASH_REGISTER' ? 'text-indigo-600' : 'text-slate-400'}`}>
+                        {ICONS.Wallet}
+                        <span className="text-[10px] mt-1 font-medium">Касса</span>
+                    </button>
+                )}
+            </div>
+
             {!isInvestor && (
-              <button onClick={() => setView('CASH_REGISTER')} className={`flex flex-col items-center p-2 ${currentView === 'CASH_REGISTER' ? 'text-indigo-600' : 'text-slate-400'}`}>
-                  {ICONS.Wallet}
-                  <span className="text-[10px] mt-1 font-medium">Касса</span>
-              </button>
+                <div className="relative -top-5">
+                    <button
+                        onClick={handleFabClick}
+                        className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-300 transition-transform active:scale-95 ${isMenuOpen ? 'bg-slate-800 rotate-45' : 'bg-indigo-600'}`}
+                    >
+                        {ICONS.Add}
+                    </button>
+                </div>
             )}
-        </div>
 
-        {!isInvestor && (
-          <div className="relative -top-5">
-              <button
-                  onClick={handleFabClick}
-                  className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-300 transition-transform active:scale-95 ${isMenuOpen ? 'bg-slate-800 rotate-45' : 'bg-indigo-600'}`}
-              >
-                  {ICONS.Add}
-              </button>
-          </div>
-        )}
+            <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
+                {!isInvestor && (
+                    <button onClick={() => setView('CUSTOMERS')}
+                            className={`flex flex-col items-center p-2 ${currentView === 'CUSTOMERS' || currentView === 'CUSTOMER_DETAILS' ? 'text-indigo-600' : 'text-slate-400'}`}>
+                        {ICONS.Customers}
+                        <span className="text-[10px] mt-1 font-medium">Клиенты</span>
+                    </button>
+                )}
+                <button onClick={() => setView('MORE')}
+                        className={`flex flex-col items-center p-2 ${currentView === 'MORE' || currentView === 'PROFILE' || currentView === 'CONTRACTS' || currentView === 'INVESTORS' || currentView === 'EMPLOYEES' || currentView === 'SETTINGS' || currentView === 'TARIFFS' || currentView === 'ADMIN_PANEL' ? 'text-indigo-600' : 'text-slate-400'}`}>
+                    {ICONS.Menu}
+                    <span className="text-[10px] mt-1 font-medium">{isInvestor ? 'Профиль' : 'Еще'}</span>
+                </button>
+            </div>
 
-        <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
-            {!isInvestor && (
-              <button onClick={() => setView('CUSTOMERS')} className={`flex flex-col items-center p-2 ${currentView === 'CUSTOMERS' || currentView === 'CUSTOMER_DETAILS' ? 'text-indigo-600' : 'text-slate-400'}`}>
-                  {ICONS.Customers}
-                  <span className="text-[10px] mt-1 font-medium">Клиенты</span>
-              </button>
-            )}
-            <button onClick={() => setView('MORE')} className={`flex flex-col items-center p-2 ${currentView === 'MORE' || currentView === 'PROFILE' || currentView === 'CONTRACTS' || currentView === 'INVESTORS' || currentView === 'EMPLOYEES' || currentView === 'SETTINGS' || currentView === 'TARIFFS' || currentView === 'ADMIN_PANEL' ? 'text-indigo-600' : 'text-slate-400'}`}>
-                {ICONS.Menu}
-                <span className="text-[10px] mt-1 font-medium">{isInvestor ? 'Профиль' : 'Еще'}</span>
-            </button>
-        </div>
-
-      </nav>
+        </nav>
     </div>
   );
 };
