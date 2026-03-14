@@ -55,7 +55,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({ sales, expenses, 
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <div className="flex items-center gap-3 mb-2">
                 <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">{ICONS.Wallet}</div>
                 <h3 className="font-semibold text-slate-700">Текущий баланс</h3>
@@ -64,7 +64,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({ sales, expenses, 
             <h3 className="text-3xl font-bold text-indigo-600">{formatCurrency(balance, appSettings.showCents)} ₽</h3>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <div className="flex items-center gap-3 mb-2">
                 <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">{ICONS.Income}</div>
                 <h3 className="font-semibold text-slate-700">Полученная прибыль</h3>
@@ -73,7 +73,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({ sales, expenses, 
             <h3 className="text-3xl font-bold text-emerald-600">{formatCurrency(realizedProfit, appSettings.showCents)} ₽</h3>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <div className="flex items-center gap-3 mb-2">
                 <div className="p-2 bg-purple-100 text-purple-600 rounded-lg">{ICONS.TrendingUp}</div>
                 <h3 className="font-semibold text-slate-700">Ожидаемая прибыль</h3>
@@ -86,7 +86,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({ sales, expenses, 
       <div>
         <h3 className="font-bold text-slate-800 text-lg mb-4">Ваши профинансированные сделки</h3>
         {sales.length === 0 ? (
-            <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 text-slate-400">
+            <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">
                 Нет активных операций
             </div>
         ) : (
@@ -94,7 +94,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({ sales, expenses, 
                 {sales.map(sale => {
                      const progress = sale.totalAmount > 0 ? ((sale.totalAmount - sale.remainingAmount) / sale.totalAmount) * 100 : 0;
                      return (
-                        <div key={sale.id} className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                        <div key={sale.id} className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between">
                             <div>
                                 <div className="flex justify-between items-start mb-2">
                                     <p className="font-bold text-slate-800 text-lg">{sale.productName}</p>

@@ -110,11 +110,11 @@ const AdminPanel: React.FC = () => {
             </header>
 
             {/* Search */}
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-100">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
                 <input
                     type="text"
                     placeholder="Поиск по имени или email..."
-                    className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-lg outline-none"
+                    className="w-full p-3 border border-slate-200 rounded-lg outline-none"
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                 />
@@ -125,7 +125,7 @@ const AdminPanel: React.FC = () => {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {filteredUsers.map(user => (
-                        <div key={user.id} className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden group">
+                        <div key={user.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group">
                             {/* Role Badge */}
                             <div className="absolute top-0 right-0 px-3 py-1 bg-slate-100 rounded-bl-lg text-xs font-bold uppercase text-slate-500">
                                 {user.role}
@@ -185,16 +185,16 @@ const AdminPanel: React.FC = () => {
             {/* API Key Modal */}
             {apiModalUser && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setApiModalUser(null)}>
-                    <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
                         <h3 className="text-xl font-bold text-slate-800 mb-1">API Доступ</h3>
                         <p className="text-sm text-slate-500 mb-4">Для пользователя: <span className="font-bold">{apiModalUser.name}</span></p>
 
                         <div className="space-y-4">
-                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Текущий API Ключ</label>
                                 {generatedKey ? (
                                     <div className="flex items-center gap-2">
-                                        <code className="flex-1 bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono break-all">
+                                        <code className="flex-1 bg-white p-2 rounded border border-slate-200 text-xs font-mono break-all">
                                             {generatedKey}
                                         </code>
                                         <button
@@ -229,7 +229,7 @@ const AdminPanel: React.FC = () => {
             {/* Manual Subscription Modal */}
             {selectedUser && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedUser(null)}>
-                    <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
                         <h3 className="text-xl font-bold text-slate-800 mb-1">Управление тарифом</h3>
                         <p className="text-sm text-slate-500 mb-4">Для пользователя: <span className="font-bold">{selectedUser.name}</span></p>
 
@@ -241,7 +241,7 @@ const AdminPanel: React.FC = () => {
                                         <button
                                             key={p}
                                             onClick={() => setPlan(p as SubscriptionPlan)}
-                                            className={`py-2 text-xs font-bold rounded-lg border-2 ${plan === p ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 dark:border-slate-700 text-slate-500'}`}
+                                            className={`py-2 text-xs font-bold rounded-lg border-2 ${plan === p ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500'}`}
                                         >
                                             {p}
                                         </button>
@@ -256,7 +256,7 @@ const AdminPanel: React.FC = () => {
                                         <button
                                             key={m}
                                             onClick={() => setMonths(m)}
-                                            className={`flex-1 py-2 text-xs font-bold rounded-lg border ${months === m ? 'bg-slate-800 text-white border-slate-800' : 'bg-white dark:bg-slate-900 text-slate-600 border-slate-200 dark:border-slate-700'}`}
+                                            className={`flex-1 py-2 text-xs font-bold rounded-lg border ${months === m ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
                                         >
                                             {m === 100 ? '∞' : m}
                                         </button>

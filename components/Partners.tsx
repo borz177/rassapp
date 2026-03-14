@@ -31,15 +31,15 @@ const CreatePartnershipModal = ({ onClose, onSubmit, investors }: { onClose: () 
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={e => e.stopPropagation()}>
+            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={e => e.stopPropagation()}>
                 <h3 className="text-lg font-bold text-slate-800 mb-4">Новое партнерство</h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Название предприятия</label>
-                        <input autoFocus value={name} onChange={e => setName(e.target.value)} className="w-full p-3 border border-slate-200 dark:border-slate-700 rounded-xl outline-none" placeholder="Например: Цех №1" />
+                        <input autoFocus value={name} onChange={e => setName(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl outline-none" placeholder="Например: Цех №1" />
                     </div>
                     
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 dark:border-slate-700 max-h-40 overflow-y-auto">
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 max-h-40 overflow-y-auto">
                         <p className="text-xs text-slate-500 font-bold mb-2 uppercase">Участники</p>
                         {investors.length === 0 ? <p className="text-xs text-slate-400">Нет инвесторов</p> : (
                             <div className="space-y-2">
@@ -129,13 +129,13 @@ const PartnershipDetail = ({ partnership, accounts, sales, expenses, investors, 
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-slate-50 flex justify-between items-center">
+            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                <div className="p-5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
                     <div>
                         <h3 className="text-xl font-bold text-slate-800">{partnership.name}</h3>
                         <p className="text-xs text-slate-500">Счет: {stats.accountName}</p>
                     </div>
-                    <button onClick={onClose} className="p-2 bg-white dark:bg-slate-900 rounded-full text-slate-400 hover:text-slate-600 shadow-sm">
+                    <button onClick={onClose} className="p-2 bg-white rounded-full text-slate-400 hover:text-slate-600 shadow-sm">
                         {ICONS.Close}
                     </button>
                 </div>
@@ -171,7 +171,7 @@ const PartnershipDetail = ({ partnership, accounts, sales, expenses, investors, 
                                 const profitShare = Math.max(0, valueShare - m.netInvested);
 
                                 return (
-                                    <div key={m.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl shadow-sm">
+                                    <div key={m.id} className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
                                         <div className="flex justify-between items-center mb-2">
                                             <span className="font-bold text-slate-800">{m.name}</span>
                                             <span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded-full font-bold">{sharePercent.toFixed(1)}%</span>
@@ -253,10 +253,10 @@ const Partners: React.FC<PartnersProps> = ({
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {partnershipStats.length === 0 && <div className="col-span-full text-center py-12 text-slate-400 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">Нет активных партнерств</div>}
+          {partnershipStats.length === 0 && <div className="col-span-full text-center py-12 text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200">Нет активных партнерств</div>}
           
           {partnershipStats.map(p => (
-              <div key={p.id} className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
+              <div key={p.id} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 relative overflow-hidden">
                   <div className="flex justify-between items-start mb-4">
                       <div>
                           <h3 className="font-bold text-lg text-slate-800">{p.name}</h3>

@@ -82,7 +82,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       </header>
 
       {/* Company Name */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100">
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
         <h3 className="text-lg font-semibold text-slate-800 mb-1">Название компании</h3>
         <p className="text-sm text-slate-500 mb-4">Отображается в заголовке и в сообщениях.</p>
         <div className="flex gap-2">
@@ -103,7 +103,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       </div>
 
       {/* Display Settings */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100">
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 mb-1">Отображение</h3>
           <div className="flex items-center justify-between">
               <div>
@@ -117,13 +117,13 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                       checked={appSettings.showCents ?? true}
                       onChange={(e) => onUpdateSettings({ ...appSettings, showCents: e.target.checked })}
                   />
-                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white dark:bg-slate-900 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
               </label>
           </div>
       </div>
 
       {/* Theme Selection */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100">
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 mb-1">Цветовая тема</h3>
           <p className="text-sm text-slate-500 mb-4">Выберите основной цвет приложения.</p>
           <div className="grid grid-cols-2 gap-3">
@@ -155,7 +155,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
             onClick={() => onNavigate('INTEGRATIONS')}
-            className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition-all group text-left"
+            className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition-all group text-left"
           >
               <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
@@ -168,7 +168,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
 
           <button
             onClick={() => onNavigate('CALCULATOR')}
-            className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition-all group text-left"
+            className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition-all group text-left"
           >
               <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
@@ -181,7 +181,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       </div>
 
       {/* Data Import Section */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100">
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 mb-1">Импорт данных</h3>
           <p className="text-sm text-slate-500 mb-4">Загрузите данные из Excel файла (клиенты, продажи, история).</p>
           <button
@@ -194,7 +194,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       </div>
 
       {/* Legal Information Section */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100">
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 mb-2">Правовая информация</h3>
           <div className="space-y-2">
               <button
@@ -220,7 +220,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       </div>
 
       {/* Clear Data Section */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100">
+      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 mb-1">Управление данными</h3>
           <p className="text-sm text-slate-500 mb-4">Сброс всех данных приложения. Используйте с осторожностью.</p>
           <button
@@ -234,7 +234,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       {/* Clear Data Modal */}
       {showClearModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowClearModal(false)}>
-              <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-4" onClick={e => e.stopPropagation()}>
+              <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-4" onClick={e => e.stopPropagation()}>
                   <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto text-3xl">
                       {ICONS.Alert}
                   </div>
