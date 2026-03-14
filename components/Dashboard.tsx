@@ -334,26 +334,29 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                 {/* Stats Cards - как на фото: иконка слева, сверху текст, снизу сумма */}
 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
   <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 hover:-translate-y-1">
-    <div className="flex items-start gap-4">
-      <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 flex-shrink-0 group-hover:bg-emerald-200 transition-colors">
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
+      <div className="flex items-start gap-4">
+          <div
+              className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 flex-shrink-0 group-hover:bg-emerald-200 transition-colors">
+              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                  <text x="5" y="18" fontSize="16" fontWeight="bold">₽</text>
+              </svg>
+          </div>
+          <div className="flex-1">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
+                  Собрано средств
+              </p>
+              <p className="text-2xl font-bold text-slate-800">
+                  {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)} ₽
+              </p>
+          </div>
       </div>
-      <div className="flex-1">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
-          Собрано средств
-        </p>
-        <p className="text-2xl font-bold text-slate-800">
-          {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)} ₽
-        </p>
-      </div>
-    </div>
   </div>
 
-  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 hover:-translate-y-1">
-    <div className="flex items-start gap-4">
-      <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600 flex-shrink-0 group-hover:bg-amber-200 transition-colors">
+    <div
+        className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 hover:-translate-y-1">
+        <div className="flex items-start gap-4">
+            <div
+                className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600 flex-shrink-0 group-hover:bg-amber-200 transition-colors">
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
         </svg>
