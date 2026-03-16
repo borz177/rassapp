@@ -819,32 +819,24 @@ const handleUpdateSettings = async (newSettings: AppSettings) => {
     // 🔹 6. Триггер для компонентов, которые зависят от настроек WhatsApp
     // (например, список шаблонов, отправка сообщений)
     setWhatsAppRefreshKey(prev => prev + 1);
+
 };
 
-// 1. Сначала загрузка
+
+
+if (isPublicMode) {
+    return (
+        <Calculator
+            isPublic={true}
+            appSettings={appSettings}
+            userPhone={user?.phone}
+        />
+    );
+}
+
+// 2. Загрузка (проверка сессии, подгрузка данных)
 if (isLoading) {
   return <SplashScreen progress={loadingProgress} />
-}
-
-// 2. ВТОРОЕ (ВАЖНО): Если это лендинг — показываем его ВСЕГДА.
-// Теперь клики по ссылкам не будут триггерить переход на Auth.
-if (isLanding && !isNative) {
-    return <Landing />;
-}
-
-// 3. ТРЕТЬЕ: Если это нативное приложение (Electron/Android) — сразу вход
-if (isNative && !user) {
-    return <Auth onLogin={handleAuthSuccess} />
-}
-
-// 4. ЧЕТВЕРТОЕ: Если пользователя нет (и это не лендинг)
-if (!user) {
-    // Если ссылка содержит /calc
-    if (isPublicMode) {
-        return <Calculator />;
-    }
-    // Во всех остальных случаях — вход
-    return <Auth onLogin={handleAuthSuccess} />;
 }
 
 
@@ -1182,6 +1174,21 @@ if (!user) {
       </Layout>
 
   );
+
+const isPWA = window.matchMedia('(display-mode: standalone)').matches;
+
+if (isNative || isPWA) {
+    // В приложении и PWA лендинг не нужен, сразу на вход
+    return <Auth onLogin={handleAuthSuccess} />
+}
+
+if (isLanding) {
+    // Лендинг показываем только в обычном браузере неавторизованным
+    return <Landing />
+}
+
+// Запасной вариант (если не лендинг и не вошел)
+return <Auth onLogin={handleAuthSuccess} />
 };
 
 export default App;
