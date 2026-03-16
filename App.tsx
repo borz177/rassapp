@@ -821,38 +821,31 @@ const handleUpdateSettings = async (newSettings: AppSettings) => {
     setWhatsAppRefreshKey(prev => prev + 1);
 };
 
-
-if (isPublicMode) {
-    return (
-        <Calculator
-            isPublic={true}
-            appSettings={appSettings}
-            userPhone={user?.phone}
-        />
-    );
-}
-
-
-
+// 1. Сначала загрузка
 if (isLoading) {
   return <SplashScreen progress={loadingProgress} />
 }
 
-if (!user) {
-
-  if (isNative) {
-    return <Auth onLogin={handleAuthSuccess} />
-  }
-
-  if (isLanding) {
-    return <Landing />
-  }
-
-  return <Auth onLogin={handleAuthSuccess} />
+// 2. ВТОРОЕ (ВАЖНО): Если это лендинг — показываем его ВСЕГДА.
+// Теперь клики по ссылкам не будут триггерить переход на Auth.
+if (isLanding && !isNative) {
+    return <Landing />;
 }
 
-  // PUBLIC MODE - No Auth required
-  // PUBLIC MODE - No Auth required
+// 3. ТРЕТЬЕ: Если это нативное приложение (Electron/Android) — сразу вход
+if (isNative && !user) {
+    return <Auth onLogin={handleAuthSuccess} />
+}
+
+// 4. ЧЕТВЕРТОЕ: Если пользователя нет (и это не лендинг)
+if (!user) {
+    // Если ссылка содержит /calc
+    if (isPublicMode) {
+        return <Calculator />;
+    }
+    // Во всех остальных случаях — вход
+    return <Auth onLogin={handleAuthSuccess} />;
+}
 
 
   return (

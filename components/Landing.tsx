@@ -72,20 +72,21 @@ export default function Landing() {
 
                         <a
                             href="/downloads/finuchet-setup.exe"
-                            download
-                            className="group bg-black text-white px-7 py-3.5 rounded-full text-base font-medium shadow-xl hover:bg-slate-800 transition flex items-center gap-2"
+                            download="finuchet-setup.exe" // Добавили имя файла
+                            onClick={(e) => e.stopPropagation()} // Чтобы клик не всплывал к роутеру
+                            className="..."
                         >
                             <span>⬇️</span> Скачать для Windows
                         </a>
 
                         <a
                             href="/downloads/finuchet.apk"
-                            download
-                            className="group bg-emerald-600 text-white px-7 py-3.5 rounded-full text-base font-medium shadow-xl hover:bg-emerald-700 transition flex items-center gap-2"
+                            download="finuchet.apk" // Добавили имя файла
+                            onClick={(e) => e.stopPropagation()}
+                            className="..."
                         >
                             <span>📱</span> Скачать Android
                         </a>
-
                         <a
                             href="/app"
                             className="border border-slate-300 bg-white/80 backdrop-blur-sm px-7 py-3.5 rounded-full text-base font-medium text-slate-700 shadow-md hover:border-indigo-300 hover:text-indigo-700 transition"
@@ -165,15 +166,19 @@ export default function Landing() {
                     <div className="flex flex-wrap justify-center gap-5 mt-12">
                         <a
                             href="/downloads/finuchet-setup.exe"
-                            className="bg-black hover:bg-slate-800 text-white px-8 py-4 rounded-2xl text-lg shadow-2xl flex items-center gap-3 transition hover:scale-105"
+                            download="finuchet-setup.exe" // Добавили имя файла
+                            onClick={(e) => e.stopPropagation()} // Чтобы клик не всплывал к роутеру
+                            className="..."
                         >
-                            <span className="text-2xl">🪟</span> Windows
+                            <span>⬇️</span> Скачать для Windows
                         </a>
                         <a
                             href="/downloads/finuchet.apk"
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-4 rounded-2xl text-lg shadow-2xl flex items-center gap-3 transition hover:scale-105"
+                            download="finuchet.apk" // Добавили имя файла
+                            onClick={(e) => e.stopPropagation()}
+                            className="..."
                         >
-                            <span className="text-2xl">📲</span> Android
+                            <span>📱</span> Скачать Android
                         </a>
                         <a
                             href="/app"
