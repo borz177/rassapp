@@ -44,18 +44,36 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       });
   };
 
-  const handleClearData = async () => {
-      setIsClearing(true);
-      try {
-          await api.resetAccountData();
-          localStorage.clear();
-          window.location.reload();
-      } catch (error) {
-          console.error(error);
-          alert("Ошибка при очистке данных на сервере. Попробуйте снова или перезайдите в аккаунт.");
-          setIsClearing(false);
-      }
-  };
+const handleClearData = async () => {
+    setIsClearing(true);
+    try {
+        // 1. Сначала очищаем данные на сервере
+        await api.resetAccountData();
+
+        // 2. Явно удаляем токен и пользователя из localStorage
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+
+        // 3. Если API хранит токен внутри — очищаем и его
+        if (api.clearAuth) {
+            api.clearAuth();
+        }
+
+        // 4. Очищаем кэш service worker (для PWA)
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(key => caches.delete(key)));
+        }
+
+        // 5. Перенаправляем на корень, а не просто reload
+        window.location.href = '/';
+
+    } catch (error) {
+        console.error(error);
+        alert("Ошибка при очистке данных на сервере. Попробуйте снова или перезайдите в аккаунт.");
+        setIsClearing(false);
+    }
+};
 
   const handleForceUpdate = () => {
       window.location.reload();
