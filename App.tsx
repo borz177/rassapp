@@ -160,11 +160,11 @@ const isLanding = path === "/"
   };
 
   // Initial Data Load (Auth Check & Fetch)
-  useEffect(() => {
+useEffect(() => {
     enablePersistentStorage();
+
     const initApp = async () => {
-        // Check for Public Calculator Link
-        // Support: ?view=public_calc, ?v=calc, OR path /calc/CompanyName
+        // 🔹 1. Проверка на публичный режим (калькулятор)
         const searchParams = new URLSearchParams(window.location.search);
         const pathName = window.location.pathname;
         const decodedPath = decodeURIComponent(pathName);
@@ -179,58 +179,61 @@ const isLanding = path === "/"
             return;
         }
 
-        // 1. Restore Local User FIRST (Offline Priority)
+        // 🔹 2. Читаем токены ОДИН РАЗ в начале
+        const token = localStorage.getItem('token');
         const localUserStr = localStorage.getItem('user');
         let localUser: User | null = null;
+
+        // 🔹 3. Восстанавливаем локального пользователя (для оффлайн-режима)
         if (localUserStr) {
             try {
                 localUser = JSON.parse(localUserStr);
                 if (localUser) {
-                    console.log("Restoring user from local storage...");
+                    console.log("✅ Restoring user from local storage...");
                     setUser(localUser);
-                    setIsLoading(false); // <--- IMPORTANT: Stop loading immediately
-                    // Load data immediately using local user context
-                    await loadData(localUser).catch(e => console.warn("Local data load warning:", e));
+                    // Не выключаем isLoading сразу — попробуем обновить с сервера
+                    await loadData(localUser).catch(e => console.warn("⚠️ Local data load warning:", e));
                 }
             } catch (e) {
-                console.error("Failed to parse local user", e);
+                console.error("❌ Failed to parse local user", e);
+                localStorage.removeItem('user'); // Очищаем битые данные
             }
         }
 
-        // 2. If Online, try to refresh from server
-        const token = localStorage.getItem('token');
+        // 🔹 4. Если онлайн и есть токен — пытаемся получить свежие данные с сервера
         if (token && navigator.onLine) {
             try {
                 const freshUser = await api.getMe();
                 setUser(freshUser);
                 localStorage.setItem('user', JSON.stringify(freshUser));
-                // Refresh data with fresh permissions/settings, skip loading spinner if we already have data
-                await loadData(freshUser, !!localUser);
+                await loadData(freshUser, !!localUser); // skipLoading=true если уже загрузили локально
             } catch (err) {
-                console.error('Auth refresh failed', err);
-                // Only logout if we DON'T have a local user to fall back on
+                console.error('❌ Auth refresh failed', err);
+                // ❗ Если сервер отверг токен И нет локального пользователя — выходим
                 if (!localUser) {
                     localStorage.removeItem('token');
                     localStorage.removeItem('user');
                     setUser(null);
                 }
+                // Иначе остаёмся на локальных данных (оффлайн-режим)
             }
-        } else if (!token && !localUser) {
-            // No token and no local user -> Stop loading to show Auth
-            setIsLoading(false);
         }
 
-        // Ensure loading is turned off
+        // 🔹 5. Финальная проверка: если нет ни токена, ни локального пользователя — показываем Auth
         if (!token && !localUser) {
-             setIsLoading(false);
+            setIsLoading(false);
+            return;
         }
 
-        // Load default local settings first
+        // 🔹 6. Загружаем настройки (локальные, серверные обновятся в loadData)
         setAppSettings(getAppSettings());
+
+        // 🔹 7. Выключаем загрузку, если всё успешно
+        setIsLoading(false);
     };
 
     initApp();
-  }, []);
+}, []);
 
   const loadData = async (currentUser?: User, skipLoading = false) => {
       if (!skipLoading && customers.length === 0 && sales.length === 0) {

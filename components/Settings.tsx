@@ -50,27 +50,42 @@ const handleClearData = async () => {
         // 1. Сначала очищаем данные на сервере
         await api.resetAccountData();
 
-        // 2. Явно удаляем токен и пользователя из localStorage
+        // 2. Unregister Service Worker (чтобы остановить Workbox)
+        if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const registration of registrations) {
+                await registration.unregister();
+            }
+        }
+
+        // 3. Очищаем IndexedDB базы
+        if ('indexedDB' in window) {
+            const dbNames = await window.indexedDB.databases?.().then(dbs => dbs.map(db => db.name)) || [];
+            dbNames.forEach(dbName => {
+                if (dbName) {
+                    const request = window.indexedDB.deleteDatabase(dbName);
+                    request.onerror = () => console.error('Failed to delete DB:', dbName);
+                }
+            });
+        }
+
+        // 4. Очищаем localStorage и sessionStorage
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        sessionStorage.clear();
 
-        // 3. Если API хранит токен внутри — очищаем и его
-        if (api.clearAuth) {
-            api.clearAuth();
-        }
-
-        // 4. Очищаем кэш service worker (для PWA)
+        // 5. Очищаем кэш Cache Storage
         if ('caches' in window) {
-            const keys = await caches.keys();
-            await Promise.all(keys.map(key => caches.delete(key)));
+            const cacheNames = await caches.keys();
+            await Promise.all(cacheNames.map(name => caches.delete(name)));
         }
 
-        // 5. Перенаправляем на корень, а не просто reload
+        // 6. Перенаправляем на корень (не reload!)
         window.location.href = '/';
 
     } catch (error) {
-        console.error(error);
-        alert("Ошибка при очистке данных на сервере. Попробуйте снова или перезайдите в аккаунт.");
+        console.error('Clear data error:', error);
+        alert("Ошибка при очистке данных. Попробуйте снова.");
         setIsClearing(false);
     }
 };
