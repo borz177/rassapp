@@ -406,16 +406,24 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                 // === ЭТАП 2: Импорт реальных платежей ===
                 addLog("💰 Этап 2: Импорт реальных платежей...");
+                
 
                 for (const row of paymentsData) {
-                    const clientName = String(row['Клиент'] || '').trim();
-                    const productName = String(row['Товар'] || '').trim();
-                    const paymentStatus = String(row['Статус платежа'] || '');
-                    const productStatus = String(row['Статус товара'] || '');
-                    const amount = parseMoney(row['Сумма']);
-                    const dateVal = row['Дата платежа'];
-                    const paymentNumRaw = row['Платёж'] || row['Платёж №'];
-                    const paymentNum = paymentNumRaw && paymentNumRaw !== '-' && paymentNumRaw !== '—' && paymentNumRaw !== '–' && paymentNumRaw !== 'Нет платежей' ? String(paymentNumRaw).trim() : '';
+    const clientName = String(row['Клиент'] || '').trim();
+
+    // 🔧 FIX 1: Поддержка обеих версий названия колонки
+    const productNameRaw = String(row['Товар'] || row['Товар (Уникальный)'] || '').trim();
+    // 🔧 FIX 2: Убираем "(ID: ...)" из названия товара
+    const productName = productNameRaw.replace(/\s*\(ID:\s*\d+\)\s*$/i, '').trim();
+
+    const paymentStatus = String(row['Статус платежа'] || '');
+    const productStatus = String(row['Статус товара'] || '');
+    const amount = parseMoney(row['Сумма']);
+    const dateVal = row['Дата платежа'];
+    const paymentNumRaw = row['Платёж'] || row['Платёж №'];
+    const paymentNum = paymentNumRaw && paymentNumRaw !== '-' && paymentNumRaw !== 'Нет платежей'
+        ? String(paymentNumRaw).trim()
+        : '';
 
                     if (!clientName || !productName || paymentStatus === 'Нет платежей' || paymentStatus === 'Удалён' || !amount) {
                         if (paymentStatus === 'Удалён') skippedDeleted++;
