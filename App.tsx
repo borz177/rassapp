@@ -161,78 +161,77 @@ const isLanding = path === "/"
 
   // Initial Data Load (Auth Check & Fetch)
 useEffect(() => {
-    enablePersistentStorage();
+  enablePersistentStorage();
 
-    const initApp = async () => {
-        // 🔹 1. Проверка на публичный режим (калькулятор)
-        const searchParams = new URLSearchParams(window.location.search);
-        const pathName = window.location.pathname;
-        const decodedPath = decodeURIComponent(pathName);
+  const initApp = async () => {
+    // 1. Проверка на публичный режим
+    const searchParams = new URLSearchParams(window.location.search);
+    const pathName = window.location.pathname;
 
-        if (
-            searchParams.get('view') === 'public_calc' ||
-            searchParams.get('v') === 'calc' ||
-            decodedPath.startsWith('/calc')
-        ) {
-            setIsPublicMode(true);
-            setIsLoading(false);
-            return;
+    if (
+      searchParams.get('view') === 'public_calc' ||
+      searchParams.get('v') === 'calc' ||
+      decodeURIComponent(pathName).startsWith('/calc')
+    ) {
+      setIsPublicMode(true);
+      setIsLoading(false);
+      return;
+    }
+
+    // 2. Читаем токены
+    const token = localStorage.getItem('token');
+    const localUserStr = localStorage.getItem('user');
+    let localUser: User | null = null;
+
+    // 3. Восстанавливаем локального пользователя
+    if (localUserStr) {
+      try {
+        localUser = JSON.parse(localUserStr);
+        if (localUser) {
+          console.log("✅ Restoring user from localStorage");
+          setUser(localUser);
+          // НЕ выключаем isLoading — попробуем обновить с сервера
+          await loadData(localUser).catch(e => console.warn("⚠️ Local data warning:", e));
         }
+      } catch (e) {
+        console.error("❌ Failed to parse local user", e);
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+      }
+    }
 
-        // 🔹 2. Читаем токены ОДИН РАЗ в начале
-        const token = localStorage.getItem('token');
-        const localUserStr = localStorage.getItem('user');
-        let localUser: User | null = null;
-
-        // 🔹 3. Восстанавливаем локального пользователя (для оффлайн-режима)
-        if (localUserStr) {
-            try {
-                localUser = JSON.parse(localUserStr);
-                if (localUser) {
-                    console.log("✅ Restoring user from local storage...");
-                    setUser(localUser);
-                    // Не выключаем isLoading сразу — попробуем обновить с сервера
-                    await loadData(localUser).catch(e => console.warn("⚠️ Local data load warning:", e));
-                }
-            } catch (e) {
-                console.error("❌ Failed to parse local user", e);
-                localStorage.removeItem('user'); // Очищаем битые данные
-            }
+    // 4. Если онлайн и есть токен — обновляем с сервера
+    if (token && navigator.onLine) {
+      try {
+        const freshUser = await api.getMe();
+        setUser(freshUser);
+        localStorage.setItem('user', JSON.stringify(freshUser));
+        await loadData(freshUser, !!localUser);
+      } catch (err) {
+        console.error('❌ Auth refresh failed', err);
+        // Если сервер отверг токен — очищаем всё
+        if (!localUser) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setUser(null);
         }
+        // Иначе остаёмся на локальных данных (оффлайн)
+      }
+    }
 
-        // 🔹 4. Если онлайн и есть токен — пытаемся получить свежие данные с сервера
-        if (token && navigator.onLine) {
-            try {
-                const freshUser = await api.getMe();
-                setUser(freshUser);
-                localStorage.setItem('user', JSON.stringify(freshUser));
-                await loadData(freshUser, !!localUser); // skipLoading=true если уже загрузили локально
-            } catch (err) {
-                console.error('❌ Auth refresh failed', err);
-                // ❗ Если сервер отверг токен И нет локального пользователя — выходим
-                if (!localUser) {
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('user');
-                    setUser(null);
-                }
-                // Иначе остаёмся на локальных данных (оффлайн-режим)
-            }
-        }
+    // 5. Если нет ни токена, ни локального пользователя
+    if (!token && !localUser) {
+      setUser(null);
+    }
 
-        // 🔹 5. Финальная проверка: если нет ни токена, ни локального пользователя — показываем Auth
-        if (!token && !localUser) {
-            setIsLoading(false);
-            return;
-        }
+    // 6. Загружаем настройки
+    setAppSettings(getAppSettings());
 
-        // 🔹 6. Загружаем настройки (локальные, серверные обновятся в loadData)
-        setAppSettings(getAppSettings());
+    // 7. Выключаем загрузку
+    setIsLoading(false);
+  };
 
-        // 🔹 7. Выключаем загрузку, если всё успешно
-        setIsLoading(false);
-    };
-
-    initApp();
+  initApp();
 }, []);
 
   const loadData = async (currentUser?: User, skipLoading = false) => {
@@ -841,20 +840,23 @@ if (isPublicMode) {
 if (isLoading) {
   return <SplashScreen progress={loadingProgress} />
 }
-const isPWA = window.matchMedia('(display-mode: standalone)').matches;
+// 🔹 ПРОВЕРКА АВТОРИЗАЦИИ (перед Layout!)
+if (!user && !isLoading) {
+  const isPWA = window.matchMedia('(display-mode: standalone)').matches;
 
-if (isNative || isPWA) {
-    // В приложении и PWA лендинг не нужен, сразу на вход
-    return <Auth onLogin={handleAuthSuccess} />
+  // В PWA или нативном приложении — сразу Auth
+  if (isNative || isPWA) {
+    return <Auth onLogin={handleAuthSuccess} />;
+  }
+
+  // На вебе — показываем лендинг на главной
+  if (isLanding) {
+    return <Landing />;
+  }
+
+  // На остальных страницах — Auth
+  return <Auth onLogin={handleAuthSuccess} />;
 }
-
-if (isLanding) {
-    // Лендинг показываем только в обычном браузере неавторизованным
-    return <Landing />
-}
-
-// Запасной вариант (если не лендинг и не вошел)
-return <Auth onLogin={handleAuthSuccess} />
 
   return (
 
