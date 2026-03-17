@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { api } from '@/services/api';
-import { Customer, Sale, Account, Investor, Payment, Expense } from '../types';
+import { Customer, Product, Sale, Account, Investor, Payment, Expense } from '../types';
 
 declare const XLSX: any;
 
@@ -164,18 +164,12 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                     if (!clientName || !productName) continue;
 
-                    // === ЧТЕНИЕ ПОЛЕЙ: Телефон, Адрес, Поручитель ===
+                    // === ЧТЕНИЕ ПОЛЕЙ: Телефон и Адрес ===
                     const phoneRaw = row['Телефон'] || row['Mobile'] || '';
                     const phone = phoneRaw ? String(phoneRaw).trim() : '';
 
                     const addressRaw = row['Адрес'] || row['Address'] || '';
                     const address = addressRaw ? String(addressRaw).trim() : '';
-
-                    const guarantorNameRaw = row['Поручитель'] || row['Guarantor'] || '';
-                    const guarantorName = guarantorNameRaw ? String(guarantorNameRaw).trim() : '';
-
-                    const guarantorPhoneRaw = row['Телефон поручителя'] || row['Guarantor Phone'] || '';
-                    const guarantorPhone = guarantorPhoneRaw ? String(guarantorPhoneRaw).trim() : '';
 
                     // 1. Клиент + Телефон + Адрес
                     let customer = customers.find(c => c.name === clientName);
@@ -187,7 +181,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             name: clientName,
                             phone: phone || '',
                             email: '',
-                            address: address,
+                            address: address,  // <-- Сохраняем адрес
                             trustScore: 100,
                             notes: 'Импорт из Excel'
                         };
@@ -197,11 +191,13 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         newCustomersCount++;
                         addLog(`➕ Новый клиент: ${clientName}`);
                     } else {
+                        // Обновляем телефон если изменился
                         if (phone && customer.phone !== phone) {
                             customer.phone = phone;
                             await api.saveItem('customers', customer);
                             updatedPhonesCount++;
                         }
+                        // <-- Обновляем адрес если изменился
                         if (address && customer.address !== address) {
                             customer.address = address;
                             await api.saveItem('customers', customer);
@@ -209,28 +205,27 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         }
                     }
 
-                    // 2. Инвестор и Счет (исправленная логика с разными типами тире)
+                    // 2. Инвестор и Счет (исправленная логика)
                     let accountId = '';
                     const mainAccount = accounts.find(a => a.type === 'MAIN');
 
-                    // Проверка на пустой инвестор (учитываем разные типы тире)
                     const trimmedInvestor = investorName ? investorName.trim() : '';
-                    const isEmptyInvestor = !trimmedInvestor ||
-                                            trimmedInvestor === '-' ||
-                                            trimmedInvestor === '—' ||
-                                            trimmedInvestor === '–' ||
-                                            trimmedInvestor.toLowerCase() === 'нет';
+const isEmptyInvestor = !trimmedInvestor ||
+                        trimmedInvestor === '-' ||
+                        trimmedInvestor === '—' ||
+                        trimmedInvestor === '–' ||
+                        trimmedInvestor.toLowerCase() === 'нет';
 
-                    if (!isEmptyInvestor) {
-                        let investor = investors.find(i => i.name.toLowerCase() === trimmedInvestor.toLowerCase());
+if (!isEmptyInvestor) {
+                        let investor = investors.find(i => i.name.toLowerCase() === investorName.toLowerCase());
 
                         if (!investor) {
-                            addLog(`➕ Новый инвестор: ${trimmedInvestor}`);
+                            addLog(`➕ Новый инвестор: ${investorName}`);
                             const newInvestor: Investor = {
                                 id: `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                                 userId: 'import',
                                 joinedDate: new Date().toISOString(),
-                                name: trimmedInvestor,
+                                name: investorName,
                                 phone: '',
                                 notes: 'Создан автоматически при импорте',
                                 color: '#' + Math.floor(Math.random()*16777215).toString(16),
@@ -247,7 +242,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             const newAccount: Account = {
                                 id: `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                                 userId: 'import',
-                                name: `Счет: ${trimmedInvestor}`,
+                                name: `Счет: ${investorName}`,
                                 type: 'INVESTOR',
                                 balance: 0,
                                 ownerId: investor.id,
@@ -262,10 +257,12 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             if (invAccount) accountId = invAccount.id;
                         }
                     } else {
-                        // НЕТ ИНВЕСТОРА В ФАЙЛЕ — используем основной счет
+                        // === НЕТ ИНВЕСТОРА В ФАЙЛЕ ===
+                        // Используем основной счет приложения (MAIN)
                         if (mainAccount) {
                             accountId = mainAccount.id;
                         } else {
+                            // Fallback: если нет MAIN счета, создаём его
                             const newMainAccount: Account = {
                                 id: `acc_main_${Date.now()}`,
                                 userId: 'import',
@@ -320,11 +317,6 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         sale.startDate = saleDateIso;
                         sale.status = statusStr.includes('Завершен') ? 'COMPLETED' : (statusStr.includes('Оформлен') ? 'DRAFT' : 'ACTIVE');
                         sale.accountId = accountId;
-
-                        // Обновляем поручителя если есть
-                        if (guarantorName) sale.guarantorName = guarantorName;
-                        if (guarantorPhone) sale.guarantorPhone = guarantorPhone;
-
                         sale.notes = 'Обновлено при импорте';
                         await api.saveItem('sales', sale);
                         updatedSalesCount++;
@@ -369,9 +361,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             type: 'INSTALLMENT',
                             paymentPlan: tempPaymentPlan,
                             paymentDay: new Date(firstPaymentDateStr).getDate(),
-                            notes: 'Импорт из Excel',
-                            guarantorName: guarantorName || undefined,
-                            guarantorPhone: guarantorPhone || undefined
+                            notes: 'Импорт из Excel'
                         };
                         newSale.paymentPlan.forEach(p => p.saleId = newSale.id);
 
@@ -415,7 +405,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                     const amount = parseMoney(row['Сумма']);
                     const dateVal = row['Дата платежа'];
                     const paymentNumRaw = row['Платёж'] || row['Платёж №'];
-                    const paymentNum = paymentNumRaw && paymentNumRaw !== '-' && paymentNumRaw !== '—' && paymentNumRaw !== '–' && paymentNumRaw !== 'Нет платежей' ? String(paymentNumRaw).trim() : '';
+                    const paymentNum = paymentNumRaw && paymentNumRaw !== '-' && paymentNumRaw !== 'Нет платежей' ? String(paymentNumRaw).trim() : '';
 
                     if (!clientName || !productName || paymentStatus === 'Нет платежей' || paymentStatus === 'Удалён' || !amount) {
                         if (paymentStatus === 'Удалён') skippedDeleted++;
@@ -629,8 +619,8 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         <ul className="list-disc list-inside space-y-1 text-xs">
                             <li>Файл должен содержать листы: <b>Обзор клиентов</b> и <b>История платежей</b></li>
                             <li>Клиенты ищутся по имени, продажи — по <i>Клиент+Товар+Дата</i></li>
-                            <li>Поля <b>Телефон</b>, <b>Адрес</b>, <b>Поручитель</b> обновляются автоматически</li>
-                            <li>Если инвестор не указан (—, -, нет) — используется <b>Основной счет</b></li>
+                            <li>Поля <b>Телефон</b> и <b>Адрес</b> обновляются автоматически</li>
+                            <li>Если инвестор не указан — используется <b>Основной счет</b></li>
                             <li>Платежи с номером <b>не импортируются повторно</b></li>
                         </ul>
                     </div>
