@@ -841,7 +841,20 @@ if (isPublicMode) {
 if (isLoading) {
   return <SplashScreen progress={loadingProgress} />
 }
+const isPWA = window.matchMedia('(display-mode: standalone)').matches;
 
+if (isNative || isPWA) {
+    // В приложении и PWA лендинг не нужен, сразу на вход
+    return <Auth onLogin={handleAuthSuccess} />
+}
+
+if (isLanding) {
+    // Лендинг показываем только в обычном браузере неавторизованным
+    return <Landing />
+}
+
+// Запасной вариант (если не лендинг и не вошел)
+return <Auth onLogin={handleAuthSuccess} />
 
   return (
 
@@ -1178,20 +1191,7 @@ if (isLoading) {
 
   );
 
-const isPWA = window.matchMedia('(display-mode: standalone)').matches;
 
-if (isNative || isPWA) {
-    // В приложении и PWA лендинг не нужен, сразу на вход
-    return <Auth onLogin={handleAuthSuccess} />
-}
-
-if (isLanding) {
-    // Лендинг показываем только в обычном браузере неавторизованным
-    return <Landing />
-}
-
-// Запасной вариант (если не лендинг и не вошел)
-return <Auth onLogin={handleAuthSuccess} />
 };
 
 export default App;
