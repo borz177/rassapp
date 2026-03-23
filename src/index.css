@@ -91,18 +91,7 @@
     color: var(--color-text);
     -webkit-tap-highlight-color: transparent;
   }
-  html, body, #root {
-    width: 100%;
-    height: 100%;
-    overflow: hidden; /* Запрещаем скролл всей страницы */
-    margin: 0;
-    padding: 0;
-    /* Убираем выделение текста при быстрых нажатиях */
-    -webkit-user-select: none;
-    user-select: none;
-    /* Плавная прокрутка внутри контента */
-    scroll-behavior: smooth;
-  }
+
 }
 
 
