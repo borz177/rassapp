@@ -209,10 +209,11 @@ const handleSendFullReport = () => {
       const amountDue = p.amount;
       const covered = Math.min(amountDue, surplus);
       surplus = Math.max(0, surplus - covered);
+      const amountToPay = amountDue - covered;
 
       return {
         ...p,
-        amountToPay: amountDue - covered,
+        amountToPay: appSettings.showCents !== false ? amountToPay : Math.round(amountToPay),
       };
     }).filter(p => p.amountToPay > 0.01);
 
@@ -220,7 +221,7 @@ const handleSendFullReport = () => {
         paidPayments,
         paymentSchedule: scheduleForDisplay
     };
-  }, [selectedSale]);
+  }, [selectedSale, appSettings.showCents]);
 
   const getInvestorInfo = (sale: Sale) => {
       if (!accounts || !investors) return null;

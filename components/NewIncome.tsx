@@ -17,6 +17,35 @@ interface NewIncomeProps {
   onSelectCustomer: () => void;
 }
 
+// ✅ Функция транслитерации кириллицы в латиницу для имён файлов
+const transliterate = (text: string): string => {
+    const map: { [key: string]: string } = {
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd',
+        'е': 'e', 'ё': 'yo', 'ж': 'zh', 'з': 'z', 'и': 'i',
+        'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n',
+        'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't',
+        'у': 'u', 'ф': 'f', 'х': 'h', 'ц': 'c', 'ч': 'ch',
+        'ш': 'sh', 'щ': 'sch', 'ъ': '', 'ы': 'y', 'ь': '',
+        'э': 'e', 'ю': 'yu', 'я': 'ya',
+        'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D',
+        'Е': 'E', 'Ё': 'Yo', 'Ж': 'Zh', 'З': 'Z', 'И': 'I',
+        'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N',
+        'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T',
+        'У': 'U', 'Ф': 'F', 'Х': 'H', 'Ц': 'C', 'Ч': 'Ch',
+        'Ш': 'Sh', 'Щ': 'Sch', 'Ъ': '', 'Ы': 'Y', 'Ь': '',
+        'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya',
+        ' ': '_', '-': '_', '/': '_', '\\': '_',
+    };
+
+    return text
+        .split('')
+        .map(char => map[char] || char)
+        .join('')
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '');
+};
+
 const NewIncome: React.FC<NewIncomeProps> = ({
     initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer
 }) => {
@@ -47,13 +76,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     });
   };
 
-  // ✅ ИСПРАВЛЕНО: только реальные платежи (isRealPayment === true)
+  // ✅ ФИЛЬТР: показываем реальные платежи (isRealPayment !== false)
   const getValidPaidPayments = (sale: Sale | undefined) => {
     if (!sale?.paymentPlan) return [];
     return sale.paymentPlan.filter(p =>
       p &&
       p.isPaid === true &&
-      p.isRealPayment === true &&
+      p.isRealPayment !== false &&  // показывает true и undefined, скрывает false
       typeof p.amount === 'number' &&
       p.date
     );
@@ -198,9 +227,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
               try {
                   const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-                  let cleanName = selectedSale.productName.replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_').replace(/\s+/g, '_');
-                  const finalName = cleanName || 'oplata';
-                  const fileName = `Договор_${finalName}.pdf`;
+
+                  // ✅ ИСПРАВЛЕНО: транслитерация имени файла для WhatsApp
+                  const dateStr = new Date(finalDate).toLocaleDateString('ru-RU').replace(/\./g, '-');
+                  const transliteratedName = transliterate(selectedSale.productName);
+                  const finalName = transliteratedName || 'dogovor';
+                  const fileName = `Dogovor_${finalName}_${dateStr}.pdf`;
+
                   const success = await sendWhatsAppFile(
                       appSettings.whatsapp.idInstance,
                       appSettings.whatsapp.apiTokenInstance,
@@ -211,6 +244,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                   if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
                   else { alert("Ошибка отправки PDF в WhatsApp"); }
               } catch (error) {
+                  console.error("PDF send error:", error);
                   alert("Ошибка при создании или отправке PDF");
               }
           }
@@ -228,7 +262,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       const hasGuarantor = !!selectedSale.guarantorName;
       const sellerPhone = appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance.slice(0, 11)}` : (selectedCustomer?.phone || '+7 (___) ___-__-__');
 
-      // ✅ ИСПРАВЛЕНО: только реальные платежи
+      // ✅ ФИЛЬТР: только реальные платежи
       const validPaidPayments = getValidPaidPayments(selectedSale);
 
       const existingPayments = validPaidPayments.map(p => ({
@@ -255,29 +289,44 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
 
       const styles = {
-          page: {
-              width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
-              fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5',
-              display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
-              position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
-          },
-          contentWrapper: { flex: 1 },
-          h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
-          headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
-          fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
-          fieldLabel: { fontWeight: 'bold' as const },
-          phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
-          section: { margin: '0 0 20px 0' },
-          sectionItem: { marginBottom: '12px' },
-          table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
-          th: { border: '1px solid #000', padding: '6px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
-          td: { border: '1px solid #000', padding: '6px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
-          footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
-          footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
-          signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
-          signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
-          signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
-      };
+    page: {
+        width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
+        fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5',
+        display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
+        position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
+    },
+    contentWrapper: { flex: 1 },
+    h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
+    headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
+    fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
+    fieldLabel: { fontWeight: 'bold' as const },
+    phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
+    section: { margin: '0 0 20px 0' },
+    sectionItem: { marginBottom: '12px' },
+    table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
+    th: {
+        border: '1px solid #000',
+        padding: '10px 8px',
+        textAlign: 'center' as const,
+        verticalAlign: 'middle' as const,
+        fontWeight: 'bold' as const,
+        background: '#f9f9f9',
+        height: '45px'
+    },
+    td: {
+        border: '1px solid #000',
+        padding: '12px 8px',
+        textAlign: 'center' as const,
+        verticalAlign: 'middle' as const,
+        height: '40px',
+        lineHeight: '1.4'
+    },
+    footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
+    footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
+    signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
+    signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
+    signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
+};
 
       const initialDebt = selectedSale.totalAmount - selectedSale.downPayment;
       let currentDebt = initialDebt;
