@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Customer, Account, Investor, Sale } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
-import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
+import { sendWhatsAppFile } from '../services/whatsapp';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -39,16 +39,25 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const selectedSale = useMemo(() => sales.find(s => s.id === selectedSaleId), [sales, selectedSaleId]);
   const selectedInvestor = useMemo(() => investors.find(i => i.id === selectedInvestorId), [investors, selectedInvestorId]);
 
-  // Получаем настройки и определяем флаг показа копеек
   const appSettings = getAppSettings();
   const showCents = appSettings?.showCents || false;
 
-  // Вспомогательная функция для форматирования чисел в зависимости от настроек
   const formatNum = (val: number) => {
     return val.toLocaleString(undefined, {
       minimumFractionDigits: showCents ? 2 : 0,
       maximumFractionDigits: showCents ? 2 : 0,
     });
+  };
+
+  // ✅ БЕЗОПАСНАЯ ФИЛЬТРАЦИЯ: только isPaid (без isDeleted/deleted/deletedAt)
+  const getValidPaidPayments = (sale: Sale | undefined) => {
+    if (!sale?.paymentPlan) return [];
+    return sale.paymentPlan.filter(p =>
+      p &&
+      p.isPaid === true &&
+      typeof p.amount === 'number' &&
+      p.date
+    );
   };
 
   useEffect(() => {
@@ -62,8 +71,11 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   useEffect(() => {
       if (selectedSale) {
-          const paidTotal = selectedSale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
-          const scheduledPayments = selectedSale.paymentPlan.filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          const validPaidPayments = getValidPaidPayments(selectedSale);
+          const paidTotal = validPaidPayments.reduce((sum, p) => sum + p.amount, 0);
+          const scheduledPayments = selectedSale.paymentPlan
+              .filter(p => p && !p.isPaid && typeof p.amount === 'number' && p.date)
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
           let paymentPool = paidTotal;
           let suggestedAmount = selectedSale.remainingAmount;
           for (const p of scheduledPayments) {
@@ -74,7 +86,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
               if (remainingForThisInstallment > 0.01) { suggestedAmount = remainingForThisInstallment; break; }
           }
           if (!amount) {
-              // Округляем подставляемую сумму, если копейки выключены
               setAmount(suggestedAmount > 0 ? (showCents ? suggestedAmount.toFixed(2) : Math.round(suggestedAmount).toString()) : '');
           }
           setTargetAccountId(selectedSale.accountId);
@@ -96,8 +107,11 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   const recommendedAmount = useMemo(() => {
       if (selectedSale) {
-          const paidTotal = selectedSale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
-          const scheduledPayments = selectedSale.paymentPlan.filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          const validPaidPayments = getValidPaidPayments(selectedSale);
+          const paidTotal = validPaidPayments.reduce((sum, p) => sum + p.amount, 0);
+          const scheduledPayments = selectedSale.paymentPlan
+              .filter(p => p && !p.isPaid && typeof p.amount === 'number' && p.date)
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
           let paymentPool = paidTotal;
           for (const p of scheduledPayments) {
               const paymentDue = p.amount;
@@ -215,10 +229,31 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       const hasGuarantor = !!selectedSale.guarantorName;
       const sellerPhone = appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance.slice(0, 11)}` : (selectedCustomer?.phone || '+7 (___) ___-__-__');
 
-      const existingPayments = selectedSale.paymentPlan
-          ? selectedSale.paymentPlan.filter(p => p.isPaid).map(p => ({ date: new Date(p.date), amount: p.amount }))
-          : [];
-      existingPayments.push({ date: new Date(date), amount: Number(amount) });
+      // ✅ ФИЛЬТРАЦИЯ: только оплаченные платежи (isPaid === true)
+      const validPaidPayments = getValidPaidPayments(selectedSale);
+
+      const existingPayments = validPaidPayments.map(p => ({
+          date: new Date(p.date),
+          amount: p.amount,
+          id: p.id || `payment_${p.date}`
+      }));
+
+      // ✅ ЗАЩИТА ОТ ДУБЛЕЙ
+      const currentPaymentAmount = Number(amount);
+      const currentDate = new Date(date);
+      const currentPaymentExists = existingPayments.some(
+          p => Math.abs(p.amount - currentPaymentAmount) < 0.01 &&
+               new Date(p.date).toDateString() === currentDate.toDateString()
+      );
+
+      if (!currentPaymentExists && currentPaymentAmount > 0) {
+          existingPayments.push({
+              date: currentDate,
+              amount: currentPaymentAmount,
+              id: `temp_${Date.now()}`
+          });
+      }
+
       existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
 
       const styles = {
@@ -246,7 +281,8 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
       };
 
-      let currentDebt = selectedSale.totalAmount - selectedSale.downPayment;
+      const initialDebt = selectedSale.totalAmount - selectedSale.downPayment;
+      let currentDebt = initialDebt;
 
       return (
           <div ref={contractRef} style={styles.page}>
@@ -276,7 +312,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                           <span><span style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
                       </div>
                       <div style={{...styles.sectionItem, display: 'flex', justifyContent: 'space-between'}}>
-                          <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
+                          <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan?.[0]?.amount || 0)} ₽</span>
                           <span><span style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
                       </div>
                   </div>
@@ -294,7 +330,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                               currentDebt -= p.amount;
                               const displayDebt = Math.max(0, currentDebt);
                               return (
-                                  <tr key={index}>
+                                  <tr key={p.id || index}>
                                       <td style={styles.td}>{index + 1}</td>
                                       <td style={styles.td}>{p.date.toLocaleDateString()}</td>
                                       <td style={styles.td}>{formatNum(p.amount)} ₽</td>

@@ -406,7 +406,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                 // === ЭТАП 2: Импорт реальных платежей ===
                 addLog("💰 Этап 2: Импорт реальных платежей...");
-                
+
 
                 for (const row of paymentsData) {
     const clientName = String(row['Клиент'] || '').trim();
