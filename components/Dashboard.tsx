@@ -604,31 +604,40 @@ const Dashboard: React.FC<DashboardProps> = ({
                           className="group bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 relative animate-in fade-in slide-in-from-bottom-2 cursor-pointer"
                           style={{ animationDelay: `${idx * 100}ms` }}
                         >
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4 min-w-0">
-                                    <div className={`p-3 rounded-xl flex-shrink-0 ${
+                            <div className="flex items-start justify-between gap-4">
+                                {/* Левая часть: статус + имя + товар */}
+                                <div className="flex items-start gap-3 min-w-0 flex-1">
+                                    {/* Бейдж статуса (без иконки) */}
+                                    <div className={`px-3 py-1.5 rounded-lg text-[10px] font-bold flex-shrink-0 ${
                                         p.isTomorrow 
-                                          ? 'bg-amber-100 text-amber-600 group-hover:bg-amber-200' 
+                                          ? 'bg-amber-100 text-amber-700' 
                                           : p.isToday 
-                                          ? 'bg-emerald-100 text-emerald-600 group-hover:bg-emerald-200'
-                                          : 'bg-rose-100 text-rose-600 group-hover:bg-rose-200'
-                                    } transition-all`}>
-                                        {p.isTomorrow ? '⏰' : p.isToday ? '📆' : '⚠️'}
+                                          ? 'bg-emerald-100 text-emerald-700'
+                                          : 'bg-rose-100 text-rose-700'
+                                    }`}>
+                                        {p.isTomorrow ? 'ЗАВТРА' : p.isToday ? 'СЕГОДНЯ' : 'ПРОСРОЧЕНО'}
                                     </div>
-                                    <div className="min-w-0">
-                                        <p className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors truncate">{p.customerName}</p>
-                                        <p className="text-xs text-slate-500 mt-1">{p.sale.productName}</p>
+
+                                    {/* Имя и товар - с переносом */}
+                                    <div className="min-w-0 flex-1">
+                                        <p className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors break-words leading-tight">
+                                            {p.customerName}
+                                        </p>
+                                        <p className="text-xs text-slate-500 mt-0.5 break-words">
+                                            {p.sale.productName}
+                                        </p>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="text-right">
-                                        <p className="text-lg font-bold text-indigo-600 whitespace-nowrap">{formatCurrency(p.totalDue, appSettings.showCents)} ₽</p>
-                                        {p.isToday && <p className="text-[10px] font-bold text-emerald-600">СЕГОДНЯ</p>}
-                                        {p.isTomorrow && <p className="text-[10px] font-bold text-amber-600">ЗАВТРА</p>}
-                                    </div>
+
+                                {/* Правая часть: сумма */}
+                                <div className="text-right flex-shrink-0">
+                                    <p className="text-lg font-bold text-indigo-600 whitespace-nowrap">
+                                        {formatCurrency(p.totalDue, appSettings.showCents)} ₽
+                                    </p>
                                 </div>
                             </div>
 
+                            {/* Блок задолженности */}
                             {(() => {
                               const today = new Date();
                               today.setHours(0, 0, 0, 0);
