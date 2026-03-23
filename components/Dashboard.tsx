@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Sale, Customer, Account, AppSettings } from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate } from '../src/utils';
+import { Calendar } from 'lucide-react';
 
 interface DashboardProps {
   sales: Sale[];
@@ -17,6 +18,7 @@ interface DashboardProps {
   onAction: (action: string) => void;
   onSelectCustomer: (id: string) => void;
   onInitiatePayment: (sale: Sale, amount: number) => void;
+  onViewSchedule: (sale: Sale) => void;
   accounts: Account[];
   appSettings: AppSettings;
 }
@@ -109,14 +111,110 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
     );
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalStats, workingCapital: globalWorkingCapital, accountBalances, onAction, onSelectCustomer, onInitiatePayment, accounts, appSettings }) => {
+const PaymentActionModal = ({
+    sale,
+    customerName,
+    onClose,
+    onSelectCustomer,
+    onInitiatePayment,
+    onViewSchedule,
+    totalDue,
+    appSettings
+}: {
+    sale: Sale,
+    customerName: string,
+    onClose: () => void,
+    onSelectCustomer: (id: string) => void,
+    onInitiatePayment: (sale: Sale, amount: number) => void,
+    onViewSchedule: (sale: Sale) => void,
+    totalDue: number,
+    appSettings: AppSettings
+}) => {
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/60 backdrop-blur-md animate-in fade-in zoom-in duration-300"
+            onClick={onClose}
+        >
+            <div
+                className="bg-white backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="relative p-6 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-8 -mt-8 blur-2xl"></div>
+                    <h3 className="text-xl font-bold mb-1">{customerName}</h3>
+                    <p className="text-indigo-100 text-sm flex items-center gap-1">
+                        <span className="opacity-70">📦</span> {sale.productName}
+                    </p>
+                    <button
+                        onClick={onClose}
+                        className="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm transition-all"
+                    >
+                        <span className="text-lg">✕</span>
+                    </button>
+                </div>
+
+                <div className="p-6 pb-4">
+                    <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
+                        <p className="text-sm text-slate-500 mb-1">Сумма к оплате</p>
+                        <p className="text-2xl font-bold text-indigo-600">
+                            {formatCurrency(totalDue, appSettings.showCents)} ₽
+                        </p>
+                    </div>
+                </div>
+
+                <div className="px-6 pb-6 space-y-2">
+                    <button
+                        onClick={() => { onSelectCustomer(sale.customerId); onClose(); }}
+                        className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors rounded-xl"
+                    >
+                        <span className="text-indigo-500">👤</span>
+                        <span>Инфо о клиенте</span>
+                    </button>
+
+                    <button
+                        onClick={() => { onInitiatePayment(sale, totalDue); onClose(); }}
+                        className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-emerald-50 flex items-center gap-3 transition-colors rounded-xl border-t border-slate-100 pt-3.5 mt-1"
+                    >
+                        <span className="text-emerald-500">💰</span>
+                        <span>Добавить платеж</span>
+                    </button>
+
+                    <button
+                        onClick={() => { onViewSchedule(sale); onClose(); }}
+                        className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors rounded-xl border-t border-slate-100 pt-3.5 mt-1"
+                    >
+                        <span className="text-indigo-500"><Calendar size={18} /></span>
+                        <span>График платежей</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const Dashboard: React.FC<DashboardProps> = ({
+    sales,
+    customers,
+    stats: globalStats,
+    workingCapital: globalWorkingCapital,
+    accountBalances,
+    onAction,
+    onSelectCustomer,
+    onInitiatePayment,
+    onViewSchedule,
+    accounts,
+    appSettings
+}) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
   const [selectedSaleForModal, setSelectedSaleForModal] = useState<Sale | null>(null);
-  const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
+  const [selectedPaymentForAction, setSelectedPaymentForAction] = useState<{
+      sale: Sale;
+      customerName: string;
+      totalDue: number;
+  } | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [paymentDateFilter, setPaymentDateFilter] = useState<'ALL' | 'TODAY' | 'TOMORROW'>('ALL');
 
-  // --- STATS CALCULATION (FILTERED) ---
   const calculatedStats = useMemo(() => {
       const filteredSales = selectedAccountId
           ? sales.filter(s => s.accountId === selectedAccountId)
@@ -243,11 +341,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
     });
   }, [sales, customers, paymentDateFilter]);
 
-  const handleActionClick = (e: React.MouseEvent, saleId: string) => {
-      e.stopPropagation();
-      setActiveActionMenu(prev => prev === saleId ? null : saleId);
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 pb-24 w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
@@ -284,8 +377,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
         {/* Overview Tab */}
         {activeTab === 'overview' && (
             <div className="space-y-6 animate-in fade-in duration-500">
-
-                {/* Account Filter */}
                 {accounts.length > 1 && (
                   <div className="relative ml-4">
                     <div className="overflow-x-auto pb-2 scrollbar-hide">
@@ -319,88 +410,81 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                   </div>
                 )}
 
-                {/* Stats Cards - РАСТЯНУТЫ ПО ШИРИНЕ (2 колонки вместо 4) */}
-                              {/* Stats Cards - как на фото: иконка слева, сверху текст, снизу сумма */}
-<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 hover:-translate-y-1">
-      <div className="flex items-start gap-4">
-          <div
-              className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 flex-shrink-0 group-hover:bg-emerald-200 transition-colors">
-              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                  <text x="5" y="18" fontSize="16" fontWeight="bold">₽</text>
-              </svg>
-          </div>
-          <div className="flex-1">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
-                  Собрано средств
-              </p>
-              <p className="text-2xl font-bold text-slate-800">
-                  {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)} ₽
-              </p>
-          </div>
-      </div>
-  </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 hover:-translate-y-1">
+                      <div className="flex items-start gap-4">
+                          <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 flex-shrink-0 group-hover:bg-emerald-200 transition-colors">
+                              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                                  <text x="5" y="18" fontSize="16" fontWeight="bold">₽</text>
+                              </svg>
+                          </div>
+                          <div className="flex-1">
+                              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
+                                  Собрано средств
+                              </p>
+                              <p className="text-2xl font-bold text-slate-800">
+                                  {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)} ₽
+                              </p>
+                          </div>
+                      </div>
+                  </div>
 
-    <div
-        className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 hover:-translate-y-1">
-        <div className="flex items-start gap-4">
-            <div
-                className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600 flex-shrink-0 group-hover:bg-amber-200 transition-colors">
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-        </svg>
-      </div>
-      <div className="flex-1">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
-          Долг клиентов
-        </p>
-        <p className="text-2xl font-bold text-slate-800">
-          {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)} ₽
-        </p>
-      </div>
-    </div>
-  </div>
+                    <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 hover:-translate-y-1">
+                        <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600 flex-shrink-0 group-hover:bg-amber-200 transition-colors">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                            </div>
+                          <div className="flex-1">
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
+                              Долг клиентов
+                            </p>
+                            <p className="text-2xl font-bold text-slate-800">
+                              {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)} ₽
+                            </p>
+                          </div>
+                        </div>
+                      </div>
 
-  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 hover:-translate-y-1">
-    <div className="flex items-start gap-4">
-      <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 flex-shrink-0 group-hover:bg-blue-200 transition-colors">
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-        </svg>
-      </div>
-      <div className="flex-1">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
-          Оборотные средства
-        </p>
-        <p className="text-2xl font-bold text-slate-800">
-          {formatCurrency(currentWorkingCapital, appSettings.showCents)} ₽
-        </p>
-      </div>
-    </div>
-  </div>
+                  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 hover:-translate-y-1">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 flex-shrink-0 group-hover:bg-blue-200 transition-colors">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
+                          Оборотные средства
+                        </p>
+                        <p className="text-2xl font-bold text-slate-800">
+                          {formatCurrency(currentWorkingCapital, appSettings.showCents)} ₽
+                        </p>
+                      </div>
+                    </div>
+                  </div>
 
-  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 hover:-translate-y-1">
-    <div className="flex items-start gap-4">
-      <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 flex-shrink-0 group-hover:bg-indigo-200 transition-colors">
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-        </svg>
-      </div>
-      <div className="flex-1">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
-          Продажи в рассрочку
-        </p>
-        <p className="text-2xl font-bold text-slate-800">
-          {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)} ₽
-        </p>
-      </div>
-    </div>
-  </div>
-</div>
+                  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 hover:-translate-y-1">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 flex-shrink-0 group-hover:bg-indigo-200 transition-colors">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
+                          Продажи в рассрочку
+                        </p>
+                        <p className="text-2xl font-bold text-slate-800">
+                          {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)} ₽
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-                {/* Two Column Layout */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Recent Contracts */}
                   <div className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-all">
                       <h3 className="text-lg font-semibold text-slate-700 mb-4 flex items-center gap-2">
                         <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
@@ -428,7 +512,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                       </div>
                   </div>
 
-                  {/* Quick Actions */}
                   <div className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-all">
                        <h3 className="text-lg font-semibold text-slate-700 mb-4 flex items-center gap-2">
                         <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
@@ -465,9 +548,10 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
 
         {/* Upcoming Payments Tab */}
         {activeTab === 'upcoming' && (
-          <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500" onClick={() => setActiveActionMenu(null)}>
-
-              {/* Date Filters */}
+          <div
+            className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500"
+            onClick={() => setSelectedPaymentForAction(null)}
+          >
               <div className="flex gap-2 p-1 bg-white/70 backdrop-blur-sm rounded-xl w-fit shadow-sm">
                   <button
                       onClick={() => setPaymentDateFilter('ALL')}
@@ -501,7 +585,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                   </button>
               </div>
 
-              {/* Payments List */}
               {upcomingAndOverduePayments.length === 0 ? (
                   <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl border border-dashed border-slate-200">
                     <div className="text-6xl mb-4 opacity-30">📅</div>
@@ -513,7 +596,12 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                     {upcomingAndOverduePayments.map((p, idx) => (
                         <div
                           key={p.sale.id}
-                          className="group bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 relative animate-in fade-in slide-in-from-bottom-2"
+                          onClick={() => setSelectedPaymentForAction({
+                              sale: p.sale,
+                              customerName: p.customerName,
+                              totalDue: p.totalDue
+                          })}
+                          className="group bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 relative animate-in fade-in slide-in-from-bottom-2 cursor-pointer"
                           style={{ animationDelay: `${idx * 100}ms` }}
                         >
                             <div className="flex items-center justify-between">
@@ -538,37 +626,9 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                                         {p.isToday && <p className="text-[10px] font-bold text-emerald-600">СЕГОДНЯ</p>}
                                         {p.isTomorrow && <p className="text-[10px] font-bold text-amber-600">ЗАВТРА</p>}
                                     </div>
-
-                                    {/* 🔧 Меню действий с высоким z-index */}
-                                    <div className="relative z-50">
-                                      <button
-                                        onClick={(e) => handleActionClick(e, p.sale.id)}
-                                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                                      >
-                                        ⋮
-                                      </button>
-
-                                      {activeActionMenu === p.sale.id && (
-                                        <div className="absolute right-0 top-full mt-1 bg-white shadow-2xl rounded-xl z-50 w-48 overflow-hidden animate-in fade-in zoom-in border border-slate-100">
-                                          <button
-                                            onClick={() => { onSelectCustomer(p.sale.customerId); setActiveActionMenu(null); }}
-                                            className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-all"
-                                          >
-                                            <span className="text-indigo-500">👤</span> Инфо
-                                          </button>
-                                          <button
-                                            onClick={() => { onInitiatePayment(p.sale, p.totalDue); setActiveActionMenu(null); }}
-                                            className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-emerald-50 flex items-center gap-3 transition-all border-t border-slate-100"
-                                          >
-                                            <span className="text-emerald-500">💰</span> Добавить платеж
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
                                 </div>
                             </div>
 
-                            {/* 🔴 Блок задолженности из прошлых периодов */}
                             {(() => {
                               const today = new Date();
                               today.setHours(0, 0, 0, 0);
@@ -603,12 +663,24 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
           </div>
         )}
 
-        {/* Modal */}
         {selectedSaleForModal && (
             <SaleDetailsModal
                 sale={selectedSaleForModal}
                 customerName={customers.find(c => c.id === selectedSaleForModal.customerId)?.name || ''}
                 onClose={() => setSelectedSaleForModal(null)}
+                appSettings={appSettings}
+            />
+        )}
+
+        {selectedPaymentForAction && (
+            <PaymentActionModal
+                sale={selectedPaymentForAction.sale}
+                customerName={selectedPaymentForAction.customerName}
+                totalDue={selectedPaymentForAction.totalDue}
+                onClose={() => setSelectedPaymentForAction(null)}
+                onSelectCustomer={onSelectCustomer}
+                onInitiatePayment={onInitiatePayment}
+                onViewSchedule={onViewSchedule}
                 appSettings={appSettings}
             />
         )}
