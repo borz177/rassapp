@@ -593,9 +593,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                                       {formatCurrency(overdueDebt, appSettings.showCents)} ₽
                                     </span>
                                   </div>
-                                  <p className="text-[10px] text-rose-500 mt-1">
-                                    Неоплачено с прошлых периодов
-                                  </p>
                                 </div>
                               );
                             })()}
