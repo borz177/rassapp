@@ -17,7 +17,7 @@ interface NewIncomeProps {
   onSelectCustomer: () => void;
 }
 
-// ✅ Функция транслитерации для имени файла (латиница для WhatsApp)
+// ✅ Функция транслитерации для имени файла
 const transliterate = (text: string): string => {
     const map: { [key: string]: string } = {
         'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd',
@@ -46,6 +46,11 @@ const transliterate = (text: string): string => {
         .replace(/^_|_$/g, '');
 };
 
+// ✅ Определение мобильного устройства
+const isMobileDevice = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
 const NewIncome: React.FC<NewIncomeProps> = ({
     initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer
 }) => {
@@ -59,6 +64,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [sendHistory, setSendHistory] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const contractRef = useRef<HTMLDivElement>(null);
 
   const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
@@ -76,7 +82,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     });
   };
 
-  // ✅ ФИЛЬТР: реальные платежи (isRealPayment !== false)
   const getValidPaidPayments = (sale: Sale | undefined) => {
     if (!sale?.paymentPlan) return [];
     return sale.paymentPlan.filter(p =>
@@ -162,6 +167,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       return showCents ? profit : Math.round(profit);
   }, [selectedSale, amount, showCents]);
 
+  // ✅ ОПТИМИЗИРОВАНО для мобильных устройств
   const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
       if (!contractRef.current) throw new Error("Contract element not found");
       const element = contractRef.current;
@@ -181,9 +187,26 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       element.style.zIndex = '-1';
 
       try {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          const canvas = await html2canvas(element, { scale: 1.5, useCORS: true, logging: false });
-          const imgData = canvas.toDataURL('image/jpeg', 0.7);
+          // ✅ Мобильные: меньший scale для экономии памяти
+          const isMobile = isMobileDevice();
+          const scale = isMobile ? 1.0 : 1.5;
+          const quality = isMobile ? 0.8 : 0.7;
+
+          await new Promise(resolve => setTimeout(resolve, isMobile ? 200 : 100));
+
+          const canvas = await html2canvas(element, {
+              scale: scale,
+              useCORS: true,
+              logging: false,
+              backgroundColor: '#ffffff',
+              imageTimeout: 0,
+              removeContainer: true,
+              // ✅ Важно для мобильных
+              allowTaint: true,
+              foreignObjectRendering: true
+          });
+
+          const imgData = canvas.toDataURL('image/jpeg', quality);
           const pdf = new jsPDF('p', 'mm', 'a4');
           const pdfWidth = pdf.internal.pageSize.getWidth();
           const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
@@ -197,6 +220,18 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           element.style.visibility = originalStyle.visibility;
           element.style.zIndex = originalStyle.zIndex;
       }
+  };
+
+  // ✅ Функция скачивания как запасной вариант
+  const downloadPDF = (blob: Blob, fileName: string) => {
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -225,27 +260,77 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       if (sourceType === 'CUSTOMER') {
           onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
+              setIsGenerating(true);
               try {
+                  // ✅ Проверка HTTPS на мобильных
+                  const isMobile = isMobileDevice();
+                  if (isMobile && window.location.protocol !== 'https:') {
+                      console.warn("⚠️ WhatsApp API требует HTTPS на мобильных устройствах");
+                  }
+
                   const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
 
-                  // ✅ ИСПРАВЛЕНО: транслитерация имени (латиница для WhatsApp)
+                  // ✅ Проверка размера файла
+                  const fileSizeMB = pdfBlob.size / (1024 * 1024);
+                  console.log("📄 PDF размер:", fileSizeMB.toFixed(2), "MB");
+
+                  if (fileSizeMB > 16) {
+                      alert("⚠️ Файл слишком большой для WhatsApp (>16MB)\n\nПредлагаем скачать файл.");
+                      const dateStr = new Date(finalDate).toLocaleDateString('ru-RU').replace(/\./g, '-');
+                      const transliteratedName = transliterate(selectedSale.productName);
+                      const fileName = `Dogovor_${transliteratedName || 'dogovor'}_${dateStr}.pdf`;
+                      downloadPDF(pdfBlob, fileName);
+                      setIsGenerating(false);
+                      setShowConfirmModal(false);
+                      return;
+                  }
+
                   const dateStr = new Date(finalDate).toLocaleDateString('ru-RU').replace(/\./g, '-');
                   const transliteratedName = transliterate(selectedSale.productName);
                   const finalName = transliteratedName || 'dogovor';
                   const fileName = `Dogovor_${finalName}_${dateStr}.pdf`;
 
-                  // ✅ ОСТАВЛЯЕМ Blob (как в рабочем коде)
+                  console.log("📤 Отправка в WhatsApp:", {
+                      phone: selectedCustomer.phone,
+                      fileName: fileName,
+                      fileSize: fileSizeMB.toFixed(2) + 'MB',
+                      isMobile: isMobile
+                  });
+
                   const success = await sendWhatsAppFile(
                       appSettings.whatsapp.idInstance,
                       appSettings.whatsapp.apiTokenInstance,
                       selectedCustomer.phone,
-                      pdfBlob,  // ← Blob напрямую (без base64)
+                      pdfBlob,
                       fileName
                   );
-                  if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
-                  else { alert("Ошибка отправки PDF в WhatsApp"); }
-              } catch (error) {
-                  alert("Ошибка при создании или отправке PDF");
+
+                  if (success) {
+                      alert("✅ Договор (PDF) отправлен клиенту в WhatsApp");
+                  } else {
+                      // ✅ Запасной вариант: скачивание
+                      const userChoice = confirm("❌ Не удалось отправить через WhatsApp\n\nСкачать файл вместо этого?");
+                      if (userChoice) {
+                          downloadPDF(pdfBlob, fileName);
+                      }
+                  }
+              } catch (error: any) {
+                  console.error("PDF error:", error);
+                  // ✅ Запасной вариант при ошибке
+                  const userChoice = confirm("❌ Ошибка: " + error.message + "\n\nПопробовать скачать файл?");
+                  if (userChoice && selectedSale) {
+                      try {
+                          const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
+                          const dateStr = new Date(finalDate).toLocaleDateString('ru-RU').replace(/\./g, '-');
+                          const transliteratedName = transliterate(selectedSale.productName);
+                          const fileName = `Dogovor_${transliteratedName || 'dogovor'}_${dateStr}.pdf`;
+                          downloadPDF(pdfBlob, fileName);
+                      } catch (e) {
+                          alert("Не удалось создать PDF для скачивания");
+                      }
+                  }
+              } finally {
+                  setIsGenerating(false);
               }
           }
       } else if (sourceType === 'INVESTOR') {
@@ -262,7 +347,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       const hasGuarantor = !!selectedSale.guarantorName;
       const sellerPhone = appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance.slice(0, 11)}` : (selectedCustomer?.phone || '+7 (___) ___-__-__');
 
-      // ✅ ФИЛЬТР: только реальные платежи
       const validPaidPayments = getValidPaidPayments(selectedSale);
 
       const existingPayments = validPaidPayments.map(p => ({
@@ -306,7 +390,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
     th: {
         border: '1px solid #000',
-        padding: '10px 8px',
+        padding: '12px 8px',
         textAlign: 'center' as const,
         verticalAlign: 'middle' as const,
         fontWeight: 'bold' as const,
@@ -315,7 +399,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     },
     td: {
         border: '1px solid #000',
-        padding: '12px 8px',
+        padding: '14px 8px',
         textAlign: 'center' as const,
         verticalAlign: 'middle' as const,
         height: '40px',
@@ -521,7 +605,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                     <input type="date" className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={date} onChange={e => setDate(e.target.value)} />
                 </div>
             </div>
-            <button type="submit" className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-transform active:scale-95">Подтвердить приход</button>
+            <button
+                type="submit"
+                disabled={isGenerating}
+                className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                {isGenerating ? '⏳ Формирование PDF...' : 'Подтвердить приход'}
+            </button>
         </form>
 
         {showConfirmModal && (
