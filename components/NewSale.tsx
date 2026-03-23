@@ -266,7 +266,7 @@ const NewSale: React.FC<NewSaleProps> = ({
 
     return (
       <div ref={contractRef} style={styles.page}>
-        <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ<br />ТОВАРА В РАССРОЧКУ</h1>
+        <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
         <div style={styles.headerInfo}>Дата: {new Date(sale.startDate).toLocaleDateString()}</div>
         <div style={styles.contentWrapper}>
           <div style={styles.section}>

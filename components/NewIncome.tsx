@@ -223,9 +223,10 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                   );
                   if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
                   else { alert("Ошибка отправки PDF в WhatsApp"); }
-              } catch (error) {
-                  alert("Ошибка при создании или отправке PDF");
-              }
+              } catch (error: any) {
+   console.error("PDF generation error:", error);
+   alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
+}
           }
       } else if (sourceType === 'INVESTOR') {
           onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
