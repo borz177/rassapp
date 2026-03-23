@@ -17,7 +17,7 @@ interface NewIncomeProps {
   onSelectCustomer: () => void;
 }
 
-// ✅ Функция транслитерации для имени файла
+// ✅ Функция транслитерации для имени файла (латиница для WhatsApp)
 const transliterate = (text: string): string => {
     const map: { [key: string]: string } = {
         'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd',
@@ -46,11 +46,6 @@ const transliterate = (text: string): string => {
         .replace(/^_|_$/g, '');
 };
 
-// ✅ Определение мобильного устройства
-const isMobileDevice = () => {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-};
-
 const NewIncome: React.FC<NewIncomeProps> = ({
     initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer
 }) => {
@@ -64,7 +59,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [sendHistory, setSendHistory] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
   const contractRef = useRef<HTMLDivElement>(null);
 
   const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
@@ -167,46 +161,42 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       return showCents ? profit : Math.round(profit);
   }, [selectedSale, amount, showCents]);
 
-  // ✅ ОПТИМИЗИРОВАНО для мобильных устройств
   const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
       if (!contractRef.current) throw new Error("Contract element not found");
       const element = contractRef.current;
+
+      // ✅ ИСПРАВЛЕНО: Сохраняем и opacity тоже
       const originalStyle = {
           display: element.style.display,
           position: element.style.position,
           left: element.style.left,
           top: element.style.top,
           visibility: element.style.visibility,
-          zIndex: element.style.zIndex
+          zIndex: element.style.zIndex,
+          opacity: element.style.opacity
       };
+
+      // ✅ ИСПРАВЛЕНО: Делаем элемент поверх всего, но прозрачным, чтобы мобильный браузер его отрендерил
       element.style.display = 'block';
       element.style.position = 'absolute';
       element.style.left = '0';
       element.style.top = '0';
       element.style.visibility = 'visible';
-      element.style.zIndex = '-1';
+      element.style.zIndex = '9999';
+      element.style.opacity = '0';
 
       try {
-          // ✅ Мобильные: меньший scale для экономии памяти
-          const isMobile = isMobileDevice();
-          const scale = isMobile ? 1.0 : 1.5;
-          const quality = isMobile ? 0.8 : 0.7;
+          await new Promise(resolve => setTimeout(resolve, 100));
 
-          await new Promise(resolve => setTimeout(resolve, isMobile ? 200 : 100));
-
+          // ✅ ИСПРАВЛЕНО: Уменьшаем scale для мобильных устройств, чтобы не падало по памяти
+          const isMobile = window.innerWidth < 768;
           const canvas = await html2canvas(element, {
-              scale: scale,
+              scale: isMobile ? 1 : 1.5,
               useCORS: true,
-              logging: false,
-              backgroundColor: '#ffffff',
-              imageTimeout: 0,
-              removeContainer: true,
-              // ✅ Важно для мобильных
-              allowTaint: true,
-              foreignObjectRendering: true
+              logging: false
           });
 
-          const imgData = canvas.toDataURL('image/jpeg', quality);
+          const imgData = canvas.toDataURL('image/jpeg', 0.7);
           const pdf = new jsPDF('p', 'mm', 'a4');
           const pdfWidth = pdf.internal.pageSize.getWidth();
           const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
@@ -219,19 +209,8 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           element.style.top = originalStyle.top;
           element.style.visibility = originalStyle.visibility;
           element.style.zIndex = originalStyle.zIndex;
+          element.style.opacity = originalStyle.opacity; // Восстанавливаем
       }
-  };
-
-  // ✅ Функция скачивания как запасной вариант
-  const downloadPDF = (blob: Blob, fileName: string) => {
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', fileName);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -260,77 +239,29 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       if (sourceType === 'CUSTOMER') {
           onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
-              setIsGenerating(true);
               try {
-                  // ✅ Проверка HTTPS на мобильных
-                  const isMobile = isMobileDevice();
-                  if (isMobile && window.location.protocol !== 'https:') {
-                      console.warn("⚠️ WhatsApp API требует HTTPS на мобильных устройствах");
-                  }
-
                   const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-
-                  // ✅ Проверка размера файла
-                  const fileSizeMB = pdfBlob.size / (1024 * 1024);
-                  console.log("📄 PDF размер:", fileSizeMB.toFixed(2), "MB");
-
-                  if (fileSizeMB > 16) {
-                      alert("⚠️ Файл слишком большой для WhatsApp (>16MB)\n\nПредлагаем скачать файл.");
-                      const dateStr = new Date(finalDate).toLocaleDateString('ru-RU').replace(/\./g, '-');
-                      const transliteratedName = transliterate(selectedSale.productName);
-                      const fileName = `Dogovor_${transliteratedName || 'dogovor'}_${dateStr}.pdf`;
-                      downloadPDF(pdfBlob, fileName);
-                      setIsGenerating(false);
-                      setShowConfirmModal(false);
-                      return;
-                  }
 
                   const dateStr = new Date(finalDate).toLocaleDateString('ru-RU').replace(/\./g, '-');
                   const transliteratedName = transliterate(selectedSale.productName);
                   const finalName = transliteratedName || 'dogovor';
                   const fileName = `Dogovor_${finalName}_${dateStr}.pdf`;
 
-                  console.log("📤 Отправка в WhatsApp:", {
-                      phone: selectedCustomer.phone,
-                      fileName: fileName,
-                      fileSize: fileSizeMB.toFixed(2) + 'MB',
-                      isMobile: isMobile
-                  });
+                  // ✅ ИСПРАВЛЕНО: Превращаем Blob в полноценный File для мобильных браузеров
+                  const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
 
                   const success = await sendWhatsAppFile(
                       appSettings.whatsapp.idInstance,
                       appSettings.whatsapp.apiTokenInstance,
                       selectedCustomer.phone,
-                      pdfBlob,
+                      pdfFile,  // Передаем File вместо Blob
                       fileName
                   );
-
-                  if (success) {
-                      alert("✅ Договор (PDF) отправлен клиенту в WhatsApp");
-                  } else {
-                      // ✅ Запасной вариант: скачивание
-                      const userChoice = confirm("❌ Не удалось отправить через WhatsApp\n\nСкачать файл вместо этого?");
-                      if (userChoice) {
-                          downloadPDF(pdfBlob, fileName);
-                      }
-                  }
-              } catch (error: any) {
-                  console.error("PDF error:", error);
-                  // ✅ Запасной вариант при ошибке
-                  const userChoice = confirm("❌ Ошибка: " + error.message + "\n\nПопробовать скачать файл?");
-                  if (userChoice && selectedSale) {
-                      try {
-                          const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-                          const dateStr = new Date(finalDate).toLocaleDateString('ru-RU').replace(/\./g, '-');
-                          const transliteratedName = transliterate(selectedSale.productName);
-                          const fileName = `Dogovor_${transliteratedName || 'dogovor'}_${dateStr}.pdf`;
-                          downloadPDF(pdfBlob, fileName);
-                      } catch (e) {
-                          alert("Не удалось создать PDF для скачивания");
-                      }
-                  }
-              } finally {
-                  setIsGenerating(false);
+                  if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
+                  else { alert("Ошибка отправки PDF в WhatsApp"); }
+              } catch (error) {
+                  console.error(error);
+                  alert("Ошибка при создании или отправке PDF");
               }
           }
       } else if (sourceType === 'INVESTOR') {
@@ -373,44 +304,29 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
 
       const styles = {
-    page: {
-        width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
-        fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5',
-        display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
-        position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
-    },
-    contentWrapper: { flex: 1 },
-    h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
-    headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
-    fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
-    fieldLabel: { fontWeight: 'bold' as const },
-    phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
-    section: { margin: '0 0 20px 0' },
-    sectionItem: { marginBottom: '12px' },
-    table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
-    th: {
-        border: '1px solid #000',
-        padding: '12px 8px',
-        textAlign: 'center' as const,
-        verticalAlign: 'middle' as const,
-        fontWeight: 'bold' as const,
-        background: '#f9f9f9',
-        height: '45px'
-    },
-    td: {
-        border: '1px solid #000',
-        padding: '14px 8px',
-        textAlign: 'center' as const,
-        verticalAlign: 'middle' as const,
-        height: '40px',
-        lineHeight: '1.4'
-    },
-    footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
-    footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
-    signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
-    signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
-    signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
-};
+          page: {
+              width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
+              fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5',
+              display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
+              position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
+          },
+          contentWrapper: { flex: 1 },
+          h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
+          headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
+          fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
+          fieldLabel: { fontWeight: 'bold' as const },
+          phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
+          section: { margin: '0 0 20px 0' },
+          sectionItem: { marginBottom: '12px' },
+          table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
+          th: { border: '1px solid #000', padding: '12px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9', height: '45px' },
+          td: { border: '1px solid #000', padding: '14px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const, height: '40px', lineHeight: '1.4' },
+          footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
+          footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
+          signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
+          signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
+          signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
+      };
 
       const initialDebt = selectedSale.totalAmount - selectedSale.downPayment;
       let currentDebt = initialDebt;
@@ -605,15 +521,10 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                     <input type="date" className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={date} onChange={e => setDate(e.target.value)} />
                 </div>
             </div>
-            <button
-                type="submit"
-                disabled={isGenerating}
-                className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                {isGenerating ? '⏳ Формирование PDF...' : 'Подтвердить приход'}
-            </button>
+            <button type="submit" className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-transform active:scale-95">Подтвердить приход</button>
         </form>
 
+        {/* ✅ ИСПРАВЛЕНО: Дописал закрывающие теги модального окна */}
         {showConfirmModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowConfirmModal(false)}>
                 <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
@@ -637,13 +548,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                             <span className="text-xl font-bold text-emerald-600">+{formatNum(Number(amount))} ₽</span>
                         </div>
                         <div className="flex justify-between items-center pt-1">
-                            <span className="text-slate-500">Счет:</span>
-                            <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-xs font-bold">{getAccountName(targetAccountId)}</span>
+                            <span className="text-slate-500">Дата:</span>
+                            <span className="font-medium text-slate-800">{new Date(date).toLocaleDateString()}</span>
                         </div>
                     </div>
                     <div className="flex gap-3 pt-2">
-                        <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200">Отмена</button>
-                        <button onClick={handleConfirm} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200">Зачислить</button>
+                        <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-3 text-slate-600 font-bold bg-slate-100 rounded-xl hover:bg-slate-200">Отмена</button>
+                        <button onClick={handleConfirm} className="flex-1 py-3 text-white font-bold bg-emerald-600 rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-200">Подтвердить</button>
                     </div>
                 </div>
             </div>
