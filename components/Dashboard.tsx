@@ -320,75 +320,83 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                 )}
 
                 {/* Stats Cards - РАСТЯНУТЫ ПО ШИРИНЕ (2 колонки вместо 4) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {/* Card 1: Собрано средств */}
-                  <div className="group bg-white p-6 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 hover:-translate-y-1">
-                      <div className="flex items-start gap-5">
-                          <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 flex-shrink-0 group-hover:bg-emerald-200 transition-colors">
-                              <span className="text-2xl font-bold">₽</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-slate-400 uppercase tracking-wide mb-2">
-                                  Собрано средств
-                              </p>
-                              <p className="text-3xl font-bold text-slate-800 whitespace-nowrap">
-                                  {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)} ₽
-                              </p>
-                          </div>
-                      </div>
-                  </div>
+                              {/* Stats Cards - как на фото: иконка слева, сверху текст, снизу сумма */}
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 hover:-translate-y-1">
+      <div className="flex items-start gap-4">
+          <div
+              className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 flex-shrink-0 group-hover:bg-emerald-200 transition-colors">
+              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                  <text x="5" y="18" fontSize="16" fontWeight="bold">₽</text>
+              </svg>
+          </div>
+          <div className="flex-1">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
+                  Собрано средств
+              </p>
+              <p className="text-2xl font-bold text-slate-800">
+                  {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)} ₽
+              </p>
+          </div>
+      </div>
+  </div>
 
-                  {/* Card 2: Долг клиентов */}
-                  <div className="group bg-white p-6 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 hover:-translate-y-1">
-                      <div className="flex items-start gap-5">
-                          <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600 flex-shrink-0 group-hover:bg-amber-200 transition-colors">
-                              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                              </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-slate-400 uppercase tracking-wide mb-2">Долг клиентов</p>
-                              <p className="text-3xl font-bold text-slate-800 whitespace-nowrap">
-                                  {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)} ₽
-                              </p>
-                          </div>
-                      </div>
-                  </div>
+    <div
+        className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 hover:-translate-y-1">
+        <div className="flex items-start gap-4">
+            <div
+                className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600 flex-shrink-0 group-hover:bg-amber-200 transition-colors">
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+      </div>
+      <div className="flex-1">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
+          Долг клиентов
+        </p>
+        <p className="text-2xl font-bold text-slate-800">
+          {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)} ₽
+        </p>
+      </div>
+    </div>
+  </div>
 
-                  {/* Card 3: Оборотные средства */}
-                  <div className="group bg-white p-6 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 hover:-translate-y-1">
-                      <div className="flex items-start gap-5">
-                          <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 flex-shrink-0 group-hover:bg-blue-200 transition-colors">
-                              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                              </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-slate-400 uppercase tracking-wide mb-2">Оборотные средства</p>
-                              <p className="text-3xl font-bold text-slate-800 whitespace-nowrap">
-                                  {formatCurrency(currentWorkingCapital, appSettings.showCents)} ₽
-                              </p>
-                          </div>
-                      </div>
-                  </div>
+  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 hover:-translate-y-1">
+    <div className="flex items-start gap-4">
+      <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 flex-shrink-0 group-hover:bg-blue-200 transition-colors">
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+        </svg>
+      </div>
+      <div className="flex-1">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
+          Оборотные средства
+        </p>
+        <p className="text-2xl font-bold text-slate-800">
+          {formatCurrency(currentWorkingCapital, appSettings.showCents)} ₽
+        </p>
+      </div>
+    </div>
+  </div>
 
-                  {/* Card 4: Продажи в рассрочку */}
-                  <div className="group bg-white p-6 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 hover:-translate-y-1">
-                      <div className="flex items-start gap-5">
-                          <div className="w-14 h-14 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 flex-shrink-0 group-hover:bg-indigo-200 transition-colors">
-                              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                              </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-slate-400 uppercase tracking-wide mb-2">Продажи в рассрочку</p>
-                              <p className="text-3xl font-bold text-slate-800 whitespace-nowrap">
-                                  {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)} ₽
-                              </p>
-                          </div>
-                      </div>
-                  </div>
-                </div>
+  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 hover:-translate-y-1">
+    <div className="flex items-start gap-4">
+      <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 flex-shrink-0 group-hover:bg-indigo-200 transition-colors">
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+        </svg>
+      </div>
+      <div className="flex-1">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
+          Продажи в рассрочку
+        </p>
+        <p className="text-2xl font-bold text-slate-800">
+          {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)} ₽
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
 
                 {/* Two Column Layout */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
