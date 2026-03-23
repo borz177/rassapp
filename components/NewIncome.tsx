@@ -21,7 +21,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer
 }) => {
   const [sourceType, setSourceType] = useState<'CUSTOMER' | 'INVESTOR' | 'OTHER'>('CUSTOMER');
-
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId || '');
   const [selectedSaleId, setSelectedSaleId] = useState('');
   const [selectedInvestorId, setSelectedInvestorId] = useState('');
@@ -29,7 +28,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-
   const [sendHistory, setSendHistory] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const contractRef = useRef<HTMLDivElement>(null);
@@ -49,12 +47,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     });
   };
 
-  // ✅ БЕЗОПАСНАЯ ФИЛЬТРАЦИЯ: только isPaid (без isDeleted/deleted/deletedAt)
+  // ✅ ИСПРАВЛЕНО: только реальные платежи (isRealPayment === true)
   const getValidPaidPayments = (sale: Sale | undefined) => {
     if (!sale?.paymentPlan) return [];
     return sale.paymentPlan.filter(p =>
       p &&
       p.isPaid === true &&
+      p.isRealPayment === true &&
       typeof p.amount === 'number' &&
       p.date
     );
@@ -74,7 +73,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           const validPaidPayments = getValidPaidPayments(selectedSale);
           const paidTotal = validPaidPayments.reduce((sum, p) => sum + p.amount, 0);
           const scheduledPayments = selectedSale.paymentPlan
-              .filter(p => p && !p.isPaid && typeof p.amount === 'number' && p.date)
+              .filter(p => p && !p.isPaid && p.isRealPayment !== true)
               .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
           let paymentPool = paidTotal;
           let suggestedAmount = selectedSale.remainingAmount;
@@ -110,7 +109,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           const validPaidPayments = getValidPaidPayments(selectedSale);
           const paidTotal = validPaidPayments.reduce((sum, p) => sum + p.amount, 0);
           const scheduledPayments = selectedSale.paymentPlan
-              .filter(p => p && !p.isPaid && typeof p.amount === 'number' && p.date)
+              .filter(p => p && !p.isPaid && p.isRealPayment !== true)
               .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
           let paymentPool = paidTotal;
           for (const p of scheduledPayments) {
@@ -229,7 +228,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       const hasGuarantor = !!selectedSale.guarantorName;
       const sellerPhone = appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance.slice(0, 11)}` : (selectedCustomer?.phone || '+7 (___) ___-__-__');
 
-      // ✅ ФИЛЬТРАЦИЯ: только оплаченные платежи (isPaid === true)
+      // ✅ ИСПРАВЛЕНО: только реальные платежи
       const validPaidPayments = getValidPaidPayments(selectedSale);
 
       const existingPayments = validPaidPayments.map(p => ({
@@ -238,7 +237,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           id: p.id || `payment_${p.date}`
       }));
 
-      // ✅ ЗАЩИТА ОТ ДУБЛЕЙ
       const currentPaymentAmount = Number(amount);
       const currentDate = new Date(date);
       const currentPaymentExists = existingPayments.some(
@@ -312,7 +310,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                           <span><span style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
                       </div>
                       <div style={{...styles.sectionItem, display: 'flex', justifyContent: 'space-between'}}>
-                          <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan?.[0]?.amount || 0)} ₽</span>
+                          <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan?.filter(p => p.isRealPayment !== true)?.[0]?.amount || 0)} ₽</span>
                           <span><span style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
                       </div>
                   </div>
