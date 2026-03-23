@@ -17,7 +17,7 @@ interface NewIncomeProps {
   onSelectCustomer: () => void;
 }
 
-// ✅ Функция транслитерации кириллицы в латиницу для имён файлов
+// ✅ Функция транслитерации для имени файла (латиница для WhatsApp)
 const transliterate = (text: string): string => {
     const map: { [key: string]: string } = {
         'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd',
@@ -76,13 +76,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     });
   };
 
-  // ✅ ФИЛЬТР: показываем реальные платежи (isRealPayment !== false)
+  // ✅ ФИЛЬТР: реальные платежи (isRealPayment !== false)
   const getValidPaidPayments = (sale: Sale | undefined) => {
     if (!sale?.paymentPlan) return [];
     return sale.paymentPlan.filter(p =>
       p &&
       p.isPaid === true &&
-      p.isRealPayment !== false &&  // показывает true и undefined, скрывает false
+      p.isRealPayment !== false &&
       typeof p.amount === 'number' &&
       p.date
     );
@@ -228,23 +228,23 @@ const NewIncome: React.FC<NewIncomeProps> = ({
               try {
                   const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
 
-                  // ✅ ИСПРАВЛЕНО: транслитерация имени файла для WhatsApp
+                  // ✅ ИСПРАВЛЕНО: транслитерация имени (латиница для WhatsApp)
                   const dateStr = new Date(finalDate).toLocaleDateString('ru-RU').replace(/\./g, '-');
                   const transliteratedName = transliterate(selectedSale.productName);
                   const finalName = transliteratedName || 'dogovor';
                   const fileName = `Dogovor_${finalName}_${dateStr}.pdf`;
 
+                  // ✅ ОСТАВЛЯЕМ Blob (как в рабочем коде)
                   const success = await sendWhatsAppFile(
                       appSettings.whatsapp.idInstance,
                       appSettings.whatsapp.apiTokenInstance,
                       selectedCustomer.phone,
-                      pdfBlob,
+                      pdfBlob,  // ← Blob напрямую (без base64)
                       fileName
                   );
                   if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
                   else { alert("Ошибка отправки PDF в WhatsApp"); }
               } catch (error) {
-                  console.error("PDF send error:", error);
                   alert("Ошибка при создании или отправке PDF");
               }
           }
