@@ -291,12 +291,31 @@ const handleSendFullReport = () => {
                   {paymentSchedule.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Все оплачено! 🎉</div> : (
                       <table className="w-full text-sm text-left">
                           <thead className="text-xs text-slate-500 uppercase bg-slate-50"><tr><th className="px-4 py-3">Дата</th><th className="px-4 py-3">Осталось</th><th className="px-4 py-3">Действие</th></tr></thead>
-                          <tbody>{paymentSchedule.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className={`px-4 py-3 ${new Date(payment.date) < new Date() ? 'text-red-500 font-bold' : 'text-slate-700'}`}>{formatDate(payment.date)}</td><td className="px-4 py-3 font-bold text-slate-800">{formatCurrency(payment.amountToPay, appSettings.showCents)}</td><td className="px-4 py-3"><button onClick={() => onInitiatePayment(selectedSale, { ...payment, amount: payment.amountToPay })} className="text-indigo-600 font-bold text-xs border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition-colors">Принять</button></td></tr>))}</tbody>
+                          <tbody>{paymentSchedule.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className={`px-4 py-3 ${new Date(payment.date) < new Date() ? 'text-red-500 font-bold' : 'text-slate-700'}`}>{formatDate(payment.date)}</td><td className="px-4 py-3 font-bold text-slate-800">{formatCurrency(payment.amountToPay, appSettings.showCents)}</td>
+                              <td className="px-4 py-3">
+                                  <button
+                                      onClick={() => {
+                                          // ✅ Округляем сумму если копейки выключены
+                                          const roundedAmount = appSettings.showCents !== false
+                                              ? payment.amountToPay
+                                              : Math.round(payment.amountToPay);
+                                          onInitiatePayment(selectedSale, {...payment, amount: roundedAmount});
+                                      }}
+                                      className="text-indigo-600 font-bold text-xs border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition-colors"
+                                  >
+                                      Принять
+                                  </button>
+                              </td>
+                          </tr>))}</tbody>
                       </table>
                   )}
               </div>
 
-              {editingPayment && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl"><h3 className="text-lg font-bold text-slate-800 mb-4">Изменить дату платежа</h3><p className="text-sm text-slate-500 mb-4">Сумма: {formatCurrency(editingPayment.amount, appSettings.showCents)} ₽</p><input type="date" className="w-full p-3 border border-slate-300 rounded-xl mb-6 outline-none" value={editDate} onChange={(e) => setEditDate(e.target.value)} /><div className="flex gap-3"><button onClick={() => setEditingPayment(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Отмена</button><button onClick={saveEdit} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button></div></div></div>)}
+              {editingPayment && (<div
+                  className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+                  <div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl"><h3
+                      className="text-lg font-bold text-slate-800 mb-4">Изменить дату платежа</h3><p
+                      className="text-sm text-slate-500 mb-4">Сумма: {formatCurrency(editingPayment.amount, appSettings.showCents)} ₽</p><input type="date" className="w-full p-3 border border-slate-300 rounded-xl mb-6 outline-none" value={editDate} onChange={(e) => setEditDate(e.target.value)} /><div className="flex gap-3"><button onClick={() => setEditingPayment(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Отмена</button><button onClick={saveEdit} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button></div></div></div>)}
               {deletingPaymentId && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in"><div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl"><div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">{ICONS.Delete}</div><h3 className="text-lg font-bold text-slate-800 text-center mb-2">Отменить платеж?</h3><p className="text-center text-slate-500 mb-6 text-sm">Сумма вернется в долг, а статус платежа изменится на "Не оплачено".</p><div className="flex gap-3"><button onClick={() => setDeletingPaymentId(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Нет</button><button onClick={confirmDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold">Да, отменить</button></div></div></div>)}
           </div>
       );
