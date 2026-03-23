@@ -714,9 +714,7 @@ const Contracts: React.FC<ContractsProps> = ({
                   <p className={`text-base font-bold ${isOverdue ? 'text-red-600' : 'text-slate-800'}`}>
                     {formatCurrency(isOverdue ? overdueSum : sale.totalAmount, appSettings?.showCents)} ₽
                   </p>
-                  {isOverdue && overdueSum > 0 && (
-                    <span className="text-[10px] text-red-500 font-medium">просрочка</span>
-                  )}
+
                 </div>
               </div>
 
