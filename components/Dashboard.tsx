@@ -33,7 +33,6 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/60 backdrop-blur-md animate-in fade-in zoom-in duration-300" onClick={onClose}>
             <div className="bg-white backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20" onClick={e => e.stopPropagation()}>
-                {/* Header with gradient */}
                 <div className="relative p-6 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-8 -mt-8 blur-2xl"></div>
                     <h3 className="text-xl font-bold mb-1">{sale.productName}</h3>
@@ -45,9 +44,7 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
                     </button>
                 </div>
 
-                {/* Content with glass morphism effect */}
                 <div className="p-6 space-y-4 bg-slate-50">
-                    {/* Status badge */}
                     <div className="flex justify-between items-center">
                         <span className="text-sm font-medium text-slate-500">Статус договора</span>
                         <span className={`px-3 py-1.5 rounded-full text-xs font-bold border ${status.color}`}>
@@ -55,7 +52,6 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
                         </span>
                     </div>
 
-                    {/* Details grid */}
                     <div className="grid grid-cols-2 gap-4">
                         <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
                             <p className="text-xs text-slate-500 mb-1">Дата</p>
@@ -67,23 +63,21 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
                         </div>
                     </div>
 
-                    {/* Financial details */}
                     <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm space-y-3">
                         <div className="flex justify-between items-center">
                             <span className="text-sm text-slate-500">Общая сумма</span>
-                            <span className="text-lg font-bold text-indigo-600">{formatCurrency(sale.totalAmount, appSettings.showCents)} ₽</span>
+                            <span className="text-lg font-bold text-indigo-600 whitespace-nowrap">{formatCurrency(sale.totalAmount, appSettings.showCents)} ₽</span>
                         </div>
                         <div className="flex justify-between items-center">
                             <span className="text-sm text-slate-500">Первый взнос</span>
-                            <span className="font-medium text-slate-700">{formatCurrency(sale.downPayment, appSettings.showCents)} ₽</span>
+                            <span className="font-medium text-slate-700 whitespace-nowrap">{formatCurrency(sale.downPayment, appSettings.showCents)} ₽</span>
                         </div>
                         <div className="flex justify-between items-center pt-2 border-t border-dashed border-slate-200">
                             <span className="text-sm font-medium text-slate-600">Остаток долга</span>
-                            <span className="text-lg font-bold text-amber-600">{formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽</span>
+                            <span className="text-lg font-bold text-amber-600 whitespace-nowrap">{formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽</span>
                         </div>
                     </div>
 
-                    {/* Installments progress (if available) */}
                     {sale.paymentPlan && sale.paymentPlan.length > 0 && (
                         <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
                             <p className="text-sm font-medium text-slate-700 mb-3">График платежей</p>
@@ -91,7 +85,7 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
                                 {sale.paymentPlan.slice(0, 3).map((payment, idx) => (
                                     <div key={idx} className="flex justify-between items-center text-xs">
                                         <span className="text-slate-500">{formatDate(payment.date)}</span>
-                                        <span className="font-medium text-slate-700">{formatCurrency(payment.amount, appSettings.showCents)} ₽</span>
+                                        <span className="font-medium text-slate-700 whitespace-nowrap">{formatCurrency(payment.amount, appSettings.showCents)} ₽</span>
                                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${payment.isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                                             {payment.isPaid ? 'Оплачено' : 'Ожидается'}
                                         </span>
@@ -105,7 +99,6 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
                     )}
                 </div>
 
-                {/* Footer */}
                 <div className="p-4 border-t border-slate-200 bg-white">
                     <button onClick={onClose} className="w-full py-3.5 bg-gradient-to-r from-slate-800 to-slate-700 text-white font-bold rounded-xl hover:from-slate-900 hover:to-slate-800 shadow-lg shadow-slate-200 transition-all">
                         Закрыть
@@ -259,9 +252,6 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 pb-24 w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
 
-        {/* Header with greeting and date */}
-
-
         {/* Tabs */}
         <div className="flex bg-white/70 backdrop-blur-sm p-1.5 rounded-2xl shadow-sm border border-white">
           <button
@@ -295,7 +285,7 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
         {activeTab === 'overview' && (
             <div className="space-y-6 animate-in fade-in duration-500">
 
-                {/* Account Filter - Horizontal Scroll - только если больше одного счета */}
+                {/* Account Filter */}
                 {accounts.length > 1 && (
                   <div className="relative ml-4">
                     <div className="overflow-x-auto pb-2 scrollbar-hide">
@@ -325,89 +315,80 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                             ))}
                         </div>
                     </div>
-                    {/* Gradient fade for scroll indicator */}
                     <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-indigo-50/50 to-transparent pointer-events-none"></div>
                   </div>
                 )}
 
-                {/* Stats Cards - без индикаторов прогресса, с иконками перед суммой */}
-                {/* Stats Cards - как на фото: иконка слева, сверху текст, снизу сумма */}
-<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 hover:-translate-y-1">
-      <div className="flex items-start gap-4">
-          <div
-              className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 flex-shrink-0 group-hover:bg-emerald-200 transition-colors">
-              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-                  <text x="5" y="18" fontSize="16" fontWeight="bold">₽</text>
-              </svg>
-          </div>
-          <div className="flex-1">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
-                  Собрано средств
-              </p>
-              <p className="text-2xl font-bold text-slate-800">
-                  {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)} ₽
-              </p>
-          </div>
-      </div>
-  </div>
+                {/* Stats Cards - растянутые, с иконкой рубля на одной строке */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                  {/* Card 1: Собрано средств */}
+                  <div className="group bg-white p-6 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 hover:-translate-y-1 min-h-[140px]">
+                      <div className="flex items-start gap-5">
+                          <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-600 flex-shrink-0 group-hover:bg-emerald-200 transition-colors">
+                              <span className="text-xl font-bold">₽</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
+                                  Собрано средств
+                              </p>
+                              <p className="text-2xl font-bold text-slate-800 whitespace-nowrap">
+                                  {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)} ₽
+                              </p>
+                          </div>
+                      </div>
+                  </div>
 
-    <div
-        className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 hover:-translate-y-1">
-        <div className="flex items-start gap-4">
-            <div
-                className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600 flex-shrink-0 group-hover:bg-amber-200 transition-colors">
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-        </svg>
-      </div>
-      <div className="flex-1">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
-          Долг клиентов
-        </p>
-        <p className="text-2xl font-bold text-slate-800">
-          {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)} ₽
-        </p>
-      </div>
-    </div>
-  </div>
+                  {/* Card 2: Долг клиентов */}
+                  <div className="group bg-white p-6 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 hover:-translate-y-1 min-h-[140px]">
+                      <div className="flex items-start gap-5">
+                          <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600 flex-shrink-0 group-hover:bg-amber-200 transition-colors">
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                              </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Долг клиентов</p>
+                              <p className="text-2xl font-bold text-slate-800 whitespace-nowrap">
+                                  {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)} ₽
+                              </p>
+                          </div>
+                      </div>
+                  </div>
 
-  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 hover:-translate-y-1">
-    <div className="flex items-start gap-4">
-      <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 flex-shrink-0 group-hover:bg-blue-200 transition-colors">
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-        </svg>
-      </div>
-      <div className="flex-1">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
-          Оборотные средства
-        </p>
-        <p className="text-2xl font-bold text-slate-800">
-          {formatCurrency(currentWorkingCapital, appSettings.showCents)} ₽
-        </p>
-      </div>
-    </div>
-  </div>
+                  {/* Card 3: Оборотные средства */}
+                  <div className="group bg-white p-6 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 hover:-translate-y-1 min-h-[140px]">
+                      <div className="flex items-start gap-5">
+                          <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 flex-shrink-0 group-hover:bg-blue-200 transition-colors">
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                              </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Оборотные средства</p>
+                              <p className="text-2xl font-bold text-slate-800 whitespace-nowrap">
+                                  {formatCurrency(currentWorkingCapital, appSettings.showCents)} ₽
+                              </p>
+                          </div>
+                      </div>
+                  </div>
 
-  <div className="group bg-white p-5 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 hover:-translate-y-1">
-    <div className="flex items-start gap-4">
-      <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 flex-shrink-0 group-hover:bg-indigo-200 transition-colors">
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-        </svg>
-      </div>
-      <div className="flex-1">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">
-          Продажи в рассрочку
-        </p>
-        <p className="text-2xl font-bold text-slate-800">
-          {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)} ₽
-        </p>
-      </div>
-    </div>
-  </div>
-</div>
+                  {/* Card 4: Продажи в рассрочку */}
+                  <div className="group bg-white p-6 rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 hover:-translate-y-1 min-h-[140px]">
+                      <div className="flex items-start gap-5">
+                          <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 flex-shrink-0 group-hover:bg-indigo-200 transition-colors">
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                              </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Продажи в рассрочку</p>
+                              <p className="text-2xl font-bold text-slate-800 whitespace-nowrap">
+                                  {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)} ₽
+                              </p>
+                          </div>
+                      </div>
+                  </div>
+                </div>
 
                 {/* Two Column Layout */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -424,13 +405,13 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                             </div>
                           ) : lastFiveSales.map((sale, idx) => (
                               <div key={sale.id} className="group flex items-center justify-between p-3 bg-slate-50 hover:bg-white rounded-xl transition-all hover:shadow-md border border-transparent hover:border-indigo-100 animate-in fade-in slide-in-from-bottom-2" style={{ animationDelay: `${idx * 50}ms` }}>
-                                  <div>
-                                      <p className="font-bold text-sm text-slate-800">{customers.find(c=>c.id === sale.customerId)?.name}</p>
+                                  <div className="min-w-0">
+                                      <p className="font-bold text-sm text-slate-800 truncate">{customers.find(c=>c.id === sale.customerId)?.name}</p>
                                       <p className="text-xs text-slate-500 mt-1">{sale.productName} • {formatDate(sale.startDate)}</p>
                                   </div>
                                   <button
                                     onClick={() => setSelectedSaleForModal(sale)}
-                                    className="text-xs bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-700 px-4 py-2 rounded-lg font-semibold hover:from-indigo-100 hover:to-indigo-200 transition-all group-hover:scale-105"
+                                    className="text-xs bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-700 px-4 py-2 rounded-lg font-semibold hover:from-indigo-100 hover:to-indigo-200 transition-all group-hover:scale-105 whitespace-nowrap"
                                   >
                                     Детали
                                   </button>
@@ -528,8 +509,8 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                           style={{ animationDelay: `${idx * 100}ms` }}
                         >
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className={`p-3 rounded-xl ${
+                                <div className="flex items-center gap-4 min-w-0">
+                                    <div className={`p-3 rounded-xl flex-shrink-0 ${
                                         p.isTomorrow 
                                           ? 'bg-amber-100 text-amber-600 group-hover:bg-amber-200' 
                                           : p.isToday 
@@ -538,18 +519,20 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                                     } transition-all`}>
                                         {p.isTomorrow ? '⏰' : p.isToday ? '📆' : '⚠️'}
                                     </div>
-                                    <div>
-                                        <p className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{p.customerName}</p>
+                                    <div className="min-w-0">
+                                        <p className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors truncate">{p.customerName}</p>
                                         <p className="text-xs text-slate-500 mt-1">{p.sale.productName}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <div className="text-right">
-                                        <p className="text-lg font-bold text-indigo-600">{formatCurrency(p.totalDue, appSettings.showCents)} ₽</p>
+                                        <p className="text-lg font-bold text-indigo-600 whitespace-nowrap">{formatCurrency(p.totalDue, appSettings.showCents)} ₽</p>
                                         {p.isToday && <p className="text-[10px] font-bold text-emerald-600">СЕГОДНЯ</p>}
                                         {p.isTomorrow && <p className="text-[10px] font-bold text-amber-600">ЗАВТРА</p>}
                                     </div>
-                                    <div className="relative">
+
+                                    {/* 🔧 Меню действий с высоким z-index */}
+                                    <div className="relative z-50">
                                       <button
                                         onClick={(e) => handleActionClick(e, p.sale.id)}
                                         className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
@@ -558,26 +541,56 @@ const Dashboard: React.FC<DashboardProps> = ({ sales, customers, stats: globalSt
                                       </button>
 
                                       {activeActionMenu === p.sale.id && (
-                                          <div className="absolute right-0 top-8 bg-white shadow-xl rounded-xl z-20 w-48 overflow-hidden animate-in fade-in zoom-in border border-slate-100">
-                                              <button
-                                                onClick={() => onSelectCustomer(p.sale.customerId)}
-                                                className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-all"
-                                              >
-                                                <span className="text-indigo-500">👤</span> Инфо
-                                              </button>
-                                              <button
-                                                onClick={() => onInitiatePayment(p.sale, p.totalDue)}
-                                                className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-emerald-50 flex items-center gap-3 transition-all border-t border-slate-100"
-                                              >
-                                                <span className="text-emerald-500">💰</span> Добавить платеж
-                                              </button>
-                                          </div>
+                                        <div className="absolute right-0 top-full mt-1 bg-white shadow-2xl rounded-xl z-50 w-48 overflow-hidden animate-in fade-in zoom-in border border-slate-100">
+                                          <button
+                                            onClick={() => { onSelectCustomer(p.sale.customerId); setActiveActionMenu(null); }}
+                                            className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-all"
+                                          >
+                                            <span className="text-indigo-500">👤</span> Инфо
+                                          </button>
+                                          <button
+                                            onClick={() => { onInitiatePayment(p.sale, p.totalDue); setActiveActionMenu(null); }}
+                                            className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-emerald-50 flex items-center gap-3 transition-all border-t border-slate-100"
+                                          >
+                                            <span className="text-emerald-500">💰</span> Добавить платеж
+                                          </button>
+                                        </div>
                                       )}
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Progress indicator - удален */}
+                            {/* 🔴 Блок задолженности из прошлых периодов */}
+                            {(() => {
+                              const today = new Date();
+                              today.setHours(0, 0, 0, 0);
+
+                              const overdueDebt = p.sale.paymentPlan
+                                .filter(payment => {
+                                  const paymentDate = new Date(payment.date);
+                                  paymentDate.setHours(0, 0, 0, 0);
+                                  return !payment.isPaid && paymentDate < today;
+                                })
+                                .reduce((sum, payment) => sum + payment.amount, 0);
+
+                              if (overdueDebt <= 0) return null;
+
+                              return (
+                                <div className="mt-4 pt-3 border-t border-dashed border-rose-200">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-rose-600 font-medium flex items-center gap-1">
+                                      ⚠️ Задолженность
+                                    </span>
+                                    <span className="font-bold text-rose-700 whitespace-nowrap">
+                                      {formatCurrency(overdueDebt, appSettings.showCents)} ₽
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] text-rose-500 mt-1">
+                                    Неоплачено с прошлых периодов
+                                  </p>
+                                </div>
+                              );
+                            })()}
                         </div>
                     ))}
                   </div>
