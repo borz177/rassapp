@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, User, AppSettings } from '../types';
 import { ICONS } from '../constants';
-import { Phone } from 'lucide-react';
+import { Phone, Search, Calendar, Filter, ChevronDown } from 'lucide-react';
 import { formatCurrency, formatDate } from '../src/utils';
 import { createPortal } from 'react-dom';
 
@@ -212,14 +212,6 @@ const Contracts: React.FC<ContractsProps> = ({
     if (activeTab !== 'OVERDUE') return 0;
     return filteredList.reduce((sum, s) => sum + calculateSaleOverdue(s), 0);
   }, [filteredList, activeTab]);
-
-  const getTabTitle = () => {
-      switch(activeTab) {
-          case 'ACTIVE': return 'Активные договоры';
-          case 'OVERDUE': return 'Просроченные';
-          case 'ARCHIVE': return 'Архив';
-      }
-  }
 
   const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
       e.stopPropagation();
@@ -506,187 +498,161 @@ const Contracts: React.FC<ContractsProps> = ({
   }, [activeMenuId]);
 
   return (
-    <div className="space-y-6 pb-20 w-full max-w-7xl mx-auto px-4 overflow-x-hidden" onClick={() => setActiveMenuId(null)}>
-      {activeTab !== 'OVERDUE' && (
-        <div className="flex justify-between items-center mb-2">
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent min-w-0">
-                <h2 className="text-3xl font-bold truncate">{getTabTitle()}</h2>
-                <p className="text-slate-500 text-sm mt-1">Найдено: {filteredList.length}</p>
-            </div>
+    <div className="space-y-6 pb-20 w-full max-w-5xl mx-auto px-4 overflow-x-hidden" onClick={() => setActiveMenuId(null)}>
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="text-slate-700">
+          {ICONS.File}
         </div>
-      )}
-
-       {activeTab === 'OVERDUE' && (
-          <div className="bg-gradient-to-br from-red-50 via-white to-orange-50 border border-red-200 p-6 rounded-3xl shadow-lg animate-fade-in mb-4 overflow-hidden">
-              <div className="flex justify-between items-start">
-                  <div className="min-w-0">
-                      <h2 className="text-2xl font-bold text-slate-800 mb-1 truncate">Просроченные договоры</h2>
-                      <p className="text-slate-500 text-xs uppercase font-bold tracking-wide">Всего договоров: {filteredList.length}</p>
-                  </div>
-                  <div className="bg-gradient-to-br from-red-400 to-red-500 p-3 rounded-2xl text-white shadow-lg shrink-0">
-                      {ICONS.Alert}
-                  </div>
-              </div>
-              <div className="mt-6 pt-4 border-t border-red-200">
-                  <p className="text-xs text-slate-500 font-medium mb-2">Общая сумма просрочки (по факту)</p>
-                  <p className="text-4xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">{formatCurrency(totalOverdueSum, appSettings?.showCents)} ₽</p>
-              </div>
-          </div>
-        )}
-
-      <div className="bg-white/80 backdrop-blur p-5 rounded-2xl shadow-lg border border-slate-100 space-y-4 overflow-hidden">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="relative group min-w-0">
-                  <span className="absolute left-4 top-3.5 text-slate-400 scale-90 group-focus-within:text-blue-500 transition-colors shrink-0">{ICONS.Users}</span>
-                  <input
-                    type="text"
-                    placeholder="Поиск по имени или товару..."
-                    className="w-full pl-12 p-3.5 border border-slate-200 rounded-xl outline-none text-sm focus:border-blue-500 bg-white/90 text-slate-900 transition-all group-focus-within:shadow-md"
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                  />
-              </div>
-              <div className="relative group min-w-0">
-                  <input
-                      type="date"
-                      className="w-full pl-4 sm:pl-12 p-3 sm:p-3.5 border border-slate-200 rounded-xl outline-none text-sm text-slate-900 bg-white/90 focus:border-blue-500 transition-all group-focus-within:shadow-md"
-                      value={filterDate}
-                      onChange={e => setFilterDate(e.target.value)}
-                  />
-              </div>
-              <div className="relative group min-w-0">
-                  <span className="absolute left-4 top-3.5 text-slate-400 scale-75 group-focus-within:text-blue-500 transition-colors shrink-0">{ICONS.Wallet}</span>
-                  <select
-                      className="w-full pl-12 p-3.5 border border-slate-200 rounded-xl outline-none text-sm text-slate-900 bg-white/90 focus:border-blue-500 transition-all group-focus-within:shadow-md appearance-none"
-                      value={filterAccountId}
-                      onChange={e => setFilterAccountId(e.target.value)}
-                  >
-                      <option value="">Все счета / Инвесторы</option>
-                      {accounts.map(acc => (<option key={acc.id} value={acc.id}>{acc.name}</option>))}
-                  </select>
-              </div>
-          </div>
+        <h2 className="text-3xl font-bold text-slate-800">Договоры</h2>
+        <div className="bg-blue-600 text-white px-4 py-1.5 rounded-full font-semibold text-lg min-w-[60px] text-center">
+          {filteredList.length}
+        </div>
       </div>
 
-      <div className="space-y-4 pt-4 overflow-hidden relative">
+      {/* Filters */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-3">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+          <input
+            type="text"
+            placeholder="Клиент или товар..."
+            className="w-full pl-12 pr-4 py-3.5 border border-slate-200 rounded-xl outline-none text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        <div className="relative">
+          <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+          <input
+            type="date"
+            className="w-full pl-12 pr-4 py-3.5 border border-slate-200 rounded-xl outline-none text-sm text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+            value={filterDate}
+            onChange={e => setFilterDate(e.target.value)}
+          />
+        </div>
+
+        <div className="relative">
+          <select
+            className="w-full px-4 py-3.5 border border-slate-200 rounded-xl outline-none text-sm text-slate-700 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all appearance-none cursor-pointer"
+            value={filterAccountId}
+            onChange={e => setFilterAccountId(e.target.value)}
+          >
+            <option value="">Все инвесторы</option>
+            {accounts.map(acc => (
+              <option key={acc.id} value={acc.id}>{acc.name}</option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={20} />
+        </div>
+
+        <button className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-xl font-medium flex items-center justify-center gap-2 transition-all active:scale-95">
+          <Filter size={20} />
+          <span>Поиск</span>
+        </button>
+      </div>
+
+      {/* Table Header */}
+      <div className="hidden md:grid grid-cols-12 gap-4 px-4 py-2 text-sm font-semibold text-slate-500 border-b border-slate-200">
+        <div className="col-span-1">№</div>
+        <div className="col-span-5">Клиент</div>
+        <div className="col-span-6">Товар</div>
+      </div>
+
+      {/* List */}
+      <div className="space-y-3">
         {filteredList.length === 0 ? (
-            <div className="text-center py-16 bg-white/80 backdrop-blur rounded-3xl border border-dashed border-slate-200 overflow-hidden">
+            <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-slate-200">
                 <div className="text-slate-300 text-6xl mb-4">📄</div>
                 <p className="text-slate-400 text-lg">Ничего не найдено</p>
             </div>
         ) : (
         filteredList.map((sale, index) => {
-            const progress = sale.totalAmount > 0 ? ((sale.totalAmount - sale.remainingAmount) / sale.totalAmount) * 100 : 0;
-            let statusLabel = 'АКТИВНО';
-            let statusColor = 'bg-blue-100 text-blue-700';
-            if (sale.status === 'COMPLETED') {
-                statusLabel = 'ЗАКРЫТО';
-                statusColor = 'bg-slate-100 text-slate-600';
-            }
-            if (activeTab === 'OVERDUE') {
-                statusLabel = 'ПРОСРОЧЕНО';
-                statusColor = 'bg-red-100 text-red-700';
-            }
-
             const displayNumber = filteredList.length - index;
-            const overdueSum = calculateSaleOverdue(sale);
+            const customer = customers.find(c => c.id === sale.customerId);
 
             return (
               <div
                 key={sale.id}
-                className="bg-white/95 backdrop-blur rounded-2xl shadow-sm p-4 sm:p-5 relative animate-fade-in transition-all hover:shadow-md border border-slate-100"
+                className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 hover:shadow-md transition-all animate-fade-in"
               >
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4">
+                <div className="grid grid-cols-12 gap-4 items-center">
+                  {/* Number */}
+                  <div className="col-span-2 md:col-span-1 font-semibold text-slate-700">
+                    {displayNumber}
+                  </div>
 
-                  <div className="flex items-start gap-3 flex-1">
-                    <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-sm shrink-0 mt-1">
-                      {displayNumber}
+                  {/* Client */}
+                  <div className="col-span-7 md:col-span-5">
+                    <div className="font-semibold text-slate-800 text-base">
+                      {getCustomerName(sale.customerId)}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-slate-800 text-base leading-tight break-words pr-2">
-                          {getCustomerName(sale.customerId)}
-                      </h3>
-                      <p className="text-sm text-slate-500 break-words mt-1 leading-snug">{sale.productName}</p>
-                      <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 bg-slate-300 rounded-full shrink-0"></span>
-                        <span>Оформлен: {formatDate(sale.startDate)}</span>
-                      </p>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
+                      <Calendar size={14} />
+                      <span>{formatDate(sale.startDate)}</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center sm:items-start justify-between sm:justify-end gap-4 w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100">
-                    <div className="text-left sm:text-right flex-1 sm:flex-none">
-                      <span className={`inline-block px-2.5 py-1 text-[11px] font-bold tracking-wider rounded-md uppercase ${statusColor}`}>
-                          {statusLabel}
+                  {/* Product & Actions */}
+                  <div className="col-span-3 md:col-span-6 flex items-center justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="font-medium text-slate-700 text-sm mb-2">
+                        {sale.productName}
+                      </div>
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium">
+                        Оформлен
                       </span>
-                      {activeTab === 'OVERDUE' ? (
-                          <p className="text-sm font-bold text-red-600 mt-1.5">{formatCurrency(overdueSum, appSettings?.showCents)} ₽</p>
-                      ) : (
-                          <p className="text-sm font-semibold mt-1.5 text-slate-700">{formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</p>
-                      )}
                     </div>
 
                     {!readOnly && (
-                        <button
-                          onClick={(e) => handleActionClick(e, sale)}
-                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all shrink-0 -mt-1 sm:mt-0"
-                        >
-                          {ICONS.More}
-                        </button>
+                      <button
+                        onClick={(e) => handleActionClick(e, sale)}
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                      >
+                        <ChevronDown size={20} />
+                      </button>
                     )}
                   </div>
                 </div>
-
-                <div className="w-full bg-slate-100 rounded-full h-2 mt-2">
-                  <div
-                    className={`h-2 rounded-full transition-all duration-500 ${activeTab === 'OVERDUE' ? 'bg-gradient-to-r from-red-500 to-orange-400' : 'bg-gradient-to-r from-blue-500 to-indigo-500'}`}
-                    style={{ width: `${progress}%` }}
-                  ></div>
-                </div>
-                <div className="flex justify-between text-[11px] mt-2 font-medium">
-                  <span className="text-slate-500">Оплачено: <span className="text-emerald-600">{formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
-                  {activeTab !== 'OVERDUE' && (
-                    <span className="text-slate-500">Остаток: <span className="text-slate-700">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
-                  )}
-                </div>
               </div>
-            )
+            );
         }))}
       </div>
 
-        {activeMenuId && menuPosition && createPortal(
-            <ActionMenu />,
-            document.body
-        )}
+      {activeMenuId && menuPosition && createPortal(
+          <ActionMenu />,
+          document.body
+      )}
 
-        {deletingSale && !readOnly && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/70 to-slate-800/70 backdrop-blur-sm animate-fade-in overflow-hidden" onClick={() => setDeletingSale(null)}>
-                <div className="bg-white/95 backdrop-blur w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-white/20" onClick={e => e.stopPropagation()}>
-                    <div className="w-16 h-16 bg-gradient-to-br from-red-400 to-red-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shrink-0">
-                      {ICONS.Delete}
-                    </div>
-                    <h3 className="text-xl font-bold text-slate-800 text-center mb-2">Удалить договор?</h3>
-                    <p className="text-center text-slate-500 mb-8 text-sm">Это действие необратимо. Будут удалены все записи о платежах и расходах (закуп), а товар вернется на склад. Вы уверены?</p>
-                    <div className="flex gap-3">
-                        <button onClick={() => setDeletingSale(null)} className="flex-1 py-3.5 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all active:scale-95">
-                            Отмена
-                        </button>
-                        <button onClick={handleDeleteConfirm} className="flex-1 py-3.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-bold hover:from-red-600 hover:to-red-700 transition-all active:scale-95 shadow-lg shadow-red-200">
-                            Удалить
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
+      {deletingSale && !readOnly && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/70 to-slate-800/70 backdrop-blur-sm animate-fade-in overflow-hidden" onClick={() => setDeletingSale(null)}>
+              <div className="bg-white/95 backdrop-blur w-full max-w-sm p-8 rounded-3xl shadow-2xl border border-white/20" onClick={e => e.stopPropagation()}>
+                  <div className="w-16 h-16 bg-gradient-to-br from-red-400 to-red-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shrink-0">
+                    {ICONS.Delete}
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-800 text-center mb-2">Удалить договор?</h3>
+                  <p className="text-center text-slate-500 mb-8 text-sm">Это действие необратимо. Будут удалены все записи о платежах и расходах (закуп), а товар вернется на склад. Вы уверены?</p>
+                  <div className="flex gap-3">
+                      <button onClick={() => setDeletingSale(null)} className="flex-1 py-3.5 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all active:scale-95">
+                          Отмена
+                      </button>
+                      <button onClick={handleDeleteConfirm} className="flex-1 py-3.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-bold hover:from-red-600 hover:to-red-700 transition-all active:scale-95 shadow-lg shadow-red-200">
+                          Удалить
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
 
-        {selectedSaleForInfo && (
-            <ContractInfoModal
-                sale={selectedSaleForInfo}
-                customer={customers.find(c => c.id === selectedSaleForInfo.customerId)}
-                onClose={() => setSelectedSaleForInfo(null)}
-                appSettings={appSettings}
-            />
-        )}
+      {selectedSaleForInfo && (
+          <ContractInfoModal
+              sale={selectedSaleForInfo}
+              customer={customers.find(c => c.id === selectedSaleForInfo.customerId)}
+              onClose={() => setSelectedSaleForInfo(null)}
+              appSettings={appSettings}
+          />
+      )}
     </div>
   );
 };
