@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, User, AppSettings } from '../types';
 import { ICONS } from '../constants';
-import { Phone, Search, Calendar, Wallet, MoreVertical } from 'lucide-react';
+import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X } from 'lucide-react';
 import { formatCurrency, formatDate } from '../src/utils';
 import { createPortal } from 'react-dom';
 
@@ -20,7 +20,7 @@ interface ContractsProps {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 📋 Модалка с информацией о договоре (оптимизирована)
+// 📋 Модалка с информацией о договоре
 // ─────────────────────────────────────────────────────────────
 const ContractInfoModal = ({
   sale,
@@ -71,13 +71,11 @@ const ContractInfoModal = ({
         className="bg-white w-full sm:max-w-sm sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="px-5 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center gap-3 shrink-0">
-          <div className="text-white bg-white/20 p-2 rounded-xl">{ICONS.File}</div>
+          <div className="text-white bg-white/20 p-2 rounded-xl"><FileText size={18} /></div>
           <h3 className="text-base font-bold text-white">Информация о договоре</h3>
         </div>
 
-        {/* Content */}
         <div className="p-4 space-y-3 overflow-y-auto flex-1">
           <div className="bg-slate-50 p-3 rounded-xl">
             <label className="text-[11px] text-slate-500 block mb-1">Товар</label>
@@ -117,13 +115,12 @@ const ContractInfoModal = ({
           )}
         </div>
 
-        {/* Actions */}
         <div className="p-3 bg-slate-50 border-t border-slate-100 flex gap-2 shrink-0">
           <button onClick={handleCall} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
             <Phone size={16} /> Позвонить
           </button>
           <button onClick={handleWhatsApp} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
-            {ICONS.Send} WhatsApp
+            <Phone size={16} /> WhatsApp
           </button>
         </div>
 
@@ -136,7 +133,6 @@ const ContractInfoModal = ({
   );
 };
 
-// Вспомогательный компонент для информации
 const InfoItem = ({ label, value, color = 'text-slate-800', small = false }: {
   label: string, value: string | number, color?: string, small?: boolean
 }) => (
@@ -155,12 +151,10 @@ const Contracts: React.FC<ContractsProps> = ({
   user, appSettings
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterDate, setFilterDate] = useState('');
   const [filterAccountId, setFilterAccountId] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [deletingSale, setDeletingSale] = useState<Sale | null>(null);
   const [selectedSaleForInfo, setSelectedSaleForInfo] = useState<Sale | null>(null);
-  const [menuPosition, setMenuPosition] = useState<{ top: number, right: number } | null>(null);
   const [currentMenuSale, setCurrentMenuSale] = useState<Sale | null>(null);
 
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Неизвестно';
@@ -201,11 +195,10 @@ const Contracts: React.FC<ContractsProps> = ({
         return (customer?.name.toLowerCase().includes(lowerTerm)) || sale.productName.toLowerCase().includes(lowerTerm);
       });
     }
-    if (filterDate) list = list.filter(sale => sale.startDate.startsWith(filterDate));
     if (filterAccountId) list = list.filter(sale => sale.accountId === filterAccountId);
 
     return { filteredList: list.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()) };
-  }, [sales, customers, activeTab, searchTerm, filterDate, filterAccountId]);
+  }, [sales, customers, activeTab, searchTerm, filterAccountId]);
 
   const totalOverdueSum = useMemo(() => {
     if (activeTab !== 'OVERDUE') return 0;
@@ -220,26 +213,13 @@ const Contracts: React.FC<ContractsProps> = ({
     }
   };
 
-  const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
-    e.stopPropagation();
-    if (activeMenuId === sale.id) {
-      setActiveMenuId(null); setMenuPosition(null); setCurrentMenuSale(null);
-      return;
-    }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const menuHeight = 220;
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const topPosition = spaceBelow < menuHeight ? rect.top + window.scrollY - menuHeight + 30 : rect.bottom + window.scrollY + 8;
-
-    setMenuPosition({ top: topPosition, right: window.innerWidth - rect.right });
-    setActiveMenuId(sale.id);
-    setCurrentMenuSale(sale);
-  };
-
   const handleDeleteConfirm = () => {
     if (deletingSale) { onDeleteSale(deletingSale.id); setDeletingSale(null); }
   };
 
+  // ─────────────────────────────────────────────────────────────
+  // 🖨 ПЕЧАТЬ (оригинальная версия)
+  // ─────────────────────────────────────────────────────────────
   const printContract = (sale: Sale) => {
     const customer = customers.find(c => c.id === sale.customerId);
     const companyName = appSettings?.companyName || "Компания";
@@ -260,53 +240,270 @@ const Contracts: React.FC<ContractsProps> = ({
       }).join('');
     } else {
       rows = Array.from({ length: sale.installments || 1 }).map((_, i) =>
-        `<tr><td style="text-align:center">${i + 1}</td><td style="text-align:center;height:25px"></td><td style="text-align:center"></td><td style="text-align:center"></td></tr>`
+        `<tr><td style="text-align:center">${i + 1}</td><td style="text-align:center;height:30px"></td><td style="text-align:center"></td><td style="text-align:center"></td></tr>`
       ).join('');
     }
 
-    const htmlContent = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Договор</title><style>*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:'Times New Roman',serif;font-size:11pt;line-height:1.4;padding:20px;width:100%;max-width:210mm;margin:0 auto}h1{text-align:center;font-size:13pt;font-weight:bold;margin:0 0 15px 0;text-transform:uppercase}.header-info{text-align:right;margin-bottom:15px;font-size:10pt}.field-row{display:flex;justify-content:space-between;margin-bottom:6px;font-size:10pt}.field-label{font-weight:bold}.section{margin:0 0 15px 0}.section>div{margin-bottom:8px}table{width:100%;border-collapse:collapse;margin:15px 0;font-size:9.5pt}th,td{border:1px solid #000;padding:4px 6px;text-align:center}th{font-weight:bold;background:#f5f5f5}.footer{display:flex;justify-content:space-between;margin-top:30px;padding-top:15px;border-top:1px solid #000}.signature{text-align:center;width:30%}.signature-line{border-bottom:1px solid #000;margin:25px 0 3px 0}.signature-label{font-size:9pt}.no-print{position:fixed;top:10px;right:10px;padding:8px 14px;background:#ef4444;color:#fff;border:none;border-radius:5px;cursor:pointer;font-family:sans-serif;font-size:12px}@media print{@page{margin:1cm size:A4 portrait}body{padding:0}.no-print{display:none}.footer{position:absolute;bottom:20px;left:20px;right:20px}}</style></head><body><button class="no-print" onclick="window.close()">✕ Закрыть</button><h1>ДОГОВОР КУПЛИ-ПРОДАЖИ В РАССРОЧКУ</h1><div class="header-info">Дата: ${formatDate(sale.startDate)}</div><div class="section"><div class="field-row"><span><span class="field-label">Продавец:</span> ${companyName}</span><span>Тел: ${sellerPhone || '+7 (___) ___-__-__'}</span></div><div class="field-row"><span><span class="field-label">Покупатель:</span> ${customer?.name || '__________________'}</span><span>Тел: ${customer?.phone || '+7 (___) ___-__-__'}</span></div>${hasGuarantor ? `<div class="field-row"><span><span class="field-label">Поручитель:</span> ${sale.guarantorName}</span><span>Тел: ${sale.guarantorPhone || ''}</span></div>` : ''}</div><div class="section"><div><span class="field-label">Товар:</span> ${sale.productName}</div><div style="display:flex;justify-content:space-between;margin-top:8px"><span><span class="field-label">Срок:</span> ${sale.installments} мес.</span><span><span class="field-label">Сумма:</span> ${formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</span></div><div style="display:flex;justify-content:space-between"><span><span class="field-label">Платёж:</span> ${formatCurrency(sale.paymentPlan[0]?.amount || 0, appSettings?.showCents)} ₽</span><span><span class="field-label">Взнос:</span> ${formatCurrency(sale.downPayment, appSettings?.showCents)} ₽</span></div></div><table><thead><tr><th style="width:12%">№</th><th style="width:28%">Дата</th><th style="width:25%">Сумма</th><th style="width:35%">Остаток</th></tr></thead><tbody>${rows}</tbody></table><div style="margin:20px 0;font-size:10pt">Продавец передаёт товар, Покупатель обязуется оплатить в рассрочку на указанных условиях.</div><div class="footer"><div class="signature"><div class="signature-line"></div><div class="signature-label">Продавец</div></div>${hasGuarantor ? `<div class="signature"><div class="signature-line"></div><div class="signature-label">Поручитель</div></div>` : ''}<div class="signature"><div class="signature-line"></div><div class="signature-label">Покупатель</div></div></div><script>window.onload=function(){setTimeout(()=>{window.print()},200)}</script></body></html>`;
+    const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Договор</title>
+    <style>
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body { 
+            font-family: 'Times New Roman', Times, serif; 
+            font-size: 12pt; 
+            line-height: 1.5; 
+            padding: 30px 25px;
+            width: 100%;
+            max-width: 210mm;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            min-height: 297mm;
+        }
+        h1 { text-align: center; font-size: 15pt; font-weight: bold; margin: 0 0 25px 0; text-transform: uppercase; line-height: 1.3; }
+        .header-info { text-align: right; margin-bottom: 20px; font-size: 11pt; }
+        .field-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .field-label { font-weight: bold; }
+        .section { margin: 0 0 20px 0; }
+        .section > div { margin-bottom: 12px; }
+        .section > div:last-child { margin-bottom: 0; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 10.5pt; }
+        th, td { border: 1px solid #000; padding: 6px 8px; text-align: center; }
+        th { font-weight: bold; background: #f9f9f9; }
+        .content-wrapper { flex: 1 0 auto; }
+        .footer-container {
+            margin-top: auto;
+            padding-top: 20px;
+            width: 100%;
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+        .footer { display: flex; justify-content: space-between; align-items: flex-end; width: 100%; }
+        .signature-block { text-align: center; break-inside: avoid; page-break-inside: avoid; }
+        .signature-line { border-bottom: 1px solid #000; margin: 35px 0 5px 0; min-height: 1px; }
+        .signature-label { font-size: 10pt; font-style: italic; }
+        .no-print {
+            position: fixed; top: 15px; right: 15px; padding: 10px 18px;
+            background: #ef4444; color: white; border: none; border-radius: 6px;
+            cursor: pointer; font-family: sans-serif; font-weight: 600; z-index: 1000;
+        }
+        @media print {
+            @page { margin: 1.5cm; size: A4 portrait; }
+            body { padding: 0; margin: 0; width: 100%; max-width: none; min-height: auto; display: block; }
+            .field-row { flex-wrap: nowrap !important; gap: 0 !important; justify-content: space-between !important; }
+            .field-row > span:first-child { flex-shrink: 0; }
+            .field-row > span:last-child { text-align: right !important; flex-shrink: 0; margin-left: 10px; }
+            .content-wrapper { margin-bottom: 150px; }
+            .footer-container { position: relative; margin-top: -130px; padding-top: 0; page-break-inside: avoid !important; break-inside: avoid !important; }
+            .no-print { display: none !important; }
+            h1 { font-size: 14pt; }
+            table { font-size: 10pt; }
+        }
+        @media screen and (max-width: 768px) {
+            body { font-size: 11pt; padding: 20px 15px; min-height: 100vh; }
+            h1 { font-size: 13pt; }
+            .field-row { flex-wrap: wrap; gap: 5px; }
+            .field-row > span:last-child { text-align: right; min-width: 120px; }
+            table { font-size: 9.5pt; }
+        }
+    </style>
+</head>
+<body>
+    <button class="no-print" onclick="window.close()">✕ Закрыть</button>
+    <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
+    <div class="header-info">Дата: ${formatDate(sale.startDate)}</div>
+    <div class="content-wrapper">
+        <div class="section">
+            <div class="field-row">
+                <span><span class="field-label">Продавец:</span> ${companyName}</span>
+                <span>Тел: ${sellerPhone || '+7 (___) ___-__-__'}</span>
+            </div>
+            <div class="field-row">
+                <span><span class="field-label">Покупатель:</span> ${customer?.name || '__________________'}</span>
+                <span>Тел: ${customer?.phone || '+7 (___) ___-__-__'}</span>
+            </div>
+            ${hasGuarantor ? `
+            <div class="field-row">
+                <span><span class="field-label">Поручитель:</span> ${sale.guarantorName}</span>
+                <span>Тел: ${sale.guarantorPhone || ''}</span>
+            </div>` : ''}
+        </div>
+        <div class="section">
+            <div><span class="field-label">Товар:</span> ${sale.productName}</div>
+            <div style="display: flex; justify-content: space-between; margin-top: 10px;">
+                <span><span class="field-label">Срок рассрочки:</span> ${sale.installments} мес.</span>
+                <span><span class="field-label">Стоимость:</span> ${formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span><span class="field-label">Ежемесячный платеж:</span> ${formatCurrency(sale.paymentPlan[0]?.amount || 0, appSettings?.showCents)} ₽</span>
+                <span><span class="field-label">Первый взнос:</span> ${formatCurrency(sale.downPayment, appSettings?.showCents)} ₽</span>
+            </div>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 10%;">№</th>
+                    <th style="width: 30%;">Дата</th>
+                    <th style="width: 25%;">Сумма</th>
+                    <th style="width: 35%;">Остаток долга</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+        <div style="margin: 25px 0; font-size: 11pt; line-height: 1.4;">
+            Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку на указанных выше условиях.
+        </div>
+    </div>
+    <div class="footer-container">
+        <div class="footer">
+            <div class="signature-block" style="width: ${hasGuarantor ? '30%' : '45%'}">
+                <div class="signature-line"></div>
+                <div class="signature-label">Продавец</div>
+            </div>
+            ${hasGuarantor ? `
+            <div class="signature-block" style="width: 30%">
+                <div class="signature-line"></div>
+                <div class="signature-label">Поручитель</div>
+            </div>` : ''}
+            <div class="signature-block" style="width: ${hasGuarantor ? '30%' : '45%'}">
+                <div class="signature-line"></div>
+                <div class="signature-label">Покупатель</div>
+            </div>
+        </div>
+    </div>
+    <script>
+        window.onload = function() { setTimeout(() => { window.print(); }, 300); }
+    </script>
+</body>
+</html>`;
 
     printWindow.document.write(htmlContent);
     printWindow.document.close();
   };
 
+  // ─────────────────────────────────────────────────────────────
+  // 📱 УЛУЧШЕННОЕ МЕНЮ ДЕЙСТВИЙ (Bottom Sheet для мобильных)
+  // ─────────────────────────────────────────────────────────────
   const ActionMenu = () => {
-    if (!currentMenuSale || !menuPosition) return null;
-    return (
-      <div className="fixed inset-0 z-[55]" onClick={() => { setActiveMenuId(null); setMenuPosition(null); setCurrentMenuSale(null); }}>
+    if (!currentMenuSale) return null;
+
+    const customer = customers.find(c => c.id === currentMenuSale.customerId);
+
+    return createPortal(
+      <>
+        {/* Затемнение фона */}
         <div
-          className="absolute bg-white shadow-2xl rounded-2xl z-[60] w-52 overflow-hidden animate-scale-in border border-slate-100"
-          style={{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }}
-          onClick={e => e.stopPropagation()}
-        >
-          <button onClick={() => { setSelectedSaleForInfo(currentMenuSale); setActiveMenuId(null); }} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-2 transition-colors">
-            <span className="text-blue-500 text-base">{ICONS.File}</span> Инфо
-          </button>
-          <button onClick={() => { onViewSchedule(currentMenuSale); setActiveMenuId(null); }} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-2 transition-colors">
-            <span className="text-indigo-500 text-base">{ICONS.List}</span> График
-          </button>
-          <button onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); }} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">
-            <span className="text-slate-500 text-base">{ICONS.Edit}</span> Редактировать
-          </button>
-          <button onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); }} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors">
-            <span className="text-slate-500 text-base">{ICONS.Print}</span> Печать
-          </button>
-          <button onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); }} className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors border-t border-slate-100">
-            <span className="text-base">{ICONS.Delete}</span> Удалить
-          </button>
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9998] animate-fade-in"
+          onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); }}
+        />
+
+        {/* Меню */}
+        <div className="fixed left-0 right-0 bottom-0 z-[9999] sm:static sm:z-auto sm:left-auto sm:right-auto sm:bottom-auto animate-slide-up">
+          <div className="bg-white sm:rounded-2xl rounded-t-3xl shadow-2xl sm:shadow-xl sm:w-64 w-full mx-auto sm:mx-0 sm:absolute sm:right-0 sm:top-full sm:mt-2 overflow-hidden">
+            {/* Заголовок для мобильных */}
+            <div className="sm:hidden flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <span className="text-sm font-semibold text-slate-700">Действия</span>
+              <button
+                onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); }}
+                className="p-1 text-slate-400 hover:text-slate-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Информация о договоре (для контекста) */}
+            <div className="sm:hidden px-4 py-3 bg-slate-50 border-b border-slate-100">
+              <p className="text-sm font-semibold text-slate-800 truncate">{customer?.name}</p>
+              <p className="text-xs text-slate-500 truncate">{currentMenuSale.productName}</p>
+            </div>
+
+            {/* Кнопки действий */}
+            <div className="py-2">
+              <button
+                onClick={() => { setSelectedSaleForInfo(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); }}
+                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
+              >
+                <span className="text-blue-500"><FileText size={18} /></span>
+                <span>Информация о договоре</span>
+              </button>
+
+              <button
+                onClick={() => { onViewSchedule(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); }}
+                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
+              >
+                <span className="text-indigo-500"><Calendar size={18} /></span>
+                <span>График платежей</span>
+              </button>
+
+              <button
+                onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); }}
+                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+              >
+                <span className="text-slate-500"><Edit3 size={18} /></span>
+                <span>Редактировать</span>
+              </button>
+
+              <button
+                onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); }}
+                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+              >
+                <span className="text-slate-500"><Printer size={18} /></span>
+                <span>Печать договора</span>
+              </button>
+            </div>
+
+            {/* Кнопка удаления (отделена) */}
+            <div className="border-t border-slate-100 py-2">
+              <button
+                onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); }}
+                className="w-full text-left px-4 py-3.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+              >
+                <span className="text-red-500"><Trash2 size={18} /></span>
+                <span>Удалить договор</span>
+              </button>
+            </div>
+
+            {/* Отмена для мобильных */}
+            <div className="sm:hidden px-4 pb-4 pt-2">
+              <button
+                onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); }}
+                className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition-colors"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      </>,
+      document.body
     );
   };
 
   useEffect(() => {
-    const handleClickOutside = () => { if (activeMenuId) { setActiveMenuId(null); setMenuPosition(null); setCurrentMenuSale(null); } };
-    if (activeMenuId) document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && activeMenuId) {
+        setActiveMenuId(null);
+        setCurrentMenuSale(null);
+      }
+    };
+
+    if (activeMenuId) {
+      document.addEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = '';
+    };
   }, [activeMenuId]);
 
   return (
-    <div className="space-y-4 pb-20 w-full max-w-5xl mx-auto px-3 sm:px-4" onClick={() => setActiveMenuId(null)}>
+    <div className="space-y-4 pb-20 w-full max-w-5xl mx-auto px-3 sm:px-4" onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); }}>
 
       {/* Заголовок вкладки */}
       {activeTab !== 'OVERDUE' ? (
@@ -323,7 +520,7 @@ const Contracts: React.FC<ContractsProps> = ({
               <h2 className="text-lg font-bold text-slate-800">Просроченные договоры</h2>
               <p className="text-slate-500 text-xs">Всего: {filteredList.length}</p>
             </div>
-            <div className="bg-red-500 p-2 rounded-xl text-white">{ICONS.Alert}</div>
+            <div className="bg-red-500 p-2 rounded-xl text-white"><Phone size={20} className="rotate-45" /></div>
           </div>
           <div className="mt-3 pt-3 border-t border-red-200">
             <p className="text-xs text-slate-500 font-medium">Общая просрочка</p>
@@ -332,21 +529,28 @@ const Contracts: React.FC<ContractsProps> = ({
         </div>
       )}
 
-      {/* Фильтры */}
+      {/* Фильтры (без даты) */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div className="relative">
             <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
-            <input type="text" placeholder="Поиск..." className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+            <input
+              type="text"
+              placeholder="Поиск по имени или товару..."
+              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
           </div>
-          <div className="relative">
-            <Calendar className="absolute left-3 top-2.5 text-slate-400" size={16} />
-            <input type="date" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all" value={filterDate} onChange={e => setFilterDate(e.target.value)} />
-          </div>
+
           <div className="relative">
             <Wallet className="absolute left-3 top-2.5 text-slate-400" size={16} />
-            <select className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all appearance-none bg-white" value={filterAccountId} onChange={e => setFilterAccountId(e.target.value)}>
-              <option value="">Все счета</option>
+            <select
+              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all appearance-none bg-white"
+              value={filterAccountId}
+              onChange={e => setFilterAccountId(e.target.value)}
+            >
+              <option value="">Все счета / Инвесторы</option>
               {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
             </select>
           </div>
@@ -385,36 +589,47 @@ const Contracts: React.FC<ContractsProps> = ({
                   </span>
                 </div>
                 {!readOnly && (
-                  <button onClick={(e) => { e.stopPropagation(); handleActionClick(e, sale); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all shrink-0" aria-label="Меню">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setActiveMenuId(sale.id); setCurrentMenuSale(sale); }}
+                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all shrink-0"
+                    aria-label="Меню"
+                  >
                     <MoreVertical size={16} />
                   </button>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-                <div className="min-w-0">
-                  <p className="font-semibold text-slate-800 text-sm truncate" title={customer?.name}>{customer?.name || 'Неизвестно'}</p>
-                  <p className="text-xs text-slate-500 truncate mt-0.5" title={sale.productName}>{sale.productName}</p>
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-slate-800 text-sm truncate" title={customer?.name}>
+                    {customer?.name || 'Неизвестно'}
+                  </p>
+                  <p className="text-xs text-slate-500 truncate mt-0.5" title={sale.productName}>
+                    {sale.productName}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    {formatDate(sale.startDate)} • {sale.installments} мес.
+                  </p>
                 </div>
-                <div className="sm:text-right">
+
+                <div className="text-right shrink-0">
                   <p className={`text-base font-bold ${isOverdue ? 'text-red-600' : 'text-slate-800'}`}>
                     {formatCurrency(isOverdue ? overdueSum : sale.totalAmount, appSettings?.showCents)} ₽
                   </p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{formatDate(sale.startDate)} • {sale.installments} мес.</p>
+                  {isOverdue && overdueSum > 0 && (
+                    <span className="text-[10px] text-red-500 font-medium">просрочка</span>
+                  )}
                 </div>
               </div>
 
               {activeTab !== 'OVERDUE' && !isCompleted && (
                 <div className="flex items-center justify-between pt-2 border-t border-slate-50">
-                  <span className="text-[10px] text-slate-500">Оплачено: <span className="font-medium text-emerald-600">{formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
-                  <span className="text-[10px] text-slate-500">Остаток: <span className="font-medium text-slate-700">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</span></span>
-                </div>
-              )}
-
-              {isOverdue && overdueSum > 0 && (
-                <div className="mt-2.5 flex items-center gap-1.5 text-[10px] text-red-600 bg-red-50 px-2 py-1.5 rounded-lg">
-                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0"></span>
-                  Просрочка: {formatCurrency(overdueSum, appSettings?.showCents)} ₽
+                  <span className="text-[10px] text-slate-500">
+                    Оплачено: <span className="font-medium text-emerald-600">{formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings?.showCents)} ₽</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    Остаток: <span className="font-medium text-slate-700">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</span>
+                  </span>
                 </div>
               )}
             </div>
@@ -423,13 +638,13 @@ const Contracts: React.FC<ContractsProps> = ({
       </div>
 
       {/* Меню действий */}
-      {activeMenuId && menuPosition && <ActionMenu />}
+      {activeMenuId && <ActionMenu />}
 
       {/* Модалка удаления */}
       {deletingSale && !readOnly && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setDeletingSale(null)}>
           <div className="bg-white w-full max-w-sm p-6 rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="w-14 h-14 bg-red-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4">{ICONS.Delete}</div>
+            <div className="w-14 h-14 bg-red-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4"><Trash2 size={28} /></div>
             <h3 className="text-lg font-bold text-slate-800 text-center mb-1.5">Удалить договор?</h3>
             <p className="text-center text-slate-500 mb-6 text-sm">Все данные о платежах будут удалены. Товар вернётся на склад.</p>
             <div className="flex gap-2.5">
@@ -442,7 +657,12 @@ const Contracts: React.FC<ContractsProps> = ({
 
       {/* Модалка информации */}
       {selectedSaleForInfo && (
-        <ContractInfoModal sale={selectedSaleForInfo} customer={customers.find(c => c.id === selectedSaleForInfo.customerId)} onClose={() => setSelectedSaleForInfo(null)} appSettings={appSettings} />
+        <ContractInfoModal
+          sale={selectedSaleForInfo}
+          customer={customers.find(c => c.id === selectedSaleForInfo.customerId)}
+          onClose={() => setSelectedSaleForInfo(null)}
+          appSettings={appSettings}
+        />
       )}
     </div>
   );
