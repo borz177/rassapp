@@ -32,6 +32,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
 
   const isInvestor = user?.role === 'investor';
   const investorPermissions = activeInvestor?.permissions;
+  const [showInvestorMobileMenu, setShowInvestorMobileMenu] = useState(false);
 
   // Apply Theme
   useEffect(() => {
@@ -383,10 +384,102 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
                   <span className="text-[10px] mt-1 font-medium">Клиенты</span>
               </button>
             )}
-            <button onClick={() => setView('MORE')} className={`flex flex-col items-center p-2 ${currentView === 'MORE' || currentView === 'PROFILE' || currentView === 'CONTRACTS' || currentView === 'INVESTORS' || currentView === 'EMPLOYEES' || currentView === 'SETTINGS' || currentView === 'TARIFFS' || currentView === 'ADMIN_PANEL' ? 'text-indigo-600' : 'text-slate-400'}`}>
+            <button
+                onClick={() => {
+                    if (isInvestor) {
+                        // Показываем меню с доступными разделами
+                        setShowInvestorMobileMenu(true);
+                    } else {
+                        setView('MORE');
+                    }
+                }}
+                className={`flex flex-col items-center p-2 ${
+                    currentView === 'MORE' || currentView === 'PROFILE' ||
+                    currentView === 'CONTRACTS' || currentView === 'INVESTORS' ||
+                    currentView === 'EMPLOYEES' || currentView === 'SETTINGS' ||
+                    currentView === 'TARIFFS' || currentView === 'ADMIN_PANEL'
+                        ? 'text-indigo-600' : 'text-slate-400'
+                }`}
+            >
                 {ICONS.Menu}
                 <span className="text-[10px] mt-1 font-medium">{isInvestor ? 'Профиль' : 'Еще'}</span>
             </button>
+
+            {/* 📱 Мобильное меню для инвестора (показывает доступные разделы) */}
+{showInvestorMobileMenu && (
+  <div
+    className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in md:hidden"
+    onClick={() => setShowInvestorMobileMenu(false)}
+  >
+    <div
+      className="bg-white w-full max-w-sm rounded-t-3xl p-5 pb-8 shadow-2xl animate-slide-up"
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+        <h3 className="font-bold text-slate-800">Доступные разделы</h3>
+        <button
+          onClick={() => setShowInvestorMobileMenu(false)}
+          className="p-1 text-slate-400 hover:text-slate-600"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {/* Договоры */}
+        {(investorPermissions?.canViewContracts) && (
+          <button
+            onClick={() => {
+              setShowInvestorMobileMenu(false);
+              setView('CONTRACTS');
+              onContractTabChange?.('ACTIVE');
+            }}
+            className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-indigo-50 rounded-xl text-left transition-colors"
+          >
+            <span className="text-indigo-600">{ICONS.File}</span>
+            <div>
+              <p className="font-semibold text-slate-800">Договоры</p>
+              <p className="text-xs text-slate-500">Просмотр активных сделок</p>
+            </div>
+          </button>
+        )}
+
+        {/* История */}
+        {(investorPermissions?.canViewHistory) && (
+          <button
+            onClick={() => {
+              setShowInvestorMobileMenu(false);
+              setView('OPERATIONS');
+            }}
+            className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-indigo-50 rounded-xl text-left transition-colors"
+          >
+            <span className="text-indigo-600">{ICONS.List}</span>
+            <div>
+              <p className="font-semibold text-slate-800">История операций</p>
+              <p className="text-xs text-slate-500">Все платежи и движения</p>
+            </div>
+          </button>
+        )}
+
+        {/* Профиль (заглушка, если нет других разрешений) */}
+        {!investorPermissions?.canViewContracts && !investorPermissions?.canViewHistory && (
+          <div className="text-center py-6 text-slate-400 text-sm">
+            Нет доступных разделов
+          </div>
+        )}
+      </div>
+
+      {/* Кнопка закрытия */}
+      <button
+        onClick={() => setShowInvestorMobileMenu(false)}
+        className="w-full mt-4 py-3 bg-slate-100 text-slate-700 font-medium rounded-xl hover:bg-slate-200 transition-colors"
+      >
+        Закрыть
+      </button>
+    </div>
+  </div>
+)}
+
         </div>
 
       </nav>
