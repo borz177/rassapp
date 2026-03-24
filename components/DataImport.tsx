@@ -337,7 +337,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                         const tempPaymentPlan: Payment[] = [];
                         for (let i = 0; i < installmentsCount; i++) {
                             const pDate = new Date(firstPaymentDateStr);
-                            pDate.setMonth(pDate.getMonth() + i);
+                            pDate.setFullYear(pDate.getFullYear(), pDate.getMonth() + i, pDate.getDate());
 
                             tempPaymentPlan.push({
                                 id: `plan_pay_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 5)}`,

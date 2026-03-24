@@ -94,19 +94,29 @@ function buildPaymentMessage(sale, customer, payment, priorDebt, totalToPay, rem
     year: 'numeric'
   });
 
-  // 🔹 Рассчитываем количество месяцев просрочки
-  let monthsDiff = 0;
-  if (priorDebt > 0) {
-    const now = new Date();
-    const paymentDate = new Date(payment.date);
+  // 🔹 Рассчитываем количество месяцев просрочки ОТ ПЕРВОГО неоплаченного платежа
+let monthsDiff = 0;
+if (priorDebt > 0) {
+  const now = new Date();
+  // Находим дату первого неоплаченного платежа в плане
+  const firstOverduePayment = sale.paymentPlan
+    .filter(p => !p.isPaid && new Date(p.date) < now)
+    .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+
+  if (firstOverduePayment) {
+    const firstOverdueDate = new Date(firstOverduePayment.date);
+    firstOverdueDate.setHours(0, 0, 0, 0);
+
     monthsDiff = Math.max(0,
-      (now.getFullYear() - paymentDate.getFullYear()) * 12 +
-      (now.getMonth() - paymentDate.getMonth())
+      (now.getFullYear() - firstOverdueDate.getFullYear()) * 12 +
+      (now.getMonth() - firstOverdueDate.getMonth())
     );
-    if (monthsDiff === 0 && now.getDate() > paymentDate.getDate()) {
+    // Если день месяца уже прошёл — добавляем 1 месяц
+    if (monthsDiff === 0 && now.getDate() > firstOverdueDate.getDate()) {
       monthsDiff = 1;
     }
   }
+}
 
   const currentAmountStr = payment.amount.toLocaleString('ru-RU');
   const debtStr = priorDebt.toLocaleString('ru-RU');
