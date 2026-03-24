@@ -326,7 +326,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         payments.push({
           sale: sale,
           customerName: customers.find(c => c.id === sale.customerId)?.name || 'Неизвестный клиент',
-          totalDue: relevantAmount,
+          totalDue: Math.round(relevantAmount * 100) / 100,
           isTomorrow: isTomorrowPayment && !isTodayPayment,
           isToday: isTodayPayment,
           isOverdue: isOverduePayment
