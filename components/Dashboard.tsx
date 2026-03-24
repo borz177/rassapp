@@ -548,10 +548,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Upcoming Payments Tab */}
         {activeTab === 'upcoming' && (
-          <div
-            className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500"
-            onClick={() => setSelectedPaymentForAction(null)}
-          >
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
               <div className="flex gap-2 p-1 bg-white/70 backdrop-blur-sm rounded-xl w-fit shadow-sm">
                   <button
                       onClick={() => setPaymentDateFilter('ALL')}
