@@ -1020,28 +1020,37 @@ app.post('/api/payment/create', auth, async (req, res) => {
     try {
         const idempotenceKey = uuidv4();
         const response = await axios.post('https://api.yookassa.ru/v3/payments', {
-            amount: {
-                value: amount.toFixed(2),
-                currency: 'RUB'
-            },
-            capture: true,
-            confirmation: {
-                type: 'redirect',
-                return_url: returnUrl
-            },
-            description: description,
-            metadata: {
-                userId: req.user.id,
-                plan: plan,
-                months: months
-            }
-        }, {
-            headers: {
-                'Authorization': 'Basic ' + Buffer.from(`${shopId}:${secretKey}`).toString('base64'),
-                'Idempotence-Key': idempotenceKey,
-                'Content-Type': 'application/json'
-            }
-        });
+    amount: {
+        value: amount.toFixed(2),
+        currency: 'RUB'
+    },
+    capture: true,
+    confirmation: {
+        type: 'redirect',
+        return_url: returnUrl
+    },
+    description: description,
+
+    // --- РАЗРЕШЕННЫЕ СПОСОБЫ ОПЛАТЫ ---
+    payment_method_types: [
+        'bank_card',  // Банковская карта (МИР, Visa, Mastercard)
+        'sbp',        // Система быстрых платежей (СБП)
+        'yoo_money'   // Кошелек ЮMoney
+    ],
+    // ----------------------------------
+
+    metadata: {
+        userId: req.user.id,
+        plan: plan,
+        months: months
+    }
+}, {
+    headers: {
+        'Authorization': 'Basic ' + Buffer.from(`${shopId}:${secretKey}`).toString('base64'),
+        'Idempotence-Key': idempotenceKey,
+        'Content-Type': 'application/json'
+    }
+});
 
         res.json({
             id: response.data.id,
