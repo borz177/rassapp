@@ -595,14 +595,17 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <div className="space-y-3">
                     {upcomingAndOverduePayments.map((p, idx) => (
                         <div
-                          key={p.sale.id}
-                          onClick={() => setSelectedPaymentForAction({
-                              sale: p.sale,
-                              customerName: p.customerName,
-                              totalDue: p.totalDue
-                          })}
-                          className="group bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 relative animate-in fade-in slide-in-from-bottom-2 cursor-pointer"
-                          style={{ animationDelay: `${idx * 100}ms` }}
+                            key={p.sale.id}
+                            onClick={(e) => {
+                                e.stopPropagation(); // ← Останавливаем всплытие
+                                setSelectedPaymentForAction({
+                                    sale: p.sale,
+                                    customerName: p.customerName,
+                                    totalDue: p.totalDue
+                                });
+                            }}
+                            className="group bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 relative animate-in fade-in slide-in-from-bottom-2 cursor-pointer"
+                            style={{animationDelay: `${idx * 100}ms`}}
                         >
                             <div className="flex items-center justify-between">
                                 {/* Левая часть: имя + товар (без иконки) */}
@@ -634,31 +637,31 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                             {/* Блок задолженности */}
                             {(() => {
-                              const today = new Date();
-                              today.setHours(0, 0, 0, 0);
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
 
-                              const overdueDebt = p.sale.paymentPlan
-                                .filter(payment => {
-                                  const paymentDate = new Date(payment.date);
-                                  paymentDate.setHours(0, 0, 0, 0);
-                                  return !payment.isPaid && paymentDate < today;
-                                })
-                                .reduce((sum, payment) => sum + payment.amount, 0);
+                                const overdueDebt = p.sale.paymentPlan
+                                    .filter(payment => {
+                                        const paymentDate = new Date(payment.date);
+                                        paymentDate.setHours(0, 0, 0, 0);
+                                        return !payment.isPaid && paymentDate < today;
+                                    })
+                                    .reduce((sum, payment) => sum + payment.amount, 0);
 
-                              if (overdueDebt <= 0) return null;
+                                if (overdueDebt <= 0) return null;
 
-                              return (
-                                <div className="mt-4 pt-3 border-t border-dashed border-rose-200">
-                                  <div className="flex items-center justify-between text-xs">
+                                return (
+                                    <div className="mt-4 pt-3 border-t border-dashed border-rose-200">
+                                        <div className="flex items-center justify-between text-xs">
                                     <span className="text-rose-600 font-medium flex items-center gap-1">
                                       ⚠️ Задолженность
                                     </span>
-                                    <span className="font-bold text-rose-700 whitespace-nowrap">
+                                            <span className="font-bold text-rose-700 whitespace-nowrap">
                                       {formatCurrency(overdueDebt, appSettings.showCents)} ₽
                                     </span>
-                                  </div>
-                                </div>
-                              );
+                                        </div>
+                                    </div>
+                                );
                             })()}
                         </div>
                     ))}
@@ -667,17 +670,17 @@ const Dashboard: React.FC<DashboardProps> = ({
           </div>
         )}
 
-        {selectedSaleForModal && (
-            <SaleDetailsModal
-                sale={selectedSaleForModal}
-                customerName={customers.find(c => c.id === selectedSaleForModal.customerId)?.name || ''}
-                onClose={() => setSelectedSaleForModal(null)}
-                appSettings={appSettings}
-            />
-        )}
+          {selectedSaleForModal && (
+              <SaleDetailsModal
+                  sale={selectedSaleForModal}
+                  customerName={customers.find(c => c.id === selectedSaleForModal.customerId)?.name || ''}
+                  onClose={() => setSelectedSaleForModal(null)}
+                  appSettings={appSettings}
+              />
+          )}
 
-        {selectedPaymentForAction && (
-            <PaymentActionModal
+          {selectedPaymentForAction && (
+              <PaymentActionModal
                 sale={selectedPaymentForAction.sale}
                 customerName={selectedPaymentForAction.customerName}
                 totalDue={selectedPaymentForAction.totalDue}
