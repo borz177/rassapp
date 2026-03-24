@@ -161,20 +161,15 @@ const Contracts: React.FC<ContractsProps> = ({
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Неизвестно';
 
   const calculateSaleOverdue = (sale: Sale) => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  let expectedTotal = sale.downPayment;
-
-  sale.paymentPlan.forEach(p => {
-    // Просто замените isRealPayment на isPaid:
-    if (!p.isPaid && new Date(p.date) < today) {
-      expectedTotal += p.amount;
-    }
-  });
-
-  const totalPaid = sale.totalAmount - sale.remainingAmount;
-  return Math.max(0, expectedTotal - totalPaid);
-};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let expectedTotal = sale.downPayment;
+    sale.paymentPlan.forEach(p => {
+      if (!p.isRealPayment && new Date(p.date) < today) expectedTotal += p.amount;
+    });
+    const totalPaid = sale.totalAmount - sale.remainingAmount;
+    return Math.max(0, expectedTotal - totalPaid);
+  };
 
   const { filteredList } = useMemo(() => {
     const today = new Date();
