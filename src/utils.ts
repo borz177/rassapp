@@ -2,7 +2,13 @@ export const formatCurrency = (amount: number | undefined | null, showCents: boo
   if (amount === undefined || amount === null || isNaN(amount)) {
     return '0';
   }
-  return amount.toLocaleString('ru-RU', {
+
+  // ✅ Округляем до 2 знаков после запятой перед форматированием
+  const roundedAmount = showCents
+    ? Math.round(amount * 100) / 100
+    : Math.round(amount);
+
+  return roundedAmount.toLocaleString('ru-RU', {
     minimumFractionDigits: showCents ? 2 : 0,
     maximumFractionDigits: showCents ? 2 : 0,
   });
