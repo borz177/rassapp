@@ -1344,63 +1344,14 @@ app.get('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
   try {
     const { ticketId } = req.params;
     const userId = req.user.id;
-    const userRole = req.user.role;
-
-    // 🔹 ЛОГИРОВАНИЕ для отладки
-    console.log('📩 Support messages request:', {
-      ticketId,
-      userId,
-      userRole,
-      userEmail: req.user.email
-    });
-
-    // Проверка что ticketId существует
-    if (!ticketId) {
-      console.error('❌ ticketId is missing');
-      return res.status(400).json({ msg: 'ticketId is required' });
-    }
 
     // Проверка доступа к тикету
-    let ticketResult;
-
-    // 🔹 ИСПРАВЛЕНИЕ: проверяем роль case-insensitive
-    const isAdmin = userRole && userRole.toLowerCase() === 'admin';
-
-    if (isAdmin) {
-      console.log('✅ Admin access granted');
-      // Админы видят все тикеты
-      ticketResult = await pool.query(`
-        SELECT * FROM support_tickets WHERE id = $1
-      `, [ticketId]);
-    } else {
-      console.log('👤 User access check');
-      // Обычные пользователи видят только свои
-      ticketResult = await pool.query(`
-        SELECT * FROM support_tickets WHERE id = $1 AND user_id = $2
-      `, [ticketId, userId]);
-    }
-
-    console.log('📊 Ticket query result:', {
-      rowsFound: ticketResult.rows.length,
-      ticketId
-    });
+    const ticketResult = await pool.query(`
+      SELECT * FROM support_tickets WHERE id = $1 AND user_id = $2
+    `, [ticketId, userId]);
 
     if (ticketResult.rows.length === 0) {
-      console.error('❌ Ticket not found or access denied', {
-        ticketId,
-        userId,
-        userRole,
-        isAdmin
-      });
-      return res.status(403).json({
-        msg: 'Доступ запрещён',
-        debug: {
-          ticketId,
-          userId,
-          userRole,
-          isAdmin
-        }
-      });
+      return res.status(403).json({ msg: 'Доступ запрещён' });
     }
 
     // Получаем сообщения
@@ -1410,24 +1361,102 @@ app.get('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
       ORDER BY created_at ASC
     `, [ticketId]);
 
-    console.log(`📬 Found ${messagesResult.rows.length} messages`);
-
-    // Помечаем сообщения от поддержки как прочитанные (только если это не админ)
-    if (!isAdmin) {
-      await pool.query(`
-        UPDATE support_messages 
-        SET is_read = TRUE 
-        WHERE ticket_id = $1 AND is_from_user = FALSE AND is_read = FALSE
-      `, [ticketId]);
-    }
+    // Помечаем сообщения от поддержки как прочитанные
+    await pool.query(`
+      UPDATE support_messages 
+      SET is_read = TRUE 
+      WHERE ticket_id = $1 AND is_from_user = FALSE AND is_read = FALSE
+    `, [ticketId]);
 
     res.json(messagesResult.rows);
   } catch (err) {
-    console.error('❌ Get messages error:', err);
-    res.status(500).json({
-      msg: 'Server Error',
-      error: err.message
-    });
+    console.error('Get messages error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Отправить сообщение в тикет
+app.post('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { message } = req.body;
+    const userId = req.user.id;
+
+    const messageId = `msg_${Date.now()}`;
+
+    await pool.query(`
+      INSERT INTO support_messages (id, ticket_id, user_id, message, is_from_user)
+      VALUES ($1, $2, $3, $4, TRUE)
+    `, [messageId, ticketId, userId, message]);
+
+    // Обновляем время обновления тикета
+    await pool.query(`
+      UPDATE support_tickets SET updated_at = NOW() WHERE id = $1
+    `, [ticketId]);
+
+    res.json({ success: true, messageId });
+  } catch (err) {
+    console.error('Send message error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Закрыть тикет
+app.patch('/api/support/tickets/:ticketId/close', auth, async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+
+    await pool.query(`
+      UPDATE support_tickets 
+      SET status = 'CLOSED', resolved_at = NOW() 
+      WHERE id = $1 AND user_id = $2
+    `, [ticketId, req.user.id]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Close ticket error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// === АДМИН ПАНЕЛЬ ПОДДЕРЖКИ ===
+
+// Получить все тикеты (для админа)
+app.get('/api/admin/support/tickets', adminAuth, async (req, res) => {
+  try {
+    const { status, priority } = req.query;
+
+    let query = `
+      SELECT st.*, u.name as user_name, u.email as user_email,
+        (SELECT COUNT(*) FROM support_messages 
+         WHERE ticket_id = st.id AND is_from_user = FALSE AND is_read = FALSE) as unread_count
+      FROM support_tickets st
+      JOIN users u ON st.user_id = u.id
+      WHERE 1=1
+    `;
+
+    const params = [];
+    let paramIndex = 1;
+
+    if (status) {
+      query += ` AND st.status = $${paramIndex}`;
+      params.push(status);
+      paramIndex++;
+    }
+
+    if (priority) {
+      query += ` AND st.priority = $${paramIndex}`;
+      params.push(priority);
+      paramIndex++;
+    }
+
+    query += ` ORDER BY st.updated_at DESC`;
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Admin tickets error:', err);
+    res.status(500).send('Server Error');
   }
 });
 
