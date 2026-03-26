@@ -1339,42 +1339,6 @@ app.post('/api/support/tickets', auth, async (req, res) => {
   }
 });
 
-// Получить сообщения тикета
-app.get('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    const userId = req.user.id;
-
-    // Проверка доступа к тикету
-    const ticketResult = await pool.query(`
-      SELECT * FROM support_tickets WHERE id = $1 AND user_id = $2
-    `, [ticketId, userId]);
-
-    if (ticketResult.rows.length === 0) {
-      return res.status(403).json({ msg: 'Доступ запрещён' });
-    }
-
-    // Получаем сообщения
-    const messagesResult = await pool.query(`
-      SELECT * FROM support_messages 
-      WHERE ticket_id = $1 
-      ORDER BY created_at ASC
-    `, [ticketId]);
-
-    // Помечаем сообщения от поддержки как прочитанные
-    await pool.query(`
-      UPDATE support_messages 
-      SET is_read = TRUE 
-      WHERE ticket_id = $1 AND is_from_user = FALSE AND is_read = FALSE
-    `, [ticketId]);
-
-    res.json(messagesResult.rows);
-  } catch (err) {
-    console.error('Get messages error:', err);
-    res.status(500).send('Server Error');
-  }
-});
-
 
 // Получить сообщения тикета
 app.get('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
@@ -1424,10 +1388,6 @@ app.get('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
     res.status(500).send('Server Error');
   }
 });
-
-
-
-
 
 // Закрыть тикет
 app.patch('/api/support/tickets/:ticketId/close', auth, async (req, res) => {
