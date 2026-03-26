@@ -794,8 +794,17 @@ app.post('/api/data/:type', auth, async (req, res) => {
     }
     
     const itemData = req.body;
-    const targetUserId = getTargetUserId(req.user);
-    
+
+    // ✅ Базовая логика: сотрудники → managerId, остальные → свой id
+    let targetUserId = getTargetUserId(req.user);
+
+    // ✅ СПЕЦИАЛЬНАЯ ЛОГИКА ДЛЯ ИНВЕСТОРОВ:
+    // Если менеджер создаёт/обновляет профиль инвестора — сохраняем под ID инвестора
+    if (type === 'investors' && itemData.id?.startsWith('u_inv_')) {
+      targetUserId = itemData.id;  // ← Ключевое исправление!
+    }
+
+    // 🔐 Проверка прав доступа
     if (!canAccessUserData(req.user, targetUserId)) {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
@@ -823,15 +832,18 @@ app.post('/api/data/:type', auth, async (req, res) => {
 // ✅ ИСПРАВЛЕННЫЙ DELETE /api/data/:type/:id
 app.delete('/api/data/:type/:id', auth, async (req, res) => {
   try {
-    const { id } = req.params;
-    const { type } = req.params;
-    
-    // 🔐 Валидация типа
+    const { id, type } = req.params;
+
     if (!VALID_DATA_TYPES.includes(type)) {
       return res.status(400).json({ error: 'Недопустимый тип данных' });
     }
-    
-    const targetUserId = getTargetUserId(req.user);
+
+    let targetUserId = getTargetUserId(req.user);
+
+    // ✅ Для инвесторов: удаляем только свои данные
+    if (type === 'investors' && req.user.role === 'investor') {
+      targetUserId = req.user.id;
+    }
     
     if (!canAccessUserData(req.user, targetUserId)) {
       return res.status(403).json({ error: 'Доступ запрещён' });
@@ -918,38 +930,43 @@ app.post('/api/users/manage', auth, async (req, res) => {
     }
     
     if (action === 'delete') {
-  // 1. Удаляем пользователя из таблицы users
-  await pool.query('DELETE FROM users WHERE id = $1 AND manager_id = $2', [userData.id, req.user.id]);
+  const investorId = userData.id;
+  const managerId = req.user.id;
 
-  // 2. ✅ Удаляем профиль инвестора из data_items
+  // 1. Удаляем из users (всегда под manager_id)
+  await pool.query('DELETE FROM users WHERE id = $1 AND manager_id = $2', [investorId, managerId]);
+
+  // 2. ✅ Удаляем профиль инвестора (ищем в обоих местах)
   await pool.query(`
     DELETE FROM data_items 
     WHERE type = 'investors' 
     AND data->>'id' = $1 
-    AND user_id = $2
-  `, [userData.id, req.user.id]);
+    AND (user_id = $2 OR user_id = $1)  -- ← Проверяем и manager_id, и investor_id
+  `, [investorId, managerId]);
 
-  // 3. ✅ Удаляем счёт инвестора из data_items
+  // 3. ✅ Удаляем счёт инвестора (ищем в обоих местах)
   await pool.query(`
     DELETE FROM data_items 
     WHERE type = 'accounts' 
     AND data->>'ownerId' = $1 
-    AND user_id = $2
-  `, [userData.id, req.user.id]);
+    AND (user_id = $2 OR user_id = $1)
+  `, [investorId, managerId]);
 
-  // 4. ✅ Опционально: удаляем все операции инвестора (продажи/расходы)
-  // ⚠️ Будьте осторожны: это удалит ВСЕ данные, привязанные к счёту инвестора!
-  // Раскомментируйте, если нужно полное удаление:
-
+  // 4. ✅ Удаляем операции инвестора (универсальный поиск)
   await pool.query(`
     DELETE FROM data_items 
-    WHERE user_id = $1 
-    AND (data->>'accountId' = ANY(
-      SELECT data->>'id' FROM data_items WHERE type = 'accounts' AND data->>'ownerId' = $2
-    ))
-  `, [req.user.id, userData.id]);
+    WHERE (user_id = $1 OR user_id = $2)  -- ← Проверяем оба user_id
+    AND type IN ('sales', 'expenses')
+    AND (
+      data->>'accountId' = ANY(
+        SELECT data->>'id' FROM data_items 
+        WHERE type = 'accounts' AND data->>'ownerId' = $3
+      )
+      OR data->>'customerId' = $3
+    )
+  `, [managerId, investorId, investorId]);
 
-  return res.json({ success: true, id: userData.id });
+  return res.json({ success: true, id: investorId });
 }
     
     if (action === 'update') {
