@@ -11,6 +11,7 @@ interface SettingsProps {
   onUpdateSettings: (settings: AppSettings) => void;
   onNavigate: (view: ViewState) => void;
   onSettingsChanged?: () => void;
+  currentUserId?: string;
 }
 
 const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNavigate, onSettingsChanged }) => {
@@ -296,6 +297,7 @@ const handleClearData = async () => {
                   alert("Данные успешно импортированы! Страница будет перезагружена.");
                   window.location.reload();
               }}
+              currentUserId={user?.id}
           />
       )}
 
