@@ -1280,6 +1280,22 @@ if (!user && !isLoading) {
             </button>
           )}
 
+            {/* 🔹 НОВАЯ КНОПКА: Техподдержка (только для админов) */}
+{user.role === 'admin' && (
+  <button onClick={() => setCurrentView('ADMIN_SUPPORT')}
+          className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+      <div className="flex items-center gap-3">
+          <div className="bg-blue-100 text-blue-600 p-2 rounded-lg">{ICONS.Chat}</div>
+          <span className="font-semibold text-slate-800">Техподдержка</span>
+      </div>
+      <span className="text-slate-400">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="9 18 15 12 9 6"/>
+          </svg>
+      </span>
+  </button>
+)}
+
           {/* 🔹 КНОПКА ТЕХПОДДЕРЖКИ ДЛЯ МОБИЛЬНЫХ */}
           <SupportButton
             unreadCount={supportUnreadCount}

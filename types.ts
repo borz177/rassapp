@@ -219,4 +219,5 @@ export type ViewState =
   | 'PROFILE'
   | 'PARTNERS'
   | 'TARIFFS'
+  | 'ADMIN_SUPPORT'
   | 'ADMIN_PANEL';

@@ -308,29 +308,29 @@ const SupportChat: React.FC<SupportChatProps> = ({ user, onClose, onUnreadChange
               </div>
 
               {/* Input */}
-              <div className="p-4 border-t bg-white">
+              <div className="p-4 border-t bg-white pb-24 md:pb-4">
                 <div className="flex gap-2">
                   <input
-                    type="text"
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                    placeholder="Введите сообщение..."
-                    className="flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={isLoading || selectedTicket.status === 'CLOSED'}
+                      type="text"
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                      placeholder="Введите сообщение..."
+                      className="flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={isLoading || selectedTicket.status === 'CLOSED'}
                   />
                   <button
-                    onClick={sendMessage}
-                    disabled={isLoading || !newMessage.trim() || selectedTicket.status === 'CLOSED'}
-                    className="bg-blue-500 text-white px-6 py-3 rounded-xl hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={sendMessage}
+                      disabled={isLoading || !newMessage.trim() || selectedTicket.status === 'CLOSED'}
+                      className="bg-blue-500 text-white px-6 py-3 rounded-xl hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {ICONS.Send}
                   </button>
                 </div>
                 {selectedTicket.status === 'CLOSED' && (
-                  <p className="text-xs text-gray-500 mt-2 text-center">
-                    Тикет закрыт. Создайте новый для продолжения общения.
-                  </p>
+                    <p className="text-xs text-gray-500 mt-2 text-center">
+                      Тикет закрыт. Создайте новый для продолжения общения.
+                    </p>
                 )}
               </div>
             </div>
