@@ -979,10 +979,14 @@ app.post('/api/users/manage', auth, async (req, res) => {
       `, [name, email, JSON.stringify(permissions), JSON.stringify(allowedInvestorIds), id, req.user.id]);
       
       if (password && password.trim().length > 0) {
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-        await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, id]);
-      }
+  const salt = await bcrypt.genSalt(10);
+  const hashedPassword = await bcrypt.hash(password, salt);
+  // ✅ Добавляем проверку manager_id
+  await pool.query(
+    'UPDATE users SET password = $1 WHERE id = $2 AND manager_id = $3',
+    [hashedPassword, id, req.user.id]
+  );
+}
       
       return res.json({ success: true });
     }
