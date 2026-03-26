@@ -48,7 +48,7 @@ const SupportChat: React.FC<SupportChatProps> = ({ user, onClose, onUnreadChange
   // Загрузка данных
   const loadData = async () => {
     try {
-      const response = await api.get('/api/support/tickets');
+      const response = await api.get('/support/tickets');
       setTickets(response.tickets);
       setBroadcasts(response.broadcasts);
       onUnreadChange(response.totalUnread);
@@ -71,7 +71,7 @@ const SupportChat: React.FC<SupportChatProps> = ({ user, onClose, onUnreadChange
   const openTicket = async (ticket: Ticket) => {
     setSelectedTicket(ticket);
     try {
-      const response = await api.get(`/api/support/tickets/${ticket.id}/messages`);
+      const response = await api.get(`/support/tickets/${ticket.id}/messages`);
       setMessages(response);
       loadData(); // Обновить счётчик непрочитанных
     } catch (error) {
@@ -85,7 +85,7 @@ const SupportChat: React.FC<SupportChatProps> = ({ user, onClose, onUnreadChange
 
     setIsLoading(true);
     try {
-      await api.post(`/api/support/tickets/${selectedTicket.id}/messages`, {
+      await api.post(`/support/tickets/${selectedTicket.id}/messages`, {
         message: newMessage
       });
       setNewMessage('');
@@ -108,7 +108,7 @@ const SupportChat: React.FC<SupportChatProps> = ({ user, onClose, onUnreadChange
 
     setIsLoading(true);
     try {
-      const response = await api.post('/api/support/tickets', {
+      const response = await api.post('/support/tickets', {
         subject: newTicketSubject,
         message: newTicketMessage,
         priority: newTicketPriority
@@ -134,7 +134,7 @@ const SupportChat: React.FC<SupportChatProps> = ({ user, onClose, onUnreadChange
     if (!window.confirm('Закрыть этот тикет?')) return;
 
     try {
-      await api.patch(`/api/support/tickets/${selectedTicket.id}/close`);
+      await api.patch(`/support/tickets/${selectedTicket.id}/close`);
       setSelectedTicket(null);
       loadData();
     } catch (error) {
@@ -145,7 +145,7 @@ const SupportChat: React.FC<SupportChatProps> = ({ user, onClose, onUnreadChange
   // Отметить broadcast как прочитанный
   const markBroadcastRead = async (broadcastId: string) => {
     try {
-      await api.post(`/api/support/broadcast/${broadcastId}/read`);
+      await api.post(`/support/broadcast/${broadcastId}/read`);
       loadData();
     } catch (error) {
       console.error('Failed to mark broadcast read:', error);
