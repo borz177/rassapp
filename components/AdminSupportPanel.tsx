@@ -20,8 +20,8 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
   const loadData = async () => {
     try {
       const [ticketsRes, statsRes] = await Promise.all([
-        api.get('/api/admin/support/tickets' + (filterStatus ? `?status=${filterStatus}` : '')),
-        api.get('/api/admin/support/stats')
+        api.get('/admin/support/tickets' + (filterStatus ? `?status=${filterStatus}` : '')),
+        api.get('/admin/support/stats')
       ]);
       setTickets(ticketsRes);
       setStats(statsRes);
@@ -37,7 +37,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
   const openTicket = async (ticket: any) => {
     setSelectedTicket(ticket);
     try {
-      const response = await api.get(`/api/support/tickets/${ticket.id}/messages`);
+      const response = await api.get(`/support/tickets/${ticket.id}/messages`);
       setMessages(response);
     } catch (error) {
       console.error('Failed to load messages:', error);
@@ -49,7 +49,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
 
     setIsLoading(true);
     try {
-      await api.post(`/api/admin/support/tickets/${selectedTicket.id}/messages`, {
+      await api.post(`/admin/support/tickets/${selectedTicket.id}/messages`, {
         message: newMessage
       });
       setNewMessage('');
@@ -65,7 +65,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
 
   const assignTicket = async (ticketId: string) => {
     try {
-      await api.patch(`/api/admin/support/tickets/${ticketId}/assign`);
+      await api.patch(`/admin/support/tickets/${ticketId}/assign`);
       loadData();
       alert('Тикет назначен на вас');
     } catch (error) {
@@ -81,7 +81,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
 
     setIsLoading(true);
     try {
-      await api.post('/api/admin/support/broadcast', broadcastData);
+      await api.post('/admin/support/broadcast', broadcastData);
       setShowBroadcastForm(false);
       setBroadcastData({ title: '', message: '', targetRole: '' });
       alert('Рассылка отправлена!');
