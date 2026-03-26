@@ -17,6 +17,7 @@ interface LayoutProps {
   onNavigateToProfile: () => void;
   isOnline?: boolean;
   isSyncing?: boolean;
+  supportButton?: React.ReactNode;
 }
 
 const PLAN_NAMES: Record<SubscriptionPlan, string> = {
@@ -26,8 +27,22 @@ const PLAN_NAMES: Record<SubscriptionPlan, string> = {
     'BUSINESS': 'Бизнес'
 };
 
-const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onAction, onContractTabChange, sales = [], appSettings, customers, user, activeInvestor, onNavigateToProfile, isOnline = true, isSyncing = false }) => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+const Layout: React.FC<LayoutProps> = ({
+  children,
+  currentView,
+  setView,
+  onAction,
+  onContractTabChange,
+  sales = [],
+  appSettings,
+  customers,
+  user,
+  activeInvestor,
+  onNavigateToProfile,
+  isOnline = true,
+  isSyncing = false,
+  supportButton // 🔹 Добавили сюда
+}) => {  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
   const isInvestor = user?.role === 'investor';
@@ -483,6 +498,11 @@ const Layout: React.FC<LayoutProps> = ({ children, currentView, setView, onActio
         </div>
 
       </nav>
+         {supportButton && (
+        <div className="hidden md:block fixed bottom-6 right-6 z-40">
+          {supportButton}
+        </div>
+      )}
     </div>
   );
 };

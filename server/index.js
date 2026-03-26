@@ -187,6 +187,63 @@ const initSuperAdmin = async () => {
   }
 };
 
+
+
+// Таблица тикетов поддержки
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS support_tickets (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    status TEXT DEFAULT 'OPEN',
+    priority TEXT DEFAULT 'NORMAL',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP,
+    assigned_admin_id TEXT
+  );
+`);
+
+// Таблица сообщений поддержки
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS support_messages (
+    id TEXT PRIMARY KEY,
+    ticket_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    message TEXT NOT NULL,
+    is_from_user BOOLEAN DEFAULT TRUE,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (ticket_id) REFERENCES support_tickets(id)
+  );
+`);
+
+// Таблица массовых уведомлений
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS broadcast_messages (
+    id TEXT PRIMARY KEY,
+    admin_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    target_role TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    read_by_users JSONB DEFAULT '[]'
+  );
+`);
+
+// Индексы
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_messages_ticket_id ON support_messages(ticket_id);`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_messages_is_read ON support_messages(is_read);`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_is_active ON broadcast_messages(is_active);`);
+
+
+
+
+
+
 initDB();
 
 // --- MIDDLEWARE ---
@@ -1204,6 +1261,310 @@ app.post('/api/auth/generate-api-key', auth, async (req, res) => {
     res.status(500).send('Server Error');
   }
 });
+
+
+
+
+
+
+
+// === ТЕХПОДДЕРЖКА API ===
+
+// Получить список тикетов пользователя с количеством непрочитанных
+app.get('/api/support/tickets', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Получаем все тикеты пользователя
+    const ticketsResult = await pool.query(`
+      SELECT * FROM support_tickets 
+      WHERE user_id = $1 
+      ORDER BY updated_at DESC
+    `, [userId]);
+
+    // Для каждого тикета считаем непрочитанные сообщения
+    const tickets = await Promise.all(ticketsResult.rows.map(async (ticket) => {
+      const unreadResult = await pool.query(`
+        SELECT COUNT(*) as count FROM support_messages 
+        WHERE ticket_id = $1 AND is_from_user = FALSE AND is_read = FALSE
+      `, [ticket.id]);
+
+      return {
+        ...ticket,
+        unreadCount: parseInt(unreadResult.rows[0].count)
+      };
+    }));
+
+    // Получаем активные broadcast сообщения
+    const broadcastResult = await pool.query(`
+      SELECT * FROM broadcast_messages 
+      WHERE is_active = TRUE 
+      AND (target_role IS NULL OR target_role = $1)
+      AND NOT (read_by_users @> $2::jsonb)
+      ORDER BY created_at DESC
+    `, [req.user.role, JSON.stringify([userId])]);
+
+    const totalUnread = tickets.reduce((sum, t) => sum + t.unreadCount, 0) + broadcastResult.rows.length;
+
+    res.json({ tickets, broadcasts: broadcastResult.rows, totalUnread });
+  } catch (err) {
+    console.error('Support tickets error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Создать новый тикет
+app.post('/api/support/tickets', auth, async (req, res) => {
+  try {
+    const { subject, message, priority = 'NORMAL' } = req.body;
+    const ticketId = `ticket_${Date.now()}_${req.user.id}`;
+    const messageId = `msg_${Date.now()}`;
+
+    // Создаём тикет
+    await pool.query(`
+      INSERT INTO support_tickets (id, user_id, subject, priority)
+      VALUES ($1, $2, $3, $4)
+    `, [ticketId, req.user.id, subject, priority]);
+
+    // Добавляем первое сообщение
+    await pool.query(`
+      INSERT INTO support_messages (id, ticket_id, user_id, message, is_from_user)
+      VALUES ($1, $2, $3, $4, TRUE)
+    `, [messageId, ticketId, req.user.id, message]);
+
+    res.json({ success: true, ticketId });
+  } catch (err) {
+    console.error('Create ticket error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Получить сообщения тикета
+app.get('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const userId = req.user.id;
+
+    // Проверка доступа к тикету
+    const ticketResult = await pool.query(`
+      SELECT * FROM support_tickets WHERE id = $1 AND user_id = $2
+    `, [ticketId, userId]);
+
+    if (ticketResult.rows.length === 0) {
+      return res.status(403).json({ msg: 'Доступ запрещён' });
+    }
+
+    // Получаем сообщения
+    const messagesResult = await pool.query(`
+      SELECT * FROM support_messages 
+      WHERE ticket_id = $1 
+      ORDER BY created_at ASC
+    `, [ticketId]);
+
+    // Помечаем сообщения от поддержки как прочитанные
+    await pool.query(`
+      UPDATE support_messages 
+      SET is_read = TRUE 
+      WHERE ticket_id = $1 AND is_from_user = FALSE AND is_read = FALSE
+    `, [ticketId]);
+
+    res.json(messagesResult.rows);
+  } catch (err) {
+    console.error('Get messages error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Отправить сообщение в тикет
+app.post('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { message } = req.body;
+    const userId = req.user.id;
+
+    const messageId = `msg_${Date.now()}`;
+
+    await pool.query(`
+      INSERT INTO support_messages (id, ticket_id, user_id, message, is_from_user)
+      VALUES ($1, $2, $3, $4, TRUE)
+    `, [messageId, ticketId, userId, message]);
+
+    // Обновляем время обновления тикета
+    await pool.query(`
+      UPDATE support_tickets SET updated_at = NOW() WHERE id = $1
+    `, [ticketId]);
+
+    res.json({ success: true, messageId });
+  } catch (err) {
+    console.error('Send message error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Закрыть тикет
+app.patch('/api/support/tickets/:ticketId/close', auth, async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+
+    await pool.query(`
+      UPDATE support_tickets 
+      SET status = 'CLOSED', resolved_at = NOW() 
+      WHERE id = $1 AND user_id = $2
+    `, [ticketId, req.user.id]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Close ticket error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// === АДМИН ПАНЕЛЬ ПОДДЕРЖКИ ===
+
+// Получить все тикеты (для админа)
+app.get('/api/admin/support/tickets', adminAuth, async (req, res) => {
+  try {
+    const { status, priority } = req.query;
+
+    let query = `
+      SELECT st.*, u.name as user_name, u.email as user_email,
+        (SELECT COUNT(*) FROM support_messages 
+         WHERE ticket_id = st.id AND is_from_user = FALSE AND is_read = FALSE) as unread_count
+      FROM support_tickets st
+      JOIN users u ON st.user_id = u.id
+      WHERE 1=1
+    `;
+
+    const params = [];
+    let paramIndex = 1;
+
+    if (status) {
+      query += ` AND st.status = $${paramIndex}`;
+      params.push(status);
+      paramIndex++;
+    }
+
+    if (priority) {
+      query += ` AND st.priority = $${paramIndex}`;
+      params.push(priority);
+      paramIndex++;
+    }
+
+    query += ` ORDER BY st.updated_at DESC`;
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Admin tickets error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Админ отвечает в тикет
+app.post('/api/admin/support/tickets/:ticketId/messages', adminAuth, async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { message } = req.body;
+    const adminId = req.user.id;
+
+    const messageId = `msg_${Date.now()}`;
+
+    await pool.query(`
+      INSERT INTO support_messages (id, ticket_id, user_id, message, is_from_user)
+      VALUES ($1, $2, $3, $4, FALSE)
+    `, [messageId, ticketId, adminId, message]);
+
+    await pool.query(`
+      UPDATE support_tickets SET updated_at = NOW() WHERE id = $1
+    `, [ticketId]);
+
+    res.json({ success: true, messageId });
+  } catch (err) {
+    console.error('Admin message error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Админ назначает себя на тикет
+app.patch('/api/admin/support/tickets/:ticketId/assign', adminAuth, async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+
+    await pool.query(`
+      UPDATE support_tickets 
+      SET assigned_admin_id = $1, status = 'IN_PROGRESS'
+      WHERE id = $2
+    `, [req.user.id, ticketId]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Assign ticket error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Массовая рассылка всем пользователям
+app.post('/api/admin/support/broadcast', adminAuth, async (req, res) => {
+  try {
+    const { title, message, targetRole } = req.body;
+    const broadcastId = `broadcast_${Date.now()}`;
+
+    await pool.query(`
+      INSERT INTO broadcast_messages (id, admin_id, title, message, target_role)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [broadcastId, req.user.id, title, message, targetRole || null]);
+
+    res.json({ success: true, broadcastId });
+  } catch (err) {
+    console.error('Broadcast error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Отметить broadcast как прочитанный
+app.post('/api/support/broadcast/:broadcastId/read', auth, async (req, res) => {
+  try {
+    const { broadcastId } = req.params;
+    const userId = req.user.id;
+
+    await pool.query(`
+      UPDATE broadcast_messages 
+      SET read_by_users = read_by_users || $1::jsonb
+      WHERE id = $2
+    `, [JSON.stringify([userId]), broadcastId]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Mark broadcast read error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Статистика поддержки (для админа)
+app.get('/api/admin/support/stats', adminAuth, async (req, res) => {
+  try {
+    const stats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_tickets,
+        COUNT(*) FILTER (WHERE status = 'OPEN') as open_tickets,
+        COUNT(*) FILTER (WHERE status = 'IN_PROGRESS') as in_progress_tickets,
+        COUNT(*) FILTER (WHERE status = 'CLOSED') as closed_tickets,
+        COUNT(*) FILTER (WHERE priority = 'HIGH') as high_priority,
+        (SELECT COUNT(*) FROM support_messages WHERE is_from_user = FALSE AND is_read = FALSE) as unread_messages
+      FROM support_tickets
+    `);
+
+    res.json(stats.rows[0]);
+  } catch (err) {
+    console.error('Support stats error:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+
+
+
+
 
 // --- PUBLIC API V1 ---
 // Все API V1 роуты также используют исправленную логику getTargetUserId
