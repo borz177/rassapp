@@ -440,16 +440,16 @@ const CashRegister: React.FC<CashRegisterProps> = ({
           if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
 
           const saleProfit = sale.totalAmount - sale.buyPrice;
-          if (saleProfit <= 0) return;
+          //if (saleProfit <= 0) return;
 
           const account = accounts.find(a => a.id === sale.accountId);
           let managerProfitShare = 1;
 
           if (account && account.ownerId) {
               const investor = investors.find(i => i.id === account.ownerId);
-              if (investor) {
-                  managerProfitShare = (100 - investor.profitPercentage) / 100;
-              }
+              //if (investor) {
+               //   managerProfitShare = (100 - investor.profitPercentage) / 100;
+            //  }
           }
 
           totalProfit += saleProfit * managerProfitShare;
