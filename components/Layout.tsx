@@ -500,11 +500,12 @@ const Layout: React.FC<LayoutProps> = ({
         </div>
 
       </nav>
-         {supportButton && (
-        <div className="hidden md:block fixed bottom-6 right-6 z-40">
-          {supportButton}
-        </div>
-      )}
+         {/* 🔹 Плавающая кнопка техподдержки (только десктоп) */}
+{supportButton && (
+  <div className="hidden md:block">
+    {supportButton}
+  </div>
+)}
     </div>
   );
 };

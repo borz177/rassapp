@@ -67,6 +67,16 @@ const SupportChat: React.FC<SupportChatProps> = ({ user, onClose, onUnreadChange
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+  // При открытии чата — обновляем счётчик (сбрасываем непрочитанные)
+  onUnreadChange(0);
+
+  return () => {
+    // При закрытии — перезагружаем актуальный счётчик
+    // Это можно сделать через reload или просто оставить 0
+  };
+}, []);
+
   // Открыть тикет
   const openTicket = async (ticket: Ticket) => {
     setSelectedTicket(ticket);

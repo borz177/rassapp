@@ -244,6 +244,21 @@ useEffect(() => {
   initApp();
 }, []);
 
+// После useEffect с initApp добавьте:
+useEffect(() => {
+  if (!user || user.role === 'admin') return;
+
+  // Загружаем сразу
+  loadSupportUnreadCount(user);
+
+  // Проверяем каждые 30 секунд
+  const interval = setInterval(() => {
+    loadSupportUnreadCount(user);
+  }, 30000);
+
+  return () => clearInterval(interval);
+}, [user]);
+
   const loadData = async (currentUser?: User, skipLoading = false) => {
       if (!skipLoading && customers.length === 0 && sales.length === 0) {
           setIsLoading(true);
@@ -526,7 +541,6 @@ const dashboardStats = useMemo(() => {
   const handleAuthSuccess = async (loggedInUser: User) => {
       setUser(loggedInUser);
       await loadData(loggedInUser);
-      await loadSupportUnreadCount(loggedInUser);
   };
 
   const handleAction = (action: string) => {
@@ -1315,10 +1329,12 @@ if (!user && !isLoading) {
       </span>
   </button>
 )}
-
-          {/* Кнопка Техподдержка */}
+{/* Кнопка Техподдержка */}
 <button
-  onClick={() => setShowSupportChat(true)}
+  onClick={() => {
+    loadSupportUnreadCount(user); // Принудительное обновление
+    setShowSupportChat(true);
+  }}
   className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50 relative"
 >
   <div className="flex items-center gap-3">
