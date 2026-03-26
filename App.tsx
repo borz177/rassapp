@@ -546,17 +546,34 @@ const dashboardStats = useMemo(() => {
           await api.updateUser(userUpdateData);
       }
   };
-  const handleDeleteInvestor = async (id: string) => {
-      if (isManager) {
-          await api.deleteUser(id);
-          removeFromList(setInvestors, id);
-          const acc = accounts.find(a => a.ownerId === id);
-          if(acc) {
-              await api.deleteItem('accounts', acc.id);
-              removeFromList(setAccounts, acc.id);
-          }
-      }
-  };
+ const handleDeleteInvestor = async (id: string) => {
+  if (!isManager) return;
+  if (!window.confirm('Удалить инвестора?')) return;
+
+  try {
+    // 1. Удаляем пользователя
+    await api.deleteUser(id);
+
+    // 2. ✅ Обновляем UI напрямую (без хелпера)
+    setInvestors(prev => prev.filter(inv => inv.id !== id));
+
+    // 3. Удаляем связанный счёт
+    const acc = accounts.find(a => a.ownerId === id);
+    if (acc) {
+      await api.deleteItem('accounts', acc.id);
+      setAccounts(prev => prev.filter(a => a.id !== acc.id));
+    }
+
+    // 4. ✅ Перезагружаем данные для синхронизации
+    setTimeout(() => loadData(), 500);
+
+  } catch (error) {
+    console.error('Ошибка удаления инвестора:', error);
+    alert('Не удалось удалить инвестора');
+    // ✅ Откат: перезагружаем данные
+    loadData();
+  }
+};
   const handleAddProduct = async (name: string, price: number, stock: number) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } if (user) { const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newProd = { id: Date.now().toString(), userId: ownerId, name, price, category: 'Общее', stock }; const saved = await api.saveItem('products', newProd); updateList(setProducts, saved); } };
   const handleUpdateProduct = async (updated: Product) => { if (isEmployee && !user?.permissions?.canEdit) return; const saved = await api.saveItem('products', updated); updateList(setProducts, saved); };
   const handleDeleteProduct = async (id: string) => { if (isEmployee && !user?.permissions?.canDelete) return; await api.deleteItem('products', id); removeFromList(setProducts, id); };
@@ -1016,13 +1033,31 @@ if (!user && !isLoading) {
                   />
               )}
 
-              {currentView === 'PROFILE' && user &&
-                  <Profile user={user} onUpdateProfile={handleUpdateProfile} onBack={() => setCurrentView('MORE')}
-                           onLogout={() => {
-                               localStorage.removeItem('user');
-                               localStorage.removeItem('token');
-                               setUser(null);
-                           }}/>}
+              {currentView === 'PROFILE' && user && (
+  isInvestor && activeInvestor ? (
+    // 👇 Инвестор видит свои договоры и счета
+    <InvestorDetails
+      investor={activeInvestor}
+      account={accounts.find(a => a.ownerId === user.id)}
+      sales={sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id)}
+      expenses={expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id)}
+      onBack={() => setCurrentView('DASHBOARD')}
+      appSettings={appSettings}
+    />
+  ) : (
+    // 👇 Менеджер/сотрудник видит настройки профиля
+    <Profile
+      user={user}
+      onUpdateProfile={handleUpdateProfile}
+      onBack={() => setCurrentView('MORE')}
+      onLogout={() => {
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+        setUser(null);
+      }}
+    />
+  )
+)}
               {currentView === 'ADMIN_PANEL' && <AdminPanel/>}
               {currentView === 'MORE' && !isInvestor && (<div className="space-y-4 animate-fade-in pb-20">
                   <button onClick={() => setCurrentView('PROFILE')}
