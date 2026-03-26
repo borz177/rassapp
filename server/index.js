@@ -1375,31 +1375,61 @@ app.get('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
   }
 });
 
-// Отправить сообщение в тикет
-app.post('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
+
+
+
+// Получить сообщения тикета
+app.get('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
   try {
     const { ticketId } = req.params;
-    const { message } = req.body;
     const userId = req.user.id;
+    const userRole = req.user.role;
 
-    const messageId = `msg_${Date.now()}`;
+    // 🔹 ИСПРАВЛЕНИЕ: Админы видят все тикеты
+    let ticketResult;
 
-    await pool.query(`
-      INSERT INTO support_messages (id, ticket_id, user_id, message, is_from_user)
-      VALUES ($1, $2, $3, $4, TRUE)
-    `, [messageId, ticketId, userId, message]);
+    if (userRole === 'admin') {
+      // Админы видят все тикеты
+      ticketResult = await pool.query(`
+        SELECT * FROM support_tickets WHERE id = $1
+      `, [ticketId]);
+    } else {
+      // Обычные пользователи видят только свои
+      ticketResult = await pool.query(`
+        SELECT * FROM support_tickets WHERE id = $1 AND user_id = $2
+      `, [ticketId, userId]);
+    }
 
-    // Обновляем время обновления тикета
-    await pool.query(`
-      UPDATE support_tickets SET updated_at = NOW() WHERE id = $1
+    if (ticketResult.rows.length === 0) {
+      return res.status(403).json({ msg: 'Доступ запрещён' });
+    }
+
+    // Получаем сообщения
+    const messagesResult = await pool.query(`
+      SELECT * FROM support_messages 
+      WHERE ticket_id = $1 
+      ORDER BY created_at ASC
     `, [ticketId]);
 
-    res.json({ success: true, messageId });
+    // Помечаем сообщения от поддержки как прочитанные (только если это не админ)
+    if (userRole !== 'admin') {
+      await pool.query(`
+        UPDATE support_messages 
+        SET is_read = TRUE 
+        WHERE ticket_id = $1 AND is_from_user = FALSE AND is_read = FALSE
+      `, [ticketId]);
+    }
+
+    res.json(messagesResult.rows);
   } catch (err) {
-    console.error('Send message error:', err);
+    console.error('Get messages error:', err);
     res.status(500).send('Server Error');
   }
 });
+
+
+
+
 
 // Закрыть тикет
 app.patch('/api/support/tickets/:ticketId/close', auth, async (req, res) => {
