@@ -1016,13 +1016,31 @@ if (!user && !isLoading) {
                   />
               )}
 
-              {currentView === 'PROFILE' && user &&
-                  <Profile user={user} onUpdateProfile={handleUpdateProfile} onBack={() => setCurrentView('MORE')}
-                           onLogout={() => {
-                               localStorage.removeItem('user');
-                               localStorage.removeItem('token');
-                               setUser(null);
-                           }}/>}
+             {currentView === 'PROFILE' && user && (
+  isInvestor && activeInvestor ? (
+    // 👇 Профиль инвестора — показывает только ЕГО данные
+    <InvestorDetails
+      investor={activeInvestor}
+      account={accounts.find(a => a.ownerId === user.id)}
+      sales={sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id)}
+      expenses={expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id)}
+      onBack={() => setCurrentView('DASHBOARD')}
+      appSettings={appSettings}
+    />
+  ) : (
+    // 👇 Обычный профиль для менеджеров/сотрудников
+    <Profile
+      user={user}
+      onUpdateProfile={handleUpdateProfile}
+      onBack={() => setCurrentView('MORE')}
+      onLogout={() => {
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+        setUser(null);
+      }}
+    />
+  )
+)}
               {currentView === 'ADMIN_PANEL' && <AdminPanel/>}
               {currentView === 'MORE' && !isInvestor && (<div className="space-y-4 animate-fade-in pb-20">
                   <button onClick={() => setCurrentView('PROFILE')}
