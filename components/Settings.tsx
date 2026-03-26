@@ -14,7 +14,7 @@ interface SettingsProps {
   currentUserId?: string;
 }
 
-const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNavigate, onSettingsChanged }) => {
+const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNavigate, onSettingsChanged,currentUserId }) => {
   const [companyName, setCompanyName] = useState(appSettings.companyName);
 
   // Clear Data Modal State
@@ -297,7 +297,7 @@ const handleClearData = async () => {
                   alert("Данные успешно импортированы! Страница будет перезагружена.");
                   window.location.reload();
               }}
-              currentUserId={user?.id}
+              currentUserId={currentUserId}
           />
       )}
 
