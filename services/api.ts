@@ -442,5 +442,49 @@ export const api = {
         const data = await res.json();
         if (!res.ok) throw new Error('Failed to generate API Key');
         return data.apiKey;
-    }
+    },
+
+    // === УНИВЕРСАЛЬНЫЕ HTTP МЕТОДЫ (для техподдержки и других новых роутов) ===
+
+get: async <T>(url: string, params?: Record<string, any>): Promise<T> => {
+    const queryString = params ? '?' + new URLSearchParams(params).toString() : '';
+    const res = await fetch(`${API_URL}${url}${queryString}`, {
+        headers: getAuthHeader()
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.msg || data.error || `GET ${url} failed`);
+    return data;
+},
+
+post: async <T>(url: string, data?: any): Promise<T> => {
+    const res = await fetch(`${API_URL}${url}`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: data ? JSON.stringify(data) : undefined
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.msg || json.error || `POST ${url} failed`);
+    return json;
+},
+
+patch: async <T>(url: string, data?: any): Promise<T> => {
+    const res = await fetch(`${API_URL}${url}`, {
+        method: 'PATCH',
+        headers: getAuthHeader(),
+        body: data ? JSON.stringify(data) : undefined
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.msg || json.error || `PATCH ${url} failed`);
+    return json;
+},
+
+delete: async <T>(url: string): Promise<T> => {
+    const res = await fetch(`${API_URL}${url}`, {
+        method: 'DELETE',
+        headers: getAuthHeader()
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.msg || json.error || `DELETE ${url} failed`);
+    return json;
+}
 };
