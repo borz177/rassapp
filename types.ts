@@ -63,16 +63,16 @@ export interface InvestorPermissions {
   canViewHistory: boolean;
 }
 
-// types.ts
 export interface Investor {
-  id: string;
-  userId: string;
-  name: string;                  // ✅ Обязательно
-  email?: string;                // ⚪ Опционально
-  phone?: string;                // ⚪ Опционально
-  joinedDate: string;            // ✅ Обязательно
-  initialAmount?: number;        // ⚪ Опционально
-  profitPercentage?: number;     // ⚪ Опционально
+  id: string; // This will match the User.id
+  userId: string; // The Manager's ID
+  name: string;
+  email: string; // Login email
+  phone: string;
+  joinedDate: string;
+  // This now represents the current investment balance, not just the initial deposit.
+  initialAmount: number;
+  profitPercentage: number;
   permissions?: InvestorPermissions;
   notes?: string;
   color?: string;
