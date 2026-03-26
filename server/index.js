@@ -97,6 +97,8 @@ pool.on('connect', (client) => {
 // Initialize Database Tables
 const initDB = async () => {
   try {
+    // === ОСНОВНЫЕ ТАБЛИЦЫ ===
+
     // Users Table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -160,12 +162,66 @@ const initDB = async () => {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_data_items_user_id ON data_items(user_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_data_items_type ON data_items(type);`);
 
-    console.log('PostgreSQL Tables Initialized');
+    // === 🔹 ТАБЛИЦЫ ТЕХПОДДЕРЖКИ (ВНУТРИ try!) ===
+
+    // Таблица тикетов поддержки
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        status TEXT DEFAULT 'OPEN',
+        priority TEXT DEFAULT 'NORMAL',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TIMESTAMP,
+        assigned_admin_id TEXT
+      );
+    `);
+
+    // Таблица сообщений поддержки
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS support_messages (
+        id TEXT PRIMARY KEY,
+        ticket_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        message TEXT NOT NULL,
+        is_from_user BOOLEAN DEFAULT TRUE,
+        is_read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (ticket_id) REFERENCES support_tickets(id)
+      );
+    `);
+
+    // Таблица массовых уведомлений
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS broadcast_messages (
+        id TEXT PRIMARY KEY,
+        admin_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        target_role TEXT,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        read_by_users JSONB DEFAULT '[]'
+      );
+    `);
+
+    // Индексы поддержки
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_messages_ticket_id ON support_messages(ticket_id);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_messages_is_read ON support_messages(is_read);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_is_active ON broadcast_messages(is_active);`);
+
+    // === КОНЕЦ ИНИЦИАЛИЗАЦИИ ===
+    console.log('✅ PostgreSQL Tables Initialized (including Support)');
     initSuperAdmin();
+
   } catch (err) {
-    console.error('Error initializing database:', err);
+    console.error('❌ Error initializing database:', err);
   }
-};
+}; // ← Закрывающая скобка функции
 
 const initSuperAdmin = async () => {
   const adminEmail = process.env.SUPER_ADMIN_EMAIL || 'borz017795@gmail.com';
@@ -187,63 +243,7 @@ const initSuperAdmin = async () => {
   }
 };
 
-
-
-// Таблица тикетов поддержки
-await pool.query(`
-  CREATE TABLE IF NOT EXISTS support_tickets (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    subject TEXT NOT NULL,
-    status TEXT DEFAULT 'OPEN',
-    priority TEXT DEFAULT 'NORMAL',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    resolved_at TIMESTAMP,
-    assigned_admin_id TEXT
-  );
-`);
-
-// Таблица сообщений поддержки
-await pool.query(`
-  CREATE TABLE IF NOT EXISTS support_messages (
-    id TEXT PRIMARY KEY,
-    ticket_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    message TEXT NOT NULL,
-    is_from_user BOOLEAN DEFAULT TRUE,
-    is_read BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (ticket_id) REFERENCES support_tickets(id)
-  );
-`);
-
-// Таблица массовых уведомлений
-await pool.query(`
-  CREATE TABLE IF NOT EXISTS broadcast_messages (
-    id TEXT PRIMARY KEY,
-    admin_id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    message TEXT NOT NULL,
-    target_role TEXT,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    read_by_users JSONB DEFAULT '[]'
-  );
-`);
-
-// Индексы
-await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);`);
-await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(status);`);
-await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_messages_ticket_id ON support_messages(ticket_id);`);
-await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_messages_is_read ON support_messages(is_read);`);
-await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_is_active ON broadcast_messages(is_active);`);
-
-
-
-
-
-
+// Вызов функции
 initDB();
 
 // --- MIDDLEWARE ---
