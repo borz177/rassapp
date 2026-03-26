@@ -367,19 +367,12 @@ export const api = {
 
     // User Management
     updateUser: async (user: User) => {
-  const res = await fetch(`${API_URL}/users/manage`, {
-    method: 'POST',
-    headers: getAuthHeader(),
-    body: JSON.stringify({ action: 'update', userData: user })
-  });
-
-  if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.msg || data.error || 'Ошибка обновления пользователя');
-  }
-
-  return res.json();
-},
+        await fetch(`${API_URL}/users/manage`, {
+            method: 'POST',
+            headers: getAuthHeader(),
+            body: JSON.stringify({ action: 'update', userData: user })
+        });
+    },
 
     deleteUser: async (userId: string) => {
         await fetch(`${API_URL}/users/manage`, {

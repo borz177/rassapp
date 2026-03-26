@@ -7,6 +7,7 @@ declare const XLSX: any;
 interface DataImportProps {
     onClose: () => void;
     onImportSuccess: () => void;
+    currentUserId: string;
 }
 
 const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => {
@@ -228,7 +229,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
                             addLog(`➕ Новый инвестор: ${trimmedInvestor}`);
                             const newInvestor: Investor = {
                                 id: `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                                userId: 'import',
+                                userId: currentUserId,
                                 joinedDate: new Date().toISOString(),
                                 name: trimmedInvestor,
                                 phone: '',
@@ -246,7 +247,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => 
 
                             const newAccount: Account = {
                                 id: `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                                userId: 'import',
+                                userId: currentUserId,
                                 name: `Счет: ${trimmedInvestor}`,
                                 type: 'INVESTOR',
                                 balance: 0,
