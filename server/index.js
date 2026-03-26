@@ -748,24 +748,50 @@ app.get('/api/data', auth, async (req, res) => {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
 
-    const itemsResult = await pool.query('SELECT * FROM data_items WHERE user_id = $1', [targetUserId]);
+    // 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Менеджеры видят свои данные + профили своих инвесторов
+    let query = 'SELECT * FROM data_items WHERE user_id = $1';
+    let params = [targetUserId];
+
+    if (req.user.role === 'manager' || req.user.role === 'admin') {
+      // Менеджеры видят:
+      // 1. Свои данные (где user_id = manager.id)
+      // 2. Профили инвесторов, которые им принадлежат (где data->>'userId' = manager.id)
+      query = `
+        SELECT * FROM data_items 
+        WHERE user_id = $1 
+        OR (type = 'investors' AND data->>'userId' = $1)
+      `;
+    }
+
+    const itemsResult = await pool.query(query, params);
 
     const result = {
-      customers: [], products: [], sales: [], expenses: [], accounts: [], investors: [], partnerships: [], settings: null
+      customers: [], products: [], sales: [], expenses: [],
+      accounts: [], investors: [], partnerships: [], settings: null
     };
 
     itemsResult.rows.forEach(row => {
       if (row.type === 'settings') {
         result.settings = row.data;
       } else if (result[row.type]) {
-        result[row.type].push(row.data);
+        // 🔑 Для инвесторов: менеджер видит только своих
+        if (row.type === 'investors' && (req.user.role === 'manager' || req.user.role === 'admin')) {
+          if (row.data.userId === req.user.id || row.data.userId === undefined) {
+            result[row.type].push(row.data);
+          }
+        } else {
+          result[row.type].push(row.data);
+        }
       }
     });
 
     // Fetch Employees (только менеджеры/админы видят сотрудников)
     let employees = [];
     if (req.user.role === 'manager' || req.user.role === 'admin') {
-      const usersResult = await pool.query('SELECT * FROM users WHERE manager_id = $1 AND role = $2', [req.user.id, 'employee']);
+      const usersResult = await pool.query(
+        'SELECT * FROM users WHERE manager_id = $1 AND role = $2',
+        [req.user.id, 'employee']
+      );
       employees = usersResult.rows.map(u => ({
         id: u.id,
         name: u.name,
@@ -798,11 +824,10 @@ app.post('/api/data/:type', auth, async (req, res) => {
     // ✅ Базовая логика: сотрудники → managerId, остальные → свой id
     let targetUserId = getTargetUserId(req.user);
 
-    // ✅ СПЕЦИАЛЬНАЯ ЛОГИКА ДЛЯ ИНВЕСТОРОВ:
-    // Если менеджер создаёт/обновляет профиль инвестора — сохраняем под ID инвестора
-    if (type === 'investors' && itemData.id?.startsWith('u_inv_')) {
-      targetUserId = itemData.id;  // ← Ключевое исправление!
-    }
+    // ✅ СПЕЦИАЛЬНАЯ ЛОГИКА ДЛЯ ИНВЕСТОРОВ — ОСТАВЬТЕ ЭТО!
+if (type === 'investors' && itemData.id?.startsWith('u_inv_')) {
+  targetUserId = itemData.id;  // ← Сохраняем под ID инвестора
+}
 
     // 🔐 Проверка прав доступа
     if (!canAccessUserData(req.user, targetUserId)) {
