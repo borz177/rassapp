@@ -10,7 +10,7 @@ interface DataImportProps {
     currentUserId: string;
 }
 
-const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess }) => {
+const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess, currentUserId}) => {
     const [file, setFile] = useState<File | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
