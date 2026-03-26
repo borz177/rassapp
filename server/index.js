@@ -738,28 +738,32 @@ app.post('/api/user/subscription', auth, async (req, res) => {
 });
 
 // ✅ ИСПРАВЛЕННЫЙ GET /api/data - ИНВЕСТОРЫ ВИДЯТ ТОЛЬКО СВОИ ДАННЫЕ
+// ✅ ИСПРАВЛЕННЫЙ GET /api/data - МЕНЕДЖЕРЫ ВИДЯТ СВОИ ДАННЫЕ + ДАННЫЕ ИНВЕСТОРОВ
 app.get('/api/data', auth, async (req, res) => {
   try {
-    // ✅ Правильная логика: инвесторы → свой id, сотрудники → managerId
     const targetUserId = getTargetUserId(req.user);
 
-    // 🔐 Проверка прав доступа
     if (!canAccessUserData(req.user, targetUserId)) {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
 
-    // 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Менеджеры видят свои данные + профили своих инвесторов
+    // 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Менеджеры видят свои данные + данные своих инвесторов
     let query = 'SELECT * FROM data_items WHERE user_id = $1';
     let params = [targetUserId];
 
     if (req.user.role === 'manager' || req.user.role === 'admin') {
       // Менеджеры видят:
       // 1. Свои данные (где user_id = manager.id)
-      // 2. Профили инвесторов, которые им принадлежат (где data->>'userId' = manager.id)
+      // 2. Профили инвесторов (где type='investors' AND data->>'userId' = manager.id)
+      // 3. Счета инвесторов (где type='accounts' AND data->>'ownerId' = инвестор с userId = manager.id)
       query = `
         SELECT * FROM data_items 
         WHERE user_id = $1 
         OR (type = 'investors' AND data->>'userId' = $1)
+        OR (type = 'accounts' AND data->>'ownerId' IN (
+          SELECT data->>'id' FROM data_items 
+          WHERE type = 'investors' AND data->>'userId' = $1
+        ))
       `;
     }
 
