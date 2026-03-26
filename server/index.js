@@ -1346,23 +1346,61 @@ app.get('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
     const userId = req.user.id;
     const userRole = req.user.role;
 
+    // 🔹 ЛОГИРОВАНИЕ для отладки
+    console.log('📩 Support messages request:', {
+      ticketId,
+      userId,
+      userRole,
+      userEmail: req.user.email
+    });
+
+    // Проверка что ticketId существует
+    if (!ticketId) {
+      console.error('❌ ticketId is missing');
+      return res.status(400).json({ msg: 'ticketId is required' });
+    }
+
     // Проверка доступа к тикету
     let ticketResult;
 
-    if (userRole === 'admin') {
+    // 🔹 ИСПРАВЛЕНИЕ: проверяем роль case-insensitive
+    const isAdmin = userRole && userRole.toLowerCase() === 'admin';
+
+    if (isAdmin) {
+      console.log('✅ Admin access granted');
       // Админы видят все тикеты
       ticketResult = await pool.query(`
         SELECT * FROM support_tickets WHERE id = $1
       `, [ticketId]);
     } else {
+      console.log('👤 User access check');
       // Обычные пользователи видят только свои
       ticketResult = await pool.query(`
         SELECT * FROM support_tickets WHERE id = $1 AND user_id = $2
       `, [ticketId, userId]);
     }
 
+    console.log('📊 Ticket query result:', {
+      rowsFound: ticketResult.rows.length,
+      ticketId
+    });
+
     if (ticketResult.rows.length === 0) {
-      return res.status(403).json({ msg: 'Доступ запрещён' });
+      console.error('❌ Ticket not found or access denied', {
+        ticketId,
+        userId,
+        userRole,
+        isAdmin
+      });
+      return res.status(403).json({
+        msg: 'Доступ запрещён',
+        debug: {
+          ticketId,
+          userId,
+          userRole,
+          isAdmin
+        }
+      });
     }
 
     // Получаем сообщения
@@ -1372,8 +1410,10 @@ app.get('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
       ORDER BY created_at ASC
     `, [ticketId]);
 
+    console.log(`📬 Found ${messagesResult.rows.length} messages`);
+
     // Помечаем сообщения от поддержки как прочитанные (только если это не админ)
-    if (userRole !== 'admin') {
+    if (!isAdmin) {
       await pool.query(`
         UPDATE support_messages 
         SET is_read = TRUE 
@@ -1383,8 +1423,11 @@ app.get('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
 
     res.json(messagesResult.rows);
   } catch (err) {
-    console.error('Get messages error:', err);
-    res.status(500).send('Server Error');
+    console.error('❌ Get messages error:', err);
+    res.status(500).json({
+      msg: 'Server Error',
+      error: err.message
+    });
   }
 });
 

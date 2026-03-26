@@ -284,6 +284,23 @@ useEffect(() => {
   const isInvestor = user?.role === 'investor';
   const activeInvestor = isInvestor && user ? investors.find(i => i.id === user.id) : null;
 
+
+  const loadSupportUnreadCount = async (currentUser: User) => {
+  if (!currentUser || currentUser.role === 'admin') return;
+
+  try {
+    const response = await api.get<{
+      tickets: Array<{ unreadCount: number }>;
+      broadcasts: any[];
+      totalUnread: number
+    }>('/support/tickets');
+
+    setSupportUnreadCount(response.totalUnread || 0);
+  } catch (error) {
+    console.error('Failed to load support unread count:', error);
+  }
+};
+
   // ... (Access checks and calculation logic remain the same)
   const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES'): boolean => {
       if (!user) return false;
@@ -509,6 +526,7 @@ const dashboardStats = useMemo(() => {
   const handleAuthSuccess = async (loggedInUser: User) => {
       setUser(loggedInUser);
       await loadData(loggedInUser);
+      await loadSupportUnreadCount(loggedInUser);
   };
 
   const handleAction = (action: string) => {
@@ -907,6 +925,7 @@ if (!user && !isLoading) {
     onNavigateToProfile={() => setCurrentView('PROFILE')}
     isOnline={isOnline}
     isSyncing={isSyncing}
+    supportUnreadCount={supportUnreadCount}
     // 🔹 Кнопка поддержки для десктопа (плавающая)
     supportButton={
       <SupportButton
@@ -914,6 +933,7 @@ if (!user && !isLoading) {
         onClick={() => setShowSupportChat(true)}
       />
     }
+
   >
 
 
@@ -1296,12 +1316,25 @@ if (!user && !isLoading) {
   </button>
 )}
 
-          {/* 🔹 КНОПКА ТЕХПОДДЕРЖКИ ДЛЯ МОБИЛЬНЫХ */}
-          <SupportButton
-            unreadCount={supportUnreadCount}
-            onClick={() => setShowSupportChat(true)}
-            isMobile={true}
-          />
+          {/* Кнопка Техподдержка */}
+<button
+  onClick={() => setShowSupportChat(true)}
+  className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50 relative"
+>
+  <div className="flex items-center gap-3">
+    <div className="bg-indigo-100 p-2 rounded-full text-indigo-600">
+      {ICONS.Chat}
+    </div>
+    <span className="font-semibold text-slate-700">Техподдержка</span>
+  </div>
+
+  {/* 🔴 Счётчик непрочитанных */}
+  {supportUnreadCount > 0 && (
+    <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
+      {supportUnreadCount > 9 ? '9+' : supportUnreadCount}
+    </span>
+  )}
+</button>
 
           {/* Настройки */}
           <button onClick={() => setCurrentView('SETTINGS')}

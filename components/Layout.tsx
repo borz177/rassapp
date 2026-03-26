@@ -18,6 +18,7 @@ interface LayoutProps {
   isOnline?: boolean;
   isSyncing?: boolean;
   supportButton?: React.ReactNode;
+  supportUnreadCount?: number;
 }
 
 const PLAN_NAMES: Record<SubscriptionPlan, string> = {
@@ -41,7 +42,8 @@ const Layout: React.FC<LayoutProps> = ({
   onNavigateToProfile,
   isOnline = true,
   isSyncing = false,
-  supportButton // 🔹 Добавили сюда
+  supportButton, // 🔹 Добавили сюда
+  supportUnreadCount = 0,
 }) => {  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
