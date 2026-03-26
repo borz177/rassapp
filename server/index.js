@@ -736,59 +736,36 @@ app.post('/api/user/subscription', auth, async (req, res) => {
     res.status(500).send('Server Error');
   }
 });
-// ✅ GET /api/data - МЕНЕДЖЕРЫ ВИДЯТ СВОИ ДАННЫЕ + ДАННЫЕ СВОИХ ИНВЕСТОРОВ
+
+// ✅ ИСПРАВЛЕННЫЙ GET /api/data - ИНВЕСТОРЫ ВИДЯТ ТОЛЬКО СВОИ ДАННЫЕ
 app.get('/api/data', auth, async (req, res) => {
   try {
+    // ✅ Правильная логика: инвесторы → свой id, сотрудники → managerId
     const targetUserId = getTargetUserId(req.user);
 
+    // 🔐 Проверка прав доступа
     if (!canAccessUserData(req.user, targetUserId)) {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
 
-    // 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Менеджеры видят свои данные + профили своих инвесторов
-    let query = 'SELECT * FROM data_items WHERE user_id = $1';
-    let params = [targetUserId];
-
-    if (req.user.role === 'manager' || req.user.role === 'admin') {
-      // Менеджеры видят:
-      // 1. Свои данные (где user_id = manager.id)
-      // 2. Профили инвесторов, которые им принадлежат (где data->>'userId' = manager.id)
-      query = `
-        SELECT * FROM data_items 
-        WHERE user_id = $1 
-        OR (type = 'investors' AND data->>'userId' = $1)
-      `;
-    }
-
-    const itemsResult = await pool.query(query, params);
+    const itemsResult = await pool.query('SELECT * FROM data_items WHERE user_id = $1', [targetUserId]);
 
     const result = {
-      customers: [], products: [], sales: [], expenses: [],
-      accounts: [], investors: [], partnerships: [], settings: null
+      customers: [], products: [], sales: [], expenses: [], accounts: [], investors: [], partnerships: [], settings: null
     };
 
     itemsResult.rows.forEach(row => {
       if (row.type === 'settings') {
         result.settings = row.data;
       } else if (result[row.type]) {
-        // 🔑 Для инвесторов: менеджер видит только своих
-        if (row.type === 'investors' && (req.user.role === 'manager' || req.user.role === 'admin')) {
-          if (row.data.userId === req.user.id || row.data.userId === undefined) {
-            result[row.type].push(row.data);
-          }
-        } else {
-          result[row.type].push(row.data);
-        }
+        result[row.type].push(row.data);
       }
     });
 
     // Fetch Employees (только менеджеры/админы видят сотрудников)
     let employees = [];
     if (req.user.role === 'manager' || req.user.role === 'admin') {
-      const usersResult = await pool.query(
-        'SELECT * FROM users WHERE manager_id = $1 AND role = $2',
-        [req.user.id, 'employee']
-      );
+      const usersResult = await pool.query('SELECT * FROM users WHERE manager_id = $1 AND role = $2', [req.user.id, 'employee']);
       employees = usersResult.rows.map(u => ({
         id: u.id,
         name: u.name,
@@ -806,11 +783,12 @@ app.get('/api/data', auth, async (req, res) => {
   }
 });
 
-// ✅ POST /api/data/:type - ИНВЕСТОРЫ СОХРАНЯЮТСЯ ПОД СВОИМ ID
+// ✅ ИСПРАВЛЕННЫЙ POST /api/data/:type - ВАЛИДАЦИЯ ТИПА
 app.post('/api/data/:type', auth, async (req, res) => {
   try {
     const { type } = req.params;
 
+    // 🔐 Валидация типа данных
     if (!VALID_DATA_TYPES.includes(type)) {
       return res.status(400).json({ error: 'Недопустимый тип данных' });
     }
@@ -826,6 +804,7 @@ app.post('/api/data/:type', auth, async (req, res) => {
       targetUserId = itemData.id;  // ← Ключевое исправление!
     }
 
+    // 🔐 Проверка прав доступа
     if (!canAccessUserData(req.user, targetUserId)) {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
@@ -850,7 +829,7 @@ app.post('/api/data/:type', auth, async (req, res) => {
   }
 });
 
-// ✅ DELETE /api/data/:type/:id - УНИВЕРСАЛЬНОЕ УДАЛЕНИЕ
+// ✅ ИСПРАВЛЕННЫЙ DELETE /api/data/:type/:id
 app.delete('/api/data/:type/:id', auth, async (req, res) => {
   try {
     const { id, type } = req.params;
@@ -870,14 +849,7 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
 
-    // 🔑 Универсальное удаление: ищем в обоих местах
-    const deleteQuery = `
-      DELETE FROM data_items 
-      WHERE id = $1 
-      AND (user_id = $2 OR (type = 'investors' AND data->>'userId' = $2))
-    `;
-
-    await pool.query(deleteQuery, [id, targetUserId]);
+    await pool.query('DELETE FROM data_items WHERE id = $1 AND user_id = $2', [id, targetUserId]);
     res.json({ success: true, id });
   } catch (err) {
     console.error(err);
@@ -885,23 +857,91 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
   }
 });
 
-// ✅ User Management: УНИВЕРСАЛЬНОЕ УДАЛЕНИЕ ИНВЕСТОРА
-if (action === 'delete') {
+// Wipe User Data (Reset)
+app.delete('/api/user/data', auth, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req.user);
+
+    if (!canAccessUserData(req.user, targetUserId)) {
+      return res.status(403).json({ error: 'Доступ запрещён' });
+    }
+
+    await pool.query('DELETE FROM data_items WHERE user_id = $1', [targetUserId]);
+
+    const accId = `acc_main_${targetUserId}`;
+    const accData = { id: accId, userId: targetUserId, name: 'Основной счет', type: 'MAIN' };
+    await pool.query(
+      `INSERT INTO data_items (id, user_id, type, data) VALUES ($1, $2, $3, $4)`,
+      [accId, targetUserId, 'accounts', JSON.stringify(accData)]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Reset Data Error:", err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// User Management (Create / Update / Delete for Sub-users)
+app.post('/api/users/manage', auth, async (req, res) => {
+  const { action, userData } = req.body;
+
+  if (req.user.role !== 'manager' && req.user.role !== 'admin') {
+    return res.status(403).json({ msg: 'Permission denied' });
+  }
+
+  try {
+    if (action === 'create') {
+      const { name, email, password, role, permissions, allowedInvestorIds, phone } = userData;
+
+      // Check existence
+      const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+      if (userCheck.rows.length > 0) {
+        return res.status(400).json({ msg: 'User already exists' });
+      }
+
+      // Create ID
+      const id = role === 'investor' ? `u_inv_${Date.now()}` : `u_emp_${Date.now()}`;
+
+      // Hash Password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      // Insert linked to current manager (req.user.id)
+      await pool.query(
+        `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, phone) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          id,
+          name,
+          email,
+          hashedPassword,
+          role,
+          req.user.id,
+          JSON.stringify(permissions || {}),
+          JSON.stringify(allowedInvestorIds || []),
+          phone || null
+        ]
+      );
+
+      return res.json({
+        id, name, email, role, managerId: req.user.id, permissions, allowedInvestorIds, phone
+      });
+    }
+
+    if (action === 'delete') {
   const investorId = userData.id;
   const managerId = req.user.id;
 
   // 1. Удаляем из users (всегда под manager_id)
-  await pool.query(
-    'DELETE FROM users WHERE id = $1 AND manager_id = $2',
-    [investorId, managerId]
-  );
+  await pool.query('DELETE FROM users WHERE id = $1 AND manager_id = $2', [investorId, managerId]);
 
   // 2. ✅ Удаляем профиль инвестора (ищем в обоих местах)
   await pool.query(`
     DELETE FROM data_items 
     WHERE type = 'investors' 
     AND data->>'id' = $1 
-    AND (user_id = $2 OR user_id = $1)
+    AND (user_id = $2 OR user_id = $1)  -- ← Проверяем и manager_id, и investor_id
   `, [investorId, managerId]);
 
   // 3. ✅ Удаляем счёт инвестора (ищем в обоих местах)
@@ -915,7 +955,7 @@ if (action === 'delete') {
   // 4. ✅ Удаляем операции инвестора (универсальный поиск)
   await pool.query(`
     DELETE FROM data_items 
-    WHERE (user_id = $1 OR user_id = $2)
+    WHERE (user_id = $1 OR user_id = $2)  -- ← Проверяем оба user_id
     AND type IN ('sales', 'expenses')
     AND (
       data->>'accountId' = ANY(
@@ -928,6 +968,35 @@ if (action === 'delete') {
 
   return res.json({ success: true, id: investorId });
 }
+
+    if (action === 'update') {
+      const { id, name, email, permissions, allowedInvestorIds, password } = userData;
+
+      await pool.query(`
+        UPDATE users 
+        SET name = $1, email = $2, permissions = $3, allowed_investor_ids = $4, updated_at = NOW()
+        WHERE id = $5 AND manager_id = $6
+      `, [name, email, JSON.stringify(permissions), JSON.stringify(allowedInvestorIds), id, req.user.id]);
+
+      if (password && password.trim().length > 0) {
+  const salt = await bcrypt.genSalt(10);
+  const hashedPassword = await bcrypt.hash(password, salt);
+  // ✅ Добавляем проверку manager_id
+  await pool.query(
+    'UPDATE users SET password = $1 WHERE id = $2 AND manager_id = $3',
+    [hashedPassword, id, req.user.id]
+  );
+}
+
+      return res.json({ success: true });
+    }
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).send('Server Error');
+  }
+});
 
 // --- ADMIN ROUTES ---
 app.get('/api/admin/users', adminAuth, async (req, res) => {
