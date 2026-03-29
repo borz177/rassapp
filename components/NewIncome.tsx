@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Customer, Account, Investor, Sale } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
-import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
+import { sendWhatsAppFile } from '../services/whatsapp';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -13,15 +13,64 @@ interface NewIncomeProps {
   accounts: Account[];
   sales: Sale[];
   onClose: () => void;
-  onSubmit: (data: any) => void;
+  onSubmit: ( any) => void;
   onSelectCustomer: () => void;
 }
+
+const transliterate = (text: string): string => {
+    const map: { [key: string]: string } = {
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd',
+        'е': 'e', 'ё': 'yo', 'ж': 'zh', 'з': 'z', 'и': 'i',
+        'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n',
+        'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't',
+        'у': 'u', 'ф': 'f', 'х': 'h', 'ц': 'c', 'ч': 'ch',
+        'ш': 'sh', 'щ': 'sch', 'ъ': '', 'ы': 'y', 'ь': '',
+        'э': 'e', 'ю': 'yu', 'я': 'ya',
+        'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D',
+        'Е': 'E', 'Ё': 'Yo', 'Ж': 'Zh', 'З': 'Z', 'И': 'I',
+        'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N',
+        'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T',
+        'У': 'U', 'Ф': 'F', 'Х': 'H', 'Ц': 'C', 'Ч': 'Ch',
+        'Ш': 'Sh', 'Щ': 'Sch', 'Ъ': '', 'Ы': 'Y', 'Ь': '',
+        'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya',
+        ' ': '_', '-': '_', '/': '_', '\\': '_',
+    };
+
+    return text
+        .split('')
+        .map(char => map[char] || char)
+        .join('')
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '');
+};
+
+const isMobileDevice = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
+// ✅ ИСПРАВЛЕНО: безопасная работа с URL
+const createObjectURL = (blob: Blob): string => {
+    if (typeof window === 'undefined') return '';
+    return (window as any).URL?.createObjectURL(blob) ||
+           (window as any).webkitURL?.createObjectURL(blob);
+};
+
+const revokeObjectURL = (url: string) => {
+    if (typeof window === 'undefined') return;
+    setTimeout(() => {
+        if ((window as any).URL?.revokeObjectURL) {
+            (window as any).URL.revokeObjectURL(url);
+        } else if ((window as any).webkitURL?.revokeObjectURL) {
+            (window as any).webkitURL.revokeObjectURL(url);
+        }
+    }, 100);
+};
 
 const NewIncome: React.FC<NewIncomeProps> = ({
     initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer
 }) => {
   const [sourceType, setSourceType] = useState<'CUSTOMER' | 'INVESTOR' | 'OTHER'>('CUSTOMER');
-
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId || '');
   const [selectedSaleId, setSelectedSaleId] = useState('');
   const [selectedInvestorId, setSelectedInvestorId] = useState('');
@@ -29,9 +78,9 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-
   const [sendHistory, setSendHistory] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const contractRef = useRef<HTMLDivElement>(null);
 
   const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
@@ -39,16 +88,25 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const selectedSale = useMemo(() => sales.find(s => s.id === selectedSaleId), [sales, selectedSaleId]);
   const selectedInvestor = useMemo(() => investors.find(i => i.id === selectedInvestorId), [investors, selectedInvestorId]);
 
-  // Получаем настройки и определяем флаг показа копеек
   const appSettings = getAppSettings();
   const showCents = appSettings?.showCents || false;
 
-  // Вспомогательная функция для форматирования чисел в зависимости от настроек
   const formatNum = (val: number) => {
     return val.toLocaleString(undefined, {
       minimumFractionDigits: showCents ? 2 : 0,
       maximumFractionDigits: showCents ? 2 : 0,
     });
+  };
+
+  const getValidPaidPayments = (sale: Sale | undefined) => {
+    if (!sale?.paymentPlan) return [];
+    return sale.paymentPlan.filter(p =>
+      p &&
+      p.isPaid === true &&
+      p.isRealPayment !== false &&
+      typeof p.amount === 'number' &&
+      p.date
+    );
   };
 
   useEffect(() => {
@@ -62,8 +120,11 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   useEffect(() => {
       if (selectedSale) {
-          const paidTotal = selectedSale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
-          const scheduledPayments = selectedSale.paymentPlan.filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          const validPaidPayments = getValidPaidPayments(selectedSale);
+          const paidTotal = validPaidPayments.reduce((sum, p) => sum + p.amount, 0);
+          const scheduledPayments = selectedSale.paymentPlan
+              .filter(p => p && !p.isPaid && p.isRealPayment !== true)
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
           let paymentPool = paidTotal;
           let suggestedAmount = selectedSale.remainingAmount;
           for (const p of scheduledPayments) {
@@ -74,7 +135,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
               if (remainingForThisInstallment > 0.01) { suggestedAmount = remainingForThisInstallment; break; }
           }
           if (!amount) {
-              // Округляем подставляемую сумму, если копейки выключены
               setAmount(suggestedAmount > 0 ? (showCents ? suggestedAmount.toFixed(2) : Math.round(suggestedAmount).toString()) : '');
           }
           setTargetAccountId(selectedSale.accountId);
@@ -96,8 +156,11 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   const recommendedAmount = useMemo(() => {
       if (selectedSale) {
-          const paidTotal = selectedSale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
-          const scheduledPayments = selectedSale.paymentPlan.filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          const validPaidPayments = getValidPaidPayments(selectedSale);
+          const paidTotal = validPaidPayments.reduce((sum, p) => sum + p.amount, 0);
+          const scheduledPayments = selectedSale.paymentPlan
+              .filter(p => p && !p.isPaid && p.isRealPayment !== true)
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
           let paymentPool = paidTotal;
           for (const p of scheduledPayments) {
               const paymentDue = p.amount;
@@ -123,66 +186,76 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
       if (!contractRef.current) throw new Error("Contract element not found");
       const element = contractRef.current;
-
-      // Сохраняем оригинальные стили
       const originalStyle = {
           display: element.style.display,
           position: element.style.position,
           left: element.style.left,
           top: element.style.top,
           visibility: element.style.visibility,
-          zIndex: element.style.zIndex,
-          opacity: element.style.opacity,
-          pointerEvents: element.style.pointerEvents
+          zIndex: element.style.zIndex
       };
-
-      // ХАК ДЛЯ МОБИЛОК: Выносим элемент поверх всего, но делаем почти прозрачным
-      // Так браузер 100% его отрендерит, а пользователь ничего не заметит
       element.style.display = 'block';
-      element.style.position = 'fixed';
+      element.style.position = 'absolute';
       element.style.left = '0';
       element.style.top = '0';
       element.style.visibility = 'visible';
-      element.style.zIndex = '9999';
-      element.style.opacity = '0.01'; // Достаточно, чтобы не было видно, но браузер нарисовал
-      element.style.pointerEvents = 'none';
+      element.style.zIndex = '-1';
 
       try {
-          // Даем больше времени мобильному устройству на отрисовку DOM
-          await new Promise(resolve => setTimeout(resolve, 300));
+          const isMobile = isMobileDevice();
+          const scale = isMobile ? 1.0 : 1.5;
+          const quality = isMobile ? 0.8 : 0.7;
 
-          // Уменьшаем масштаб для мобильных телефонов, чтобы избежать ошибки лимита памяти
-          const isMobile = window.innerWidth < 768;
-          const scaleOption = isMobile ? 1 : 1.5;
+          await new Promise(resolve => setTimeout(resolve, isMobile ? 200 : 100));
 
           const canvas = await html2canvas(element, {
-              scale: scaleOption,
+              scale: scale,
               useCORS: true,
               logging: false,
-              // Принудительно задаем размер окна для корректного захвата
-              windowWidth: element.scrollWidth,
-              windowHeight: element.scrollHeight
+              backgroundColor: '#ffffff',
+              imageTimeout: 0,
+              removeContainer: true,
+              allowTaint: true,
+              foreignObjectRendering: true
           });
 
-          const imgData = canvas.toDataURL('image/jpeg', 0.8); // Чуть увеличил качество для scale: 1
+          const imgData = canvas.toDataURL('image/jpeg', quality);
           const pdf = new jsPDF('p', 'mm', 'a4');
           const pdfWidth = pdf.internal.pageSize.getWidth();
           const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
           pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
           return pdf.output('blob');
       } finally {
-          // Возвращаем всё как было
           element.style.display = originalStyle.display;
           element.style.position = originalStyle.position;
           element.style.left = originalStyle.left;
           element.style.top = originalStyle.top;
           element.style.visibility = originalStyle.visibility;
           element.style.zIndex = originalStyle.zIndex;
-          element.style.opacity = originalStyle.opacity || '1';
-          element.style.pointerEvents = originalStyle.pointerEvents || 'auto';
       }
   };
+
+  // ✅ ИСПРАВЛЕНО: безопасная функция скачивания
+  const downloadPDF = (blob: Blob, fileName: string) => {
+      try {
+          const objectUrl = createObjectURL(blob);
+          if (!objectUrl) {
+              throw new Error("Не удалось создать URL");
+          }
+
+          const link = document.createElement('a');
+          link.href = objectUrl;
+          link.setAttribute('download', fileName);
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          revokeObjectURL(objectUrl);
+      } catch (error) {
+          console.error("Download error:", error);
+          alert("❌ Не удалось скачать файл");
+      }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
       const numAmount = Number(amount);
@@ -209,11 +282,32 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       if (sourceType === 'CUSTOMER') {
           onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
+              setIsGenerating(true);
               try {
+                  const isMobile = isMobileDevice();
+                  if (isMobile && window.location.protocol !== 'https:') {
+                      console.warn("⚠️ WhatsApp API требует HTTPS на мобильных");
+                  }
+
                   const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-                  let cleanName = selectedSale.productName.replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_').replace(/\s+/g, '_');
-                  const finalName = cleanName || 'oplata';
-                  const fileName = `Dogovor_${finalName}.pdf`;
+                  const fileSizeMB = pdfBlob.size / (1024 * 1024);
+                  console.log("PDF размер:", fileSizeMB.toFixed(2), "MB");
+
+                  if (fileSizeMB > 16) {
+                      alert("⚠️ Файл слишком большой для WhatsApp (>16MB)");
+                      const dateStr = new Date(finalDate).toLocaleDateString('ru-RU').replace(/\./g, '-');
+                      const transliteratedName = transliterate(selectedSale.productName);
+                      const fileName = `Dogovor_${transliteratedName || 'dogovor'}_${dateStr}.pdf`;
+                      downloadPDF(pdfBlob, fileName);
+                      setIsGenerating(false);
+                      setShowConfirmModal(false);
+                      return;
+                  }
+
+                  const dateStr = new Date(finalDate).toLocaleDateString('ru-RU').replace(/\./g, '-');
+                  const transliteratedName = transliterate(selectedSale.productName);
+                  const fileName = `Dogovor_${transliteratedName || 'dogovor'}_${dateStr}.pdf`;
+
                   const success = await sendWhatsAppFile(
                       appSettings.whatsapp.idInstance,
                       appSettings.whatsapp.apiTokenInstance,
@@ -221,12 +315,32 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                       pdfBlob,
                       fileName
                   );
-                  if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
-                  else { alert("Ошибка отправки PDF в WhatsApp"); }
+
+                  if (success) {
+                      alert("✅ Договор отправлен в WhatsApp");
+                  } else {
+                      const userChoice = confirm("❌ Не удалось отправить через WhatsApp\n\nСкачать файл?");
+                      if (userChoice) {
+                          downloadPDF(pdfBlob, fileName);
+                      }
+                  }
               } catch (error: any) {
-   console.error("PDF generation error:", error);
-   alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
-}
+                  console.error("PDF error:", error);
+                  const userChoice = confirm("❌ Ошибка: " + error.message + "\n\nСкачать файл?");
+                  if (userChoice && selectedSale) {
+                      try {
+                          const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
+                          const dateStr = new Date(finalDate).toLocaleDateString('ru-RU').replace(/\./g, '-');
+                          const transliteratedName = transliterate(selectedSale.productName);
+                          const fileName = `Dogovor_${transliteratedName || 'dogovor'}_${dateStr}.pdf`;
+                          downloadPDF(pdfBlob, fileName);
+                      } catch (e) {
+                          alert("Не удалось создать PDF");
+                      }
+                  }
+              } finally {
+                  setIsGenerating(false);
+              }
           }
       } else if (sourceType === 'INVESTOR') {
           onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
@@ -242,38 +356,73 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       const hasGuarantor = !!selectedSale.guarantorName;
       const sellerPhone = appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance.slice(0, 11)}` : (selectedCustomer?.phone || '+7 (___) ___-__-__');
 
-      const existingPayments = selectedSale.paymentPlan
-          ? selectedSale.paymentPlan.filter(p => p.isPaid).map(p => ({ date: new Date(p.date), amount: p.amount }))
-          : [];
-      existingPayments.push({ date: new Date(date), amount: Number(amount) });
+      const validPaidPayments = getValidPaidPayments(selectedSale);
+
+      const existingPayments = validPaidPayments.map(p => ({
+          date: new Date(p.date),
+          amount: p.amount,
+          id: p.id || `payment_${p.date}`
+      }));
+
+      const currentPaymentAmount = Number(amount);
+      const currentDate = new Date(date);
+      const currentPaymentExists = existingPayments.some(
+          p => Math.abs(p.amount - currentPaymentAmount) < 0.01 &&
+               new Date(p.date).toDateString() === currentDate.toDateString()
+      );
+
+      if (!currentPaymentExists && currentPaymentAmount > 0) {
+          existingPayments.push({
+              date: currentDate,
+              amount: currentPaymentAmount,
+              id: `temp_${Date.now()}`
+          });
+      }
+
       existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
 
       const styles = {
-          page: {
-              width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
-              fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5',
-              display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
-              position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
-          },
-          contentWrapper: { flex: 1 },
-          h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
-          headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
-          fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
-          fieldLabel: { fontWeight: 'bold' as const },
-          phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
-          section: { margin: '0 0 20px 0' },
-          sectionItem: { marginBottom: '12px' },
-          table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
-          th: { border: '1px solid #000', padding: '12px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
-          td: { border: '1px solid #000', padding: '14px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
-          footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
-          footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
-          signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
-          signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
-          signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
-      };
+    page: {
+        width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
+        fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5',
+        display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
+        position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
+    },
+    contentWrapper: { flex: 1 },
+    h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
+    headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
+    fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
+    fieldLabel: { fontWeight: 'bold' as const },
+    phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
+    section: { margin: '0 0 20px 0' },
+    sectionItem: { marginBottom: '12px' },
+    table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
+    th: {
+        border: '1px solid #000',
+        padding: '10px 8px',
+        textAlign: 'center' as const,
+        verticalAlign: 'middle' as const,
+        fontWeight: 'bold' as const,
+        background: '#f9f9f9',
+        height: '45px'
+    },
+    td: {
+        border: '1px solid #000',
+        padding: '12px 8px',
+        textAlign: 'center' as const,
+        verticalAlign: 'middle' as const,
+        height: '40px',
+        lineHeight: '1.4'
+    },
+    footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
+    footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
+    signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
+    signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
+    signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
+};
 
-      let currentDebt = selectedSale.totalAmount - selectedSale.downPayment;
+      const initialDebt = selectedSale.totalAmount - selectedSale.downPayment;
+      let currentDebt = initialDebt;
 
       return (
           <div ref={contractRef} style={styles.page}>
@@ -303,7 +452,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                           <span><span style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
                       </div>
                       <div style={{...styles.sectionItem, display: 'flex', justifyContent: 'space-between'}}>
-                          <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
+                          <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan?.filter(p => p.isRealPayment !== true)?.[0]?.amount || 0)} ₽</span>
                           <span><span style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
                       </div>
                   </div>
@@ -321,7 +470,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                               currentDebt -= p.amount;
                               const displayDebt = Math.max(0, currentDebt);
                               return (
-                                  <tr key={index}>
+                                  <tr key={p.id || index}>
                                       <td style={styles.td}>{index + 1}</td>
                                       <td style={styles.td}>{p.date.toLocaleDateString()}</td>
                                       <td style={styles.td}>{formatNum(p.amount)} ₽</td>
@@ -465,7 +614,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                     <input type="date" className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={date} onChange={e => setDate(e.target.value)} />
                 </div>
             </div>
-            <button type="submit" className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-transform active:scale-95">Подтвердить приход</button>
+            <button
+                type="submit"
+                disabled={isGenerating}
+                className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                {isGenerating ? '⏳ Формирование PDF...' : 'Подтвердить приход'}
+            </button>
         </form>
 
         {showConfirmModal && (
