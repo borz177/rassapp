@@ -98,7 +98,27 @@ const isLanding = path === "/"
 
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [showSupportChat, setShowSupportChat] = useState(false);
+  const [supportView, setSupportView] = useState<'CHAT' | 'ADMIN_PANEL'>('CHAT');
+  const [showSupportModal, setShowSupportModal] = useState(false);
 
+  // Обработчик клика по кнопке поддержки
+const handleSupportClick = () => {
+  if (user?.role === 'admin') {
+    // Админ → переключаем на панель
+    setSupportView('ADMIN_PANEL');
+    setShowSupportModal(true);
+  } else {
+    // Пользователь → открываем чат
+    setSupportView('CHAT');
+    setShowSupportModal(true);
+  }
+};
+
+// Закрытие модалки поддержки
+const handleCloseSupport = () => {
+  setShowSupportModal(false);
+  setSupportView('CHAT'); // Сброс на чат при закрытии
+};
 
 
   const [myProfitPeriod, setMyProfitPeriod] = useState(() => {
@@ -246,7 +266,7 @@ useEffect(() => {
 
 // После useEffect с initApp добавьте:
 useEffect(() => {
-  if (!user || user.role === 'admin') return;
+  if (!user) return;
 
   // Загружаем сразу
   loadSupportUnreadCount(user);
@@ -300,14 +320,15 @@ useEffect(() => {
   const activeInvestor = isInvestor && user ? investors.find(i => i.id === user.id) : null;
 
 
-  const loadSupportUnreadCount = async (currentUser: User) => {
-  if (!currentUser || currentUser.role === 'admin') return;
+const loadSupportUnreadCount = async (currentUser: User) => {
+  if (!currentUser) return; // ← Убрали проверку на admin
 
   try {
+    // ✅ Правильный путь: /api/support/tickets
     const response = await api.get<{
       tickets: Array<{ unreadCount: number }>;
       broadcasts: any[];
-      totalUnread: number
+      totalUnread: number;
     }>('/support/tickets');
 
     setSupportUnreadCount(response.totalUnread || 0);
@@ -941,12 +962,22 @@ if (!user && !isLoading) {
     isSyncing={isSyncing}
     supportUnreadCount={supportUnreadCount}
     // 🔹 Кнопка поддержки для десктопа (плавающая)
-    supportButton={
-      <SupportButton
-        unreadCount={supportUnreadCount}
-        onClick={() => setShowSupportChat(true)}
-      />
-    }
+   supportButton={
+  <SupportButton
+    unreadCount={supportUnreadCount}
+    onClick={() => {
+      // 👤 Пользователь: открыть чат
+      setSupportView('CHAT');
+      setShowSupportModal(true);
+    }}
+    onAdminClick={() => {
+      // 👑 Админ: перейти в панель поддержки
+      setSupportView('ADMIN_PANEL');
+      setShowSupportModal(true);
+    }}
+    userRole={user?.role}
+  />
+}
 
   >
 
@@ -1124,14 +1155,24 @@ if (!user && !isLoading) {
       <AdminSupportPanel onBack={() => setCurrentView('ADMIN_PANEL')} />
     )}
 
-    {/* 🔹 МОДАЛЬНОЕ ОКНО ЧАТА ПОДДЕРЖКИ */}
-    {showSupportChat && user && (
-      <SupportChat
-        user={user}
-        onClose={() => setShowSupportChat(false)}
-        onUnreadChange={setSupportUnreadCount}
-      />
-    )}
+
+{/* ✅ Модалка техподдержки (универсальная) */}
+{showSupportModal && (
+  supportView === 'CHAT' ? (
+    <SupportChat
+      user={user}
+      onClose={handleCloseSupport}
+      onUnreadChange={setSupportUnreadCount}
+    />
+  ) : (
+    <AdminSupportPanel
+      onBack={handleCloseSupport}
+      onSendMessage={() => {
+        setTimeout(() => loadSupportUnreadCount(user!), 500);
+      }}
+    />
+  )
+)}
 
     {/* ==================== МОБИЛЬНОЕ МЕНЮ "ЕЩЁ" ==================== */}
     {currentView === 'MORE' && !isInvestor && (
@@ -1314,39 +1355,37 @@ if (!user && !isLoading) {
             </button>
           )}
 
-            {/* 🔹 НОВАЯ КНОПКА: Техподдержка (только для админов) */}
-{user.role === 'admin' && (
-  <button onClick={() => setCurrentView('ADMIN_SUPPORT')}
-          className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
-      <div className="flex items-center gap-3">
-          <div className="bg-blue-100 text-blue-600 p-2 rounded-lg">{ICONS.Chat}</div>
-          <span className="font-semibold text-slate-800">Техподдержка</span>
-      </div>
-      <span className="text-slate-400">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="9 18 15 12 9 6"/>
-          </svg>
-      </span>
-  </button>
-)}
-{/* Кнопка Техподдержка */}
+{/* ✅ НОВАЯ: Универсальная кнопка техподдержки */}
 <button
   onClick={() => {
-    loadSupportUnreadCount(user); // Принудительное обновление
-    setShowSupportChat(true);
+    loadSupportUnreadCount(user); // Обновить счётчик
+
+    // 🔹 Единая логика: роль определяет действие
+    if (user?.role === 'admin') {
+      setSupportView('ADMIN_PANEL'); // 👑 Админ → панель
+    } else {
+      setSupportView('CHAT');         // 👤 Пользователь → чат
+    }
+    setShowSupportModal(true);        // Открыть модалку
   }}
   className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50 relative"
 >
   <div className="flex items-center gap-3">
-    <div className="bg-indigo-100 p-2 rounded-full text-indigo-600">
-      {ICONS.Chat}
+    <div className={`p-2 rounded-lg ${
+      user?.role === 'admin' 
+        ? 'bg-purple-100 text-purple-600' 
+        : 'bg-indigo-100 text-indigo-600'
+    }`}>
+      {user?.role === 'admin' ? ICONS.Crown : ICONS.Chat}
     </div>
-    <span className="font-semibold text-slate-700">Техподдержка</span>
+    <span className="font-semibold text-slate-700">
+      {user?.role === 'admin' ? 'Панель поддержки' : 'Техподдержка'}
+    </span>
   </div>
 
   {/* 🔴 Счётчик непрочитанных */}
   {supportUnreadCount > 0 && (
-    <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
+    <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center animate-pulse">
       {supportUnreadCount > 9 ? '9+' : supportUnreadCount}
     </span>
   )}

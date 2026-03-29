@@ -17,6 +17,7 @@ interface LayoutProps {
   onNavigateToProfile: () => void;
   isOnline?: boolean;
   isSyncing?: boolean;
+  onSupportClick?: () => void;
   supportButton?: React.ReactNode;
   supportUnreadCount?: number;
 }
@@ -44,6 +45,7 @@ const Layout: React.FC<LayoutProps> = ({
   isSyncing = false,
   supportButton, // 🔹 Добавили сюда
   supportUnreadCount = 0,
+  onSupportClick,
 }) => {  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
@@ -501,9 +503,20 @@ const Layout: React.FC<LayoutProps> = ({
 
       </nav>
          {/* 🔹 Плавающая кнопка техподдержки (только десктоп) */}
-{supportButton && (
+{/* 🔹 УНИВЕРСАЛЬНАЯ плавающая кнопка техподдержки (только десктоп) */}
+{user && (
   <div className="hidden md:block">
-    {supportButton}
+    {supportButton ? (
+      // Если передана кастомная кнопка — используем её
+      supportButton
+    ) : (
+      // Иначе рендерим стандартную с правильной логикой
+      <SupportButton
+        unreadCount={supportUnreadCount}
+        onClick={() => onSupportClick?.()}  // Единый обработчик
+        userRole={user.role}                // ← Передаём роль
+      />
+    )}
   </div>
 )}
     </div>
