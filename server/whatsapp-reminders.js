@@ -189,7 +189,7 @@ async function processRemindersForUser(user) {
   let sentCount = 0;
 
   for (const sale of sales) {
-    if (sale.status !== 'ACTIVE') continue;
+    if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') continue;
 
     const customer = customers.find(c => c.id === sale.customerId);
     if (!customer || !customer.phone) continue;
