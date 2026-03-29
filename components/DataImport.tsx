@@ -319,8 +319,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess, curre
                         sale.downPayment = downPayment;
                         sale.installments = installmentsCount;
                         sale.startDate = saleDateIso;
-                        sale.status = statusStr.includes('Завершен') ? 'COMPLETED'
-                        : 'ACTIVE';
+                        sale.status = statusStr.includes('Завершен') ? 'COMPLETED' : (statusStr.includes('Оформлен') ? 'DRAFT' : 'ACTIVE');
                         sale.accountId = accountId;
 
                         // Обновляем поручителя если есть
