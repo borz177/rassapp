@@ -1606,7 +1606,88 @@ app.delete('/api/admin/support/tickets/:ticketId', adminAuth, async (req, res) =
   }
 });
 
+// server/index.js
+const express = require('express');
+const cors = require('cors');
+const { generateReceiptPDF } = require('./pdfGenerator');
+// Импортируйте вашу функцию отправки WhatsApp (адаптируйте путь)
+// const { sendWhatsAppFile } = require('./services/whatsapp');
 
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+// ... ваши существующие роуты ...
+
+// НОВЫЙ РОУТ для генерации договора
+app.post('/api/receipts/generate', async (req, res) => {
+  try {
+    const {
+      sale,
+      customer,
+      paymentAmount,
+      paymentDate,
+      settings,
+      sendViaWhatsApp
+    } = req.body;
+
+    // Валидация
+    if (!sale || !customer || !paymentAmount) {
+      return res.status(400).json({ error: 'Отсутствуют обязательные поля' });
+    }
+
+    // 1. Генерируем PDF
+    const pdfBuffer = await generateReceiptPDF({
+      sale,
+      customer,
+      paymentAmount,
+      paymentDate,
+      settings
+    });
+
+    // 2. Если нужно — отправляем в WhatsApp сразу с сервера
+    if (sendViaWhatsApp && settings?.whatsapp?.enabled && customer?.phone) {
+      const phone = customer.phone.replace(/[^\d+]/g, '');
+      const cleanName = sale.productName.replace(/[^a-zA-Z0-9а-яА-ЯёЁ]/g, '_');
+      const fileName = `Dogovor_${cleanName || 'oplata'}.pdf`;
+
+      try {
+        await sendWhatsAppFile(
+            appSettings.whatsapp.idInstance,
+            appSettings.whatsapp.apiTokenInstance,
+            phone, // Используем очищенный номер
+            pdfBlob,
+            fileName
+        );
+        console.log('PDF готов к отправке в WhatsApp:', phone);
+      } catch (waError) {
+        console.error('Ошибка отправки WhatsApp:', waError);
+      }
+    }
+
+    // 3. Возвращаем PDF клиенту
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="receipt.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+
+    res.send(pdfBuffer);
+
+  } catch (error) {
+    console.error('Ошибка генерации договора:', error);
+    res.status(500).json({
+      error: 'Не удалось создать договор',
+      details: error.message
+    });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 
 
 

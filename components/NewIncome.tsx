@@ -120,87 +120,37 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       return showCents ? profit : Math.round(profit);
   }, [selectedSale, amount, showCents]);
 
-  const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
-    if (!contractRef.current) throw new Error("Contract element not found");
-    const element = contractRef.current;
+ // НОВАЯ ВЕРСИЯ: запрашивает PDF с сервера
+const generateContractPDF = async (
+  sale: Sale,
+  customer: Customer,
+  currentPaymentAmount: number,
+  paymentDate: string
+): Promise<Blob> => {
 
-    // 1. Сохраняем оригинальные стили для восстановления
-    const originalStyle = {
-        display: element.style.display,
-        position: element.style.position,
-        left: element.style.left,
-        top: element.style.top,
-        visibility: element.style.visibility,
-        zIndex: element.style.zIndex,
-        opacity: element.style.opacity,
-        pointerEvents: element.style.pointerEvents,
-        width: element.style.width,
-        transform: element.style.transform
-    };
+  const appSettings = getAppSettings();
 
-    try {
-        // 2. Надежная подготовка элемента для рендеринга
-        // Используем transform: scale(0) вместо opacity, чтобы браузер гарантированно отрисовал контент
-        element.style.display = 'block';
-        element.style.position = 'fixed';
-        element.style.left = '0';
-        element.style.top = '0';
-        element.style.visibility = 'visible';
-        element.style.zIndex = '9999';
-        element.style.opacity = '1';
-        element.style.pointerEvents = 'none';
-        element.style.transform = 'scale(0)'; // Скрываем визуально, но оставляем в потоке рендеринга
-        element.style.width = '210mm'; // Фиксируем ширину как в стилях контракта
+  const response = await fetch('http://rassrochka.pro/api/receipts/generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sale,
+      customer,
+      paymentAmount: currentPaymentAmount,
+      paymentDate,
+      settings: appSettings,
+      sendViaWhatsApp: false // Отправляем отдельно
+    })
+  });
 
-        // 3. Ждем отрисовку (для мобильных увеличиваем время)
-        await new Promise(resolve => setTimeout(resolve, 500));
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.details || `Ошибка сервера: ${response.status}`);
+  }
 
-        // 4. Определение мобильного устройства и настройка масштаба
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
-
-        // Критически важно: снижаем scale для мобильных, чтобы не превысить лимит памяти канваса
-        // 0.8 - оптимальное значение: текст остается читаемым, но пикселей меньше
-        const scaleOption = isMobile ? 0.8 : 1.5;
-
-        // 5. Захват изображения с оптимизированными настройками
-        const canvas = await html2canvas(element, {
-            scale: scaleOption,
-            useCORS: true,
-            logging: false,
-            backgroundColor: '#ffffff', // Явный белый фон
-            // Убираем windowWidth/windowHeight, чтобы html2canvas сам рассчитал размер контента
-            // Это предотвращает обрезку на мобильных
-            scrollY: -window.scrollY, // Компенсация скролла
-            allowTaint: true, // Разрешить загрузку изображений с других доменов (если есть)
-        });
-
-        // 6. Генерация PDF
-        const imgData = canvas.toDataURL('image/jpeg', 0.85);
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-        return pdf.output('blob');
-
-    } catch (error: any) {
-        console.error("PDF generation error details:", {
-            message: error.message,
-            stack: error.stack,
-            userAgent: navigator.userAgent,
-            innerWidth: window.innerWidth
-        });
-        throw new Error(`Ошибка создания PDF: ${error.message || "Неизвестная ошибка"}`);
-    } finally {
-        // 7. Восстановление стилей элемента
-        if (contractRef.current) {
-            Object.assign(contractRef.current.style, originalStyle);
-            // Сбрасываем transform, если он не был в оригинале
-            if (!originalStyle.transform) {
-                contractRef.current.style.transform = '';
-            }
-        }
-    }
+  return await response.blob();
 };
   const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
