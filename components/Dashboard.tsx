@@ -275,7 +275,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     const payments: { sale: Sale, customerName: string, totalDue: number, isTomorrow: boolean, isToday: boolean, isOverdue: boolean }[] = [];
 
     sales.forEach(sale => {
-      if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
+      if (sale.status !== 'ACTIVE') return;
 
       const realInstallmentPayments = sale.paymentPlan
           .filter(p => p.isPaid && p.isRealPayment !== false)
