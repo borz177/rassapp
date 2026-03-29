@@ -7,7 +7,7 @@ console.log('GREEN_API_PARTNER_TOKEN loaded:', process.env.GREEN_API_PARTNER_TOK
 console.log('Server Timezone:', new Date().toString());
 
 const express = require('express');
-
+const { generateReceiptPDF } = require('./pdfGenerator');
 const { Pool } = require('pg');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
@@ -1606,6 +1606,8 @@ app.delete('/api/admin/support/tickets/:ticketId', adminAuth, async (req, res) =
   }
 });
 
+
+
 // ============================================
 // ✅ НОВЫЙ РОУТ: Генерация договора (вставьте ПЕРЕД startServer)
 // ============================================
@@ -1677,10 +1679,6 @@ app.post('/api/receipts/generate', async (req, res) => {
     });
   }
 });
-
-
-
-
 
 
 // --- PUBLIC API V1 ---
