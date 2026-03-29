@@ -112,6 +112,8 @@
   }
 
 
+
+
   .liquid-glass {
   position: relative;
   background: rgba(255,255,255,0.15);
@@ -162,4 +164,19 @@
     inset 0 2px 4px rgba(255,255,255,0.8);
 }
 
+}
+
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-page-load {
+  animation: page-fade-in 0.4s ease-out forwards;
 }
