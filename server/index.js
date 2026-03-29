@@ -1606,22 +1606,9 @@ app.delete('/api/admin/support/tickets/:ticketId', adminAuth, async (req, res) =
   }
 });
 
-// server/index.js
-const express = require('express');
-const cors = require('cors');
-const { generateReceiptPDF } = require('./pdfGenerator');
-// Импортируйте вашу функцию отправки WhatsApp (адаптируйте путь)
-// const { sendWhatsAppFile } = require('./services/whatsapp');
-
-const app = express();
-const PORT = process.env.PORT || 3001;
-
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-
-// ... ваши существующие роуты ...
-
-// НОВЫЙ РОУТ для генерации договора
+// ============================================
+// ✅ НОВЫЙ РОУТ: Генерация договора (вставьте ПЕРЕД startServer)
+// ============================================
 app.post('/api/receipts/generate', async (req, res) => {
   try {
     const {
@@ -1654,16 +1641,22 @@ app.post('/api/receipts/generate', async (req, res) => {
       const fileName = `Dogovor_${cleanName || 'oplata'}.pdf`;
 
       try {
-        await sendWhatsAppFile(
-            appSettings.whatsapp.idInstance,
-            appSettings.whatsapp.apiTokenInstance,
-            phone, // Используем очищенный номер
-            pdfBlob,
-            fileName
-        );
-        console.log('PDF готов к отправке в WhatsApp:', phone);
+        // 🔧 Импортируйте вашу функцию вверху файла:
+        // const { sendWhatsAppFile } = require('./services/whatsapp');
+
+        // Если sendWhatsAppFile ещё не готова — закомментируйте этот блок
+        // await sendWhatsAppFile(
+        //   settings.whatsapp.idInstance,
+        //   settings.whatsapp.apiTokenInstance,
+        //   phone,
+        //   pdfBuffer,  // ← Правильное имя переменной
+        //   fileName
+        // );
+
+        console.log('📄 PDF готов к отправке в WhatsApp:', phone);
       } catch (waError) {
-        console.error('Ошибка отправки WhatsApp:', waError);
+        console.error('⚠️ Ошибка отправки WhatsApp:', waError);
+        // Не прерываем ответ, просто логируем
       }
     }
 
@@ -1677,7 +1670,7 @@ app.post('/api/receipts/generate', async (req, res) => {
     res.send(pdfBuffer);
 
   } catch (error) {
-    console.error('Ошибка генерации договора:', error);
+    console.error('❌ Ошибка генерации договора:', error);
     res.status(500).json({
       error: 'Не удалось создать договор',
       details: error.message
