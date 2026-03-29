@@ -331,7 +331,7 @@ const Layout: React.FC<LayoutProps> = ({
       </aside>
 
       {/* Main Content Area - Updated margins and centering */}
-      <main className="animate-page-load flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50">
+      <main className="flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50">
         <div className="w-full max-w-7xl mx-auto h-full">
             {children}
         </div>
