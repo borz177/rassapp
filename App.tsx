@@ -573,12 +573,11 @@ const handleDeleteSale = async (saleId: string) => {
         return;
     }
 
-    // 🔹 1. Считаем оплаты
-    const downPaymentAmount = Number(sale.downPayment);
+    // 🔹 1. Считаем оплаты по графику (не включая первый взнос)
     const installmentPayments = sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false);
     const installmentAmount = installmentPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
-    // 🔹 2. Если есть платежи по графику — блокируем
+    // 🔹 2. Если есть платежи по графику — блокируем удаление
     if (installmentAmount > 0) {
         alert(
             `❌ Нельзя удалить договор с платежами по графику.\n\n` +
@@ -588,7 +587,8 @@ const handleDeleteSale = async (saleId: string) => {
         return;
     }
 
-    // 🔹 3. Если есть первый взнос — создаём расход на возврат клиенту
+    // 🔹 3. Если есть первый взнос — создаём запись о возврате (только для аудита!)
+    const downPaymentAmount = Number(sale.downPayment);
     if (downPaymentAmount > 0 && sale.accountId) {
         try {
             const refundToClient: Expense = {
@@ -597,13 +597,13 @@ const handleDeleteSale = async (saleId: string) => {
                 accountId: sale.accountId,
                 title: `Возврат клиенту: ${sale.productName}`,
                 description: `Возврат первого взноса при удалении договора #${saleId}`,
-                amount: downPaymentAmount, // 🔹 ПОЛОЖИТЕЛЬНАЯ (вычитается из баланса)
+                amount: downPaymentAmount,
                 category: 'Возврат клиенту',
                 date: new Date().toISOString(),
                 createdAt: new Date().toISOString(),
                 customerId: sale.customerId,
                 payoutType: 'REFUND',
-                isRefund: true
+                isRefund: true  // 🔹 ФЛАГ: не влияет на баланс
             };
 
             await api.saveItem('expenses', refundToClient);
@@ -611,12 +611,11 @@ const handleDeleteSale = async (saleId: string) => {
 
         } catch (err) {
             console.error('❌ Ошибка при возврате клиенту:', err);
-            alert("Не удалось оформить возврат клиенту. Удаление отменено.");
-            return;
+            // Не прерываем удаление, если не удалось создать запись аудита
         }
     }
 
-    // 🔹 4. Если есть закупка — создаём ОТРИЦАТЕЛЬНЫЙ расход (возврат на счёт)
+    // 🔹 4. Если есть закупка — создаём запись о возврате (только для аудита!)
     if (sale.buyPrice && Number(sale.buyPrice) > 0 && sale.accountId) {
         try {
             const refundPurchase: Expense = {
@@ -625,12 +624,12 @@ const handleDeleteSale = async (saleId: string) => {
                 accountId: sale.accountId,
                 title: `Возврат закупки: ${sale.productName}`,
                 description: `Возврат средств за закупку при удалении договора #${saleId}`,
-                amount: -Number(sale.buyPrice), // 🔹 ОТРИЦАТЕЛЬНАЯ (прибавляется к балансу)
+                amount: Number(sale.buyPrice),  // 🔹 ПОЛОЖИТЕЛЬНАЯ сумма (как обычный расход)
                 category: 'Возврат закупки',
                 date: new Date().toISOString(),
                 createdAt: new Date().toISOString(),
                 payoutType: 'REFUND',
-                isRefund: true
+                isRefund: true  // 🔹 ФЛАГ: не влияет на баланс
             };
 
             await api.saveItem('expenses', refundPurchase);
@@ -638,8 +637,7 @@ const handleDeleteSale = async (saleId: string) => {
 
         } catch (err) {
             console.error('❌ Ошибка при возврате закупки:', err);
-            alert("Не удалось оформить возврат закупки. Удаление отменено.");
-            return;
+            // Не прерываем удаление
         }
     }
 

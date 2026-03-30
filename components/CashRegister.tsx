@@ -407,19 +407,30 @@ const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL'
 // ... (остальной код без изменений до блока "Моя прибыль") ...
   const accountBalances = useMemo(() => {
     const balances: Record<string, number> = {};
+
     accounts.forEach(acc => {
       let total = 0;
+
+      // ➕ Приход из договоров
       const accountSales = sales.filter(s => s.accountId === acc.id);
       accountSales.forEach(s => {
           total += Number(s.downPayment);
-          s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false).forEach(p => total += Number(p.amount));
+          s.paymentPlan
+            .filter(p => p.isPaid && p.isRealPayment !== false)
+            .forEach(p => total += Number(p.amount));
       });
+
+      // ➖ Расходы, НО исключаем возвраты (они только для аудита)
       const accountExpenses = expenses.filter(e => e.accountId === acc.id);
-      total -= accountExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+      const regularExpenses = accountExpenses.filter(e => e.isRefund !== true);
+
+      total -= regularExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+
       balances[acc.id] = total;
     });
+
     return balances;
-  }, [accounts, sales, expenses]);
+}, [accounts, sales, expenses]);
 
   // 🔹 Прибыль менеджера (ожидаемая)
   const calculatedExpectedProfit = useMemo(() => {
