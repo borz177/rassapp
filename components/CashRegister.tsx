@@ -434,7 +434,10 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       let totalProfit = 0;
 
       // Include both ACTIVE and COMPLETED sales
-      const salesWithProfit = sales.filter(s => (s.status === 'ACTIVE' || s.status === 'COMPLETED') && s.buyPrice > 0);
+     const salesWithProfit = sales.filter(s =>
+    (s.status === 'ACTIVE' || s.status === 'COMPLETED' || s.status === 'DRAFT')
+    && s.buyPrice > 0
+);
 
       salesWithProfit.forEach(sale => {
           if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;

@@ -1614,6 +1614,12 @@ app.delete('/api/admin/support/tickets/:ticketId', adminAuth, async (req, res) =
 // ✅ НОВЫЙ РОУТ: Генерация договора
 // ============================================
 app.post('/api/receipts/generate', async (req, res) => {
+  console.log('🔥 RECEIPT ENDPOINT HIT!', {
+    hasSale: !!req.body.sale,
+    hasCustomer: !!req.body.customer,
+    sendViaWhatsApp: req.body.sendViaWhatsApp
+  });
+
   try {
     const {
       sale,
