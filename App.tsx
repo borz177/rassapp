@@ -957,7 +957,7 @@ if (!user && !isLoading) {
                   <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital}
                              accountBalances={accountBalances} onAction={handleAction}
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
-                             accounts={accounts} appSettings={appSettings}/>}
+                             accounts={accounts} appSettings={appSettings}/>} investors={investors}
               {currentView === 'DASHBOARD' && isInvestor && activeInvestor &&
                   <InvestorDashboard sales={sales} expenses={expenses} accounts={accounts} investor={activeInvestor}
                                      appSettings={appSettings}/>}
@@ -1154,7 +1154,7 @@ if (!user && !isLoading) {
   <div className="flex-1">
     <div className="flex items-center justify-between">
       <h2 className="text-xl font-bold text-left text-slate-800">{user.name}</h2>
-     
+
     </div>
     <p className="text-slate-500 text-xs mt-2 text-left flex items-center gap-1">
       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
