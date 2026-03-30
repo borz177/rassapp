@@ -1140,24 +1140,25 @@ if (!user && !isLoading) {
         {/* Профиль */}
 <button
   onClick={() => setCurrentView('PROFILE')}
-  className="group w-full backdrop-blur-xl bg-white/10 hover:bg-white/20
-             text-white p-6 rounded-2xl flex items-center gap-4
-             transition-all duration-300 hover:shadow-2xl
-             border border-white/20 hover:border-indigo-400/50"
+  className="group w-full bg-white/80 backdrop-blur-sm hover:bg-white/90
+             text-slate-800 p-6 rounded-2xl flex items-center gap-4
+             transition-all duration-300 hover:shadow-xl
+             border border-slate-200/80 hover:border-indigo-400
+             shadow-sm"
 >
-  <div className="w-16 h-16 bg-gradient-to-br from-indigo-400 to-pink-500
-                  rounded-2xl flex items-center justify-center text-2xl font-bold
-                  shadow-lg group-hover:rotate-6 transition-transform duration-300">
+  <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-pink-500
+                  rounded-2xl flex items-center justify-center text-2xl font-bold text-white
+                  shadow-md group-hover:scale-105 transition-transform duration-300">
     {user.name.charAt(0).toUpperCase()}
   </div>
   <div className="flex-1">
     <div className="flex items-center justify-between">
-      <h2 className="text-xl font-bold text-left">{user.name}</h2>
-      <div className="px-2 py-1 bg-indigo-500/30 rounded-full text-xs font-semibold">
+      <h2 className="text-xl font-bold text-left text-slate-800">{user.name}</h2>
+      <div className="px-2 py-1 bg-indigo-100 rounded-full text-xs font-semibold text-indigo-700">
         {user.role}
       </div>
     </div>
-    <p className="text-white/60 text-xs mt-2 text-left flex items-center gap-1">
+    <p className="text-slate-500 text-xs mt-2 text-left flex items-center gap-1">
       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
       </svg>
