@@ -278,11 +278,11 @@ const Dashboard: React.FC<DashboardProps> = ({
             .filter(p => p.isPaid && p.isRealPayment !== false)
             .reduce((sum, p) => sum + p.amount, 0);
 
-        receivedProfit += collectedPayments * profitMargin * managerShare;
+        receivedProfit += collectedPayments * profitMargin;
 
-        if (sale.status === 'ACTIVE') {
-            expectedProfit += sale.remainingAmount * profitMargin * managerShare;
-        }
+        if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
+    expectedProfit += sale.remainingAmount * profitMargin * managerShare;
+}
     });
 
     return {
