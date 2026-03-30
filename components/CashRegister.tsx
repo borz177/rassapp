@@ -519,13 +519,19 @@ const CashRegister: React.FC<CashRegisterProps> = ({
 
   // 🔹🔹🔹 НОВЫЙ БЛОК: Прибыль инвестора 🔹🔹🔹
   const investorProfitStats = useMemo(() => {
-    // Проверяем, есть ли инвесторы у счетов
-    const accountsWithInvestors = accounts.filter(acc => acc.ownerId && investors.some(i => i.id === acc.ownerId));
+    const accountsWithInvestors = accounts.filter(acc =>
+        acc.ownerId && investors.some(i => i.id === acc.ownerId)
+    );
     if (accountsWithInvestors.length === 0) return null;
 
     let expectedProfit = 0;
     let receivedProfit = 0;
     let totalWithdrawn = 0;
+
+    // 🔧 Даты периода для фильтрации
+    const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
+    const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
+    endDate.setHours(23, 59, 59, 999);
 
     sales.forEach(sale => {
         if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
@@ -538,32 +544,45 @@ const CashRegister: React.FC<CashRegisterProps> = ({
         if (!investor) return;
 
         const totalSaleProfit = sale.totalAmount - sale.buyPrice;
-        const profitMargin = totalSaleProfit / sale.totalAmount;
+        const profitMargin = sale.totalAmount > 0 ? totalSaleProfit / sale.totalAmount : 0;
         const investorShare = investor.profitPercentage / 100;
 
-        // Ожидаемая прибыль: от остатка долга (только активные продажи)
-       if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
-    expectedProfit += sale.remainingAmount * profitMargin * investorShare;
-}
+        // Ожидаемая прибыль: от остатка (ACTIVE/DRAFT)
+        if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
+            expectedProfit += sale.remainingAmount * profitMargin * investorShare;
+        }
 
-        // Полученная прибыль: от реально оплаченных сумм
-        const collectedPayments = sale.downPayment + sale.paymentPlan
+        // 🔧 Полученная прибыль: только платежи в выбранном периоде
+        let periodCollected = 0;
+
+        // Взнос
+        const saleDate = new Date(sale.startDate);
+        if (saleDate >= startDate && saleDate <= endDate) {
+            periodCollected += Number(sale.downPayment);
+        }
+
+        // Платежи по плану
+        sale.paymentPlan
             .filter(p => p.isPaid && p.isRealPayment !== false)
-            .reduce((sum, p) => sum + p.amount, 0);
-        receivedProfit += collectedPayments * profitMargin * investorShare;
+            .forEach(p => {
+                const pDate = new Date(p.date);
+                if (pDate >= startDate && pDate <= endDate) {
+                    periodCollected += Number(p.amount);
+                }
+            });
+
+        receivedProfit += periodCollected * profitMargin * investorShare;
     });
 
-    // Выплаты инвестору (расходы с категорией "Выплата инвестору")
+    // Выплаты инвестору (уже фильтруются по периоду — ок)
     const investorWithdrawals = expenses
-        .filter(e => e.investorId && e.payoutType === 'PROFIT' && (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
+        .filter(e => e.investorId && e.payoutType === 'PROFIT' &&
+                    (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
         .filter(e => {
             const eDate = new Date(e.date);
-            const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
-            const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
-            endDate.setHours(23, 59, 59, 999);
             return eDate >= startDate && eDate <= endDate;
         });
-    
+
     totalWithdrawn = investorWithdrawals.reduce((sum, e) => sum + Number(e.amount), 0);
 
     return {
@@ -572,7 +591,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
         totalWithdrawn: Math.round(totalWithdrawn * 100) / 100,
         balance: Math.round((receivedProfit - totalWithdrawn) * 100) / 100
     };
-  }, [sales, accounts, investors, expenses, profitFilterAccountId, myProfitPeriod]);
+}, [sales, accounts, investors, expenses, profitFilterAccountId, myProfitPeriod]);
 
   const handleCreateAccount = (name: string, type: Account['type'], partners?: string[]) => {
       onAddAccount(name, type, partners);
@@ -738,12 +757,12 @@ const CashRegister: React.FC<CashRegisterProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-5">
                   <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
-                      <p className="text-xs sm:text-sm font-medium text-indigo-600 mb-1 sm:mb-2">Ожидаемая прибыль</p>
+                      <p className="text-xs sm:text-sm font-medium text-indigo-600 mb-1 sm:mb-2">Ожидается</p>
                       <p className="text-lg sm:text-2xl font-bold text-indigo-900 break-words">{formatCurrency(calculatedExpectedProfit, appSettings.showCents)} ₽</p>
                       <p className="text-[10px] sm:text-xs text-indigo-500 mt-1 sm:mt-2">С активных договоров</p>
                   </div>
                   <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
-                      <p className="text-xs sm:text-sm font-medium text-emerald-600 mb-1 sm:mb-2">Полученная прибыль</p>
+                      <p className="text-xs sm:text-sm font-medium text-emerald-600 mb-1 sm:mb-2">Получено</p>
                       <p className="text-lg sm:text-2xl font-bold text-emerald-900 break-words">{formatCurrency(totalManagerProfitEarned, appSettings.showCents)} ₽</p>
                       <p className="text-[10px] sm:text-xs text-emerald-500 mt-1 sm:mt-2">За выбранный период</p>
                   </div>
