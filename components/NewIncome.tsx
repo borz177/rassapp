@@ -2,9 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Customer, Account, Investor, Sale } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
-import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+
+import { api } from '../services/api';
 
 interface NewIncomeProps {
   initialData?: any;
@@ -127,30 +126,15 @@ const generateContractPDF = async (
   currentPaymentAmount: number,
   paymentDate: string
 ): Promise<Blob> => {
-
-  const appSettings = getAppSettings();
-
-  const response = await fetch('http://rassrochka.pro/api/receipts/generate', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      sale,
-      customer,
-      paymentAmount: currentPaymentAmount,
-      paymentDate,
-      settings: appSettings,
-      sendViaWhatsApp: false // Отправляем отдельно
-    })
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.details || `Ошибка сервера: ${response.status}`);
-  }
-
-  return await response.blob();
+  // Используем новый API метод вместо html2canvas
+  return await api.generateReceipt(
+    sale,
+    customer,
+    currentPaymentAmount,
+    paymentDate,
+    appSettings,
+    false // sendViaWhatsApp = false (мы отправим отдельно)
+  );
 };
   const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
@@ -180,49 +164,60 @@ const generateContractPDF = async (
           // Внутри handleConfirm, в блоке CUSTOMER_PAYMENT:
 if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
     try {
-        // Валидация номера телефона (убираем всё кроме цифр и +)
-        let phone = selectedCustomer.phone.replace(/[^\d+]/g, '');
-        if (!phone.startsWith('+')) {
-            phone = '+' + phone; // Добавляем + если нет (для WhatsApp API)
-        }
-        // Убираем пробелы и тире, оставляем только цифры и +
-        phone = phone.replace(/[^\d+]/g, '');
-
-        // Проверка: достаточно ли цифр (минимум 10-11 для международного формата)
-        if (phone.replace(/\D/g,'').length < 10) {
-             alert("Неверный формат номера телефона клиента");
-             return;
+        // Показываем индикатор загрузки
+        const originalBtn = document.activeElement as HTMLButtonElement;
+        if (originalBtn) {
+            originalBtn.disabled = true;
+            originalBtn.textContent = '⏳ Отправка...';
         }
 
-        const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-
-        let cleanName = selectedSale.productName.replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_').replace(/\s+/g, '_');
-        const finalName = cleanName || 'oplata';
-        const fileName = `Dogovor_${finalName}.pdf`;
-
-        // Показываем индикатор загрузки (важно для мобильных, где генерация идет долго)
-        const loadingAlert = alert("Формируем чек и отправляем...");
-
-        const success = await sendWhatsAppFile(
-            appSettings.whatsapp.idInstance,
-            appSettings.whatsapp.apiTokenInstance,
-            phone, // Используем очищенный номер
-            pdfBlob,
-            fileName
+        // 1. Генерируем PDF через сервер (с автоматической отправкой в WhatsApp)
+        const pdfBlob = await api.generateReceipt(
+            selectedSale,
+            selectedCustomer,
+            numAmount,
+            finalDate,
+            appSettings,
+            true // sendViaWhatsApp = true
         );
 
-        // Закрываем индикатор загрузки, если это возможно в вашей реализации
-        // если alert используется как модалка, просто продолжаем
+        alert("✅ Договор отправлен в WhatsApp");
 
-        if (success) {
-            alert("✅ Договор отправлен в WhatsApp");
-        } else {
-            alert("⚠️ Ошибка отправки: проверьте подключение или статус аккаунта в WhatsApp API");
-        }
     } catch (error: any) {
-        console.error("WhatsApp send error:", error);
-        // Показываем пользователю понятную ошибку
-        alert(`Не удалось отправить чек: ${error.message || "Проверьте интернет-соединение"}`);
+        console.error("Receipt send error:", error);
+
+        // Фоллбэк: предлагаем скачать вручную
+        const download = confirm(
+            `❌ Не удалось отправить автоматически.\n\n${error.message}\n\nСкачать договор для ручной отправки?`
+        );
+
+        if (download) {
+            try {
+                const pdfBlob = await api.generateReceipt(
+                    selectedSale,
+                    selectedCustomer,
+                    numAmount,
+                    finalDate,
+                    appSettings,
+                    false
+                );
+                const url = URL.createObjectURL(pdfBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Dogovor_${selectedSale.productName.replace(/\s+/g, '_')}.pdf`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (dlError) {
+                alert("Не удалось скачать: " + (dlError as Error).message);
+            }
+        }
+    } finally {
+        // Возвращаем кнопку в исходное состояние
+        const originalBtn = document.activeElement as HTMLButtonElement;
+        if (originalBtn) {
+            originalBtn.disabled = false;
+            originalBtn.textContent = 'Зачислить';
+        }
     }
 }
 

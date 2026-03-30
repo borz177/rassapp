@@ -8,6 +8,7 @@ console.log('Server Timezone:', new Date().toString());
 
 const express = require('express');
 const { generateReceiptPDF } = require('./pdfGenerator');
+const { sendWhatsAppFile } = require('./whatsapp');
 const { Pool } = require('pg');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
@@ -1608,8 +1609,9 @@ app.delete('/api/admin/support/tickets/:ticketId', adminAuth, async (req, res) =
 
 
 
+
 // ============================================
-// ✅ НОВЫЙ РОУТ: Генерация договора (вставьте ПЕРЕД startServer)
+// ✅ НОВЫЙ РОУТ: Генерация договора
 // ============================================
 app.post('/api/receipts/generate', async (req, res) => {
   try {
@@ -1643,22 +1645,16 @@ app.post('/api/receipts/generate', async (req, res) => {
       const fileName = `Dogovor_${cleanName || 'oplata'}.pdf`;
 
       try {
-        // 🔧 Импортируйте вашу функцию вверху файла:
-        // const { sendWhatsAppFile } = require('./services/whatsapp');
-
-        // Если sendWhatsAppFile ещё не готова — закомментируйте этот блок
-        // await sendWhatsAppFile(
-        //   settings.whatsapp.idInstance,
-        //   settings.whatsapp.apiTokenInstance,
-        //   phone,
-        //   pdfBuffer,  // ← Правильное имя переменной
-        //   fileName
-        // );
-
-        console.log('📄 PDF готов к отправке в WhatsApp:', phone);
+        await sendWhatsAppFile(
+          settings.whatsapp.idInstance,
+          settings.whatsapp.apiTokenInstance,
+          phone,
+          pdfBuffer,
+          fileName
+        );
+        console.log('✅ PDF отправлен в WhatsApp:', phone);
       } catch (waError) {
         console.error('⚠️ Ошибка отправки WhatsApp:', waError);
-        // Не прерываем ответ, просто логируем
       }
     }
 
@@ -1679,6 +1675,7 @@ app.post('/api/receipts/generate', async (req, res) => {
     });
   }
 });
+
 
 
 // --- PUBLIC API V1 ---

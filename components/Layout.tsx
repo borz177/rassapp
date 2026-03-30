@@ -265,7 +265,7 @@ const Layout: React.FC<LayoutProps> = ({
       <header className="md:hidden fixed top-0 left-0 right-0 bg-white h-16 flex items-center px-4 shadow-md z-30 border-b border-slate-200">
         <div className="flex flex-col">
             <h1 className="text-xl font-bold tracking-tight text-indigo-600">{appSettings.companyName}</h1>
-            {!isOnline && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded w-fit">Офлайн</span>}
+            {/*{!isOnline && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded w-fit">Офлайн</span>}*/}
             {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">Синхронизация...</span>}
         </div>
         {!isInvestor && (
@@ -290,7 +290,7 @@ const Layout: React.FC<LayoutProps> = ({
             {appSettings.companyName}
           </h1>
           <div className="mt-2 flex gap-2">
-              {!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}
+              {/*{!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}*/}
               {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}
           </div>
           {user && !isInvestor && user.role !== 'admin' && (

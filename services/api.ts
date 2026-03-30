@@ -486,5 +486,42 @@ delete: async <T>(url: string): Promise<T> => {
     const json = await res.json();
     if (!res.ok) throw new Error(json.msg || json.error || `DELETE ${url} failed`);
     return json;
-}
+},
+
+
+
+// ============================================
+// ✅ ГЕНЕРАЦИЯ ДОГОВОРА (PDF)
+// ============================================
+generateReceipt: async (
+  sale: Sale,
+  customer: Customer,
+  paymentAmount: number,
+  paymentDate: string,
+  settings: any,
+  sendViaWhatsApp: boolean = false
+): Promise<Blob> => {
+  const res = await fetch(`${API_URL}/receipts/generate`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({
+      sale,
+      customer,
+      paymentAmount,
+      paymentDate,
+      settings,
+      sendViaWhatsApp
+    })
+  });
+
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.details || 'Не удалось создать договор');
+  }
+
+  return await res.blob();
+},
+
+
+
 };
