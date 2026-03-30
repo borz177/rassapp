@@ -563,8 +563,73 @@ const dashboardStats = useMemo(() => {
   const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
   const handleDeleteSale = async (saleId: string) => { if (window.confirm("Вы уверены?")) { const sale = sales.find(s => s.id === saleId); await api.deleteItem('sales', saleId); removeFromList(setSales, saleId); if(sale) { await api.deleteItem('expenses', `exp_sale_${saleId}`); setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${saleId}`)); if (sale.productId) { const prod = products.find(p => p.id === sale.productId); if(prod) { const updatedProd = { ...prod, stock: prod.stock + 1 }; const savedProd = await api.saveItem('products', updatedProd); updateList(setProducts, savedProd); } } } } };
   const handleViewSaleSchedule = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView('CONTRACTS'); setCurrentView('CUSTOMER_DETAILS'); };
-  const handleIncomeSubmit = async (data: any) => { if (!user) return; if (data.type === 'CUSTOMER_PAYMENT') { const { saleId, amount } = data; const sale = sales.find(s => s.id === saleId); if (sale) { const updatedSale = { ...sale }; updatedSale.remainingAmount = Math.max(0, updatedSale.remainingAmount - amount); updatedSale.paymentPlan.push({ id: `paid_${Date.now()}`, saleId: sale.id, amount: amount, date: data.date, isPaid: true, isRealPayment: true }); if (updatedSale.remainingAmount === 0) updatedSale.status = 'COMPLETED'; const savedSale = await api.saveItem('sales', updatedSale); updateList(setSales, savedSale); } } else { const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newTransaction: Sale = { id: `inc_${Date.now()}`, userId: ownerId, type: 'CASH', customerId: data.investorId || 'system_income', productName: data.note || 'Приход', buyPrice: 0, accountId: data.accountId, totalAmount: data.amount, downPayment: data.amount, remainingAmount: 0, interestRate: 0, installments: 0, startDate: data.date, status: 'COMPLETED', paymentPlan: [] }; const savedTx = await api.saveItem('sales', newTransaction); updateList(setSales, savedTx); if (data.type === 'INVESTOR_DEPOSIT') { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: (inv.initialAmount || 0) + Number(data.amount) }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } } setCurrentView('CUSTOMER_DETAILS'); };
-  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: Date.now().toString(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
+const handleIncomeSubmit = async (data: any) => {
+    if (!user) return;
+
+    if (data.type === 'CUSTOMER_PAYMENT') {
+        const { saleId, amount } = data;
+        const sale = sales.find(s => s.id === saleId);
+
+        if (sale) {
+            const updatedSale = { ...sale };
+            updatedSale.remainingAmount = Math.max(0, updatedSale.remainingAmount - amount);
+            updatedSale.paymentPlan.push({
+                id: `paid_${Date.now()}`,
+                saleId: sale.id,
+                amount: amount,
+                date: data.date,
+                isPaid: true,
+                isRealPayment: true
+            });
+
+            if (updatedSale.remainingAmount === 0) updatedSale.status = 'COMPLETED';
+
+            const savedSale = await api.saveItem('sales', updatedSale);
+            updateList(setSales, savedSale);
+
+            // 👇 ПОСЛЕ УСПЕШНОГО СОХРАНЕНИЯ ПЕРЕХОДИМ К ДЕТАЛЯМ ДОГОВОРА
+            // Сохраняем ID для перехода
+            setSelectedCustomerId(sale.customerId);
+            setInitialSaleIdForDetails(saleId);
+            setPreviousView(currentView);
+            setCurrentView('CUSTOMER_DETAILS');
+
+            return; // Выходим, чтобы не попасть в другой код
+        }
+    } else {
+        const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+        const newTransaction: Sale = {
+            id: `inc_${Date.now()}`,
+            userId: ownerId,
+            type: 'CASH',
+            customerId: data.investorId || 'system_income',
+            productName: data.note || 'Приход',
+            buyPrice: 0,
+            accountId: data.accountId,
+            totalAmount: data.amount,
+            downPayment: data.amount,
+            remainingAmount: 0,
+            interestRate: 0,
+            installments: 0,
+            startDate: data.date,
+            status: 'COMPLETED',
+            paymentPlan: []
+        };
+        const savedTx = await api.saveItem('sales', newTransaction);
+        updateList(setSales, savedTx);
+
+        if (data.type === 'INVESTOR_DEPOSIT') {
+            const inv = investors.find(i => i.id === data.investorId);
+            if (inv) {
+                const updatedInv = { ...inv, initialAmount: (inv.initialAmount || 0) + Number(data.amount) };
+                const savedInv = await api.saveItem('investors', updatedInv);
+                updateList(setInvestors, savedInv);
+            }
+        }
+
+        setCurrentView('OPERATIONS'); // Для инвестора и прочего оставляем как было
+    }
+};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: Date.now().toString(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
   const handleAddEmployee = async (data: any) => { if (user && isManager) { if (!checkAccess('EMPLOYEES')) { showUpgradeAlert("Сотрудники доступны в тарифе Бизнес."); return; } try { const newEmp = await api.createSubUser({ ...data, role: 'employee' }); setEmployees(prev => [...prev, newEmp]); } catch(e) { alert("Ошибка создания сотрудника"); console.error(e); } } };
   const handleUpdateEmployee = async (updatedData: User) => { if (isManager) { await api.updateUser(updatedData); updateList(setEmployees, updatedData); } };
   const handleDeleteEmployee = async (id: string) => { if (isManager) { await api.deleteUser(id); removeFromList(setEmployees, id); } };
