@@ -521,6 +521,74 @@ const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL'
 
   const managerProfitBalance = totalManagerProfitEarned - totalManagerProfitWithdrawn;
 
+
+
+
+// 🔹 Добавьте новый useMemo для начислений инвестора (после investorProfitStats)
+const investorProfitAccruals = useMemo(() => {
+    const accruals: {id: string, date: string, amount: number, source: string}[] = [];
+
+    sales.forEach(sale => {
+        if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
+        if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
+
+        const account = accounts.find(a => a.id === sale.accountId);
+        if (!account?.ownerId) return;
+
+        const investor = investors.find(i => i.id === account.ownerId);
+        if (!investor) return;
+
+        const totalSaleProfit = Number(sale.totalAmount) - Number(sale.buyPrice);
+        const profitMargin = totalSaleProfit / Number(sale.totalAmount);
+        const investorShare = investor.profitPercentage / 100;
+
+        const allPayments = [
+            { date: sale.startDate, amount: Number(sale.downPayment), id: `${sale.id}_dp`, isRealPayment: true },
+            ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
+        ];
+
+        allPayments.forEach(p => {
+            if (p.amount > 0) {
+                const pDate = new Date(p.date);
+                const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
+                const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
+                endDate.setHours(23, 59, 59, 999);
+
+                if (pDate >= startDate && pDate <= endDate) {
+                    const profitFromPayment = p.amount * profitMargin;
+                    const investorAmount = profitFromPayment * investorShare;
+                    if (investorAmount > 0) {
+                        accruals.push({
+                            id: p.id,
+                            date: p.date,
+                            amount: investorAmount,
+                            source: `Платеж по "${sale.productName}"`
+                        });
+                    }
+                }
+            }
+        });
+    });
+
+    return accruals.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}, [sales, accounts, investors, profitFilterAccountId, myProfitPeriod]);
+
+// 🔹 Выплаты инвестора
+const investorProfitPayouts = useMemo(() => {
+    return expenses
+        .filter(e => e.investorId && e.payoutType === 'PROFIT' && (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
+        .filter(e => {
+            const eDate = new Date(e.date);
+            const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
+            const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
+            endDate.setHours(23, 59, 59, 999);
+            return eDate >= startDate && eDate <= endDate;
+        })
+        .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}, [expenses, profitFilterAccountId, myProfitPeriod]);
+
+
+
   // 🔹🔹🔹 НОВЫЙ БЛОК: Прибыль инвестора 🔹🔹🔹
   const investorProfitStats = useMemo(() => {
     const accountsWithInvestors = accounts.filter(acc =>
@@ -962,106 +1030,110 @@ const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL'
       )}
 
 
-
 {/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли менеджера */}
 {showProfitDetails && (
     <div
-        className="fixed inset-0 z-[100] bg-white animate-fade-in overflow-y-auto"
+        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in"
         onClick={() => setShowProfitDetails(false)}
     >
-        {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-slate-200 px-4 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-                <button
-                    onClick={() => setShowProfitDetails(false)}
-                    className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition-all"
-                >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                </button>
-                <div>
-                    <h2 className="text-xl font-bold text-slate-800">Моя прибыль</h2>
-                    <p className="text-xs text-slate-500">
-                        Баланс: <span className="font-bold text-emerald-600">{formatCurrency(managerProfitBalance, appSettings.showCents)} ₽</span>
-                    </p>
+        <div
+            className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-white/20 animate-slide-up"
+            onClick={e => e.stopPropagation()}
+        >
+            {/* Header */}
+            <div className="p-6 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-2xl font-bold">Моя прибыль</h2>
+                        <p className="text-emerald-100 text-sm mt-1">
+                            Баланс: <span className="font-bold text-white">{formatCurrency(managerProfitBalance, appSettings.showCents)} ₽</span>
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => setShowProfitDetails(false)}
+                        className="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-all"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
             </div>
-        </div>
 
-        {/* Tabs */}
-        <div className="px-4 py-4">
-            <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
-                <button
-                    onClick={() => setProfitDetailsTab('accruals')}
-                    className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
-                        profitDetailsTab === 'accruals' 
-                            ? 'bg-white text-emerald-600 shadow-sm' 
-                            : 'text-slate-500'
-                    }`}
-                >
-                    Начисления
-                </button>
-                <button
-                    onClick={() => setProfitDetailsTab('payouts')}
-                    className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
-                        profitDetailsTab === 'payouts' 
-                            ? 'bg-white text-rose-600 shadow-sm' 
-                            : 'text-slate-500'
-                    }`}
-                >
-                    Выплаты
-                </button>
+            {/* Tabs */}
+            <div className="px-6 py-4 border-b border-slate-100">
+                <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
+                    <button
+                        onClick={() => setProfitDetailsTab('accruals')}
+                        className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
+                            profitDetailsTab === 'accruals' 
+                                ? 'bg-white text-emerald-600 shadow-sm' 
+                                : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                    >
+                        Начисления ({managerProfitAccruals.length})
+                    </button>
+                    <button
+                        onClick={() => setProfitDetailsTab('payouts')}
+                        className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
+                            profitDetailsTab === 'payouts' 
+                                ? 'bg-white text-rose-600 shadow-sm' 
+                                : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                    >
+                        Выплаты ({managerProfitPayouts.length})
+                    </button>
+                </div>
             </div>
-        </div>
 
-        {/* Content */}
-        <div className="px-4 pb-8">
-            {profitDetailsTab === 'accruals' && (
-                <div className="space-y-3">
-                    {managerProfitAccruals.length === 0 ? (
-                        <div className="text-center py-16">
-                            <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
-                            </div>
-                            <p className="text-slate-500 font-medium">Нет начислений за этот период</p>
-                        </div>
-                    ) : (
-                        managerProfitAccruals.map(p => (
-                            <div key={p.id} className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
-                                <div className="flex justify-between items-start mb-2">
-                                    <p className="font-bold text-slate-800">{p.source}</p>
-                                    <span className="font-bold text-emerald-600">+{formatCurrency(p.amount, appSettings.showCents)} ₽</span>
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+                {profitDetailsTab === 'accruals' && (
+                    <div className="space-y-3">
+                        {managerProfitAccruals.length === 0 ? (
+                            <div className="text-center py-16">
+                                <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
                                 </div>
-                                <p className="text-xs text-slate-500">{formatDate(p.date)}</p>
+                                <p className="text-slate-500 font-medium">Нет начислений за этот период</p>
                             </div>
-                        ))
-                    )}
-                </div>
-            )}
+                        ) : (
+                            managerProfitAccruals.map(p => (
+                                <div key={p.id} className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 hover:border-emerald-200 transition-all">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <p className="font-bold text-slate-800">{p.source}</p>
+                                        <span className="font-bold text-emerald-600">+{formatCurrency(p.amount, appSettings.showCents)} ₽</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500">{formatDate(p.date)}</p>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                )}
 
-            {profitDetailsTab === 'payouts' && (
-                <div className="space-y-3">
-                    {managerProfitPayouts.length === 0 ? (
-                        <div className="text-center py-16">
-                            <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
-                            </div>
-                            <p className="text-slate-500 font-medium">Нет выплат за этот период</p>
-                        </div>
-                    ) : (
-                        managerProfitPayouts.map(e => (
-                            <div key={e.id} className="bg-rose-50 p-4 rounded-2xl border border-rose-100">
-                                <div className="flex justify-between items-start mb-2">
-                                    <p className="font-bold text-slate-800">{e.title}</p>
-                                    <span className="font-bold text-rose-600">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
+                {profitDetailsTab === 'payouts' && (
+                    <div className="space-y-3">
+                        {managerProfitPayouts.length === 0 ? (
+                            <div className="text-center py-16">
+                                <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
                                 </div>
-                                <p className="text-xs text-slate-500">{formatDate(e.date)}</p>
+                                <p className="text-slate-500 font-medium">Нет выплат за этот период</p>
                             </div>
-                        ))
-                    )}
-                </div>
-            )}
+                        ) : (
+                            managerProfitPayouts.map(e => (
+                                <div key={e.id} className="bg-rose-50 p-4 rounded-2xl border border-rose-100 hover:border-rose-200 transition-all">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <p className="font-bold text-slate-800">{e.title}</p>
+                                        <span className="font-bold text-rose-600">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500">{formatDate(e.date)}</p>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                )}
+            </div>
         </div>
     </div>
 )}
@@ -1069,102 +1141,98 @@ const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL'
 {/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли инвестора */}
 {showInvestorProfitDetails && investorProfitStats && (
     <div
-        className="fixed inset-0 z-[100] bg-white animate-fade-in overflow-y-auto"
+        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-purple-900/80 backdrop-blur-sm animate-fade-in"
         onClick={() => setShowInvestorProfitDetails(false)}
     >
-        {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-slate-200 px-4 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-                <button
-                    onClick={() => setShowInvestorProfitDetails(false)}
-                    className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition-all"
-                >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                </button>
-                <div>
-                    <h2 className="text-xl font-bold text-slate-800">Прибыль инвестора</h2>
-                    <p className="text-xs text-slate-500">
-                        Баланс: <span className="font-bold text-purple-600">{formatCurrency(investorProfitStats.balance, appSettings.showCents)} ₽</span>
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="px-4 py-4">
-            <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
-                <button
-                    onClick={() => setProfitDetailsTab('accruals')}
-                    className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
-                        profitDetailsTab === 'accruals' 
-                            ? 'bg-white text-purple-600 shadow-sm' 
-                            : 'text-slate-500'
-                    }`}
-                >
-                    Начисления
-                </button>
-                <button
-                    onClick={() => setProfitDetailsTab('payouts')}
-                    className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
-                        profitDetailsTab === 'payouts' 
-                            ? 'bg-white text-rose-600 shadow-sm' 
-                            : 'text-slate-500'
-                    }`}
-                >
-                    Выплаты
-                </button>
-            </div>
-        </div>
-
-        {/* Content */}
-        <div className="px-4 pb-8">
-            {profitDetailsTab === 'accruals' && (
-                <div className="space-y-3">
-                    {/* 🔹 Здесь нужна логика для начислений инвестора (аналогично менеджеру) */}
-                    <div className="text-center py-16">
-                        <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                            <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
-                        </div>
-                        <p className="text-slate-500 font-medium">Детализация начислений инвестора</p>
-                        <p className="text-xs text-slate-400 mt-2">Будет добавлена в следующем обновлении</p>
+        <div
+            className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-white/20 animate-slide-up"
+            onClick={e => e.stopPropagation()}
+        >
+            {/* Header */}
+            <div className="p-6 bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-2xl font-bold">Прибыль инвестора</h2>
+                        <p className="text-purple-100 text-sm mt-1">
+                            Баланс: <span className="font-bold text-white">{formatCurrency(investorProfitStats.balance, appSettings.showCents)} ₽</span>
+                        </p>
                     </div>
+                    <button
+                        onClick={() => setShowInvestorProfitDetails(false)}
+                        className="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-all"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
-            )}
+            </div>
 
-            {profitDetailsTab === 'payouts' && (
-                <div className="space-y-3">
-                    {expenses
-                        .filter(e => e.investorId && e.payoutType === 'PROFIT')
-                        .filter(e => {
-                            const eDate = new Date(e.date);
-                            const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
-                            const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
-                            endDate.setHours(23, 59, 59, 999);
-                            return eDate >= startDate && eDate <= endDate;
-                        })
-                        .length === 0 ? (
-                        <div className="text-center py-16">
-                            <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
+            {/* Tabs */}
+            <div className="px-6 py-4 border-b border-slate-100">
+                <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
+                    <button
+                        onClick={() => setProfitDetailsTab('accruals')}
+                        className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
+                            profitDetailsTab === 'accruals' 
+                                ? 'bg-white text-purple-600 shadow-sm' 
+                                : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                    >
+                        Начисления ({investorProfitAccruals.length})
+                    </button>
+                    <button
+                        onClick={() => setProfitDetailsTab('payouts')}
+                        className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
+                            profitDetailsTab === 'payouts' 
+                                ? 'bg-white text-rose-600 shadow-sm' 
+                                : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                    >
+                        Выплаты ({investorProfitPayouts.length})
+                    </button>
+                </div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+                {profitDetailsTab === 'accruals' && (
+                    <div className="space-y-3">
+                        {investorProfitAccruals.length === 0 ? (
+                            <div className="text-center py-16">
+                                <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
+                                </div>
+                                <p className="text-slate-500 font-medium">Нет начислений за этот период</p>
                             </div>
-                            <p className="text-slate-500 font-medium">Нет выплат инвестору за этот период</p>
-                        </div>
-                    ) : (
-                        expenses
-                            .filter(e => e.investorId && e.payoutType === 'PROFIT')
-                            .filter(e => {
-                                const eDate = new Date(e.date);
-                                const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
-                                const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
-                                endDate.setHours(23, 59, 59, 999);
-                                return eDate >= startDate && eDate <= endDate;
-                            })
-                            .map(e => {
+                        ) : (
+                            investorProfitAccruals.map(p => (
+                                <div key={p.id} className="bg-purple-50 p-4 rounded-2xl border border-purple-100 hover:border-purple-200 transition-all">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <p className="font-bold text-slate-800">{p.source}</p>
+                                        <span className="font-bold text-purple-600">+{formatCurrency(p.amount, appSettings.showCents)} ₽</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500">{formatDate(p.date)}</p>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                )}
+
+                {profitDetailsTab === 'payouts' && (
+                    <div className="space-y-3">
+                        {investorProfitPayouts.length === 0 ? (
+                            <div className="text-center py-16">
+                                <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
+                                </div>
+                                <p className="text-slate-500 font-medium">Нет выплат инвестору за этот период</p>
+                            </div>
+                        ) : (
+                            investorProfitPayouts.map(e => {
                                 const investor = investors.find(i => i.id === e.investorId);
                                 return (
-                                    <div key={e.id} className="bg-rose-50 p-4 rounded-2xl border border-rose-100">
+                                    <div key={e.id} className="bg-rose-50 p-4 rounded-2xl border border-rose-100 hover:border-rose-200 transition-all">
                                         <div className="flex justify-between items-start mb-2">
                                             <div>
                                                 <p className="font-bold text-slate-800">{e.title}</p>
@@ -1176,14 +1244,13 @@ const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL'
                                     </div>
                                 );
                             })
-                    )}
-                </div>
-            )}
+                        )}
+                    </div>
+                )}
+            </div>
         </div>
     </div>
 )}
-
-
 
 
 
