@@ -24,6 +24,7 @@ interface CashRegisterProps {
 const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubmit: (name: string, type: Account['type']) => void }) => {
     const [name, setName] = useState('');
 
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if(!name.trim()) return;
@@ -397,10 +398,13 @@ const CashRegister: React.FC<CashRegisterProps> = ({
   const [selectedSharedAccount, setSelectedSharedAccount] = useState<Account | null>(null);
   const [activeMenuAccount, setActiveMenuAccount] = useState<Account | null>(null);
 
-  const [showProfitDetails, setShowProfitDetails] = useState(false);
-  const [profitDetailsTab, setProfitDetailsTab] = useState<'accruals' | 'payouts'>('accruals');
-  const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL');
+ // 🔹 Добавьте новые состояния в начало компонента (после других useState)
+const [showProfitDetails, setShowProfitDetails] = useState(false);
+const [showInvestorProfitDetails, setShowInvestorProfitDetails] = useState(false);
+const [profitDetailsTab, setProfitDetailsTab] = useState<'accruals' | 'payouts'>('accruals');
+const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL');
 
+// ... (остальной код без изменений до блока "Моя прибыль") ...
   const accountBalances = useMemo(() => {
     const balances: Record<string, number> = {};
     accounts.forEach(acc => {
@@ -725,7 +729,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       )}
 
       {/* 🔹🔹🔹 БЛОК: Моя прибыль 🔹🔹🔹 */}
-      {isManager && (
+     {isManager && (
     <div className="space-y-6 pt-8">
         {/* Фильтры */}
         <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100">
@@ -781,7 +785,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
             </h3>
         </div>
 
-        {/* 🔹 Карточки в стиле дашборда: 4 карточки, 2 в ряд */}
+        {/* Карточки в стиле дашборда: 4 карточки, 2 в ряд */}
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
 
             {/* 1. Ожидаемая прибыль */}
@@ -793,9 +797,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                        Ожидается
-                    </p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Ожидается</p>
                     <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
                         {formatCurrency(calculatedExpectedProfit, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
@@ -812,9 +814,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                        Получено
-                    </p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Получено</p>
                     <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
                         {formatCurrency(totalManagerProfitEarned, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
@@ -831,9 +831,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                        Выплачено
-                    </p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Выплачено</p>
                     <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
                         {formatCurrency(totalManagerProfitWithdrawn, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
@@ -841,7 +839,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                 </div>
             </div>
 
-            {/* 4. Доступно к выводу */}
+            {/* 4. Доступно к выводу (кликабельно) */}
             <div
                 onClick={() => setShowProfitDetails(true)}
                 className="group bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-700 hover:border-indigo-500 flex flex-col relative overflow-hidden cursor-pointer"
@@ -853,9 +851,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase tracking-wide mb-1 leading-tight">
-                        К выводу
-                    </p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase tracking-wide mb-1 leading-tight">К выводу</p>
                     <p className="text-lg sm:text-2xl font-bold text-white break-words leading-none">
                         {formatCurrency(managerProfitBalance, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
@@ -870,6 +866,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
 
       {/* 🔹🔹🔹 НОВЫЙ БЛОК: Прибыль инвестора (только если есть инвесторы) 🔹🔹🔹 */}
       {/* 🔹🔹🔹 НОВЫЙ БЛОК: Прибыль инвестора (только если есть инвесторы) 🔹🔹🔹 */}
+{/* 🔹🔹🔹 БЛОК: Прибыль инвестора (только если есть инвесторы) 🔹🔹🔹 */}
 {isManager && investorProfitStats && (
     <div className="space-y-6 pt-4">
         <div className="flex items-center gap-3">
@@ -881,7 +878,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
             </h3>
         </div>
 
-        {/* 🔹 Сетка: 2 карточки в ряд, как на главном экране */}
+        {/* Сетка: 2 карточки в ряд */}
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
 
             {/* 1. Ожидаемая прибыль инвестора */}
@@ -893,9 +890,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                        Ожидается
-                    </p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Ожидается</p>
                     <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
                         {formatCurrency(investorProfitStats.expectedProfit, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
@@ -912,9 +907,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                        Получено
-                    </p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Получено</p>
                     <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
                         {formatCurrency(investorProfitStats.receivedProfit, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
@@ -931,9 +924,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                        Выплачено
-                    </p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Выплачено</p>
                     <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
                         {formatCurrency(investorProfitStats.totalWithdrawn, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
@@ -941,22 +932,24 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                 </div>
             </div>
 
-            {/* 4. Доступно к выводу */}
-            <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 flex flex-col relative overflow-hidden cursor-default">
-                <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 mb-4 z-10 relative group-hover:bg-indigo-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+            {/* 4. Доступно инвестору (кликабельно) */}
+            <div
+                onClick={() => setShowInvestorProfitDetails(true)}
+                className="group bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-700 hover:border-purple-500 flex flex-col relative overflow-hidden cursor-pointer"
+            >
+                <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full opacity-30 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:bg-white/30 transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                        К выводу
-                    </p>
-                    <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase tracking-wide mb-1 leading-tight">К выводу</p>
+                    <p className="text-lg sm:text-2xl font-bold text-white break-words leading-none">
                         {formatCurrency(investorProfitStats.balance, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
                     </p>
+                    <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
                 </div>
             </div>
 
@@ -967,6 +960,234 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       {selectedSharedAccount && (
         <SharedAccountDetails account={selectedSharedAccount} sales={sales} expenses={expenses} investors={investors} onClose={() => setSelectedSharedAccount(null)} appSettings={appSettings} />
       )}
+
+
+
+{/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли менеджера */}
+{showProfitDetails && (
+    <div
+        className="fixed inset-0 z-[100] bg-white animate-fade-in overflow-y-auto"
+        onClick={() => setShowProfitDetails(false)}
+    >
+        {/* Header */}
+        <div className="sticky top-0 bg-white border-b border-slate-200 px-4 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <button
+                    onClick={() => setShowProfitDetails(false)}
+                    className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition-all"
+                >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                </button>
+                <div>
+                    <h2 className="text-xl font-bold text-slate-800">Моя прибыль</h2>
+                    <p className="text-xs text-slate-500">
+                        Баланс: <span className="font-bold text-emerald-600">{formatCurrency(managerProfitBalance, appSettings.showCents)} ₽</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="px-4 py-4">
+            <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
+                <button
+                    onClick={() => setProfitDetailsTab('accruals')}
+                    className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
+                        profitDetailsTab === 'accruals' 
+                            ? 'bg-white text-emerald-600 shadow-sm' 
+                            : 'text-slate-500'
+                    }`}
+                >
+                    Начисления
+                </button>
+                <button
+                    onClick={() => setProfitDetailsTab('payouts')}
+                    className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
+                        profitDetailsTab === 'payouts' 
+                            ? 'bg-white text-rose-600 shadow-sm' 
+                            : 'text-slate-500'
+                    }`}
+                >
+                    Выплаты
+                </button>
+            </div>
+        </div>
+
+        {/* Content */}
+        <div className="px-4 pb-8">
+            {profitDetailsTab === 'accruals' && (
+                <div className="space-y-3">
+                    {managerProfitAccruals.length === 0 ? (
+                        <div className="text-center py-16">
+                            <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
+                            </div>
+                            <p className="text-slate-500 font-medium">Нет начислений за этот период</p>
+                        </div>
+                    ) : (
+                        managerProfitAccruals.map(p => (
+                            <div key={p.id} className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
+                                <div className="flex justify-between items-start mb-2">
+                                    <p className="font-bold text-slate-800">{p.source}</p>
+                                    <span className="font-bold text-emerald-600">+{formatCurrency(p.amount, appSettings.showCents)} ₽</span>
+                                </div>
+                                <p className="text-xs text-slate-500">{formatDate(p.date)}</p>
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
+
+            {profitDetailsTab === 'payouts' && (
+                <div className="space-y-3">
+                    {managerProfitPayouts.length === 0 ? (
+                        <div className="text-center py-16">
+                            <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
+                            </div>
+                            <p className="text-slate-500 font-medium">Нет выплат за этот период</p>
+                        </div>
+                    ) : (
+                        managerProfitPayouts.map(e => (
+                            <div key={e.id} className="bg-rose-50 p-4 rounded-2xl border border-rose-100">
+                                <div className="flex justify-between items-start mb-2">
+                                    <p className="font-bold text-slate-800">{e.title}</p>
+                                    <span className="font-bold text-rose-600">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
+                                </div>
+                                <p className="text-xs text-slate-500">{formatDate(e.date)}</p>
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
+        </div>
+    </div>
+)}
+
+{/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли инвестора */}
+{showInvestorProfitDetails && investorProfitStats && (
+    <div
+        className="fixed inset-0 z-[100] bg-white animate-fade-in overflow-y-auto"
+        onClick={() => setShowInvestorProfitDetails(false)}
+    >
+        {/* Header */}
+        <div className="sticky top-0 bg-white border-b border-slate-200 px-4 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <button
+                    onClick={() => setShowInvestorProfitDetails(false)}
+                    className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition-all"
+                >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                </button>
+                <div>
+                    <h2 className="text-xl font-bold text-slate-800">Прибыль инвестора</h2>
+                    <p className="text-xs text-slate-500">
+                        Баланс: <span className="font-bold text-purple-600">{formatCurrency(investorProfitStats.balance, appSettings.showCents)} ₽</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="px-4 py-4">
+            <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
+                <button
+                    onClick={() => setProfitDetailsTab('accruals')}
+                    className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
+                        profitDetailsTab === 'accruals' 
+                            ? 'bg-white text-purple-600 shadow-sm' 
+                            : 'text-slate-500'
+                    }`}
+                >
+                    Начисления
+                </button>
+                <button
+                    onClick={() => setProfitDetailsTab('payouts')}
+                    className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
+                        profitDetailsTab === 'payouts' 
+                            ? 'bg-white text-rose-600 shadow-sm' 
+                            : 'text-slate-500'
+                    }`}
+                >
+                    Выплаты
+                </button>
+            </div>
+        </div>
+
+        {/* Content */}
+        <div className="px-4 pb-8">
+            {profitDetailsTab === 'accruals' && (
+                <div className="space-y-3">
+                    {/* 🔹 Здесь нужна логика для начислений инвестора (аналогично менеджеру) */}
+                    <div className="text-center py-16">
+                        <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                            <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
+                        </div>
+                        <p className="text-slate-500 font-medium">Детализация начислений инвестора</p>
+                        <p className="text-xs text-slate-400 mt-2">Будет добавлена в следующем обновлении</p>
+                    </div>
+                </div>
+            )}
+
+            {profitDetailsTab === 'payouts' && (
+                <div className="space-y-3">
+                    {expenses
+                        .filter(e => e.investorId && e.payoutType === 'PROFIT')
+                        .filter(e => {
+                            const eDate = new Date(e.date);
+                            const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
+                            const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
+                            endDate.setHours(23, 59, 59, 999);
+                            return eDate >= startDate && eDate <= endDate;
+                        })
+                        .length === 0 ? (
+                        <div className="text-center py-16">
+                            <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
+                            </div>
+                            <p className="text-slate-500 font-medium">Нет выплат инвестору за этот период</p>
+                        </div>
+                    ) : (
+                        expenses
+                            .filter(e => e.investorId && e.payoutType === 'PROFIT')
+                            .filter(e => {
+                                const eDate = new Date(e.date);
+                                const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
+                                const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
+                                endDate.setHours(23, 59, 59, 999);
+                                return eDate >= startDate && eDate <= endDate;
+                            })
+                            .map(e => {
+                                const investor = investors.find(i => i.id === e.investorId);
+                                return (
+                                    <div key={e.id} className="bg-rose-50 p-4 rounded-2xl border border-rose-100">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div>
+                                                <p className="font-bold text-slate-800">{e.title}</p>
+                                                <p className="text-xs text-slate-500">{investor?.name || 'Инвестор'}</p>
+                                            </div>
+                                            <span className="font-bold text-rose-600">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
+                                        </div>
+                                        <p className="text-xs text-slate-500">{formatDate(e.date)}</p>
+                                    </div>
+                                );
+                            })
+                    )}
+                </div>
+            )}
+        </div>
+    </div>
+)}
+
+
+
+
+
+
     </div>
   );
 };
