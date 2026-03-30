@@ -120,91 +120,69 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       return showCents ? profit : Math.round(profit);
   }, [selectedSale, amount, showCents]);
 
- const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
-    if (!contractRef.current) throw new Error("Contract element not found");
-    const element = contractRef.current;
+  const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
+      if (!contractRef.current) throw new Error("Contract element not found");
+      const element = contractRef.current;
 
-    // Сохраняем оригинальные стили
-    const originalStyle = {
-        display: element.style.display,
-        position: element.style.position,
-        left: element.style.left,
-        top: element.style.top,
-        visibility: element.style.visibility,
-        zIndex: element.style.zIndex,
-        opacity: element.style.opacity,
-        transform: element.style.transform
-    };
+      // Сохраняем оригинальные стили
+      const originalStyle = {
+          display: element.style.display,
+          position: element.style.position,
+          left: element.style.left,
+          top: element.style.top,
+          visibility: element.style.visibility,
+          zIndex: element.style.zIndex,
+          opacity: element.style.opacity,
+          pointerEvents: element.style.pointerEvents
+      };
 
-    try {
-        // 🔧 ФИКС 1: Надёжная подготовка элемента для мобильных
-        element.style.display = 'block';
-        element.style.position = 'fixed';
-        element.style.left = '0';
-        element.style.top = '0';
-        element.style.visibility = 'visible';
-        element.style.zIndex = '9999';
-        element.style.opacity = '0.01';  // Почти невидимый, но браузер отрисует
-        element.style.pointerEvents = 'none';
-        element.style.width = '210mm';   // Фиксируем ширину A4
-        element.style.transform = 'none'; // Сбрасываем трансформации
+      // ХАК ДЛЯ МОБИЛОК: Выносим элемент поверх всего, но делаем почти прозрачным
+      // Так браузер 100% его отрендерит, а пользователь ничего не заметит
+      element.style.display = 'block';
+      element.style.position = 'fixed';
+      element.style.left = '0';
+      element.style.top = '0';
+      element.style.visibility = 'visible';
+      element.style.zIndex = '9999';
+      element.style.opacity = '0.01'; // Достаточно, чтобы не было видно, но браузер нарисовал
+      element.style.pointerEvents = 'none';
 
-        // 🔧 ФИКС 2: Ждём отрисовку (мобильным нужно больше времени)
-        await new Promise(resolve => setTimeout(resolve, 300));
+      try {
+          // Даем больше времени мобильному устройству на отрисовку DOM
+          await new Promise(resolve => setTimeout(resolve, 300));
 
-        // 🔧 ФИКС 3: Определяем мобильное устройство и снижаем scale
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-            || window.innerWidth < 768;
+          // Уменьшаем масштаб для мобильных телефонов, чтобы избежать ошибки лимита памяти
+          const isMobile = window.innerWidth < 768;
+          const scaleOption = isMobile ? 1 : 1.5;
 
-        // Критически: на мобильных scale должен быть <= 0.8, иначе canvas переполнится
-        const scaleOption = isMobile ? 0.7 : 1.5;
+          const canvas = await html2canvas(element, {
+              scale: scaleOption,
+              useCORS: true,
+              logging: false,
+              // Принудительно задаем размер окна для корректного захвата
+              windowWidth: element.scrollWidth,
+              windowHeight: element.scrollHeight
+          });
 
-        // 🔧 ФИКС 4: Оптимизированные настройки html2canvas
-        const canvas = await html2canvas(element, {
-            scale: scaleOption,
-            useCORS: true,
-            logging: false,
-            backgroundColor: '#ffffff',
-            scrollY: -window.scrollY,
-            allowTaint: true,
-            foreignObjectRendering: false,  // Отключаем сложный рендеринг для мобильных
-            removeContainer: true
-        });
+          const imgData = canvas.toDataURL('image/jpeg', 0.8); // Чуть увеличил качество для scale: 1
+          const pdf = new jsPDF('p', 'mm', 'a4');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-        // 🔧 ФИКС 5: Проверка размера канваса (защита от падения)
-        const MAX_PIXELS = 16777216; // 4096×4096 — безопасный лимит для мобильных
-        if (canvas.width * canvas.height > MAX_PIXELS) {
-            console.warn('Canvas too large, retrying with lower scale...');
-            // Рекурсивно пробуем с ещё меньшим scale
-            element.style.display = originalStyle.display;
-            element.style.position = originalStyle.position;
-            // ...восстанавливаем стили...
-            return generateContractPDF(sale, customer, currentPaymentAmount, paymentDate); // рекурсия с тем же элементом, но можно добавить параметр scale
-        }
-
-        const imgData = canvas.toDataURL('image/jpeg', 0.8);
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-        return pdf.output('blob');
-
-    } catch (error: any) {
-        console.error("PDF generation error:", {
-            message: error.message,
-            userAgent: navigator.userAgent,
-            innerWidth: window.innerWidth
-        });
-        throw new Error(`Ошибка создания PDF: ${error.message || "Неизвестная ошибка"}`);
-    } finally {
-        // Восстанавливаем стили
-        if (contractRef.current) {
-            Object.assign(contractRef.current.style, originalStyle);
-        }
-    }
-};
-
+          pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+          return pdf.output('blob');
+      } finally {
+          // Возвращаем всё как было
+          element.style.display = originalStyle.display;
+          element.style.position = originalStyle.position;
+          element.style.left = originalStyle.left;
+          element.style.top = originalStyle.top;
+          element.style.visibility = originalStyle.visibility;
+          element.style.zIndex = originalStyle.zIndex;
+          element.style.opacity = originalStyle.opacity || '1';
+          element.style.pointerEvents = originalStyle.pointerEvents || 'auto';
+      }
+  };
   const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
       const numAmount = Number(amount);
@@ -311,15 +289,8 @@ ${appSettings?.companyName || 'Компания'}
         }
 
         alert(`❌ Не удалось отправить чек: ${error.message || "Проверьте интернет"}`);
-
-    } finally {
-        // Возвращаем кнопку
-        if (document.activeElement instanceof HTMLButtonElement) {
-            document.activeElement.disabled = false;
-            document.activeElement.textContent = 'Зачислить';
         }
-    }
-}
+          }
       } else if (sourceType === 'INVESTOR') {
           onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
       } else {
