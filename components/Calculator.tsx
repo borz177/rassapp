@@ -15,6 +15,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   // Public URL Params parsing
   const searchParams = new URLSearchParams(window.location.search);
   const pathName = window.location.pathname;
+  const configId = searchParams.get('cfg'); // 🔹 Новый параметр для серверного конфига
 
   // Extract Company Name from Path if available
   let publicCompany = searchParams.get('c') || searchParams.get('company') || appSettings?.companyName || 'Наша Компания';
@@ -25,25 +26,29 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
       }
   }
 
-  // 🔹 Поддержка старого формата параметров (резерв)
-  const publicRate = parseFloat(searchParams.get('r') || searchParams.get('rate') || '30');
-  const publicRulesParam = searchParams.get('rules');
-  const shortRulesParam = searchParams.get('l');
-  const configId = searchParams.get('cfg'); // 🔹 Новый параметр для серверного конфига
+  // 🔹 Стабилизируем вычисление публичных правил через useMemo (фикс бесконечной загрузки)
+  const { publicRate, publicRules } = useMemo(() => {
+      const rate = parseFloat(searchParams.get('r') || searchParams.get('rate') || '30');
 
-  let publicRules: TermRate[] = [];
-  try {
-      if (publicRulesParam) {
-          publicRules = JSON.parse(decodeURIComponent(publicRulesParam));
-      } else if (shortRulesParam) {
-          publicRules = shortRulesParam.split(',').map(pair => {
-              const [months, rate] = pair.split(':').map(Number);
-              return { months, rate };
-          }).filter(r => !isNaN(r.months) && !isNaN(r.rate));
+      const rulesParam = searchParams.get('rules');
+      const shortRulesParam = searchParams.get('l');
+      let rules: TermRate[] = [];
+
+      try {
+          if (rulesParam) {
+              rules = JSON.parse(decodeURIComponent(rulesParam));
+          } else if (shortRulesParam) {
+              rules = shortRulesParam.split(',').map(pair => {
+                  const [months, rate] = pair.split(':').map(Number);
+                  return { months, rate };
+              }).filter(r => !isNaN(r.months) && !isNaN(r.rate));
+          }
+      } catch (e) {
+          console.error("Failed to parse rules from URL", e);
       }
-  } catch (e) {
-      console.error("Failed to parse rules from URL", e);
-  }
+
+      return { publicRate: rate, publicRules: rules };
+  }, [searchParams.toString()]); // 🔹 Зависимость от строки, а не от объекта
 
   // State
   const [price, setPrice] = useState<string>('');
@@ -54,7 +59,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   const [defaultRate, setDefaultRate] = useState<string>(appSettings?.calculator?.defaultInterestRate?.toString() || '30');
   const [termRates, setTermRates] = useState<TermRate[]>(appSettings?.calculator?.termRates || []);
   const [showSettings, setShowSettings] = useState(false);
-  
+
   // 🔹 Состояние загрузки конфига с сервера
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
 
@@ -63,55 +68,34 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   const [newRuleRate, setNewRuleRate] = useState<string>('');
 
   // 🔹 Загрузка конфига с сервера при наличии ?cfg=...
+  // 🔹 FIX: Только configId в зависимостях — предотвращает бесконечный ре-рендер
   useEffect(() => {
-    if (configId && !isPublic) {
-      setIsLoadingConfig(true);
-      
-      api.getCalculatorConfig(configId)
-        .then(config => {
-          if (config) {
-            setDefaultRate(config.defaultRate.toString());
-            setTermRates(config.termRates || []);
-          }
-        })
-        .catch(error => {
-          console.error("Failed to load config from server", error);
-          // 🔹 Fallback: пробуем загрузить из старых параметров
-          if (publicRate) setDefaultRate(publicRate.toString());
-          if (publicRules.length > 0) setTermRates(publicRules);
-        })
-        .finally(() => {
-          setIsLoadingConfig(false);
-        });
-    } else if (isPublic) {
-      // 🔹 В публичном режиме: приоритет серверного конфига, затем старые параметры
-      if (configId) {
-        setIsLoadingConfig(true);
-        api.getCalculatorConfig(configId)
-          .then(config => {
-            if (config) {
-              setDefaultRate(config.defaultRate.toString());
-              setTermRates(config.termRates || []);
-            }
-          })
-          .catch(() => {
-            // Fallback на старые параметры
-            if (publicRate) setDefaultRate(publicRate.toString());
-            if (publicRules.length > 0) setTermRates(publicRules);
-          })
-          .finally(() => setIsLoadingConfig(false));
-      } else {
-        // Только старые параметры
-        if (publicRate) setDefaultRate(publicRate.toString());
-        if (publicRules.length > 0) setTermRates(publicRules);
+      if (configId && !isLoadingConfig) {
+          setIsLoadingConfig(true);
+
+          api.getCalculatorConfig(configId)
+              .then(config => {
+                  if (config) {
+                      setDefaultRate(config.defaultRate.toString());
+                      setTermRates(config.termRates || []);
+                  }
+              })
+              .catch(error => {
+                  console.error("Failed to load config from server", error);
+                  // 🔹 Fallback: пробуем загрузить из старых параметров
+                  if (publicRate) setDefaultRate(publicRate.toString());
+                  if (publicRules.length > 0) setTermRates(publicRules);
+              })
+              .finally(() => {
+                  setIsLoadingConfig(false);
+              });
       }
-    }
-  }, [configId, isPublic, publicRate, publicRules]);
+  }, [configId]); // ✅ ТОЛЬКО configId — больше никаких зависимостей!
 
   // Determine Active Rate
   const activeRate = useMemo(() => {
       const ratesToUse = isPublic ? (termRates.length > 0 ? termRates : publicRules) : termRates;
-      const baseRate = isPublic ? parseFloat(defaultRate) : parseFloat(defaultRate);
+      const baseRate = parseFloat(defaultRate);
 
       const specificRule = ratesToUse.find(r => r.months === months);
       return specificRule ? specificRule.rate : baseRate;
@@ -125,7 +109,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
       const priceWithMarkup = p + (p * (activeRate / 100));
       const remaining = priceWithMarkup - dp;
       const monthly = months > 0 ? remaining / months : 0;
-      const roundedMonthly = Math.ceil(monthly / 100) * 100;
+      const roundedMonthly = Math.ceil(monthly / 100) * 100; // Smart round up
 
       return {
           total: priceWithMarkup,
@@ -137,17 +121,17 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   // 🔹 ОБНОВЛЁННАЯ ФУНКЦИЯ: сохраняет конфиг на сервере → возвращает чистую ссылку
   const handleCopyLink = async () => {
       const companyName = encodeURIComponent(appSettings?.companyName || 'Company');
-      
+
       try {
           // 1. Сохраняем конфиг на сервере
           const configId = await api.saveCalculatorConfig({
               defaultRate: parseFloat(defaultRate),
               termRates: termRates.map(r => ({ months: r.months, rate: r.rate }))
           });
-          
+
           // 2. Формируем ЧИСТУЮ ссылку с коротким ID
           const cleanUrl = `${window.location.origin}/calc/${companyName}?cfg=${configId}`;
-          
+
           // 3. Копируем в буфер
           if (navigator.clipboard && navigator.clipboard.writeText) {
               await navigator.clipboard.writeText(cleanUrl);
@@ -229,7 +213,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
             </div>
 
             <div className={`space-y-6 ${isPublic ? 'p-6' : ''}`}>
-                
+
                 {/* 🔹 Индикатор загрузки конфига */}
                 {isLoadingConfig && (
                     <div className="flex items-center justify-center py-4 text-indigo-600">
@@ -402,7 +386,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                                     ) : (
                                         <>
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                                            Копировать ссылку
+                                            Копировать красивую ссылку
                                         </>
                                     )}
                                 </button>
