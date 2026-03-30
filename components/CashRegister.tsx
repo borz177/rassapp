@@ -419,27 +419,38 @@ const CashRegister: React.FC<CashRegisterProps> = ({
 
   // 🔹 Прибыль менеджера (ожидаемая)
   const calculatedExpectedProfit = useMemo(() => {
-      let totalProfit = 0;
-      const salesWithProfit = sales.filter(s =>
+    let totalProfit = 0;
+
+    const salesWithProfit = sales.filter(s =>
         (s.status === 'ACTIVE' || s.status === 'COMPLETED' || s.status === 'DRAFT')
         && s.buyPrice > 0
-      );
-      salesWithProfit.forEach(sale => {
-          if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
-          const saleProfit = sale.totalAmount - sale.buyPrice;
-          if (saleProfit <= 0) return;
-          const account = accounts.find(a => a.id === sale.accountId);
-          let managerProfitShare = 1;
-          if (account && account.ownerId) {
-              const investor = investors.find(i => i.id === account.ownerId);
-              if (investor) {
-                  managerProfitShare = (100 - investor.profitPercentage) / 100;
-              }
-          }
-          totalProfit += saleProfit * managerProfitShare;
-      });
-      return totalProfit;
-  }, [sales, accounts, investors, profitFilterAccountId]);
+    );
+
+    salesWithProfit.forEach(sale => {
+        if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
+
+        // 🔧 ИЗМЕНЕНИЕ: считаем только ожидаемую прибыль от остатка
+        if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
+            const totalSaleProfit = sale.totalAmount - sale.buyPrice;
+            const profitMargin = sale.totalAmount > 0 ? totalSaleProfit / sale.totalAmount : 0;
+
+            const account = accounts.find(a => a.id === sale.accountId);
+            let managerProfitShare = 1;
+
+            if (account && account.ownerId) {
+                const investor = investors.find(i => i.id === account.ownerId);
+                if (investor) {
+                    managerProfitShare = (100 - investor.profitPercentage) / 100;
+                }
+            }
+
+            // 🔧 Только от остатка долга, как у инвестора!
+            totalProfit += sale.remainingAmount * profitMargin * managerProfitShare;
+        }
+    });
+
+    return totalProfit;
+}, [sales, accounts, investors, profitFilterAccountId]);
 
   // 🔹 Прибыль менеджера (полученная и выплаты)
   const { managerProfitAccruals, managerProfitPayouts, totalManagerProfitEarned, totalManagerProfitWithdrawn } = useMemo(() => {
@@ -531,9 +542,9 @@ const CashRegister: React.FC<CashRegisterProps> = ({
         const investorShare = investor.profitPercentage / 100;
 
         // Ожидаемая прибыль: от остатка долга (только активные продажи)
-        if (sale.status === 'ACTIVE') {
-            expectedProfit += sale.remainingAmount * profitMargin * investorShare;
-        }
+       if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
+    expectedProfit += sale.remainingAmount * profitMargin * investorShare;
+}
 
         // Полученная прибыль: от реально оплаченных сумм
         const collectedPayments = sale.downPayment + sale.paymentPlan
