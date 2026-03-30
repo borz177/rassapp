@@ -791,7 +791,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                   <div className="bg-gradient-to-br from-rose-50 to-rose-100 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
                       <p className="text-xs sm:text-sm font-medium text-rose-600 mb-1 sm:mb-2">Выплачено</p>
                       <p className="text-lg sm:text-2xl font-bold text-rose-900 break-words">
-                          -{formatCurrency(investorProfitStats.totalWithdrawn, appSettings.showCents)} ₽
+                          {formatCurrency(investorProfitStats.totalWithdrawn, appSettings.showCents)} ₽
                       </p>
                       <p className="text-[10px] sm:text-xs text-rose-500 mt-1 sm:mt-2">Расходы на выплаты</p>
                   </div>
