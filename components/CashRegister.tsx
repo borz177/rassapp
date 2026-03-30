@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState } from 'react';
 import { Sale, Account, Expense, Investor, AppSettings } from '../types';
 import { ICONS } from '../constants';
@@ -28,7 +27,6 @@ const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubm
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if(!name.trim()) return;
-        // Default to CUSTOM (Personal) account, removed SHARED option
         onSubmit(name, 'CUSTOM');
     };
 
@@ -268,7 +266,6 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, ap
     );
 };
 
-// Аккуратное модальное окно для действий со счетом
 const AccountActionModal = ({
     account,
     balance,
@@ -313,11 +310,9 @@ const AccountActionModal = ({
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
             <div className="bg-white w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
-                {/* Верхняя полоса с цветом типа счета */}
                 <div className={`h-2 bg-gradient-to-r ${getAccountTypeColor(account.type)}`}></div>
 
                 <div className="p-5">
-                    {/* Информация о счете */}
                     <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-100">
                         <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${getAccountTypeColor(account.type)} flex items-center justify-center text-white text-xl shadow-lg`}>
                             {getAccountTypeIcon(account.type)}
@@ -335,7 +330,6 @@ const AccountActionModal = ({
                         </div>
                     </div>
 
-                    {/* Список действий */}
                     <div className="space-y-1">
                         <button
                             onClick={() => { onSelectAccount(account.id); onClose(); }}
@@ -381,7 +375,6 @@ const AccountActionModal = ({
                         )}
                     </div>
 
-                    {/* Кнопка закрытия */}
                     <button
                         onClick={onClose}
                         className="w-full mt-4 py-3 bg-slate-100 text-slate-600 font-medium rounded-xl hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
@@ -410,69 +403,53 @@ const CashRegister: React.FC<CashRegisterProps> = ({
 
   const accountBalances = useMemo(() => {
     const balances: Record<string, number> = {};
-
     accounts.forEach(acc => {
       let total = 0;
-
       const accountSales = sales.filter(s => s.accountId === acc.id);
       accountSales.forEach(s => {
           total += Number(s.downPayment);
-          // Only sum REAL payments (exclude plan items)
           s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false).forEach(p => total += Number(p.amount));
       });
-
       const accountExpenses = expenses.filter(e => e.accountId === acc.id);
       total -= accountExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
-
       balances[acc.id] = total;
     });
-
     return balances;
   }, [accounts, sales, expenses]);
 
+  // 🔹 Прибыль менеджера (ожидаемая)
   const calculatedExpectedProfit = useMemo(() => {
       let totalProfit = 0;
-
-      // Include both ACTIVE and COMPLETED sales
-     const salesWithProfit = sales.filter(s =>
-    (s.status === 'ACTIVE' || s.status === 'COMPLETED' || s.status === 'DRAFT')
-    && s.buyPrice > 0
-);
-
+      const salesWithProfit = sales.filter(s =>
+        (s.status === 'ACTIVE' || s.status === 'COMPLETED' || s.status === 'DRAFT')
+        && s.buyPrice > 0
+      );
       salesWithProfit.forEach(sale => {
           if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
-
           const saleProfit = sale.totalAmount - sale.buyPrice;
           if (saleProfit <= 0) return;
-
           const account = accounts.find(a => a.id === sale.accountId);
           let managerProfitShare = 1;
-
           if (account && account.ownerId) {
               const investor = investors.find(i => i.id === account.ownerId);
               if (investor) {
                   managerProfitShare = (100 - investor.profitPercentage) / 100;
               }
           }
-
           totalProfit += saleProfit * managerProfitShare;
       });
-
       return totalProfit;
   }, [sales, accounts, investors, profitFilterAccountId]);
 
+  // 🔹 Прибыль менеджера (полученная и выплаты)
   const { managerProfitAccruals, managerProfitPayouts, totalManagerProfitEarned, totalManagerProfitWithdrawn } = useMemo(() => {
     const accruals: {id: string, date: string, amount: number, source: string}[] = [];
-
     sales.forEach(sale => {
         if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
         if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
-
         const totalSaleProfit = Number(sale.totalAmount) - Number(sale.buyPrice);
         const profitMargin = totalSaleProfit / Number(sale.totalAmount);
-
         const account = accounts.find(a => a.id === sale.accountId);
-
         let managerProfitSharePercent = 1.0;
         if (account?.ownerId) {
             const investor = investors.find(i => i.id === account.ownerId);
@@ -482,20 +459,16 @@ const CashRegister: React.FC<CashRegisterProps> = ({
         } else if (account?.type === 'SHARED') {
             return;
         }
-
-        // Use only REAL payments for profit calculation
         const allPayments = [
             { date: sale.startDate, amount: Number(sale.downPayment), id: `${sale.id}_dp`, isRealPayment: true },
             ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
         ];
-
         allPayments.forEach(p => {
             if (p.amount > 0) {
                 const pDate = new Date(p.date);
                 const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
                 const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
                 endDate.setHours(23, 59, 59, 999);
-
                 if (pDate >= startDate && pDate <= endDate) {
                     const profitFromPayment = p.amount * profitMargin;
                     const managerShare = profitFromPayment * managerProfitSharePercent;
@@ -511,7 +484,6 @@ const CashRegister: React.FC<CashRegisterProps> = ({
             }
         });
     });
-
     const payouts = expenses
         .filter(e => e.category === 'Моя выплата' && (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
         .filter(e => {
@@ -522,10 +494,8 @@ const CashRegister: React.FC<CashRegisterProps> = ({
             return eDate >= startDate && eDate <= endDate;
         })
         .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
     const totalEarned = accruals.reduce((sum, item) => sum + item.amount, 0);
     const totalWithdrawn = payouts.reduce((sum, item) => sum + Number(item.amount), 0);
-
     return {
         managerProfitAccruals: accruals.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
         managerProfitPayouts: payouts,
@@ -535,6 +505,63 @@ const CashRegister: React.FC<CashRegisterProps> = ({
   }, [sales, expenses, accounts, investors, profitFilterAccountId, myProfitPeriod]);
 
   const managerProfitBalance = totalManagerProfitEarned - totalManagerProfitWithdrawn;
+
+  // 🔹🔹🔹 НОВЫЙ БЛОК: Прибыль инвестора 🔹🔹🔹
+  const investorProfitStats = useMemo(() => {
+    // Проверяем, есть ли инвесторы у счетов
+    const accountsWithInvestors = accounts.filter(acc => acc.ownerId && investors.some(i => i.id === acc.ownerId));
+    if (accountsWithInvestors.length === 0) return null;
+
+    let expectedProfit = 0;
+    let receivedProfit = 0;
+    let totalWithdrawn = 0;
+
+    sales.forEach(sale => {
+        if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
+        if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
+
+        const account = accounts.find(a => a.id === sale.accountId);
+        if (!account?.ownerId) return;
+
+        const investor = investors.find(i => i.id === account.ownerId);
+        if (!investor) return;
+
+        const totalSaleProfit = sale.totalAmount - sale.buyPrice;
+        const profitMargin = totalSaleProfit / sale.totalAmount;
+        const investorShare = investor.profitPercentage / 100;
+
+        // Ожидаемая прибыль: от остатка долга (только активные продажи)
+        if (sale.status === 'ACTIVE') {
+            expectedProfit += sale.remainingAmount * profitMargin * investorShare;
+        }
+
+        // Полученная прибыль: от реально оплаченных сумм
+        const collectedPayments = sale.downPayment + sale.paymentPlan
+            .filter(p => p.isPaid && p.isRealPayment !== false)
+            .reduce((sum, p) => sum + p.amount, 0);
+        receivedProfit += collectedPayments * profitMargin * investorShare;
+    });
+
+    // Выплаты инвестору (расходы с категорией "Выплата инвестору")
+    const investorWithdrawals = expenses
+        .filter(e => e.investorId && e.payoutType === 'PROFIT' && (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
+        .filter(e => {
+            const eDate = new Date(e.date);
+            const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
+            const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
+            endDate.setHours(23, 59, 59, 999);
+            return eDate >= startDate && eDate <= endDate;
+        });
+    
+    totalWithdrawn = investorWithdrawals.reduce((sum, e) => sum + Number(e.amount), 0);
+
+    return {
+        expectedProfit: Math.round(expectedProfit * 100) / 100,
+        receivedProfit: Math.round(receivedProfit * 100) / 100,
+        totalWithdrawn: Math.round(totalWithdrawn * 100) / 100,
+        balance: Math.round((receivedProfit - totalWithdrawn) * 100) / 100
+    };
+  }, [sales, accounts, investors, expenses, profitFilterAccountId, myProfitPeriod]);
 
   const handleCreateAccount = (name: string, type: Account['type'], partners?: string[]) => {
       onAddAccount(name, type, partners);
@@ -597,19 +624,9 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       </div>
 
       {/* Modals */}
-      {isAdding && (
-        <CreateAccountModal
-          onClose={() => setIsAdding(false)}
-          onSubmit={handleCreateAccount}
-        />
-      )}
-
+      {isAdding && <CreateAccountModal onClose={() => setIsAdding(false)} onSubmit={handleCreateAccount} />}
       {editingAccount && onUpdateAccount && (
-        <EditAccountModal
-          account={editingAccount}
-          onClose={() => setEditingAccount(null)}
-          onUpdate={onUpdateAccount}
-        />
+        <EditAccountModal account={editingAccount} onClose={() => setEditingAccount(null)} onUpdate={onUpdateAccount} />
       )}
 
       {/* Account Cards */}
@@ -621,48 +638,25 @@ const CashRegister: React.FC<CashRegisterProps> = ({
           <h3 className="text-lg sm:text-xl font-bold text-slate-800 mb-2">Нет созданных счетов</h3>
           <p className="text-sm sm:text-base text-slate-500 mb-6">Создайте первый счет для начала работы</p>
           {isManager && (
-            <button
-              onClick={() => setIsAdding(true)}
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-5 py-2.5 sm:px-6 sm:py-3 rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-lg text-sm sm:text-base"
-            >
-              <span>{ICONS.Plus}</span>
-              <span>Создать счет</span>
+            <button onClick={() => setIsAdding(true)} className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-5 py-2.5 sm:px-6 sm:py-3 rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-lg text-sm sm:text-base">
+              <span>{ICONS.Plus}</span><span>Создать счет</span>
             </button>
           )}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {accounts.map(acc => (
-            <div
-              key={acc.id}
-              className="relative bg-white rounded-2xl sm:rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden"
-              onClick={() => handleSharedAccountClick(acc)}
-            >
-              {/* Background Gradient */}
+            <div key={acc.id} className="relative bg-white rounded-2xl sm:rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden" onClick={() => handleSharedAccountClick(acc)}>
               <div className={`absolute inset-0 bg-gradient-to-br ${getAccountTypeColor(acc.type)} opacity-0 hover:opacity-5 transition-opacity`}></div>
-
-              {/* Top Accent */}
               <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${getAccountTypeColor(acc.type)}`}></div>
-
               <div className="relative p-4 sm:p-6">
-                {/* Type Badge */}
                 <div className="flex items-start justify-between mb-3 sm:mb-4">
                   <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-bold bg-gradient-to-r ${getAccountTypeColor(acc.type)} text-white shadow-sm`}>
                     {acc.type === 'SHARED' && <span className="text-[10px] sm:text-xs">{ICONS.Users}</span>}
                     <span className="truncate max-w-[80px] sm:max-w-none">{getAccountTypeLabel(acc.type)}</span>
                   </div>
-
-                  {/* Menu Button */}
-                  <button
-                    onClick={(e) => handleMenuClick(e, acc)}
-                    className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg sm:rounded-xl transition-all z-10"
-                    aria-label="Действия со счетом"
-                  >
-                    {ICONS.More}
-                  </button>
+                  <button onClick={(e) => handleMenuClick(e, acc)} className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg sm:rounded-xl transition-all z-10" aria-label="Действия со счетом">{ICONS.More}</button>
                 </div>
-
-                {/* Account Info */}
                 <div className="space-y-3 sm:space-y-4">
                   <div>
                     <h3 className="font-bold text-lg sm:text-xl text-slate-800 mb-1 truncate">{acc.name}</h3>
@@ -670,8 +664,6 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                       {formatCurrency(accountBalances[acc.id] || 0, appSettings.showCents)} ₽
                     </p>
                   </div>
-
-                  {/* Partners Avatars for Shared Accounts */}
                   {acc.type === 'SHARED' && acc.partners && acc.partners.length > 0 && (
                     <div className="flex items-center justify-between">
                       <div className="flex -space-x-2 overflow-hidden">
@@ -679,19 +671,13 @@ const CashRegister: React.FC<CashRegisterProps> = ({
                           const investor = investors.find(i => i.id === pid);
                           const colors = ['bg-indigo-500', 'bg-purple-500', 'bg-pink-500', 'bg-amber-500'];
                           return (
-                            <div
-                              key={pid}
-                              className={`inline-flex h-6 w-6 sm:h-8 sm:w-8 rounded-full ${colors[idx % colors.length]} ring-2 ring-white items-center justify-center text-white text-[10px] sm:text-xs font-bold shadow-sm`}
-                              title={investor?.name}
-                            >
+                            <div key={pid} className={`inline-flex h-6 w-6 sm:h-8 sm:w-8 rounded-full ${colors[idx % colors.length]} ring-2 ring-white items-center justify-center text-white text-[10px] sm:text-xs font-bold shadow-sm`} title={investor?.name}>
                               {investor?.name?.charAt(0) || '?'}
                             </div>
                           );
                         })}
-                        {(acc.partners.length) > 4 && (
-                          <div className="inline-flex h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-slate-100 ring-2 ring-white items-center justify-center text-[10px] sm:text-xs font-bold text-slate-600">
-                            +{acc.partners.length - 4}
-                          </div>
+                        {acc.partners.length > 4 && (
+                          <div className="inline-flex h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-slate-100 ring-2 ring-white items-center justify-center text-[10px] sm:text-xs font-bold text-slate-600">+{acc.partners.length - 4}</div>
                         )}
                       </div>
                       <span className="text-[10px] sm:text-xs text-slate-400">{acc.partners.length} участников</span>
@@ -704,227 +690,162 @@ const CashRegister: React.FC<CashRegisterProps> = ({
         </div>
       )}
 
-      {/* Account Action Modal */}
       {activeMenuAccount && (
-        <AccountActionModal
-          account={activeMenuAccount}
-          balance={accountBalances[activeMenuAccount.id] || 0}
-          onClose={() => setActiveMenuAccount(null)}
-          onSelectAccount={onSelectAccount}
-          onEdit={setEditingAccount}
-          onSetMain={onSetMainAccount}
-          isManager={isManager}
-          onUpdateAccount={onUpdateAccount}
-          appSettings={appSettings}
-        />
+        <AccountActionModal account={activeMenuAccount} balance={accountBalances[activeMenuAccount.id] || 0} onClose={() => setActiveMenuAccount(null)} onSelectAccount={onSelectAccount} onEdit={setEditingAccount} onSetMain={onSetMainAccount} isManager={isManager} onUpdateAccount={onUpdateAccount} appSettings={appSettings} />
       )}
 
-      {/* Profit Section for Manager */}
+      {/* 🔹🔹🔹 БЛОК: Моя прибыль 🔹🔹🔹 */}
       {isManager && (
-        <div className="space-y-6 pt-8">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-lg">
-              {ICONS.TrendingUp}
-            </div>
-            <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-emerald-800 bg-clip-text text-transparent">
-              Моя прибыль
-            </h3>
-          </div>
-
-          {/* Filters - исправлено для мобильных */}
-          <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100">
-            <div className="space-y-3">
-              {/* Account Filter - полная ширина на мобильных */}
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
-                  Фильтр по счету
-                </label>
-                <select
-                  className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
-                  value={profitFilterAccountId}
-                  onChange={e => setProfitFilterAccountId(e.target.value)}
-                >
-                  <option value="ALL">Все счета</option>
-                  {accounts.filter(a => a.type !== 'SHARED').map(acc => (
-                    <option key={acc.id} value={acc.id}>{acc.name}</option>
-                  ))}
-                </select>
+          <div className="space-y-6 pt-8">
+              <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100">
+                  <div className="space-y-3">
+                      <div>
+                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Фильтр по счету</label>
+                          <select className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all" value={profitFilterAccountId} onChange={e => setProfitFilterAccountId(e.target.value)}>
+                              <option value="ALL">Все счета</option>
+                              {accounts.filter(a => a.type !== 'SHARED').map(acc => (<option key={acc.id} value={acc.id}>{acc.name}</option>))}
+                          </select>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3">
+                          <div>
+                              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Начало</label>
+                              <input type="date" className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all" value={myProfitPeriod.start} onChange={e => setMyProfitPeriod(p => ({...p, start: e.target.value}))} />
+                          </div>
+                          <div>
+                              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Конец</label>
+                              <input type="date" className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all" value={myProfitPeriod.end} onChange={e => setMyProfitPeriod(p => ({...p, end: e.target.value}))} />
+                          </div>
+                      </div>
+                  </div>
+                  {(!myProfitPeriod.start && !myProfitPeriod.end) && (<p className="text-[10px] sm:text-xs text-center text-slate-400 bg-slate-50 py-2 rounded-lg mt-3">Показаны данные за все время</p>)}
               </div>
 
-              {/* Date Filters - отдельные строки */}
-              <div className="grid grid-cols-1 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
-                    Начало
-                  </label>
-                  <input
-                    type="date"
-                    className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
-                    value={myProfitPeriod.start}
-                    onChange={e => setMyProfitPeriod(p => ({...p, start: e.target.value}))}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
-                    Конец
-                  </label>
-                  <input
-                    type="date"
-                    className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
-                    value={myProfitPeriod.end}
-                    onChange={e => setMyProfitPeriod(p => ({...p, end: e.target.value}))}
-                  />
-                </div>
+              <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-lg">{ICONS.TrendingUp}</div>
+                  <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-emerald-800 bg-clip-text text-transparent">Моя прибыль</h3>
               </div>
-            </div>
 
-            {(!myProfitPeriod.start && !myProfitPeriod.end) && (
-              <p className="text-[10px] sm:text-xs text-center text-slate-400 bg-slate-50 py-2 rounded-lg mt-3">
-                Показаны данные за все время
-              </p>
-            )}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-5">
+                  <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
+                      <p className="text-xs sm:text-sm font-medium text-indigo-600 mb-1 sm:mb-2">Ожидаемая прибыль</p>
+                      <p className="text-lg sm:text-2xl font-bold text-indigo-900 break-words">{formatCurrency(calculatedExpectedProfit, appSettings.showCents)} ₽</p>
+                      <p className="text-[10px] sm:text-xs text-indigo-500 mt-1 sm:mt-2">С активных договоров</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
+                      <p className="text-xs sm:text-sm font-medium text-emerald-600 mb-1 sm:mb-2">Полученная прибыль</p>
+                      <p className="text-lg sm:text-2xl font-bold text-emerald-900 break-words">{formatCurrency(totalManagerProfitEarned, appSettings.showCents)} ₽</p>
+                      <p className="text-[10px] sm:text-xs text-emerald-500 mt-1 sm:mt-2">За выбранный период</p>
+                  </div>
+                  <div onClick={() => setShowProfitDetails(true)} className="bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-6 rounded-xl sm:rounded-2xl cursor-pointer hover:from-slate-700 hover:to-slate-800 transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                      <p className="text-xs sm:text-sm font-medium text-slate-300 mb-1 sm:mb-2">Доступно к выводу</p>
+                      <p className="text-lg sm:text-2xl font-bold text-white break-words">{formatCurrency(managerProfitBalance, appSettings.showCents)} ₽</p>
+                      <p className="text-[10px] sm:text-xs text-slate-400 mt-1 sm:mt-2">Нажмите для деталей</p>
+                  </div>
+              </div>
           </div>
-
-          {/* Stats Cards - адаптивная сетка */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-5">
-            <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
-              <p className="text-xs sm:text-sm font-medium text-indigo-600 mb-1 sm:mb-2">Ожидаемая прибыль</p>
-              <p className="text-lg sm:text-2xl font-bold text-indigo-900 break-words">
-                {formatCurrency(calculatedExpectedProfit, appSettings.showCents)} ₽
-              </p>
-              <p className="text-[10px] sm:text-xs text-indigo-500 mt-1 sm:mt-2">С активных договоров</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
-              <p className="text-xs sm:text-sm font-medium text-emerald-600 mb-1 sm:mb-2">Полученная прибыль</p>
-              <p className="text-lg sm:text-2xl font-bold text-emerald-900 break-words">
-                {formatCurrency(totalManagerProfitEarned, appSettings.showCents)} ₽
-              </p>
-              <p className="text-[10px] sm:text-xs text-emerald-500 mt-1 sm:mt-2">За выбранный период</p>
-            </div>
-
-            <div
-              onClick={() => setShowProfitDetails(true)}
-              className="bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-6 rounded-xl sm:rounded-2xl cursor-pointer hover:from-slate-700 hover:to-slate-800 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
-            >
-              <p className="text-xs sm:text-sm font-medium text-slate-300 mb-1 sm:mb-2">Доступно к выводу</p>
-              <p className="text-lg sm:text-2xl font-bold text-white break-words">
-                {formatCurrency(managerProfitBalance, appSettings.showCents)} ₽
-              </p>
-              <p className="text-[10px] sm:text-xs text-slate-400 mt-1 sm:mt-2">Нажмите для деталей</p>
-            </div>
-          </div>
-        </div>
       )}
 
-      {/* Profit Details Modal */}
-      {showProfitDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/90 to-indigo-900/90 backdrop-blur-sm animate-fade-in" onClick={() => setShowProfitDetails(false)}>
-          <div className="bg-white/95 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl flex flex-col max-h-[80vh] border border-white/20" onClick={e => e.stopPropagation()}>
+      {/* 🔹🔹🔹 НОВЫЙ БЛОК: Прибыль инвестора (только если есть инвесторы) 🔹🔹🔹 */}
+      {isManager && investorProfitStats && (
+          <div className="space-y-6 pt-4">
+              <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white shadow-lg">
+                      {ICONS.Users}
+                  </div>
+                  <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-purple-800 bg-clip-text text-transparent">
+                      Прибыль инвестора
+                  </h3>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 sm:gap-5">
+                  {/* Ожидаемая прибыль инвестора */}
+                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
+                      <p className="text-xs sm:text-sm font-medium text-purple-600 mb-1 sm:mb-2">Ожидается</p>
+                      <p className="text-lg sm:text-2xl font-bold text-purple-900 break-words">
+                          {formatCurrency(investorProfitStats.expectedProfit, appSettings.showCents)} ₽
+                      </p>
+                      <p className="text-[10px] sm:text-xs text-purple-500 mt-1 sm:mt-2">С активных договоров</p>
+                  </div>
+
+                  {/* Полученная прибыль инвестора */}
+                  <div className="bg-gradient-to-br from-violet-50 to-violet-100 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
+                      <p className="text-xs sm:text-sm font-medium text-violet-600 mb-1 sm:mb-2">Получено</p>
+                      <p className="text-lg sm:text-2xl font-bold text-violet-900 break-words">
+                          {formatCurrency(investorProfitStats.receivedProfit, appSettings.showCents)} ₽
+                      </p>
+                      <p className="text-[10px] sm:text-xs text-violet-500 mt-1 sm:mt-2">За выбранный период</p>
+                  </div>
+
+                  {/* Выплачено инвестору */}
+                  <div className="bg-gradient-to-br from-rose-50 to-rose-100 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
+                      <p className="text-xs sm:text-sm font-medium text-rose-600 mb-1 sm:mb-2">Выплачено</p>
+                      <p className="text-lg sm:text-2xl font-bold text-rose-900 break-words">
+                          -{formatCurrency(investorProfitStats.totalWithdrawn, appSettings.showCents)} ₽
+                      </p>
+                      <p className="text-[10px] sm:text-xs text-rose-500 mt-1 sm:mt-2">Расходы на выплаты</p>
+                  </div>
+
+                  {/* Баланс инвестора (к выводу) */}
+                  <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-6 rounded-xl sm:rounded-2xl">
+                      <p className="text-xs sm:text-sm font-medium text-slate-300 mb-1 sm:mb-2">Доступно инвестору</p>
+                      <p className="text-lg sm:text-2xl font-bold text-white break-words">
+                          {formatCurrency(investorProfitStats.balance, appSettings.showCents)} ₽
+                      </p>
+                      <p className="text-[10px] sm:text-xs text-slate-400 mt-1 sm:mt-2">К выводу</p>
+                  </div>
+              </div>
+          </div>
+      )}
+
+        {/* Profit Details Modal */}
+        {showProfitDetails && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/90 to-indigo-900/90 backdrop-blur-sm animate-fade-in" onClick={() => setShowProfitDetails(false)}>
+                <div className="bg-white/95 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl flex flex-col max-h-[80vh] border border-white/20" onClick={e => e.stopPropagation()}>
             <div className="p-5 sm:p-6 border-b border-slate-100">
               <h3 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-slate-800 to-indigo-800 bg-clip-text text-transparent">Детализация прибыли</h3>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Баланс: <span className="font-bold text-emerald-600">{formatCurrency(managerProfitBalance, appSettings.showCents)} ₽</span>
-              </p>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">Баланс: <span className="font-bold text-emerald-600">{formatCurrency(managerProfitBalance, appSettings.showCents)} ₽</span></p>
             </div>
-
             <div className="flex border-b border-slate-100 p-1">
-              <button
-                onClick={() => setProfitDetailsTab('accruals')}
-                className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold rounded-xl transition-all ${
-                  profitDetailsTab === 'accruals' 
-                    ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md' 
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Начисления
-              </button>
-              <button
-                onClick={() => setProfitDetailsTab('payouts')}
-                className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold rounded-xl transition-all ${
-                  profitDetailsTab === 'payouts' 
-                    ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-md' 
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Выплаты
-              </button>
+              <button onClick={() => setProfitDetailsTab('accruals')} className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold rounded-xl transition-all ${profitDetailsTab === 'accruals' ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}>Начисления</button>
+              <button onClick={() => setProfitDetailsTab('payouts')} className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold rounded-xl transition-all ${profitDetailsTab === 'payouts' ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}>Выплаты</button>
             </div>
-
             <div className="flex-1 overflow-y-auto p-4 sm:p-5">
               {profitDetailsTab === 'accruals' && (
                 <div className="space-y-2 animate-fade-in">
                   {managerProfitAccruals.length === 0 ? (
-                    <div className="text-center py-6 sm:py-8">
-                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-slate-100 rounded-xl sm:rounded-2xl flex items-center justify-center mx-auto mb-3">
-                        <span className="text-xl sm:text-2xl text-slate-400">{ICONS.TrendingUp}</span>
-                      </div>
-                      <p className="text-sm sm:text-base text-slate-500">Нет начислений за этот период</p>
-                    </div>
+                    <div className="text-center py-6 sm:py-8"><div className="w-12 h-12 sm:w-16 sm:h-16 bg-slate-100 rounded-xl sm:rounded-2xl flex items-center justify-center mx-auto mb-3"><span className="text-xl sm:text-2xl text-slate-400">{ICONS.TrendingUp}</span></div><p className="text-sm sm:text-base text-slate-500">Нет начислений за этот период</p></div>
                   ) : (
                     managerProfitAccruals.map(p => (
                       <div key={p.id} className="flex justify-between items-center p-2.5 sm:p-3 bg-emerald-50 rounded-lg sm:rounded-xl hover:bg-emerald-100 transition-all">
-                        <div className="flex-1 min-w-0 mr-2">
-                          <p className="font-medium text-slate-800 text-xs sm:text-sm truncate">{p.source}</p>
-                          <p className="text-[10px] sm:text-xs text-slate-500">{formatDate(p.date)}</p>
-                        </div>
-                        <span className="font-bold text-emerald-600 text-xs sm:text-sm whitespace-nowrap">
-                          +{formatCurrency(p.amount, appSettings.showCents)} ₽
-                        </span>
+                        <div className="flex-1 min-w-0 mr-2"><p className="font-medium text-slate-800 text-xs sm:text-sm truncate">{p.source}</p><p className="text-[10px] sm:text-xs text-slate-500">{formatDate(p.date)}</p></div>
+                        <span className="font-bold text-emerald-600 text-xs sm:text-sm whitespace-nowrap">+{formatCurrency(p.amount, appSettings.showCents)} ₽</span>
                       </div>
                     ))
                   )}
                 </div>
               )}
-
               {profitDetailsTab === 'payouts' && (
                 <div className="space-y-2 animate-fade-in">
                   {managerProfitPayouts.length === 0 ? (
-                    <div className="text-center py-6 sm:py-8">
-                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-slate-100 rounded-xl sm:rounded-2xl flex items-center justify-center mx-auto mb-3">
-                        <span className="text-xl sm:text-2xl text-slate-400">{ICONS.Wallet}</span>
-                      </div>
-                      <p className="text-sm sm:text-base text-slate-500">Нет выплат за этот период</p>
-                    </div>
+                    <div className="text-center py-6 sm:py-8"><div className="w-12 h-12 sm:w-16 sm:h-16 bg-slate-100 rounded-xl sm:rounded-2xl flex items-center justify-center mx-auto mb-3"><span className="text-xl sm:text-2xl text-slate-400">{ICONS.Wallet}</span></div><p className="text-sm sm:text-base text-slate-500">Нет выплат за этот период</p></div>
                   ) : (
                     managerProfitPayouts.map(e => (
                       <div key={e.id} className="flex justify-between items-center p-2.5 sm:p-3 bg-red-50 rounded-lg sm:rounded-xl hover:bg-red-100 transition-all">
-                        <div className="flex-1 min-w-0 mr-2">
-                          <p className="font-medium text-slate-800 text-xs sm:text-sm truncate">{e.title}</p>
-                          <p className="text-[10px] sm:text-xs text-slate-500">{formatDate(e.date)}</p>
-                        </div>
-                        <span className="font-bold text-red-600 text-xs sm:text-sm whitespace-nowrap">
-                          -{formatCurrency(Number(e.amount), appSettings.showCents)} ₽
-                        </span>
+                        <div className="flex-1 min-w-0 mr-2"><p className="font-medium text-slate-800 text-xs sm:text-sm truncate">{e.title}</p><p className="text-[10px] sm:text-xs text-slate-500">{formatDate(e.date)}</p></div>
+                        <span className="font-bold text-red-600 text-xs sm:text-sm whitespace-nowrap">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
                       </div>
                     ))
                   )}
                 </div>
               )}
             </div>
-
-            <div className="p-4 sm:p-5 border-t border-slate-100 bg-slate-50">
-              <button
-                onClick={() => setShowProfitDetails(false)}
-                className="w-full py-2.5 sm:py-3.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-100 transition-all text-sm sm:text-base"
-              >
-                Закрыть
-              </button>
-            </div>
+            <div className="p-4 sm:p-5 border-t border-slate-100 bg-slate-50"><button onClick={() => setShowProfitDetails(false)} className="w-full py-2.5 sm:py-3.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-100 transition-all text-sm sm:text-base">Закрыть</button></div>
           </div>
         </div>
       )}
 
-      {/* Shared Account Details Modal */}
       {selectedSharedAccount && (
-        <SharedAccountDetails
-          account={selectedSharedAccount}
-          sales={sales}
-          expenses={expenses}
-          investors={investors}
-          onClose={() => setSelectedSharedAccount(null)}
-          appSettings={appSettings}
-        />
+        <SharedAccountDetails account={selectedSharedAccount} sales={sales} expenses={expenses} investors={investors} onClose={() => setSelectedSharedAccount(null)} appSettings={appSettings} />
       )}
     </div>
   );
