@@ -957,7 +957,7 @@ if (!user && !isLoading) {
                   <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital}
                              accountBalances={accountBalances} onAction={handleAction}
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
-                             accounts={accounts} appSettings={appSettings}/>} investors={investors}
+                             accounts={accounts} appSettings={appSettings} investors={investors}/>}
               {currentView === 'DASHBOARD' && isInvestor && activeInvestor &&
                   <InvestorDashboard sales={sales} expenses={expenses} accounts={accounts} investor={activeInvestor}
                                      appSettings={appSettings}/>}

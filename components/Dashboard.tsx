@@ -254,38 +254,32 @@ const Dashboard: React.FC<DashboardProps> = ({
     let expectedProfit = 0;
 
     filteredSales.forEach(sale => {
-        // Пропускаем системные транзакции
         if (sale.customerId.startsWith('system_')) return;
-
-        // Пропускаем продажи без себестоимости
         if (!sale.buyPrice || sale.buyPrice <= 0) return;
 
-        // Общая прибыль по продаже
         const totalSaleProfit = sale.totalAmount - sale.buyPrice;
         if (totalSaleProfit <= 0) return;
 
-        // Доля менеджера: если есть инвестор — учитываем его процент
-        const account = accounts.find(a => a.id === sale.accountId);
-        let managerShare = 1; // По умолчанию 100% менеджеру
+        // 🔹 Безопасный поиск счёта
+        const account = accounts?.find(a => a?.id === sale.accountId);
+        let managerShare = 1;
 
-        if (account?.ownerId) {
-            const investor = investors.find(i => i.id === account.ownerId);
+        // 🔹 Безопасная проверка инвестора
+        if (account?.ownerId && investors?.length) {
+            const investor = investors.find(i => i?.id === account.ownerId);
             if (investor) {
                 managerShare = (100 - investor.profitPercentage) / 100;
             }
         }
 
-        // Маржа прибыли в % от суммы продажи
         const profitMargin = totalSaleProfit / sale.totalAmount;
 
-        // ✅ Полученная прибыль: от реально оплаченных сумм
         const collectedPayments = sale.downPayment + sale.paymentPlan
             .filter(p => p.isPaid && p.isRealPayment !== false)
             .reduce((sum, p) => sum + p.amount, 0);
 
         receivedProfit += collectedPayments * profitMargin * managerShare;
 
-        // ✅ Ожидаемая прибыль: от остатка долга (только для активных продаж)
         if (sale.status === 'ACTIVE') {
             expectedProfit += sale.remainingAmount * profitMargin * managerShare;
         }
