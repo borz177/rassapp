@@ -1,7 +1,7 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { AppSettings, TermRate } from '../types';
+import { api } from '../services/api';
 
 interface CalculatorProps {
   isPublic?: boolean;
@@ -14,33 +14,28 @@ interface CalculatorProps {
 const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, userPhone, onBack, onSaveSettings }) => {
   // Public URL Params parsing
   const searchParams = new URLSearchParams(window.location.search);
-  const pathName = window.location.pathname; // /calc/CompanyName
+  const pathName = window.location.pathname;
 
   // Extract Company Name from Path if available
   let publicCompany = searchParams.get('c') || searchParams.get('company') || appSettings?.companyName || 'Наша Компания';
   if (pathName.startsWith('/calc/')) {
       const parts = pathName.split('/');
-      // /calc/MyCompany -> parts ['', 'calc', 'MyCompany']
       if (parts.length >= 3 && parts[2]) {
           publicCompany = decodeURIComponent(parts[2]);
       }
   }
 
-  // Support both long 'rate' and short 'r'
+  // 🔹 Поддержка старого формата параметров (резерв)
   const publicRate = parseFloat(searchParams.get('r') || searchParams.get('rate') || '30');
-
-  // Parse Rules: Support both long 'rules' (JSON) and short 'l' (compressed format: 3:10,6:20)
   const publicRulesParam = searchParams.get('rules');
   const shortRulesParam = searchParams.get('l');
+  const configId = searchParams.get('cfg'); // 🔹 Новый параметр для серверного конфига
 
   let publicRules: TermRate[] = [];
-
-  // Try legacy JSON first
   try {
       if (publicRulesParam) {
           publicRules = JSON.parse(decodeURIComponent(publicRulesParam));
       } else if (shortRulesParam) {
-          // Parse short format: "3:10,6:15" -> [{months:3, rate:10}, {months:6, rate:15}]
           publicRules = shortRulesParam.split(',').map(pair => {
               const [months, rate] = pair.split(':').map(Number);
               return { months, rate };
@@ -59,19 +54,68 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   const [defaultRate, setDefaultRate] = useState<string>(appSettings?.calculator?.defaultInterestRate?.toString() || '30');
   const [termRates, setTermRates] = useState<TermRate[]>(appSettings?.calculator?.termRates || []);
   const [showSettings, setShowSettings] = useState(false);
+  
+  // 🔹 Состояние загрузки конфига с сервера
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
 
   // New Rule State
   const [newRuleMonth, setNewRuleMonth] = useState<number>(3);
   const [newRuleRate, setNewRuleRate] = useState<string>('');
 
+  // 🔹 Загрузка конфига с сервера при наличии ?cfg=...
+  useEffect(() => {
+    if (configId && !isPublic) {
+      setIsLoadingConfig(true);
+      
+      api.getCalculatorConfig(configId)
+        .then(config => {
+          if (config) {
+            setDefaultRate(config.defaultRate.toString());
+            setTermRates(config.termRates || []);
+          }
+        })
+        .catch(error => {
+          console.error("Failed to load config from server", error);
+          // 🔹 Fallback: пробуем загрузить из старых параметров
+          if (publicRate) setDefaultRate(publicRate.toString());
+          if (publicRules.length > 0) setTermRates(publicRules);
+        })
+        .finally(() => {
+          setIsLoadingConfig(false);
+        });
+    } else if (isPublic) {
+      // 🔹 В публичном режиме: приоритет серверного конфига, затем старые параметры
+      if (configId) {
+        setIsLoadingConfig(true);
+        api.getCalculatorConfig(configId)
+          .then(config => {
+            if (config) {
+              setDefaultRate(config.defaultRate.toString());
+              setTermRates(config.termRates || []);
+            }
+          })
+          .catch(() => {
+            // Fallback на старые параметры
+            if (publicRate) setDefaultRate(publicRate.toString());
+            if (publicRules.length > 0) setTermRates(publicRules);
+          })
+          .finally(() => setIsLoadingConfig(false));
+      } else {
+        // Только старые параметры
+        if (publicRate) setDefaultRate(publicRate.toString());
+        if (publicRules.length > 0) setTermRates(publicRules);
+      }
+    }
+  }, [configId, isPublic, publicRate, publicRules]);
+
   // Determine Active Rate
   const activeRate = useMemo(() => {
-      const ratesToUse = isPublic ? publicRules : termRates;
-      const baseRate = isPublic ? publicRate : parseFloat(defaultRate);
+      const ratesToUse = isPublic ? (termRates.length > 0 ? termRates : publicRules) : termRates;
+      const baseRate = isPublic ? parseFloat(defaultRate) : parseFloat(defaultRate);
 
       const specificRule = ratesToUse.find(r => r.months === months);
       return specificRule ? specificRule.rate : baseRate;
-  }, [months, termRates, defaultRate, isPublic, publicRate, publicRules]);
+  }, [months, termRates, defaultRate, isPublic, publicRules]);
 
   // Calculation
   const result = useMemo(() => {
@@ -81,7 +125,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
       const priceWithMarkup = p + (p * (activeRate / 100));
       const remaining = priceWithMarkup - dp;
       const monthly = months > 0 ? remaining / months : 0;
-      const roundedMonthly = Math.ceil(monthly / 100) * 100; // Smart round up
+      const roundedMonthly = Math.ceil(monthly / 100) * 100;
 
       return {
           total: priceWithMarkup,
@@ -90,42 +134,42 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
       };
   }, [price, months, downPayment, activeRate]);
 
-  const handleCopyLink = () => {
-      // Compress rules to "months:rate" format separated by comma
-      const rulesString = termRates.map(r => `${r.months}:${r.rate}`).join(',');
+  // 🔹 ОБНОВЛЁННАЯ ФУНКЦИЯ: сохраняет конфиг на сервере → возвращает чистую ссылку
+  const handleCopyLink = async () => {
       const companyName = encodeURIComponent(appSettings?.companyName || 'Company');
-
-      // Use clean path format: domain.com/calc/CompanyName
-      const baseUrl = `${window.location.origin}/calc/${companyName}`;
-      let url = `${baseUrl}`;
-
-      // Add query params if needed
-      const params = [];
-      if (defaultRate && defaultRate !== '30') params.push(`r=${defaultRate}`);
-      if (rulesString) params.push(`l=${rulesString}`);
-
-      if (params.length > 0) {
-          url += `?${params.join('&')}`;
-      }
-
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(url).then(() => {
-              alert("Красивая ссылка скопирована!");
+      
+      try {
+          // 1. Сохраняем конфиг на сервере
+          const configId = await api.saveCalculatorConfig({
+              defaultRate: parseFloat(defaultRate),
+              termRates: termRates.map(r => ({ months: r.months, rate: r.rate }))
           });
-      } else {
-          // Fallback
-          const textArea = document.createElement("textarea");
-          textArea.value = url;
-          document.body.appendChild(textArea);
-          textArea.focus();
-          textArea.select();
-          try {
-              document.execCommand('copy');
-              alert("Ссылка скопирована!");
-          } catch (err) {
-              alert("Не удалось скопировать ссылку автоматически.");
+          
+          // 2. Формируем ЧИСТУЮ ссылку с коротким ID
+          const cleanUrl = `${window.location.origin}/calc/${companyName}?cfg=${configId}`;
+          
+          // 3. Копируем в буфер
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(cleanUrl);
+              alert("✨ Красивая ссылка скопирована!");
+          } else {
+              // Fallback для старых браузеров
+              const textArea = document.createElement("textarea");
+              textArea.value = cleanUrl;
+              document.body.appendChild(textArea);
+              textArea.focus();
+              textArea.select();
+              try {
+                  document.execCommand('copy');
+                  alert("✨ Ссылка скопирована!");
+              } catch (err) {
+                  alert("Не удалось скопировать ссылку автоматически.");
+              }
+              document.body.removeChild(textArea);
           }
-          document.body.removeChild(textArea);
+      } catch (error) {
+          console.error("Failed to save config", error);
+          alert("❌ Ошибка сохранения настроек. Проверьте подключение к интернету.");
       }
   };
 
@@ -150,7 +194,6 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
       if (isNaN(rate)) return;
 
       setTermRates(prev => {
-          // Remove existing rule for this month if exists, then add new
           const filtered = prev.filter(r => r.months !== newRuleMonth);
           return [...filtered, { months: newRuleMonth, rate }].sort((a,b) => a.months - b.months);
       });
@@ -165,7 +208,6 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
   return (
     <div className={`min-h-screen ${isPublic ? 'bg-slate-50 flex items-center justify-center p-4' : 'animate-fade-in pb-20'}`}>
-
         <div className={`bg-white w-full ${isPublic ? 'max-w-md rounded-3xl shadow-xl' : 'rounded-none bg-transparent'}`}>
 
             {/* Header */}
@@ -187,6 +229,17 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
             </div>
 
             <div className={`space-y-6 ${isPublic ? 'p-6' : ''}`}>
+                
+                {/* 🔹 Индикатор загрузки конфига */}
+                {isLoadingConfig && (
+                    <div className="flex items-center justify-center py-4 text-indigo-600">
+                        <svg className="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        Загрузка настроек...
+                    </div>
+                )}
 
                 {/* Inputs */}
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
@@ -335,10 +388,23 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                             <div className="space-y-3">
                                 <button
                                     onClick={handleCopyLink}
-                                    className="w-full py-3 bg-white border-2 border-indigo-200 text-indigo-700 font-bold rounded-xl hover:bg-indigo-100 flex items-center justify-center gap-2 transition-colors"
+                                    disabled={isLoadingConfig}
+                                    className={`w-full py-3 bg-white border-2 border-indigo-200 text-indigo-700 font-bold rounded-xl hover:bg-indigo-100 flex items-center justify-center gap-2 transition-colors ${isLoadingConfig ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                                    Копировать красивую ссылку
+                                    {isLoadingConfig ? (
+                                        <>
+                                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                            </svg>
+                                            Сохранение...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                                            Копировать ссылку
+                                        </>
+                                    )}
                                 </button>
                                 <p className="text-center text-xs text-indigo-400">
                                     Ссылка будет вида: rassrochka.pro/calc/ВашаКомпания
@@ -349,47 +415,44 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                 )}
 
                 {isPublic && (
-    <div className="text-center space-y-3">
-        {/* Кнопка позвонить - использует телефон из профиля */}
-        {userPhone && (
-            <a
-                href={`tel:${userPhone}`}
-                className="w-full py-4 bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-200 flex items-center justify-center gap-2 hover:bg-blue-600 transition-colors"
-            >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-                </svg>
-                Позвонить: {userPhone.replace(/(\d)(\d{3})(\d{3})(\d{2})(\d{2})/, '+$1 ($2) $3-$4-$5')}
-            </a>
-        )}
+                    <div className="text-center space-y-3">
+                        {userPhone && (
+                            <a
+                                href={`tel:${userPhone}`}
+                                className="w-full py-4 bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-200 flex items-center justify-center gap-2 hover:bg-blue-600 transition-colors"
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                                </svg>
+                                Позвонить: {userPhone.replace(/(\d)(\d{3})(\d{3})(\d{2})(\d{2})/, '+$1 ($2) $3-$4-$5')}
+                            </a>
+                        )}
 
-        {/* Кнопка WhatsApp - использует настройки из Settings */}
-        {appSettings?.whatsapp?.enabled && appSettings?.whatsapp?.idInstance && (
-            <a
-                href={`https://wa.me/${appSettings.whatsapp.idInstance.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Здравствуйте! Хочу узнать подробнее о рассрочке')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-4 bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors"
-            >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
-                </svg>
-                Написать в WhatsApp
-            </a>
-        )}
+                        {appSettings?.whatsapp?.enabled && appSettings?.whatsapp?.idInstance && (
+                            <a
+                                href={`https://wa.me/${appSettings.whatsapp.idInstance.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Здравствуйте! Хочу узнать подробнее о рассрочке')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-full py-4 bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors"
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                                </svg>
+                                Написать в WhatsApp
+                            </a>
+                        )}
 
-        {/* Резервная кнопка если нет контактов */}
-        {!userPhone && !appSettings?.whatsapp?.enabled && (
-            <button className="w-full py-4 bg-slate-400 text-white font-bold rounded-xl shadow-lg cursor-not-allowed">
-                Контакты не указаны
-            </button>
-        )}
+                        {!userPhone && !appSettings?.whatsapp?.enabled && (
+                            <button className="w-full py-4 bg-slate-400 text-white font-bold rounded-xl shadow-lg cursor-not-allowed">
+                                Контакты не указаны
+                            </button>
+                        )}
 
-        <p className="text-xs text-slate-400">
-            Расчет является предварительным. {appSettings?.companyName || 'Компания'}
-        </p>
-    </div>
-)}
+                        <p className="text-xs text-slate-400">
+                            Расчет является предварительным. {appSettings?.companyName || 'Компания'}
+                        </p>
+                    </div>
+                )}
             </div>
         </div>
     </div>

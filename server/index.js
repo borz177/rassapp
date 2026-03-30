@@ -1867,6 +1867,104 @@ app.post('/api/v1/payments', apiKeyAuth, async (req, res) => {
   }
 });
 
+// =====================================================
+// === 🧮 КАЛЬКУЛЯТОР — СОХРАНЕНИЕ КОНФИГОВ ===
+// =====================================================
+
+// Сохранить конфиг калькулятора → вернуть короткий ID
+app.post('/api/calculator-configs', auth, async (req, res) => {
+  try {
+    const { defaultRate, termRates } = req.body;
+
+    // 🔹 Валидация
+    if (defaultRate === undefined || !Array.isArray(termRates)) {
+      return res.status(400).json({ msg: 'Некорректные данные конфига' });
+    }
+    if (termRates.length > 20) {
+      return res.status(400).json({ msg: 'Максимум 20 правил' });
+    }
+    if (termRates.some(r => r.months < 1 || r.months > 60 || r.rate < 0 || r.rate > 200)) {
+      return res.status(400).json({ msg: 'Некорректные значения правил' });
+    }
+
+    // 🔹 Генерируем короткий уникальный ID (6 символов: a1b2c3)
+    const configId = Math.random().toString(36).substring(2, 8);
+
+    const configData = {
+      id: `cfg_${configId}`,
+      defaultRate: parseFloat(defaultRate),
+      termRates: termRates.map(r => ({ months: r.months, rate: r.rate })),
+      createdAt: new Date().toISOString(),
+      createdBy: req.user.id
+    };
+
+    // 🔹 Сохраняем в data_items с типом 'calculator_configs'
+    await pool.query(`
+      INSERT INTO data_items (id, user_id, type, data, updated_at)
+      VALUES ($1, $2, 'calculator_configs', $3, NOW())
+    `, [configData.id, req.user.id, JSON.stringify(configData)]);
+
+    res.json({ configId }); // Возвращаем только короткий ID: "a1b2c3"
+
+  } catch (err) {
+    console.error('Save calculator config error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Получить конфиг по короткому ID (публичный доступ — без auth!)
+app.get('/api/calculator-configs/:configId', async (req, res) => {
+  try {
+    const { configId } = req.params;
+    const fullId = `cfg_${configId}`;
+
+    const result = await pool.query(`
+      SELECT data FROM data_items 
+      WHERE id = $1 AND type = 'calculator_configs'
+    `, [fullId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ msg: 'Конфиг не найден' });
+    }
+
+    const config = result.rows[0].data;
+
+    // 🔹 Опционально: удаляем старые конфиги (> 30 дней)
+    const configDate = new Date(config.createdAt);
+    const daysOld = (Date.now() - configDate.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysOld > 30) {
+      await pool.query('DELETE FROM data_items WHERE id = $1', [fullId]);
+      return res.status(410).json({ msg: 'Конфиг устарел' });
+    }
+
+    // 🔹 Возвращаем только нужные поля
+    res.json({
+      defaultRate: config.defaultRate,
+      termRates: config.termRates
+    });
+
+  } catch (err) {
+    console.error('Get calculator config error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// 🔹 Очистка старых конфигов (запускается раз в сутки)
+setInterval(async () => {
+  try {
+    const result = await pool.query(`
+      DELETE FROM data_items 
+      WHERE type = 'calculator_configs' 
+      AND (data->>'createdAt')::timestamp < NOW() - INTERVAL '30 days'
+    `);
+    if (result.rowCount > 0) {
+      console.log(`🧹 Cleaned ${result.rowCount} old calculator configs`);
+    }
+  } catch (err) {
+    console.error('Cleanup calculator configs error:', err);
+  }
+}, 24 * 60 * 60 * 1000); // Раз в 24 часа
+
 // --- VITE MIDDLEWARE ---
 const startServer = async () => {
   if (process.env.NODE_ENV !== 'production') {

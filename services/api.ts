@@ -444,6 +444,39 @@ export const api = {
         return data.apiKey;
     },
 
+
+     // === КАЛЬКУЛЯТОР — СОХРАНЕНИЕ/ЗАГРУЗКА КОНФИГОВ ===
+
+    /**
+     * Сохраняет настройки калькулятора на сервере
+     * @returns Короткий ID конфига (например: "a1b2c3")
+     */
+    saveCalculatorConfig: async (config: { defaultRate: number; termRates: { months: number; rate: number }[] }): Promise<string> => {
+        const res = await fetch(`${API_URL}/calculator-configs`, {
+            method: 'POST',
+            headers: getAuthHeader(),
+            body: JSON.stringify(config)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || data.error || 'Не удалось сохранить настройки калькулятора');
+        return data.configId; // Возвращаем короткий ID: "a1b2c3"
+    },
+
+    /**
+     * Загружает конфиг калькулятора по короткому ID
+     * ⚠️ ПУБЛИЧНЫЙ МЕТОД — не использует токен авторизации!
+     */
+    getCalculatorConfig: async (configId: string): Promise<{ defaultRate: number; termRates: { months: number; rate: number }[] }> => {
+        // 🔹 Публичный запрос — БЕЗ токена, чтобы клиент мог открыть ссылку без логина
+        const res = await fetch(`${API_URL}/calculator-configs/${configId}`, {
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || data.error || 'Не удалось загрузить настройки калькулятора');
+        return data;
+    },
+
+
     // === УНИВЕРСАЛЬНЫЕ HTTP МЕТОДЫ (для техподдержки и других новых роутов) ===
 
 get: async <T>(url: string, params?: Record<string, any>): Promise<T> => {
