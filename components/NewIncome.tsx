@@ -209,87 +209,24 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       if (sourceType === 'CUSTOMER') {
           onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
-    try {
-        // 🔧 ФИКС 6: Правильная очистка номера телефона для WhatsApp
-        let phone = selectedCustomer.phone.replace(/[^\d+]/g, '');
-        if (!phone.startsWith('+')) {
-            phone = '+' + phone;
-        }
-        // Убираем всё кроме цифр и + (WhatsApp требует чистый формат)
-        phone = phone.replace(/[^\d+]/g, '');
-
-        // Проверка: минимум 10 цифр для международного номера
-        if (phone.replace(/\D/g, '').length < 10) {
-            throw new Error("Неверный формат номера телефона");
-        }
-
-        const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-
-        let cleanName = selectedSale.productName.replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_').replace(/\s+/g, '_');
-        const fileName = `Dogovor_${cleanName || 'oplata'}.pdf`;
-
-        // 🔧 ФИКС 7: Показываем индикатор отправки (мобильным нужно время)
-        const originalBtnText = (document.activeElement as HTMLButtonElement)?.textContent || '';
-        if (document.activeElement instanceof HTMLButtonElement) {
-            document.activeElement.disabled = true;
-            document.activeElement.textContent = '⏳ Отправка...';
-        }
-
-        const success = await sendWhatsAppFile(
-            appSettings.whatsapp.idInstance,
-            appSettings.whatsapp.apiTokenInstance,
-            phone,  // ← Используем очищенный номер
-            pdfBlob,
-            fileName
-        );
-
-        if (success) {
-            alert("✅ Договор отправлен в WhatsApp");
-        } else {
-            alert("⚠️ Ошибка отправки: проверьте статус аккаунта в WhatsApp API");
-        }
-
-    } catch (error: any) {
-        console.error("WhatsApp send error:", error);
-
-        // 🔧 ФИКС 8: Фоллбэк — отправляем текстовый чек, если PDF не получился
-        const textReceipt = `
-📋 Чек об оплате
-${appSettings?.companyName || 'Компания'}
-
-👤 Клиент: ${selectedCustomer?.name}
-📱 ${selectedCustomer?.phone}
-
-🛍 Товар: ${selectedSale?.productName}
-💰 Сумма договора: ${selectedSale?.totalAmount?.toLocaleString()} ₽
-
-💵 Внесено: ${numAmount.toLocaleString()} ₽
-🗓 Дата: ${new Date(finalDate).toLocaleDateString('ru-RU')}
-
-✅ Платёж принят. Спасибо!
-        `.trim();
-
-        try {
-            let phone = selectedCustomer.phone.replace(/[^\d+]/g, '');
-            phone = phone.replace(/[^\d+]/g, '');
-
-            const textSent = await sendWhatsAppMessage(
-                appSettings.whatsapp.idInstance,
-                appSettings.whatsapp.apiTokenInstance,
-                phone,
-                textReceipt
-            );
-
-            if (textSent) {
-                alert("📝 PDF не создан, но текстовый чек отправлен в WhatsApp");
-                return;
-            }
-        } catch (textError) {
-            console.error("Text receipt also failed:", textError);
-        }
-
-        alert(`❌ Не удалось отправить чек: ${error.message || "Проверьте интернет"}`);
-        }
+              try {
+                  const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
+                  let cleanName = selectedSale.productName.replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_').replace(/\s+/g, '_');
+                  const finalName = cleanName || 'oplata';
+                  const fileName = `Dogovor_${finalName}.pdf`;
+                  const success = await sendWhatsAppFile(
+                      appSettings.whatsapp.idInstance,
+                      appSettings.whatsapp.apiTokenInstance,
+                      selectedCustomer.phone,
+                      pdfBlob,
+                      fileName
+                  );
+                  if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
+                  else { alert("Ошибка отправки PDF в WhatsApp"); }
+              } catch (error: any) {
+   console.error("PDF generation error:", error);
+   alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
+}
           }
       } else if (sourceType === 'INVESTOR') {
           onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
