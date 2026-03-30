@@ -289,7 +289,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         receivedProfit: Math.round(receivedProfit * 100) / 100,
         expectedProfit: Math.round(expectedProfit * 100) / 100
     };
-}, [sales, accounts, investors, selectedAccountId]);
+},  [sales, selectedAccountId]);
 
   const currentWorkingCapital = useMemo(() => {
       if (selectedAccountId) {
@@ -476,14 +476,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
                           Собрано
                         </p>
-                        <p className="text-lg sm:text-2xl font-black text-slate-800 break-words leading-none">
-                          {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)}
-                          <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                        <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                            {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)}
+                            <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
                         </p>
                     </div>
                   </div>
 
-                  {/* 2. Долг клиентов */}
+                    {/* 2. Долг клиентов */}
                   <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 flex flex-col relative overflow-hidden cursor-default">
                     <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
 
@@ -496,14 +496,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
                           Долг клиентов
                         </p>
-                        <p className="text-lg sm:text-2xl font-black text-slate-800 break-words leading-none">
-                          {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)}
-                          <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                        <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                            {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)}
+                            <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
                         </p>
                     </div>
                   </div>
 
-                  {/* 3. Оборотные средства */}
+                    {/* 3. Оборотные средства */}
                   <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
                     <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
 
@@ -516,14 +516,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
                           В обороте
                         </p>
-                        <p className="text-lg sm:text-2xl font-black text-slate-800 break-words leading-none">
-                          {formatCurrency(currentWorkingCapital, appSettings.showCents)}
-                          <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                        <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                            {formatCurrency(currentWorkingCapital, appSettings.showCents)}
+                            <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
                         </p>
                     </div>
                   </div>
 
-                  {/* 4. Продажи в рассрочку */}
+                    {/* 4. Продажи в рассрочку */}
                   <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 flex flex-col relative overflow-hidden cursor-default">
                     <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
 
@@ -534,11 +534,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                     <div className="z-10 relative mt-auto">
                         <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                          Рассрочки
+                          Продажи
                         </p>
-                        <p className="text-lg sm:text-2xl font-black text-slate-800 break-words leading-none">
-                          {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)}
-                          <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                        <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                            {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)}
+                            <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
                         </p>
                     </div>
                   </div>
@@ -555,15 +555,16 @@ const Dashboard: React.FC<DashboardProps> = ({
     <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
       Получено прибыли
     </p>
-    <p className="text-lg sm:text-2xl font-black text-slate-800 break-words leading-none">
-      {formatCurrency(profitStats.receivedProfit, appSettings.showCents)}
-      <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-    </p>
+      <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+          {formatCurrency(profitStats.receivedProfit, appSettings.showCents)}
+          <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+      </p>
   </div>
 </div>
 
-{/* 6. Ожидаемая прибыль */}
-<div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
+                    {/* 6. Ожидаемая прибыль */}
+                    <div
+                        className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
   <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600 mb-4 z-10 relative group-hover:bg-blue-500 group-hover:text-white transition-colors duration-300 shadow-sm">
     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -574,13 +575,12 @@ const Dashboard: React.FC<DashboardProps> = ({
     <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
       Ожидается прибыли
     </p>
-    <p className="text-lg sm:text-2xl font-black text-slate-800 break-words leading-none">
-      {formatCurrency(profitStats.expectedProfit, appSettings.showCents)}
-      <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-    </p>
+      <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+          {formatCurrency(profitStats.expectedProfit, appSettings.showCents)}
+          <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+      </p>
   </div>
-</div>
-
+                    </div>
 
 
                 </div>
