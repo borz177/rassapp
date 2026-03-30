@@ -180,7 +180,7 @@ const SupportChat: React.FC<SupportChatProps> = ({ user, onClose, onUnreadChange
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
+    <div className="fixed inset-0 bg-white bg-opacity-50 flex items-end sm:items-center justify-center z-50">
       <div className="bg-white w-full sm:w-[600px] h-[90vh] sm:h-[700px] rounded-t-2xl sm:rounded-2xl flex flex-col shadow-2xl">
         {/* Header */}
         <div className="p-4 border-b flex items-center justify-between bg-blue-500 text-white rounded-t-2xl">
