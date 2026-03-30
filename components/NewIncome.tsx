@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Customer, Account, Investor, Sale } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
-
-import { api } from '../services/api';
+import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface NewIncomeProps {
   initialData?: any;
@@ -119,23 +120,43 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       return showCents ? profit : Math.round(profit);
   }, [selectedSale, amount, showCents]);
 
- // НОВАЯ ВЕРСИЯ: запрашивает PDF с сервера
-const generateContractPDF = async (
-  sale: Sale,
-  customer: Customer,
-  currentPaymentAmount: number,
-  paymentDate: string
-): Promise<Blob> => {
-  // Используем новый API метод вместо html2canvas
-  return await api.generateReceipt(
-    sale,
-    customer,
-    currentPaymentAmount,
-    paymentDate,
-    appSettings,
-    false // sendViaWhatsApp = false (мы отправим отдельно)
-  );
-};
+  const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
+      if (!contractRef.current) throw new Error("Contract element not found");
+      const element = contractRef.current;
+      const originalStyle = {
+          display: element.style.display,
+          position: element.style.position,
+          left: element.style.left,
+          top: element.style.top,
+          visibility: element.style.visibility,
+          zIndex: element.style.zIndex
+      };
+      element.style.display = 'block';
+      element.style.position = 'absolute';
+      element.style.left = '0';
+      element.style.top = '0';
+      element.style.visibility = 'visible';
+      element.style.zIndex = '-1';
+
+      try {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          const canvas = await html2canvas(element, { scale: 1.5, useCORS: true, logging: false });
+          const imgData = canvas.toDataURL('image/jpeg', 0.7);
+          const pdf = new jsPDF('p', 'mm', 'a4');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+          pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+          return pdf.output('blob');
+      } finally {
+          element.style.display = originalStyle.display;
+          element.style.position = originalStyle.position;
+          element.style.left = originalStyle.left;
+          element.style.top = originalStyle.top;
+          element.style.visibility = originalStyle.visibility;
+          element.style.zIndex = originalStyle.zIndex;
+      }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
       const numAmount = Number(amount);
@@ -161,66 +182,25 @@ const generateContractPDF = async (
 
       if (sourceType === 'CUSTOMER') {
           onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
-          // Внутри handleConfirm, в блоке CUSTOMER_PAYMENT:
-if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
-    try {
-        // Показываем индикатор загрузки
-        const originalBtn = document.activeElement as HTMLButtonElement;
-        if (originalBtn) {
-            originalBtn.disabled = true;
-            originalBtn.textContent = '⏳ Отправка...';
-        }
-
-        // 1. Генерируем PDF через сервер (с автоматической отправкой в WhatsApp)
-        const pdfBlob = await api.generateReceipt(
-            selectedSale,
-            selectedCustomer,
-            numAmount,
-            finalDate,
-            appSettings,
-            true // sendViaWhatsApp = true
-        );
-
-        alert("✅ Договор отправлен в WhatsApp");
-
-    } catch (error: any) {
-        console.error("Receipt send error:", error);
-
-        // Фоллбэк: предлагаем скачать вручную
-        const download = confirm(
-            `❌ Не удалось отправить автоматически.\n\n${error.message}\n\nСкачать договор для ручной отправки?`
-        );
-
-        if (download) {
-            try {
-                const pdfBlob = await api.generateReceipt(
-                    selectedSale,
-                    selectedCustomer,
-                    numAmount,
-                    finalDate,
-                    appSettings,
-                    false
-                );
-                const url = URL.createObjectURL(pdfBlob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Dogovor_${selectedSale.productName.replace(/\s+/g, '_')}.pdf`;
-                a.click();
-                URL.revokeObjectURL(url);
-            } catch (dlError) {
-                alert("Не удалось скачать: " + (dlError as Error).message);
-            }
-        }
-    } finally {
-        // Возвращаем кнопку в исходное состояние
-        const originalBtn = document.activeElement as HTMLButtonElement;
-        if (originalBtn) {
-            originalBtn.disabled = false;
-            originalBtn.textContent = 'Зачислить';
-        }
-    }
-}
-
+          if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
+              try {
+                  const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
+                  let cleanName = selectedSale.productName.replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_').replace(/\s+/g, '_');
+                  const finalName = cleanName || 'oplata';
+                  const fileName = `Dogovor_${finalName}.pdf`;
+                  const success = await sendWhatsAppFile(
+                      appSettings.whatsapp.idInstance,
+                      appSettings.whatsapp.apiTokenInstance,
+                      selectedCustomer.phone,
+                      pdfBlob,
+                      fileName
+                  );
+                  if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
+                  else { alert("Ошибка отправки PDF в WhatsApp"); }
+              } catch (error) {
+                  alert("Ошибка при создании или отправке PDF");
+              }
+          }
       } else if (sourceType === 'INVESTOR') {
           onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
       } else {

@@ -7,8 +7,7 @@ console.log('GREEN_API_PARTNER_TOKEN loaded:', process.env.GREEN_API_PARTNER_TOK
 console.log('Server Timezone:', new Date().toString());
 
 const express = require('express');
-const { generateReceiptPDF } = require('./pdfGenerator');
-const { sendWhatsAppFile } = require('./whatsapp');
+
 const { Pool } = require('pg');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
@@ -1607,80 +1606,6 @@ app.delete('/api/admin/support/tickets/:ticketId', adminAuth, async (req, res) =
   }
 });
 
-
-
-
-// ============================================
-// ✅ НОВЫЙ РОУТ: Генерация договора
-// ============================================
-app.post('/api/receipts/generate', async (req, res) => {
-  console.log('🔥 RECEIPT ENDPOINT HIT!', {
-    hasSale: !!req.body.sale,
-    hasCustomer: !!req.body.customer,
-    sendViaWhatsApp: req.body.sendViaWhatsApp
-  });
-
-  try {
-    const {
-      sale,
-      customer,
-      paymentAmount,
-      paymentDate,
-      settings,
-      sendViaWhatsApp
-    } = req.body;
-
-    // Валидация
-    if (!sale || !customer || !paymentAmount) {
-      return res.status(400).json({ error: 'Отсутствуют обязательные поля' });
-    }
-
-    // 1. Генерируем PDF
-    const pdfBuffer = await generateReceiptPDF({
-      sale,
-      customer,
-      paymentAmount,
-      paymentDate,
-      settings
-    });
-
-    // 2. Если нужно — отправляем в WhatsApp сразу с сервера
-    if (sendViaWhatsApp && settings?.whatsapp?.enabled && customer?.phone) {
-      const phone = customer.phone.replace(/[^\d+]/g, '');
-      const cleanName = sale.productName.replace(/[^a-zA-Z0-9а-яА-ЯёЁ]/g, '_');
-      const fileName = `Dogovor_${cleanName || 'oplata'}.pdf`;
-
-      try {
-        await sendWhatsAppFile(
-          settings.whatsapp.idInstance,
-          settings.whatsapp.apiTokenInstance,
-          phone,
-          pdfBuffer,
-          fileName
-        );
-        console.log('✅ PDF отправлен в WhatsApp:', phone);
-      } catch (waError) {
-        console.error('⚠️ Ошибка отправки WhatsApp:', waError);
-      }
-    }
-
-    // 3. Возвращаем PDF клиенту
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="receipt.pdf"`,
-      'Content-Length': pdfBuffer.length,
-    });
-
-    res.send(pdfBuffer);
-
-  } catch (error) {
-    console.error('❌ Ошибка генерации договора:', error);
-    res.status(500).json({
-      error: 'Не удалось создать договор',
-      details: error.message
-    });
-  }
-});
 
 
 
