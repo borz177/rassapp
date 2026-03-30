@@ -145,9 +145,22 @@ export interface Expense {
   amount: number;
   category: string;
   date: string;
-  // Specific for investor payouts
-  payoutType?: 'INVESTMENT' | 'PROFIT';
+
+  // 🔹 Опциональные поля для расширенной функциональности
+  createdAt?: string;              // Дата создания записи
+  description?: string;            // Подробное описание операции
+  customerId?: string;             // Связь с клиентом (для возвратов)
+
+  // 🔹 Типы выплат для инвесторов и возвратов
+  payoutType?: 'INVESTMENT' | 'PROFIT' | 'REFUND' | 'OTHER';
+
+  // 🔹 Источник выплаты для менеджера
   managerPayoutSource?: 'CAPITAL' | 'PROFIT';
+
+  // 🔹 Флаг возврата (для фильтрации и отчётности)
+  isRefund?: boolean;
+
+  // 🔹 Для совместных счетов
   investorId?: string; // For tracking withdrawals in shared accounts
 }
 

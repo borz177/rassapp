@@ -34,6 +34,7 @@ import SplashScreen from "./components/SplashScreen"
 import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import AdminSupportPanel from './components/AdminSupportPanel';
+import { formatCurrency, formatDate } from './src/utils';
 
 import { useSwipeable } from "react-swipeable"
 
@@ -561,8 +562,88 @@ const dashboardStats = useMemo(() => {
 
   const handleSaveSale = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const saleId = data.id || Date.now().toString(); const paymentScheduleStartDate = data.paymentDate ? new Date(data.paymentDate) : new Date(data.startDate); if (!data.paymentDate) { paymentScheduleStartDate.setMonth(paymentScheduleStartDate.getMonth() + 1); } const preferredDay = paymentScheduleStartDate.getDate(); const saleData = { ...data, id: saleId, userId: ownerId, paymentDay: preferredDay, paymentPlan: data.type === 'CASH' ? [] : (data.paymentPlan || Array.from({ length: data.installments }).map((_, idx) => { const pDate = new Date(paymentScheduleStartDate); pDate.setMonth(pDate.getMonth() + idx); return { id: `pay_${Date.now()}_${idx}`, saleId: saleId, amount: Number((data.remainingAmount / data.installments).toFixed(2)), date: pDate.toISOString(), isPaid: false, isRealPayment: false }; })) }; const existingSaleIndex = sales.findIndex(s => s.id === data.id); const saleToSave = existingSaleIndex >= 0 ? { ...sales[existingSaleIndex], ...saleData } : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' }; const savedSale = await api.saveItem('sales', saleToSave); updateList(setSales, savedSale); if (existingSaleIndex < 0) { if (Number(data.buyPrice) > 0) { const buyPriceExpense: Expense = { id: `exp_sale_${saleId}`, userId: ownerId, accountId: data.accountId, title: `Закуп: ${data.productName}`, amount: Number(data.buyPrice), category: 'Себестоимость', date: data.startDate }; const savedExpense = await api.saveItem('expenses', buyPriceExpense); updateList(setExpenses, savedExpense); } if (data.productId) { const prod = products.find(p => p.id === data.productId); if(prod) { const updatedProd = { ...prod, stock: prod.stock - 1 }; const savedProd = await api.saveItem('products', updatedProd); updateList(setProducts, savedProd); } } } setEditingSale(null); };
   const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
-  const handleDeleteSale = async (saleId: string) => { if (window.confirm("Вы уверены?")) { const sale = sales.find(s => s.id === saleId); await api.deleteItem('sales', saleId); removeFromList(setSales, saleId); if(sale) { await api.deleteItem('expenses', `exp_sale_${saleId}`); setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${saleId}`)); if (sale.productId) { const prod = products.find(p => p.id === sale.productId); if(prod) { const updatedProd = { ...prod, stock: prod.stock + 1 }; const savedProd = await api.saveItem('products', updatedProd); updateList(setProducts, savedProd); } } } } };
-  const handleViewSaleSchedule = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView('CONTRACTS'); setCurrentView('CUSTOMER_DETAILS'); };
+// 🔹 Обновлённая handleDeleteSale:
+const handleDeleteSale = async (saleId: string) => {
+    if (!window.confirm("Вы уверены, что хотите удалить этот договор?")) {
+        return;
+    }
+
+    const sale = sales.find(s => s.id === saleId);
+
+    if (sale) {
+        // 🔹 1. Считаем сумму, которая уже была оплачена клиентом
+        const paidAmount = Number(sale.downPayment) +
+            sale.paymentPlan
+                .filter(p => p.isPaid && p.isRealPayment !== false)
+                .reduce((sum, p) => sum + Number(p.amount), 0);
+
+        // 🔹 2. Если были оплаты — создаём запись о возврате средств на счёт
+        if (paidAmount > 0 && sale.accountId) {
+            try {
+                const showCents = appSettings?.showCents ?? true; // ✅ Безопасное получение
+                const refundExpense: Expense = { // ✅ Явное указание типа
+                    id: `refund_${saleId}_${Date.now()}`,
+                    accountId: sale.accountId,
+                    amount: paidAmount,
+                    category: 'Возврат клиенту',
+                    title: `Возврат при удалении договора #${saleId}`,
+                    description: `Возврат ${formatCurrency(paidAmount, showCents)} ₽ клиенту за "${sale.productName}"`,
+                    date: new Date().toISOString(),
+                    createdAt: new Date().toISOString(),
+                    userId: user?.id || 'system', // ✅ Обязательно для Expense
+                    customerId: sale.customerId,
+                    payoutType: 'REFUND',
+                    isRefund: true
+                };
+
+                await api.saveItem('expenses', refundExpense);
+                setExpenses(prev => [...prev, refundExpense]);
+                console.log(`✅ Создан возврат: ${formatCurrency(paidAmount, showCents)} ₽`);
+
+            } catch (err) {
+                console.error('❌ Ошибка при создании возврата:', err);
+                // Не прерываем удаление
+            }
+        }
+    }
+
+    // 🔹 3. Удаляем сам договор
+    try {
+        await api.deleteItem('sales', saleId);
+        removeFromList(setSales, saleId);
+    } catch (err) {
+        console.error('❌ Ошибка при удалении договора:', err);
+        alert('Не удалось удалить договор. Попробуйте ещё раз.');
+        return;
+    }
+
+    // 🔹 4. Удаляем устаревшую служебную запись расхода
+    try {
+        await api.deleteItem('expenses', `exp_sale_${saleId}`);
+        setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${saleId}`));
+    } catch (err) {
+        // Игнорируем, если запись не найдена
+    }
+
+    // 🔹 5. Возвращаем товар на склад
+    if (sale?.productId) {
+        const prod = products.find(p => p.id === sale.productId);
+        if (prod) {
+            try {
+                const updatedProd = {
+                    ...prod,
+                    stock: (prod.stock || 0) + 1,
+                    updatedAt: new Date().toISOString()
+                };
+                const savedProd = await api.saveItem('products', updatedProd);
+                updateList(setProducts, savedProd);
+            } catch (err) {
+                console.error('❌ Ошибка при обновлении остатка товара:', err);
+            }
+        }
+    }
+};
+const handleViewSaleSchedule = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView('CONTRACTS'); setCurrentView('CUSTOMER_DETAILS'); };
 const handleIncomeSubmit = async (data: any) => {
     if (!user) return;
 
