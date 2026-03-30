@@ -1140,31 +1140,25 @@ if (!user && !isLoading) {
      {/* Профиль */}
 <button
   onClick={() => setCurrentView('PROFILE')}
-  className="group w-full bg-gradient-to-r from-slate-900 to-slate-800
-             hover:from-indigo-900/50 hover:to-slate-800
-             text-black p-5 rounded-xl flex items-center gap-4
-             transition-all duration-300 hover:pl-6"
+  className="group w-full bg-white/80 backdrop-blur-sm hover:bg-white/90
+             text-slate-800 p-6 rounded-2xl flex items-center gap-4
+             transition-all duration-300 hover:shadow-xl
+             border border-slate-200/80 hover:border-indigo-400
+             shadow-sm"
 >
-  <div className="relative">
-    <div className="w-14 h-14 bg-indigo-500 rounded-full flex items-center justify-center text-xl font-bold
-                    ring-2 ring-indigo-400/50 group-hover:ring-indigo-400 transition-all">
-      {user.name.charAt(0).toUpperCase()}
-    </div>
-    {/* Онлайн статус */}
-    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 rounded-full
-                    border-2 border-slate-900"></div>
+  <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-pink-500
+                  rounded-2xl flex items-center justify-center text-2xl font-bold text-white
+                  shadow-md group-hover:scale-105 transition-transform duration-300">
+    {user.name.charAt(0).toUpperCase()}
   </div>
-
-  <div className="flex-1 text-left">
-    <div className="flex items-center gap-2 flex-wrap">
-      <h2 className="text-lg font-bold">{user.name}</h2>
-      <span className="text-xs px-2 py-0.5 bg-indigo-500/30 rounded-full text-indigo-300">
-        {user.role}
-      </span>
+  <div className="flex-1">
+    <div className="flex items-center justify-between">
+      <h2 className="text-xl font-bold text-left text-slate-800">{user.name}</h2>
+     
     </div>
-    <p className="text-slate-400 text-xs mt-1 flex items-center gap-1">
+    <p className="text-slate-500 text-xs mt-2 text-left flex items-center gap-1">
       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
       </svg>
       {user.email}
     </p>
