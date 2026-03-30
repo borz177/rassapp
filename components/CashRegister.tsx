@@ -405,7 +405,7 @@ const [profitDetailsTab, setProfitDetailsTab] = useState<'accruals' | 'payouts'>
 const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL');
 
 // ... (остальной код без изменений до блока "Моя прибыль") ...
-  const accountBalances = useMemo(() => {
+ const accountBalances = useMemo(() => {
     const balances: Record<string, number> = {};
 
     accounts.forEach(acc => {
@@ -420,7 +420,7 @@ const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL'
             .forEach(p => total += Number(p.amount));
       });
 
-      // ➖ Расходы, НО исключаем возвраты (они только для аудита)
+      // ➖ Расходы, ИСКЛЮЧАЯ возвраты
       const accountExpenses = expenses.filter(e => e.accountId === acc.id);
       const regularExpenses = accountExpenses.filter(e => e.isRefund !== true);
 
