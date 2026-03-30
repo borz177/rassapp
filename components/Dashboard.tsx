@@ -281,7 +281,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         receivedProfit += collectedPayments * profitMargin;
 
         if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
-    expectedProfit += sale.remainingAmount * profitMargin * managerShare;
+    expectedProfit += sale.remainingAmount * profitMargin;
 }
     });
 
