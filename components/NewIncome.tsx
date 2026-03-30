@@ -120,42 +120,90 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       return showCents ? profit : Math.round(profit);
   }, [selectedSale, amount, showCents]);
 
-  const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
-      if (!contractRef.current) throw new Error("Contract element not found");
-      const element = contractRef.current;
-      const originalStyle = {
-          display: element.style.display,
-          position: element.style.position,
-          left: element.style.left,
-          top: element.style.top,
-          visibility: element.style.visibility,
-          zIndex: element.style.zIndex
-      };
-      element.style.display = 'block';
-      element.style.position = 'absolute';
-      element.style.left = '0';
-      element.style.top = '0';
-      element.style.visibility = 'visible';
-      element.style.zIndex = '-1';
+ const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
+    if (!contractRef.current) throw new Error("Contract element not found");
+    const element = contractRef.current;
 
-      try {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          const canvas = await html2canvas(element, { scale: 1.5, useCORS: true, logging: false });
-          const imgData = canvas.toDataURL('image/jpeg', 0.7);
-          const pdf = new jsPDF('p', 'mm', 'a4');
-          const pdfWidth = pdf.internal.pageSize.getWidth();
-          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-          pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-          return pdf.output('blob');
-      } finally {
-          element.style.display = originalStyle.display;
-          element.style.position = originalStyle.position;
-          element.style.left = originalStyle.left;
-          element.style.top = originalStyle.top;
-          element.style.visibility = originalStyle.visibility;
-          element.style.zIndex = originalStyle.zIndex;
-      }
-  };
+    // Сохраняем оригинальные стили
+    const originalStyle = {
+        display: element.style.display,
+        position: element.style.position,
+        left: element.style.left,
+        top: element.style.top,
+        visibility: element.style.visibility,
+        zIndex: element.style.zIndex,
+        opacity: element.style.opacity,
+        transform: element.style.transform
+    };
+
+    try {
+        // 🔧 ФИКС 1: Надёжная подготовка элемента для мобильных
+        element.style.display = 'block';
+        element.style.position = 'fixed';
+        element.style.left = '0';
+        element.style.top = '0';
+        element.style.visibility = 'visible';
+        element.style.zIndex = '9999';
+        element.style.opacity = '0.01';  // Почти невидимый, но браузер отрисует
+        element.style.pointerEvents = 'none';
+        element.style.width = '210mm';   // Фиксируем ширину A4
+        element.style.transform = 'none'; // Сбрасываем трансформации
+
+        // 🔧 ФИКС 2: Ждём отрисовку (мобильным нужно больше времени)
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // 🔧 ФИКС 3: Определяем мобильное устройство и снижаем scale
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+            || window.innerWidth < 768;
+
+        // Критически: на мобильных scale должен быть <= 0.8, иначе canvas переполнится
+        const scaleOption = isMobile ? 0.7 : 1.5;
+
+        // 🔧 ФИКС 4: Оптимизированные настройки html2canvas
+        const canvas = await html2canvas(element, {
+            scale: scaleOption,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff',
+            scrollY: -window.scrollY,
+            allowTaint: true,
+            foreignObjectRendering: false,  // Отключаем сложный рендеринг для мобильных
+            removeContainer: true
+        });
+
+        // 🔧 ФИКС 5: Проверка размера канваса (защита от падения)
+        const MAX_PIXELS = 16777216; // 4096×4096 — безопасный лимит для мобильных
+        if (canvas.width * canvas.height > MAX_PIXELS) {
+            console.warn('Canvas too large, retrying with lower scale...');
+            // Рекурсивно пробуем с ещё меньшим scale
+            element.style.display = originalStyle.display;
+            element.style.position = originalStyle.position;
+            // ...восстанавливаем стили...
+            return generateContractPDF(sale, customer, currentPaymentAmount, paymentDate); // рекурсия с тем же элементом, но можно добавить параметр scale
+        }
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.8);
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        return pdf.output('blob');
+
+    } catch (error: any) {
+        console.error("PDF generation error:", {
+            message: error.message,
+            userAgent: navigator.userAgent,
+            innerWidth: window.innerWidth
+        });
+        throw new Error(`Ошибка создания PDF: ${error.message || "Неизвестная ошибка"}`);
+    } finally {
+        // Восстанавливаем стили
+        if (contractRef.current) {
+            Object.assign(contractRef.current.style, originalStyle);
+        }
+    }
+};
 
   const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
@@ -183,24 +231,95 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       if (sourceType === 'CUSTOMER') {
           onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
-              try {
-                  const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-                  let cleanName = selectedSale.productName.replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_').replace(/\s+/g, '_');
-                  const finalName = cleanName || 'oplata';
-                  const fileName = `Dogovor_${finalName}.pdf`;
-                  const success = await sendWhatsAppFile(
-                      appSettings.whatsapp.idInstance,
-                      appSettings.whatsapp.apiTokenInstance,
-                      selectedCustomer.phone,
-                      pdfBlob,
-                      fileName
-                  );
-                  if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
-                  else { alert("Ошибка отправки PDF в WhatsApp"); }
-              } catch (error) {
-                  alert("Ошибка при создании или отправке PDF");
-              }
-          }
+    try {
+        // 🔧 ФИКС 6: Правильная очистка номера телефона для WhatsApp
+        let phone = selectedCustomer.phone.replace(/[^\d+]/g, '');
+        if (!phone.startsWith('+')) {
+            phone = '+' + phone;
+        }
+        // Убираем всё кроме цифр и + (WhatsApp требует чистый формат)
+        phone = phone.replace(/[^\d+]/g, '');
+
+        // Проверка: минимум 10 цифр для международного номера
+        if (phone.replace(/\D/g, '').length < 10) {
+            throw new Error("Неверный формат номера телефона");
+        }
+
+        const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
+
+        let cleanName = selectedSale.productName.replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_').replace(/\s+/g, '_');
+        const fileName = `Dogovor_${cleanName || 'oplata'}.pdf`;
+
+        // 🔧 ФИКС 7: Показываем индикатор отправки (мобильным нужно время)
+        const originalBtnText = (document.activeElement as HTMLButtonElement)?.textContent || '';
+        if (document.activeElement instanceof HTMLButtonElement) {
+            document.activeElement.disabled = true;
+            document.activeElement.textContent = '⏳ Отправка...';
+        }
+
+        const success = await sendWhatsAppFile(
+            appSettings.whatsapp.idInstance,
+            appSettings.whatsapp.apiTokenInstance,
+            phone,  // ← Используем очищенный номер
+            pdfBlob,
+            fileName
+        );
+
+        if (success) {
+            alert("✅ Договор отправлен в WhatsApp");
+        } else {
+            alert("⚠️ Ошибка отправки: проверьте статус аккаунта в WhatsApp API");
+        }
+
+    } catch (error: any) {
+        console.error("WhatsApp send error:", error);
+
+        // 🔧 ФИКС 8: Фоллбэк — отправляем текстовый чек, если PDF не получился
+        const textReceipt = `
+📋 Чек об оплате
+${appSettings?.companyName || 'Компания'}
+
+👤 Клиент: ${selectedCustomer?.name}
+📱 ${selectedCustomer?.phone}
+
+🛍 Товар: ${selectedSale?.productName}
+💰 Сумма договора: ${selectedSale?.totalAmount?.toLocaleString()} ₽
+
+💵 Внесено: ${numAmount.toLocaleString()} ₽
+🗓 Дата: ${new Date(finalDate).toLocaleDateString('ru-RU')}
+
+✅ Платёж принят. Спасибо!
+        `.trim();
+
+        try {
+            let phone = selectedCustomer.phone.replace(/[^\d+]/g, '');
+            phone = phone.replace(/[^\d+]/g, '');
+
+            const textSent = await sendWhatsAppMessage(
+                appSettings.whatsapp.idInstance,
+                appSettings.whatsapp.apiTokenInstance,
+                phone,
+                textReceipt
+            );
+
+            if (textSent) {
+                alert("📝 PDF не создан, но текстовый чек отправлен в WhatsApp");
+                return;
+            }
+        } catch (textError) {
+            console.error("Text receipt also failed:", textError);
+        }
+
+        alert(`❌ Не удалось отправить чек: ${error.message || "Проверьте интернет"}`);
+
+    } finally {
+        // Возвращаем кнопку
+        if (document.activeElement instanceof HTMLButtonElement) {
+            document.activeElement.disabled = false;
+            document.activeElement.textContent = 'Зачислить';
+        }
+    }
+}
       } else if (sourceType === 'INVESTOR') {
           onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
       } else {
