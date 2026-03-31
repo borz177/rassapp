@@ -261,15 +261,36 @@ const Layout: React.FC<LayoutProps> = ({
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans">
-      {/* Mobile Top Navbar */}
-      <header className="md:hidden fixed top-0 left-0 right-0 bg-white h-16 flex items-center px-4 shadow-md z-30 border-b border-slate-200">
-        <div className="flex flex-col">
-            <h1 className="text-xl font-bold tracking-tight text-indigo-600">{appSettings.companyName}</h1>
-            {/*{!isOnline && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded w-fit">Офлайн</span>}*/}
-            {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">Синхронизация...</span>}
-        </div>
+      {/* Mobile Top Navbar - с размытием */}
+<header className="md:hidden fixed top-0 left-0 right-0 pt-4 md:pt-0 min-h-[4.5rem] bg-white/80 backdrop-blur-xl border-b border-slate-200 z-40 px-6 flex items-center justify-between shadow-sm">
+  <div className="flex items-center space-x-3 py-3">
+    {/* Иконка бренда (опционально) */}
+    <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+      <i className="fas fa-store text-xs"></i>
+    </div>
+    <div className="flex flex-col">
+      <h1 className="font-black text-slate-800 tracking-tight truncate max-w-[180px]">
+        {appSettings.companyName || APP_NAME}
+      </h1>
+      {isOnline && isSyncing && (
+        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit mt-0.5">
+          Синхронизация...
+        </span>
+      )}
+    </div>
+  </div>
 
-      </header>
+  {/* Правая часть: уведомления / профиль */}
+  <div className="flex items-center space-x-2 py-3">
+    {supportButton && <div className="md:hidden">{supportButton}</div>}
+    <button
+      onClick={onNavigateToProfile}
+      className="text-slate-400 hover:text-indigo-600 transition-colors p-2 active:scale-95"
+    >
+      <i className="fas fa-user-circle text-xl"></i>
+    </button>
+  </div>
+</header>
 
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto z-20">
