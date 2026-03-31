@@ -600,23 +600,25 @@ const handleSaveSale = async (data: any) => {
     }
     const preferredDay = paymentScheduleStartDate.getDate();
 
-    // 🔹 Найти существующий договор (если редактируем)
+    // 🔹 Найти существующий договор
     const existingSaleIndex = sales.findIndex(s => s.id === data.id);
     const existingSale = existingSaleIndex >= 0 ? sales[existingSaleIndex] : null;
 
-    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: правильно формируем paymentPlan ТОЛЬКО здесь 🔹 🔹 🔹
+    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: используем paymentPlan из data, если он есть 🔹 🔹 🔹
     const generatePaymentPlan = () => {
         if (data.type === 'CASH') return [];
 
-        // Если редактируем существующий договор — сохраняем оплаченные платежи
-        if (existingSale?.paymentPlan && existingSale.paymentPlan.length > 0) {
-            const paidPayments = existingSale.paymentPlan.filter((p: any) => p.isPaid);
+        // ✅ Если paymentPlan уже пришёл из NewSale — используем его!
+        if (data.paymentPlan && Array.isArray(data.paymentPlan) && data.paymentPlan.length > 0) {
+            return data.paymentPlan;
+        }
 
-            // Считаем, сколько платежей нужно сгенерировать
+        // Если редактируем — сохраняем оплаченные платежи (запасной вариант)
+        if (existingSale?.paymentPlan) {
+            const paidPayments = existingSale.paymentPlan.filter((p: any) => p.isPaid);
             const totalInstallments = Number(data.installments) || 1;
             const newPaymentsCount = Math.max(0, totalInstallments - paidPayments.length);
 
-            // Генерируем только НОВЫЕ неоплаченные платежи
             const newPayments = Array.from({ length: newPaymentsCount }).map((_, idx) => {
                 const pDate = new Date(paymentScheduleStartDate);
                 pDate.setMonth(pDate.getMonth() + paidPayments.length + idx);
@@ -630,7 +632,6 @@ const handleSaveSale = async (data: any) => {
                 };
             });
 
-            // Объединяем: старые оплаченные + новые неоплаченные
             return [...paidPayments, ...newPayments];
         }
 
@@ -654,7 +655,8 @@ const handleSaveSale = async (data: any) => {
         id: saleId,
         userId: ownerId,
         paymentDay: preferredDay,
-        paymentPlan: generatePaymentPlan()  // 🔹 Генерируем ТОЛЬКО здесь
+        // ✅ Используем paymentPlan из NewSale, если есть
+        paymentPlan: data.paymentPlan || generatePaymentPlan()
     };
 
     const saleToSave = existingSaleIndex >= 0

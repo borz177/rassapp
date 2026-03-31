@@ -218,8 +218,7 @@ const NewSale: React.FC<NewSaleProps> = ({
     setShowConfirmModal(true);
   };
 
-  // 🔥 handleConfirm с сохранением roundingMode
-  // 🔹 УПРОЩЁННАЯ ВЕРСИЯ: не генерируем paymentPlan в NewSale
+// 🔥 handleConfirm — УПРОЩЁННАЯ ВЕРСИЯ
 const handleConfirm = () => {
     const pDay = formData.paymentDate
         ? new Date(formData.paymentDate).getDate()
@@ -272,7 +271,7 @@ const handleConfirm = () => {
     }
 
     // 🔹 🔹 🔹 КЛЮЧЕВОЕ: НЕ генерируем paymentPlan здесь!
-    // Передаём только базовые данные, а paymentPlan сформируется в App.tsx
+    // Просто передаём то, что пришло из initialData
     const fullSaleObject = {
         ...finalSaleData,
         paymentPlan: initialData?.paymentPlan || []  // ← Передаём как есть
