@@ -219,6 +219,7 @@ const NewSale: React.FC<NewSaleProps> = ({
   };
 
 // 🔥 handleConfirm — УПРОЩЁННАЯ ВЕРСИЯ
+// 🔥 handleConfirm — УПРОЩЁННАЯ ВЕРСИЯ: не перегенерируем paymentPlan
 const handleConfirm = () => {
     const pDay = formData.paymentDate
         ? new Date(formData.paymentDate).getDate()
@@ -251,7 +252,16 @@ const handleConfirm = () => {
 
     let finalSaleData;
     if (mode === 'CASH') {
-        finalSaleData = { /* ... */ };
+        finalSaleData = {
+            ...submissionData,
+            type: 'CASH',
+            totalAmount: calculatedValues.totalAmount,
+            downPayment: calculatedValues.totalAmount,
+            remainingAmount: 0,
+            installments: 0,
+            interestRate: 0,
+            roundingMode: 'NONE',
+        };
     } else {
         finalSaleData = {
             ...submissionData,
@@ -262,6 +272,8 @@ const handleConfirm = () => {
     }
 
     // 🔹 🔹 🔹 КЛЮЧЕВОЕ: просто передаём paymentPlan из initialData 🔹 🔹 🔹
+    // При редактировании: initialData.paymentPlan уже содержит все платежи (включая оплаченные)
+    // При создании нового: initialData.paymentPlan = [] → будет сгенерирован в App.tsx
     const fullSaleObject = {
         ...finalSaleData,
         paymentPlan: initialData?.paymentPlan || []  // ← Передаём как есть!

@@ -603,16 +603,16 @@ const handleSaveSale = async (data: any) => {
     const existingSaleIndex = sales.findIndex(s => s.id === data.id);
     const existingSale = existingSaleIndex >= 0 ? sales[existingSaleIndex] : null;
 
-    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: если paymentPlan уже пришёл из NewSale — используем его! 🔹 🔹 🔹
+    // 🔹 Формирование paymentPlan
     const generatePaymentPlan = () => {
         if (data.type === 'CASH') return [];
 
-        // ✅ Если paymentPlan уже есть в data — доверяем ему (из NewSale)
+        // ✅ Если paymentPlan уже пришёл из NewSale — используем его!
         if (data.paymentPlan && Array.isArray(data.paymentPlan) && data.paymentPlan.length > 0) {
             return data.paymentPlan;
         }
 
-        // Запасной вариант: сохраняем оплаченные платежи при редактировании
+        // Если редактируем — сохраняем оплаченные платежи
         if (existingSale?.paymentPlan) {
             const paidPayments = existingSale.paymentPlan.filter((p: any) => p.isPaid);
             const totalInstallments = Number(data.installments) || 1;
@@ -630,7 +630,6 @@ const handleSaveSale = async (data: any) => {
                     isRealPayment: false
                 };
             });
-
             return [...paidPayments, ...newPayments];
         }
 
@@ -654,15 +653,21 @@ const handleSaveSale = async (data: any) => {
         id: saleId,
         userId: ownerId,
         paymentDay: preferredDay,
-        paymentPlan: generatePaymentPlan()
+        paymentPlan: data.paymentPlan || generatePaymentPlan()
     };
 
     const saleToSave = existingSaleIndex >= 0
         ? { ...sales[existingSaleIndex], ...saleData }
         : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
 
-    const savedSale = await api.saveItem('sales', saleToSave);
-    updateList(setSales, savedSale);
+    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: сначала обновляем локальный стейт, потом отправляем в API 🔹 🔹 🔹
+    updateList(setSales, saleToSave);  // 🔹 Локальный объект гарантирует корректность!
+
+    // Отправляем в API асинхронно (не блокируя UI)
+    api.saveItem('sales', saleToSave).catch(err => {
+        console.error('❌ Failed to save sale:', err);
+        // Опционально: показать ошибку или откатить изменения
+    });
 
     // 🔹 Закупка и товар — только для НОВЫХ продаж
     if (existingSaleIndex < 0) {
@@ -677,7 +682,13 @@ const handleSaveSale = async (data: any) => {
                 date: data.startDate,
                 isRefund: false
             };
-            await api.saveItem('expenses', buyPriceExpense);
+            // 🔹 🔹 🔹 КЛЮЧЕВОЕ: обновляем expenses локально! 🔹 🔹 🔹
+            setExpenses(prev => [...prev, buyPriceExpense]);
+
+            // Отправляем в API
+            api.saveItem('expenses', buyPriceExpense).catch(err => {
+                console.error('❌ Failed to save expense:', err);
+            });
         }
         if (data.productId) {
             const prod = products.find(p => p.id === data.productId);
@@ -687,8 +698,10 @@ const handleSaveSale = async (data: any) => {
                     stock: prod.stock - 1,
                     updatedAt: new Date().toISOString()
                 };
-                const savedProd = await api.saveItem('products', updatedProd);
-                updateList(setProducts, savedProd);
+                updateList(setProducts, updatedProd);
+                api.saveItem('products', updatedProd).catch(err => {
+                    console.error('❌ Failed to save product:', err);
+                });
             }
         }
     }
@@ -778,16 +791,20 @@ const handleIncomeSubmit = async (data: any) => {
                 amount: amount,
                 date: data.date,
                 isPaid: true,
-                isRealPayment: true  // 🔹 Важно для отображения
+                isRealPayment: true
             });
 
             if (updatedSale.remainingAmount === 0) {
                 updatedSale.status = 'COMPLETED';
             }
 
-            // 🔹 🔹 🔹 КЛЮЧЕВОЕ: используем ЛОКАЛЬНЫЙ объект для обновления стейта 🔹 🔹 🔹
-            await api.saveItem('sales', updatedSale);  // Отправляем на сервер
-            updateList(setSales, updatedSale);          // 🔹 Используем updatedSale, НЕ savedSale!
+            // 🔹 🔹 🔹 КЛЮЧЕВОЕ: обновляем стейт ЛОКАЛЬНЫМ объектом 🔹 🔹 🔹
+            updateList(setSales, updatedSale);  // 🔹 Используем updatedSale, НЕ savedSale!
+
+            // Отправляем в API асинхронно
+            api.saveItem('sales', updatedSale).catch(err => {
+                console.error('❌ Failed to save payment:', err);
+            });
 
             setSelectedCustomerId(sale.customerId);
             setInitialSaleIdForDetails(saleId);
@@ -816,16 +833,20 @@ const handleIncomeSubmit = async (data: any) => {
             paymentPlan: []
         };
 
-        // 🔹 Для новых транзакций тоже используем локальный объект
-        await api.saveItem('sales', newTransaction);
-        updateList(setSales, newTransaction);  // 🔹 newTransaction вместо savedTx
+        // 🔹 Обновляем стейт локальным объектом
+        updateList(setSales, newTransaction);
+        api.saveItem('sales', newTransaction).catch(err => {
+            console.error('❌ Failed to save transaction:', err);
+        });
 
         if (data.type === 'INVESTOR_DEPOSIT') {
             const inv = investors.find(i => i.id === data.investorId);
             if (inv) {
                 const updatedInv = { ...inv, initialAmount: (inv.initialAmount || 0) + Number(data.amount) };
-                const savedInv = await api.saveItem('investors', updatedInv);
-                updateList(setInvestors, savedInv);
+                updateList(setInvestors, updatedInv);
+                api.saveItem('investors', updatedInv).catch(err => {
+                    console.error('❌ Failed to save investor:', err);
+                });
             }
         }
 
