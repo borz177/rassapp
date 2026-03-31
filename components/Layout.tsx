@@ -261,52 +261,96 @@ const Layout: React.FC<LayoutProps> = ({
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans">
-  {/* Mobile Top Navbar - с единым размытием */}
-<header className="md:hidden fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-b border-slate-200 z-40" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-  <div className="h-16 flex items-center px-4 shadow-sm">
-    <div className="flex flex-col w-full">
-        <h1 className="text-xl font-bold tracking-tight text-indigo-600">{appSettings.companyName}</h1>
-        {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-600 bg-blue-50/80 backdrop-blur-sm px-1.5 py-0.5 rounded w-fit">Синхронизация...</span>}
-    </div>
-  </div>
-</header>
+      {/* Mobile Top Navbar */}
+        <header
+            className="md:hidden fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-sm h-16 flex items-center justify-between px-5 shadow-lg z-30 border-b border-indigo-100/50">
+            {/* Логотип */}
+            <div className="flex items-center gap-3">
+                <div className="relative">
+                    <div className="absolute inset-0 bg-indigo-400 rounded-xl blur-md opacity-30"></div>
+                    <div
+                        className="relative w-9 h-9 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-xl flex items-center justify-center shadow-lg">
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                </div>
 
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto z-20">
-        <div className="p-6 border-b border-slate-800">
-          <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-            {appSettings.companyName}
-          </h1>
-          <div className="mt-2 flex gap-2">
-              {/*{!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}*/}
-              {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}
-          </div>
-          {user && !isInvestor && user.role !== 'admin' && (
-              <div
-                className={`mt-4 p-3 rounded-lg border text-xs font-medium cursor-pointer transition-colors hover:opacity-90 
+                <div>
+                    <h1 className="text-xl font-black bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+                        {appSettings.companyName}
+                    </h1>
+                    {isOnline && isSyncing && (
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                            <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce"></div>
+                            <span className="text-[9px] font-semibold text-blue-500 tracking-wide">
+                        СИНХРОНИЗАЦИЯ
+                    </span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Индикаторы */}
+            <div className="flex items-center gap-2">
+                {!isOnline && (
+                    <div className="flex items-center gap-1.5 bg-red-50 px-2.5 py-1 rounded-full border border-red-100">
+                        <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
+                        <span className="text-[9px] font-bold text-red-600 uppercase">Offline</span>
+                    </div>
+                )}
+
+                {/* Аватар с инициалами */}
+                <div
+                    className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center shadow-sm border border-slate-200">
+            <span className="text-xs font-bold text-slate-600">
+                {appSettings.companyName?.charAt(0) || 'Ф'}
+            </span>
+                </div>
+            </div>
+        </header>
+
+        {/* Desktop Sidebar */}
+        <aside
+            className="hidden md:flex flex-col w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto z-20">
+            <div className="p-6 border-b border-slate-800">
+                <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+                    {appSettings.companyName}
+                </h1>
+                <div className="mt-2 flex gap-2">
+                    {/*{!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}*/}
+                    {isOnline && isSyncing && <span
+                        className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}
+                </div>
+                {user && !isInvestor && user.role !== 'admin' && (
+                    <div
+                        className={`mt-4 p-3 rounded-lg border text-xs font-medium cursor-pointer transition-colors hover:opacity-90 
                     ${subStatus.expired ? 'bg-red-900/30 border-red-800 text-red-300' : subStatus.isWarning ? 'bg-amber-900/30 border-amber-800 text-amber-300' : 'bg-emerald-900/30 border-emerald-800 text-emerald-300'}
                 `}
-                onClick={() => setView('TARIFFS')}
-              >
-                  <div className="flex justify-between items-center mb-1">
-                      <span className="opacity-70">Тариф:</span>
-                      <span className="font-bold uppercase tracking-wider">{subStatus.planName}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                      <span className="opacity-70">Статус:</span>
-                      <span className="font-bold">{subStatus.expired ? 'Истек' : `Активен (${subStatus.daysLeft} дн.)`}</span>
-                  </div>
-              </div>
-          )}
-        </div>
-        <nav className="flex-1 p-4 space-y-2">
-          {sidebarItems.map(item => renderMenuItem(item))}
-        </nav>
+                        onClick={() => setView('TARIFFS')}
+                    >
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="opacity-70">Тариф:</span>
+                            <span className="font-bold uppercase tracking-wider">{subStatus.planName}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="opacity-70">Статус:</span>
+                            <span
+                                className="font-bold">{subStatus.expired ? 'Истек' : `Активен (${subStatus.daysLeft} дн.)`}</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+            <nav className="flex-1 p-4 space-y-2">
+                {sidebarItems.map(item => renderMenuItem(item))}
+            </nav>
 
-        {user && (
-             <div className="p-4 border-t border-slate-800">
-                <button onClick={onNavigateToProfile} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800 transition-colors">
-                    <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center font-bold">
+            {user && (
+                <div className="p-4 border-t border-slate-800">
+                    <button onClick={onNavigateToProfile}
+                            className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800 transition-colors">
+                        <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center font-bold">
                         {user.name.charAt(0).toUpperCase()}
                     </div>
                     <div>
