@@ -218,12 +218,11 @@ const NewSale: React.FC<NewSaleProps> = ({
     setShowConfirmModal(true);
   };
 
-// 🔥 handleConfirm — УПРОЩЁННАЯ ВЕРСИЯ
-// 🔥 handleConfirm — УПРОЩЁННАЯ ВЕРСИЯ: не перегенерируем paymentPlan
-const handleConfirm = () => {
+  // 🔥 handleConfirm с сохранением roundingMode
+  const handleConfirm = () => {
     const pDay = formData.paymentDate
-        ? new Date(formData.paymentDate).getDate()
-        : new Date(formData.startDate).getDate();
+      ? new Date(formData.paymentDate).getDate()
+      : new Date(formData.startDate).getDate();
 
     const saleId = formData.id || Date.now().toString();
     let finalStartDate = formData.startDate;
@@ -234,54 +233,62 @@ const handleConfirm = () => {
                     selectedDate.getFullYear() === now.getFullYear();
 
     if (isToday) {
-        finalStartDate = now.toISOString();
+      finalStartDate = now.toISOString();
     }
 
     const submissionData = {
-        ...formData,
-        id: saleId,
-        startDate: finalStartDate,
-        paymentDay: pDay,
-        buyPrice: Number(formData.buyPrice),
-        price: Number(formData.price),
-        downPayment: Number(formData.downPayment),
-        installments: Number(formData.installments),
-        interestRate: Number(formData.interestRate),
-        roundingMode,
+      ...formData,
+      id: saleId,
+      startDate: finalStartDate,
+      paymentDay: pDay,
+      buyPrice: Number(formData.buyPrice),
+      price: Number(formData.price),
+      downPayment: Number(formData.downPayment),
+      installments: Number(formData.installments),
+      interestRate: Number(formData.interestRate),
+      roundingMode, // ← 🔥 СОХРАНЯЕМ режим округления
     };
 
     let finalSaleData;
     if (mode === 'CASH') {
-        finalSaleData = {
-            ...submissionData,
-            type: 'CASH',
-            totalAmount: calculatedValues.totalAmount,
-            downPayment: calculatedValues.totalAmount,
-            remainingAmount: 0,
-            installments: 0,
-            interestRate: 0,
-            roundingMode: 'NONE',
-        };
+      finalSaleData = {
+        ...submissionData,
+        type: 'CASH',
+        totalAmount: calculatedValues.totalAmount,
+        downPayment: calculatedValues.totalAmount,
+        remainingAmount: 0,
+        installments: 0,
+        interestRate: 0,
+        roundingMode: 'NONE',
+      };
     } else {
-        finalSaleData = {
-            ...submissionData,
-            type: 'INSTALLMENT',
-            totalAmount: calculatedValues.totalAmount,
-            remainingAmount: calculatedValues.remainingAmount,
-        };
+      finalSaleData = {
+        ...submissionData,
+        type: 'INSTALLMENT',
+        totalAmount: calculatedValues.totalAmount,
+        remainingAmount: calculatedValues.remainingAmount,
+        // roundingMode уже в submissionData
+      };
     }
 
-    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: передаём paymentPlan из initialData как есть 🔹 🔹 🔹
-    const fullSaleObject = {
-        ...finalSaleData,
-        paymentPlan: initialData?.paymentPlan || []  // ← Передаём как есть!
-    };
+    const paymentPlan = mode === 'CASH' ? [] : Array.from({ length: finalSaleData.installments }).map((_, idx) => {
+      const pDate = new Date(finalSaleData.paymentDate || finalSaleData.startDate);
+      pDate.setMonth(pDate.getMonth() + idx);
+      return {
+        id: `pay_${Date.now()}_${idx}`,
+        saleId,
+        amount: Number((finalSaleData.remainingAmount / finalSaleData.installments).toFixed(2)),
+        date: pDate.toISOString(),
+        isPaid: false
+      };
+    });
 
+    const fullSaleObject = { ...finalSaleData, paymentPlan };
     setCreatedSale(fullSaleObject);
     setShowConfirmModal(false);
-    onSubmit(fullSaleObject);  // ← Отправляем в App.tsx → handleSaveSale
+    onSubmit(fullSaleObject);
     setShowSuccessModal(true);
-};
+  };
   const updateMode = (newMode: 'INSTALLMENT' | 'CASH') => {
     setMode(newMode);
     setFormData(prev => ({ ...prev, mode: newMode }));

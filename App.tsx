@@ -155,33 +155,6 @@ const isLanding = path === "/"
       };
   }, []);
 
-
-  // В App.tsx или где рендерится меню "ЕЩЁ"
-const subStatus = useMemo(() => {
-  if (!user?.subscription) {
-    return { planName: 'Free', daysLeft: 0, expired: false, isWarning: false };
-  }
-
-  const { plan, expiresAt } = user.subscription;
-  const endDate = new Date(expiresAt);
-  const today = new Date();
-  const daysLeft = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-  const planNames: Record<string, string> = {
-    TRIAL: 'Тест',
-    START: 'Старт',
-    STANDARD: 'Стандарт',
-    BUSINESS: 'Бизнес'
-  };
-
-  return {
-    planName: planNames[plan] || plan,
-    daysLeft: Math.max(0, daysLeft),
-    expired: daysLeft <= 0,
-    isWarning: daysLeft > 0 && daysLeft <= 7  // Предупреждение за неделю
-  };
-}, [user?.subscription]);
-
   const handleSync = async () => {
       if (!navigator.onLine) return;
       setIsSyncing(true);
@@ -271,6 +244,31 @@ useEffect(() => {
   initApp();
 }, []);
 
+
+const subStatus = useMemo(() => {
+  if (!user?.subscription) {
+    return { planName: 'Free', daysLeft: 0, expired: false, isWarning: false };
+  }
+
+  const { plan, expiresAt } = user.subscription;
+  const endDate = new Date(expiresAt);
+  const today = new Date();
+  const daysLeft = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  const planNames: Record<string, string> = {
+    TRIAL: 'Тест',
+    START: 'Старт',
+    STANDARD: 'Стандарт',
+    BUSINESS: 'Бизнес'
+  };
+
+  return {
+    planName: planNames[plan] || plan,
+    daysLeft: Math.max(0, daysLeft),
+    expired: daysLeft <= 0,
+    isWarning: daysLeft > 0 && daysLeft <= 7  // Предупреждение за неделю
+  };
+}, [user?.subscription]);
 // После useEffect с initApp добавьте:
 useEffect(() => {
   if (!user || user.role === 'admin') return;
@@ -582,138 +580,12 @@ const dashboardStats = useMemo(() => {
       }
   };
 
-
+  // ... (CRUD helpers updateList, removeFromList, handleSaveSale, etc. kept same) ...
   const updateList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, item: T) => { setter(prev => { const idx = prev.findIndex(i => i.id === item.id); if (idx >= 0) return prev.map(i => i.id === item.id ? item : i); return [item, ...prev]; }); };
   const removeFromList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, id: string) => { setter(prev => prev.filter(i => i.id !== id)); };
 
-const handleSaveSale = async (data: any) => {
-    if (!user) return;
-
-    const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
-    const saleId = data.id || Date.now().toString();
-
-    const paymentScheduleStartDate = data.paymentDate
-        ? new Date(data.paymentDate)
-        : new Date(data.startDate);
-    if (!data.paymentDate) {
-        paymentScheduleStartDate.setMonth(paymentScheduleStartDate.getMonth() + 1);
-    }
-    const preferredDay = paymentScheduleStartDate.getDate();
-
-    const existingSaleIndex = sales.findIndex(s => s.id === data.id);
-    const existingSale = existingSaleIndex >= 0 ? sales[existingSaleIndex] : null;
-
-    // 🔹 Формирование paymentPlan
-    const generatePaymentPlan = () => {
-        if (data.type === 'CASH') return [];
-
-        // ✅ Если paymentPlan уже пришёл из NewSale — используем его!
-        if (data.paymentPlan && Array.isArray(data.paymentPlan) && data.paymentPlan.length > 0) {
-            return data.paymentPlan;
-        }
-
-        // Если редактируем — сохраняем оплаченные платежи
-        if (existingSale?.paymentPlan) {
-            const paidPayments = existingSale.paymentPlan.filter((p: any) => p.isPaid);
-            const totalInstallments = Number(data.installments) || 1;
-            const newPaymentsCount = Math.max(0, totalInstallments - paidPayments.length);
-
-            const newPayments = Array.from({ length: newPaymentsCount }).map((_, idx) => {
-                const pDate = new Date(paymentScheduleStartDate);
-                pDate.setMonth(pDate.getMonth() + paidPayments.length + idx);
-                return {
-                    id: `pay_${Date.now()}_${idx}`,
-                    saleId: saleId,
-                    amount: Number((data.remainingAmount / totalInstallments).toFixed(2)),
-                    date: pDate.toISOString(),
-                    isPaid: false,
-                    isRealPayment: false
-                };
-            });
-
-            return [...paidPayments, ...newPayments];
-        }
-
-        // Новый договор — генерируем с нуля
-        return Array.from({ length: data.installments }).map((_, idx) => {
-            const pDate = new Date(paymentScheduleStartDate);
-            pDate.setMonth(pDate.getMonth() + idx);
-            return {
-                id: `pay_${Date.now()}_${idx}`,
-                saleId: saleId,
-                amount: Number((data.remainingAmount / data.installments).toFixed(2)),
-                date: pDate.toISOString(),
-                isPaid: false,
-                isRealPayment: false
-            };
-        });
-    };
-
-    const paymentPlan = generatePaymentPlan();
-
-    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: пересчитываем remainingAmount из платежей! 🔹 🔹 🔹
-    const totalPaid = paymentPlan
-        .filter((p: any) => p.isPaid)
-        .reduce((sum, p) => sum + p.amount, 0);
-
-    const calculatedRemainingAmount = Number(data.totalAmount) - totalPaid;
-
-    const saleData = {
-        ...data,
-        id: saleId,
-        userId: ownerId,
-        paymentDay: preferredDay,
-        paymentPlan: paymentPlan,
-        // ✅ Используем ПЕРЕСЧИТАННЫЙ remainingAmount, а не из формы!
-        remainingAmount: calculatedRemainingAmount,
-        status: calculatedRemainingAmount === 0 ? 'COMPLETED' : data.status
-    };
-
-    const saleToSave = existingSaleIndex >= 0
-        ? { ...sales[existingSaleIndex], ...saleData }
-        : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
-
-    // 🔹 Обновляем локальный стейт
-    updateList(setSales, saleToSave);
-
-    // Отправляем в API асинхронно
-    api.saveItem('sales', saleToSave).catch(err => {
-        console.error('❌ Failed to save sale:', err);
-    });
-
-    // 🔹 Закупка и товар — только для НОВЫХ продаж
-    if (existingSaleIndex < 0) {
-        if (Number(data.buyPrice) > 0) {
-            const buyPriceExpense: Expense = {
-                id: `exp_sale_${saleId}`,
-                userId: ownerId,
-                accountId: data.accountId,
-                title: `Закуп: ${data.productName}`,
-                amount: Number(data.buyPrice),
-                category: 'Себестоимость',
-                date: data.startDate,
-                isRefund: false
-            };
-            setExpenses(prev => [...prev, buyPriceExpense]);
-            api.saveItem('expenses', buyPriceExpense).catch(console.error);
-        }
-        if (data.productId) {
-            const prod = products.find(p => p.id === data.productId);
-            if(prod) {
-                const updatedProd = {
-                    ...prod,
-                    stock: prod.stock - 1,
-                    updatedAt: new Date().toISOString()
-                };
-                updateList(setProducts, updatedProd);
-                api.saveItem('products', updatedProd).catch(console.error);
-            }
-        }
-    }
-
-    setEditingSale(null);
-};
-const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
+  const handleSaveSale = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const saleId = data.id || Date.now().toString(); const paymentScheduleStartDate = data.paymentDate ? new Date(data.paymentDate) : new Date(data.startDate); if (!data.paymentDate) { paymentScheduleStartDate.setMonth(paymentScheduleStartDate.getMonth() + 1); } const preferredDay = paymentScheduleStartDate.getDate(); const saleData = { ...data, id: saleId, userId: ownerId, paymentDay: preferredDay, paymentPlan: data.type === 'CASH' ? [] : (data.paymentPlan || Array.from({ length: data.installments }).map((_, idx) => { const pDate = new Date(paymentScheduleStartDate); pDate.setMonth(pDate.getMonth() + idx); return { id: `pay_${Date.now()}_${idx}`, saleId: saleId, amount: Number((data.remainingAmount / data.installments).toFixed(2)), date: pDate.toISOString(), isPaid: false, isRealPayment: false }; })) }; const existingSaleIndex = sales.findIndex(s => s.id === data.id); const saleToSave = existingSaleIndex >= 0 ? { ...sales[existingSaleIndex], ...saleData } : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' }; const savedSale = await api.saveItem('sales', saleToSave); updateList(setSales, savedSale); if (existingSaleIndex < 0) { if (Number(data.buyPrice) > 0) { const buyPriceExpense: Expense = { id: `exp_sale_${saleId}`, userId: ownerId, accountId: data.accountId, title: `Закуп: ${data.productName}`, amount: Number(data.buyPrice), category: 'Себестоимость', date: data.startDate, isRefund: false }; const savedExpense = await api.saveItem('expenses', buyPriceExpense); updateList(setExpenses, savedExpense); } if (data.productId) { const prod = products.find(p => p.id === data.productId); if(prod) { const updatedProd = { ...prod, stock: prod.stock - 1 }; const savedProd = await api.saveItem('products', updatedProd); updateList(setProducts, savedProd); } } } setEditingSale(null); };
+  const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
 const handleDeleteSale = async (saleId: string) => {
     if (!window.confirm("Вы уверены, что хотите удалить этот договор?")) {
         return;
@@ -726,13 +598,10 @@ const handleDeleteSale = async (saleId: string) => {
         return;
     }
 
-    // 🔹 1. Считаем все оплаты от клиента
-    const downPaymentAmount = Number(sale.downPayment);
+    // 🔹 1. Проверка платежей по графику
     const installmentPayments = sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false);
     const installmentAmount = installmentPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const totalPaid = downPaymentAmount + installmentAmount;
 
-    // 🔹 2. Если есть платежи по графику — блокируем удаление
     if (installmentAmount > 0) {
         alert(
             `❌ Нельзя удалить договор с платежами по графику.\n\n` +
@@ -742,64 +611,10 @@ const handleDeleteSale = async (saleId: string) => {
         return;
     }
 
-    // 🔹 3. Если есть первый взнос — создаём расход на возврат клиенту
-    if (downPaymentAmount > 0 && sale.accountId) {
-        try {
-            const refundToClient: Expense = {
-                id: `refund_client_${saleId}_${Date.now()}`,
-                userId: user?.id || 'system',
-                accountId: sale.accountId,
-                title: `Возврат клиенту: ${sale.productName}`,
-                description: `Возврат первого взноса при удалении договора #${saleId}`,
-                amount: downPaymentAmount,  // 🔹 Сумма первого взноса
-                category: 'Возврат клиенту',
-                date: new Date().toISOString(),
-                createdAt: new Date().toISOString(),
-                customerId: sale.customerId,
-                payoutType: 'REFUND',
-                isRefund: true  // 🔹 Флаг для фильтрации в балансе
-            };
+    // ❌ УБИРАЕМ: создание expense "Возврат закупки"
+    // Просто удаляем оригинальный expense — этого достаточно!
 
-            // Сохраняем в API и обновляем локальный стейт
-            await api.saveItem('expenses', refundToClient);
-            setExpenses(prev => [...prev, refundToClient]);
-
-            console.log(`✅ Возврат клиенту: ${downPaymentAmount} ₽`);
-
-        } catch (err) {
-            console.error('❌ Ошибка при возврате клиенту:', err);
-            // Не прерываем удаление, но логируем ошибку
-        }
-    }
-
-    // 🔹 4. Если есть закупка — создаём возврат закупки на счёт
-    if (sale.buyPrice && Number(sale.buyPrice) > 0 && sale.accountId) {
-        try {
-            const refundPurchase: Expense = {
-                id: `refund_buy_${saleId}_${Date.now()}`,
-                userId: user?.id || 'system',
-                accountId: sale.accountId,
-                title: `Возврат закупки: ${sale.productName}`,
-                description: `Возврат средств за закупку при удалении договора #${saleId}`,
-                amount: Number(sale.buyPrice),  // 🔹 Положительная сумма
-                category: 'Возврат закупки',
-                date: new Date().toISOString(),
-                createdAt: new Date().toISOString(),
-                payoutType: 'REFUND',
-                isRefund: true  // 🔹 Флаг для фильтрации в балансе
-            };
-
-            await api.saveItem('expenses', refundPurchase);
-            setExpenses(prev => [...prev, refundPurchase]);
-
-            console.log(`✅ Возврат закупки: ${sale.buyPrice} ₽`);
-
-        } catch (err) {
-            console.error('❌ Ошибка при возврате закупки:', err);
-        }
-    }
-
-    // 🔹 5. Удаляем старый служебный расход закупки (если есть)
+    // 🔹 2. Удаляем расход закупки (если есть)
     try {
         await api.deleteItem('expenses', `exp_sale_${saleId}`);
         setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${saleId}`));
@@ -807,7 +622,7 @@ const handleDeleteSale = async (saleId: string) => {
         // Игнорируем, если запись не найдена
     }
 
-    // 🔹 6. Удаляем договор
+    // 🔹 3. Удаляем договор
     try {
         await api.deleteItem('sales', saleId);
         removeFromList(setSales, saleId);
@@ -817,7 +632,7 @@ const handleDeleteSale = async (saleId: string) => {
         return;
     }
 
-    // 🔹 7. Возвращаем товар на склад
+    // 🔹 4. Возвращаем товар на склад
     if (sale.productId) {
         const prod = products.find(p => p.id === sale.productId);
         if (prod) {
@@ -846,7 +661,6 @@ const handleIncomeSubmit = async (data: any) => {
         if (sale) {
             const updatedSale = { ...sale };
             updatedSale.remainingAmount = Math.max(0, updatedSale.remainingAmount - amount);
-
             updatedSale.paymentPlan.push({
                 id: `paid_${Date.now()}`,
                 saleId: sale.id,
@@ -856,27 +670,19 @@ const handleIncomeSubmit = async (data: any) => {
                 isRealPayment: true
             });
 
-            if (updatedSale.remainingAmount === 0) {
-                updatedSale.status = 'COMPLETED';
-            }
+            if (updatedSale.remainingAmount === 0) updatedSale.status = 'COMPLETED';
 
+            const savedSale = await api.saveItem('sales', updatedSale);
+            updateList(setSales, savedSale);
 
-
-            // 🔹 🔹 🔹 КЛЮЧЕВОЕ: обновляем стейт ЛОКАЛЬНЫМ объектом, API — асинхронно 🔹 🔹 🔹
-            updateList(setSales, updatedSale);  // ✅ Используем updatedSale (локальный)
-
-            // Отправляем в API асинхронно, не блокируя UI
-            api.saveItem('sales', updatedSale).catch(err => {
-                console.error('❌ Failed to save payment:', err);
-                // Опционально: показать ошибку или откатить изменения
-            });
-
+            // 👇 ПОСЛЕ УСПЕШНОГО СОХРАНЕНИЯ ПЕРЕХОДИМ К ДЕТАЛЯМ ДОГОВОРА
+            // Сохраняем ID для перехода
             setSelectedCustomerId(sale.customerId);
             setInitialSaleIdForDetails(saleId);
             setPreviousView(currentView);
             setCurrentView('CUSTOMER_DETAILS');
 
-            return;
+            return; // Выходим, чтобы не попасть в другой код
         }
     } else {
         const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
@@ -897,28 +703,21 @@ const handleIncomeSubmit = async (data: any) => {
             status: 'COMPLETED',
             paymentPlan: []
         };
-
-        // 🔹 То же для новых транзакций
-        updateList(setSales, newTransaction);
-        api.saveItem('sales', newTransaction).catch(err => {
-            console.error('❌ Failed to save transaction:', err);
-        });
+        const savedTx = await api.saveItem('sales', newTransaction);
+        updateList(setSales, savedTx);
 
         if (data.type === 'INVESTOR_DEPOSIT') {
             const inv = investors.find(i => i.id === data.investorId);
             if (inv) {
                 const updatedInv = { ...inv, initialAmount: (inv.initialAmount || 0) + Number(data.amount) };
-                updateList(setInvestors, updatedInv);
-                api.saveItem('investors', updatedInv).catch(err => {
-                    console.error('❌ Failed to save investor:', err);
-                });
+                const savedInv = await api.saveItem('investors', updatedInv);
+                updateList(setInvestors, savedInv);
             }
         }
 
-        setCurrentView('OPERATIONS');
+        setCurrentView('OPERATIONS'); // Для инвестора и прочего оставляем как было
     }
-};
-  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: Date.now().toString(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
+};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: Date.now().toString(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
   const handleAddEmployee = async (data: any) => { if (user && isManager) { if (!checkAccess('EMPLOYEES')) { showUpgradeAlert("Сотрудники доступны в тарифе Бизнес."); return; } try { const newEmp = await api.createSubUser({ ...data, role: 'employee' }); setEmployees(prev => [...prev, newEmp]); } catch(e) { alert("Ошибка создания сотрудника"); console.error(e); } } };
   const handleUpdateEmployee = async (updatedData: User) => { if (isManager) { await api.updateUser(updatedData); updateList(setEmployees, updatedData); } };
   const handleDeleteEmployee = async (id: string) => { if (isManager) { await api.deleteUser(id); removeFromList(setEmployees, id); } };
@@ -1490,7 +1289,8 @@ if (!user && !isLoading) {
     {/* ==================== МОБИЛЬНОЕ МЕНЮ "ЕЩЁ" ==================== */}
     {currentView === 'MORE' && !isInvestor && (
       <div className="space-y-4 animate-fade-in pb-20">
-{/* Профиль */}
+
+   {/* Профиль */}
 <button
   onClick={() => setCurrentView('PROFILE')}
   className="group w-full bg-white/80 backdrop-blur-sm hover:bg-white/90
