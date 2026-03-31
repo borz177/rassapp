@@ -726,10 +726,13 @@ const handleDeleteSale = async (saleId: string) => {
         return;
     }
 
-    // 🔹 1. Проверка платежей по графику
+    // 🔹 1. Считаем все оплаты от клиента
+    const downPaymentAmount = Number(sale.downPayment);
     const installmentPayments = sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false);
     const installmentAmount = installmentPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const totalPaid = downPaymentAmount + installmentAmount;
 
+    // 🔹 2. Если есть платежи по графику — блокируем удаление
     if (installmentAmount > 0) {
         alert(
             `❌ Нельзя удалить договор с платежами по графику.\n\n` +
@@ -739,10 +742,64 @@ const handleDeleteSale = async (saleId: string) => {
         return;
     }
 
-    // ❌ УБИРАЕМ: создание expense "Возврат закупки"
-    // Просто удаляем оригинальный expense — этого достаточно!
+    // 🔹 3. Если есть первый взнос — создаём расход на возврат клиенту
+    if (downPaymentAmount > 0 && sale.accountId) {
+        try {
+            const refundToClient: Expense = {
+                id: `refund_client_${saleId}_${Date.now()}`,
+                userId: user?.id || 'system',
+                accountId: sale.accountId,
+                title: `Возврат клиенту: ${sale.productName}`,
+                description: `Возврат первого взноса при удалении договора #${saleId}`,
+                amount: downPaymentAmount,  // 🔹 Сумма первого взноса
+                category: 'Возврат клиенту',
+                date: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                customerId: sale.customerId,
+                payoutType: 'REFUND',
+                isRefund: true  // 🔹 Флаг для фильтрации в балансе
+            };
 
-    // 🔹 2. Удаляем расход закупки (если есть)
+            // Сохраняем в API и обновляем локальный стейт
+            await api.saveItem('expenses', refundToClient);
+            setExpenses(prev => [...prev, refundToClient]);
+
+            console.log(`✅ Возврат клиенту: ${downPaymentAmount} ₽`);
+
+        } catch (err) {
+            console.error('❌ Ошибка при возврате клиенту:', err);
+            // Не прерываем удаление, но логируем ошибку
+        }
+    }
+
+    // 🔹 4. Если есть закупка — создаём возврат закупки на счёт
+    if (sale.buyPrice && Number(sale.buyPrice) > 0 && sale.accountId) {
+        try {
+            const refundPurchase: Expense = {
+                id: `refund_buy_${saleId}_${Date.now()}`,
+                userId: user?.id || 'system',
+                accountId: sale.accountId,
+                title: `Возврат закупки: ${sale.productName}`,
+                description: `Возврат средств за закупку при удалении договора #${saleId}`,
+                amount: Number(sale.buyPrice),  // 🔹 Положительная сумма
+                category: 'Возврат закупки',
+                date: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                payoutType: 'REFUND',
+                isRefund: true  // 🔹 Флаг для фильтрации в балансе
+            };
+
+            await api.saveItem('expenses', refundPurchase);
+            setExpenses(prev => [...prev, refundPurchase]);
+
+            console.log(`✅ Возврат закупки: ${sale.buyPrice} ₽`);
+
+        } catch (err) {
+            console.error('❌ Ошибка при возврате закупки:', err);
+        }
+    }
+
+    // 🔹 5. Удаляем старый служебный расход закупки (если есть)
     try {
         await api.deleteItem('expenses', `exp_sale_${saleId}`);
         setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${saleId}`));
@@ -750,7 +807,7 @@ const handleDeleteSale = async (saleId: string) => {
         // Игнорируем, если запись не найдена
     }
 
-    // 🔹 3. Удаляем договор
+    // 🔹 6. Удаляем договор
     try {
         await api.deleteItem('sales', saleId);
         removeFromList(setSales, saleId);
@@ -760,7 +817,7 @@ const handleDeleteSale = async (saleId: string) => {
         return;
     }
 
-    // 🔹 4. Возвращаем товар на склад
+    // 🔹 7. Возвращаем товар на склад
     if (sale.productId) {
         const prod = products.find(p => p.id === sale.productId);
         if (prod) {
@@ -803,12 +860,7 @@ const handleIncomeSubmit = async (data: any) => {
                 updatedSale.status = 'COMPLETED';
             }
 
-            console.log('🔍 Payment debug:', {
-    oldRemaining: sale.remainingAmount,
-    newRemaining: updatedSale.remainingAmount,
-    paymentPlanLength: updatedSale.paymentPlan.length,
-    paidCount: updatedSale.paymentPlan.filter((p: any) => p.isPaid).length
-});
+
 
             // 🔹 🔹 🔹 КЛЮЧЕВОЕ: обновляем стейт ЛОКАЛЬНЫМ объектом, API — асинхронно 🔹 🔹 🔹
             updateList(setSales, updatedSale);  // ✅ Используем updatedSale (локальный)

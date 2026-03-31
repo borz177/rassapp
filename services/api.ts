@@ -34,7 +34,7 @@ export const api = {
             const queue = await offlineStorage.getQueue();
             if (queue.length === 0) return;
 
-            console.log(`Syncing ${queue.length} items...`);
+
 
            for (const item of queue) {
     try {
