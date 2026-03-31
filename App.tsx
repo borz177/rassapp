@@ -582,7 +582,7 @@ const dashboardStats = useMemo(() => {
       }
   };
 
-  // ... (CRUD helpers updateList, removeFromList, handleSaveSale, etc. kept same) ...
+
   const updateList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, item: T) => { setter(prev => { const idx = prev.findIndex(i => i.id === item.id); if (idx >= 0) return prev.map(i => i.id === item.id ? item : i); return [item, ...prev]; }); };
   const removeFromList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, id: string) => { setter(prev => prev.filter(i => i.id !== id)); };
 
@@ -604,12 +604,12 @@ const handleSaveSale = async (data: any) => {
     const existingSaleIndex = sales.findIndex(s => s.id === data.id);
     const existingSale = existingSaleIndex >= 0 ? sales[existingSaleIndex] : null;
 
-    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: правильно формируем paymentPlan 🔹 🔹 🔹
+    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: правильно формируем paymentPlan ТОЛЬКО здесь 🔹 🔹 🔹
     const generatePaymentPlan = () => {
         if (data.type === 'CASH') return [];
 
         // Если редактируем существующий договор — сохраняем оплаченные платежи
-        if (existingSale?.paymentPlan) {
+        if (existingSale?.paymentPlan && existingSale.paymentPlan.length > 0) {
             const paidPayments = existingSale.paymentPlan.filter((p: any) => p.isPaid);
 
             // Считаем, сколько платежей нужно сгенерировать
@@ -620,7 +620,6 @@ const handleSaveSale = async (data: any) => {
             const newPayments = Array.from({ length: newPaymentsCount }).map((_, idx) => {
                 const pDate = new Date(paymentScheduleStartDate);
                 pDate.setMonth(pDate.getMonth() + paidPayments.length + idx);
-
                 return {
                     id: `pay_${Date.now()}_${idx}`,
                     saleId: saleId,
@@ -655,11 +654,11 @@ const handleSaveSale = async (data: any) => {
         id: saleId,
         userId: ownerId,
         paymentDay: preferredDay,
-        paymentPlan: generatePaymentPlan()  // 🔹 Используем нашу функцию
+        paymentPlan: generatePaymentPlan()  // 🔹 Генерируем ТОЛЬКО здесь
     };
 
     const saleToSave = existingSaleIndex >= 0
-        ? { ...sales[existingSaleIndex], ...saleData }  // Теперь paymentPlan уже правильный
+        ? { ...sales[existingSaleIndex], ...saleData }
         : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
 
     const savedSale = await api.saveItem('sales', saleToSave);
@@ -679,7 +678,6 @@ const handleSaveSale = async (data: any) => {
                 isRefund: false
             };
             await api.saveItem('expenses', buyPriceExpense);
-            // ❌ Убираем updateList для expenses — чтобы не было дублей
         }
         if (data.productId) {
             const prod = products.find(p => p.id === data.productId);

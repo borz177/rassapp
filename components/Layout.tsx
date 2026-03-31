@@ -268,7 +268,7 @@ const Layout: React.FC<LayoutProps> = ({
             {/*{!isOnline && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded w-fit">Офлайн</span>}*/}
             {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">Синхронизация...</span>}
         </div>
-        
+
       </header>
 
       {/* Desktop Sidebar */}

@@ -219,10 +219,11 @@ const NewSale: React.FC<NewSaleProps> = ({
   };
 
   // 🔥 handleConfirm с сохранением roundingMode
-  const handleConfirm = () => {
+  // 🔹 УПРОЩЁННАЯ ВЕРСИЯ: не генерируем paymentPlan в NewSale
+const handleConfirm = () => {
     const pDay = formData.paymentDate
-      ? new Date(formData.paymentDate).getDate()
-      : new Date(formData.startDate).getDate();
+        ? new Date(formData.paymentDate).getDate()
+        : new Date(formData.startDate).getDate();
 
     const saleId = formData.id || Date.now().toString();
     let finalStartDate = formData.startDate;
@@ -233,84 +234,50 @@ const NewSale: React.FC<NewSaleProps> = ({
                     selectedDate.getFullYear() === now.getFullYear();
 
     if (isToday) {
-      finalStartDate = now.toISOString();
+        finalStartDate = now.toISOString();
     }
 
     const submissionData = {
-      ...formData,
-      id: saleId,
-      startDate: finalStartDate,
-      paymentDay: pDay,
-      buyPrice: Number(formData.buyPrice),
-      price: Number(formData.price),
-      downPayment: Number(formData.downPayment),
-      installments: Number(formData.installments),
-      interestRate: Number(formData.interestRate),
-      roundingMode,
+        ...formData,
+        id: saleId,
+        startDate: finalStartDate,
+        paymentDay: pDay,
+        buyPrice: Number(formData.buyPrice),
+        price: Number(formData.price),
+        downPayment: Number(formData.downPayment),
+        installments: Number(formData.installments),
+        interestRate: Number(formData.interestRate),
+        roundingMode,
     };
 
     let finalSaleData;
     if (mode === 'CASH') {
-      finalSaleData = {
-        ...submissionData,
-        type: 'CASH',
-        totalAmount: calculatedValues.totalAmount,
-        downPayment: calculatedValues.totalAmount,
-        remainingAmount: 0,
-        installments: 0,
-        interestRate: 0,
-        roundingMode: 'NONE',
-      };
+        finalSaleData = {
+            ...submissionData,
+            type: 'CASH',
+            totalAmount: calculatedValues.totalAmount,
+            downPayment: calculatedValues.totalAmount,
+            remainingAmount: 0,
+            installments: 0,
+            interestRate: 0,
+            roundingMode: 'NONE',
+        };
     } else {
-      finalSaleData = {
-        ...submissionData,
-        type: 'INSTALLMENT',
-        totalAmount: calculatedValues.totalAmount,
-        remainingAmount: calculatedValues.remainingAmount,
-      };
+        finalSaleData = {
+            ...submissionData,
+            type: 'INSTALLMENT',
+            totalAmount: calculatedValues.totalAmount,
+            remainingAmount: calculatedValues.remainingAmount,
+        };
     }
 
-    // 🔹 🔹 🔹 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: сохраняем оплаченные платежи при редактировании 🔹 🔹 🔹
-    const paymentPlan = mode === 'CASH' ? [] : (() => {
-      // Если редактируем существующий договор — берём старые платежи из initialData
-      const existingPayments = initialData?.paymentPlan || [];
+    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: НЕ генерируем paymentPlan здесь!
+    // Передаём только базовые данные, а paymentPlan сформируется в App.tsx
+    const fullSaleObject = {
+        ...finalSaleData,
+        paymentPlan: initialData?.paymentPlan || []  // ← Передаём как есть
+    };
 
-      // Генерируем новые платежи только для недостающих месяцев
-      const newPayments = Array.from({ length: finalSaleData.installments }).map((_, idx) => {
-        const pDate = new Date(finalSaleData.paymentDate || finalSaleData.startDate);
-        pDate.setMonth(pDate.getMonth() + idx);
-
-        // 🔹 Ищем существующий платеж на эту дату (или с таким же индексом)
-        const existing = existingPayments.find((p: any) => {
-          const existingDate = new Date(p.date);
-          const newDate = new Date(pDate);
-          return existingDate.getMonth() === newDate.getMonth() &&
-                 existingDate.getFullYear() === newDate.getFullYear();
-        });
-
-        // Если платеж уже был и оплачен — сохраняем его как есть
-        if (existing && existing.isPaid) {
-          return {
-            ...existing,
-            amount: Number((finalSaleData.remainingAmount / finalSaleData.installments).toFixed(2))
-          };
-        }
-
-        // Иначе создаём новый неоплаченный платеж
-        return {
-          id: existing?.id || `pay_${Date.now()}_${idx}`,
-          saleId,
-          amount: Number((finalSaleData.remainingAmount / finalSaleData.installments).toFixed(2)),
-          date: pDate.toISOString(),
-          isPaid: false,
-          isRealPayment: false
-        };
-      });
-
-      return newPayments;
-    })();
-
-    const fullSaleObject = { ...finalSaleData, paymentPlan };
     setCreatedSale(fullSaleObject);
     setShowConfirmModal(false);
     onSubmit(fullSaleObject);
