@@ -268,19 +268,7 @@ const Layout: React.FC<LayoutProps> = ({
             {/*{!isOnline && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded w-fit">Офлайн</span>}*/}
             {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">Синхронизация...</span>}
         </div>
-        {!isInvestor && (
-            <div
-                className={`ml-auto text-xs px-2 py-1.5 rounded-lg font-bold flex flex-col items-end leading-tight cursor-pointer
-                    ${subStatus.expired ? 'bg-red-50 text-red-600' : subStatus.isWarning ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}
-                `}
-                onClick={() => setView('TARIFFS')}
-            >
-                <span>{subStatus.planName}</span>
-                <span className="text-[10px] opacity-80">
-                    {subStatus.expired ? 'Истек' : `Осталось: ${subStatus.daysLeft} дн.`}
-                </span>
-            </div>
-        )}
+        
       </header>
 
       {/* Desktop Sidebar */}

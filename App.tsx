@@ -155,6 +155,33 @@ const isLanding = path === "/"
       };
   }, []);
 
+
+  // В App.tsx или где рендерится меню "ЕЩЁ"
+const subStatus = useMemo(() => {
+  if (!user?.subscription) {
+    return { planName: 'Free', daysLeft: 0, expired: false, isWarning: false };
+  }
+
+  const { plan, expiresAt } = user.subscription;
+  const endDate = new Date(expiresAt);
+  const today = new Date();
+  const daysLeft = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  const planNames: Record<string, string> = {
+    TRIAL: 'Тест',
+    START: 'Старт',
+    STANDARD: 'Стандарт',
+    BUSINESS: 'Бизнес'
+  };
+
+  return {
+    planName: planNames[plan] || plan,
+    daysLeft: Math.max(0, daysLeft),
+    expired: daysLeft <= 0,
+    isWarning: daysLeft > 0 && daysLeft <= 7  // Предупреждение за неделю
+  };
+}, [user?.subscription]);
+
   const handleSync = async () => {
       if (!navigator.onLine) return;
       setIsSyncing(true);
@@ -1374,32 +1401,82 @@ if (!user && !isLoading) {
     {/* ==================== МОБИЛЬНОЕ МЕНЮ "ЕЩЁ" ==================== */}
     {currentView === 'MORE' && !isInvestor && (
       <div className="space-y-4 animate-fade-in pb-20">
-
-     {/* Профиль */}
+{/* Профиль */}
 <button
   onClick={() => setCurrentView('PROFILE')}
   className="group w-full bg-white/80 backdrop-blur-sm hover:bg-white/90
              text-slate-800 p-6 rounded-2xl flex items-center gap-4
              transition-all duration-300 hover:shadow-xl
              border border-slate-200/80 hover:border-indigo-400
-             shadow-sm"
+             shadow-sm relative overflow-hidden"
 >
+  {/* 🔹 Декоративная полоска статуса (сверху) */}
+  {!isInvestor && (
+    <div className={`absolute top-0 left-0 right-0 h-1 ${
+      subStatus.expired ? 'bg-gradient-to-r from-red-400 to-red-600' : 
+      subStatus.isWarning ? 'bg-gradient-to-r from-amber-400 to-amber-600' : 
+      'bg-gradient-to-r from-emerald-400 to-emerald-600'
+    }`} />
+  )}
+
   <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-pink-500
                   rounded-2xl flex items-center justify-center text-2xl font-bold text-white
-                  shadow-md group-hover:scale-105 transition-transform duration-300">
+                  shadow-md group-hover:scale-105 transition-transform duration-300 relative z-10">
     {user.name.charAt(0).toUpperCase()}
   </div>
-  <div className="flex-1">
-    <div className="flex items-center justify-between">
-      <h2 className="text-xl font-bold text-left text-slate-800">{user.name}</h2>
 
+  <div className="flex-1 min-w-0 relative z-10">
+    <div className="flex items-center justify-between gap-2">
+      <h2 className="text-xl font-bold text-left text-slate-800 truncate">{user.name}</h2>
+
+      {/* 🔹 Бейдж подписки — компактный и красивый */}
+      {!isInvestor && (
+        <div
+          className={`flex-shrink-0 px-2.5 py-1.5 rounded-xl font-bold text-[10px] flex flex-col items-end leading-tight cursor-pointer transition-all hover:scale-105
+            ${subStatus.expired 
+              ? 'bg-red-100 text-red-700 border border-red-200' 
+              : subStatus.isWarning 
+                ? 'bg-amber-100 text-amber-700 border border-amber-200' 
+                : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+            }`}
+          onClick={(e) => { e.stopPropagation(); setCurrentView('TARIFFS'); }}
+          title="Управление подпиской"
+        >
+          <span className="font-semibold">{subStatus.planName}</span>
+          <span className="text-[9px] opacity-75 mt-0.5">
+            {subStatus.expired ? '❌ Истек' : `⏰ ${subStatus.daysLeft} дн.`}
+          </span>
+        </div>
+      )}
     </div>
+
     <p className="text-slate-500 text-xs mt-2 text-left flex items-center gap-1">
-      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
       </svg>
-      {user.email}
+      <span className="truncate">{user.email}</span>
     </p>
+
+    {/* 🔹 Прогресс-бар дней (визуальный индикатор) */}
+    {!isInvestor && !subStatus.expired && (
+      <div className="mt-3 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${
+            subStatus.isWarning 
+              ? 'bg-gradient-to-r from-amber-400 to-amber-600' 
+              : 'bg-gradient-to-r from-emerald-400 to-emerald-600'
+          }`}
+          style={{ width: `${Math.min(100, (subStatus.daysLeft / 30) * 100)}%` }}
+        />
+      </div>
+    )}
+  </div>
+
+  {/* 🔹 Стрелка навигации */}
+  <div className="text-slate-300 group-hover:text-indigo-500 transition-colors relative z-10">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="9 18 15 12 9 6"/>
+    </svg>
   </div>
 </button>
 
