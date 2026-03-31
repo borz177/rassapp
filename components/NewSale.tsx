@@ -246,7 +246,7 @@ const NewSale: React.FC<NewSaleProps> = ({
       downPayment: Number(formData.downPayment),
       installments: Number(formData.installments),
       interestRate: Number(formData.interestRate),
-      roundingMode, // ← 🔥 СОХРАНЯЕМ режим округления
+      roundingMode,
     };
 
     let finalSaleData;
@@ -267,28 +267,55 @@ const NewSale: React.FC<NewSaleProps> = ({
         type: 'INSTALLMENT',
         totalAmount: calculatedValues.totalAmount,
         remainingAmount: calculatedValues.remainingAmount,
-        // roundingMode уже в submissionData
       };
     }
 
-    const paymentPlan = mode === 'CASH' ? [] : Array.from({ length: finalSaleData.installments }).map((_, idx) => {
-      const pDate = new Date(finalSaleData.paymentDate || finalSaleData.startDate);
-      pDate.setMonth(pDate.getMonth() + idx);
-      return {
-        id: `pay_${Date.now()}_${idx}`,
-        saleId,
-        amount: Number((finalSaleData.remainingAmount / finalSaleData.installments).toFixed(2)),
-        date: pDate.toISOString(),
-        isPaid: false
-      };
-    });
+    // 🔹 🔹 🔹 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: сохраняем оплаченные платежи при редактировании 🔹 🔹 🔹
+    const paymentPlan = mode === 'CASH' ? [] : (() => {
+      // Если редактируем существующий договор — берём старые платежи из initialData
+      const existingPayments = initialData?.paymentPlan || [];
+
+      // Генерируем новые платежи только для недостающих месяцев
+      const newPayments = Array.from({ length: finalSaleData.installments }).map((_, idx) => {
+        const pDate = new Date(finalSaleData.paymentDate || finalSaleData.startDate);
+        pDate.setMonth(pDate.getMonth() + idx);
+
+        // 🔹 Ищем существующий платеж на эту дату (или с таким же индексом)
+        const existing = existingPayments.find((p: any) => {
+          const existingDate = new Date(p.date);
+          const newDate = new Date(pDate);
+          return existingDate.getMonth() === newDate.getMonth() &&
+                 existingDate.getFullYear() === newDate.getFullYear();
+        });
+
+        // Если платеж уже был и оплачен — сохраняем его как есть
+        if (existing && existing.isPaid) {
+          return {
+            ...existing,
+            amount: Number((finalSaleData.remainingAmount / finalSaleData.installments).toFixed(2))
+          };
+        }
+
+        // Иначе создаём новый неоплаченный платеж
+        return {
+          id: existing?.id || `pay_${Date.now()}_${idx}`,
+          saleId,
+          amount: Number((finalSaleData.remainingAmount / finalSaleData.installments).toFixed(2)),
+          date: pDate.toISOString(),
+          isPaid: false,
+          isRealPayment: false
+        };
+      });
+
+      return newPayments;
+    })();
 
     const fullSaleObject = { ...finalSaleData, paymentPlan };
     setCreatedSale(fullSaleObject);
     setShowConfirmModal(false);
     onSubmit(fullSaleObject);
     setShowSuccessModal(true);
-  };
+};
   const updateMode = (newMode: 'INSTALLMENT' | 'CASH') => {
     setMode(newMode);
     setFormData(prev => ({ ...prev, mode: newMode }));

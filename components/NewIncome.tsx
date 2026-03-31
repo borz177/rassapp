@@ -15,6 +15,7 @@ interface NewIncomeProps {
   onClose: () => void;
   onSubmit: (data: any) => void;
   onSelectCustomer: () => void;
+
 }
 
 const NewIncome: React.FC<NewIncomeProps> = ({
