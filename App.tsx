@@ -1405,21 +1405,28 @@ if (!user && !isLoading) {
   className="group w-full bg-white/80 backdrop-blur-sm hover:bg-white/90
              text-slate-800 p-6 rounded-2xl flex items-center gap-4
              transition-all duration-300 hover:shadow-xl
-             border border-slate-200/80 hover:border-indigo-400
+             border border-slate-200/80 hover:border-[var(--color-primary-400)]
              shadow-sm relative overflow-hidden"
 >
   {/* 🔹 Декоративная полоска статуса (сверху) */}
   {!isInvestor && (
     <div className={`absolute top-0 left-0 right-0 h-1 ${
-      subStatus.expired ? 'bg-gradient-to-r from-red-400 to-red-600' : 
-      subStatus.isWarning ? 'bg-gradient-to-r from-amber-400 to-amber-600' : 
-      'bg-gradient-to-r from-emerald-400 to-emerald-600'
+      subStatus.expired 
+        ? 'bg-gradient-to-r from-red-400 to-red-600' 
+        : subStatus.isWarning 
+          ? 'bg-gradient-to-r from-amber-400 to-amber-600' 
+          : 'bg-gradient-to-r from-[var(--color-primary-400)] to-[var(--color-primary-600)]'
     }`} />
   )}
 
-  <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-pink-500
-                  rounded-2xl flex items-center justify-center text-2xl font-bold text-white
-                  shadow-md group-hover:scale-105 transition-transform duration-300 relative z-10">
+  {/* 🔹 Аватар — использует цвета темы */}
+  <div
+    className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold text-white
+               shadow-md group-hover:scale-105 transition-transform duration-300 relative z-10"
+    style={{
+      background: `linear-gradient(135deg, var(--color-primary-500), var(--color-secondary-500))`
+    }}
+  >
     {user.name.charAt(0).toUpperCase()}
   </div>
 
@@ -1427,7 +1434,7 @@ if (!user && !isLoading) {
     <div className="flex items-center justify-between gap-2">
       <h2 className="text-xl font-bold text-left text-slate-800 truncate">{user.name}</h2>
 
-      {/* 🔹 Бейдж подписки — компактный и красивый */}
+      {/* 🔹 Бейдж подписки — использует цвета темы */}
       {!isInvestor && (
         <div
           className={`flex-shrink-0 px-2.5 py-1.5 rounded-xl font-bold text-[10px] flex flex-col items-end leading-tight cursor-pointer transition-all hover:scale-105
@@ -1435,7 +1442,7 @@ if (!user && !isLoading) {
               ? 'bg-red-100 text-red-700 border border-red-200' 
               : subStatus.isWarning 
                 ? 'bg-amber-100 text-amber-700 border border-amber-200' 
-                : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                : 'bg-[var(--color-primary-100)] text-[var(--color-primary-700)] border border-[var(--color-primary-200)]'
             }`}
           onClick={(e) => { e.stopPropagation(); setCurrentView('TARIFFS'); }}
           title="Управление подпиской"
@@ -1455,23 +1462,26 @@ if (!user && !isLoading) {
       <span className="truncate">{user.email}</span>
     </p>
 
-    {/* 🔹 Прогресс-бар дней (визуальный индикатор) */}
+    {/* 🔹 Прогресс-бар дней — использует цвета темы */}
     {!isInvestor && !subStatus.expired && (
       <div className="mt-3 h-1.5 bg-slate-100 rounded-full overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all duration-500 ${
-            subStatus.isWarning 
-              ? 'bg-gradient-to-r from-amber-400 to-amber-600' 
-              : 'bg-gradient-to-r from-emerald-400 to-emerald-600'
-          }`}
-          style={{ width: `${Math.min(100, (subStatus.daysLeft / 30) * 100)}%` }}
+          className="h-full rounded-full transition-all duration-500"
+          style={{
+            width: `${Math.min(100, (subStatus.daysLeft / 30) * 100)}%`,
+            background: subStatus.isWarning
+              ? `linear-gradient(90deg, var(--color-amber-400), var(--color-amber-600))`
+              : `linear-gradient(90deg, var(--color-primary-400), var(--color-primary-600))`
+          }}
         />
       </div>
     )}
   </div>
 
-  {/* 🔹 Стрелка навигации */}
-  <div className="text-slate-300 group-hover:text-indigo-500 transition-colors relative z-10">
+  {/* 🔹 Стрелка навигации — использует цвет темы */}
+  <div
+    className="text-slate-300 group-hover:text-[var(--color-primary-500)] transition-colors relative z-10"
+  >
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <polyline points="9 18 15 12 9 6"/>
     </svg>
