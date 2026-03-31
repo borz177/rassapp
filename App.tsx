@@ -603,16 +603,16 @@ const handleSaveSale = async (data: any) => {
     const existingSaleIndex = sales.findIndex(s => s.id === data.id);
     const existingSale = existingSaleIndex >= 0 ? sales[existingSaleIndex] : null;
 
-    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: если paymentPlan пришёл из NewSale — доверяем ему! 🔹 🔹 🔹
+    // 🔹 Формирование paymentPlan
     const generatePaymentPlan = () => {
         if (data.type === 'CASH') return [];
 
-        // ✅ Если paymentPlan уже есть в data — используем его (из NewSale)
+        // ✅ Если paymentPlan уже пришёл из NewSale — используем его!
         if (data.paymentPlan && Array.isArray(data.paymentPlan) && data.paymentPlan.length > 0) {
             return data.paymentPlan;
         }
 
-        // Запасной вариант: сохраняем оплаченные платежи при редактировании
+        // Если редактируем — сохраняем оплаченные платежи
         if (existingSale?.paymentPlan) {
             const paidPayments = existingSale.paymentPlan.filter((p: any) => p.isPaid);
             const totalInstallments = Number(data.installments) || 1;
@@ -649,27 +649,32 @@ const handleSaveSale = async (data: any) => {
         });
     };
 
+    const paymentPlan = generatePaymentPlan();
+
+    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: пересчитываем remainingAmount из платежей! 🔹 🔹 🔹
+    const totalPaid = paymentPlan
+        .filter((p: any) => p.isPaid)
+        .reduce((sum, p) => sum + p.amount, 0);
+
+    const calculatedRemainingAmount = Number(data.totalAmount) - totalPaid;
+
     const saleData = {
         ...data,
         id: saleId,
         userId: ownerId,
         paymentDay: preferredDay,
-        paymentPlan: generatePaymentPlan()
+        paymentPlan: paymentPlan,
+        // ✅ Используем ПЕРЕСЧИТАННЫЙ remainingAmount, а не из формы!
+        remainingAmount: calculatedRemainingAmount,
+        status: calculatedRemainingAmount === 0 ? 'COMPLETED' : data.status
     };
 
     const saleToSave = existingSaleIndex >= 0
         ? { ...sales[existingSaleIndex], ...saleData }
         : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
 
-    console.log('🔍 SaveSale debug:', {
-    fromData: data.paymentPlan?.length,
-    fromExisting: existingSale?.paymentPlan?.length,
-    finalRemaining: saleToSave.remainingAmount,
-    paidCount: saleToSave.paymentPlan?.filter((p: any) => p.isPaid).length
-});
-
-    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: обновляем стейт ЛОКАЛЬНЫМ объектом, API — асинхронно 🔹 🔹 🔹
-    updateList(setSales, saleToSave);  // ✅ Используем saleToSave (локальный)
+    // 🔹 Обновляем локальный стейт
+    updateList(setSales, saleToSave);
 
     // Отправляем в API асинхронно
     api.saveItem('sales', saleToSave).catch(err => {
@@ -689,11 +694,8 @@ const handleSaveSale = async (data: any) => {
                 date: data.startDate,
                 isRefund: false
             };
-            // 🔹 Обновляем expenses локально!
             setExpenses(prev => [...prev, buyPriceExpense]);
-            api.saveItem('expenses', buyPriceExpense).catch(err => {
-                console.error('❌ Failed to save expense:', err);
-            });
+            api.saveItem('expenses', buyPriceExpense).catch(console.error);
         }
         if (data.productId) {
             const prod = products.find(p => p.id === data.productId);
@@ -704,9 +706,7 @@ const handleSaveSale = async (data: any) => {
                     updatedAt: new Date().toISOString()
                 };
                 updateList(setProducts, updatedProd);
-                api.saveItem('products', updatedProd).catch(err => {
-                    console.error('❌ Failed to save product:', err);
-                });
+                api.saveItem('products', updatedProd).catch(console.error);
             }
         }
     }
