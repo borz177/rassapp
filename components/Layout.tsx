@@ -262,19 +262,16 @@ const Layout: React.FC<LayoutProps> = ({
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans">
       {/* Mobile Top Navbar */}
-      {/* Mobile Top Navbar */}
+ {/* Mobile Top Navbar */}
 <header
-  className="md:hidden fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-b border-slate-200 z-40"
-  style={{
-    paddingTop: 'max(env(safe-area-inset-top), 0px)',
-    minHeight: 'calc(4rem + env(safe-area-inset-top))'
-  }}
+  className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-40"
+  
 >
   <div className="h-16 flex items-center px-4">
     <div className="flex flex-col w-full">
       <h1 className="text-xl font-bold tracking-tight text-indigo-600">{appSettings.companyName}</h1>
       {isOnline && isSyncing && (
-        <span className="text-[10px] font-bold text-blue-600 bg-blue-50/80 backdrop-blur-sm px-1.5 py-0.5 rounded w-fit">
+        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">
           Синхронизация...
         </span>
       )}
