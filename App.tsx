@@ -661,6 +661,13 @@ const handleSaveSale = async (data: any) => {
         ? { ...sales[existingSaleIndex], ...saleData }
         : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
 
+    console.log('🔍 SaveSale debug:', {
+    fromData: data.paymentPlan?.length,
+    fromExisting: existingSale?.paymentPlan?.length,
+    finalRemaining: saleToSave.remainingAmount,
+    paidCount: saleToSave.paymentPlan?.filter((p: any) => p.isPaid).length
+});
+
     // 🔹 🔹 🔹 КЛЮЧЕВОЕ: обновляем стейт ЛОКАЛЬНЫМ объектом, API — асинхронно 🔹 🔹 🔹
     updateList(setSales, saleToSave);  // ✅ Используем saleToSave (локальный)
 
@@ -795,6 +802,13 @@ const handleIncomeSubmit = async (data: any) => {
             if (updatedSale.remainingAmount === 0) {
                 updatedSale.status = 'COMPLETED';
             }
+
+            console.log('🔍 Payment debug:', {
+    oldRemaining: sale.remainingAmount,
+    newRemaining: updatedSale.remainingAmount,
+    paymentPlanLength: updatedSale.paymentPlan.length,
+    paidCount: updatedSale.paymentPlan.filter((p: any) => p.isPaid).length
+});
 
             // 🔹 🔹 🔹 КЛЮЧЕВОЕ: обновляем стейт ЛОКАЛЬНЫМ объектом, API — асинхронно 🔹 🔹 🔹
             updateList(setSales, updatedSale);  // ✅ Используем updatedSale (локальный)
