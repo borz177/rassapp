@@ -600,20 +600,19 @@ const handleSaveSale = async (data: any) => {
     }
     const preferredDay = paymentScheduleStartDate.getDate();
 
-    // 🔹 Найти существующий договор
     const existingSaleIndex = sales.findIndex(s => s.id === data.id);
     const existingSale = existingSaleIndex >= 0 ? sales[existingSaleIndex] : null;
 
-    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: используем paymentPlan из data, если он есть 🔹 🔹 🔹
+    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: если paymentPlan уже пришёл из NewSale — используем его! 🔹 🔹 🔹
     const generatePaymentPlan = () => {
         if (data.type === 'CASH') return [];
 
-        // ✅ Если paymentPlan уже пришёл из NewSale — используем его!
+        // ✅ Если paymentPlan уже есть в data — доверяем ему (из NewSale)
         if (data.paymentPlan && Array.isArray(data.paymentPlan) && data.paymentPlan.length > 0) {
             return data.paymentPlan;
         }
 
-        // Если редактируем — сохраняем оплаченные платежи (запасной вариант)
+        // Запасной вариант: сохраняем оплаченные платежи при редактировании
         if (existingSale?.paymentPlan) {
             const paidPayments = existingSale.paymentPlan.filter((p: any) => p.isPaid);
             const totalInstallments = Number(data.installments) || 1;
@@ -635,7 +634,7 @@ const handleSaveSale = async (data: any) => {
             return [...paidPayments, ...newPayments];
         }
 
-        // Новый договор — генерируем все платежи
+        // Новый договор — генерируем с нуля
         return Array.from({ length: data.installments }).map((_, idx) => {
             const pDate = new Date(paymentScheduleStartDate);
             pDate.setMonth(pDate.getMonth() + idx);
@@ -655,8 +654,7 @@ const handleSaveSale = async (data: any) => {
         id: saleId,
         userId: ownerId,
         paymentDay: preferredDay,
-        // ✅ Используем paymentPlan из NewSale, если есть
-        paymentPlan: data.paymentPlan || generatePaymentPlan()
+        paymentPlan: generatePaymentPlan()
     };
 
     const saleToSave = existingSaleIndex >= 0
@@ -774,25 +772,23 @@ const handleIncomeSubmit = async (data: any) => {
             const updatedSale = { ...sale };
             updatedSale.remainingAmount = Math.max(0, updatedSale.remainingAmount - amount);
 
-            // Добавляем платёж с правильными флагами
             updatedSale.paymentPlan.push({
                 id: `paid_${Date.now()}`,
                 saleId: sale.id,
                 amount: amount,
                 date: data.date,
                 isPaid: true,
-                isRealPayment: true  // 🔹 Важно для отображения в истории
+                isRealPayment: true  // 🔹 Важно для отображения
             });
 
             if (updatedSale.remainingAmount === 0) {
                 updatedSale.status = 'COMPLETED';
             }
 
-            // 🔹 🔹 🔹 КЛЮЧЕВОЕ: сначала сохраняем в API, потом обновляем стейт ЛОКАЛЬНЫМ объектом 🔹 🔹 🔹
-            await api.saveItem('sales', updatedSale);  // Отправляем полные данные на сервер
-            updateList(setSales, updatedSale);          // 🔹 Используем LOCAL updatedSale, а не savedSale!
+            // 🔹 🔹 🔹 КЛЮЧЕВОЕ: используем ЛОКАЛЬНЫЙ объект для обновления стейта 🔹 🔹 🔹
+            await api.saveItem('sales', updatedSale);  // Отправляем на сервер
+            updateList(setSales, updatedSale);          // 🔹 Используем updatedSale, НЕ savedSale!
 
-            // 👇 ПОСЛЕ УСПЕШНОГО СОХРАНЕНИЯ ПЕРЕХОДИМ К ДЕТАЛЯМ ДОГОВОРА
             setSelectedCustomerId(sale.customerId);
             setInitialSaleIdForDetails(saleId);
             setPreviousView(currentView);

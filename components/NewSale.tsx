@@ -251,16 +251,7 @@ const handleConfirm = () => {
 
     let finalSaleData;
     if (mode === 'CASH') {
-        finalSaleData = {
-            ...submissionData,
-            type: 'CASH',
-            totalAmount: calculatedValues.totalAmount,
-            downPayment: calculatedValues.totalAmount,
-            remainingAmount: 0,
-            installments: 0,
-            interestRate: 0,
-            roundingMode: 'NONE',
-        };
+        finalSaleData = { /* ... */ };
     } else {
         finalSaleData = {
             ...submissionData,
@@ -270,16 +261,15 @@ const handleConfirm = () => {
         };
     }
 
-    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: НЕ генерируем paymentPlan здесь!
-    // Просто передаём то, что пришло из initialData
+    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: просто передаём paymentPlan из initialData 🔹 🔹 🔹
     const fullSaleObject = {
         ...finalSaleData,
-        paymentPlan: initialData?.paymentPlan || []  // ← Передаём как есть
+        paymentPlan: initialData?.paymentPlan || []  // ← Передаём как есть!
     };
 
     setCreatedSale(fullSaleObject);
     setShowConfirmModal(false);
-    onSubmit(fullSaleObject);
+    onSubmit(fullSaleObject);  // ← Отправляем в App.tsx → handleSaveSale
     setShowSuccessModal(true);
 };
   const updateMode = (newMode: 'INSTALLMENT' | 'CASH') => {
