@@ -247,7 +247,7 @@ const handleSendFullReport = () => {
                     <h2 className="text-xl font-bold text-slate-800 truncate">{selectedSale.productName}</h2>
                   </div>
                   <button onClick={handleSendSaleReminder} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
-                      {ICONS.Send} WhatsApp
+                      {ICONS.Whatsapp} WhatsApp
                   </button>
               </div>
 
