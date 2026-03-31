@@ -773,28 +773,32 @@ const handleIncomeSubmit = async (data: any) => {
         if (sale) {
             const updatedSale = { ...sale };
             updatedSale.remainingAmount = Math.max(0, updatedSale.remainingAmount - amount);
+
+            // Добавляем платёж с правильными флагами
             updatedSale.paymentPlan.push({
                 id: `paid_${Date.now()}`,
                 saleId: sale.id,
                 amount: amount,
                 date: data.date,
                 isPaid: true,
-                isRealPayment: true
+                isRealPayment: true  // 🔹 Важно для отображения в истории
             });
 
-            if (updatedSale.remainingAmount === 0) updatedSale.status = 'COMPLETED';
+            if (updatedSale.remainingAmount === 0) {
+                updatedSale.status = 'COMPLETED';
+            }
 
-            const savedSale = await api.saveItem('sales', updatedSale);
-            updateList(setSales, savedSale);
+            // 🔹 🔹 🔹 КЛЮЧЕВОЕ: сначала сохраняем в API, потом обновляем стейт ЛОКАЛЬНЫМ объектом 🔹 🔹 🔹
+            await api.saveItem('sales', updatedSale);  // Отправляем полные данные на сервер
+            updateList(setSales, updatedSale);          // 🔹 Используем LOCAL updatedSale, а не savedSale!
 
             // 👇 ПОСЛЕ УСПЕШНОГО СОХРАНЕНИЯ ПЕРЕХОДИМ К ДЕТАЛЯМ ДОГОВОРА
-            // Сохраняем ID для перехода
             setSelectedCustomerId(sale.customerId);
             setInitialSaleIdForDetails(saleId);
             setPreviousView(currentView);
             setCurrentView('CUSTOMER_DETAILS');
 
-            return; // Выходим, чтобы не попасть в другой код
+            return;
         }
     } else {
         const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
@@ -815,8 +819,10 @@ const handleIncomeSubmit = async (data: any) => {
             status: 'COMPLETED',
             paymentPlan: []
         };
-        const savedTx = await api.saveItem('sales', newTransaction);
-        updateList(setSales, savedTx);
+
+        // 🔹 Для новых транзакций тоже используем локальный объект
+        await api.saveItem('sales', newTransaction);
+        updateList(setSales, newTransaction);  // 🔹 newTransaction вместо savedTx
 
         if (data.type === 'INVESTOR_DEPOSIT') {
             const inv = investors.find(i => i.id === data.investorId);
@@ -827,9 +833,10 @@ const handleIncomeSubmit = async (data: any) => {
             }
         }
 
-        setCurrentView('OPERATIONS'); // Для инвестора и прочего оставляем как было
+        setCurrentView('OPERATIONS');
     }
-};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: Date.now().toString(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
+};
+  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: Date.now().toString(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
   const handleAddEmployee = async (data: any) => { if (user && isManager) { if (!checkAccess('EMPLOYEES')) { showUpgradeAlert("Сотрудники доступны в тарифе Бизнес."); return; } try { const newEmp = await api.createSubUser({ ...data, role: 'employee' }); setEmployees(prev => [...prev, newEmp]); } catch(e) { alert("Ошибка создания сотрудника"); console.error(e); } } };
   const handleUpdateEmployee = async (updatedData: User) => { if (isManager) { await api.updateUser(updatedData); updateList(setEmployees, updatedData); } };
   const handleDeleteEmployee = async (id: string) => { if (isManager) { await api.deleteUser(id); removeFromList(setEmployees, id); } };
