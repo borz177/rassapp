@@ -603,16 +603,16 @@ const handleSaveSale = async (data: any) => {
     const existingSaleIndex = sales.findIndex(s => s.id === data.id);
     const existingSale = existingSaleIndex >= 0 ? sales[existingSaleIndex] : null;
 
-    // 🔹 Формирование paymentPlan
+    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: если paymentPlan пришёл из NewSale — доверяем ему! 🔹 🔹 🔹
     const generatePaymentPlan = () => {
         if (data.type === 'CASH') return [];
 
-        // ✅ Если paymentPlan уже пришёл из NewSale — используем его!
+        // ✅ Если paymentPlan уже есть в data — используем его (из NewSale)
         if (data.paymentPlan && Array.isArray(data.paymentPlan) && data.paymentPlan.length > 0) {
             return data.paymentPlan;
         }
 
-        // Если редактируем — сохраняем оплаченные платежи
+        // Запасной вариант: сохраняем оплаченные платежи при редактировании
         if (existingSale?.paymentPlan) {
             const paidPayments = existingSale.paymentPlan.filter((p: any) => p.isPaid);
             const totalInstallments = Number(data.installments) || 1;
@@ -630,6 +630,7 @@ const handleSaveSale = async (data: any) => {
                     isRealPayment: false
                 };
             });
+
             return [...paidPayments, ...newPayments];
         }
 
@@ -653,20 +654,19 @@ const handleSaveSale = async (data: any) => {
         id: saleId,
         userId: ownerId,
         paymentDay: preferredDay,
-        paymentPlan: data.paymentPlan || generatePaymentPlan()
+        paymentPlan: generatePaymentPlan()
     };
 
     const saleToSave = existingSaleIndex >= 0
         ? { ...sales[existingSaleIndex], ...saleData }
         : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
 
-    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: сначала обновляем локальный стейт, потом отправляем в API 🔹 🔹 🔹
-    updateList(setSales, saleToSave);  // 🔹 Локальный объект гарантирует корректность!
+    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: обновляем стейт ЛОКАЛЬНЫМ объектом, API — асинхронно 🔹 🔹 🔹
+    updateList(setSales, saleToSave);  // ✅ Используем saleToSave (локальный)
 
-    // Отправляем в API асинхронно (не блокируя UI)
+    // Отправляем в API асинхронно
     api.saveItem('sales', saleToSave).catch(err => {
         console.error('❌ Failed to save sale:', err);
-        // Опционально: показать ошибку или откатить изменения
     });
 
     // 🔹 Закупка и товар — только для НОВЫХ продаж
@@ -682,10 +682,8 @@ const handleSaveSale = async (data: any) => {
                 date: data.startDate,
                 isRefund: false
             };
-            // 🔹 🔹 🔹 КЛЮЧЕВОЕ: обновляем expenses локально! 🔹 🔹 🔹
+            // 🔹 Обновляем expenses локально!
             setExpenses(prev => [...prev, buyPriceExpense]);
-
-            // Отправляем в API
             api.saveItem('expenses', buyPriceExpense).catch(err => {
                 console.error('❌ Failed to save expense:', err);
             });
@@ -798,12 +796,13 @@ const handleIncomeSubmit = async (data: any) => {
                 updatedSale.status = 'COMPLETED';
             }
 
-            // 🔹 🔹 🔹 КЛЮЧЕВОЕ: обновляем стейт ЛОКАЛЬНЫМ объектом 🔹 🔹 🔹
-            updateList(setSales, updatedSale);  // 🔹 Используем updatedSale, НЕ savedSale!
+            // 🔹 🔹 🔹 КЛЮЧЕВОЕ: обновляем стейт ЛОКАЛЬНЫМ объектом, API — асинхронно 🔹 🔹 🔹
+            updateList(setSales, updatedSale);  // ✅ Используем updatedSale (локальный)
 
-            // Отправляем в API асинхронно
+            // Отправляем в API асинхронно, не блокируя UI
             api.saveItem('sales', updatedSale).catch(err => {
                 console.error('❌ Failed to save payment:', err);
+                // Опционально: показать ошибку или откатить изменения
             });
 
             setSelectedCustomerId(sale.customerId);
@@ -833,7 +832,7 @@ const handleIncomeSubmit = async (data: any) => {
             paymentPlan: []
         };
 
-        // 🔹 Обновляем стейт локальным объектом
+        // 🔹 То же для новых транзакций
         updateList(setSales, newTransaction);
         api.saveItem('sales', newTransaction).catch(err => {
             console.error('❌ Failed to save transaction:', err);

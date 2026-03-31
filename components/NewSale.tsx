@@ -271,9 +271,7 @@ const handleConfirm = () => {
         };
     }
 
-    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: просто передаём paymentPlan из initialData 🔹 🔹 🔹
-    // При редактировании: initialData.paymentPlan уже содержит все платежи (включая оплаченные)
-    // При создании нового: initialData.paymentPlan = [] → будет сгенерирован в App.tsx
+    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: передаём paymentPlan из initialData как есть 🔹 🔹 🔹
     const fullSaleObject = {
         ...finalSaleData,
         paymentPlan: initialData?.paymentPlan || []  // ← Передаём как есть!
