@@ -418,28 +418,31 @@ app.post(
 
       // 🔥 ИСПРАВЛЕНИЕ: Фильтруем только менеджеров с включённым ботом
       const managerResult = await pool.query(`
-        SELECT id, name, whatsapp_settings, company_name
-        FROM users
-        WHERE whatsapp_settings->>'idInstance' = $1
-        AND (whatsapp_settings->>'botEnabled')::boolean = true
-        LIMIT 1
-      `, [instanceId]);
+  SELECT id, name, whatsapp_settings
+  FROM users
+  WHERE whatsapp_settings->>'idInstance' = $1
+  AND (whatsapp_settings->>'botEnabled')::boolean = true
+  LIMIT 1
+`, [instanceId]);
 
-      console.log('📊 Менеджеров найдено:', managerResult.rows.length);
+console.log('📊 Менеджеров найдено:', managerResult.rows.length);
 
-      if (managerResult.rows.length === 0) {
-        console.log('❌ Менеджер не найден или бот отключён');
-        console.log('💡 Проверьте: у менеджера должно быть botEnabled: true');
-        return;
-      }
+if (managerResult.rows.length === 0) {
+  console.log('❌ Менеджер не найден или бот отключён');
+  return;
+}
 
-      const manager = managerResult.rows[0];
-      const { id: managerId, name: managerName, whatsapp_settings: settings, company_name: companyName } = manager;
+const manager = managerResult.rows[0];
+const { id: managerId, name: managerName, whatsapp_settings: settings } = manager;
 
-      console.log('✅ Менеджер:', managerName, '(ID:', managerId + ')');
+// 🔥 Получаем название компании из whatsapp_settings или app_settings
+const parsedSettings = typeof settings === 'string' ? JSON.parse(settings) : settings;
+const companyName = parsedSettings?.companyName || 'Наша Компания';
 
-      const parsedSettings = typeof settings === 'string' ? JSON.parse(settings) : settings;
+console.log('✅ Менеджер:', managerName, '(ID:', managerId + ')');
+console.log('🏢 Компания:', companyName);
 
+      
       // 🔥 Ищем клиентов
       const customersResult = await pool.query(`
         SELECT id, data
