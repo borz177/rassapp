@@ -363,19 +363,12 @@ const normalizePhone = (phone) => {
 
 async function sendMessage(idInstance, apiTokenInstance, chatId, message) {
   try {
-    const stateUrl = `https://api.green-api.com/waInstance${idInstance}/getStateInstance/${apiTokenInstance}`;
-    const stateResponse = await axios.get(stateUrl, { timeout: 5000 });
-
-    if (stateResponse.data?.stateInstance !== 'authorized') {
-      console.error('Инстанс не авторизован:', stateResponse.data?.stateInstance);
-      return false;
-    }
-
     const sendUrl = `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiTokenInstance}`;
+
     const response = await axios.post(
       sendUrl,
       { chatId, message },
-      { timeout: 10000 }
+      { timeout: 15000 }  // 15 секунд
     );
 
     return !!response.data?.idMessage;
