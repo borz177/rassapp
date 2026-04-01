@@ -379,36 +379,26 @@ app.post(
   '/api/integrations/whatsapp/webhook',
   express.json({ limit: '15mb' }),
   async (req, res) => {
-    // 🔥 ЛОГ №1: Запрос получен
-    console.log('🔔 [WEBHOOK] Получен запрос:', {
-      typeWebhook: req.body?.typeWebhook,
-      chatId: req.body?.senderData?.chatId,
-      text: req.body?.messageData?.textMessageData?.textMessage?.slice(0, 50)
-    });
+    console.log('🔔 [WEBHOOK] Получен запрос');
 
     try {
       const body = req.body;
       const { typeWebhook, senderData, messageData, instanceData } = body;
 
-      res.status(200).send('OK'); // ✅ Отвечаем сразу, чтобы не было таймаута
+      res.status(200).send('OK');
 
-      // 🔥 ЛОГ №2: Проверка типа сообщения
-      if (!senderData?.chatId) {
-        console.log('❌ [WEBHOOK] Нет chatId');
-        return;
-      }
-      if (typeWebhook !== 'incomingMessageReceived') {
-        console.log('❌ [WEBHOOK] Не входящее сообщение:', typeWebhook);
+      if (!senderData?.chatId || typeWebhook !== 'incomingMessageReceived') {
+        console.log('❌ Не входящее сообщение');
         return;
       }
       if (messageData?.typeMessage !== 'textMessage') {
-        console.log('❌ [WEBHOOK] Не текст:', messageData?.typeMessage);
+        console.log('❌ Не текст');
         return;
       }
 
       const chatId = senderData.chatId;
       if (chatId.includes('@g.us')) {
-        console.log('❌ [WEBHOOK] Групповой чат, игнорируем');
+        console.log('❌ Группа');
         return;
       }
 
@@ -416,33 +406,41 @@ app.post(
       const senderPhone = normalizePhone(rawPhone);
       const text = (messageData.textMessageData.textMessage || '').trim().toLowerCase();
 
-      console.log('📩 [WEBHOOK] Сообщение от', senderPhone, ':', `"${text}"`);
+      console.log('📩 Сообщение от', senderPhone, ':', `"${text}"`);
 
-      const instanceId = instanceData?.idInstance;
+      const instanceId = String(instanceData?.idInstance || instanceData?.instanceId || body?.idInstance || '');
+      console.log('🔑 instanceId:', instanceId);
 
-      // 🔥 ЛОГ №3: Поиск менеджера
+      if (!instanceId) {
+        console.log('❌ Нет idInstance');
+        return;
+      }
+
+      // 🔥 ИСПРАВЛЕНИЕ: Фильтруем только менеджеров с включённым ботом
       const managerResult = await pool.query(`
         SELECT id, name, whatsapp_settings, company_name
         FROM users
         WHERE whatsapp_settings->>'idInstance' = $1
+        AND (whatsapp_settings->>'botEnabled')::boolean = true
         LIMIT 1
-      `, [String(instanceId)]);
+      `, [instanceId]);
+
+      console.log('📊 Менеджеров найдено:', managerResult.rows.length);
 
       if (managerResult.rows.length === 0) {
-        console.log('❌ [WEBHOOK] Менеджер не найден для idInstance:', instanceId);
+        console.log('❌ Менеджер не найден или бот отключён');
+        console.log('💡 Проверьте: у менеджера должно быть botEnabled: true');
         return;
       }
-      console.log('✅ [WEBHOOK] Менеджер найден:', managerResult.rows[0].name);
 
       const manager = managerResult.rows[0];
       const { id: managerId, name: managerName, whatsapp_settings: settings, company_name: companyName } = manager;
 
-      if (!settings?.botEnabled) {
-        console.log('❌ [WEBHOOK] Бот отключён у менеджера', managerId);
-        return;
-      }
+      console.log('✅ Менеджер:', managerName, '(ID:', managerId + ')');
 
-      // 🔥 ЛОГ №4: Поиск клиента
+      const parsedSettings = typeof settings === 'string' ? JSON.parse(settings) : settings;
+
+      // 🔥 Ищем клиентов
       const customersResult = await pool.query(`
         SELECT id, data
         FROM data_items
@@ -450,18 +448,21 @@ app.post(
         AND user_id = $1
       `, [managerId]);
 
-      const customerRow = customersResult.rows.find(row =>
-        normalizePhone(row.data.phone || '') === senderPhone
-      );
+      console.log('📊 Клиентов в базе:', customersResult.rows.length);
+
+      const customerRow = customersResult.rows.find(row => {
+        const dbPhone = normalizePhone(row.data?.phone || '');
+        const match = dbPhone === senderPhone;
+        console.log('🔎 Сравнение телефонов:', { db: dbPhone, input: senderPhone, match });
+        return match;
+      });
 
       if (!customerRow) {
-        console.log('❌ [WEBHOOK] Клиент не найден по номеру', senderPhone);
-        await sendMessage(settings.idInstance, settings.apiTokenInstance, chatId,
-          `Здравствуйте 👋 Я ассистент ${managerName}. У вас нет активных договоров.`
-        );
+        console.log('❌ Клиент не найден по номеру', senderPhone);
         return;
       }
-      console.log('✅ [WEBHOOK] Клиент найден:', customerRow.id);
+
+      console.log('✅ Клиент найден:', customerRow.id);
 
       const customerId = customerRow.id;
       let customerData = customerRow.data;
@@ -477,35 +478,36 @@ app.post(
 
       const lastResponse = customerData.lastBotResponse;
 
-      // 🔥 ЛОГ №5: Поиск договоров
+      // 🔥 Ищем активные договоры
       const salesResult = await pool.query(`
         SELECT data FROM data_items
         WHERE user_id = $1
         AND type = 'sales'
         AND data->>'customerId' = $2
-        AND data->>'status' = '"ACTIVE"'
-      `, [managerId, customerId]);
+        AND data->>'status' = 'ACTIVE'
+      `, [managerId, String(customerId)]);
 
       const activeSales = salesResult.rows.map(r => r.data);
 
+      console.log('📊 Активных договоров:', activeSales.length);
+
       if (activeSales.length === 0) {
-        console.log('❌ [WEBHOOK] Нет активных договоров у клиента', customerId);
-        await sendMessage(settings.idInstance, settings.apiTokenInstance, chatId, "У вас нет активных договоров.");
+        console.log('❌ Нет активных договоров');
+        await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId,
+          "У вас нет активных договоров.");
         return;
       }
-      console.log('✅ [WEBHOOK] Найдено договоров:', activeSales.length);
 
-      // 🔥 ЛОГ №6: Проверка команд
+      // 🔥 Проверка команд
       let command = null;
-
       if (text.includes('история') || text.includes('остаток') || text.includes('долг')) {
         command = 'history';
-        console.log('🎯 [WEBHOOK] Распознана команда: history');
+        console.log('🎯 Команда: history');
       } else if (text.includes('условия')) {
         command = 'conditions';
-        console.log('🎯 [WEBHOOK] Распознана команда: conditions');
+        console.log('🎯 Команда: conditions');
       } else {
-        console.log('❓ [WEBHOOK] Команда не распознана, текст:', `"${text}"`);
+        console.log('❓ Команда не распознана');
       }
 
       const formatMoney = (amount) => Number(amount).toLocaleString('ru-RU').replace(',', ' ');
@@ -513,23 +515,15 @@ app.post(
         day: 'numeric', month: 'short', year: 'numeric'
       });
 
-      const sendMsg = async (msg) => {
-        console.log('📤 [WEBHOOK] Отправляем сообщение:', msg.slice(0, 100) + '...');
-        const result = await sendMessage(settings.idInstance, settings.apiTokenInstance, chatId, msg);
-        console.log('✅ [WEBHOOK] sendMessage результат:', result);
-        return result;
-      };
-
       if (command) {
         if (lastResponse === command) {
-          console.log('⏭️ [WEBHOOK] Повторная команда, пропускаем');
+          console.log('⏭️ Повтор команды, пропускаем');
           return;
         }
 
         let responseText = '';
 
         if (command === 'history') {
-          console.log('🔄 [WEBHOOK] Формируем ответ history...');
           let totalDebt = 0;
           let totalMonthly = 0;
           const contracts = [];
@@ -543,19 +537,18 @@ app.post(
             contracts.push({
               name: sale.productName || `Товар #${sale.id}`,
               debt,
-              monthly,
-              paymentPlan: sale.paymentPlan || []
+              monthly
             });
           }
 
           responseText = `📋 *Детали ваших договоров:*\n\n`;
           for (const c of contracts) {
             responseText += `🔹 *${c.name}*\n`;
-            responseText += `   • Ежемесячный платёж: *${formatMoney(c.monthly)} ₽*\n`;
-            responseText += `   • ${c.debt > 0 ? `🔴 Остаток долга: *${formatMoney(c.debt)} ₽*` : '✅ Погашен полностью'}\n\n`;
+            responseText += `   • Платёж: *${formatMoney(c.monthly)} ₽*\n`;
+            responseText += `   • ${c.debt > 0 ? `🔴 Долг: *${formatMoney(c.debt)} ₽*` : '✅ Погашен'}\n\n`;
           }
           responseText += `━━━━━━━━━━━━━━\n📊 *Итого:*\n`;
-          responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
+          responseText += `• В месяц: *${formatMoney(totalMonthly)} ₽*\n`;
           responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n\n`;
 
           const paidHistory = activeSales
@@ -572,9 +565,8 @@ app.post(
           }
         }
         else if (command === 'conditions') {
-          console.log('🔄 [WEBHOOK] Формируем ответ conditions...');
           const cleanCompany = encodeURIComponent(companyName || 'НашаКомпания');
-          const configId = settings?.calculatorConfigId;
+          const configId = parsedSettings?.calculatorConfigId;
           const baseUrl = process.env.APP_URL || 'https://wayuchet.ru';
           const calculatorUrl = configId
             ? `${baseUrl}/calc/${cleanCompany}?cfg=${configId}`
@@ -585,35 +577,34 @@ app.post(
           const minRate = firstSale.interestRate || 0;
           const firstPayment = firstSale.downPayment || 0;
 
-          responseText = `📝 *Условия рассрочки в ${companyName}:*\n\n`;
+          responseText = `📝 *Условия рассрочки:*\n\n`;
           responseText += `• Срок: до *${maxTerm} мес.*\n`;
-          responseText += `• Процентная ставка: от *${minRate}%*\n`;
-          responseText += `• Первый взнос: от *${formatMoney(firstPayment)} ₽*\n\n`;
-          responseText += `🔗 *Рассчитайте свой платёж онлайн:*\n${calculatorUrl}\n\n`;
-          responseText += `_(Нажмите на ссылку выше, чтобы открыть калькулятор)_`;
+          responseText += `• Ставка: от *${minRate}%*\n`;
+          responseText += `• Взнос: от *${formatMoney(firstPayment)} ₽*\n\n`;
+          responseText += `🔗 *Калькулятор:*\n${calculatorUrl}`;
         }
 
-        console.log('📤 [WEBHOOK] Отправляем ответ клиенту...');
-        await sendMsg(responseText);
+        console.log('📤 Отправляем ответ...');
+        const sendResult = await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId, responseText);
+        console.log('✅ sendMessage результат:', sendResult);
 
         const updatedCustomer = { ...customerData, lastBotResponse: command };
         await pool.query(
           `UPDATE data_items SET data = $1 WHERE id = $2`,
           [JSON.stringify(updatedCustomer), customerId]
         );
-        console.log('✅ [WEBHOOK] Ответ отправлен, lastResponse обновлён');
+        console.log('✅ lastResponse обновлён');
         return;
       }
 
-      // 🔥 ЛОГ №7: Показываем меню
-      console.log('📋 [WEBHOOK] Показываем меню');
+      // Меню
       const greeting = `Здравствуйте 👋 Я ассистент ${managerName}.
 
 Напишите:
-• *долг* или *история* — детали договоров и платежи
-• *условия* — ссылка на калькулятор рассрочки`;
+• *долг* — детали договоров
+• *условия* — калькулятор`;
 
-      await sendMsg(greeting);
+      await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId, greeting);
 
       if (lastResponse !== null) {
         const resetCustomer = { ...customerData, lastBotResponse: null };
@@ -624,12 +615,8 @@ app.post(
       }
 
     } catch (error) {
-      // 🔥 ЛОГ №8: Ошибка
-      console.error('💥 [WEBHOOK ERROR]', {
-        message: error.message,
-        stack: error.stack,
-        body: req.body
-      });
+      console.error('💥 [WEBHOOK ERROR]', error.message);
+      console.error(error.stack);
     }
   }
 );
