@@ -14,7 +14,9 @@ interface IntegrationsProps {
 const DEFAULT_TEMPLATES = {
   upcoming: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Завтра*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
   today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Сегодня*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
-  overdue: `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``
+  overdue: `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
+  // 🔥 НОВОЕ: Шаблон приветственного сообщения
+   welcome: `Здравствуйте 👋 Я ассистент {managerName}.\n\nНапишите:\n• *история* — если вы клиент и хотите узнать детали договоров и историю платежей \n• *условия* — если хотите узнать условия рассрочки, отправим ссылку на калькулятор чтобы вы сами посчитали\n\nА если у вас другой вопрос, то {managerName} ответит вам в ближайшее время 🤝`
 };
 
 const Integrations: React.FC<IntegrationsProps> = ({
@@ -31,7 +33,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
   const [reminderTime, setReminderTime] = useState('10:00');
   const [reminderDays, setReminderDays] = useState<number[]>([0]);
 
-  const [activeTemplateTab, setActiveTemplateTab] = useState<'UPCOMING' | 'TODAY' | 'OVERDUE'>('TODAY');
+const [activeTemplateTab, setActiveTemplateTab] = useState<'UPCOMING' | 'TODAY' | 'OVERDUE' | 'WELCOME'>('TODAY');
   const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
   const [currentTemplates, setCurrentTemplates] = useState(DEFAULT_TEMPLATES);
 
@@ -39,7 +41,10 @@ const Integrations: React.FC<IntegrationsProps> = ({
   const [connectionStatus, setConnectionStatus] = useState<'IDLE' | 'AUTHORIZED' | 'NOT_AUTHORIZED' | 'ERROR'>('IDLE');
 
   const [botEnabled, setBotEnabled] = useState(false);
-  // 🔥 УБРАНО: botButtons больше не нужен
+
+  // 🔥 НОВОЕ: Настройки приветственного сообщения
+  const [welcomeEnabled, setWelcomeEnabled] = useState(true);
+  const [welcomeInterval, setWelcomeInterval] = useState<number>(24); // часов
 
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -51,6 +56,10 @@ const Integrations: React.FC<IntegrationsProps> = ({
       setReminderTime(appSettings.whatsapp.reminderTime);
       setReminderDays(appSettings.whatsapp.reminderDays);
       setBotEnabled(appSettings.whatsapp.botEnabled || false);
+
+      // 🔥 Загрузка настроек приветствия
+      setWelcomeEnabled(appSettings.whatsapp.welcomeEnabled ?? true);
+      setWelcomeInterval(appSettings.whatsapp.welcomeInterval ?? 24);
 
       if (appSettings.whatsapp.templates) {
         const mergedTemplates = { ...DEFAULT_TEMPLATES, ...appSettings.whatsapp.templates };
@@ -95,8 +104,10 @@ const Integrations: React.FC<IntegrationsProps> = ({
       reminderTime,
       reminderDays,
       templates: { ...templates },
-      botEnabled
-      // 🔥 УБРАНО: botButtons больше не передаётся
+      botEnabled,
+      // 🔥 НОВОЕ: Сохраняем настройки приветствия
+      welcomeEnabled,
+      welcomeInterval
     };
 
     onUpdateSettings({
@@ -131,6 +142,8 @@ const Integrations: React.FC<IntegrationsProps> = ({
       newTemplates.today = text;
     } else if (activeTemplateTab === 'OVERDUE') {
       newTemplates.overdue = text;
+    } else if (activeTemplateTab === 'WELCOME') {
+      newTemplates.welcome = text;
     }
     setTemplates(newTemplates);
     setCurrentTemplates(newTemplates);
@@ -139,6 +152,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
   const getCurrentTemplate = () => {
     if (activeTemplateTab === 'UPCOMING') return templates.upcoming;
     if (activeTemplateTab === 'TODAY') return templates.today;
+    if (activeTemplateTab === 'WELCOME') return templates.welcome;
     return templates.overdue;
   };
 
@@ -386,6 +400,17 @@ const Integrations: React.FC<IntegrationsProps> = ({
                 >
                   Просрочка
                 </button>
+                {/* 🔥 НОВАЯ ВКЛАДКА: Приветствие */}
+                <button
+                  onClick={() => setActiveTemplateTab('WELCOME')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                    activeTemplateTab === 'WELCOME'
+                      ? 'bg-white text-slate-800 shadow-sm'
+                      : 'text-slate-500'
+                  }`}
+                >
+                  Приветствие
+                </button>
               </div>
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <textarea
@@ -397,15 +422,26 @@ const Integrations: React.FC<IntegrationsProps> = ({
                 <div className="mt-3">
                   <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Переменные:</p>
                   <div className="flex flex-wrap gap-2">
-                    {['имя', 'товар', 'сумма', 'дата', 'долг', 'итого', 'месяцы', 'долг_блок'].map(v => (
-                      <button
-                        key={v}
-                        onClick={() => insertVariable(v)}
-                        className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
-                      >
-                        {`{${v}}`}
-                      </button>
-                    ))}
+                    {activeTemplateTab === 'WELCOME'
+                      ? ['имя', 'managerName'].map(v => (
+                          <button
+                            key={v}
+                            onClick={() => insertVariable(v)}
+                            className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+                          >
+                            {`{${v}}`}
+                          </button>
+                        ))
+                      : ['имя', 'товар', 'сумма', 'дата', 'долг', 'итого', 'месяцы', 'долг_блок'].map(v => (
+                          <button
+                            key={v}
+                            onClick={() => insertVariable(v)}
+                            className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+                          >
+                            {`{${v}}`}
+                          </button>
+                        ))
+                    }
                   </div>
                 </div>
               </div>
@@ -413,7 +449,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
 
             <hr className="border-slate-100" />
 
-            {/* 🔥 ОБНОВЛЁННЫЙ БЛОК БОТА (БЕЗ КНОПОК) */}
+            {/* 🔥 ЧАТ-БОТ С НАСТРОЙКАМИ ПРИВЕТСТВИЯ */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-semibold text-slate-700 text-sm flex items-center gap-2">
@@ -458,7 +494,63 @@ const Integrations: React.FC<IntegrationsProps> = ({
                     </p>
                   </div>
 
-                  {/* 🔥 ИНФО-БЛОК ВМЕСТО КНОПОК */}
+                  {/* 🔥 НАСТРОЙКИ ПРИВЕТСТВИЯ */}
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h5 className="font-semibold text-emerald-900 text-sm flex items-center gap-2">
+                        👋 Приветственное сообщение
+                      </h5>
+                      <div
+                        className="relative inline-flex items-center cursor-pointer"
+                        onClick={() => setWelcomeEnabled(!welcomeEnabled)}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={welcomeEnabled}
+                          onChange={() => {}}
+                        />
+                        <div className={`w-11 h-6 rounded-full peer peer-checked:bg-emerald-600 peer-focus:outline-none transition-colors ${welcomeEnabled ? 'bg-emerald-600' : 'bg-slate-200'}`}>
+                          <div className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform ${welcomeEnabled ? 'translate-x-full' : ''}`}></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {welcomeEnabled && (
+                      <>
+                        <div>
+                          <label className="text-xs font-bold text-emerald-700 uppercase mb-1 block">
+                            Интервал отправки (часов)
+                          </label>
+                          <select
+                            value={welcomeInterval}
+                            onChange={e => setWelcomeInterval(Number(e.target.value))}
+                            className="w-full p-2 border border-emerald-200 rounded-lg text-sm bg-white outline-none focus:border-emerald-400"
+                          >
+                            <option value={12}>12 часов</option>
+                            <option value={24}>24 часа</option>
+                            <option value={48}>48 часов</option>
+                            <option value={72}>72 часа</option>
+                            <option value={168}>1 неделя</option>
+                          </select>
+                          <p className="text-[10px] text-emerald-600 mt-1">
+                            Приветствие будет отправляться клиенту не чаще чем раз в выбранный период
+                          </p>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-lg border border-emerald-100">
+                          <p className="text-xs text-emerald-800 font-bold mb-2">📝 Как это работает:</p>
+                          <ul className="text-xs text-emerald-700 space-y-1">
+                            <li>• При первом обращении клиента отправляется приветствие</li>
+                            <li>• Если клиент написал команду (история, условия) — приветствие не показывается</li>
+                            <li>• Повторно приветствие отправляется только после истечения интервала</li>
+                          </ul>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* ИНФО-БЛОК О КОМАНДАХ */}
                   <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
                     <div className="flex gap-3">
                       <div className="text-2xl">💬</div>
@@ -469,21 +561,14 @@ const Integrations: React.FC<IntegrationsProps> = ({
                         </p>
                         <div className="grid grid-cols-1 gap-2 text-xs">
                           <div className="flex items-center gap-2">
-                            <span className="bg-white px-2 py-1 rounded border border-indigo-200 font-mono">долг</span>
-                            <span className="text-indigo-600">→ показать сумму задолженности</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="bg-white px-2 py-1 rounded border border-indigo-200 font-mono">платеж</span>
-                            <span className="text-indigo-600">→ показать дату ближайшего платежа</span>
+                            <span className="bg-white px-2 py-1 rounded border border-indigo-200 font-mono">история</span>
+                            <span className="text-indigo-600">→ детали договоров и платежи</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="bg-white px-2 py-1 rounded border border-indigo-200 font-mono">условия</span>
-                            <span className="text-indigo-600">→ показать параметры рассрочки</span>
+                            <span className="text-indigo-600">→ ссылка на калькулятор</span>
                           </div>
                         </div>
-                        <p className="text-[10px] text-indigo-500 mt-3">
-                          Также поддерживаются синонимы: «остаток», «задолженность», «когда платить», «график», «рассрочка», «срок» и цифры 1, 2, 3.
-                        </p>
                       </div>
                     </div>
                   </div>

@@ -22,6 +22,7 @@ export interface WhatsAppTemplates {
   upcoming: string; // За N дней
   today: string;    // В день оплаты
   overdue: string;  // При просрочке
+  welcome?: string
 }
 
 export interface WhatsAppSettings {
@@ -32,7 +33,9 @@ export interface WhatsAppSettings {
   // Array of offsets: 0 = due date, -1 = 1 day before, 1 = 1 day after
   reminderDays: number[];
   templates?: WhatsAppTemplates; // New field for custom templates
-  botEnabled?: boolean; // Enable/Disable auto-reply bot
+  botEnabled?: boolean;
+  welcomeEnabled?: boolean;  // 🔥 НОВОЕ: включено ли приветствие
+  welcomeInterval?: number;
 
 }
 

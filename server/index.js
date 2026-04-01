@@ -454,10 +454,10 @@ app.post(
       }
 
       // 🔥 Проверка: прошло ли 24 часа с последнего приветствия
-      const now = Date.now();
-      const twentyFourHours = 24 * 60 * 60 * 1000;
-      const shouldSendGreeting = !customerData.lastGreetingTime ||
-                                  (now - customerData.lastGreetingTime) > twentyFourHours;
+      //const now = Date.now();
+      //const twentyFourHours = 24 * 60 * 60 * 1000;
+      //const shouldSendGreeting = !customerData.lastGreetingTime ||
+                                 // (now - customerData.lastGreetingTime) > twentyFourHours;
 
       // Поиск договоров (ACTIVE + DRAFT)
       const salesResult = await pool.query(`
@@ -563,6 +563,7 @@ app.post(
             .sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10);
 
           if (paidHistory.length > 0) {
+            responseText += `━━━━━━━━━━━━━━\n`;
             responseText += `📜 *История платежей:*\n`;
             for (const p of paidHistory) {
               responseText += `• ${formatDate(p.date)} — ✅ *${formatMoney(p.amount)} ₽*\n`;
