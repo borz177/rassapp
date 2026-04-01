@@ -1,23 +1,23 @@
-
 const DB_NAME = 'InstallMateDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // ⬆️ УВЕЛИЧЬТЕ ВЕРСИЮ для миграции!
 const STORES = {
   SYNC_QUEUE: 'syncQueue',
-  CACHE: 'cache'
+  CACHE: 'cache',
+  SALES: 'sales'  // 🔹 НОВОЕ: хранилище для договоров с платежами
 };
 
 interface SyncItem {
-  id: string; // Unique ID for the queue item
-  type: string; // 'saveItem', 'deleteItem', etc.
-  collection?: string; // 'sales', 'customers', etc.
-  payload?: any; // The data being saved
-  itemId?: string; // ID of the item being deleted
+  id: string;
+  type: string;
+  collection?: string;
+  payload?: any;
+  itemId?: string;
   timestamp: number;
   retryCount?: number
 }
 
 interface CacheItem {
-  key: string; // URL or key
+  key: string;
   data: any;
   timestamp: number;
 }
@@ -43,6 +43,10 @@ class OfflineStorage {
         }
         if (!db.objectStoreNames.contains(STORES.CACHE)) {
           db.createObjectStore(STORES.CACHE, { keyPath: 'key' });
+        }
+        // 🔹 НОВОЕ: создаём хранилище для продаж
+        if (!db.objectStoreNames.contains(STORES.SALES)) {
+          db.createObjectStore(STORES.SALES, { keyPath: 'id' });
         }
       };
     });
@@ -71,7 +75,6 @@ class OfflineStorage {
       const store = transaction.objectStore(STORES.SYNC_QUEUE);
       const request = store.getAll();
       request.onsuccess = () => {
-          // Sort by timestamp to ensure order
           const items = request.result as SyncItem[];
           items.sort((a, b) => a.timestamp - b.timestamp);
           resolve(items);
@@ -91,20 +94,17 @@ class OfflineStorage {
     });
   }
 
-
   async updateQueueItem(item: any): Promise<void> {
-  const db = await this.dbPromise;
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORES.SYNC_QUEUE, 'readwrite');
+      const store = transaction.objectStore(STORES.SYNC_QUEUE);
+      const request = store.put(item);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
 
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORES.SYNC_QUEUE, 'readwrite');
-    const store = transaction.objectStore(STORES.SYNC_QUEUE);
-
-    const request = store.put(item);
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
-}
   async setCache(key: string, data: any): Promise<void> {
     const db = await this.dbPromise;
     return new Promise((resolve, reject) => {
@@ -136,6 +136,52 @@ class OfflineStorage {
           request.onsuccess = () => resolve();
           request.onerror = () => reject(request.error);
       });
+  }
+
+  // 🔹 🔹 🔹 НОВЫЕ МЕТОДЫ для сохранения продаж в IndexedDB 🔹 🔹 🔹
+  
+  async saveSale(sale: any): Promise<void> {
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORES.SALES, 'readwrite');
+      const store = transaction.objectStore(STORES.SALES);
+      const request = store.put(sale);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getSale(id: string): Promise<any | null> {
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORES.SALES, 'readonly');
+      const store = transaction.objectStore(STORES.SALES);
+      const request = store.get(id);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getAllSales(): Promise<any[]> {
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORES.SALES, 'readonly');
+      const store = transaction.objectStore(STORES.SALES);
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async clearSales(): Promise<void> {
+    const db = await this.dbPromise;
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORES.SALES, 'readwrite');
+      const store = transaction.objectStore(STORES.SALES);
+      const request = store.clear();
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
   }
 }
 
