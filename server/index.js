@@ -396,20 +396,34 @@ app.post(
 
       res.status(200).send('OK');
 
-      if (!senderData?.chatId || typeWebhook !== 'incomingMessageReceived') return;
-      if (messageData?.typeMessage !== 'textMessage') return;
+      if (!senderData?.chatId || typeWebhook !== 'incomingMessageReceived') {
+        console.log('❌ webhook: не входящее сообщение');
+        return;
+      }
+      if (messageData?.typeMessage !== 'textMessage') {
+        console.log('❌ webhook: не текст');
+        return;
+      }
 
       const chatId = senderData.chatId;
-      if (chatId.includes('@g.us')) return;
+      if (chatId.includes('@g.us')) {
+        console.log('❌ webhook: группа');
+        return;
+      }
 
       const rawPhone = chatId.replace('@c.us', '');
       const senderPhone = normalizePhone(rawPhone);
       const text = (messageData.textMessageData.textMessage || '').trim().toLowerCase();
 
-      const instanceId = String(instanceData?.idInstance || instanceData?.instanceId || body?.idInstance || '');
-      if (!instanceId) return;
+      console.log('📩 webhook: сообщение от', senderPhone, '-', text);
 
-      // Поиск менеджера (только с включённым ботом)
+      const instanceId = String(instanceData?.idInstance || instanceData?.instanceId || body?.idInstance || '');
+      if (!instanceId) {
+        console.log('❌ webhook: нет idInstance');
+        return;
+      }
+
+      // Поиск менеджера
       const managerResult = await pool.query(`
         SELECT id, name, whatsapp_settings
         FROM users
@@ -418,15 +432,22 @@ app.post(
         LIMIT 1
       `, [instanceId]);
 
-      if (managerResult.rows.length === 0) return;
+      if (managerResult.rows.length === 0) {
+        console.log('❌ webhook: менеджер не найден или бот выключен');
+        return;
+      }
 
       const manager = managerResult.rows[0];
       const { id: managerId, name: managerName, whatsapp_settings: settings } = manager;
 
       const parsedSettings = typeof settings === 'string' ? JSON.parse(settings) : settings;
-      if (!parsedSettings?.botEnabled) return;
-
       const companyName = parsedSettings?.companyName || 'Наша Компания';
+
+      // 🔥 ПРОВЕРКА: включено ли приветствие
+      const welcomeEnabled = parsedSettings?.welcomeEnabled ?? true;
+      const welcomeInterval = parsedSettings?.welcomeInterval ?? 24;
+
+      console.log('✅ webhook: менеджер', managerName, '| welcomeEnabled:', welcomeEnabled);
 
       // Поиск клиента
       const customersResult = await pool.query(`
@@ -440,24 +461,21 @@ app.post(
         normalizePhone(row.data?.phone || '') === senderPhone
       );
 
-      if (!customerRow) return;
+      if (!customerRow) {
+        console.log('❌ webhook: клиент не найден');
+        return;
+      }
 
       const customerId = customerRow.id;
       let customerData = customerRow.data;
 
-      // 🔥 Инициализация lastBotResponse и lastGreetingTime
+      // Инициализация полей
       if (customerData.lastBotResponse === undefined) {
         customerData.lastBotResponse = null;
       }
       if (customerData.lastGreetingTime === undefined) {
         customerData.lastGreetingTime = null;
       }
-
-      // 🔥 Проверка: прошло ли 24 часа с последнего приветствия
-      //const now = Date.now();
-      //const twentyFourHours = 24 * 60 * 60 * 1000;
-      //const shouldSendGreeting = !customerData.lastGreetingTime ||
-                                 // (now - customerData.lastGreetingTime) > twentyFourHours;
 
       // Поиск договоров (ACTIVE + DRAFT)
       const salesResult = await pool.query(`
@@ -471,17 +489,15 @@ app.post(
       const activeSales = salesResult.rows.map(r => r.data);
 
       if (activeSales.length === 0) {
+        console.log('❌ webhook: нет договоров');
         await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId,
           `Здравствуйте 👋 Я ассистент ${managerName}. У вас нет активных договоров.`);
         return;
       }
 
-      const formatMoney = (amount) => Number(amount).toLocaleString('ru-RU').replace(',', ' ');
-      const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('ru-RU', {
-        day: 'numeric', month: 'short', year: 'numeric'
-      });
+      console.log('✅ webhook: договоров найдено:', activeSales.length);
 
-      // 🔥 Проверка команд
+      // Проверка команд
       let command = null;
       if (text.includes('история') || text.includes('остаток') || text.includes('долг')) {
         command = 'history';
@@ -489,9 +505,23 @@ app.post(
         command = 'conditions';
       }
 
-      // 🔥 Отправка приветствия (если прошло 24 часа)
-      if (shouldSendGreeting && !command) {
-        const greeting = `Здравствуйте 👋 Я ассистент ${managerName}.
+      console.log('🎯 webhook: команда:', command || 'не распознана');
+
+      const formatMoney = (amount) => Number(amount).toLocaleString('ru-RU').replace(',', ' ');
+      const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('ru-RU', {
+        day: 'numeric', month: 'short', year: 'numeric'
+      });
+
+      // 🔥 ПРОВЕРКА ПРИВЕТСТВИЯ
+      if (welcomeEnabled && !command) {
+        const now = Date.now();
+        const lastGreeting = customerData.lastGreetingTime || 0;
+        const hoursSinceGreeting = (now - lastGreeting) / (1000 * 60 * 60);
+
+        console.log('⏰ webhook: lastGreeting:', lastGreeting, '| часов прошло:', hoursSinceGreeting.toFixed(1));
+
+        if (!customerData.lastGreetingTime || hoursSinceGreeting > welcomeInterval) {
+          const greeting = `Здравствуйте 👋 Я ассистент ${managerName}.
 
 Напишите:
 • *история* — если вы клиент и хотите узнать детали договоров и историю платежей 
@@ -499,21 +529,28 @@ app.post(
 
 А если у вас другой вопрос, то ${managerName} ответит вам в ближайшее время 🤝`;
 
-        await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId, greeting);
+          console.log('📤 webhook: отправляем приветствие...');
+          await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId, greeting);
 
-        // Сохраняем время отправки приветствия
-        customerData.lastGreetingTime = now;
-        const updatedCustomer = { ...customerData, lastGreetingTime: now };
-        await pool.query(
-          `UPDATE data_items SET data = $1 WHERE id = $2`,
-          [JSON.stringify(updatedCustomer), customerId]
-        );
-        return;
+          customerData.lastGreetingTime = now;
+          const updatedCustomer = { ...customerData, lastGreetingTime: now };
+          await pool.query(
+            `UPDATE data_items SET data = $1 WHERE id = $2`,
+            [JSON.stringify(updatedCustomer), customerId]
+          );
+          console.log('✅ webhook: приветствие отправлено');
+          return;
+        } else {
+          console.log('⏭️ webhook: приветствие пропущено (интервал не прошёл)');
+        }
       }
 
-      // 🔥 Обработка команд
+      // Обработка команд
       if (command) {
-        if (customerData.lastBotResponse === command) return;
+        if (customerData.lastBotResponse === command) {
+          console.log('⏭️ webhook: повтор команды, пропускаем');
+          return;
+        }
 
         let responseText = '';
 
@@ -525,8 +562,6 @@ app.post(
           for (const sale of activeSales) {
             const unpaid = sale.paymentPlan?.filter(p => !p.isPaid) || [];
             const debt = unpaid.reduce((sum, p) => sum + (p.amount || 0), 0);
-
-            // 🔥 Исправлено: расчёт ежемесячного платежа
             const monthly = sale.monthlyPayment ||
                            (sale.paymentPlan && sale.paymentPlan.length > 0 ? sale.paymentPlan[0]?.amount : 0) ||
                            0;
@@ -555,7 +590,6 @@ app.post(
           responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
           responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n\n`;
 
-          // 🔥 История платежей (дата и сумма в одной строке)
           const paidHistory = activeSales
             .flatMap(sale => (sale.paymentPlan || []).filter(p => p.isPaid).map(p => ({
               date: p.date, amount: p.amount, product: sale.productName || 'Товар'
@@ -563,7 +597,6 @@ app.post(
             .sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10);
 
           if (paidHistory.length > 0) {
-            responseText += `━━━━━━━━━━━━━━\n`;
             responseText += `📜 *История платежей:*\n`;
             for (const p of paidHistory) {
               responseText += `• ${formatDate(p.date)} — ✅ *${formatMoney(p.amount)} ₽*\n`;
@@ -588,6 +621,7 @@ app.post(
           responseText += `_(Нажмите на ссылку выше, чтобы открыть калькулятор)_`;
         }
 
+        console.log('📤 webhook: отправляем ответ на команду...');
         await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId, responseText);
 
         const updatedCustomer = { ...customerData, lastBotResponse: command, lastGreetingTime: customerData.lastGreetingTime };
@@ -595,11 +629,13 @@ app.post(
           `UPDATE data_items SET data = $1 WHERE id = $2`,
           [JSON.stringify(updatedCustomer), customerId]
         );
+        console.log('✅ webhook: ответ отправлен');
         return;
       }
 
     } catch (error) {
-      console.error('Webhook Error:', error.message);
+      console.error('💥 webhook error:', error.message);
+      console.error(error.stack);
     }
   }
 );
