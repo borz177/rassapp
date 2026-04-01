@@ -1,4 +1,4 @@
-
+import bcrypt from 'bcryptjs';
 import { Customer, Product, Sale, Expense, Account, Investor, User, UserPermissions, AppSettings, Partnership } from '../types';
 
 const STORAGE_KEYS = {
@@ -24,27 +24,23 @@ export const saveUsers = (users: User[]): void => {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
 };
 
-export const registerUser = (name: string, email: string, password: string): User | null => {
+export const registerUser = async (name: string, email: string, password: string): Promise<User | null> => {
     const users = getUsers();
+    if (users.find(u => u.email === email)) return null;
 
-    if (users.find(u => u.email === email)) {
-        return null; // User exists
-    }
+    // ✅ Хэшируем пароль перед сохранением
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser: User = {
         id: `u_${Date.now()}`,
         name,
         email,
-        password,
+        password: hashedPassword,  // ✅ Хэш вместо открытого текста
         role: 'manager'
     };
 
     users.push(newUser);
     saveUsers(users);
-    
-    // Initialize default account for new user
-    saveAccounts(newUser.id, [{ id: `acc_main_${newUser.id}`, userId: newUser.id, name: 'Основной счет', type: 'MAIN' }]);
-
     return newUser;
 };
 
@@ -111,11 +107,14 @@ export const deleteEmployee = (employeeId: string): void => {
     saveUsers(users);
 };
 
-export const loginUser = (email: string, password: string): User | null => {
+export const loginUser = async (email: string, password: string): Promise<User | null> => {
     const users = getUsers();
-    
-    const user = users.find(u => u.email === email && u.password === password);
-    return user || null;
+    const user = users.find(u => u.email === email);
+    if (!user || !user.password) return null;
+
+    // ✅ Сравниваем пароль с хэшем
+    const isMatch = await bcrypt.compare(password, user.password);
+    return isMatch ? user : null;
 };
 
 export const getEmployees = (managerId: string): User[] => {
