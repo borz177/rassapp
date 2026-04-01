@@ -380,22 +380,21 @@ app.post(
   express.json({ limit: '15mb' }),
   async (req, res) => {
     try {
-
       const body = req.body;
       const { typeWebhook, senderData, messageData, instanceData } = body;
-      
+
       res.status(200).send('OK');
-      
+
       if (!senderData?.chatId || typeWebhook !== 'incomingMessageReceived') return;
       if (messageData?.typeMessage !== 'textMessage') return;
-      
+
       const chatId = senderData.chatId;
       if (chatId.includes('@g.us')) return;
-      
+
       const rawPhone = chatId.replace('@c.us', '');
       const senderPhone = normalizePhone(rawPhone);
       const text = (messageData.textMessageData.textMessage || '').trim().toLowerCase();
-      
+
       const instanceId = instanceData?.idInstance;
       const managerResult = await pool.query(`
         SELECT id, name, whatsapp_settings
@@ -403,35 +402,35 @@ app.post(
         WHERE whatsapp_settings->>'idInstance' = $1
         LIMIT 1
       `, [String(instanceId)]);
-      
+
       if (managerResult.rows.length === 0) return;
-      
+
       const manager = managerResult.rows[0];
       const { id: managerId, name: managerName, whatsapp_settings: settings } = manager;
-      
+
       if (!settings?.botEnabled) return;
-      
+
       const customersResult = await pool.query(`
         SELECT id, data
         FROM data_items
         WHERE type = 'customers'
         AND user_id = $1
       `, [managerId]);
-      
+
       const customerRow = customersResult.rows.find(row =>
         normalizePhone(row.data.phone || '') === senderPhone
       );
-      
+
       if (!customerRow) {
         await sendMessage(settings.idInstance, settings.apiTokenInstance, chatId,
           `Здравствуйте 👋 Я ассистент ${managerName}. У вас нет активных договоров.`
         );
         return;
       }
-      
+
       const customerId = customerRow.id;
       let customerData = customerRow.data;
-      
+
       if (customerData.lastBotResponse === undefined) {
         const updatedCustomer = { ...customerData, lastBotResponse: null };
         await pool.query(
@@ -440,9 +439,9 @@ app.post(
         );
         customerData = updatedCustomer;
       }
-      
+
       const lastResponse = customerData.lastBotResponse;
-      
+
       const salesResult = await pool.query(`
         SELECT data FROM data_items
         WHERE user_id = $1
@@ -450,65 +449,97 @@ app.post(
         AND data->>'customerId' = $2
         AND data->>'status' = '"ACTIVE"'
       `, [managerId, customerId]);
-      
+
       const activeSales = salesResult.rows.map(r => r.data);
-      
+
       if (activeSales.length === 0) {
         await sendMessage(settings.idInstance, settings.apiTokenInstance, chatId, "У вас нет активных договоров.");
         return;
       }
-      
+
+      // 🔥 РАСШИРЕННЫЕ СПИСКИ КЛЮЧЕВЫХ СЛОВ (как в Python версии)
       let command = null;
-      if (text === '1' || text.includes('долг') || text.includes('задолженность')) {
+
+      const debtKeywords = [
+        'долг', 'должна', 'должен', 'задолженность', 'остаток', 'сколько', 'скока',
+        'сумма', 'сумм', 'платить', 'осталось', 'нужно', 'оплатить', 'счет',
+        'платеж', 'погасить', '1'
+      ];
+
+      const paymentKeywords = [
+        'дата', 'платеж', 'платёж', 'когда платить', 'график', 'взнос',
+        'следующий', 'ближайший', '2'
+      ];
+
+      const conditionsKeywords = [
+        'условия', 'рассрочка', 'процент', 'срок', 'месяц', 'мес',
+        'первый взнос', 'ставка', '3'
+      ];
+
+      // Проверка команд по ключевым словам
+      if (debtKeywords.some(kw => text.includes(kw))) {
         command = 'debt';
-      } else if (text === '2' || text.includes('дата') || text.includes('платеж')) {
+      } else if (paymentKeywords.some(kw => text.includes(kw))) {
         command = 'payment';
-      } else if (text === '3' || text.includes('условия') || text.includes('рассрочка')) {
+      } else if (conditionsKeywords.some(kw => text.includes(kw))) {
         command = 'conditions';
       }
-      
+
       const sendMsg = async (msg) => {
         await sendMessage(settings.idInstance, settings.apiTokenInstance, chatId, msg);
       };
-      
+
+      // Форматирование чисел (как в Python)
+      const formatMoney = (amount) => {
+        return amount.toLocaleString('ru-RU').replace(',', ' ');
+      };
+
       if (command) {
+        // Защита от повторной отправки одинакового ответа
         if (lastResponse === command) return;
-        
+
         let responseText = '';
+
         if (command === 'debt') {
           const totalDebt = activeSales.reduce((sum, sale) =>
             sum + sale.paymentPlan.filter(p => !p.isPaid).reduce((s, p) => s + p.amount, 0), 0);
-          responseText = `📊 Ваш текущий долг: *${totalDebt.toLocaleString()} ₽*`;
+
+          responseText = `📊 *Ваш текущий общий долг: ${formatMoney(totalDebt)} ₽*`;
         }
         else if (command === 'payment') {
           const allUnpaid = activeSales.flatMap(sale =>
             sale.paymentPlan.filter(p => !p.isPaid).map(p => ({ ...p, productName: sale.productName }))
           ).sort((a, b) => new Date(a.date) - new Date(b.date));
-          
+
           if (allUnpaid.length === 0) {
-            responseText = "Все платежи оплачены!";
+            responseText = "✅ Все платежи оплачены! Долгов нет.";
           } else {
             const next = allUnpaid[0];
             const dateStr = new Date(next.date).toLocaleDateString('ru-RU', {
               day: 'numeric', month: 'long', year: 'numeric'
             });
-            responseText = `📅 Ближайший платёж:
+            responseText = `📅 *Ближайший платёж:*
 • Товар: *${next.productName}*
 • Дата: *${dateStr}*
-• Сумма: *${next.amount.toLocaleString()} ₽*`;
+• Сумма: *${formatMoney(next.amount)} ₽*`;
           }
         }
         else if (command === 'conditions') {
           const maxTerm = Math.max(...activeSales.map(s => s.installments || 0));
           const minRate = Math.min(...activeSales.map(s => s.interestRate || 0));
-          const firstPayment = activeSales[0].downPayment > 0 ? activeSales[0].downPayment.toLocaleString() : 'не требуется';
-          responseText = `📝 Условия рассрочки:
+          const firstPayment = activeSales[0].downPayment > 0
+            ? formatMoney(activeSales[0].downPayment)
+            : 'не требуется';
+
+          responseText = `📝 *Ваши условия рассрочки:*
 • Срок: до *${maxTerm} мес.*
 • Процентная ставка: от *${minRate}%*
 • Первый взнос: *${firstPayment} ₽*`;
         }
-        
+
         await sendMsg(responseText);
+
+        // Сохраняем последнюю команду
         const updatedCustomer = { ...customerData, lastBotResponse: command };
         await pool.query(
           `UPDATE data_items SET data = $1 WHERE id = $2`,
@@ -516,14 +547,20 @@ app.post(
         );
         return;
       }
-      
+
+      // 🔥 ЕСЛИ КОМАНДА НЕ РАСПОЗНАНА — ПОКАЗЫВАЕМ МЕНЮ
       const greeting = `Здравствуйте 👋 Я ассистент ${managerName}. Чем могу помочь?
-1. 📊 Мой долг
-2. 📅 Дата платежа
-3. Условия рассрочки
-(Ответьте цифрой или текстом)`;
+
+Напишите одно из слов:
+1️⃣ *Долг* — узнать сумму задолженности
+2️⃣ *Платеж* — узнать дату ближайшего взноса
+3️⃣ *Условия* — узнать параметры рассрочки
+
+(Ответьте словом или цифрой)`;
+
       await sendMsg(greeting);
-      
+
+      // Сбрасываем lastResponse если было что-то до этого
       if (lastResponse !== null) {
         const resetCustomer = { ...customerData, lastBotResponse: null };
         await pool.query(
