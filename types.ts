@@ -36,6 +36,8 @@ export interface WhatsAppSettings {
   botEnabled?: boolean;
   welcomeEnabled?: boolean;  // 🔥 НОВОЕ: включено ли приветствие
   welcomeInterval?: number;
+  historyEnabled?: boolean;      // ← НОВОЕ
+  conditionsEnabled?: boolean;
 
 }
 
