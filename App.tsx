@@ -36,7 +36,6 @@ import SupportChat from './components/SupportChat';
 import AdminSupportPanel from './components/AdminSupportPanel';
 import { formatCurrency, formatDate } from './src/utils';
 import { useSwipeable } from "react-swipeable"
-import { offlineStorage } from './services/offlineStorage';
 
 import Landing from './components/Landing.tsx';
 
@@ -286,69 +285,39 @@ useEffect(() => {
 }, [user]);
 
   const loadData = async (currentUser?: User, skipLoading = false) => {
-    if (!skipLoading && customers.length === 0 && sales.length === 0) {
-        setIsLoading(true);
-    }
+      if (!skipLoading && customers.length === 0 && sales.length === 0) {
+          setIsLoading(true);
+      }
+      try {
+          const data = await api.fetchAllData();
+          setCustomers(data.customers);
+          setProducts(data.products);
+          setSales(data.sales);
+          setExpenses(data.expenses);
+          setAccounts(data.accounts);
+          setInvestors(data.investors);
+          setPartnerships(data.partnerships);
+          setEmployees(data.employees);
 
-    try {
-        let data;
+          let loadedSettings = data.settings || getAppSettings();
 
-        if (navigator.onLine) {
-            // 🔹 Онлайн: загружаем с сервера
-            data = await api.fetchAllData();
+          // Merge WhatsApp settings from User Profile if available
+          const activeUser = currentUser || user;
+          if (activeUser?.whatsapp_settings) {
+              loadedSettings = {
+                  ...loadedSettings,
+                  whatsapp: activeUser.whatsapp_settings
+              };
+          }
 
-            // 🔹 Сохраняем в IndexedDB для оффлайна
-            for (const sale of data.sales) {
-                await offlineStorage.saveSale(sale);
-            }
-        } else {
-            // 🔹 Оффлайн: загружаем из IndexedDB
-            const cachedSales = await offlineStorage.getAllSales();
-            const cachedData = await offlineStorage.getCache('all_data');
-
-            data = {
-                ...cachedData,
-                sales: cachedSales.length > 0 ? cachedSales : (cachedData?.sales || [])
-            };
-        }
-
-        setCustomers(data.customers);
-        setProducts(data.products);
-        setSales(data.sales);
-        setExpenses(data.expenses);
-        setAccounts(data.accounts);
-        setInvestors(data.investors);
-        setPartnerships(data.partnerships);
-        setEmployees(data.employees);
-
-        let loadedSettings = data.settings || getAppSettings();
-        const activeUser = currentUser || user;
-        if (activeUser?.whatsapp_settings) {
-            loadedSettings = {
-                ...loadedSettings,
-                whatsapp: activeUser.whatsapp_settings
-            };
-        }
-
-        setAppSettings(loadedSettings);
-        saveAppSettings(loadedSettings);
-
-    } catch (error) {
-        console.error("Failed to load data", error);
-
-        // 🔹 Последняя попытка: загрузить из IndexedDB
-        try {
-            const cachedSales = await offlineStorage.getAllSales();
-            if (cachedSales.length > 0) {
-                setSales(cachedSales);
-            }
-        } catch (e) {
-            console.error("Failed to load from IndexedDB", e);
-        }
-    } finally {
-        setIsLoading(false);
-    }
-};
+          setAppSettings(loadedSettings);
+          saveAppSettings(loadedSettings); // Sync server data to local storage
+      } catch (error) {
+          console.error("Failed to load data", error);
+      } finally {
+          setIsLoading(false);
+      }
+  };
 
   const isManager = user?.role === 'manager' || user?.role === 'admin';
   const isEmployee = user?.role === 'employee';
@@ -615,130 +584,8 @@ const dashboardStats = useMemo(() => {
   const updateList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, item: T) => { setter(prev => { const idx = prev.findIndex(i => i.id === item.id); if (idx >= 0) return prev.map(i => i.id === item.id ? item : i); return [item, ...prev]; }); };
   const removeFromList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, id: string) => { setter(prev => prev.filter(i => i.id !== id)); };
 
-const handleSaveSale = async (data: any) => {
-    if (!user) return;
-
-    const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
-    const saleId = data.id || Date.now().toString();
-
-    const paymentScheduleStartDate = data.paymentDate
-        ? new Date(data.paymentDate)
-        : new Date(data.startDate);
-    if (!data.paymentDate) {
-        paymentScheduleStartDate.setMonth(paymentScheduleStartDate.getMonth() + 1);
-    }
-    const preferredDay = paymentScheduleStartDate.getDate();
-
-    const existingSaleIndex = sales.findIndex(s => s.id === data.id);
-    const existingSale = existingSaleIndex >= 0 ? sales[existingSaleIndex] : null;
-
-    // 🔹 Формирование paymentPlan (сохраняем оплаченные при редактировании)
-    const generatePaymentPlan = () => {
-        if (data.type === 'CASH') return [];
-
-        // Если paymentPlan уже пришёл из NewSale — используем его
-        if (data.paymentPlan && Array.isArray(data.paymentPlan) && data.paymentPlan.length > 0) {
-            return data.paymentPlan;
-        }
-
-        // Если редактируем — сохраняем оплаченные платежи
-        if (existingSale?.paymentPlan) {
-            const paidPayments = existingSale.paymentPlan.filter((p: any) => p.isPaid);
-            const totalInstallments = Number(data.installments) || 1;
-            const newPaymentsCount = Math.max(0, totalInstallments - paidPayments.length);
-
-            const newPayments = Array.from({ length: newPaymentsCount }).map((_, idx) => {
-                const pDate = new Date(paymentScheduleStartDate);
-                pDate.setMonth(pDate.getMonth() + paidPayments.length + idx);
-                return {
-                    id: `pay_${Date.now()}_${idx}`,
-                    saleId: saleId,
-                    amount: Number((data.remainingAmount / totalInstallments).toFixed(2)),
-                    date: pDate.toISOString(),
-                    isPaid: false,
-                    isRealPayment: false
-                };
-            });
-
-            return [...paidPayments, ...newPayments];
-        }
-
-        // Новый договор — генерируем с нуля
-        return Array.from({ length: data.installments }).map((_, idx) => {
-            const pDate = new Date(paymentScheduleStartDate);
-            pDate.setMonth(pDate.getMonth() + idx);
-            return {
-                id: `pay_${Date.now()}_${idx}`,
-                saleId: saleId,
-                amount: Number((data.remainingAmount / data.installments).toFixed(2)),
-                date: pDate.toISOString(),
-                isPaid: false,
-                isRealPayment: false
-            };
-        });
-    };
-
-    const saleData = {
-        ...data,
-        id: saleId,
-        userId: ownerId,
-        paymentDay: preferredDay,
-        paymentPlan: generatePaymentPlan()
-    };
-
-    const saleToSave = existingSaleIndex >= 0
-        ? { ...sales[existingSaleIndex], ...saleData }
-        : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
-
-    // 🔹 🔹 🔹 КЛЮЧЕВОЕ: Сохраняем в IndexedDB ПЕРЕД отправкой на сервер 🔹 🔹 🔹
-    await offlineStorage.saveSale(saleToSave);
-    updateList(setSales, saleToSave);
-
-    // Отправляем на сервер (асинхронно)
-    if (navigator.onLine) {
-        try {
-            const savedSale = await api.saveItem('sales', saleToSave);
-            updateList(setSales, savedSale);
-            await offlineStorage.saveSale(savedSale);
-        } catch (err) {
-            console.error('❌ Failed to save to server:', err);
-            // Данные уже в IndexedDB, не потеряются!
-        }
-    }
-
-    // 🔹 Закупка и товар — только для НОВЫХ продаж
-    if (existingSaleIndex < 0) {
-        if (Number(data.buyPrice) > 0) {
-            const buyPriceExpense: Expense = {
-                id: `exp_sale_${saleId}`,
-                userId: ownerId,
-                accountId: data.accountId,
-                title: `Закуп: ${data.productName}`,
-                amount: Number(data.buyPrice),
-                category: 'Себестоимость',
-                date: data.startDate,
-                isRefund: false
-            };
-            await api.saveItem('expenses', buyPriceExpense);
-            // ❌ Убираем updateList для expenses — чтобы не было дублей
-        }
-        if (data.productId) {
-            const prod = products.find(p => p.id === data.productId);
-            if(prod) {
-                const updatedProd = {
-                    ...prod,
-                    stock: prod.stock - 1,
-                    updatedAt: new Date().toISOString()
-                };
-                const savedProd = await api.saveItem('products', updatedProd);
-                updateList(setProducts, savedProd);
-            }
-        }
-    }
-
-    setEditingSale(null);
-};
-const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
+  const handleSaveSale = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const saleId = data.id || Date.now().toString(); const paymentScheduleStartDate = data.paymentDate ? new Date(data.paymentDate) : new Date(data.startDate); if (!data.paymentDate) { paymentScheduleStartDate.setMonth(paymentScheduleStartDate.getMonth() + 1); } const preferredDay = paymentScheduleStartDate.getDate(); const saleData = { ...data, id: saleId, userId: ownerId, paymentDay: preferredDay, paymentPlan: data.type === 'CASH' ? [] : (data.paymentPlan || Array.from({ length: data.installments }).map((_, idx) => { const pDate = new Date(paymentScheduleStartDate); pDate.setMonth(pDate.getMonth() + idx); return { id: `pay_${Date.now()}_${idx}`, saleId: saleId, amount: Number((data.remainingAmount / data.installments).toFixed(2)), date: pDate.toISOString(), isPaid: false, isRealPayment: false }; })) }; const existingSaleIndex = sales.findIndex(s => s.id === data.id); const saleToSave = existingSaleIndex >= 0 ? { ...sales[existingSaleIndex], ...saleData } : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' }; const savedSale = await api.saveItem('sales', saleToSave); updateList(setSales, savedSale); if (existingSaleIndex < 0) { if (Number(data.buyPrice) > 0) { const buyPriceExpense: Expense = { id: `exp_sale_${saleId}`, userId: ownerId, accountId: data.accountId, title: `Закуп: ${data.productName}`, amount: Number(data.buyPrice), category: 'Себестоимость', date: data.startDate, isRefund: false }; const savedExpense = await api.saveItem('expenses', buyPriceExpense); updateList(setExpenses, savedExpense); } if (data.productId) { const prod = products.find(p => p.id === data.productId); if(prod) { const updatedProd = { ...prod, stock: prod.stock - 1 }; const savedProd = await api.saveItem('products', updatedProd); updateList(setProducts, savedProd); } } } setEditingSale(null); };
+  const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
 const handleDeleteSale = async (saleId: string) => {
     if (!window.confirm("Вы уверены, что хотите удалить этот договор?")) {
         return;
@@ -825,29 +672,17 @@ const handleIncomeSubmit = async (data: any) => {
 
             if (updatedSale.remainingAmount === 0) updatedSale.status = 'COMPLETED';
 
-            // 🔹 🔹 🔹 КЛЮЧЕВОЕ: Сохраняем в IndexedDB ПЕРЕД отправкой на сервер 🔹 🔹 🔹
-            await offlineStorage.saveSale(updatedSale);
-            updateList(setSales, updatedSale);
-
-            // Отправляем на сервер (асинхронно, не блокируя UI)
-            if (navigator.onLine) {
-                try {
-                    const savedSale = await api.saveItem('sales', updatedSale);
-                    updateList(setSales, savedSale);
-                    await offlineStorage.saveSale(savedSale);
-                } catch (err) {
-                    console.error('❌ Server save failed:', err);
-                    // Данные уже в IndexedDB, не потеряются!
-                }
-            }
+            const savedSale = await api.saveItem('sales', updatedSale);
+            updateList(setSales, savedSale);
 
             // 👇 ПОСЛЕ УСПЕШНОГО СОХРАНЕНИЯ ПЕРЕХОДИМ К ДЕТАЛЯМ ДОГОВОРА
+            // Сохраняем ID для перехода
             setSelectedCustomerId(sale.customerId);
             setInitialSaleIdForDetails(saleId);
             setPreviousView(currentView);
             setCurrentView('CUSTOMER_DETAILS');
 
-            return;
+            return; // Выходим, чтобы не попасть в другой код
         }
     } else {
         const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
@@ -868,9 +703,6 @@ const handleIncomeSubmit = async (data: any) => {
             status: 'COMPLETED',
             paymentPlan: []
         };
-
-        // 🔹 Также сохраняем в IndexedDB
-        await offlineStorage.saveSale(newTransaction);
         const savedTx = await api.saveItem('sales', newTransaction);
         updateList(setSales, savedTx);
 
@@ -883,10 +715,9 @@ const handleIncomeSubmit = async (data: any) => {
             }
         }
 
-        setCurrentView('OPERATIONS');
+        setCurrentView('OPERATIONS'); // Для инвестора и прочего оставляем как было
     }
-};
-const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: Date.now().toString(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
+};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: Date.now().toString(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
   const handleAddEmployee = async (data: any) => { if (user && isManager) { if (!checkAccess('EMPLOYEES')) { showUpgradeAlert("Сотрудники доступны в тарифе Бизнес."); return; } try { const newEmp = await api.createSubUser({ ...data, role: 'employee' }); setEmployees(prev => [...prev, newEmp]); } catch(e) { alert("Ошибка создания сотрудника"); console.error(e); } } };
   const handleUpdateEmployee = async (updatedData: User) => { if (isManager) { await api.updateUser(updatedData); updateList(setEmployees, updatedData); } };
   const handleDeleteEmployee = async (id: string) => { if (isManager) { await api.deleteUser(id); removeFromList(setEmployees, id); } };

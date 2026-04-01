@@ -61,7 +61,7 @@ app.use((req, res, next) => {
 // ✅ RATE LIMITING для защиты от подбора пароля
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 минут
-  max: 20, // 5 попыток
+  max: 10, // 5 попыток
   message: { error: 'Слишком много попыток входа, попробуйте позже' },
   standardHeaders: true,
   legacyHeaders: false,
