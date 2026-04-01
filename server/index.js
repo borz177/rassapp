@@ -349,6 +349,7 @@ app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
 });
 
 // --- WHATSAPP WEBHOOK ---
+// --- WHATSAPP WEBHOOK ---
 const normalizePhone = (phone) => {
   let cleaned = phone.replace(/\D/g, '');
   if (cleaned.length === 10) {
@@ -361,6 +362,7 @@ const normalizePhone = (phone) => {
   return cleaned;
 };
 
+// 🔥 ИСПРАВЛЕНИЕ 1: Увеличен таймаут с 5000 до 15000
 async function sendMessage(idInstance, apiTokenInstance, chatId, message) {
   try {
     const sendUrl = `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiTokenInstance}`;
@@ -368,7 +370,7 @@ async function sendMessage(idInstance, apiTokenInstance, chatId, message) {
     const response = await axios.post(
       sendUrl,
       { chatId, message },
-      { timeout: 15000 }  // 15 секунд
+      { timeout: 15000 }  // ← 15 секунд вместо 5
     );
 
     return !!response.data?.idMessage;
@@ -402,7 +404,7 @@ app.post(
       const instanceId = String(instanceData?.idInstance || instanceData?.instanceId || body?.idInstance || '');
       if (!instanceId) return;
 
-      // Поиск менеджера (только с включённым ботом)
+      // 🔥 ИСПРАВЛЕНИЕ 2: Убрано company_name из запроса
       const managerResult = await pool.query(`
         SELECT id, name, whatsapp_settings
         FROM users
@@ -419,7 +421,14 @@ app.post(
       const parsedSettings = typeof settings === 'string' ? JSON.parse(settings) : settings;
       if (!parsedSettings?.botEnabled) return;
 
+      // 🔥 ИСПРАВЛЕНИЕ 3: Берём companyName из настроек, не из БД
       const companyName = parsedSettings?.companyName || 'Наша Компания';
+
+      // 🔥 ИСПРАВЛЕНИЕ 4: Загружаем настройки команд
+      const welcomeEnabled = parsedSettings?.welcomeEnabled ?? true;
+      const welcomeInterval = parsedSettings?.welcomeInterval ?? 24;
+      const historyEnabled = parsedSettings?.historyEnabled ?? true;
+      const conditionsEnabled = parsedSettings?.conditionsEnabled ?? true;
 
       // Поиск клиента
       const customersResult = await pool.query(`
@@ -438,19 +447,13 @@ app.post(
       const customerId = customerRow.id;
       let customerData = customerRow.data;
 
-      // 🔥 Инициализация lastBotResponse и lastGreetingTime
+      // Инициализация полей
       if (customerData.lastBotResponse === undefined) {
         customerData.lastBotResponse = null;
       }
       if (customerData.lastGreetingTime === undefined) {
         customerData.lastGreetingTime = null;
       }
-
-      // 🔥 Проверка: прошло ли 24 часа с последнего приветствия
-      //const now = Date.now();
-      //const twentyFourHours = 24 * 60 * 60 * 1000;
-      //const shouldSendGreeting = !customerData.lastGreetingTime ||
-                                 // (now - customerData.lastGreetingTime) > twentyFourHours;
 
       // Поиск договоров (ACTIVE + DRAFT)
       const salesResult = await pool.query(`
@@ -469,23 +472,30 @@ app.post(
         return;
       }
 
+      // 🔥 ИСПРАВЛЕНИЕ 5: Проверка команд с учётом настроек
+      let command = null;
+      if ((text.includes('история') || text.includes('остаток') || text.includes('долг')) && historyEnabled) {
+        command = 'history';
+      } else if ((text.includes('условия')) && conditionsEnabled) {
+        command = 'conditions';
+      }
+
       const formatMoney = (amount) => Number(amount).toLocaleString('ru-RU').replace(',', ' ');
       const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('ru-RU', {
         day: 'numeric', month: 'short', year: 'numeric'
       });
 
-      // 🔥 Проверка команд
-      // В вебхуке, при проверке команд:
-let command = null;
+      // 🔥 ИСПРАВЛЕНИЕ 6: Правильное определение shouldSendGreeting
+      const now = Date.now();
+      const lastGreeting = customerData.lastGreetingTime || 0;
+      const hoursSinceGreeting = (now - lastGreeting) / (1000 * 60 * 60);
 
-if ((text.includes('история') || text.includes('остаток') || text.includes('долг')) && parsedSettings?.historyEnabled !== false) {
-  command = 'history';
-} else if ((text.includes('условия')) && parsedSettings?.conditionsEnabled !== false) {
-  command = 'conditions';
-}
+      const shouldSendGreeting = welcomeEnabled &&
+                                  !command &&
+                                  (!customerData.lastGreetingTime || hoursSinceGreeting > welcomeInterval);
 
-      // 🔥 Отправка приветствия (если прошло 24 часа)
-      if (shouldSendGreeting && !command) {
+      // Отправка приветствия
+      if (shouldSendGreeting) {
         const greeting = `Здравствуйте 👋 Я ассистент ${managerName}.
 
 Напишите:
@@ -496,7 +506,6 @@ if ((text.includes('история') || text.includes('остаток') || text.
 
         await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId, greeting);
 
-        // Сохраняем время отправки приветствия
         customerData.lastGreetingTime = now;
         const updatedCustomer = { ...customerData, lastGreetingTime: now };
         await pool.query(
@@ -506,7 +515,7 @@ if ((text.includes('история') || text.includes('остаток') || text.
         return;
       }
 
-      // 🔥 Обработка команд
+      // Обработка команд
       if (command) {
         if (customerData.lastBotResponse === command) return;
 
@@ -520,8 +529,6 @@ if ((text.includes('история') || text.includes('остаток') || text.
           for (const sale of activeSales) {
             const unpaid = sale.paymentPlan?.filter(p => !p.isPaid) || [];
             const debt = unpaid.reduce((sum, p) => sum + (p.amount || 0), 0);
-
-            // 🔥 Исправлено: расчёт ежемесячного платежа
             const monthly = sale.monthlyPayment ||
                            (sale.paymentPlan && sale.paymentPlan.length > 0 ? sale.paymentPlan[0]?.amount : 0) ||
                            0;
@@ -550,7 +557,6 @@ if ((text.includes('история') || text.includes('остаток') || text.
           responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
           responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n\n`;
 
-          // 🔥 История платежей (дата и сумма в одной строке)
           const paidHistory = activeSales
             .flatMap(sale => (sale.paymentPlan || []).filter(p => p.isPaid).map(p => ({
               date: p.date, amount: p.amount, product: sale.productName || 'Товар'
@@ -558,7 +564,6 @@ if ((text.includes('история') || text.includes('остаток') || text.
             .sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10);
 
           if (paidHistory.length > 0) {
-            responseText += `━━━━━━━━━━━━━━\n`;
             responseText += `📜 *История платежей:*\n`;
             for (const p of paidHistory) {
               responseText += `• ${formatDate(p.date)} — ✅ *${formatMoney(p.amount)} ₽*\n`;
@@ -595,6 +600,7 @@ if ((text.includes('история') || text.includes('остаток') || text.
 
     } catch (error) {
       console.error('Webhook Error:', error.message);
+      console.error(error.stack);
     }
   }
 );
