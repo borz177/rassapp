@@ -1,9 +1,7 @@
 require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 // FORCE TIMEZONE TO MOSCOW
 process.env.TZ = 'Europe/Moscow';
-console.log('YOOKASSA_SHOP_ID loaded:', process.env.YOOKASSA_SHOP_ID ? '✅ Yes' : '❌ No');
-console.log('YOOKASSA_SECRET_KEY loaded:', process.env.YOOKASSA_SECRET_KEY ? '✅ Yes' : '❌ No');
-console.log('GREEN_API_PARTNER_TOKEN loaded:', process.env.GREEN_API_PARTNER_TOKEN ? '✅ Yes' : '❌ No');
+
 console.log('Server Timezone:', new Date().toString());
 
 const express = require('express');
@@ -216,8 +214,7 @@ await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_is_active ON
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_target_role ON broadcast_messages(target_role);`);
 
 
-    // === КОНЕЦ ИНИЦИАЛИЗАЦИИ ===
-    console.log('✅ PostgreSQL Tables Initialized (including Support)');
+
     initSuperAdmin();
 
   } catch (err) {
@@ -239,7 +236,7 @@ const initSuperAdmin = async () => {
         role = 'admin',
         password = $2
     `, [adminEmail, hashedPassword]);
-    console.log(`Super Admin initialized: ${adminEmail}`);
+
   } catch (e) {
     console.error('Failed to init super admin', e);
   }
@@ -284,18 +281,14 @@ const sendEmail = async (email, subject, text) => {
         subject,
         text,
       });
-      console.log(`Email sent to ${email}`);
+
       return true;
     } catch (error) {
       console.error('Email send error:', error);
       return false;
     }
   } else {
-    console.log('================================================');
-    console.log(`[MOCK EMAIL] To: ${email}`);
-    console.log(`[MOCK EMAIL] Subject: ${subject}`);
-    console.log(`[MOCK EMAIL] Body: ${text}`);
-    console.log('================================================');
+
     return true; // Simulate success
   }
 };
@@ -309,7 +302,7 @@ app.get('/', (req, res) => {
 
 // --- INTEGRATIONS ---
 app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
-  console.log("Entering WhatsApp Create Route");
+
   const { phoneNumber } = req.body;
   const partnerToken = process.env.GREEN_API_PARTNER_TOKEN ? process.env.GREEN_API_PARTNER_TOKEN.trim() : null;
   
@@ -319,7 +312,7 @@ app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
   }
   
   try {
-    console.log(`Requesting Green API with token: ${partnerToken.substring(0, 5)}... Phone: ${phoneNumber}`);
+
     const cleanPhone = phoneNumber ? phoneNumber.replace(/\D/g, '') : '';
     
     const response = await axios.post('https://api.green-api.com/partner/createInstance', {
@@ -333,7 +326,7 @@ app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
       }
     });
     
-    console.log("Green API Success:", response.data);
+
     res.json(response.data);
   } catch (error) {
     let errorDetails = error.message;
@@ -387,7 +380,7 @@ app.post(
   express.json({ limit: '15mb' }),
   async (req, res) => {
     try {
-      console.log("==== WHATSAPP WEBHOOK START ====");
+
       const body = req.body;
       const { typeWebhook, senderData, messageData, instanceData } = body;
       
@@ -1156,7 +1149,7 @@ app.post('/api/payment/create', auth, async (req, res) => {
   const secretKey = process.env.YOOKASSA_SECRET_KEY;
   
   if (!shopId || !secretKey) {
-    console.log('[MOCK PAYMENT] Credentials missing.');
+
     return res.json({
       id: `mock_pay_${Date.now()}`,
       status: 'pending',
@@ -1225,7 +1218,7 @@ app.post('/api/payment/webhook', async (req, res) => {
         };
         
         await pool.query('UPDATE users SET subscription = $1 WHERE id = $2', [JSON.stringify(updatedSub), userId]);
-        console.log(`[WEBHOOK] Updated subscription for user ${userId}: ${plan} for ${months} months`);
+
       } catch (err) {
         console.error('[WEBHOOK] Failed to update subscription', err);
         return res.status(500).send('DB Error');
@@ -1958,7 +1951,7 @@ setInterval(async () => {
       AND (data->>'createdAt')::timestamp < NOW() - INTERVAL '30 days'
     `);
     if (result.rowCount > 0) {
-      console.log(`🧹 Cleaned ${result.rowCount} old calculator configs`);
+
     }
   } catch (err) {
     console.error('Cleanup calculator configs error:', err);
@@ -1983,7 +1976,7 @@ const startServer = async () => {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+
   });
 };
 

@@ -172,7 +172,7 @@ async function processRemindersForUser(user) {
   // 🔹 Проверяем время запуска (точное совпадение)
   if (currentTime !== targetTime) return;
 
-  console.log(`${LOG_PREFIX} Обработка напоминаний для пользователя ${id} в ${targetTime}`);
+
 
   const [salesRes, customersRes] = await Promise.all([
     pool.query('SELECT data FROM data_items WHERE user_id = $1 AND type = $2', [id, 'sales']),
@@ -263,12 +263,12 @@ async function processRemindersForUser(user) {
 
         const logType = reminderDay === -1 ? 'заранее' : reminderDay === 0 ? 'сегодня' : 'просрочка';
         const debtInfo = priorDebt > 0 ? ` (долг: ${priorDebt}₽)` : '';
-        console.log(`${LOG_PREFIX} ✅ Отправлено (${logType}): ${customer.name} — ${sale.productName}${debtInfo}`);
+
       }
     }
   }
 
-  console.log(`${LOG_PREFIX} Завершено для ${id}: ${sentCount} напоминаний отправлено`);
+
 }
 
 async function runReminders() {
@@ -296,7 +296,7 @@ async function runReminders() {
     console.error(`${LOG_PREFIX} 💥 Критическая ошибка:`, err);
   } finally {
     await pool.end();
-    console.log(`${LOG_PREFIX} 🏁 Скрипт завершён`);
+
     process.exit(0);
   }
 }

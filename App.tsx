@@ -1234,8 +1234,7 @@ if (!user && !isLoading) {
                                 onBack={() => setCurrentView('SETTINGS')}
                                 whatsappRefreshKey={whatsappRefreshKey}  // ← Обязательно!
                                 onSettingsChanged={() => {
-                                    // Опционально: дополнительный код после сохранения
-                                    console.log('Настройки WhatsApp обновлены');
+
                                 }}/>}
               {currentView === 'CALCULATOR' && (
                   <Calculator

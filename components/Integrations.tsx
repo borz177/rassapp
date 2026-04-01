@@ -74,7 +74,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
       const mergedTemplates = { ...DEFAULT_TEMPLATES, ...appSettings.whatsapp.templates };
       setTemplates(mergedTemplates);
       setCurrentTemplates(mergedTemplates);
-      console.log('🔄 Шаблоны обновлены через refreshKey');
+
     }
   }, [whatsappRefreshKey, appSettings.whatsapp?.templates]);
 
