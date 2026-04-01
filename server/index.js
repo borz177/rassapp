@@ -397,7 +397,7 @@ app.post(
 
       const instanceId = instanceData?.idInstance;
       const managerResult = await pool.query(`
-        SELECT id, name, whatsapp_settings
+        SELECT id, name, whatsapp_settings, company_name
         FROM users
         WHERE whatsapp_settings->>'idInstance' = $1
         LIMIT 1
@@ -406,7 +406,7 @@ app.post(
       if (managerResult.rows.length === 0) return;
 
       const manager = managerResult.rows[0];
-      const { id: managerId, name: managerName, whatsapp_settings: settings } = manager;
+      const { id: managerId, name: managerName, whatsapp_settings: settings, company_name: companyName } = manager;
 
       if (!settings?.botEnabled) return;
 
@@ -457,84 +457,132 @@ app.post(
         return;
       }
 
-      // 🔥 РАСШИРЕННЫЕ СПИСКИ КЛЮЧЕВЫХ СЛОВ (как в Python версии)
+      // 🔥 ТОЛЬКО НУЖНЫЕ КЛЮЧЕВЫЕ СЛОВА
       let command = null;
 
-      const debtKeywords = [
-        'долг', 'должна', 'должен', 'задолженность', 'остаток', 'сколько', 'скока',
-        'сумма', 'сумм', 'платить', 'осталось', 'нужно', 'оплатить', 'счет',
-        'платеж', 'погасить', '1'
-      ];
-
-      const paymentKeywords = [
-        'дата', 'платеж', 'платёж', 'когда платить', 'график', 'взнос',
-        'следующий', 'ближайший', '2'
-      ];
-
-      const conditionsKeywords = [
-        'условия', 'рассрочка', 'процент', 'срок', 'месяц', 'мес',
-        'первый взнос', 'ставка', '3'
-      ];
-
-      // Проверка команд по ключевым словам
-      if (debtKeywords.some(kw => text.includes(kw))) {
-        command = 'debt';
-      } else if (paymentKeywords.some(kw => text.includes(kw))) {
-        command = 'payment';
-      } else if (conditionsKeywords.some(kw => text.includes(kw))) {
-        command = 'conditions';
+      if (text.includes('история') || text.includes('остаток') || text.includes('долг')) {
+        command = 'history';  // Детали договоров + история платежей
+      } else if (text.includes('условия')) {
+        command = 'conditions';  // Ссылка на калькулятор
       }
+
+      // Форматирование чисел
+      const formatMoney = (amount) => {
+        return Number(amount).toLocaleString('ru-RU').replace(',', ' ');
+      };
+
+      const formatDate = (dateStr) => {
+        return new Date(dateStr).toLocaleDateString('ru-RU', {
+          day: 'numeric', month: 'short', year: 'numeric'
+        });
+      };
 
       const sendMsg = async (msg) => {
         await sendMessage(settings.idInstance, settings.apiTokenInstance, chatId, msg);
       };
 
-      // Форматирование чисел (как в Python)
-      const formatMoney = (amount) => {
-        return amount.toLocaleString('ru-RU').replace(',', ' ');
-      };
-
       if (command) {
-        // Защита от повторной отправки одинакового ответа
+        // Защита от повторной отправки
         if (lastResponse === command) return;
 
         let responseText = '';
 
-        if (command === 'debt') {
-          const totalDebt = activeSales.reduce((sum, sale) =>
-            sum + sale.paymentPlan.filter(p => !p.isPaid).reduce((s, p) => s + p.amount, 0), 0);
+        // 🔥 КОМАНДА: ИСТОРИЯ / ОСТАТОК / ДОЛГ
+        if (command === 'history') {
+          let totalDebt = 0;
+          let totalMonthly = 0;
+          const contracts = [];
 
-          responseText = `📊 *Ваш текущий общий долг: ${formatMoney(totalDebt)} ₽*`;
-        }
-        else if (command === 'payment') {
-          const allUnpaid = activeSales.flatMap(sale =>
-            sale.paymentPlan.filter(p => !p.isPaid).map(p => ({ ...p, productName: sale.productName }))
-          ).sort((a, b) => new Date(a.date) - new Date(b.date));
+          for (const sale of activeSales) {
+            // Считаем остаток долга
+            const unpaid = sale.paymentPlan?.filter(p => !p.isPaid) || [];
+            const debt = unpaid.reduce((sum, p) => sum + (p.amount || 0), 0);
+            const monthly = sale.monthlyPayment || 0;
 
-          if (allUnpaid.length === 0) {
-            responseText = "✅ Все платежи оплачены! Долгов нет.";
-          } else {
-            const next = allUnpaid[0];
-            const dateStr = new Date(next.date).toLocaleDateString('ru-RU', {
-              day: 'numeric', month: 'long', year: 'numeric'
+            totalDebt += debt;
+            totalMonthly += monthly;
+
+            contracts.push({
+              name: sale.productName || `Товар #${sale.id}`,
+              debt,
+              monthly,
+              paymentPlan: sale.paymentPlan || []
             });
-            responseText = `📅 *Ближайший платёж:*
-• Товар: *${next.productName}*
-• Дата: *${dateStr}*
-• Сумма: *${formatMoney(next.amount)} ₽*`;
+          }
+
+          // Формируем заголовок
+          responseText = `📋 *Детали ваших договоров:*\n\n`;
+
+          // Добавляем каждый договор
+          for (const c of contracts) {
+            responseText += `🔹 *${c.name}*\n`;
+            responseText += `   • Ежемесячный платёж: *${formatMoney(c.monthly)} ₽*\n`;
+            if (c.debt > 0) {
+              responseText += `   • 🔴 Остаток долга: *${formatMoney(c.debt)} ₽*\n`;
+            } else {
+              responseText += `   • ✅ Погашен полностью\n`;
+            }
+            responseText += `\n`;
+          }
+
+          // Итого
+          responseText += `━━━━━━━━━━━━━━\n`;
+          responseText += `📊 *Итого:*\n`;
+          responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
+          responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n\n`;
+
+          // 🔥 История платежей (только оплаченные)
+          const paidHistory = activeSales
+            .flatMap(sale =>
+              (sale.paymentPlan || [])
+                .filter(p => p.isPaid)
+                .map(p => ({
+                  date: p.date,
+                  amount: p.amount,
+                  product: sale.productName || 'Товар'
+                }))
+            )
+            .sort((a, b) => new Date(b.date) - new Date(a.date)) // Сначала новые
+            .slice(0, 10); // Последние 10 платежей
+
+          if (paidHistory.length > 0) {
+            responseText += `📜 *История платежей:*\n`;
+            for (const p of paidHistory) {
+              responseText += `• ${formatDate(p.date)} | ${p.product}\n`;
+              responseText += `  ✅ *${formatMoney(p.amount)} ₽*\n`;
+            }
+          } else {
+            responseText += `📜 История платежей пока пуста`;
           }
         }
-        else if (command === 'conditions') {
-          const maxTerm = Math.max(...activeSales.map(s => s.installments || 0));
-          const minRate = Math.min(...activeSales.map(s => s.interestRate || 0));
-          const firstPayment = activeSales[0].downPayment > 0
-            ? formatMoney(activeSales[0].downPayment)
-            : 'не требуется';
 
-          responseText = `📝 *Ваши условия рассрочки:*
+        // 🔥 КОМАНДА: УСЛОВИЯ → Ссылка на калькулятор
+        else if (command === 'conditions') {
+          // Формируем красивую ссылку как в React-компоненте
+          const cleanCompany = encodeURIComponent(companyName || 'НашаКомпания');
+
+          // Если есть сохранённый configId — используем его
+          const configId = settings?.calculatorConfigId;
+          const calculatorUrl = configId
+            ? `${window.location.origin || 'https://wayuchet.ru'}/calc/${cleanCompany}?cfg=${configId}`
+            : `${window.location.origin || 'https://wayuchet.ru'}/calc/${cleanCompany}`;
+
+          // Получаем базовые условия из первого договора
+          const firstSale = activeSales[0];
+          const maxTerm = Math.max(...activeSales.map(s => s.installments || 3));
+          const minRate = firstSale.interestRate || 0;
+          const firstPayment = firstSale.downPayment || 0;
+
+          responseText = `📝 *Условия рассрочки в ${companyName}:*
+
 • Срок: до *${maxTerm} мес.*
 • Процентная ставка: от *${minRate}%*
-• Первый взнос: *${firstPayment} ₽*`;
+• Первый взнос: от *${formatMoney(firstPayment)} ₽*
+
+🔗 *Рассчитайте свой платёж онлайн:*
+${calculatorUrl}
+
+_(Нажмите на ссылку выше, чтобы открыть калькулятор)_`;
         }
 
         await sendMsg(responseText);
@@ -548,19 +596,16 @@ app.post(
         return;
       }
 
-      // 🔥 ЕСЛИ КОМАНДА НЕ РАСПОЗНАНА — ПОКАЗЫВАЕМ МЕНЮ
-      const greeting = `Здравствуйте 👋 Я ассистент ${managerName}. Чем могу помочь?
+      // 🔥 ЕСЛИ КОМАНДА НЕ РАСПОЗНАНА — ПОКАЗЫВАЕМ МИНИ-МЕНЮ
+      const greeting = `Здравствуйте 👋 Я ассистент ${managerName}.
 
-Напишите одно из слов:
-1️⃣ *Долг* — узнать сумму задолженности
-2️⃣ *Платеж* — узнать дату ближайшего взноса
-3️⃣ *Условия* — узнать параметры рассрочки
-
-(Ответьте словом или цифрой)`;
+Напишите:
+• *долг* или *история* — детали договоров и платежи
+• *условия* — ссылка на калькулятор рассрочки`;
 
       await sendMsg(greeting);
 
-      // Сбрасываем lastResponse если было что-то до этого
+      // Сбрасываем lastResponse
       if (lastResponse !== null) {
         const resetCustomer = { ...customerData, lastBotResponse: null };
         await pool.query(
