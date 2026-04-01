@@ -7,8 +7,8 @@ interface IntegrationsProps {
   appSettings: AppSettings;
   onUpdateSettings: (settings: AppSettings) => void;
   onBack: () => void;
-  whatsappRefreshKey?: number; // ← Добавлен проп для триггера обновления
-  onSettingsChanged?: () => void; // ← Callback для уведомления родителя
+  whatsappRefreshKey?: number;
+  onSettingsChanged?: () => void;
 }
 
 const DEFAULT_TEMPLATES = {
@@ -33,13 +33,13 @@ const Integrations: React.FC<IntegrationsProps> = ({
 
   const [activeTemplateTab, setActiveTemplateTab] = useState<'UPCOMING' | 'TODAY' | 'OVERDUE'>('TODAY');
   const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
-  const [currentTemplates, setCurrentTemplates] = useState(DEFAULT_TEMPLATES); // ← Добавлено состояние
+  const [currentTemplates, setCurrentTemplates] = useState(DEFAULT_TEMPLATES);
 
   const [isTesting, setIsTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'IDLE' | 'AUTHORIZED' | 'NOT_AUTHORIZED' | 'ERROR'>('IDLE');
 
   const [botEnabled, setBotEnabled] = useState(false);
-  const [botButtons, setBotButtons] = useState({ debt: true, paymentDate: true, conditions: true });
+  // 🔥 УБРАНО: botButtons больше не нужен
 
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -51,30 +51,25 @@ const Integrations: React.FC<IntegrationsProps> = ({
       setReminderTime(appSettings.whatsapp.reminderTime);
       setReminderDays(appSettings.whatsapp.reminderDays);
       setBotEnabled(appSettings.whatsapp.botEnabled || false);
-      if (appSettings.whatsapp.botButtons) {
-        setBotButtons(appSettings.whatsapp.botButtons);
-      }
+
       if (appSettings.whatsapp.templates) {
         const mergedTemplates = { ...DEFAULT_TEMPLATES, ...appSettings.whatsapp.templates };
         setTemplates(mergedTemplates);
-        setCurrentTemplates(mergedTemplates); // ← Обновляем currentTemplates
+        setCurrentTemplates(mergedTemplates);
       }
       setIsExpanded(appSettings.whatsapp.enabled);
       if (appSettings.whatsapp.enabled && appSettings.whatsapp.idInstance && appSettings.whatsapp.apiTokenInstance) {
-        // ← Теперь правильно обрабатываем Promise
         checkConnection(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance).catch(console.error);
         setIsTokenVisible(false);
       }
     }
   }, [appSettings]);
 
-  // ← Добавлен эффект для обновления при изменении whatsappRefreshKey
   useEffect(() => {
     if (appSettings.whatsapp?.templates) {
       const mergedTemplates = { ...DEFAULT_TEMPLATES, ...appSettings.whatsapp.templates };
       setTemplates(mergedTemplates);
       setCurrentTemplates(mergedTemplates);
-
     }
   }, [whatsappRefreshKey, appSettings.whatsapp?.templates]);
 
@@ -99,9 +94,9 @@ const Integrations: React.FC<IntegrationsProps> = ({
       apiTokenInstance: apiToken,
       reminderTime,
       reminderDays,
-      templates: { ...templates }, // ← Копируем для новой ссылки
-      botEnabled,
-      botButtons: { ...botButtons }
+      templates: { ...templates },
+      botEnabled
+      // 🔥 УБРАНО: botButtons больше не передаётся
     };
 
     onUpdateSettings({
@@ -109,13 +104,11 @@ const Integrations: React.FC<IntegrationsProps> = ({
       whatsapp: { ...waSettings }
     });
 
-    // ← Уведомляем родителя об изменении настроек
     if (onSettingsChanged) {
       onSettingsChanged();
     }
 
     if (waEnabled) {
-      // ← Правильно обрабатываем Promise
       await checkConnection(idInstance, apiToken).catch(console.error);
       setIsTokenVisible(false);
       alert("Настройки сохранены. Проверяем соединение...");
@@ -140,7 +133,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
       newTemplates.overdue = text;
     }
     setTemplates(newTemplates);
-    setCurrentTemplates(newTemplates); // ← Обновляем currentTemplates
+    setCurrentTemplates(newTemplates);
   };
 
   const getCurrentTemplate = () => {
@@ -177,7 +170,6 @@ const Integrations: React.FC<IntegrationsProps> = ({
   };
 
   const copyToClipboard = async (text: string) => {
-    // ← Правильно обрабатываем Promise
     await navigator.clipboard.writeText(text).catch(console.error);
     alert("Скопировано!");
   };
@@ -421,7 +413,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
 
             <hr className="border-slate-100" />
 
-            {/* Bot Settings */}
+            {/* 🔥 ОБНОВЛЁННЫЙ БЛОК БОТА (БЕЗ КНОПОК) */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-semibold text-slate-700 text-sm flex items-center gap-2">
@@ -445,6 +437,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
 
               {botEnabled && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4 animate-fade-in">
+                  {/* Webhook URL */}
                   <div>
                     <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Webhook URL</label>
                     <div className="flex gap-2">
@@ -464,36 +457,34 @@ const Integrations: React.FC<IntegrationsProps> = ({
                       Укажите этот URL в настройках инстанса Green API
                     </p>
                   </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Активные кнопки</label>
-                    <div className="space-y-2">
-                      <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 p-1 rounded-lg -ml-1 transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={botButtons.debt}
-                          onChange={e => setBotButtons({ ...botButtons, debt: e.target.checked })}
-                          className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 border-slate-300"
-                        />
-                        <span className="text-sm text-slate-700">📊 Мой долг</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 p-1 rounded-lg -ml-1 transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={botButtons.paymentDate}
-                          onChange={e => setBotButtons({ ...botButtons, paymentDate: e.target.checked })}
-                          className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 border-slate-300"
-                        />
-                        <span className="text-sm text-slate-700">📅 Дата платежа</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 p-1 rounded-lg -ml-1 transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={botButtons.conditions}
-                          onChange={e => setBotButtons({ ...botButtons, conditions: e.target.checked })}
-                          className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 border-slate-300"
-                        />
-                        <span className="text-sm text-slate-700">📝 Условия рассрочки</span>
-                      </label>
+
+                  {/* 🔥 ИНФО-БЛОК ВМЕСТО КНОПОК */}
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                    <div className="flex gap-3">
+                      <div className="text-2xl">💬</div>
+                      <div>
+                        <p className="text-sm font-bold text-indigo-900 mb-1">Бот работает по текстовым командам</p>
+                        <p className="text-xs text-indigo-700 mb-3">
+                          Клиенты могут писать обычные слова — кнопки больше не нужны.
+                        </p>
+                        <div className="grid grid-cols-1 gap-2 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="bg-white px-2 py-1 rounded border border-indigo-200 font-mono">долг</span>
+                            <span className="text-indigo-600">→ показать сумму задолженности</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="bg-white px-2 py-1 rounded border border-indigo-200 font-mono">платеж</span>
+                            <span className="text-indigo-600">→ показать дату ближайшего платежа</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="bg-white px-2 py-1 rounded border border-indigo-200 font-mono">условия</span>
+                            <span className="text-indigo-600">→ показать параметры рассрочки</span>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-indigo-500 mt-3">
+                          Также поддерживаются синонимы: «остаток», «задолженность», «когда платить», «график», «рассрочка», «срок» и цифры 1, 2, 3.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
