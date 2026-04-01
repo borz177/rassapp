@@ -467,14 +467,14 @@ const Contracts: React.FC<ContractsProps> = ({
                   <span className="text-indigo-500"><Calendar size={18} /></span>
                   <span>График платежей</span>
                 </button>
-
+                {/*
                 <button
                   onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
                   className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
                 >
                   <span className="text-slate-500"><Edit3 size={18} /></span>
                   <span>Редактировать</span>
-                </button>
+                </button>*/}
 
                 <button
                   onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
