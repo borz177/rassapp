@@ -523,60 +523,112 @@ _Просто напишите слово: *история* или *услови
         let responseText = '';
 
         if (command === 'history') {
-          let totalDebt = 0;
-          let totalMonthly = 0;
+  let totalDebt = 0;
+  let totalMonthly = 0;
 
-          responseText = `╔═══════════════════════════╗
+  // 🔥 ГРУППИРОВКА по товарам
+  const productsMap = new Map();
+
+  for (const sale of activeSales) {
+    const productName = sale.productName || sale.product || `Товар #${sale.id}`;
+
+    if (!productsMap.has(productName)) {
+      productsMap.set(productName, {
+        name: productName,
+        debt: 0,
+        monthly: 0,
+        payments: []
+      });
+    }
+
+    const productData = productsMap.get(productName);
+    const paymentPlan = sale.paymentPlan || [];
+
+    // 🔥 Расчёт долга (только неоплаченные плановые)
+    const unpaid = paymentPlan.filter(p => {
+      const isPaid = p.isPaid || p.is_paid || p.paid;
+      return !(isPaid === true || isPaid === 'true' || isPaid === 1);
+    });
+    const debt = unpaid.reduce((sum, p) => sum + (parseFloat(p.amount || p.sum || 0) || 0), 0);
+    const monthly = parseFloat(sale.monthlyPayment || paymentPlan[0]?.amount || 0) || 0;
+
+    productData.debt += debt;
+    productData.monthly += monthly;
+
+    // 🔥 ИСТОРИЯ ПЛАТЕЖЕЙ: Только реальные (isRealPayment: true)
+    // Если isRealPayment нет — берём все оплаченные
+    const paidHistory = paymentPlan
+      .filter(p => {
+        const isPaid = p.isPaid || p.is_paid || p.paid;
+        const isPaidValue = isPaid === true || isPaid === 'true' || isPaid === 1;
+
+        // 🔥 Если есть isRealPayment — берём только true
+        if (p.isRealPayment !== undefined) {
+          return isPaidValue && p.isRealPayment === true;
+        }
+        // Если поля нет — берём все оплаченные
+        return isPaidValue;
+      })
+      .map(p => ({
+        date: new Date(p.actualDate || p.date), // 🔥 Используем actualDate если есть
+        amount: parseFloat(p.amount || p.sum || 0) || 0
+      }))
+      .filter(p => !isNaN(p.date.getTime()) && p.amount > 0);
+
+    productData.payments.push(...paidHistory);
+  }
+
+  // Формируем ответ
+  responseText = `╔═══════════════════════════╗
      *📋 Детали договоров*
 ╚═══════════════════════════╝\n\n`;
 
-          for (const sale of activeSales) {
-            const unpaid = sale.paymentPlan?.filter(p => !p.isPaid) || [];
-            const debt = unpaid.reduce((sum, p) => sum + (p.amount || 0), 0);
-            const monthly = sale.monthlyPayment ||
-                           (sale.paymentPlan && sale.paymentPlan.length > 0 ? sale.paymentPlan[0]?.amount : 0) ||
-                           0;
+  for (const [productName, data] of productsMap) {
+    totalDebt += data.debt;
+    totalMonthly += data.monthly;
 
-            totalDebt += debt;
-            totalMonthly += monthly;
+    responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    responseText += `🔹 *${productName}*\n`;
+    responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    responseText += `• Ежемесячный платёж: *${formatMoney(data.monthly)} ₽*\n`;
 
-            const productName = sale.productName || `Товар #${sale.id}`;
+    if (data.debt > 0) {
+      responseText += `• 🔴 Остаток долга: *${formatMoney(data.debt)} ₽*\n`;
+    } else {
+      responseText += `• ✅ Погашен полностью\n`;
+    }
 
-            // 🔥 Товар
-            responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-            responseText += `🔹 *${productName}*\n`;
-            responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-            responseText += `• Ежемесячный платёж: *${formatMoney(monthly)} ₽*\n`;
+    // 🔥 История платежей (убираем дубли по дате + сумме)
+    if (data.payments.length > 0) {
+      const uniquePayments = data.payments
+        .sort((a, b) => b.date - a.date)
+        .filter((p, index, arr) => {
+          // Убираем дубли: если такая же дата и сумма уже была
+          const prev = arr[index - 1];
+          if (!prev) return true;
+          return p.date.toISOString() !== prev.date.toISOString() || p.amount !== prev.amount;
+        })
+        .slice(0, 10);
 
-            if (debt > 0) {
-              responseText += `• 🔴 Остаток долга: *${formatMoney(debt)} ₽*\n`;
-            } else {
-              responseText += `• ✅ Погашен полностью\n`;
-            }
+      responseText += `\n📜 *История платежей:*\n`;
+      for (const p of uniquePayments) {
+        const dateStr = p.date.toLocaleDateString('ru-RU', {
+          day: 'numeric', month: 'short', year: 'numeric'
+        });
+        responseText += `   • ${dateStr} — *${formatMoney(p.amount)} ₽* ✅\n`;
+      }
+    }
 
-            // 🔥 История платежей ДЛЯ ЭТОГО ТОВАРА
-            const paidHistory = (sale.paymentPlan || [])
-              .filter(p => p.isPaid)
-              .sort((a, b) => new Date(b.date) - new Date(a.date))
-              .slice(0, 5); // Последние 5 платежей для каждого товара
+    responseText += `\n`;
+  }
 
-            if (paidHistory.length > 0) {
-              responseText += `\n📜 *История платежей:*\n`;
-              for (const p of paidHistory) {
-                responseText += `   • ${formatDate(p.date)} — *${formatMoney(p.amount)} ₽* ✅\n`;
-              }
-            }
-
-            responseText += `\n`;
-          }
-
-          // Итого
-          responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-          responseText += `📊 *ОБЩИЙ ИТОГ:*\n`;
-          responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-          responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
-          responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n`;
-        }
+  // Итого
+  responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  responseText += `📊 *ОБЩИЙ ИТОГ:*\n`;
+  responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
+  responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n`;
+}
         else if (command === 'conditions') {
   // 🔥 ИСПРАВЛЕНО: не кодируем кириллицу, только заменяем пробелы на дефисы
   const cleanCompany = (companyName || 'НашаКомпания').trim().replace(/\s+/g, '-');
