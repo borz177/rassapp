@@ -391,34 +391,20 @@ app.post(
 
       res.status(200).send('OK');
 
-      if (!senderData?.chatId || typeWebhook !== 'incomingMessageReceived') {
-        console.log('❌ webhook: не входящее сообщение');
-        return;
-      }
-      if (messageData?.typeMessage !== 'textMessage') {
-        console.log('❌ webhook: не текст');
-        return;
-      }
+      if (!senderData?.chatId || typeWebhook !== 'incomingMessageReceived') return;
+      if (messageData?.typeMessage !== 'textMessage') return;
 
       const chatId = senderData.chatId;
-      if (chatId.includes('@g.us')) {
-        console.log('❌ webhook: группа');
-        return;
-      }
+      if (chatId.includes('@g.us')) return;
 
       const rawPhone = chatId.replace('@c.us', '');
       const senderPhone = normalizePhone(rawPhone);
       const text = (messageData.textMessageData.textMessage || '').trim().toLowerCase();
 
-      console.log('📩 webhook: сообщение от', senderPhone, '-', text);
-
       const instanceId = String(instanceData?.idInstance || instanceData?.instanceId || body?.idInstance || '');
-      if (!instanceId) {
-        console.log('❌ webhook: нет idInstance');
-        return;
-      }
+      if (!instanceId) return;
 
-      // Поиск менеджера
+      // Поиск менеджера (только с включённым ботом)
       const managerResult = await pool.query(`
         SELECT id, name, whatsapp_settings
         FROM users
@@ -427,22 +413,17 @@ app.post(
         LIMIT 1
       `, [instanceId]);
 
-      if (managerResult.rows.length === 0) {
-        console.log('❌ webhook: менеджер не найден или бот выключен');
-        return;
-      }
+      if (managerResult.rows.length === 0) return;
 
       const manager = managerResult.rows[0];
       const { id: managerId, name: managerName, whatsapp_settings: settings } = manager;
 
       const parsedSettings = typeof settings === 'string' ? JSON.parse(settings) : settings;
-      const companyName = parsedSettings?.companyName || 'Наша Компания';
+      if (!parsedSettings?.botEnabled) return;
 
-      // 🔥 ПРОВЕРКА: включено ли приветствие
+      const companyName = parsedSettings?.companyName || 'Наша Компания';
       const welcomeEnabled = parsedSettings?.welcomeEnabled ?? true;
       const welcomeInterval = parsedSettings?.welcomeInterval ?? 24;
-
-      console.log('✅ webhook: менеджер', managerName, '| welcomeEnabled:', welcomeEnabled);
 
       // Поиск клиента
       const customersResult = await pool.query(`
@@ -452,35 +433,11 @@ app.post(
         AND user_id = $1
       `, [managerId]);
 
-      // 🔥 Более гибкое сравнение телефонов
-const customerRow = customersResult.rows.find(row => {
-  const dbPhoneRaw = row.data?.phone || '';
+      const customerRow = customersResult.rows.find(row =>
+        normalizePhone(row.data?.phone || '') === senderPhone
+      );
 
-  // Нормализуем оба номера
-  const dbPhone = normalizePhone(dbPhoneRaw);
-  const inputPhone = normalizePhone(senderPhone);
-
-  // Сравниваем последние 10 цифр (универсальный способ)
-  const dbLast10 = dbPhone.slice(-10);
-  const inputLast10 = inputPhone.slice(-10);
-
-  const match = dbLast10 === inputLast10;
-
-  console.log('🔎 Сравнение телефонов:', {
-    db: dbPhone,
-    input: inputPhone,
-    dbLast10,
-    inputLast10,
-    match
-  });
-
-  return match;
-});
-
-      if (!customerRow) {
-        console.log('❌ webhook: клиент не найден');
-        return;
-      }
+      if (!customerRow) return;
 
       const customerId = customerRow.id;
       let customerData = customerRow.data;
@@ -505,13 +462,15 @@ const customerRow = customersResult.rows.find(row => {
       const activeSales = salesResult.rows.map(r => r.data);
 
       if (activeSales.length === 0) {
-        console.log('❌ webhook: нет договоров');
         await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId,
           `Здравствуйте 👋 Я ассистент ${managerName}. У вас нет активных договоров.`);
         return;
       }
 
-      console.log('✅ webhook: договоров найдено:', activeSales.length);
+      const formatMoney = (amount) => Number(amount).toLocaleString('ru-RU').replace(',', ' ');
+      const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('ru-RU', {
+        day: 'numeric', month: 'short', year: 'numeric'
+      });
 
       // Проверка команд
       let command = null;
@@ -521,31 +480,30 @@ const customerRow = customersResult.rows.find(row => {
         command = 'conditions';
       }
 
-      console.log('🎯 webhook: команда:', command || 'не распознана');
-
-      const formatMoney = (amount) => Number(amount).toLocaleString('ru-RU').replace(',', ' ');
-      const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('ru-RU', {
-        day: 'numeric', month: 'short', year: 'numeric'
-      });
-
-      // 🔥 ПРОВЕРКА ПРИВЕТСТВИЯ
+      // Проверка приветствия
       if (welcomeEnabled && !command) {
         const now = Date.now();
         const lastGreeting = customerData.lastGreetingTime || 0;
         const hoursSinceGreeting = (now - lastGreeting) / (1000 * 60 * 60);
 
-        console.log('⏰ webhook: lastGreeting:', lastGreeting, '| часов прошло:', hoursSinceGreeting.toFixed(1));
-
         if (!customerData.lastGreetingTime || hoursSinceGreeting > welcomeInterval) {
-          const greeting = `Здравствуйте 👋 Я ассистент ${managerName}.
+          const greeting = `╔═══════════════════════════╗
+     *Здравствуйте!* 👋
+╚═══════════════════════════╝
 
-Напишите:
-• *история* — если вы клиент и хотите узнать детали договоров и историю платежей 
-• *условия* — если хотите узнать условия рассрочки, отправим ссылку на калькулятор чтобы вы сами посчитали
+Я ассистент *${managerName}*, рад помочь вам!
 
-А если у вас другой вопрос, то ${managerName} ответит вам в ближайшее время 🤝`;
+📌 *Что я умею:*
 
-          console.log('📤 webhook: отправляем приветствие...');
+1️⃣ *История* — покажу детали всех договоров и историю платежей
+
+2️⃣ *Условия* — отправлю ссылку на калькулятор, чтобы вы могли рассчитать рассрочку
+
+💬 *А если у вас другой вопрос* — ${managerName} ответит вам в ближайшее время! 🤝
+
+─────────────────────────────
+_Просто напишите слово: *история* или *условия*_`;
+
           await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId, greeting);
 
           customerData.lastGreetingTime = now;
@@ -554,26 +512,23 @@ const customerRow = customersResult.rows.find(row => {
             `UPDATE data_items SET data = $1 WHERE id = $2`,
             [JSON.stringify(updatedCustomer), customerId]
           );
-          console.log('✅ webhook: приветствие отправлено');
           return;
-        } else {
-          console.log('⏭️ webhook: приветствие пропущено (интервал не прошёл)');
         }
       }
 
       // Обработка команд
       if (command) {
-        if (customerData.lastBotResponse === command) {
-          console.log('⏭️ webhook: повтор команды, пропускаем');
-          return;
-        }
+        if (customerData.lastBotResponse === command) return;
 
         let responseText = '';
 
         if (command === 'history') {
           let totalDebt = 0;
           let totalMonthly = 0;
-          const contracts = [];
+
+          responseText = `╔═══════════════════════════╗
+     *📋 Детали договоров*
+╚═══════════════════════════╝\n\n`;
 
           for (const sale of activeSales) {
             const unpaid = sale.paymentPlan?.filter(p => !p.isPaid) || [];
@@ -584,60 +539,68 @@ const customerRow = customersResult.rows.find(row => {
 
             totalDebt += debt;
             totalMonthly += monthly;
-            contracts.push({
-              name: sale.productName || `Товар #${sale.id}`,
-              debt,
-              monthly,
-              status: sale.status
-            });
-          }
 
-          responseText = `📋 *Детали ваших договоров:*\n\n`;
-          for (const c of contracts) {
-            const statusIcon = c.status === 'DRAFT' ? '📝' : '✅';
-            responseText += `${statusIcon} *${c.name}*\n`;
-            responseText += `   • Ежемесячный платёж: *${formatMoney(c.monthly)} ₽*\n`;
-            responseText += `   • ${c.debt > 0 ? `🔴 Остаток долга: *${formatMoney(c.debt)} ₽*` : '✅ Погашен полностью'}\n`;
-            responseText += `   • Статус: *${c.status === 'DRAFT' ? 'Черновик' : 'Активен'}*\n\n`;
-          }
+            const productName = sale.productName || `Товар #${sale.id}`;
 
-          responseText += `━━━━━━━━━━━━━━\n`;
-          responseText += `📊 *Итого:*\n`;
-          responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
-          responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n\n`;
+            // 🔥 Товар
+            responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            responseText += `🔹 *${productName}*\n`;
+            responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            responseText += `• Ежемесячный платёж: *${formatMoney(monthly)} ₽*\n`;
 
-          const paidHistory = activeSales
-            .flatMap(sale => (sale.paymentPlan || []).filter(p => p.isPaid).map(p => ({
-              date: p.date, amount: p.amount, product: sale.productName || 'Товар'
-            })))
-            .sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10);
-
-          if (paidHistory.length > 0) {
-            responseText += `📜 *История платежей:*\n`;
-            for (const p of paidHistory) {
-              responseText += `• ${formatDate(p.date)} — ✅ *${formatMoney(p.amount)} ₽*\n`;
+            if (debt > 0) {
+              responseText += `• 🔴 Остаток долга: *${formatMoney(debt)} ₽*\n`;
+            } else {
+              responseText += `• ✅ Погашен полностью\n`;
             }
+
+            // 🔥 История платежей ДЛЯ ЭТОГО ТОВАРА
+            const paidHistory = (sale.paymentPlan || [])
+              .filter(p => p.isPaid)
+              .sort((a, b) => new Date(b.date) - new Date(a.date))
+              .slice(0, 5); // Последние 5 платежей для каждого товара
+
+            if (paidHistory.length > 0) {
+              responseText += `\n📜 *История платежей:*\n`;
+              for (const p of paidHistory) {
+                responseText += `   • ${formatDate(p.date)} — *${formatMoney(p.amount)} ₽* ✅\n`;
+              }
+            }
+
+            responseText += `\n`;
           }
+
+          // Итого
+          responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+          responseText += `📊 *ОБЩИЙ ИТОГ:*\n`;
+          responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+          responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
+          responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n`;
         }
         else if (command === 'conditions') {
-          const cleanCompany = encodeURIComponent(companyName || 'НашаКомпания');
-          const baseUrl = 'https://rassrochka.pro';
-          const calculatorUrl = `${baseUrl}/calc/${cleanCompany}`;
+  // 🔥 ИСПРАВЛЕНО: не кодируем кириллицу, только заменяем пробелы на дефисы
+  const cleanCompany = (companyName || 'НашаКомпания').trim().replace(/\s+/g, '-');
+  const baseUrl = 'https://rassrochka.pro';
+  const calculatorUrl = `${baseUrl}/calc/${cleanCompany}`;
 
-          const firstSale = activeSales[0];
-          const maxTerm = Math.max(...activeSales.map(s => s.installments || 3));
-          const minRate = firstSale.interestRate || 0;
-          const firstPayment = firstSale.downPayment || 0;
+  const firstSale = activeSales[0];
+  const maxTerm = Math.max(...activeSales.map(s => s.installments || 3));
+  const minRate = firstSale.interestRate || 0;
+  const firstPayment = firstSale.downPayment || 0;
 
-          responseText = `📝 *Условия рассрочки в ${companyName}:*\n\n`;
-          responseText += `• Срок: до *${maxTerm} мес.*\n`;
-          responseText += `• Процентная ставка: от *${minRate}%*\n`;
-          responseText += `• Первый взнос: от *${formatMoney(firstPayment)} ₽*\n\n`;
-          responseText += `🔗 *Рассчитайте свой платёж онлайн:*\n${calculatorUrl}\n\n`;
-          responseText += `_(Нажмите на ссылку выше, чтобы открыть калькулятор)_`;
-        }
+  responseText = `╔═══════════════════════════╗
+   *📝 Условия рассрочки*
+╚═══════════════════════════╝\n\n`;
+  responseText += `🏢 *${companyName}*\n\n`;
+  responseText += `• Срок: до *${maxTerm} мес.*\n`;
+  responseText += `• Процентная ставка: от *${minRate}%*\n`;
+  responseText += `• Первый взнос: от *${formatMoney(firstPayment)} ₽*\n\n`;
+  responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  responseText += `🔗 *Рассчитайте платёж онлайн:*\n`;
+  responseText += `${calculatorUrl}\n\n`;
+  responseText += `_(Нажмите на ссылку выше)_`;
+}
 
-        console.log('📤 webhook: отправляем ответ на команду...');
         await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId, responseText);
 
         const updatedCustomer = { ...customerData, lastBotResponse: command, lastGreetingTime: customerData.lastGreetingTime };
@@ -645,13 +608,11 @@ const customerRow = customersResult.rows.find(row => {
           `UPDATE data_items SET data = $1 WHERE id = $2`,
           [JSON.stringify(updatedCustomer), customerId]
         );
-        console.log('✅ webhook: ответ отправлен');
         return;
       }
 
     } catch (error) {
-      console.error('💥 webhook error:', error.message);
-      console.error(error.stack);
+      // Тихая ошибка — не спамим логами
     }
   }
 );
