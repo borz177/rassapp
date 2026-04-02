@@ -452,9 +452,30 @@ app.post(
         AND user_id = $1
       `, [managerId]);
 
-      const customerRow = customersResult.rows.find(row =>
-        normalizePhone(row.data?.phone || '') === senderPhone
-      );
+      // 🔥 Более гибкое сравнение телефонов
+const customerRow = customersResult.rows.find(row => {
+  const dbPhoneRaw = row.data?.phone || '';
+
+  // Нормализуем оба номера
+  const dbPhone = normalizePhone(dbPhoneRaw);
+  const inputPhone = normalizePhone(senderPhone);
+
+  // Сравниваем последние 10 цифр (универсальный способ)
+  const dbLast10 = dbPhone.slice(-10);
+  const inputLast10 = inputPhone.slice(-10);
+
+  const match = dbLast10 === inputLast10;
+
+  console.log('🔎 Сравнение телефонов:', {
+    db: dbPhone,
+    input: inputPhone,
+    dbLast10,
+    inputLast10,
+    match
+  });
+
+  return match;
+});
 
       if (!customerRow) {
         console.log('❌ webhook: клиент не найден');
