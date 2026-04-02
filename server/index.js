@@ -579,17 +579,16 @@ _Просто напишите слово: *история* или *услови
   }
 
   // Формируем ответ
-  responseText = `╔═══════════════════════════╗
+  responseText = `╔══════════════════════╗
      *📋 Детали договоров*
-╚═══════════════════════════╝\n\n`;
+╚══════════════════════╝\n\n`;
 
   for (const [productName, data] of productsMap) {
     totalDebt += data.debt;
     totalMonthly += data.monthly;
 
-    responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    responseText += `━━━━━━━━━━━━━\n`;
     responseText += `🔹 *${productName}*\n`;
-    responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     responseText += `• Ежемесячный платёж: *${formatMoney(data.monthly)} ₽*\n`;
 
     if (data.debt > 0) {
@@ -623,9 +622,8 @@ _Просто напишите слово: *история* или *услови
   }
 
   // Итого
-  responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  responseText += `━━━━━━━━━━━━━\n`;
   responseText += `📊 *ОБЩИЙ ИТОГ:*\n`;
-  responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
   responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
   responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n`;
 }
