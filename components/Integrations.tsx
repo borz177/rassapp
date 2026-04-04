@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AppSettings, WhatsAppSettings } from '../types';
 import { ICONS } from '../constants';
 import { checkGreenApiConnection } from '../services/whatsapp';
-
+// 🔥 В начало Integrations.tsx (после других import):
 import { api } from '../services/api';
 interface IntegrationsProps {
   appSettings: AppSettings;
@@ -92,10 +92,16 @@ const Integrations: React.FC<IntegrationsProps> = ({
   };
 
   const handleSaveSettings = async () => {
-  // 🔥 1. Сначала сохраняем конфиг калькулятора (если есть ставки)
+  console.log('🔧 [DEBUG] Начинаем сохранение настроек...');
+
+  // 🔥 1. Сохраняем конфиг калькулятора (если есть ставки)
   let calculatorConfigId: string | null = null;
 
+  console.log('📊 [DEBUG] appSettings.calculator:', appSettings?.calculator);
+
   if (appSettings?.calculator?.termRates?.length > 0) {
+    console.log('💾 [DEBUG] Пытаемся сохранить конфиг калькулятора...');
+
     try {
       calculatorConfigId = await api.saveCalculatorConfig({
         defaultRate: appSettings.calculator.defaultInterestRate,
@@ -104,14 +110,18 @@ const Integrations: React.FC<IntegrationsProps> = ({
           rate: r.rate
         }))
       });
-      console.log('✅ Конфиг калькулятора сохранён, configId:', calculatorConfigId);
+      console.log('✅ [DEBUG] Конфиг сохранён, configId:', calculatorConfigId);
     } catch (e) {
-      console.error('❌ Не удалось сохранить конфиг калькулятора:', e);
+      console.error('❌ [DEBUG] Ошибка сохранения конфига:', e);
       // Не прерываем сохранение остальных настроек
     }
+  } else {
+    console.log('⏭️ [DEBUG] Пропускаем сохранение конфига (нет termRates)');
   }
 
   // 🔥 2. Формируем настройки WhatsApp
+  console.log('📦 [DEBUG] Формируем waSettings...');
+
   const waSettings: WhatsAppSettings = {
     enabled: waEnabled,
     idInstance,
@@ -128,11 +138,15 @@ const Integrations: React.FC<IntegrationsProps> = ({
     conditionsEnabled,
     companyName: appSettings?.companyName || 'Наша Компания',
     calculator: appSettings?.calculator,
-    // 🔥 3. Сохраняем configId для короткой ссылки
+    // 🔥 Сохраняем configId (новый или старый)
     calculatorConfigId: calculatorConfigId || appSettings?.whatsapp?.calculatorConfigId
   };
 
-  // 🔥 4. Обновляем настройки
+  console.log('📦 [DEBUG] waSettings.calculatorConfigId:', waSettings.calculatorConfigId);
+
+  // 🔥 3. Обновляем настройки
+  console.log('🔄 [DEBUG] Вызываем onUpdateSettings...');
+
   onUpdateSettings({
     ...appSettings,
     whatsapp: { ...waSettings }
@@ -142,7 +156,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
     onSettingsChanged();
   }
 
-  // 🔥 5. Проверяем соединение с WhatsApp
+  // 🔥 4. Проверяем соединение с WhatsApp
   if (waEnabled) {
     await checkConnection(idInstance, apiToken).catch(console.error);
     setIsTokenVisible(false);
@@ -150,6 +164,8 @@ const Integrations: React.FC<IntegrationsProps> = ({
   } else {
     alert("Интеграция WhatsApp отключена.");
   }
+
+  console.log('✅ [DEBUG] Сохранение завершено');
 };
 
   const toggleDay = (day: number) => {
