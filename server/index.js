@@ -547,15 +547,14 @@ app.post(
             productData.payments.push(...paidHistory);
           }
 
-          responseText = `╔═══════════════════════════╗\n     *📋 Детали договоров*\n╚═══════════════════════════╝\n\n`;
+          responseText = `╔═════════════════════╗\n     *📋 Детали договоров*\n╚═════════════════════╝\n\n`;
 
           for (const [productName, data] of productsMap) {
             totalDebt += data.debt;
             totalMonthly += data.monthly;
 
-            responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            responseText += `━━━━━━━━━━━━━━━━━━━━━━\n`;
             responseText += `🔹 *${productName}*\n`;
-            responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
             responseText += `• Ежемесячный платёж: *${formatMoney(data.monthly)} ₽*\n`;
 
             if (data.debt > 0.01) {
@@ -582,9 +581,8 @@ app.post(
             responseText += `\n`;
           }
 
-          responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+          responseText += `━━━━━━━━━━━━━━━━━━━━\n`;
           responseText += `📊 *ОБЩИЙ ИТОГ:*\n`;
-          responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
           responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
           responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n`;
         }
