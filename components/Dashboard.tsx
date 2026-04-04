@@ -735,32 +735,46 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                             {/* Блок задолженности */}
                             {(() => {
-                                const today = new Date();
-                                today.setHours(0, 0, 0, 0);
+    // 🔹 Функция расчёта просрочки (как в Contracts.tsx)
+    const calculateOverdueAmount = (sale: Sale) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-                                const overdueDebt = p.sale.paymentPlan
-                                    .filter(payment => {
-                                        const paymentDate = new Date(payment.date);
-                                        paymentDate.setHours(0, 0, 0, 0);
-                                        return !payment.isPaid && paymentDate < today;
-                                    })
-                                    .reduce((sum, payment) => sum + payment.amount, 0);
+        // Сколько должно было быть оплачено к сегодня (только плановые платежи)
+        let expectedPaid = sale.downPayment;
+        sale.paymentPlan.forEach(p => {
+            const paymentDate = new Date(p.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            // Учитываем только "реальные" плановые платежи (isRealPayment !== true)
+            if ((!p.isRealPayment || p.isRealPayment === undefined) && paymentDate < today) {
+                expectedPaid += p.amount;
+            }
+        });
 
-                                if (overdueDebt <= 0) return null;
+        // Сколько фактически оплачено
+        const actualPaid = sale.totalAmount - sale.remainingAmount;
 
-                                return (
-                                    <div className="mt-4 pt-3 border-t border-dashed border-rose-200">
-                                        <div className="flex items-center justify-between text-xs">
-                                    <span className="text-rose-600 font-medium flex items-center gap-1">
-                                      ⚠️ Задолженность
-                                    </span>
-                                            <span className="font-bold text-rose-700 whitespace-nowrap">
-                                      {formatCurrency(overdueDebt, appSettings.showCents)} ₽
-                                    </span>
-                                        </div>
-                                    </div>
-                                );
-                            })()}
+        // Просрочка = разница между ожидаемым и фактическим
+        return Math.max(0, expectedPaid - actualPaid);
+    };
+
+    const overdueDebt = calculateOverdueAmount(p.sale);
+
+    if (overdueDebt <= 0) return null;
+
+    return (
+        <div className="mt-4 pt-3 border-t border-dashed border-rose-200">
+            <div className="flex items-center justify-between text-xs">
+                <span className="text-rose-600 font-medium flex items-center gap-1">
+                    ⚠️ Задолженность
+                </span>
+                <span className="font-bold text-rose-700 whitespace-nowrap">
+                    {formatCurrency(overdueDebt, appSettings.showCents)} ₽
+                </span>
+            </div>
+        </div>
+    );
+})()}
                         </div>
                     ))}
                   </div>

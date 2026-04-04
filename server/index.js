@@ -362,21 +362,25 @@ const normalizePhone = (phone) => {
   return cleaned;
 };
 
-// 🔥 ИСПРАВЛЕНИЕ 1: Увеличен таймаут с 5000 до 15000
 async function sendMessage(idInstance, apiTokenInstance, chatId, message) {
   try {
-    const sendUrl = `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiTokenInstance}`;
+    const stateUrl = `https://api.green-api.com/waInstance${idInstance}/getStateInstance/${apiTokenInstance}`;
+    const stateResponse = await axios.get(stateUrl, { timeout: 5000 });
 
+    if (stateResponse.data?.stateInstance !== 'authorized') {
+      return false;
+    }
+
+    const sendUrl = `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiTokenInstance}`;
     const response = await axios.post(
       sendUrl,
       { chatId, message },
-      { timeout: 15000 }  // ← 15 секунд вместо 5
+      { timeout: 10000 }
     );
 
     return !!response.data?.idMessage;
 
   } catch (e) {
-    console.error('WhatsApp Send Error:', e.message);
     return false;
   }
 }
@@ -404,7 +408,7 @@ app.post(
       const instanceId = String(instanceData?.idInstance || instanceData?.instanceId || body?.idInstance || '');
       if (!instanceId) return;
 
-      // Поиск менеджера (только с включённым ботом)
+      // Поиск менеджера
       const managerResult = await pool.query(`
         SELECT id, name, whatsapp_settings
         FROM users
@@ -422,8 +426,6 @@ app.post(
       if (!parsedSettings?.botEnabled) return;
 
       const companyName = parsedSettings?.companyName || 'Наша Компания';
-      const welcomeEnabled = parsedSettings?.welcomeEnabled ?? true;
-      const welcomeInterval = parsedSettings?.welcomeInterval ?? 24;
 
       // Поиск клиента
       const customersResult = await pool.query(`
@@ -446,8 +448,9 @@ app.post(
       if (customerData.lastBotResponse === undefined) {
         customerData.lastBotResponse = null;
       }
-      if (customerData.lastGreetingTime === undefined) {
-        customerData.lastGreetingTime = null;
+      // 🔥 НОВОЕ: Отслеживание сообщения "нет договоров"
+      if (customerData.lastNoContractsMessage === undefined) {
+        customerData.lastNoContractsMessage = null;
       }
 
       // Поиск договоров (ACTIVE + DRAFT)
@@ -461,9 +464,25 @@ app.post(
 
       const activeSales = salesResult.rows.map(r => r.data);
 
+      // 🔥 ПРОВЕРКА: Нет договоров
       if (activeSales.length === 0) {
-        await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId,
-          `Здравствуйте 👋 Я ассистент ${managerName}. У вас нет активных договоров.`);
+        const now = Date.now();
+        const lastNoContracts = customerData.lastNoContractsMessage || 0;
+        const hoursSince = (now - lastNoContracts) / (1000 * 60 * 60);
+
+        // Отправляем не чаще чем раз в 24 часа
+        if (!customerData.lastNoContractsMessage || hoursSince > 24) {
+          await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId,
+            `Здравствуйте 👋 Я ассистент ${managerName}. У вас нет активных договоров.`);
+
+          // Сохраняем время отправки
+          customerData.lastNoContractsMessage = now;
+          const updatedCustomer = { ...customerData, lastNoContractsMessage: now };
+          await pool.query(
+            `UPDATE data_items SET data = $1 WHERE id = $2`,
+            [JSON.stringify(updatedCustomer), customerId]
+          );
+        }
         return;
       }
 
@@ -480,42 +499,6 @@ app.post(
         command = 'conditions';
       }
 
-      // Проверка приветствия
-      if (welcomeEnabled && !command) {
-        const now = Date.now();
-        const lastGreeting = customerData.lastGreetingTime || 0;
-        const hoursSinceGreeting = (now - lastGreeting) / (1000 * 60 * 60);
-
-        if (!customerData.lastGreetingTime || hoursSinceGreeting > welcomeInterval) {
-          const greeting = `╔═══════════════════════════╗
-     *Здравствуйте!* 👋
-╚═══════════════════════════╝
-
-Я ассистент *${managerName}*, рад помочь вам!
-
-📌 *Что я умею:*
-
-1️⃣ *История* — покажу детали всех договоров и историю платежей
-
-2️⃣ *Условия* — отправлю ссылку на калькулятор, чтобы вы могли рассчитать рассрочку
-
-💬 *А если у вас другой вопрос* — ${managerName} ответит вам в ближайшее время! 🤝
-
-─────────────────────────────
-_Просто напишите слово: *история* или *условия*_`;
-
-          await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId, greeting);
-
-          customerData.lastGreetingTime = now;
-          const updatedCustomer = { ...customerData, lastGreetingTime: now };
-          await pool.query(
-            `UPDATE data_items SET data = $1 WHERE id = $2`,
-            [JSON.stringify(updatedCustomer), customerId]
-          );
-          return;
-        }
-      }
-
       // Обработка команд
       if (command) {
         if (customerData.lastBotResponse === command) return;
@@ -523,137 +506,150 @@ _Просто напишите слово: *история* или *услови
         let responseText = '';
 
         if (command === 'history') {
-  let totalDebt = 0;
-  let totalMonthly = 0;
+          let totalDebt = 0;
+          let totalMonthly = 0;
 
-  // 🔥 ГРУППИРОВКА по товарам
-  const productsMap = new Map();
+          // ГРУППИРОВКА по товарам
+          const productsMap = new Map();
 
-  for (const sale of activeSales) {
-    const productName = sale.productName || sale.product || `Товар #${sale.id}`;
+          for (const sale of activeSales) {
+            const productName = sale.productName || sale.product || `Товар #${sale.id}`;
 
-    if (!productsMap.has(productName)) {
-      productsMap.set(productName, {
-        name: productName,
-        debt: 0,
-        monthly: 0,
-        payments: []
-      });
-    }
+            if (!productsMap.has(productName)) {
+              productsMap.set(productName, {
+                name: productName,
+                debt: 0,
+                monthly: 0,
+                payments: []
+              });
+            }
 
-    const productData = productsMap.get(productName);
-    const paymentPlan = sale.paymentPlan || [];
+            const productData = productsMap.get(productName);
+            const paymentPlan = sale.paymentPlan || [];
 
-    // 🔥 Расчёт долга (только неоплаченные плановые)
-    const unpaid = paymentPlan.filter(p => {
-      const isPaid = p.isPaid || p.is_paid || p.paid;
-      return !(isPaid === true || isPaid === 'true' || isPaid === 1);
-    });
-    const debt = unpaid.reduce((sum, p) => sum + (parseFloat(p.amount || p.sum || 0) || 0), 0);
-    const monthly = parseFloat(sale.monthlyPayment || paymentPlan[0]?.amount || 0) || 0;
+            // 🔥 ИСПРАВЛЕННЫЙ РАСЧЁТ ДОЛГА
+            // Сумма всех платежей по плану
+            const totalPlanAmount = paymentPlan.reduce((sum, p) => {
+              return sum + (parseFloat(p.amount || p.sum || 0) || 0);
+            }, 0);
 
-    productData.debt += debt;
-    productData.monthly += monthly;
+            // Сумма всех оплаченных платежей (реальных)
+            const totalPaidAmount = paymentPlan
+              .filter(p => {
+                const isPaid = p.isPaid || p.is_paid || p.paid;
+                const isPaidValue = isPaid === true || isPaid === 'true' || isPaid === 1;
 
-    // 🔥 ИСТОРИЯ ПЛАТЕЖЕЙ: Только реальные (isRealPayment: true)
-    // Если isRealPayment нет — берём все оплаченные
-    const paidHistory = paymentPlan
-      .filter(p => {
-        const isPaid = p.isPaid || p.is_paid || p.paid;
-        const isPaidValue = isPaid === true || isPaid === 'true' || isPaid === 1;
+                if (p.isRealPayment !== undefined) {
+                  return isPaidValue && p.isRealPayment === true;
+                }
+                return isPaidValue;
+              })
+              .reduce((sum, p) => {
+                return sum + (parseFloat(p.amount || p.sum || 0) || 0);
+              }, 0);
 
-        // 🔥 Если есть isRealPayment — берём только true
-        if (p.isRealPayment !== undefined) {
-          return isPaidValue && p.isRealPayment === true;
-        }
-        // Если поля нет — берём все оплаченные
-        return isPaidValue;
-      })
-      .map(p => ({
-        date: new Date(p.actualDate || p.date), // 🔥 Используем actualDate если есть
-        amount: parseFloat(p.amount || p.sum || 0) || 0
-      }))
-      .filter(p => !isNaN(p.date.getTime()) && p.amount > 0);
+            // 🔥 Долг = План - Оплачено (учитывает переплаты!)
+            const debt = Math.max(0, totalPlanAmount - totalPaidAmount);
 
-    productData.payments.push(...paidHistory);
-  }
+            const monthly = parseFloat(sale.monthlyPayment || paymentPlan[0]?.amount || 0) || 0;
 
-  // Формируем ответ
-  responseText = `╔══════════════════════╗
+            productData.debt += debt;
+            productData.monthly += monthly;
+
+            // История: Только реальные платежи
+            const paidHistory = paymentPlan
+              .filter(p => {
+                const isPaid = p.isPaid || p.is_paid || p.paid;
+                const isPaidValue = isPaid === true || isPaid === 'true' || isPaid === 1;
+
+                if (p.isRealPayment !== undefined) {
+                  return isPaidValue && p.isRealPayment === true;
+                }
+                return isPaidValue;
+              })
+              .map(p => ({
+                date: new Date(p.actualDate || p.date),
+                amount: parseFloat(p.amount || p.sum || 0) || 0
+              }))
+              .filter(p => !isNaN(p.date.getTime()) && p.amount > 0);
+
+            productData.payments.push(...paidHistory);
+          }
+
+          responseText = `╔═══════════════════════════╗
      *📋 Детали договоров*
-╚══════════════════════╝\n\n`;
+╚═══════════════════════════╝\n\n`;
 
-  for (const [productName, data] of productsMap) {
-    totalDebt += data.debt;
-    totalMonthly += data.monthly;
+          for (const [productName, data] of productsMap) {
+            totalDebt += data.debt;
+            totalMonthly += data.monthly;
 
-    responseText += `━━━━━━━━━━━━━\n`;
-    responseText += `🔹 *${productName}*\n`;
-    responseText += `• Ежемесячный платёж: *${formatMoney(data.monthly)} ₽*\n`;
+            responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            responseText += `🔹 *${productName}*\n`;
+            responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+            responseText += `• Ежемесячный платёж: *${formatMoney(data.monthly)} ₽*\n`;
 
-    if (data.debt > 0) {
-      responseText += `• 🔴 Остаток долга: *${formatMoney(data.debt)} ₽*\n`;
-    } else {
-      responseText += `• ✅ Погашен полностью\n`;
-    }
+            if (data.debt > 0) {
+              responseText += `• 🔴 Остаток долга: *${formatMoney(data.debt)} ₽*\n`;
+            } else {
+              responseText += `• ✅ Погашен полностью\n`;
+            }
 
-    // 🔥 История платежей (убираем дубли по дате + сумме)
-    if (data.payments.length > 0) {
-      const uniquePayments = data.payments
-        .sort((a, b) => b.date - a.date)
-        .filter((p, index, arr) => {
-          // Убираем дубли: если такая же дата и сумма уже была
-          const prev = arr[index - 1];
-          if (!prev) return true;
-          return p.date.toISOString() !== prev.date.toISOString() || p.amount !== prev.amount;
-        })
-        .slice(0, 10);
+            // История платежей (без дублей)
+            if (data.payments.length > 0) {
+              const uniquePayments = data.payments
+                .sort((a, b) => b.date - a.date)
+                .filter((p, index, arr) => {
+                  const prev = arr[index - 1];
+                  if (!prev) return true;
+                  return p.date.toISOString() !== prev.date.toISOString() || p.amount !== prev.amount;
+                })
+                .slice(0, 10);
 
-      responseText += `\n📜 *История платежей:*\n`;
-      for (const p of uniquePayments) {
-        const dateStr = p.date.toLocaleDateString('ru-RU', {
-          day: 'numeric', month: 'short', year: 'numeric'
-        });
-        responseText += `   • ${dateStr} — *${formatMoney(p.amount)} ₽* ✅\n`;
-      }
-    }
+              responseText += `\n📜 *История платежей:*\n`;
+              for (const p of uniquePayments) {
+                const dateStr = p.date.toLocaleDateString('ru-RU', {
+                  day: 'numeric', month: 'short', year: 'numeric'
+                });
+                responseText += `   • ${dateStr} — *${formatMoney(p.amount)} ₽* ✅\n`;
+              }
+            }
 
-    responseText += `\n`;
-  }
+            responseText += `\n`;
+          }
 
-  // Итого
-  responseText += `━━━━━━━━━━━━━\n`;
-  responseText += `📊 *ОБЩИЙ ИТОГ:*\n`;
-  responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
-  responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n`;
-}
+          responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+          responseText += `📊 *ОБЩИЙ ИТОГ:*\n`;
+          responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+          responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
+          responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n`;
+        }
         else if (command === 'conditions') {
-  // 🔥 ИСПРАВЛЕНО: не кодируем кириллицу, только заменяем пробелы на дефисы
-  const cleanCompany = (companyName || 'НашаКомпания').trim().replace(/\s+/g, '-');
-  const baseUrl = 'https://rassrochka.pro';
-  const calculatorUrl = `${baseUrl}/calc/${cleanCompany}`;
+          const cleanCompany = (companyName || 'НашаКомпания').trim().replace(/\s+/g, '-');
+          const baseUrl = 'https://rassrochka.pro';
+          const calculatorUrl = `${baseUrl}/calc/${cleanCompany}`;
 
-  const firstSale = activeSales[0];
-  const maxTerm = Math.max(...activeSales.map(s => s.installments || 3));
-  const minRate = firstSale.interestRate || 0;
-  const firstPayment = firstSale.downPayment || 0;
+          const firstSale = activeSales[0];
+          const maxTerm = Math.max(...activeSales.map(s => s.installments || 3));
+          const minRate = firstSale.interestRate || 0;
+          const firstPayment = firstSale.downPayment || 0;
 
-  responseText = `╔═══════════════════════════╗
+          responseText = `╔═══════════════════════════╗
    *📝 Условия рассрочки*
 ╚═══════════════════════════╝\n\n`;
-  responseText += `🏢 *${companyName}*\n\n`;
-  responseText += `• Срок: до *${maxTerm} мес.*\n`;
-  responseText += `• Процентная ставка: от *${minRate}%*\n`;
-  responseText += `• Первый взнос: от *${formatMoney(firstPayment)} ₽*\n\n`;
-  responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-  responseText += `🔗 *Рассчитайте платёж онлайн:*\n`;
-  responseText += `${calculatorUrl}\n\n`;
-  responseText += `_(Нажмите на ссылку выше)_`;
-}
+          responseText += `🏢 *${companyName}*\n\n`;
+          responseText += `• Срок: до *${maxTerm} мес.*\n`;
+          responseText += `• Процентная ставка: от *${minRate}%*\n`;
+          responseText += `• Первый взнос: от *${formatMoney(firstPayment)} ₽*\n\n`;
+          responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+          responseText += `🔗 *Рассчитайте платёж онлайн:*\n`;
+          responseText += `${calculatorUrl}\n\n`;
+          responseText += `_(Нажмите на ссылку выше)_`;
+        }
 
         await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId, responseText);
 
-        const updatedCustomer = { ...customerData, lastBotResponse: command, lastGreetingTime: customerData.lastGreetingTime };
+        const updatedCustomer = { ...customerData, lastBotResponse: command, lastNoContractsMessage: customerData.lastNoContractsMessage };
         await pool.query(
           `UPDATE data_items SET data = $1 WHERE id = $2`,
           [JSON.stringify(updatedCustomer), customerId]
@@ -662,7 +658,7 @@ _Просто напишите слово: *история* или *услови
       }
 
     } catch (error) {
-      // Тихая ошибка — не спамим логами
+      // Тихая ошибка
     }
   }
 );

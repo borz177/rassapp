@@ -15,7 +15,6 @@ const DEFAULT_TEMPLATES = {
   upcoming: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Завтра*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
   today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Сегодня*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
   overdue: `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
-  welcome: `Здравствуйте 👋 Я ассистент {managerName}.\n\nНапишите:\n• *история* — если вы клиент и хотите узнать детали договоров и историю платежей \n• *условия* — если хотите узнать условия рассрочки, отправим ссылку на калькулятор чтобы вы сами посчитали\n\nА если у вас другой вопрос, то {managerName} ответит вам в ближайшее время 🤝`
 };
 
 const Integrations: React.FC<IntegrationsProps> = ({
@@ -41,9 +40,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
 
   const [botEnabled, setBotEnabled] = useState(false);
 
-  // 🔥 Настройки приветствия
-  const [welcomeEnabled, setWelcomeEnabled] = useState(true);
-  const [welcomeInterval, setWelcomeInterval] = useState<number>(24);
+
 
   // 🔥 Настройки команд бота
   const [historyEnabled, setHistoryEnabled] = useState(true);
@@ -59,8 +56,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
       setReminderTime(appSettings.whatsapp.reminderTime);
       setReminderDays(appSettings.whatsapp.reminderDays);
       setBotEnabled(appSettings.whatsapp.botEnabled || false);
-      setWelcomeEnabled(appSettings.whatsapp.welcomeEnabled ?? true);
-      setWelcomeInterval(appSettings.whatsapp.welcomeInterval ?? 24);
+
       setHistoryEnabled(appSettings.whatsapp.historyEnabled ?? true);
       setConditionsEnabled(appSettings.whatsapp.conditionsEnabled ?? true);
 
@@ -110,11 +106,10 @@ const Integrations: React.FC<IntegrationsProps> = ({
         upcoming: templates.upcoming,
         today: templates.today,
         overdue: templates.overdue,
-        welcome: templates.welcome
+
       },
       botEnabled,
-      welcomeEnabled,
-      welcomeInterval,
+
       historyEnabled,
       conditionsEnabled
     };
@@ -151,8 +146,6 @@ const Integrations: React.FC<IntegrationsProps> = ({
       newTemplates.today = text;
     } else if (activeTemplateTab === 'OVERDUE') {
       newTemplates.overdue = text;
-    } else if (activeTemplateTab === 'WELCOME') {
-      newTemplates.welcome = text;
     }
     setTemplates(newTemplates);
     setCurrentTemplates(newTemplates);
@@ -161,7 +154,6 @@ const Integrations: React.FC<IntegrationsProps> = ({
   const getCurrentTemplate = () => {
     if (activeTemplateTab === 'UPCOMING') return templates.upcoming;
     if (activeTemplateTab === 'TODAY') return templates.today;
-    if (activeTemplateTab === 'WELCOME') return templates.welcome;
     return templates.overdue;
   };
 
@@ -385,7 +377,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                   { id: 'UPCOMING', label: 'Заранее', icon: '⏰' },
                   { id: 'TODAY', label: 'Сегодня', icon: '📅' },
                   { id: 'OVERDUE', label: 'Просрочка', icon: '⚠️' },
-                  { id: 'WELCOME', label: 'Приветствие', icon: '👋' }
+
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -519,45 +511,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                     </div>
                   </div>
 
-                  {/* 🔥 Настройки приветствия */}
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h5 className="font-semibold text-emerald-900 text-sm flex items-center gap-2">
-                        <span>👋</span> Приветственное сообщение
-                      </h5>
-                      <div
-                        className="relative inline-flex items-center cursor-pointer"
-                        onClick={() => setWelcomeEnabled(!welcomeEnabled)}
-                      >
-                        <input type="checkbox" className="sr-only peer" checked={welcomeEnabled} onChange={() => {}} />
-                        <div className={`w-11 h-6 rounded-full peer peer-checked:bg-emerald-500 peer-focus:outline-none transition-colors ${welcomeEnabled ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-                          <div className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform peer-checked:translate-x-full`}></div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {welcomeEnabled && (
-                      <div>
-                        <label className="text-xs font-bold text-emerald-700 uppercase mb-2 block">
-                          Интервал отправки (часов)
-                        </label>
-                        <select
-                          value={welcomeInterval}
-                          onChange={e => setWelcomeInterval(Number(e.target.value))}
-                          className="w-full p-2.5 border border-emerald-200 rounded-lg text-sm bg-white outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all"
-                        >
-                          <option value={12}>12 часов</option>
-                          <option value={24}>24 часа</option>
-                          <option value={48}>48 часов</option>
-                          <option value={72}>72 часа</option>
-                          <option value={168}>1 неделя</option>
-                        </select>
-                        <p className="text-[10px] text-emerald-600 mt-2">
-                          Приветствие будет отправляться клиенту не чаще чем раз в выбранный период
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                 
 
                   {/* 🔥 Справка по командам */}
                   <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-xl p-4">
