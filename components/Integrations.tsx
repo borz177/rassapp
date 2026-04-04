@@ -511,7 +511,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                     </div>
                   </div>
 
-                 
+
 
                   {/* 🔥 Справка по командам */}
                   <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-xl p-4">
