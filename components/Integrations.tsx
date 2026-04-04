@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AppSettings, WhatsAppSettings } from '../types';
 import { ICONS } from '../constants';
 import { checkGreenApiConnection } from '../services/whatsapp';
-// 🔥 В начало Integrations.tsx (после других import):
+
 import { api } from '../services/api';
 interface IntegrationsProps {
   appSettings: AppSettings;

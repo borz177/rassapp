@@ -119,7 +119,8 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   }, [price, months, downPayment, activeRate]);
 
   // 🔹 ОБНОВЛЁННАЯ ФУНКЦИЯ: сохраняет конфиг на сервере → возвращает чистую ссылку
-  const handleCopyLink = async () => {
+  // 🔹 ОБНОВЛЁННАЯ ФУНКЦИЯ: с фолбэком для мобильных
+const handleCopyLink = async () => {
   const companyName = encodeURIComponent(appSettings?.companyName || 'Company');
 
   try {
@@ -129,7 +130,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
       termRates: termRates.map(r => ({ months: r.months, rate: r.rate }))
     });
 
-    // 🔥 2. НОВОЕ: Сохраняем настройки калькулятора в профиль пользователя
+    // 2. Сохраняем настройки калькулятора в профиль пользователя
     if (onSaveSettings && appSettings) {
       onSaveSettings({
         ...appSettings,
@@ -138,7 +139,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
           calculator: {
             defaultInterestRate: parseFloat(defaultRate),
             termRates: termRates.map(r => ({ months: r.months, rate: r.rate })),
-            minDownPayment: 0 // Можно добавить поле в интерфейс
+            minDownPayment: 0
           }
         }
       });
@@ -146,12 +147,54 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
     // 3. Формируем ссылку
     const cleanUrl = `${window.location.origin}/calc/${companyName}?cfg=${configId}`;
-    await navigator.clipboard.writeText(cleanUrl);
-    alert("✨Ссылка скопирована!");
+
+    // 🔥 4. Копируем с фолбэком для мобильных
+    const copied = await copyToClipboard(cleanUrl);
+
+    if (copied) {
+      alert("✨ Ссылка скопирована!");
+    } else {
+      // Фолбэк: показать ссылку для ручного копирования
+      alert(`📋 Скопируйте ссылку вручную:\n\n${cleanUrl}`);
+    }
 
   } catch (error) {
     console.error("Failed to save config", error);
     alert("❌ Ошибка сохранения настроек.");
+  }
+};
+
+// 🔥 Вспомогательная функция: копирует с поддержкой всех устройств
+const copyToClipboard = async (text: string): Promise<boolean> => {
+  // Способ 1: Современный Clipboard API
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      console.log('Clipboard API failed, trying fallback:', e);
+    }
+  }
+
+  // Способ 2: Фолбэк через textarea (работает везде)
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '-9999px';
+    document.body.appendChild(textarea);
+
+    textarea.focus();
+    textarea.select();
+
+    const success = document.execCommand('copy');
+    document.body.removeChild(textarea);
+
+    return success;
+  } catch (e) {
+    console.error('Fallback copy failed:', e);
+    return false;
   }
 };
 
