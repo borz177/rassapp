@@ -3,6 +3,7 @@ import { AppSettings, WhatsAppSettings } from '../types';
 import { ICONS } from '../constants';
 import { checkGreenApiConnection } from '../services/whatsapp';
 
+import { api } from '../services/api';
 interface IntegrationsProps {
   appSettings: AppSettings;
   onUpdateSettings: (settings: AppSettings) => void;
@@ -91,42 +92,65 @@ const Integrations: React.FC<IntegrationsProps> = ({
   };
 
   const handleSaveSettings = async () => {
-    const waSettings: WhatsAppSettings = {
-      enabled: waEnabled,
-      idInstance,
-      apiTokenInstance: apiToken,
-      reminderTime,
-      reminderDays,
-      templates: {
-        upcoming: templates.upcoming,
-        today: templates.today,
-        overdue: templates.overdue
-      },
-      botEnabled,
-      historyEnabled,
-      conditionsEnabled,
-      // 🔥 НОВОЕ: Сохраняем название компании для бота
-      companyName: appSettings?.companyName || 'Наша Компания',
-      calculator: appSettings?.calculator
-    };
+  // 🔥 1. Сначала сохраняем конфиг калькулятора (если есть ставки)
+  let calculatorConfigId: string | null = null;
 
-    onUpdateSettings({
-      ...appSettings,
-      whatsapp: { ...waSettings }
-    });
-
-    if (onSettingsChanged) {
-      onSettingsChanged();
+  if (appSettings?.calculator?.termRates?.length > 0) {
+    try {
+      calculatorConfigId = await api.saveCalculatorConfig({
+        defaultRate: appSettings.calculator.defaultInterestRate,
+        termRates: appSettings.calculator.termRates.map(r => ({
+          months: r.months,
+          rate: r.rate
+        }))
+      });
+      console.log('✅ Конфиг калькулятора сохранён, configId:', calculatorConfigId);
+    } catch (e) {
+      console.error('❌ Не удалось сохранить конфиг калькулятора:', e);
+      // Не прерываем сохранение остальных настроек
     }
+  }
 
-    if (waEnabled) {
-      await checkConnection(idInstance, apiToken).catch(console.error);
-      setIsTokenVisible(false);
-      alert("✅ Настройки сохранены!");
-    } else {
-      alert("Интеграция WhatsApp отключена.");
-    }
+  // 🔥 2. Формируем настройки WhatsApp
+  const waSettings: WhatsAppSettings = {
+    enabled: waEnabled,
+    idInstance,
+    apiTokenInstance: apiToken,
+    reminderTime,
+    reminderDays,
+    templates: {
+      upcoming: templates.upcoming,
+      today: templates.today,
+      overdue: templates.overdue
+    },
+    botEnabled,
+    historyEnabled,
+    conditionsEnabled,
+    companyName: appSettings?.companyName || 'Наша Компания',
+    calculator: appSettings?.calculator,
+    // 🔥 3. Сохраняем configId для короткой ссылки
+    calculatorConfigId: calculatorConfigId || appSettings?.whatsapp?.calculatorConfigId
   };
+
+  // 🔥 4. Обновляем настройки
+  onUpdateSettings({
+    ...appSettings,
+    whatsapp: { ...waSettings }
+  });
+
+  if (onSettingsChanged) {
+    onSettingsChanged();
+  }
+
+  // 🔥 5. Проверяем соединение с WhatsApp
+  if (waEnabled) {
+    await checkConnection(idInstance, apiToken).catch(console.error);
+    setIsTokenVisible(false);
+    alert("✅ Настройки сохранены!");
+  } else {
+    alert("Интеграция WhatsApp отключена.");
+  }
+};
 
   const toggleDay = (day: number) => {
     setReminderDays(prev =>

@@ -272,7 +272,7 @@ async function processRemindersForUser(user) {
 }
 
 async function runReminders() {
-  console.log(`${LOG_PREFIX} 🚀 Запуск скрипта напоминаний...`);
+
 
   try {
     const result = await pool.query(`
@@ -283,7 +283,7 @@ async function runReminders() {
         AND whatsapp_settings->>'enabled' = 'true'
     `);
 
-    console.log(`${LOG_PREFIX} Найдено ${result.rows.length} пользователей с включёнными напоминаниями`);
+
 
     for (const user of result.rows) {
       try {

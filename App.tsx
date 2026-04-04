@@ -968,7 +968,7 @@ function toggleTheme() {
 }
 
 const handleUpdateSettings = async (newSettings: AppSettings) => {
-    console.log('🔄 handleUpdateSettings вызван, новые whatsapp-настройки:', newSettings.whatsapp);
+
 
     // 🔹 1. Обновляем appSettings с НОВЫМИ ссылками на объекты (для триггера re-render)
     setAppSettings(prev => {
@@ -1029,7 +1029,7 @@ const handleUpdateSettings = async (newSettings: AppSettings) => {
                 });
             }
 
-            console.log('✅ Настройки успешно сохранены на сервере');
+
 
         } catch (e) {
             console.error("❌ Failed to save settings to API", e);
