@@ -40,6 +40,7 @@ export interface WhatsAppSettings {
   conditionsEnabled?: boolean;
   calculator?: CalculatorSettings;
   companyName?: string;
+  calculatorConfigId?: string;
 
 }
 

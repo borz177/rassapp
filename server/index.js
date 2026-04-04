@@ -15,14 +15,18 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 
+// 🔥 Вспомогательная функция: сохраняет конфиг калькулятора
 async function saveCalculatorConfig(config) {
   try {
     const response = await axios.post(
-      'https://rassrochka.pro/api/calculator/config',  // ← Ваш эндпоинт
-      config,
+      'https://rassrochka.pro/api/calculator-configs',  // ← Ваш правильный эндпоинт!
+      {
+        defaultRate: config.defaultRate,
+        termRates: config.termRates
+      },
       { timeout: 10000 }
     );
-    return response.data.configId;  // ← Возвращает новый ID
+    return response.data.configId;  // ← Возвращает короткий ID: "a1b2c3"
   } catch (e) {
     console.error('Failed to save calculator config:', e.message);
     return null;
@@ -604,6 +608,7 @@ app.post(
   const cleanCompany = (companyName || 'НашаКомпания').trim().replace(/\s+/g, '-');
   const baseUrl = 'https://rassrochka.pro';
 
+  // 🔥 Читаем настройки калькулятора
   const calcSettings = parsedSettings?.calculator || {
     defaultInterestRate: 30,
     maxMonths: 12,
@@ -638,15 +643,33 @@ app.post(
 
   // 🔥 Формируем ссылку: с cfg если есть, без — если нет
   const calculatorUrl = configId
-    ? `${baseUrl}/calc/${cleanCompany}?cfg=${configId}`
+    ? `${baseUrl}/calc/${cleanCompany}?cfg=${configId}`  // ← Короткий ID: a1b2c3
     : `${baseUrl}/calc/${cleanCompany}`;
 
+  // Определяем максимальный срок и ставку для отображения
+  const defaultRate = calcSettings.defaultInterestRate || 30;
+  const maxMonths = calcSettings.maxMonths || 12;
+  const termRates = calcSettings.termRates || [];
+
+  let displayMaxTerm = maxMonths;
+  let displayRate = defaultRate;
+
+  if (termRates.length > 0) {
+    const sorted = [...termRates].sort((a, b) => b.months - a.months);
+    displayMaxTerm = sorted[0].months;
+    const rateForMax = sorted.find(r => r.months === displayMaxTerm);
+    if (rateForMax) {
+      displayRate = rateForMax.rate;
+    }
+  }
+
+  // Формируем красивое сообщение
   responseText = `╔═══════════════════════════╗
    *📝 Условия рассрочки*
 ╚═══════════════════════════╝\n\n`;
 
   responseText += `🏢 *${companyName}*\n\n`;
-  responseText += `• Срок: до *${maxTerm} мес.*\n`;
+  responseText += `• Срок: до *${displayMaxTerm} мес.*\n`;
   responseText += `• Процентная ставка: от *${displayRate}%*\n`;
   responseText += `• Первый взнос: от *0 ₽*\n\n`;
   responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
