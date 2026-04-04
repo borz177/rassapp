@@ -38,11 +38,7 @@ export interface WhatsAppSettings {
   welcomeInterval?: number;
   historyEnabled?: boolean;      // ← НОВОЕ
   conditionsEnabled?: boolean;
-  calculator?: {
-    defaultInterestRate: number;
-    termRates: { months: number; rate: number }[];
-    minDownPayment?: number;
-  };
+  calculator?: CalculatorSettings;
   companyName?: string;
 
 }

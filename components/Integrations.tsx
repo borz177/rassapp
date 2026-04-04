@@ -106,7 +106,8 @@ const Integrations: React.FC<IntegrationsProps> = ({
       historyEnabled,
       conditionsEnabled,
       // 🔥 НОВОЕ: Сохраняем название компании для бота
-      companyName: appSettings?.companyName || 'Наша Компания'
+      companyName: appSettings?.companyName || 'Наша Компания',
+      calculator: appSettings?.calculator
     };
 
     onUpdateSettings({

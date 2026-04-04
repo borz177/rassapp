@@ -586,52 +586,45 @@ app.post(
           responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
           responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n`;
         }
-        else if (command === 'conditions') {
+       else if (command === 'conditions') {
   const cleanCompany = (companyName || 'НашаКомпания').trim().replace(/\s+/g, '-');
   const baseUrl = 'https://rassrochka.pro';
   const calculatorUrl = `${baseUrl}/calc/${cleanCompany}`;
 
-  // 🔥 ИСПРАВЛЕНИЕ: Берем настройки из калькулятора менеджера, а не из старого договора!
-  const calcSettings = parsedSettings?.calculator || {};
-  const defaultRate = calcSettings.defaultInterestRate || 0;
+  // 🔥 Берем настройки калькулятора из whatsapp_settings
+  const calcSettings = parsedSettings?.calculator || {
+    defaultInterestRate: 30,
+    termRates: []
+  };
+
+  const defaultRate = calcSettings.defaultInterestRate || 30;
   const termRates = calcSettings.termRates || [];
 
-  // Находим ставку для максимального срока (или используем базовую)
-  // Логика: если есть специальные ставки, берем их, иначе базовую
+  // Определяем максимальный срок и ставку
+  let maxTerm = 12;
   let displayRate = defaultRate;
-  let maxTerm = 12; // Значение по умолчанию
 
-  // Если есть специальные ставки, найдем максимальный срок и ставку для него
-  if (termRates && termRates.length > 0) {
-    // Сортируем сроки, чтобы найти максимальный
-    const sortedTerms = [...termRates].sort((a, b) => b.months - a.months);
-    maxTerm = sortedTerms[0].months;
+  if (termRates.length > 0) {
+    // Сортируем по сроку (больший срок primero)
+    const sorted = [...termRates].sort((a, b) => b.months - a.months);
+    maxTerm = sorted[0].months;
 
-    // Можно показать ставку для максимального срока или минимальную из всех
-    // Давайте покажем диапазон или ставку для макс срока
-    const rateForMax = sortedTerms.find(r => r.months === maxTerm);
+    // Берем ставку для максимального срока
+    const rateForMax = sorted.find(r => r.months === maxTerm);
     if (rateForMax) {
       displayRate = rateForMax.rate;
     }
-  } else {
-    // Если специальных нет, берем макс срок из стандартных или дефолтный
-    maxTerm = 12;
-    displayRate = defaultRate;
   }
 
-  // Первый взнос берем из настроек (если есть) или 0
-  const minDownPayment = calcSettings.minDownPayment || 0;
-
-  responseText = `╔═════════════════╗
+  responseText = `╔═══════════════════════════╗
    *📝 Условия рассрочки*
-╚═════════════════╝\n\n`;
+╚═══════════════════════════╝\n\n`;
 
   responseText += `🏢 *${companyName}*\n\n`;
   responseText += `• Срок: до *${maxTerm} мес.*\n`;
   responseText += `• Процентная ставка: от *${displayRate}%*\n`;
-  responseText += `• Первый взнос: от *${formatMoney(minDownPayment)} ₽*\n\n`;
-
-  responseText += `━━━━━━━━━━━━━━━━━\n\n`;
+  responseText += `• Первый взнос: от *0 ₽*\n\n`;
+  responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
   responseText += `🔗 *Рассчитайте платёж онлайн:*\n`;
   responseText += `${calculatorUrl}\n\n`;
   responseText += `_(Нажмите на ссылку выше)_`;
