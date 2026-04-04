@@ -43,6 +43,7 @@ export interface WhatsAppSettings {
     termRates: { months: number; rate: number }[];
     minDownPayment?: number;
   };
+  companyName?: string;
 
 }
 
