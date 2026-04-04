@@ -240,17 +240,22 @@ const copyToClipboard = async (text: string): Promise<boolean> => {
   };
 
 // 🔥 Динамический список месяцев: 1-12 ИЛИ только настроенные ставки
+// 🔥 Динамический список месяцев: разная логика для админки и публичного режима
 const availableTerms = useMemo(() => {
-  // Если есть специальные ставки — показываем только их сроки
+  // 🔹 В админке: всегда показываем 1-12, чтобы можно настроить любую ставку
+  if (!isPublic) {
+    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  }
+
+  // 🔹 В публичном режиме: показываем только настроенные ставки
   if (termRates && termRates.length > 0) {
     const customTerms = termRates.map(r => r.months).sort((a, b) => a - b);
-    // Убираем дубликаты
     return [...new Set(customTerms)];
   }
 
-  // По умолчанию: месяцы от 1 до 12
+  // Если в публичном режиме нет настроек — показываем 1-12
   return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-}, [termRates]);  // 🔹 Зависимость от termRates
+}, [termRates, isPublic]);  // 🔹 Зависимость от isPublic
 
   return (
     <div className={`min-h-screen ${isPublic ? 'bg-slate-50 flex items-center justify-center p-4' : 'animate-fade-in pb-20'}`}>
