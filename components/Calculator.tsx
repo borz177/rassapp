@@ -120,42 +120,40 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
   // 🔹 ОБНОВЛЁННАЯ ФУНКЦИЯ: сохраняет конфиг на сервере → возвращает чистую ссылку
   const handleCopyLink = async () => {
-      const companyName = encodeURIComponent(appSettings?.companyName || 'Company');
+  const companyName = encodeURIComponent(appSettings?.companyName || 'Company');
 
-      try {
-          // 1. Сохраняем конфиг на сервере
-          const configId = await api.saveCalculatorConfig({
-              defaultRate: parseFloat(defaultRate),
-              termRates: termRates.map(r => ({ months: r.months, rate: r.rate }))
-          });
+  try {
+    // 1. Сохраняем конфиг на сервере
+    const configId = await api.saveCalculatorConfig({
+      defaultRate: parseFloat(defaultRate),
+      termRates: termRates.map(r => ({ months: r.months, rate: r.rate }))
+    });
 
-          // 2. Формируем ЧИСТУЮ ссылку с коротким ID
-          const cleanUrl = `${window.location.origin}/calc/${companyName}?cfg=${configId}`;
-
-          // 3. Копируем в буфер
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-              await navigator.clipboard.writeText(cleanUrl);
-              alert("✨ Красивая ссылка скопирована!");
-          } else {
-              // Fallback для старых браузеров
-              const textArea = document.createElement("textarea");
-              textArea.value = cleanUrl;
-              document.body.appendChild(textArea);
-              textArea.focus();
-              textArea.select();
-              try {
-                  document.execCommand('copy');
-                  alert("✨ Ссылка скопирована!");
-              } catch (err) {
-                  alert("Не удалось скопировать ссылку автоматически.");
-              }
-              document.body.removeChild(textArea);
+    // 🔥 2. НОВОЕ: Сохраняем настройки калькулятора в профиль пользователя
+    if (onSaveSettings && appSettings) {
+      onSaveSettings({
+        ...appSettings,
+        whatsapp: {
+          ...appSettings.whatsapp,
+          calculator: {
+            defaultInterestRate: parseFloat(defaultRate),
+            termRates: termRates.map(r => ({ months: r.months, rate: r.rate })),
+            minDownPayment: 0 // Можно добавить поле в интерфейс
           }
-      } catch (error) {
-          console.error("Failed to save config", error);
-          alert("❌ Ошибка сохранения настроек. Проверьте подключение к интернету.");
-      }
-  };
+        }
+      });
+    }
+
+    // 3. Формируем ссылку
+    const cleanUrl = `${window.location.origin}/calc/${companyName}?cfg=${configId}`;
+    await navigator.clipboard.writeText(cleanUrl);
+    alert("✨Ссылка скопирована!");
+
+  } catch (error) {
+    console.error("Failed to save config", error);
+    alert("❌ Ошибка сохранения настроек.");
+  }
+};
 
   const handleSaveConfig = () => {
       if (onSaveSettings) {
