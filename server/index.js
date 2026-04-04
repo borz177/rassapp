@@ -15,31 +15,7 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 
-async function saveCalculatorConfig(config) {
-  console.log('🔧 [DEBUG] Сохраняем конфиг калькулятора:', JSON.stringify(config));
 
-  try {
-    const response = await axios.post(
-      'https://rassrochka.pro/api/calculator-configs',
-      {
-        defaultRate: config.defaultRate,
-        termRates: config.termRates
-      },
-      { timeout: 10000 }
-    );
-
-    console.log('✅ [DEBUG] Конфиг сохранён, configId:', response.data.configId);
-    return response.data.configId;
-
-  } catch (e) {
-    console.error('❌ [DEBUG] Ошибка сохранения конфига:', {
-      message: e.message,
-      response: e.response?.data,
-      status: e.response?.status
-    });
-    return null;
-  }
-}
 
 const app = express();
 app.set('trust proxy', 1);
@@ -613,69 +589,43 @@ app.post(
           responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n`;
         }
        else if (command === 'conditions') {
-  console.log('🎯 [DEBUG] Команда: conditions');
-
   const cleanCompany = (companyName || 'НашаКомпания').trim().replace(/\s+/g, '-');
   const baseUrl = 'https://rassrochka.pro';
 
-  // 🔥 Читаем настройки
+  // 🔥 Читаем настройки калькулятора
   const calcSettings = parsedSettings?.calculator || {
     defaultInterestRate: 30,
     maxMonths: 12,
     termRates: []
   };
 
-  console.log('📊 [DEBUG] calcSettings:', JSON.stringify(calcSettings));
-
-  // 🔥 Проверяем, есть ли специальные ставки
+  const defaultRate = calcSettings.defaultInterestRate || 30;
+  const maxMonths = calcSettings.maxMonths || 12;
   const termRates = calcSettings.termRates || [];
-  console.log('📋 [DEBUG] termRates length:', termRates.length);
-  console.log('📋 [DEBUG] termRates:', JSON.stringify(termRates));
 
-  // 🔥 Пытаемся получить configId
-  let configId = parsedSettings?.calculatorConfigId || null;
-  console.log('🔑 [DEBUG] calculatorConfigId из базы:', configId);
+  // 🔥 Кодируем специальные ставки в короткий формат: 4:25,5:25,6:30
+  const shortRules = termRates.length > 0
+    ? termRates.map(r => `${r.months}:${r.rate}`).join(',')
+    : null;
 
-  // 🔥 Если configId нет, но есть ставки — сохраняем
-  if (!configId && termRates.length > 0) {
-    console.log('💾 [DEBUG] Сохраняем новый конфиг...');
-
-    configId = await saveCalculatorConfig({
-      defaultRate: calcSettings.defaultInterestRate,
-      termRates: termRates.map(r => ({ months: r.months, rate: r.rate }))
-    });
-
-    console.log('🔑 [DEBUG] Получен configId:', configId);
-
-    // 🔥 Сохраняем в базу
-    if (configId) {
-      try {
-        await pool.query(
-          `UPDATE users SET whatsapp_settings = jsonb_set(
-            whatsapp_settings, 
-            '{calculatorConfigId}', 
-            $1::jsonb
-          ) WHERE whatsapp_settings->>'idInstance' = $2`,
-          [JSON.stringify(configId), instanceId]
-        );
-        console.log('✅ [DEBUG] calculatorConfigId сохранён в базу');
-      } catch (dbErr) {
-        console.error('❌ [DEBUG] Ошибка обновления базы:', dbErr.message);
-      }
-    }
-  } else {
-    console.log('⏭️ [DEBUG] Пропускаем сохранение:', {
-      hasConfigId: !!configId,
-      hasTermRates: termRates.length > 0
-    });
+  // 🔥 Формируем ссылку с параметрами
+  let calculatorUrl = `${baseUrl}/calc/${cleanCompany}?r=${defaultRate}`;
+  if (shortRules) {
+    calculatorUrl += `&l=${encodeURIComponent(shortRules)}`;
   }
 
-  // 🔥 Формируем ссылку
-  const calculatorUrl = configId
-    ? `${baseUrl}/calc/${cleanCompany}?cfg=${configId}`
-    : `${baseUrl}/calc/${cleanCompany}`;
+  // Определяем максимальный срок и ставку для отображения
+  let displayMaxTerm = maxMonths;
+  let displayRate = defaultRate;
 
-  console.log('🔗 [DEBUG] Финальная ссылка:', calculatorUrl);
+  if (termRates.length > 0) {
+    const sorted = [...termRates].sort((a, b) => b.months - a.months);
+    displayMaxTerm = sorted[0].months;
+    const rateForMax = sorted.find(r => r.months === displayMaxTerm);
+    if (rateForMax) {
+      displayRate = rateForMax.rate;
+    }
+  }
 
   // Формируем красивое сообщение
   responseText = `╔═══════════════════════════╗
