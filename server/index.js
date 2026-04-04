@@ -506,75 +506,66 @@ app.post(
         let responseText = '';
 
         if (command === 'history') {
-          let totalDebt = 0;
-          let totalMonthly = 0;
+  let totalDebt = 0;
+  let totalMonthly = 0;
 
-          // ГРУППИРОВКА по товарам
-          const productsMap = new Map();
+  const productsMap = new Map();
 
-          for (const sale of activeSales) {
-            const productName = sale.productName || sale.product || `Товар #${sale.id}`;
+  for (const sale of activeSales) {
+    const productName = sale.productName || sale.product || `Товар #${sale.id}`;
 
-            if (!productsMap.has(productName)) {
-              productsMap.set(productName, {
-                name: productName,
-                debt: 0,
-                monthly: 0,
-                payments: []
-              });
-            }
+    if (!productsMap.has(productName)) {
+      productsMap.set(productName, {
+        name: productName,
+        debt: 0,
+        monthly: 0,
+        payments: []
+      });
+    }
 
-            const productData = productsMap.get(productName);
-            const paymentPlan = sale.paymentPlan || [];
+    const productData = productsMap.get(productName);
+    const paymentPlan = sale.paymentPlan || [];
 
-            // 🔥 ИСПРАВЛЕННЫЙ РАСЧЁТ ДОЛГА
-            // Сумма всех платежей по плану
-            const totalPlanAmount = paymentPlan.reduce((sum, p) => {
-              return sum + (parseFloat(p.amount || p.sum || 0) || 0);
-            }, 0);
+    // 🔥 Универсальные проверки
+    const isRealPayment = (p) => {
+      const val = p.isRealPayment;
+      return val === true || val === 'true' || val === 1 || val === '1';
+    };
 
-            // Сумма всех оплаченных платежей (реальных)
-            const totalPaidAmount = paymentPlan
-              .filter(p => {
-                const isPaid = p.isPaid || p.is_paid || p.paid;
-                const isPaidValue = isPaid === true || isPaid === 'true' || isPaid === 1;
+    const isPaid = (p) => {
+      const val = p.isPaid || p.is_paid || p.paid;
+      return val === true || val === 'true' || val === 1 || val === '1';
+    };
 
-                if (p.isRealPayment !== undefined) {
-                  return isPaidValue && p.isRealPayment === true;
-                }
-                return isPaidValue;
-              })
-              .reduce((sum, p) => {
-                return sum + (parseFloat(p.amount || p.sum || 0) || 0);
-              }, 0);
+    // Сумма плана
+    const totalPlanAmount = paymentPlan.reduce((sum, p) => {
+      return sum + (parseFloat(p.amount || p.sum || 0) || 0);
+    }, 0);
 
-            // 🔥 Долг = План - Оплачено (учитывает переплаты!)
-            const debt = Math.max(0, totalPlanAmount - totalPaidAmount);
+    // Сумма оплаченных реальных платежей
+    const totalPaidAmount = paymentPlan
+      .filter(p => isPaid(p) && isRealPayment(p))
+      .reduce((sum, p) => {
+        return sum + (parseFloat(p.amount || p.sum || 0) || 0);
+      }, 0);
 
-            const monthly = parseFloat(sale.monthlyPayment || paymentPlan[0]?.amount || 0) || 0;
+    const debt = Math.max(0, totalPlanAmount - totalPaidAmount);
+    const monthly = parseFloat(sale.monthlyPayment || paymentPlan[0]?.amount || 0) || 0;
 
-            productData.debt += debt;
-            productData.monthly += monthly;
+    productData.debt += debt;
+    productData.monthly += monthly;
 
-            // История: Только реальные платежи
-            const paidHistory = paymentPlan
-              .filter(p => {
-                const isPaid = p.isPaid || p.is_paid || p.paid;
-                const isPaidValue = isPaid === true || isPaid === 'true' || isPaid === 1;
+    // История
+    const paidHistory = paymentPlan
+      .filter(p => isPaid(p) && isRealPayment(p))
+      .map(p => ({
+        date: new Date(p.actualDate || p.date),
+        amount: parseFloat(p.amount || p.sum || 0) || 0
+      }))
+      .filter(p => !isNaN(p.date.getTime()) && p.amount > 0);
 
-                if (p.isRealPayment !== undefined) {
-                  return isPaidValue && p.isRealPayment === true;
-                }
-                return isPaidValue;
-              })
-              .map(p => ({
-                date: new Date(p.actualDate || p.date),
-                amount: parseFloat(p.amount || p.sum || 0) || 0
-              }))
-              .filter(p => !isNaN(p.date.getTime()) && p.amount > 0);
-
-            productData.payments.push(...paidHistory);
-          }
+    productData.payments.push(...paidHistory);
+  }
 
           responseText = `╔═══════════════════════════╗
      *📋 Детали договоров*
