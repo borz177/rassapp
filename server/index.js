@@ -592,15 +592,7 @@ app.post(
   const cleanCompany = (companyName || 'НашаКомпания').trim().replace(/\s+/g, '-');
   const baseUrl = 'https://rassrochka.pro';
 
-  // 🔥 Читаем configId из настроек (сохранён при клике "Сохранить" в админке)
-  const configId = parsedSettings?.calculatorConfigId || null;
-
-  // 🔥 Формируем КОРОТКУЮ ссылку с ?cfg=
-  const calculatorUrl = configId
-    ? `${baseUrl}/calc/${cleanCompany}?cfg=${configId}`
-    : `${baseUrl}/calc/${cleanCompany}`;
-
-  // Читаем настройки для отображения в сообщении
+  // 🔥 Читаем настройки калькулятора
   const calcSettings = parsedSettings?.calculator || {
     defaultInterestRate: 30,
     maxMonths: 12,
@@ -611,7 +603,18 @@ app.post(
   const maxMonths = calcSettings.maxMonths || 12;
   const termRates = calcSettings.termRates || [];
 
-  // Определяем максимальный срок и ставку для показа
+  // 🔥 Кодируем специальные ставки в короткий формат: 4:25,5:25,6:30
+  const shortRules = termRates.length > 0
+    ? termRates.map(r => `${r.months}:${r.rate}`).join(',')
+    : null;
+
+  // 🔥 Формируем ссылку с параметрами
+  let calculatorUrl = `${baseUrl}/calc/${cleanCompany}?r=${defaultRate}`;
+  if (shortRules) {
+    calculatorUrl += `&l=${encodeURIComponent(shortRules)}`;
+  }
+
+  // Определяем максимальный срок и ставку для отображения
   let displayMaxTerm = maxMonths;
   let displayRate = defaultRate;
 
