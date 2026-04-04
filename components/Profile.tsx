@@ -7,6 +7,7 @@ interface ProfileProps {
   onUpdateProfile: (data: any) => void;
   onBack: () => void;
   onLogout: () => void;
+  onPasswordChanged?: () => void;
 }
 
 const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onBack, onLogout }) => {
@@ -21,6 +22,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onBack, onLogo
   const handleProfileSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdateProfile({ name, email, phone });
+
   };
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
@@ -37,6 +39,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onBack, onLogo
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+
   };
 
   return (

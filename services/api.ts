@@ -389,6 +389,47 @@ export const api = {
         });
     },
 
+    // === ОБНОВЛЕНИЕ ПРОФИЛЯ (только публичные поля) ===
+    updateProfile: async (userId: string, profileData: { name?: string; phone?: string; email?: string }): Promise<User> => {
+        const res = await fetch(`${API_URL}/users/${userId}/profile`, {
+            method: 'PATCH',
+            headers: getAuthHeader(),
+            body: JSON.stringify(profileData)
+        });
+
+        if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.msg || error.error || 'Не удалось обновить профиль');
+        }
+
+        const updatedUser = await res.json();
+        // ✅ Кэшируем обновлённые данные
+        await offlineStorage.setCache('user_me', updatedUser);
+        return updatedUser;
+    },
+
+    // === СМЕНА ПАРОЛЯ (отдельный безопасный эндпоинт) ===
+    changePassword: async (currentPassword: string, newPassword: string): Promise<{ success: true }> => {
+        const res = await fetch(`${API_URL}/auth/change-password`, {
+            method: 'POST',
+            headers: getAuthHeader(),
+            body: JSON.stringify({ currentPassword, newPassword })
+        });
+
+        if (!res.ok) {
+            const error = await res.json();
+            if (res.status === 400 && error.code === 'WRONG_CURRENT_PASSWORD') {
+                throw new Error('Неверный текущий пароль');
+            }
+            if (res.status === 400 && error.code === 'WEAK_PASSWORD') {
+                throw new Error('Новый пароль слишком простой');
+            }
+            throw new Error(error.msg || error.error || 'Не удалось сменить пароль');
+        }
+
+        return { success: true };
+    },
+
     // --- INTEGRATIONS ---
     createWhatsAppInstance: async (phoneNumber: string): Promise<{ idInstance: string, apiTokenInstance: string }> => {
         try {

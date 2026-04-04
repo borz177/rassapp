@@ -859,7 +859,41 @@ const handleIncomeSubmit = async (data: any) => {
   const handleSelectCustomer = (id: string) => { setSelectedCustomerId(id); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
   const handleSelectInvestor = (investor: Investor) => { setSelectedInvestorId(investor.id); setCurrentView('INVESTOR_DETAILS'); };
   const handleAddPartnership = async (name: string, members: string[]) => { if (!user) return; const newAccountId = `acc_part_${Date.now()}`; const newAccount: Account = { id: newAccountId, userId: user.id, name: `Счет: ${name}`, type: 'CUSTOM' }; const newPartnership: Partnership = { id: `part_${Date.now()}`, userId: user.id, name, accountId: newAccountId, partnerIds: members, createdAt: new Date().toISOString() }; const savedAcc = await api.saveItem('accounts', newAccount); updateList(setAccounts, savedAcc); const savedPart = await api.saveItem('partnerships', newPartnership); updateList(setPartnerships, savedPart); };
-  const handleUpdateProfile = async (data: any) => { if (!user) return; try { await api.updateUser({ ...user, ...data }); setUser({ ...user, ...data }); alert("Профиль обновлен!"); } catch(e) { alert("Ошибка обновления профиля"); } };
+const handleUpdateProfile = async (data: any) => {
+    if (!user) return;
+
+    try {
+        // 🔹 РАЗДЕЛЯЕМ логику профиля и пароля
+        if (data.currentPassword || data.newPassword) {
+            // === Смена пароля ===
+            if (!data.currentPassword || !data.newPassword) {
+                throw new Error('Заполните все поля для смены пароля');
+            }
+
+            await api.changePassword(data.currentPassword, data.newPassword);
+
+            
+            alert("✅ Пароль успешно изменён!");
+
+        } else {
+            // === Обновление профиля ===
+            const updatedUser = await api.updateProfile(user.id, {
+                name: data.name,
+                phone: data.phone,
+                // email: data.email // ⚠️ Если смена email требует подтверждения — не отправляйте сразу
+            });
+
+            // ✅ Обновляем стейт ДАННЫМИ С СЕРВЕРА, а не локальными
+            setUser(updatedUser);
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+            alert("✅ Профиль обновлён!");
+        }
+
+    } catch(e: any) {
+        console.error("Update error:", e);
+        alert(`❌ ${e.message || 'Произошла ошибка при сохранении'}`);
+    }
+};
 const contractCounts = useMemo(() => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1265,6 +1299,7 @@ if (!user && !isLoading) {
             localStorage.removeItem('token');
             setUser(null);
           }}
+
         />
       )
     )}
