@@ -145,7 +145,7 @@ const handleSendSaleReminder = () => {
     const message = `
 Здравствуйте, ${customer.name}!
 
-Напоминание по вашей рассрочке на "${selectedSale.productName}".
+Информация по договору на "${selectedSale.productName}".
 
 *Детали:*
 - *Общая сумма:* ${formatCurrency(selectedSale.totalAmount, appSettings.showCents)} ₽
@@ -170,7 +170,7 @@ const handleSendFullReport = () => {
         report += ` - Остаток долга: *${formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽*\n`;
         report += ` - Всего выплачено: ${formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings.showCents)} ₽\n\n`;
     });
-    report += `Спасибо, что выбираете нас!`;
+
 
     // ✅ ИСПРАВЛЕНИЕ: используем нормализацию и убираем пробелы в URL
     const phone = normalizePhoneForWhatsApp(customer.phone);

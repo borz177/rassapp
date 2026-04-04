@@ -15,6 +15,20 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 
+async function saveCalculatorConfig(config) {
+  try {
+    const response = await axios.post(
+      'https://rassrochka.pro/api/calculator/config',  // ← Ваш эндпоинт
+      config,
+      { timeout: 10000 }
+    );
+    return response.data.configId;  // ← Возвращает новый ID
+  } catch (e) {
+    console.error('Failed to save calculator config:', e.message);
+    return null;
+  }
+}
+
 const app = express();
 app.set('trust proxy', 1);
 
@@ -589,32 +603,43 @@ app.post(
        else if (command === 'conditions') {
   const cleanCompany = (companyName || 'НашаКомпания').trim().replace(/\s+/g, '-');
   const baseUrl = 'https://rassrochka.pro';
-  const calculatorUrl = `${baseUrl}/calc/${cleanCompany}`;
 
-  // 🔥 Берем настройки калькулятора из whatsapp_settings
   const calcSettings = parsedSettings?.calculator || {
     defaultInterestRate: 30,
+    maxMonths: 12,
     termRates: []
   };
 
-  const defaultRate = calcSettings.defaultInterestRate || 30;
-  const termRates = calcSettings.termRates || [];
+  // 🔥 Пытаемся получить configId из настроек
+  let configId = parsedSettings?.calculatorConfigId || null;
 
-  // Определяем максимальный срок и ставку
-  let maxTerm = 12;
-  let displayRate = defaultRate;
+  // 🔥 Если configId нет, но есть специальные ставки — сохраняем конфиг
+  if (!configId && calcSettings.termRates?.length > 0) {
+    configId = await saveCalculatorConfig({
+      defaultRate: calcSettings.defaultInterestRate,
+      termRates: calcSettings.termRates.map(r => ({
+        months: r.months,
+        rate: r.rate
+      }))
+    });
 
-  if (termRates.length > 0) {
-    // Сортируем по сроку (больший срок primero)
-    const sorted = [...termRates].sort((a, b) => b.months - a.months);
-    maxTerm = sorted[0].months;
-
-    // Берем ставку для максимального срока
-    const rateForMax = sorted.find(r => r.months === maxTerm);
-    if (rateForMax) {
-      displayRate = rateForMax.rate;
+    // 🔥 Сохраняем configId в базу для следующего раза
+    if (configId) {
+      await pool.query(
+        `UPDATE users SET whatsapp_settings = jsonb_set(
+          whatsapp_settings, 
+          '{calculatorConfigId}', 
+          $1::jsonb
+        ) WHERE whatsapp_settings->>'idInstance' = $2`,
+        [JSON.stringify(configId), instanceId]
+      );
     }
   }
+
+  // 🔥 Формируем ссылку: с cfg если есть, без — если нет
+  const calculatorUrl = configId
+    ? `${baseUrl}/calc/${cleanCompany}?cfg=${configId}`
+    : `${baseUrl}/calc/${cleanCompany}`;
 
   responseText = `╔═══════════════════════════╗
    *📝 Условия рассрочки*
