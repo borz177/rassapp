@@ -481,113 +481,104 @@ app.post(
         let responseText = '';
 
         if (command === 'history') {
-          let totalDebt = 0;
-          let totalMonthly = 0;
-          const productsMap = new Map();
+  let totalDebt = 0;
+  let totalMonthly = 0;
+  const productsMap = new Map();
 
-          for (const sale of activeSales) {
-            const productName = sale.productName || sale.product || `Товар #${sale.id}`;
+  for (const sale of activeSales) {
+    const productName = sale.productName || sale.product || `Товар #${sale.id}`;
 
-            if (!productsMap.has(productName)) {
-              productsMap.set(productName, { name: productName, debt: 0, monthly: 0, payments: [] });
-            }
+    if (!productsMap.has(productName)) {
+      productsMap.set(productName, { name: productName, debt: 0, monthly: 0, payments: [] });
+    }
 
-            const productData = productsMap.get(productName);
-            const paymentPlan = sale.paymentPlan || [];
+    const productData = productsMap.get(productName);
+    const paymentPlan = sale.paymentPlan || [];
 
-            // 🔥 ЛОГИКА КАК В REACT (CustomerDetails.tsx)
+    // 🔥 ЛОГИКА РАСЧЁТА ДОЛГА (как в React)
+    const totalPlanAmount = paymentPlan.reduce((sum, p) => sum + (parseFloat(p.amount || p.sum || 0) || 0), 0);
 
-            // 1. Считаем общую сумму плана (сколько всего должен был отдать по графику)
-            const totalPlanAmount = paymentPlan.reduce((sum, p) => sum + (parseFloat(p.amount || p.sum || 0) || 0), 0);
+    const totalRealMoney = paymentPlan
+      .filter(p => p.isRealPayment === true)
+      .reduce((sum, p) => sum + (parseFloat(p.amount || p.sum || 0) || 0), 0);
 
-            // 2. Считаем реальные деньги, которые поступили (isRealPayment === true)
-            const totalRealMoney = paymentPlan
-              .filter(p => p.isRealPayment === true)
-              .reduce((sum, p) => sum + (parseFloat(p.amount || p.sum || 0) || 0), 0);
+    const totalAllocated = paymentPlan
+      .filter(p => p.isPaid && p.isRealPayment !== true)
+      .reduce((sum, p) => sum + (parseFloat(p.amount || p.sum || 0) || 0), 0);
 
-            // 3. Считаем сумму, которая уже распределена по плану (isPaid=true, но НЕ реальный платеж)
-            // Это нужно для старых данных или смешанных случаев
-            const totalAllocated = paymentPlan
-              .filter(p => p.isPaid && p.isRealPayment !== true)
-              .reduce((sum, p) => sum + (parseFloat(p.amount || p.sum || 0) || 0), 0);
+    let surplus = Math.max(0, totalRealMoney - totalAllocated);
+    let currentDebt = 0;
 
-            // 4. Считаем переплату (Surplus)
-            // Деньги получены, но еще не закрыли конкретный пункт плана
-            let surplus = Math.max(0, totalRealMoney - totalAllocated);
+    paymentPlan.forEach(p => {
+      if (!p.isPaid && p.isRealPayment !== true) {
+        const amountDue = parseFloat(p.amount || p.sum || 0) || 0;
+        const covered = Math.min(amountDue, surplus);
+        surplus = Math.max(0, surplus - covered);
+        currentDebt += (amountDue - covered);
+      }
+    });
+    currentDebt = Math.max(0, currentDebt);
 
-            // 5. Рассчитываем текущий долг
-            // Долг = (Сумма всех неоплаченных пунктов плана) - (Переплата/Surplus)
-            let currentDebt = 0;
+    const monthly = parseFloat(sale.monthlyPayment || paymentPlan[0]?.amount || 0) || 0;
+    productData.debt += currentDebt;
+    productData.monthly += monthly;
 
-            paymentPlan.forEach(p => {
-              if (!p.isPaid && p.isRealPayment !== true) {
-                const amountDue = parseFloat(p.amount || p.sum || 0) || 0;
-                const covered = Math.min(amountDue, surplus);
-                surplus = Math.max(0, surplus - covered);
-                const amountToPay = amountDue - covered;
-                currentDebt += amountToPay;
-              }
-            });
+    // История платежей
+    const paidHistory = paymentPlan
+      .filter(p => p.isPaid && p.isRealPayment !== false)
+      .map(p => ({
+        date: new Date(p.actualDate || p.date),
+        amount: parseFloat(p.amount || p.sum || 0) || 0
+      }))
+      .filter(p => !isNaN(p.date.getTime()) && p.amount > 0);
 
-            // Если вдруг расчет дал отрицательное число (полная переплата), ставим 0
-            currentDebt = Math.max(0, currentDebt);
+    productData.payments.push(...paidHistory);
+  }
 
-            const monthly = parseFloat(sale.monthlyPayment || paymentPlan[0]?.amount || 0) || 0;
+  // 🔥 Формируем ответ
+  responseText = `╔════════════════╗\n     *📋 Детали договоров*\n╚════════════════╝\n\n`;
 
-            productData.debt += currentDebt;
-            productData.monthly += monthly;
+  for (const [productName, data] of productsMap) {
+    totalDebt += data.debt;
+    totalMonthly += data.monthly;
 
-            // История: только реальные платежи
-            const paidHistory = paymentPlan
-              .filter(p => p.isPaid && p.isRealPayment !== false)
-              .map(p => ({
-                date: new Date(p.actualDate || p.date),
-                amount: parseFloat(p.amount || p.sum || 0) || 0
-              }))
-              .filter(p => !isNaN(p.date.getTime()) && p.amount > 0);
+    responseText += `━━━━━━━━━━━━━━━━━\n`;
+    responseText += `🔹 *${productName}*\n`;
+    responseText += `━━━━━━━━━━━━━━━━━\n`;
+    responseText += `• Ежемесячный платёж: *${formatMoney(data.monthly)} ₽*\n`;
 
-            productData.payments.push(...paidHistory);
-          }
+    if (data.debt > 0.01) {
+      responseText += `• 🔴 Остаток долга: *${formatMoney(data.debt)} ₽*\n`;
+    } else {
+      responseText += `• ✅ Погашен полностью\n`;
+    }
 
-          responseText = `╔═════════════════╗\n     *📋 Детали договоров*\n╚═════════════════╝\n\n`;
+    if (data.payments.length > 0) {
+      const uniquePayments = data.payments
+        .sort((a, b) => b.date - a.date)
+        .filter((p, i, arr) => {
+          const prev = arr[i - 1];
+          if (!prev) return true;
+          return p.date.toISOString() !== prev.date.toISOString() || p.amount !== prev.amount;
+        })
+        .slice(0, 10);
 
-          for (const [productName, data] of productsMap) {
-            totalDebt += data.debt;
-            totalMonthly += data.monthly;
+      responseText += `\n📜 *История платежей:*\n`;
+      for (const p of uniquePayments) {
+        responseText += `   • ${formatDate(p.date)} — *${formatMoney(p.amount)} ₽* ✅\n`;
+      }
+    }
+    responseText += `\n`;
+  }
 
-           responseText += `━━━━━━━━━━━━━━━━━\n`;
-            responseText += `🔹 *${productName}*\n`;
-            responseText += `• Ежемесячный платёж: *${formatMoney(data.monthly)} ₽*\n`;
-
-            if (data.debt > 0.01) {
-              responseText += `• 🔴 Остаток долга: *${formatMoney(data.debt)} ₽*\n`;
-            } else {
-              responseText += `• ✅ Погашен полностью\n`;
-            }
-
-            if (data.payments.length > 0) {
-              const uniquePayments = data.payments
-                .sort((a, b) => b.date - a.date)
-                .filter((p, i, arr) => {
-                  const prev = arr[i - 1];
-                  if (!prev) return true;
-                  return p.date.toISOString() !== prev.date.toISOString() || p.amount !== prev.amount;
-                })
-                .slice(0, 10);
-
-              responseText += `\n📜 *История платежей:*\n`;
-              for (const p of uniquePayments) {
-                responseText += `   • ${formatDate(p.date)} — *${formatMoney(p.amount)} ₽* ✅\n`;
-              }
-            }
-            responseText += `\n`;
-          }
-
-          responseText += `━━━━━━━━━━━━━━━━━\n`;
-          responseText += `📊 *ОБЩИЙ ИТОГ:*\n`;
-          responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
-          responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n`;
-        }
+  // 🔥 ПОКАЗЫВАЕМ ОБЩИЙ ИТОГ ТОЛЬКО ЕСЛИ ТОВАРОВ > 1
+  if (productsMap.size > 1) {
+    responseText += `━━━━━━━━━━━━━━━━━\n`;
+    responseText += `📊 *ОБЩИЙ ИТОГ:*\n`;
+    responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
+    responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n`;
+  }
+}
        else if (command === 'conditions') {
   const cleanCompany = (companyName || 'НашаКомпания').trim().replace(/\s+/g, '-');
   const baseUrl = 'https://rassrochka.pro';
@@ -628,15 +619,15 @@ app.post(
   }
 
   // Формируем красивое сообщение
-  responseText = `╔═══════════════════════════╗
+  responseText = `╔════════════════╗
    *📝 Условия рассрочки*
-╚═══════════════════════════╝\n\n`;
+╚════════════════╝\n\n`;
 
   responseText += `🏢 *${companyName}*\n\n`;
   responseText += `• Срок: до *${displayMaxTerm} мес.*\n`;
   responseText += `• Процентная ставка: от *${displayRate}%*\n`;
   responseText += `• Первый взнос: от *0 ₽*\n\n`;
-  responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  responseText += `━━━━━━━━━━━━━━━━━\n\n`;
   responseText += `🔗 *Рассчитайте платёж онлайн:*\n`;
   responseText += `${calculatorUrl}\n\n`;
   responseText += `_(Нажмите на ссылку выше)_`;
