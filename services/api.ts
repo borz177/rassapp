@@ -389,24 +389,27 @@ export const api = {
         });
     },
 
-    // === ОБНОВЛЕНИЕ ПРОФИЛЯ (только публичные поля) ===
-    updateProfile: async (userId: string, profileData: { name?: string; phone?: string; email?: string }): Promise<User> => {
-        const res = await fetch(`${API_URL}/users/${userId}/profile`, {
-            method: 'PATCH',
-            headers: getAuthHeader(),
-            body: JSON.stringify(profileData)
-        });
+  // === ОБНОВЛЕНИЕ ПРОФИЛЯ (через users/manage) ===
+updateProfile: async (userId: string, profileData: { name?: string; phone?: string; email?: string }): Promise<User> => {
+    const res = await fetch(`${API_URL}/users/manage`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: JSON.stringify({
+            action: 'update',
+            userData: { id: userId, ...profileData }
+        })
+    });
 
-        if (!res.ok) {
-            const error = await res.json();
-            throw new Error(error.msg || error.error || 'Не удалось обновить профиль');
-        }
+    if (!res.ok) {
+        const error = await res.json();
+        console.error('Update profile error:', error);
+        throw new Error(error.msg || error.error || 'Не удалось обновить профиль');
+    }
 
-        const updatedUser = await res.json();
-        // ✅ Кэшируем обновлённые данные
-        await offlineStorage.setCache('user_me', updatedUser);
-        return updatedUser;
-    },
+    const updatedUser = await res.json();
+    await offlineStorage.setCache('user_me', updatedUser);
+    return updatedUser;
+},
 
     // === СМЕНА ПАРОЛЯ (отдельный безопасный эндпоинт) ===
     changePassword: async (currentPassword: string, newPassword: string): Promise<{ success: true }> => {

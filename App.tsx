@@ -872,7 +872,7 @@ const handleUpdateProfile = async (data: any) => {
 
             await api.changePassword(data.currentPassword, data.newPassword);
 
-            
+
             alert("✅ Пароль успешно изменён!");
 
         } else {
