@@ -466,7 +466,7 @@ export const api = {
      * Загружает конфиг калькулятора по короткому ID
      * ⚠️ ПУБЛИЧНЫЙ МЕТОД — не использует токен авторизации!
      */
-    getCalculatorConfig: async (configId: string): Promise<{ defaultRate: number; termRates: { months: number; rate: number }[] }> => {
+    getCalculatorConfig: async (configId: string): Promise<{ defaultRate: number; termRates: { months: number; rate: number }[]; sellerPhone?: string; }> => {
         // 🔹 Публичный запрос — БЕЗ токена, чтобы клиент мог открыть ссылку без логина
         const res = await fetch(`${API_URL}/calculator-configs/${configId}`, {
             headers: { 'Content-Type': 'application/json' }

@@ -2020,18 +2020,28 @@ app.get('/api/calculator-configs/:configId', async (req, res) => {
     const { configId } = req.params;
     const fullId = `cfg_${configId}`;
 
-    const result = await pool.query(`
-      SELECT data FROM data_items 
+    // 1. Получаем конфиг
+    const configResult = await pool.query(`
+      SELECT data, user_id FROM data_items 
       WHERE id = $1 AND type = 'calculator_configs'
     `, [fullId]);
 
-    if (result.rows.length === 0) {
+    if (configResult.rows.length === 0) {
       return res.status(404).json({ msg: 'Конфиг не найден' });
     }
 
-    const config = result.rows[0].data;
+    const config = configResult.rows[0].data;
+    const ownerId = configResult.rows[0].user_id;  // ← ID владельца конфига
 
-    // 🔹 Опционально: удаляем старые конфиги (> 30 дней)
+    // 2. 🔥 Получаем телефон владельца из таблицы users
+    const userResult = await pool.query(
+      `SELECT phone FROM users WHERE id = $1`,
+      [ownerId]
+    );
+
+    const sellerPhone = userResult.rows[0]?.phone || null;
+
+    // 3. Проверяем актуальность конфига (30 дней)
     const configDate = new Date(config.createdAt);
     const daysOld = (Date.now() - configDate.getTime()) / (1000 * 60 * 60 * 24);
     if (daysOld > 30) {
@@ -2039,10 +2049,11 @@ app.get('/api/calculator-configs/:configId', async (req, res) => {
       return res.status(410).json({ msg: 'Конфиг устарел' });
     }
 
-    // 🔹 Возвращаем только нужные поля
+    // 4. 🔥 Возвращаем конфиг + телефон владельца
     res.json({
       defaultRate: config.defaultRate,
-      termRates: config.termRates
+      termRates: config.termRates,
+      sellerPhone: sellerPhone  // ← Новое поле
     });
 
   } catch (err) {
@@ -2050,7 +2061,6 @@ app.get('/api/calculator-configs/:configId', async (req, res) => {
     res.status(500).json({ msg: 'Server error' });
   }
 });
-
 // 🔹 Очистка старых конфигов (запускается раз в сутки)
 setInterval(async () => {
   try {

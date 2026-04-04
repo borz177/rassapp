@@ -67,6 +67,8 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   const [newRuleMonth, setNewRuleMonth] = useState<number>(3);
   const [newRuleRate, setNewRuleRate] = useState<string>('');
 
+  const [sellerPhone, setSellerPhone] = useState<string>('');
+
   // 🔹 Загрузка конфига с сервера при наличии ?cfg=...
   // 🔹 FIX: Только configId в зависимостях — предотвращает бесконечный ре-рендер
   useEffect(() => {
@@ -78,6 +80,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                   if (config) {
                       setDefaultRate(config.defaultRate.toString());
                       setTermRates(config.termRates || []);
+                      setSellerPhone(config.sellerPhone || '');
                   }
               })
               .catch(error => {
@@ -93,13 +96,20 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   }, [configId]); // ✅ ТОЛЬКО configId — больше никаких зависимостей!
 
   // Determine Active Rate
-  const activeRate = useMemo(() => {
-      const ratesToUse = isPublic ? (termRates.length > 0 ? termRates : publicRules) : termRates;
-      const baseRate = parseFloat(defaultRate);
+  // Determine Active Rate
+const activeRate = useMemo(() => {
+  const ratesToUse = isPublic
+    ? (termRates.length > 0 ? termRates : publicRules)
+    : termRates;
 
-      const specificRule = ratesToUse.find(r => r.months === months);
-      return specificRule ? specificRule.rate : baseRate;
-  }, [months, termRates, defaultRate, isPublic, publicRules]);
+  const baseRate = parseFloat(defaultRate);
+
+  // Ищем ставку для выбранного месяца
+  const specificRule = ratesToUse?.find(r => r.months === months);
+
+  // Если нашли — возвращаем её, иначе — базовую ставку
+  return specificRule ? specificRule.rate : baseRate;
+}, [months, termRates, defaultRate, isPublic, publicRules]);
 
   // Calculation
   const result = useMemo(() => {
@@ -229,7 +239,18 @@ const copyToClipboard = async (text: string): Promise<boolean> => {
       setTermRates(prev => prev.filter(r => r.months !== month));
   };
 
-  const availableTerms = [3, 4, 5, 6, 9, 12, 18, 24];
+// 🔥 Динамический список месяцев: 1-12 ИЛИ только настроенные ставки
+const availableTerms = useMemo(() => {
+  // Если есть специальные ставки — показываем только их сроки
+  if (termRates && termRates.length > 0) {
+    const customTerms = termRates.map(r => r.months).sort((a, b) => a - b);
+    // Убираем дубликаты
+    return [...new Set(customTerms)];
+  }
+
+  // По умолчанию: месяцы от 1 до 12
+  return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+}, [termRates]);  // 🔹 Зависимость от termRates
 
   return (
     <div className={`min-h-screen ${isPublic ? 'bg-slate-50 flex items-center justify-center p-4' : 'animate-fade-in pb-20'}`}>
@@ -427,7 +448,7 @@ const copyToClipboard = async (text: string): Promise<boolean> => {
                                     ) : (
                                         <>
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                                            Копировать красивую ссылку
+                                            Копировать ссылку
                                         </>
                                     )}
                                 </button>
@@ -440,44 +461,47 @@ const copyToClipboard = async (text: string): Promise<boolean> => {
                 )}
 
                 {isPublic && (
-                    <div className="text-center space-y-3">
-                        {userPhone && (
-                            <a
-                                href={`tel:${userPhone}`}
-                                className="w-full py-4 bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-200 flex items-center justify-center gap-2 hover:bg-blue-600 transition-colors"
-                            >
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-                                </svg>
-                                Позвонить: {userPhone.replace(/(\d)(\d{3})(\d{3})(\d{2})(\d{2})/, '+$1 ($2) $3-$4-$5')}
-                            </a>
-                        )}
+  <div className="text-center space-y-3">
+    {/* 🔥 Телефон: проверяем sellerPhone из конфига */}
+    {sellerPhone && (
+      <a
+        href={`tel:${sellerPhone}`}
+        className="w-full py-4 bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-200 flex items-center justify-center gap-2 hover:bg-blue-600 transition-colors"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+        Позвонить: {sellerPhone.replace(/(\d)(\d{3})(\d{3})(\d{2})(\d{2})/, '+$1 ($2) $3-$4-$5')}
+      </a>
+    )}
 
-                        {appSettings?.whatsapp?.enabled && appSettings?.whatsapp?.idInstance && (
-                            <a
-                                href={`https://wa.me/${appSettings.whatsapp.idInstance.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Здравствуйте! Хочу узнать подробнее о рассрочке')}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="w-full py-4 bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors"
-                            >
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
-                                </svg>
-                                Написать в WhatsApp
-                            </a>
-                        )}
+    {/* 🔥 WhatsApp: используем sellerPhone для формирования ссылки */}
+    {sellerPhone && (
+      <a
+        href={`https://wa.me/${sellerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Здравствуйте! Хочу узнать подробнее о рассрочке')}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="w-full py-4 bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+        </svg>
+        Написать в WhatsApp
+      </a>
+    )}
 
-                        {!userPhone && !appSettings?.whatsapp?.enabled && (
-                            <button className="w-full py-4 bg-slate-400 text-white font-bold rounded-xl shadow-lg cursor-not-allowed">
-                                Контакты не указаны
-                            </button>
-                        )}
+    {/* Если нет телефона */}
+    {!sellerPhone && (
+      <button className="w-full py-4 bg-slate-400 text-white font-bold rounded-xl shadow-lg cursor-not-allowed">
+        Контакты не указаны
+      </button>
+    )}
 
-                        <p className="text-xs text-slate-400">
-                            Расчет является предварительным. {appSettings?.companyName || 'Компания'}
-                        </p>
-                    </div>
-                )}
+    <p className="text-xs text-slate-400">
+      Расчет является предварительным. {publicCompany}
+    </p>
+  </div>
+)}
             </div>
         </div>
     </div>
