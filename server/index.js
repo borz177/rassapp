@@ -547,13 +547,13 @@ app.post(
             productData.payments.push(...paidHistory);
           }
 
-          responseText = `╔═════════════════════╗\n     *📋 Детали договоров*\n╚═════════════════════╝\n\n`;
+          responseText = `╔═════════════════╗\n     *📋 Детали договоров*\n╚═════════════════╝\n\n`;
 
           for (const [productName, data] of productsMap) {
             totalDebt += data.debt;
             totalMonthly += data.monthly;
 
-            responseText += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+           responseText += `━━━━━━━━━━━━━━━━━\n`;
             responseText += `🔹 *${productName}*\n`;
             responseText += `• Ежемесячный платёж: *${formatMoney(data.monthly)} ₽*\n`;
 
@@ -581,7 +581,7 @@ app.post(
             responseText += `\n`;
           }
 
-          responseText += `━━━━━━━━━━━━━━━━━━━━\n`;
+          responseText += `━━━━━━━━━━━━━━━━━\n`;
           responseText += `📊 *ОБЩИЙ ИТОГ:*\n`;
           responseText += `• Ежемесячно: *${formatMoney(totalMonthly)} ₽*\n`;
           responseText += `• Общий долг: *${formatMoney(totalDebt)} ₽*\n`;
@@ -596,12 +596,12 @@ app.post(
           const minRate = firstSale.interestRate || 0;
           const firstPayment = firstSale.downPayment || 0;
 
-          responseText = `╔═══════════════════════════╗\n   *📝 Условия рассрочки*\n╚═══════════════════════════╝\n\n`;
+          responseText = `╔═════════════════╗\n    *📝 Условия рассрочки*\n╚═════════════════╝\n\n`;
           responseText += `🏢 *${companyName}*\n\n`;
           responseText += `• Срок: до *${maxTerm} мес.*\n`;
           responseText += `• Процентная ставка: от *${minRate}%*\n`;
           responseText += `• Первый взнос: от *${formatMoney(firstPayment)} ₽*\n\n`;
-          responseText += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+          responseText += `━━━━━━━━━━━━━━━━━\n`;
           responseText += `🔗 *Рассчитайте платёж онлайн:*\n${calculatorUrl}\n\n_(Нажмите на ссылку выше)_`;
         }
 
