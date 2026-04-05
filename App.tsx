@@ -757,51 +757,49 @@ const handleIncomeSubmit = async (data: any) => {
         const needsUserAccount = hasEmail && (hasPassword || updated.id.startsWith('inv_'));
 
         if (needsUserAccount && !updated.id.startsWith('u_inv_') && !updated.id.startsWith('u_emp_')) {
-            // 🔹 Сохраняем СТАРЫЕ ID перед изменениями
-            const oldInvestorId = updated.id;
-            const oldAccount = accounts.find(a => a.ownerId === oldInvestorId);
-            const oldAccountId = oldAccount?.id;
+    // 🔹 Сохраняем СТАРЫЕ значения
+    const oldInvestorId = updated.id;
+    const oldAccount = accounts.find(a => a.ownerId === oldInvestorId);
+    // 🔹 НЕ сохраняем oldAccountId — мы его не будем менять!
 
-            const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
+    const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
 
-            const newUser = await api.createSubUser({
-                name: updated.name,
-                email: updated.email,
-                password: tempPassword,
-                role: 'investor',
-                phone: updated.phone || '',
-                permissions: updated.permissions || {}
-            });
+    const newUser = await api.createSubUser({
+        name: updated.name,
+        email: updated.email,
+        password: tempPassword,
+        role: 'investor',
+        phone: updated.phone || '',
+        permissions: updated.permissions || {}
+    });
 
-            // 🔹 Обновляем инвестора: меняем ID на ID пользователя
-            const linkedInvestor = {
-                ...updated,
-                id: newUser.id,  // 🔑 Новый ID
-                email: updated.email,
-                phone: updated.phone
-            };
+    // 🔹 Обновляем инвестора: меняем ID на ID пользователя
+    const linkedInvestor = {
+        ...updated,
+        id: newUser.id,
+        email: updated.email,
+        phone: updated.phone
+    };
 
-            await api.saveItem('investors', linkedInvestor);
+    await api.saveItem('investors', linkedInvestor);
+    updateList(setInvestors, linkedInvestor, oldInvestorId);
 
-            // 🔹 КЛЮЧЕВОЕ: передаём oldInvestorId, чтобы updateList удалил старого
-            updateList(setInvestors, linkedInvestor, oldInvestorId);
+    // 🔹 Обновляем счёт: МЕНЯЕМ ТОЛЬКО ownerId, id оставляем старым!
+    if (oldAccount) {
+        const updatedAccount = {
+            ...oldAccount,
+            ownerId: newUser.id  // ✅ Меняем только владельца
+            // 🔴 НЕ меняем id: oldAccount.id остаётся "acc_inv_123"
+        };
+        await api.saveItem('accounts', updatedAccount);
 
-            // 🔹 Обновляем счёт: меняем ownerId и id
-            if (oldAccount) {
-                const updatedAccount = {
-                    ...oldAccount,
-                    ownerId: newUser.id,
-                    id: `acc_${newUser.id}`
-                };
-                await api.saveItem('accounts', updatedAccount);
+        // 🔹 Обновляем стейт (oldId не нужен, т.к. id счёта не менялся)
+        updateList(setAccounts, updatedAccount);
+    }
 
-                // 🔹 То же самое для счёта: передаём oldAccountId
-                updateList(setAccounts, updatedAccount, oldAccountId);
-            }
-
-            alert(`✅ Инвестор активирован!\nЛогин: ${updated.email}\nПароль: ${tempPassword}`);
-            return;
-        }
+    alert(`✅ Инвестор активирован!\nЛогин: ${updated.email}\nПароль: ${tempPassword}`);
+    return;
+}
 
         // 3. Если пользователь уже есть — просто обновляем его данные
         const userUpdateData: any = {
