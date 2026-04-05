@@ -1325,55 +1325,22 @@ if (!user && !isLoading) {
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
                              accounts={accounts} appSettings={appSettings} investors={investors}/>}
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
+{/* 🔹 Дашборд инвестора — передаём ВСЕ данные, фильтрация внутри компонента */}
 {currentView === 'DASHBOARD' && isInvestor && activeInvestor && (
-  (() => {
-    // 🔹 ОТЛАДКА: Показываем ВСЕ счета для проверки
-    console.log('🔍 All accounts:', accounts.map(a => ({
-      id: a.id,
-      ownerId: a.ownerId,
-      name: a.name,
-      matches: a.ownerId === activeInvestor.id
-    })));
-
-    // 🔹 Фильтрация: ищем по ownerId
-    const filteredAccounts = accounts.filter(a => {
-      const matches = a.ownerId === activeInvestor.id;
-      console.log(`Account ${a.id}: ownerId=${a.ownerId}, investorId=${activeInvestor.id}, matches=${matches}`);
-      return matches;
-    });
-
-    const filteredSales = sales.filter(s => {
-      const acc = accounts.find(a => a.id === s.accountId);
-      return acc?.ownerId === activeInvestor.id;
-    });
-
-    const filteredExpenses = expenses.filter(e => {
-      const acc = accounts.find(a => a.id === e.accountId);
-      return acc?.ownerId === activeInvestor.id;
-    });
-
-    console.log('📊 Filtered data:', {
-      accounts: filteredAccounts.length,
-      sales: filteredSales.length,
-      expenses: filteredExpenses.length
-    });
-
-    return (
-      <InvestorDashboard
-        sales={filteredSales}
-        expenses={filteredExpenses}
-        accounts={filteredAccounts}
-        investor={activeInvestor}
-        appSettings={appSettings}
-        onLogout={() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          setUser(null);
-          setCurrentView('DASHBOARD');
-        }}
-      />
-    );
-  })()
+  <InvestorDashboard
+    // 🔹 Передаём ВСЕ данные (фильтрация внутри InvestorDashboard)
+    sales={sales}
+    expenses={expenses}
+    accounts={accounts}  // ← Все счета, не фильтруем здесь!
+    investor={activeInvestor}
+    appSettings={appSettings}
+    onLogout={() => {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      setUser(null);
+      setCurrentView('DASHBOARD');
+    }}
+  />
 )}
               {currentView === 'CASH_REGISTER' && (
   <CashRegister 
