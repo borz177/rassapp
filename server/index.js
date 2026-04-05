@@ -1159,35 +1159,64 @@ app.post('/api/users/manage', auth, async (req, res) => {
   return res.json({ success: true, id: investorId });
 }
 
-   if (action === 'update') {
+    if (action === 'update') {
   const { id, name, email, permissions, allowedInvestorIds, password, phone } = userData;
-  // ✅ Добавили phone
 
-  await pool.query(`
-    UPDATE users 
-    SET name = $1, email = $2, permissions = $3, allowed_investor_ids = $4, phone = $5, updated_at = NOW()
-    // ✅ Добавили phone = $5
-    WHERE id = $6 AND manager_id = $7
-  `, [
-    name,
-    email,
-    JSON.stringify(permissions),
-    JSON.stringify(allowedInvestorIds),
-    phone || null,  // ✅ Добавили phone
-    id,
-    req.user.id
-  ]);
+  try {
+    // 🔹 Безопасная сериализация: undefined → null
+    const permissionsJson = permissions !== undefined && permissions !== null
+      ? JSON.stringify(permissions)
+      : null;
 
-  if (password && password.trim().length > 0) {
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-    await pool.query(
-      'UPDATE users SET password = $1 WHERE id = $2 AND manager_id = $3',
-      [hashedPassword, id, req.user.id]
-    );
+    const allowedInvestorsJson = allowedInvestorIds !== undefined && allowedInvestorIds !== null
+      ? JSON.stringify(allowedInvestorIds)
+      : null;
+
+    // 🔹 Логирование для отладки
+    console.log('🔄 Updating user:', { id, name, email, phone });
+
+    // 🔹 Выполняем UPDATE
+    const result = await pool.query(`
+      UPDATE users 
+      SET 
+        name = $1, 
+        email = $2, 
+        permissions = $3, 
+        allowed_investor_ids = $4, 
+        phone = $5, 
+        updated_at = NOW()
+      WHERE id = $6 AND manager_id = $7
+    `, [
+      name ?? null,                    // ✅ null если undefined
+      email ?? null,
+      permissionsJson,
+      allowedInvestorsJson,
+      phone ?? null,                   // ✅ phone добавлен
+      id,
+      req.user.id
+    ]);
+
+    console.log('✅ Rows updated:', result.rowCount);
+
+    // 🔹 Смена пароля (отдельный запрос)
+    if (password && password.trim().length > 0) {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+      await pool.query(
+        'UPDATE users SET password = $1 WHERE id = $2 AND manager_id = $3',
+        [hashedPassword, id, req.user.id]
+      );
+      console.log('✅ Password updated');
+    }
+
+    return res.json({ success: true });
+
+  } catch (err) {
+    console.error('❌ Database error:', err.message);
+    console.error('Query:', err.query);      // Покажет сам запрос
+    console.error('Params:', err.parameters); // Покажет параметры
+    return res.status(500).json({ msg: 'Database error', error: err.message });
   }
-
-  return res.json({ success: true });
 }
 
     res.json({ success: true });
