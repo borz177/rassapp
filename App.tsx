@@ -1326,29 +1326,46 @@ if (!user && !isLoading) {
                              accounts={accounts} appSettings={appSettings} investors={investors}/>}
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
 {currentView === 'DASHBOARD' && isInvestor && activeInvestor && (
-  <InvestorDashboard
-    // 🔹 Фильтруем данные ПЕРЕД передачей: только счёт этого инвестора
-    sales={sales.filter(s => {
+  (() => {
+    // 🔹 ОТЛАДКА: Проверяем данные перед передачей
+    const filteredAccounts = accounts.filter(a => a.ownerId === activeInvestor.id);
+    const filteredSales = sales.filter(s => {
       const acc = accounts.find(a => a.id === s.accountId);
       return acc?.ownerId === activeInvestor.id;
-    })}
-    expenses={expenses.filter(e => {
+    });
+    const filteredExpenses = expenses.filter(e => {
       const acc = accounts.find(a => a.id === e.accountId);
       return acc?.ownerId === activeInvestor.id;
-    })}
-    accounts={accounts.filter(a => a.ownerId === activeInvestor.id)}
+    });
 
-    investor={activeInvestor}
-    appSettings={appSettings}
+    console.log('🔍 Investor Dashboard Debug:', {
+      investorId: activeInvestor.id,
+      investorEmail: activeInvestor.email,
+      totalAccounts: accounts.length,
+      filteredAccountsCount: filteredAccounts.length,
+      filteredAccounts: filteredAccounts.map(a => ({ id: a.id, ownerId: a.ownerId, name: a.name })),
+      totalSales: sales.length,
+      filteredSalesCount: filteredSales.length,
+      totalExpenses: expenses.length,
+      filteredExpensesCount: filteredExpenses.length,
+    });
 
-    // 🔹 Обработчик выхода
-    onLogout={() => {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      setUser(null);
-      setCurrentView('DASHBOARD');
-    }}
-  />
+    return (
+      <InvestorDashboard
+        sales={filteredSales}
+        expenses={filteredExpenses}
+        accounts={filteredAccounts}
+        investor={activeInvestor}
+        appSettings={appSettings}
+        onLogout={() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setUser(null);
+          setCurrentView('DASHBOARD');
+        }}
+      />
+    );
+  })()
 )}
               {currentView === 'CASH_REGISTER' && (
   <CashRegister 
