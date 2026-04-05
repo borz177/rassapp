@@ -13,27 +13,12 @@ interface InvestorDashboardProps {
 }
 
 const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
-  sales, expenses, accounts, investor, appSettings, onLogout, useEffect
+  sales, expenses, accounts, investor, appSettings, onLogout
 }) => {
-  // 🔹 ОТЛАДКА: Проверяем полученные данные
-  useEffect(() => {
-    console.log('📦 InvestorDashboard received:', {
-      investorId: investor.id,
-      investorName: investor.name,
-      accountsCount: accounts.length,
-      accounts: accounts.map(a => ({ id: a.id, ownerId: a.ownerId })),
-      salesCount: sales.length,
-      expensesCount: expenses.length,
-    });
-  }, [investor, accounts, sales, expenses]);
 
   // 🔹 ФИЛЬТРАЦИЯ: Находим счёт инвестора по ownerId
   const investorAccount = useMemo(() => {
-    const acc = accounts.find(a => a.ownerId === investor.id);
-    console.log('🏦 Found account:', acc
-      ? { id: acc.id, ownerId: acc.ownerId, name: acc.name }
-      : 'NOT FOUND ❌');
-    return acc;
+    return accounts.find(a => a.ownerId === investor.id);
   }, [accounts, investor.id]);
 
   // 🔹 ФИЛЬТРАЦИЯ: Показываем только продажи этого инвестора

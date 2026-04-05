@@ -1325,15 +1325,23 @@ if (!user && !isLoading) {
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
                              accounts={accounts} appSettings={appSettings} investors={investors}/>}
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
-{/* 🔹 Дашборд инвестора — передаём ВСЕ данные, фильтрация внутри компонента */}
 {currentView === 'DASHBOARD' && isInvestor && activeInvestor && (
   <InvestorDashboard
-    // 🔹 Передаём ВСЕ данные (фильтрация внутри InvestorDashboard)
-    sales={sales}
-    expenses={expenses}
-    accounts={accounts}  // ← Все счета, не фильтруем здесь!
+    // 🔹 Фильтруем данные ПЕРЕД передачей: только счёт этого инвестора
+    sales={sales.filter(s => {
+      const acc = accounts.find(a => a.id === s.accountId);
+      return acc?.ownerId === activeInvestor.id;
+    })}
+    expenses={expenses.filter(e => {
+      const acc = accounts.find(a => a.id === e.accountId);
+      return acc?.ownerId === activeInvestor.id;
+    })}
+    accounts={accounts.filter(a => a.ownerId === activeInvestor.id)}
+
     investor={activeInvestor}
     appSettings={appSettings}
+
+    // 🔹 Обработчик выхода
     onLogout={() => {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
