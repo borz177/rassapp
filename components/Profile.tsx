@@ -53,46 +53,50 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onBack, onLogo
       </header>
 
       {/* Profile Info Form */}
-      <form onSubmit={handleProfileSubmit} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-        <h3 className="text-lg font-semibold text-slate-800">Личные данные</h3>
-        <div>
-          <label className="text-sm font-medium text-slate-600 mb-1 block">Имя</label>
-          <input 
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-        <div>
-          <label className="text-sm font-medium text-slate-600 mb-1 block">Email (Логин)</label>
-          <input 
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-         <div>
-          <label className="text-sm font-medium text-slate-600 mb-1 block">Телефон</label>
-          <input 
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="+7 (XXX) XXX-XX-XX"
-          />
-        </div>
-        <button type="submit" className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700">
-          Сохранить изменения
-        </button>
-      </form>
+        <form onSubmit={handleProfileSubmit}
+              className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <h3 className="text-lg font-semibold text-slate-800">Личные данные</h3>
+            <div>
+                <label className="text-sm font-medium text-slate-600 mb-1 block">Имя</label>
+                <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+            </div>
+            <div>
+                <label className="text-sm font-medium text-slate-600 mb-1 block">Email (Логин)</label>
+                <input
+                    type="email"
+                    value={email}
+                    readOnly
+                    title="Email изменить нельзя"
+                    className="w-full p-3 border border-slate-200 bg-slate-50 text-slate-500 rounded-xl cursor-not-allowed select-none"
+                />
+            </div>
+            <div>
+                <label className="text-sm font-medium text-slate-600 mb-1 block">Телефон</label>
+                <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="+7 (XXX) XXX-XX-XX"
+                />
+            </div>
+            <button type="submit"
+                    className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700">
+                Сохранить изменения
+            </button>
+        </form>
 
-      {/* Change Password Form */}
-      <form onSubmit={handlePasswordSubmit} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-        <h3 className="text-lg font-semibold text-slate-800">Смена пароля</h3>
-        <div>
-          <label className="text-sm font-medium text-slate-600 mb-1 block">Текущий пароль</label>
+        {/* Change Password Form */}
+        <form onSubmit={handlePasswordSubmit}
+              className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+            <h3 className="text-lg font-semibold text-slate-800">Смена пароля</h3>
+            <div>
+                <label className="text-sm font-medium text-slate-600 mb-1 block">Текущий пароль</label>
           <input 
             type="password"
             value={currentPassword}

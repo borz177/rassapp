@@ -1194,14 +1194,14 @@ app.post('/api/users/manage', auth, async (req, res) => {
     }
 
     const result = await pool.query(query, params);
-    console.log(`✅ Rows updated: ${result.rowCount} | Self: ${isSelfUpdate}`);
+
 
     // Смена пароля (отдельно, без COALESCE)
     if (password && password.trim().length > 0) {
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(password, salt);
       await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, id]);
-      console.log('✅ Password updated');
+
     }
 
     return res.json({ success: true });

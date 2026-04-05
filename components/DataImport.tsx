@@ -225,40 +225,52 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess, curre
                     if (!isEmptyInvestor) {
                         let investor = investors.find(i => i.name.toLowerCase() === trimmedInvestor.toLowerCase());
 
-                        if (!investor) {
-                            addLog(`➕ Новый инвестор: ${trimmedInvestor}`);
-                            const newInvestor: Investor = {
-                                id: `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                                userId: currentUserId,
-                                joinedDate: new Date().toISOString(),
-                                name: trimmedInvestor,
-                                phone: '',
-                                notes: 'Создан автоматически при импорте',
-                                color: '#' + Math.floor(Math.random()*16777215).toString(16),
-                                email: '',
-                                initialAmount: 0,
-                                profitPercentage: 0,
-                                permissions: { canViewContracts: false, canViewHistory: false }
-                            };
-                            await api.saveItem('investors', newInvestor);
-                            investors.push(newInvestor);
-                            investor = newInvestor;
-                            newInvestorsCount++;
+                        // === ИМПОРТ ИНВЕСТОРА (минимальная версия) ===
+if (!investor) {
+    addLog(`➕ Новый инвестор: ${trimmedInvestor}`);
 
-                            const newAccount: Account = {
-                                id: `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                                userId: currentUserId,
-                                name: `Счет: ${trimmedInvestor}`,
-                                type: 'INVESTOR',
-                                balance: 0,
-                                ownerId: investor.id,
-                                currency: 'RUB',
-                                isArchived: false
-                            };
-                            await api.saveItem('accounts', newAccount);
-                            accounts.push(newAccount);
-                            accountId = newAccount.id;
-                        } else {
+    // 🔹 Читаем опциональные поля из Excel (если есть)
+    const invEmail = String(row['Email инвестора'] || row['Investor Email'] || '').trim();
+    const invPhone = String(row['Телефон инвестора'] || row['Investor Phone'] || '').trim();
+    const invProfitPercent = Number(row['% прибыли инвестора'] || row['Investor Profit %'] || 0) || 0;
+
+    // 🔹 Создаём инвестора БЕЗ создания пользователя (только запись в data_items)
+    const newInvestor: Investor = {
+        id: `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // 🔹 Отдельный ID, не user ID
+        userId: currentUserId,
+        joinedDate: new Date().toISOString(),
+        name: trimmedInvestor,
+        phone: invPhone || '',
+        email: invEmail || '',  // Может быть пустым!
+        initialAmount: 0,
+        profitPercentage: invProfitPercent,  // Может быть 0
+        permissions: { canViewContracts: false, canViewHistory: false },
+        notes: 'Импорт из Excel' + (invEmail ? '' : ' | Требуется активация для входа'),
+        color: '#' + Math.floor(Math.random()*16777215).toString(16)
+    };
+
+    await api.saveItem('investors', newInvestor);
+    investors.push(newInvestor);
+    investor = newInvestor;
+    newInvestorsCount++;
+
+    // 🔹 Создаём счёт инвестора (привязываем к ID инвестора, а не пользователя)
+    const newAccount: Account = {
+        id: `acc_${newInvestor.id}`,
+        userId: currentUserId,
+        name: `Счет: ${trimmedInvestor}`,
+        type: 'INVESTOR',
+        balance: 0,
+        ownerId: newInvestor.id,  // 🔹 ownerId = ID инвестора
+        currency: 'RUB',
+        isArchived: false
+    };
+    await api.saveItem('accounts', newAccount);
+    accounts.push(newAccount);
+    accountId = newAccount.id;
+
+    addLog(`✅ Инвестор "${trimmedInvestor}" импортирован${invEmail ? '' : ' (без логина)'}`);
+} else {
                             const invAccount = accounts.find(a => a.ownerId === investor.id && a.type === 'INVESTOR');
                             if (invAccount) accountId = invAccount.id;
                         }

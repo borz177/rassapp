@@ -80,6 +80,7 @@ export interface Investor {
   permissions?: InvestorPermissions;
   notes?: string;
   color?: string;
+  allowedInvestorIds?: string[];
 }
 
 export interface Account {
