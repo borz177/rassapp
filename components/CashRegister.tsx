@@ -19,6 +19,9 @@ interface CashRegisterProps {
   myProfitPeriod: { start: string; end: string; };
   setMyProfitPeriod: React.Dispatch<React.SetStateAction<{ start: string; end: string; }>>;
   appSettings: AppSettings;
+  isInvestor?: boolean;
+  currentInvestorId?: string;
+
 }
 
 const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubmit: (name: string, type: Account['type']) => void }) => {

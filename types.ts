@@ -157,7 +157,7 @@ export interface Expense {
   customerId?: string;             // Связь с клиентом (для возвратов)
 
   // 🔹 Типы выплат для инвесторов и возвратов
-  payoutType?: 'INVESTMENT' | 'PROFIT' | 'REFUND' | 'OTHER';
+  payoutType?: 'INVESTMENT' | 'PROFIT' | 'REFUND' | 'OTHER' | string;
 
   // 🔹 Источник выплаты для менеджера
   managerPayoutSource?: 'CAPITAL' | 'PROFIT';
@@ -166,7 +166,8 @@ export interface Expense {
   isRefund?: boolean;
 
   // 🔹 Для совместных счетов
-  investorId?: string; // For tracking withdrawals in shared accounts
+  investorId?: string;
+
 }
 
 export interface Sale {

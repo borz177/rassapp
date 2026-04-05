@@ -797,7 +797,6 @@ const handleIncomeSubmit = async (data: any) => {
         updateList(setAccounts, updatedAccount);
     }
 
-    alert(`✅ Инвестор активирован!\nЛогин: ${updated.email}\nПароль: ${tempPassword}`);
     return;
 }
 
@@ -1220,17 +1219,69 @@ if (!user && !isLoading) {
                              accountBalances={accountBalances} onAction={handleAction}
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
                              accounts={accounts} appSettings={appSettings} investors={investors}/>}
-              {currentView === 'DASHBOARD' && isInvestor && activeInvestor &&
-                  <InvestorDashboard sales={sales} expenses={expenses} accounts={accounts} investor={activeInvestor}
-                                     appSettings={appSettings}/>}
-              {currentView === 'CASH_REGISTER' &&
-                  <CashRegister accounts={accounts} sales={sales} expenses={expenses} investors={investors}
-                                onAddAccount={handleAddAccount} onAction={handleAction}
-                                onSelectAccount={handleSelectAccountForOperations}
-                                onSetMainAccount={handleSetMainAccount} onUpdateAccount={handleUpdateAccount}
-                                isManager={isManager} totalExpectedProfit={totalExpectedProfit}
-                                realizedPeriodProfit={realizedPeriodProfit} myProfitPeriod={myProfitPeriod}
-                                setMyProfitPeriod={setMyProfitPeriod} appSettings={appSettings}/>}
+              {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
+{currentView === 'DASHBOARD' && isInvestor && activeInvestor && (
+  <InvestorDashboard
+    // 🔹 Фильтруем данные ПЕРЕД передачей: только счёт этого инвестора
+    sales={sales.filter(s => {
+      const acc = accounts.find(a => a.id === s.accountId);
+      return acc?.ownerId === activeInvestor.id;
+    })}
+    expenses={expenses.filter(e => {
+      const acc = accounts.find(a => a.id === e.accountId);
+      return acc?.ownerId === activeInvestor.id;
+    })}
+    accounts={accounts.filter(a => a.ownerId === activeInvestor.id)}
+
+    investor={activeInvestor}
+    appSettings={appSettings}
+
+    // 🔹 Обработчик выхода
+    onLogout={() => {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      setUser(null);
+      setCurrentView('DASHBOARD');
+    }}
+  />
+)}
+              {currentView === 'CASH_REGISTER' && (
+  <CashRegister 
+    // 🔹 Фильтрация данных для инвестора
+    accounts={isInvestor && user 
+      ? accounts.filter(a => a.ownerId === user.id) 
+      : accounts}
+    sales={isInvestor && user 
+      ? sales.filter(s => {
+          const acc = accounts.find(a => a.id === s.accountId);
+          return acc?.ownerId === user.id;
+        })
+      : sales}
+    expenses={isInvestor && user 
+      ? expenses.filter(e => {
+          const acc = accounts.find(a => a.id === e.accountId);
+          return acc?.ownerId === user.id;
+        })
+      : expenses}
+    investors={investors}
+    onAddAccount={handleAddAccount}
+    onAction={handleAction}
+    onSelectAccount={handleSelectAccountForOperations}
+    onSetMainAccount={handleSetMainAccount}
+    onUpdateAccount={handleUpdateAccount}
+    isManager={isManager}
+    
+    // 🔹 Новые пропсы для внутренней фильтрации
+    isInvestor={isInvestor}
+    currentInvestorId={isInvestor ? user?.id : undefined}
+    
+    totalExpectedProfit={totalExpectedProfit}
+    realizedPeriodProfit={realizedPeriodProfit}
+    myProfitPeriod={myProfitPeriod}
+    setMyProfitPeriod={setMyProfitPeriod}
+    appSettings={appSettings}
+  />
+)}
               {currentView === 'CONTRACTS' && (
                   <Contracts
                       sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
