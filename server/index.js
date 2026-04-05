@@ -1164,17 +1164,17 @@ app.post('/api/users/manage', auth, async (req, res) => {
   const isSelfUpdate = (id === req.user.id);
 
   try {
-    // Безопасная сериализация JSON-полей
+    // Безопасная сериализация JSON
     const permJson = permissions !== undefined ? JSON.stringify(permissions) : null;
     const allowedJson = allowedInvestorIds !== undefined ? JSON.stringify(allowedInvestorIds) : null;
 
-    // Формируем базовый запрос
+    // 🔹 COALESCE сохраняет старое значение, если пришло null/undefined
     let query = `UPDATE users SET 
-      name = $1, 
-      email = $2, 
-      permissions = $3, 
-      allowed_investor_ids = $4, 
-      phone = $5, 
+      name = COALESCE($1, name), 
+      email = COALESCE($2, email), 
+      permissions = COALESCE($3, permissions), 
+      allowed_investor_ids = COALESCE($4, allowed_investor_ids), 
+      phone = COALESCE($5, phone), 
       updated_at = NOW() 
       WHERE id = $6`;
 
@@ -1187,8 +1187,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
       id
     ];
 
-    // 🔑 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ:
-    // Проверяем manager_id только если менеджер обновляет ЧУЖОЙ профиль
+    // Проверка manager_id только для чужих профилей
     if (!isSelfUpdate) {
       query += ` AND manager_id = $7`;
       params.push(req.user.id);
@@ -1197,14 +1196,11 @@ app.post('/api/users/manage', auth, async (req, res) => {
     const result = await pool.query(query, params);
     console.log(`✅ Rows updated: ${result.rowCount} | Self: ${isSelfUpdate}`);
 
-    // Отдельный запрос для смены пароля (без проверки manager_id)
+    // Смена пароля (отдельно, без COALESCE)
     if (password && password.trim().length > 0) {
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(password, salt);
-      await pool.query(
-        'UPDATE users SET password = $1 WHERE id = $2',
-        [hashedPassword, id]
-      );
+      await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, id]);
       console.log('✅ Password updated');
     }
 
