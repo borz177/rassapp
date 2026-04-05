@@ -863,35 +863,34 @@ const handleUpdateProfile = async (data: any) => {
     if (!user) return;
 
     try {
-        // 🔹 РАЗДЕЛЯЕМ логику профиля и пароля
+        // Смена пароля
         if (data.currentPassword || data.newPassword) {
-            // === Смена пароля ===
             if (!data.currentPassword || !data.newPassword) {
                 throw new Error('Заполните все поля для смены пароля');
             }
+            if (data.newPassword !== data.confirmPassword) {
+                throw new Error('Новые пароли не совпадают');
+            }
 
             await api.changePassword(data.currentPassword, data.newPassword);
-
-
             alert("✅ Пароль успешно изменён!");
-
-        } else {
-            // === Обновление профиля ===
-            const updatedUser = await api.updateProfile(user.id, {
-                name: data.name,
-                phone: data.phone,
-                // email: data.email // ⚠️ Если смена email требует подтверждения — не отправляйте сразу
-            });
-
-            // ✅ Обновляем стейт ДАННЫМИ С СЕРВЕРА, а не локальными
-            setUser(updatedUser);
-            localStorage.setItem('user', JSON.stringify(updatedUser));
-            alert("✅ Профиль обновлён!");
+            return;
         }
+
+        // Обновление профиля
+        const updatedUser = await api.updateProfile(user.id, {
+            name: data.name,
+            phone: data.phone,
+        });
+
+        // ✅ Обновляем стейт
+        setUser(updatedUser);
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        alert("✅ Профиль обновлён!");
 
     } catch(e: any) {
         console.error("Update error:", e);
-        alert(`❌ ${e.message || 'Произошла ошибка при сохранении'}`);
+        alert(`❌ ${e.message || 'Ошибка сохранения'}`);
     }
 };
 const contractCounts = useMemo(() => {

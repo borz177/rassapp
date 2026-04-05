@@ -396,18 +396,32 @@ updateProfile: async (userId: string, profileData: { name?: string; phone?: stri
         headers: getAuthHeader(),
         body: JSON.stringify({
             action: 'update',
-            userData: { id: userId, ...profileData }
+            userData: {
+                id: userId,
+                ...profileData
+            }
         })
     });
 
     if (!res.ok) {
-        const error = await res.json();
-        console.error('Update profile error:', error);
-        throw new Error(error.msg || error.error || 'Не удалось обновить профиль');
+        const errorText = await res.text();
+        throw new Error(`Server error ${res.status}: ${errorText}`);
     }
 
-    const updatedUser = await res.json();
+    const data = await res.json();
+    console.log('Server response:', data); // { success: true }
+
+    // 🔹 Создаём обновлённого пользователя локально
+    const currentUser = await offlineStorage.getCache('user_me');
+    const updatedUser: User = {
+        ...(currentUser || {}),
+        id: userId,
+        ...profileData
+    } as User;
+
+    // Сохраняем в кэш
     await offlineStorage.setCache('user_me', updatedUser);
+
     return updatedUser;
 },
 
