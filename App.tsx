@@ -580,7 +580,7 @@ const dashboardStats = useMemo(() => {
       }
   };
 
-  // ... (CRUD helpers updateList, removeFromList, handleSaveSale, etc. kept same) ...
+
 // 🔹 Обновлённая updateList с поддержкой смены id
 const updateList = <T extends { id: string }>(
   setter: React.Dispatch<React.SetStateAction<T[]>>,
@@ -742,86 +742,191 @@ const handleIncomeSubmit = async (data: any) => {
   const handleAddEmployee = async (data: any) => { if (user && isManager) { if (!checkAccess('EMPLOYEES')) { showUpgradeAlert("Сотрудники доступны в тарифе Бизнес."); return; } try { const newEmp = await api.createSubUser({ ...data, role: 'employee' }); setEmployees(prev => [...prev, newEmp]); } catch(e) { alert("Ошибка создания сотрудника"); console.error(e); } } };
   const handleUpdateEmployee = async (updatedData: User) => { if (isManager) { await api.updateUser(updatedData); updateList(setEmployees, updatedData); } };
   const handleDeleteEmployee = async (id: string) => { if (isManager) { await api.deleteUser(id); removeFromList(setEmployees, id); } };
-  const handleAddInvestor = async (name: string, phone: string, email: string, pass: string, amount: number, profitPercentage: number, permissions: InvestorPermissions) => { if (user && isManager) { if (!checkAccess('INVESTORS')) { showUpgradeAlert("Превышен лимит инвесторов для вашего тарифа."); return; } try { const newInvestorUser = await api.createSubUser({ name, email, password: pass, role: 'investor', phone }); const newInvestor: Investor = { id: newInvestorUser.id, userId: user.id, name, phone, email, initialAmount: amount, joinedDate: new Date().toISOString(), profitPercentage, permissions }; const savedInv = await api.saveItem('investors', newInvestor); updateList(setInvestors, savedInv); const newAccount: Account = { id: `acc_${newInvestorUser.id}`, userId: user.id, name: `Счет: ${name}`, type: 'INVESTOR', ownerId: newInvestorUser.id }; const savedAcc = await api.saveItem('accounts', newAccount); updateList(setAccounts, savedAcc); const depositTransaction: Sale = { id: `dep_${Date.now()}`, userId: user.id, type: 'CASH', customerId: `system_deposit_${newInvestorUser.id}`, productName: 'Начальный депозит', buyPrice: 0, accountId: newAccount.id, totalAmount: amount, downPayment: amount, remainingAmount: 0, interestRate: 0, installments: 0, startDate: new Date().toISOString(), status: 'COMPLETED', paymentPlan: [] }; const savedTx = await api.saveItem('sales', depositTransaction); updateList(setSales, savedTx); alert("Инвестор создан!"); } catch(e) { alert("Ошибка создания инвестора"); console.error(e); } } };
-  const handleUpdateInvestor = async (updated: Investor, password?: string) => {
-    if (!isManager) return;
+const handleAddInvestor = async (
+  name: string,
+  phone: string,
+  email: string,
+  pass: string,
+  amount: number,
+  profitPercentage: number,
+  permissions: InvestorPermissions
+) => {
+  if (!user || !isManager) return;
 
-    try {
-        // 1. Сохраняем данные инвестора (баланс, процент, права)
-        const saved = await api.saveItem('investors', updated);
-        updateList(setInvestors, saved);
+  if (!checkAccess('INVESTORS')) {
+    showUpgradeAlert("Превышен лимит инвесторов для вашего тарифа.");
+    return;
+  }
 
-        // 2. Проверяем: есть ли у инвестора email и нужно ли создать пользователя
-        const hasEmail = updated.email && updated.email.trim().length > 0;
-        const hasPassword = password && password.trim().length > 0;
-        const needsUserAccount = hasEmail && (hasPassword || updated.id.startsWith('inv_'));
+  try {
+    // 🔹 1. Создаём ПОЛЬЗОВАТЕЛЯ для входа (запись в таблице users)
+    const newInvestorUser = await api.createSubUser({
+      name,
+      email,
+      password: pass,
+      role: 'investor',
+      phone,
+      permissions
+    });
 
-        if (needsUserAccount && !updated.id.startsWith('u_inv_') && !updated.id.startsWith('u_emp_')) {
-    // 🔹 Сохраняем СТАРЫЕ значения
-    const oldInvestorId = updated.id;
-    const oldAccount = accounts.find(a => a.ownerId === oldInvestorId);
-    // 🔹 НЕ сохраняем oldAccountId — мы его не будем менять!
+    // 🔹 2. Создаём запись инвестора в data_items, привязанную к пользователю
+    const newInvestor: Investor = {
+      id: newInvestorUser.id,  // 🔑 ID инвестора = ID пользователя!
+      userId: user.id,
+      name,
+      phone,
+      email,
+      initialAmount: amount,
+      joinedDate: new Date().toISOString(),
+      profitPercentage,
+      permissions
+    };
 
-    const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
+    const savedInv = await api.saveItem('investors', newInvestor);
+    updateList(setInvestors, savedInv);
 
-    const newUser = await api.createSubUser({
+    // 🔹 3. Создаём счёт инвестора (привязанный к пользователю)
+    const newAccount: Account = {
+      id: `acc_${newInvestorUser.id}`,  // 🔑 Уникальный ID счёта
+      userId: user.id,
+      name: `Счет: ${name}`,
+      type: 'INVESTOR',
+      ownerId: newInvestorUser.id,  // 🔑 ownerId = ID пользователя для фильтрации
+      currency: 'RUB',
+      isArchived: false
+    };
+
+    const savedAcc = await api.saveItem('accounts', newAccount);
+    updateList(setAccounts, savedAcc);
+
+    // 🔹 4. Создаём транзакцию начального депозита (для истории и баланса)
+    const depositTransaction: Sale = {
+      id: `dep_${Date.now()}`,
+      userId: user.id,
+      type: 'CASH',
+      customerId: `system_deposit_${newInvestorUser.id}`,
+      productName: 'Начальный депозит',
+      buyPrice: 0,
+      accountId: newAccount.id,
+      totalAmount: amount,
+      downPayment: amount,
+      remainingAmount: 0,
+      interestRate: 0,
+      installments: 0,
+      startDate: new Date().toISOString(),
+      status: 'COMPLETED',
+      paymentPlan: []
+    };
+
+    const savedTx = await api.saveItem('sales', depositTransaction);
+    updateList(setSales, savedTx);
+
+    // 🔹 5. Если есть расход "закупки" для депозита — создаём его
+    if (amount > 0) {
+      const buyPriceExpense: Expense = {
+        id: `exp_dep_${newInvestorUser.id}`,
+        userId: user.id,
+        accountId: newAccount.id,
+        title: `Взнос инвестора: ${name}`,
+        amount: amount,
+        category: 'Инвестиции',
+        date: new Date().toISOString(),
+        investorId: newInvestorUser.id,
+        payoutType: 'INVESTMENT'
+      };
+      await api.saveItem('expenses', buyPriceExpense);
+      updateList(setExpenses, buyPriceExpense);
+    }
+
+    alert("✅ Инвестор создан!");
+    return newInvestorUser; // 🔹 Возвращаем пользователя для возможного дальнейшего использования
+
+  } catch(e: any) {
+    console.error("❌ Ошибка создания инвестора:", e);
+    alert(`Ошибка: ${e.message || 'Не удалось создать инвестора'}`);
+    throw e; // 🔹 Пробрасываем ошибку вверх для обработки
+  }
+};
+const handleUpdateInvestor = async (updated: Investor, password?: string) => {
+  if (!isManager) return;
+
+  try {
+    // 🔹 1. Сохраняем данные инвестора (баланс, процент, права)
+    const saved = await api.saveItem('investors', updated);
+    updateList(setInvestors, saved);
+
+    // 🔹 2. Проверяем: нужно ли создать пользователя для входа
+    const hasEmail = updated.email && updated.email.trim().length > 0;
+    const hasPassword = password && password.trim().length > 0;
+    const isImportedWithoutUser = updated.id.startsWith('inv_') && !updated.id.startsWith('u_inv_');
+    const needsActivation = hasEmail && (hasPassword || isImportedWithoutUser);
+
+    if (needsActivation && !updated.id.startsWith('u_inv_') && !updated.id.startsWith('u_emp_')) {
+      // 🔹 Сохраняем старые ID для корректного обновления списков
+      const oldInvestorId = updated.id;
+      const oldAccount = accounts.find(a => a.ownerId === oldInvestorId);
+
+      const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
+
+      // 🔹 Создаём пользователя для входа
+      const newUser = await api.createSubUser({
         name: updated.name,
         email: updated.email,
         password: tempPassword,
         role: 'investor',
         phone: updated.phone || '',
         permissions: updated.permissions || {}
-    });
+      });
 
-    // 🔹 Обновляем инвестора: меняем ID на ID пользователя
-    const linkedInvestor = {
+      // 🔹 Обновляем инвестора: меняем ID на ID пользователя
+      const linkedInvestor = {
         ...updated,
-        id: newUser.id,
+        id: newUser.id,  // 🔑 Новый ID
         email: updated.email,
         phone: updated.phone
-    };
+      };
 
-    await api.saveItem('investors', linkedInvestor);
-    updateList(setInvestors, linkedInvestor, oldInvestorId);
+      await api.saveItem('investors', linkedInvestor);
+      // 🔹 КЛЮЧЕВОЕ: передаём oldInvestorId, чтобы updateList удалил старого
+      updateList(setInvestors, linkedInvestor, oldInvestorId);
 
-    // 🔹 Обновляем счёт: МЕНЯЕМ ТОЛЬКО ownerId, id оставляем старым!
-    if (oldAccount) {
+      // 🔹 Обновляем счёт: меняем только ownerId, id счёта НЕ меняем!
+      if (oldAccount) {
         const updatedAccount = {
-            ...oldAccount,
-            ownerId: newUser.id  // ✅ Меняем только владельца
-            // 🔴 НЕ меняем id: oldAccount.id остаётся "acc_inv_123"
+          ...oldAccount,
+          ownerId: newUser.id  // ✅ Меняем только владельца
+          // 🔴 НЕ меняем id: oldAccount.id остаётся старым!
         };
         await api.saveItem('accounts', updatedAccount);
+        updateList(setAccounts, updatedAccount); // id счёта не менялся, oldId не нужен
+      }
 
-        // 🔹 Обновляем стейт (oldId не нужен, т.к. id счёта не менялся)
-        updateList(setAccounts, updatedAccount);
+      alert(`✅ Инвестор активирован!\nЛогин: ${updated.email}\nПароль: ${tempPassword}`);
+      return;
     }
 
-    return;
-}
+    // 🔹 3. Если пользователь уже есть — просто обновляем его данные
+    const userUpdateData: any = {
+      id: updated.id,
+      name: updated.name,
+      email: updated.email,
+      phone: updated.phone,
+      permissions: updated.permissions,
+      allowedInvestorIds: updated.allowedInvestorIds || []
+    };
 
-        // 3. Если пользователь уже есть — просто обновляем его данные
-        const userUpdateData: any = {
-            id: updated.id,
-            name: updated.name,
-            email: updated.email,
-            phone: updated.phone,
-            permissions: updated.permissions,
-            allowedInvestorIds: updated.allowedInvestorIds || []
-        };
-
-        if (hasPassword) {
-            userUpdateData.password = password;
-        }
-
-        await api.updateUser(userUpdateData);
-
-        alert(hasPassword ? "✅ Инвестор и пароль обновлены!" : "✅ Инвестор обновлён!");
-
-    } catch (error: any) {
-        console.error('Ошибка обновления инвестора:', error);
-        alert(`Не удалось обновить: ${error.message}`);
+    if (hasPassword) {
+      userUpdateData.password = password;
     }
+
+    await api.updateUser(userUpdateData);
+
+    alert(hasPassword ? "✅ Инвестор и пароль обновлены!" : "✅ Инвестор обновлён!");
+
+  } catch (error: any) {
+    console.error('Ошибка обновления инвестора:', error);
+    alert(`Не удалось обновить: ${error.message}`);
+  }
 };
  const handleDeleteInvestor = async (id: string) => {
   if (!isManager) return;
