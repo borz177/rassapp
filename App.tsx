@@ -581,8 +581,29 @@ const dashboardStats = useMemo(() => {
   };
 
   // ... (CRUD helpers updateList, removeFromList, handleSaveSale, etc. kept same) ...
-  const updateList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, item: T) => { setter(prev => { const idx = prev.findIndex(i => i.id === item.id); if (idx >= 0) return prev.map(i => i.id === item.id ? item : i); return [item, ...prev]; }); };
-  const removeFromList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, id: string) => { setter(prev => prev.filter(i => i.id !== id)); };
+// 🔹 Обновлённая updateList с поддержкой смены id
+const updateList = <T extends { id: string }>(
+  setter: React.Dispatch<React.SetStateAction<T[]>>,
+  item: T,
+  oldId?: string  // 🔹 Новый параметр: старый ID, если он менялся
+) => {
+  setter(prev => {
+    // Если передан oldId и он отличается от нового — сначала удаляем старый
+    if (oldId && oldId !== item.id) {
+      const withoutOld = prev.filter(i => i.id !== oldId);
+      // Проверяем, нет ли уже нового (защита от дублей)
+      const exists = withoutOld.some(i => i.id === item.id);
+      if (exists) return withoutOld;
+      return [item, ...withoutOld];
+    }
+
+    // Стандартное поведение (если ID не менялся)
+    const idx = prev.findIndex(i => i.id === item.id);
+    if (idx >= 0) return prev.map(i => i.id === item.id ? item : i);
+    return [item, ...prev];
+  });
+};
+const removeFromList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, id: string) => { setter(prev => prev.filter(i => i.id !== id)); };
 
   const handleSaveSale = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const saleId = data.id || Date.now().toString(); const paymentScheduleStartDate = data.paymentDate ? new Date(data.paymentDate) : new Date(data.startDate); if (!data.paymentDate) { paymentScheduleStartDate.setMonth(paymentScheduleStartDate.getMonth() + 1); } const preferredDay = paymentScheduleStartDate.getDate(); const saleData = { ...data, id: saleId, userId: ownerId, paymentDay: preferredDay, paymentPlan: data.type === 'CASH' ? [] : (data.paymentPlan || Array.from({ length: data.installments }).map((_, idx) => { const pDate = new Date(paymentScheduleStartDate); pDate.setMonth(pDate.getMonth() + idx); return { id: `pay_${Date.now()}_${idx}`, saleId: saleId, amount: Number((data.remainingAmount / data.installments).toFixed(2)), date: pDate.toISOString(), isPaid: false, isRealPayment: false }; })) }; const existingSaleIndex = sales.findIndex(s => s.id === data.id); const saleToSave = existingSaleIndex >= 0 ? { ...sales[existingSaleIndex], ...saleData } : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' }; const savedSale = await api.saveItem('sales', saleToSave); updateList(setSales, savedSale); if (existingSaleIndex < 0) { if (Number(data.buyPrice) > 0) { const buyPriceExpense: Expense = { id: `exp_sale_${saleId}`, userId: ownerId, accountId: data.accountId, title: `Закуп: ${data.productName}`, amount: Number(data.buyPrice), category: 'Себестоимость', date: data.startDate, isRefund: false }; const savedExpense = await api.saveItem('expenses', buyPriceExpense); updateList(setExpenses, savedExpense); } if (data.productId) { const prod = products.find(p => p.id === data.productId); if(prod) { const updatedProd = { ...prod, stock: prod.stock - 1 }; const savedProd = await api.saveItem('products', updatedProd); updateList(setProducts, savedProd); } } } setEditingSale(null); };
   const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
@@ -733,10 +754,13 @@ const handleIncomeSubmit = async (data: any) => {
         // 2. Проверяем: есть ли у инвестора email и нужно ли создать пользователя
         const hasEmail = updated.email && updated.email.trim().length > 0;
         const hasPassword = password && password.trim().length > 0;
-        const needsUserAccount = hasEmail && (hasPassword || updated.id.startsWith('inv_')); // Новый инвестор без user
+        const needsUserAccount = hasEmail && (hasPassword || updated.id.startsWith('inv_'));
 
         if (needsUserAccount && !updated.id.startsWith('u_inv_') && !updated.id.startsWith('u_emp_')) {
-
+            // 🔹 Сохраняем СТАРЫЕ ID перед изменениями
+            const oldInvestorId = updated.id;
+            const oldAccount = accounts.find(a => a.ownerId === oldInvestorId);
+            const oldAccountId = oldAccount?.id;
 
             const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
 
@@ -752,20 +776,27 @@ const handleIncomeSubmit = async (data: any) => {
             // 🔹 Обновляем инвестора: меняем ID на ID пользователя
             const linkedInvestor = {
                 ...updated,
-                id: newUser.id,  // 🔑 Ключевое: меняем ID!
+                id: newUser.id,  // 🔑 Новый ID
                 email: updated.email,
                 phone: updated.phone
             };
 
             await api.saveItem('investors', linkedInvestor);
-            updateList(setInvestors, linkedInvestor);
 
-            // 🔹 Обновляем счёт: меняем ownerId
-            const account = accounts.find(a => a.ownerId === updated.id);
-            if (account) {
-                const updatedAccount = { ...account, ownerId: newUser.id, id: `acc_${newUser.id}` };
+            // 🔹 КЛЮЧЕВОЕ: передаём oldInvestorId, чтобы updateList удалил старого
+            updateList(setInvestors, linkedInvestor, oldInvestorId);
+
+            // 🔹 Обновляем счёт: меняем ownerId и id
+            if (oldAccount) {
+                const updatedAccount = {
+                    ...oldAccount,
+                    ownerId: newUser.id,
+                    id: `acc_${newUser.id}`
+                };
                 await api.saveItem('accounts', updatedAccount);
-                updateList(setAccounts, updatedAccount);
+
+                // 🔹 То же самое для счёта: передаём oldAccountId
+                updateList(setAccounts, updatedAccount, oldAccountId);
             }
 
             alert(`✅ Инвестор активирован!\nЛогин: ${updated.email}\nПароль: ${tempPassword}`);
