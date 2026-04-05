@@ -1327,27 +1327,35 @@ if (!user && !isLoading) {
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
 {currentView === 'DASHBOARD' && isInvestor && activeInvestor && (
   (() => {
-    // 🔹 ОТЛАДКА: Проверяем данные перед передачей
-    const filteredAccounts = accounts.filter(a => a.ownerId === activeInvestor.id);
+    // 🔹 ОТЛАДКА: Показываем ВСЕ счета для проверки
+    console.log('🔍 All accounts:', accounts.map(a => ({
+      id: a.id,
+      ownerId: a.ownerId,
+      name: a.name,
+      matches: a.ownerId === activeInvestor.id
+    })));
+
+    // 🔹 Фильтрация: ищем по ownerId
+    const filteredAccounts = accounts.filter(a => {
+      const matches = a.ownerId === activeInvestor.id;
+      console.log(`Account ${a.id}: ownerId=${a.ownerId}, investorId=${activeInvestor.id}, matches=${matches}`);
+      return matches;
+    });
+
     const filteredSales = sales.filter(s => {
       const acc = accounts.find(a => a.id === s.accountId);
       return acc?.ownerId === activeInvestor.id;
     });
+
     const filteredExpenses = expenses.filter(e => {
       const acc = accounts.find(a => a.id === e.accountId);
       return acc?.ownerId === activeInvestor.id;
     });
 
-    console.log('🔍 Investor Dashboard Debug:', {
-      investorId: activeInvestor.id,
-      investorEmail: activeInvestor.email,
-      totalAccounts: accounts.length,
-      filteredAccountsCount: filteredAccounts.length,
-      filteredAccounts: filteredAccounts.map(a => ({ id: a.id, ownerId: a.ownerId, name: a.name })),
-      totalSales: sales.length,
-      filteredSalesCount: filteredSales.length,
-      totalExpenses: expenses.length,
-      filteredExpensesCount: filteredExpenses.length,
+    console.log('📊 Filtered data:', {
+      accounts: filteredAccounts.length,
+      sales: filteredSales.length,
+      expenses: filteredExpenses.length
     });
 
     return (
