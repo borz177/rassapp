@@ -216,16 +216,20 @@ useEffect(() => {
         const freshUser = await api.getMe();
         setUser(freshUser);
         localStorage.setItem('user', JSON.stringify(freshUser));
+
+        // 🔹 Загружаем данные
         await loadData(freshUser, !!localUser);
+
+        // 🔹 Проверка: что загрузилось
+        console.log('📦 After loadData:', {
+          accountsCount: accounts.length,
+          salesCount: sales.length,
+          expensesCount: expenses.length,
+          investorsCount: investors.length
+        });
+
       } catch (err) {
         console.error('❌ Auth refresh failed', err);
-        // Если сервер отверг токен — очищаем всё
-        if (!localUser) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          setUser(null);
-        }
-        // Иначе остаёмся на локальных данных (оффлайн)
       }
     }
 
@@ -1325,53 +1329,57 @@ if (!user && !isLoading) {
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
                              accounts={accounts} appSettings={appSettings} investors={investors}/>}
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
-{/* 🔹 ОТЛАДКА: Проверяем данные перед передачей инвестору */}
-{currentView === 'DASHBOARD' && isInvestor && activeInvestor && (() => {
-  console.log('🔍 App.tsx Debug - Before InvestorDashboard:', {
-    activeInvestorId: activeInvestor.id,
-    activeInvestorName: activeInvestor.name,
-    totalAccounts: accounts.length,
-    totalSales: sales.length,
-    totalExpenses: expenses.length,
+{/* 🔹 Дашборд инвестора — с проверкой на загрузку данных */}
+{currentView === 'DASHBOARD' && isInvestor && activeInvestor && (
+  (() => {
+    // 🔹 Если данных ещё нет — показываем загрузку
+    if (accounts.length === 0 && sales.length === 0) {
+      return (
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+            <p className="text-slate-500">Загрузка данных...</p>
+          </div>
+        </div>
+      );
+    }
 
-    // 🔹 Проверяем, что находит фильтрация
-    filteredAccounts: accounts.filter(a => a.ownerId === activeInvestor.id).map(a => ({
-      id: a.id,
-      ownerId: a.ownerId,
-      name: a.name,
-      matches: a.ownerId === activeInvestor.id
-    })),
+    // 🔹 ОТЛАДКА: Проверяем фильтрацию
+    const filteredAccounts = accounts.filter(a => a.ownerId === activeInvestor.id);
+    console.log('🔍 App.tsx Debug:', {
+      activeInvestorId: activeInvestor.id,
+      totalAccounts: accounts.length,
+      filteredAccountsCount: filteredAccounts.length,
+      filteredAccounts: filteredAccounts.map(a => ({
+        id: a.id,
+        ownerId: a.ownerId,
+        name: a.name
+      }))
+    });
 
-    // 🔹 Проверяем первую продажу
-    firstSale: sales[0] ? {
-      id: sales[0].id,
-      accountId: sales[0].accountId,
-      accountOwnerId: accounts.find(acc => acc.id === sales[0].accountId)?.ownerId
-    } : null
-  });
-
-  return (
-    <InvestorDashboard
-      sales={sales.filter(s => {
-        const acc = accounts.find(a => a.id === s.accountId);
-        return acc?.ownerId === activeInvestor.id;
-      })}
-      expenses={expenses.filter(e => {
-        const acc = accounts.find(a => a.id === e.accountId);
-        return acc?.ownerId === activeInvestor.id;
-      })}
-      accounts={accounts.filter(a => a.ownerId === activeInvestor.id)}
-      investor={activeInvestor}
-      appSettings={appSettings}
-      onLogout={() => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        setUser(null);
-        setCurrentView('DASHBOARD');
-      }}
-    />
-  );
-})()}
+    return (
+      <InvestorDashboard
+        sales={sales.filter(s => {
+          const acc = accounts.find(a => a.id === s.accountId);
+          return acc?.ownerId === activeInvestor.id;
+        })}
+        expenses={expenses.filter(e => {
+          const acc = accounts.find(a => a.id === e.accountId);
+          return acc?.ownerId === activeInvestor.id;
+        })}
+        accounts={filteredAccounts}
+        investor={activeInvestor}
+        appSettings={appSettings}
+        onLogout={() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setUser(null);
+          setCurrentView('DASHBOARD');
+        }}
+      />
+    );
+  })()
+)}
               {currentView === 'CONTRACTS' && (
                   <Contracts
                       sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
