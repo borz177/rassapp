@@ -1325,68 +1325,53 @@ if (!user && !isLoading) {
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
                              accounts={accounts} appSettings={appSettings} investors={investors}/>}
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
-{currentView === 'DASHBOARD' && isInvestor && activeInvestor && (
-  <InvestorDashboard
-    // 🔹 Фильтруем данные ПЕРЕД передачей: только счёт этого инвестора
-    sales={sales.filter(s => {
-      const acc = accounts.find(a => a.id === s.accountId);
-      return acc?.ownerId === activeInvestor.id;
-    })}
-    expenses={expenses.filter(e => {
-      const acc = accounts.find(a => a.id === e.accountId);
-      return acc?.ownerId === activeInvestor.id;
-    })}
-    accounts={accounts.filter(a => a.ownerId === activeInvestor.id)}
+{/* 🔹 ОТЛАДКА: Проверяем данные перед передачей инвестору */}
+{currentView === 'DASHBOARD' && isInvestor && activeInvestor && (() => {
+  console.log('🔍 App.tsx Debug - Before InvestorDashboard:', {
+    activeInvestorId: activeInvestor.id,
+    activeInvestorName: activeInvestor.name,
+    totalAccounts: accounts.length,
+    totalSales: sales.length,
+    totalExpenses: expenses.length,
 
-    investor={activeInvestor}
-    appSettings={appSettings}
+    // 🔹 Проверяем, что находит фильтрация
+    filteredAccounts: accounts.filter(a => a.ownerId === activeInvestor.id).map(a => ({
+      id: a.id,
+      ownerId: a.ownerId,
+      name: a.name,
+      matches: a.ownerId === activeInvestor.id
+    })),
 
-    // 🔹 Обработчик выхода
-    onLogout={() => {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      setUser(null);
-      setCurrentView('DASHBOARD');
-    }}
-  />
-)}
-              {currentView === 'CASH_REGISTER' && (
-  <CashRegister 
-    // 🔹 Фильтрация данных для инвестора
-    accounts={isInvestor && user 
-      ? accounts.filter(a => a.ownerId === user.id) 
-      : accounts}
-    sales={isInvestor && user 
-      ? sales.filter(s => {
-          const acc = accounts.find(a => a.id === s.accountId);
-          return acc?.ownerId === user.id;
-        })
-      : sales}
-    expenses={isInvestor && user 
-      ? expenses.filter(e => {
-          const acc = accounts.find(a => a.id === e.accountId);
-          return acc?.ownerId === user.id;
-        })
-      : expenses}
-    investors={investors}
-    onAddAccount={handleAddAccount}
-    onAction={handleAction}
-    onSelectAccount={handleSelectAccountForOperations}
-    onSetMainAccount={handleSetMainAccount}
-    onUpdateAccount={handleUpdateAccount}
-    isManager={isManager}
-    
-    // 🔹 Новые пропсы для внутренней фильтрации
-    isInvestor={isInvestor}
-    currentInvestorId={isInvestor ? user?.id : undefined}
-    
-    totalExpectedProfit={totalExpectedProfit}
-    realizedPeriodProfit={realizedPeriodProfit}
-    myProfitPeriod={myProfitPeriod}
-    setMyProfitPeriod={setMyProfitPeriod}
-    appSettings={appSettings}
-  />
-)}
+    // 🔹 Проверяем первую продажу
+    firstSale: sales[0] ? {
+      id: sales[0].id,
+      accountId: sales[0].accountId,
+      accountOwnerId: accounts.find(acc => acc.id === sales[0].accountId)?.ownerId
+    } : null
+  });
+
+  return (
+    <InvestorDashboard
+      sales={sales.filter(s => {
+        const acc = accounts.find(a => a.id === s.accountId);
+        return acc?.ownerId === activeInvestor.id;
+      })}
+      expenses={expenses.filter(e => {
+        const acc = accounts.find(a => a.id === e.accountId);
+        return acc?.ownerId === activeInvestor.id;
+      })}
+      accounts={accounts.filter(a => a.ownerId === activeInvestor.id)}
+      investor={activeInvestor}
+      appSettings={appSettings}
+      onLogout={() => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setUser(null);
+        setCurrentView('DASHBOARD');
+      }}
+    />
+  );
+})()}
               {currentView === 'CONTRACTS' && (
                   <Contracts
                       sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
