@@ -216,20 +216,16 @@ useEffect(() => {
         const freshUser = await api.getMe();
         setUser(freshUser);
         localStorage.setItem('user', JSON.stringify(freshUser));
-
-        // 🔹 Загружаем данные
         await loadData(freshUser, !!localUser);
-
-        // 🔹 Проверка: что загрузилось
-        console.log('📦 After loadData:', {
-          accountsCount: accounts.length,
-          salesCount: sales.length,
-          expensesCount: expenses.length,
-          investorsCount: investors.length
-        });
-
       } catch (err) {
         console.error('❌ Auth refresh failed', err);
+        // Если сервер отверг токен — очищаем всё
+        if (!localUser) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setUser(null);
+        }
+        // Иначе остаёмся на локальных данных (оффлайн)
       }
     }
 
@@ -1379,6 +1375,43 @@ if (!user && !isLoading) {
       />
     );
   })()
+)}
+              {currentView === 'CASH_REGISTER' && (
+  <CashRegister
+    // 🔹 Фильтрация данных для инвестора
+    accounts={isInvestor && user
+      ? accounts.filter(a => a.ownerId === user.id)
+      : accounts}
+    sales={isInvestor && user
+      ? sales.filter(s => {
+          const acc = accounts.find(a => a.id === s.accountId);
+          return acc?.ownerId === user.id;
+        })
+      : sales}
+    expenses={isInvestor && user
+      ? expenses.filter(e => {
+          const acc = accounts.find(a => a.id === e.accountId);
+          return acc?.ownerId === user.id;
+        })
+      : expenses}
+    investors={investors}
+    onAddAccount={handleAddAccount}
+    onAction={handleAction}
+    onSelectAccount={handleSelectAccountForOperations}
+    onSetMainAccount={handleSetMainAccount}
+    onUpdateAccount={handleUpdateAccount}
+    isManager={isManager}
+
+    // 🔹 Новые пропсы для внутренней фильтрации
+    isInvestor={isInvestor}
+    currentInvestorId={isInvestor ? user?.id : undefined}
+
+    totalExpectedProfit={totalExpectedProfit}
+    realizedPeriodProfit={realizedPeriodProfit}
+    myProfitPeriod={myProfitPeriod}
+    setMyProfitPeriod={setMyProfitPeriod}
+    appSettings={appSettings}
+  />
 )}
               {currentView === 'CONTRACTS' && (
                   <Contracts
