@@ -910,23 +910,51 @@ app.get('/api/data', auth, async (req, res) => {
 
     // 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Менеджеры видят свои данные + данные своих инвесторов
     let query = 'SELECT * FROM data_items WHERE user_id = $1';
-    let params = [targetUserId];
+let params = [targetUserId];
 
-    if (req.user.role === 'manager' || req.user.role === 'admin') {
-      // Менеджеры видят:
-      // 1. Свои данные (где user_id = manager.id)
-      // 2. Профили инвесторов (где type='investors' AND data->>'userId' = manager.id)
-      // 3. Счета инвесторов (где type='accounts' AND data->>'ownerId' = инвестор с userId = manager.id)
-      query = `
-        SELECT * FROM data_items 
-        WHERE user_id = $1 
-        OR (type = 'investors' AND data->>'userId' = $1)
-        OR (type = 'accounts' AND data->>'ownerId' IN (
-          SELECT data->>'id' FROM data_items 
-          WHERE type = 'investors' AND data->>'userId' = $1
-        ))
-      `;
-    }
+if (req.user.role === 'manager' || req.user.role === 'admin') {
+  // Менеджеры видят: свои данные + данные своих инвесторов
+  query = `
+    SELECT * FROM data_items 
+    WHERE user_id = $1 
+    OR (type = 'investors' AND data->>'userId' = $1)
+    OR (type = 'accounts' AND data->>'ownerId' IN (
+      SELECT data->>'id' FROM data_items 
+      WHERE type = 'investors' AND data->>'userId' = $1
+    ))
+    OR (type = 'sales' AND data->>'accountId' IN (
+      SELECT data->>'id' FROM data_items 
+      WHERE type = 'accounts' AND data->>'ownerId' IN (
+        SELECT data->>'id' FROM data_items 
+        WHERE type = 'investors' AND data->>'userId' = $1
+      )
+    ))
+    OR (type = 'expenses' AND data->>'accountId' IN (
+      SELECT data->>'id' FROM data_items 
+      WHERE type = 'accounts' AND data->>'ownerId' IN (
+        SELECT data->>'id' FROM data_items 
+        WHERE type = 'investors' AND data->>'userId' = $1
+      )
+    ))
+  `;
+}
+
+// 🔹 НОВОЕ: Инвесторы видят ТОЛЬКО свои данные
+if (req.user.role === 'investor') {
+  query = `
+    SELECT * FROM data_items 
+    WHERE user_id = $1  -- Личные настройки, профиль
+    OR (type = 'accounts' AND data->>'ownerId' = $1)  -- Свои счета
+    OR (type = 'sales' AND data->>'accountId' IN (  -- Продажи на своих счетах
+      SELECT data->>'id' FROM data_items 
+      WHERE type = 'accounts' AND data->>'ownerId' = $1
+    ))
+    OR (type = 'expenses' AND data->>'accountId' IN (  -- Расходы на своих счетах
+      SELECT data->>'id' FROM data_items 
+      WHERE type = 'accounts' AND data->>'ownerId' = $1
+    ))
+  `;
+}
 
     const itemsResult = await pool.query(query, params);
 
