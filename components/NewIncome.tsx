@@ -122,68 +122,68 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   }, [selectedSale, amount, showCents]);
 
   const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
-      if (!contractRef.current) throw new Error("Contract element not found");
-      const element = contractRef.current;
+    if (!contractRef.current) throw new Error("Contract element not found");
+    const element = contractRef.current;
 
-      // Сохраняем оригинальные стили
-      const originalStyle = {
-          display: element.style.display,
-          position: element.style.position,
-          left: element.style.left,
-          top: element.style.top,
-          visibility: element.style.visibility,
-          zIndex: element.style.zIndex,
-          opacity: element.style.opacity,
-          pointerEvents: element.style.pointerEvents
-      };
+    // Сохраняем оригинальные стили
+    const originalStyle = {
+        display: element.style.display,
+        position: element.style.position,
+        left: element.style.left,
+        top: element.style.top,
+        visibility: element.style.visibility,
+        zIndex: element.style.zIndex,
+        opacity: element.style.opacity,
+        pointerEvents: element.style.pointerEvents
+    };
 
-      // ХАК ДЛЯ МОБИЛОК: Выносим элемент поверх всего, но делаем почти прозрачным
-      // Так браузер 100% его отрендерит, а пользователь ничего не заметит
-      element.style.display = 'block';
-      element.style.position = 'fixed';
-      element.style.left = '0';
-      element.style.top = '0';
-      element.style.visibility = 'visible';
-      element.style.zIndex = '9999';
-      element.style.opacity = '0.01'; // Достаточно, чтобы не было видно, но браузер нарисовал
-      element.style.pointerEvents = 'none';
+    try {
+        // 🔥 ИСПРАВЛЕНИЕ: используем absolute + сдвиг за экран (как в NewSale)
+        element.style.display = 'block';
+        element.style.position = 'absolute';
+        element.style.left = '-9999px';
+        element.style.top = '-9999px';
+        element.style.visibility = 'visible';
+        element.style.zIndex = '9999';
+        element.style.opacity = '1'; // 🔥 Убираем прозрачность!
+        element.style.pointerEvents = 'auto';
+        element.style.background = 'white'; // 🔥 Явный фон
 
-      try {
-          // Даем больше времени мобильному устройству на отрисовку DOM
-          await new Promise(resolve => setTimeout(resolve, 300));
+        // Даём время на рендер, особенно на слабых устройствах
+        await new Promise(resolve => setTimeout(resolve, 500));
 
-          // Уменьшаем масштаб для мобильных телефонов, чтобы избежать ошибки лимита памяти
-          const isMobile = window.innerWidth < 768;
-          const scaleOption = isMobile ? 1 : 1.5;
+        const canvas = await html2canvas(element, {
+            scale: 2, // 🔥 Фиксированный масштаб для качества
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff', // 🔥 Критично для мобильных!
+            allowTaint: true,
+            scrollY: 0 // 🔥 Игнорируем скролл
+        });
 
-          const canvas = await html2canvas(element, {
-              scale: scaleOption,
-              useCORS: true,
-              logging: false,
-              // Принудительно задаем размер окна для корректного захвата
-              windowWidth: element.scrollWidth,
-              windowHeight: element.scrollHeight
-          });
+        const imgData = canvas.toDataURL('image/jpeg', 0.9);
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-          const imgData = canvas.toDataURL('image/jpeg', 0.8); // Чуть увеличил качество для scale: 1
-          const pdf = new jsPDF('p', 'mm', 'a4');
-          const pdfWidth = pdf.internal.pageSize.getWidth();
-          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        return pdf.output('blob');
 
-          pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-          return pdf.output('blob');
-      } finally {
-          // Возвращаем всё как было
-          element.style.display = originalStyle.display;
-          element.style.position = originalStyle.position;
-          element.style.left = originalStyle.left;
-          element.style.top = originalStyle.top;
-          element.style.visibility = originalStyle.visibility;
-          element.style.zIndex = originalStyle.zIndex;
-          element.style.opacity = originalStyle.opacity || '1';
-          element.style.pointerEvents = originalStyle.pointerEvents || 'auto';
-      }
-  };
+    } catch (error) {
+        console.error("PDF generation error:", error);
+        throw error;
+    } finally {
+        // Возвращаем стили
+        element.style.display = originalStyle.display;
+        element.style.position = originalStyle.position;
+        element.style.left = originalStyle.left;
+        element.style.top = originalStyle.top;
+        element.style.visibility = originalStyle.visibility;
+        element.style.zIndex = originalStyle.zIndex;
+        element.style.opacity = originalStyle.opacity ?? '1';
+        element.style.pointerEvents = originalStyle.pointerEvents ?? 'auto';
+    }
+};
   const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
       const numAmount = Number(amount);
