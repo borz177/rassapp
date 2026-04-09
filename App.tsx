@@ -285,40 +285,70 @@ useEffect(() => {
 }, [user]);
 
   const loadData = async (currentUser?: User, skipLoading = false) => {
-      if (!skipLoading && customers.length === 0 && sales.length === 0) {
-          setIsLoading(true);
-      }
-      try {
-          const data = await api.fetchAllData();
-          setCustomers(data.customers);
-          setProducts(data.products);
-          setSales(data.sales);
-          setExpenses(data.expenses);
-          setAccounts(data.accounts);
-          setInvestors(data.investors);
-          setPartnerships(data.partnerships);
-          setEmployees(data.employees);
+  if (!skipLoading && customers.length === 0 && sales.length === 0) {
+    setIsLoading(true);
+  }
 
-          let loadedSettings = data.settings || getAppSettings();
+  try {
+    // 🔹 Пытаемся загрузить с сервера
+    const data = await api.fetchAllData();
 
-          // Merge WhatsApp settings from User Profile if available
-          const activeUser = currentUser || user;
-          if (activeUser?.whatsapp_settings) {
-              loadedSettings = {
-                  ...loadedSettings,
-                  whatsapp: activeUser.whatsapp_settings
-              };
-          }
+    // ✅ Успешная загрузка — сохраняем в localStorage
+    localStorage.setItem('customers', JSON.stringify(data.customers));
+    localStorage.setItem('products', JSON.stringify(data.products));
+    localStorage.setItem('sales', JSON.stringify(data.sales));
+    localStorage.setItem('expenses', JSON.stringify(data.expenses));
+    localStorage.setItem('accounts', JSON.stringify(data.accounts));
+    localStorage.setItem('investors', JSON.stringify(data.investors));
+    localStorage.setItem('partnerships', JSON.stringify(data.partnerships));
+    localStorage.setItem('employees', JSON.stringify(data.employees));
 
-          setAppSettings(loadedSettings);
-          saveAppSettings(loadedSettings); // Sync server data to local storage
-      } catch (error) {
-          console.error("Failed to load data", error);
-      } finally {
-          setIsLoading(false);
-      }
-  };
+    setCustomers(data.customers);
+    setProducts(data.products);
+    setSales(data.sales);
+    setExpenses(data.expenses);
+    setAccounts(data.accounts);
+    setInvestors(data.investors);
+    setPartnerships(data.partnerships);
+    setEmployees(data.employees);
 
+    console.log('✅ Data loaded from server:', {
+      accountsCount: data.accounts.length,
+      salesCount: data.sales.length,
+      investorsCount: data.investors.length
+    });
+
+  } catch (error) {
+    console.warn('⚠️ Failed to load from server, using localStorage:', error);
+
+    // 🔹 ОФФЛАЙН: Загружаем из localStorage
+    const localCustomers = JSON.parse(localStorage.getItem('customers') || '[]');
+    const localProducts = JSON.parse(localStorage.getItem('products') || '[]');
+    const localSales = JSON.parse(localStorage.getItem('sales') || '[]');
+    const localExpenses = JSON.parse(localStorage.getItem('expenses') || '[]');
+    const localAccounts = JSON.parse(localStorage.getItem('accounts') || '[]');
+    const localInvestors = JSON.parse(localStorage.getItem('investors') || '[]');
+    const localPartnerships = JSON.parse(localStorage.getItem('partnerships') || '[]');
+    const localEmployees = JSON.parse(localStorage.getItem('employees') || '[]');
+
+    setCustomers(localCustomers);
+    setProducts(localProducts);
+    setSales(localSales);
+    setExpenses(localExpenses);
+    setAccounts(localAccounts);
+    setInvestors(localInvestors);
+    setPartnerships(localPartnerships);
+    setEmployees(localEmployees);
+
+    console.log('📦 Offline data loaded from localStorage:', {
+      accountsCount: localAccounts.length,
+      salesCount: localSales.length,
+      investorsCount: localInvestors.length
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
   const isManager = user?.role === 'manager' || user?.role === 'admin';
   const isEmployee = user?.role === 'employee';
   const isInvestor = user?.role === 'investor';
