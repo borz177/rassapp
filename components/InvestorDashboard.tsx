@@ -34,23 +34,35 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
     return expenses.filter(e => e.accountId === investorAccount.id);
   }, [expenses, investorAccount]);
 
-  // 🔹 СТАТИСТИКА: Как у менеджера
+  // 🔹 БАЛАНС: Как в InvestorDetails (взносы + платежи - все расходы)
+  const balance = useMemo(() => {
+    if (!investorAccount) return 0;
+    let total = 0;
+
+    investorSales.forEach(s => {
+      total += s.downPayment;
+      s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
+        .forEach(p => total += p.amount);
+    });
+
+    investorExpenses.forEach(e => total -= e.amount);
+
+    return total;
+  }, [investorSales, investorExpenses, investorAccount]);
+
+  // 🔹 СТАТИСТИКА: Правильные расчёты
   const stats = useMemo(() => {
     let totalCollected = 0;
     let totalOutstanding = 0;
     let totalSalesAmount = 0;
 
     investorSales.forEach(sale => {
-      // Исключаем системные транзакции
-      if (!sale.customerId.startsWith('system_')) {
-        const collected = sale.downPayment +
-          sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
-            .reduce((sum, p) => sum + p.amount, 0);
+      totalCollected += sale.downPayment;
+      sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
+        .forEach(p => totalCollected += p.amount);
 
-        totalCollected += collected;
-        totalOutstanding += sale.remainingAmount;
-        totalSalesAmount += sale.totalAmount;
-      }
+      totalOutstanding += sale.remainingAmount;
+      totalSalesAmount += sale.totalAmount;
     });
 
     const workingCapital = totalCollected + totalOutstanding;
@@ -63,107 +75,76 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
     };
   }, [investorSales]);
 
-  // 🔹 ПРИБЫЛЬ: Как у менеджера
-  const profitStats = useMemo(() => {
-    const profitShare = investor.profitPercentage / 100;
-    let receivedProfit = 0;
-    let expectedProfit = 0;
+  // 🔹 ПРИБЫЛЬ: Как в InvestorDetails
+  const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
+    if (!investorAccount) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, profitAccruals: [] };
 
-    investorSales.forEach(sale => {
-      if (sale.customerId.startsWith('system_')) return;
-      if (!sale.buyPrice || sale.buyPrice <= 0) return;
+    const investorSalesFiltered = investorSales.filter(sale => sale.buyPrice > 0);
+    let profitSum = 0;
+    const accruals: {id: string, date: string, amount: number, source: string}[] = [];
 
+    investorSalesFiltered.forEach(sale => {
       const totalSaleProfit = sale.totalAmount - sale.buyPrice;
-      if (totalSaleProfit <= 0) return;
-
+      if (sale.totalAmount <= 0 || totalSaleProfit <= 0) return;
       const profitMargin = totalSaleProfit / sale.totalAmount;
 
-      // Полученная прибыль (от оплаченных сумм)
-      const collectedPayments = sale.downPayment +
-        sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
-          .reduce((sum, p) => sum + p.amount, 0);
+      const allPayments = [
+        { date: sale.startDate, amount: sale.downPayment, id: `${sale.id}_dp`, isRealPayment: true },
+        ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
+      ];
 
-      receivedProfit += collectedPayments * profitMargin * profitShare;
-
-      // Ожидаемая прибыль (от остатка)
-      if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
-        expectedProfit += sale.remainingAmount * profitMargin * profitShare;
-      }
-    });
-
-    return {
-      receivedProfit: Math.round(receivedProfit * 100) / 100,
-      expectedProfit: Math.round(expectedProfit * 100) / 100
-    };
-  }, [investorSales, investor.profitPercentage]);
-
-  // 🔹 БАЛАНС: (Взносы + Платежи) - (Выводы инвестора)
-  const balance = useMemo(() => {
-    const totalIncome = stats.totalCollected;
-    const investorWithdrawals = investorExpenses
-      .filter(e => e.investorId === investor.id && e.payoutType === 'INVESTMENT')
-      .reduce<number>((acc, e) => acc + Number(e.amount ?? 0), 0);
-
-    return totalIncome - investorWithdrawals;
-  }, [stats.totalCollected, investorExpenses, investor.id]);
-
-  // 🔹 Выплаты прибыли инвестору
-  const profitWithdrawals = useMemo(() =>
-    investorExpenses.filter(e => e.investorId === investor.id && e.payoutType === 'PROFIT'),
-    [investorExpenses, investor.id]
-  );
-
-  const totalProfitWithdrawn = profitWithdrawals.reduce<number>((sum, e) =>
-    sum + Number(e.amount ?? 0), 0
-  );
-
-  const availableToWithdraw = Math.max(0, profitStats.receivedProfit - totalProfitWithdrawn);
-
-  // 🔹 Последние 5 договоров
-  const lastFiveSales = useMemo(() => {
-    return [...investorSales]
-      .filter(s => !s.customerId.startsWith('system_'))
-      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
-      .slice(0, 5);
-  }, [investorSales]);
-
-  // 🔹 Ближайшие платежи
-  const upcomingPayments = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const payments: { sale: Sale, customerName: string, amount: number, date: string, isOverdue: boolean }[] = [];
-
-    investorSales.forEach(sale => {
-      if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
-
-      sale.paymentPlan.forEach(payment => {
-        if (payment.isPaid || !payment.isRealPayment === false) {
-          const paymentDate = new Date(payment.date);
-          const isOverdue = paymentDate < today && !payment.isPaid;
-          const isToday = paymentDate.toDateString() === today.toDateString();
-          const isTomorrow = paymentDate.toDateString() === tomorrow.toDateString();
-
-          if (isToday || isTomorrow || isOverdue) {
-            payments.push({
-              sale,
-              customerName: sale.productName,
-              amount: payment.amount,
-              date: payment.date,
-              isOverdue
-            });
-          }
+      allPayments.forEach(p => {
+        if (p.amount > 0) {
+          const profitFromPayment = p.amount * profitMargin;
+          profitSum += profitFromPayment;
+          accruals.push({
+            id: p.id,
+            date: p.date,
+            amount: profitFromPayment,
+            source: `Платеж по '${sale.productName}'`
+          });
         }
       });
     });
 
-    return payments.sort((a, b) => {
-      if (a.isOverdue && !b.isOverdue) return -1;
-      if (!a.isOverdue && b.isOverdue) return 1;
-      return new Date(a.date).getTime() - new Date(b.date).getTime();
-    });
+    const withdrawnSum = investorExpenses
+      .filter(e => e.payoutType === 'PROFIT')
+      .reduce((sum, e) => sum + e.amount, 0);
+
+    return {
+      totalProfitEarned: profitSum,
+      totalProfitWithdrawn: withdrawnSum,
+      profitAccruals: accruals.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    };
+  }, [investorSales, investorExpenses, investorAccount]);
+
+  // 🔹 Ожидаемая прибыль: Как в InvestorDetails
+  const expectedTotalProfit = useMemo(() => {
+    if (!investorAccount || !investor.profitPercentage) return 0;
+
+    const activeSales = investorSales.filter(s =>
+      (s.status === 'ACTIVE' || s.status === 'COMPLETED') && s.buyPrice > 0
+    );
+
+    const totalProfitFromActiveSales = activeSales.reduce((sum, sale) => {
+      const saleProfit = sale.totalAmount - sale.buyPrice;
+      return sum + (saleProfit > 0 ? saleProfit : 0);
+    }, 0);
+
+    return totalProfitFromActiveSales * (investor.profitPercentage / 100);
+  }, [investorSales, investorAccount, investor.profitPercentage]);
+
+  // 🔹 Доступно к выводу
+  const availableToWithdraw = useMemo(() => {
+    const profitShare = totalProfitEarned * (investor.profitPercentage / 100);
+    return Math.max(0, profitShare - totalProfitWithdrawn);
+  }, [totalProfitEarned, totalProfitWithdrawn, investor.profitPercentage]);
+
+  // 🔹 Последние 5 договоров
+  const lastFiveSales = useMemo(() => {
+    return [...investorSales]
+      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
+      .slice(0, 5);
   }, [investorSales]);
 
   return (
@@ -212,7 +193,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
         {activeTab === 'overview' && (
           <div className="space-y-6 animate-in fade-in duration-500">
 
-            {/* Карточки статистики: 6 штук как у менеджера */}
+            {/* Карточки статистики */}
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
 
               {/* 1. Собрано средств */}
@@ -271,7 +252,21 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
                 </p>
               </div>
 
-              {/* 5. Получено прибыли */}
+              {/* 5. Ожидаемая прибыль */}
+              <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 mb-4">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">Ожидается прибыли</p>
+                <p className="text-lg sm:text-2xl font-bold text-slate-800">
+                  {formatCurrency(expectedTotalProfit, appSettings.showCents)}
+                  <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
+                </p>
+              </div>
+
+              {/* 6. Получено прибыли */}
               <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -280,21 +275,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
                 </div>
                 <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">Получено прибыли</p>
                 <p className="text-lg sm:text-2xl font-bold text-slate-800">
-                  {formatCurrency(profitStats.receivedProfit, appSettings.showCents)}
-                  <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
-                </p>
-              </div>
-
-              {/* 6. Ожидается прибыли */}
-              <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-purple-200">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-xl flex items-center justify-center text-purple-600 mb-4">
-                  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">Ожидается прибыли</p>
-                <p className="text-lg sm:text-2xl font-bold text-slate-800">
-                  {formatCurrency(profitStats.expectedProfit, appSettings.showCents)}
+                  {formatCurrency(totalProfitEarned * (investor.profitPercentage / 100), appSettings.showCents)}
                   <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
                 </p>
               </div>
@@ -303,40 +284,48 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
             {/* 🔹 Баланс и доступно к выводу */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 p-6 rounded-2xl text-white shadow-lg">
-                <p className="text-indigo-100 text-sm mb-1">Текущий баланс</p>
+                <p className="text-indigo-100 text-sm mb-1">Текущий баланс счета</p>
                 <p className="text-3xl font-bold">{formatCurrency(balance, appSettings.showCents)} ₽</p>
-                <p className="text-xs text-indigo-200 mt-2">Инвестиции + накопленная прибыль</p>
+                <p className="text-xs text-indigo-200 mt-2">Взносы + платежи − расходы</p>
               </div>
 
               <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 rounded-2xl text-white shadow-lg">
                 <p className="text-emerald-100 text-sm mb-1">Доступно к выводу</p>
                 <p className="text-3xl font-bold">{formatCurrency(availableToWithdraw, appSettings.showCents)} ₽</p>
-                <p className="text-xs text-emerald-200 mt-2">Полученная прибыль минус выплаты</p>
+                <p className="text-xs text-emerald-200 mt-2">Прибыль минус выплаты</p>
               </div>
             </div>
 
-            {/* 🔹 Ближайшие платежи */}
-            {upcomingPayments.length > 0 && (
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                  <span className="w-1 h-5 bg-amber-500 rounded-full"></span>
-                  Ближайшие платежи
-                </h3>
-                <div className="space-y-3">
-                  {upcomingPayments.slice(0, 5).map((payment, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                      <div>
-                        <p className="font-medium text-slate-800">{payment.customerName}</p>
-                        <p className="text-xs text-slate-500">{formatDate(payment.date)}</p>
+            {/* 🔹 Последние договоры */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
+                Последние договоры
+              </h3>
+              <div className="space-y-3">
+                {lastFiveSales.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-xl">
+                    Нет договоров
+                  </div>
+                ) : (
+                  lastFiveSales.map((sale, idx) => (
+                    <div key={sale.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                      <div className="min-w-0">
+                        <p className="font-bold text-sm text-slate-800 truncate">{sale.productName}</p>
+                        <p className="text-xs text-slate-500 mt-1">{formatDate(sale.startDate)}</p>
                       </div>
-                      <span className={`font-bold ${payment.isOverdue ? 'text-rose-600' : 'text-emerald-600'}`}>
-                        {formatCurrency(payment.amount, appSettings.showCents)} ₽
+                      <span className={`text-xs px-3 py-1.5 rounded-full font-bold ${
+                        sale.remainingAmount === 0 
+                          ? 'bg-slate-100 text-slate-600' 
+                          : 'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        {sale.remainingAmount === 0 ? 'ЗАКРЫТО' : 'АКТИВНО'}
                       </span>
                     </div>
-                  ))}
-                </div>
+                  ))
+                )}
               </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -349,56 +338,54 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
               </div>
             ) : (
               <div className="grid gap-3">
-                {investorSales
-                  .filter(s => !s.customerId.startsWith('system_'))
-                  .map(sale => {
-                    const progress = sale.totalAmount > 0
-                      ? ((sale.totalAmount - sale.remainingAmount) / sale.totalAmount) * 100
-                      : 0;
+                {investorSales.map(sale => {
+                  const progress = sale.totalAmount > 0
+                    ? ((sale.totalAmount - sale.remainingAmount) / sale.totalAmount) * 100
+                    : 0;
 
-                    return (
-                      <div key={sale.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <p className="font-bold text-lg text-slate-800">{sale.productName}</p>
-                            <p className="text-xs text-slate-500 mt-1">{formatDate(sale.startDate)} • {sale.installments} мес.</p>
-                          </div>
-                          <span className={`text-xs px-3 py-1.5 rounded-full font-bold ${
-                            sale.remainingAmount === 0 
-                              ? 'bg-slate-100 text-slate-600' 
-                              : sale.status === 'ACTIVE'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : 'bg-amber-100 text-amber-700'
-                          }`}>
-                            {sale.remainingAmount === 0 ? 'ЗАКРЫТО' : sale.status}
-                          </span>
+                  return (
+                    <div key={sale.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <p className="font-bold text-lg text-slate-800">{sale.productName}</p>
+                          <p className="text-xs text-slate-500 mt-1">{formatDate(sale.startDate)} • {sale.installments} мес.</p>
                         </div>
-
-                        <div className="space-y-2 mb-4">
-                          <div className="flex justify-between text-sm">
-                            <span className="text-slate-500">Сумма:</span>
-                            <span className="font-medium">{formatCurrency(sale.totalAmount, appSettings.showCents)} ₽</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-slate-500">Остаток:</span>
-                            <span className="font-bold text-amber-600">{formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽</span>
-                          </div>
-                          <div className="flex justify-between text-sm text-emerald-600">
-                            <span>Ваша доля:</span>
-                            <span className="font-bold">{investor.profitPercentage}%</span>
-                          </div>
-                        </div>
-
-                        <div className="w-full bg-slate-100 rounded-full h-2">
-                          <div
-                            className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-2 rounded-full transition-all"
-                            style={{ width: `${progress}%` }}
-                          ></div>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-1 text-right">{Math.round(progress)}% оплачено</p>
+                        <span className={`text-xs px-3 py-1.5 rounded-full font-bold ${
+                          sale.remainingAmount === 0 
+                            ? 'bg-slate-100 text-slate-600' 
+                            : sale.status === 'ACTIVE'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {sale.remainingAmount === 0 ? 'ЗАКРЫТО' : sale.status}
+                        </span>
                       </div>
-                    );
-                  })}
+
+                      <div className="space-y-2 mb-4">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-slate-500">Сумма:</span>
+                          <span className="font-medium">{formatCurrency(sale.totalAmount, appSettings.showCents)} ₽</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-slate-500">Остаток:</span>
+                          <span className="font-bold text-amber-600">{formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-emerald-600">
+                          <span>Ваша доля:</span>
+                          <span className="font-bold">{investor.profitPercentage}%</span>
+                        </div>
+                      </div>
+
+                      <div className="w-full bg-slate-100 rounded-full h-2">
+                        <div
+                          className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-2 rounded-full transition-all"
+                          style={{ width: `${progress}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1 text-right">{Math.round(progress)}% оплачено</p>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
