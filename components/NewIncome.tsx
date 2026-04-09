@@ -121,7 +121,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       return showCents ? profit : Math.round(profit);
   }, [selectedSale, amount, showCents]);
 
-  const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
+ const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
     const element = contractRef.current;
 
@@ -134,31 +134,46 @@ const NewIncome: React.FC<NewIncomeProps> = ({
         visibility: element.style.visibility,
         zIndex: element.style.zIndex,
         opacity: element.style.opacity,
-        pointerEvents: element.style.pointerEvents
+        width: element.style.width,
+        height: element.style.height
     };
 
     try {
-        // 🔥 ИСПРАВЛЕНИЕ: используем absolute + сдвиг за экран (как в NewSale)
+        // 🔥 ВАЖНО: Делаем элемент видимым и доступным для рендеринга
         element.style.display = 'block';
-        element.style.position = 'absolute';
-        element.style.left = '-9999px';
-        element.style.top = '-9999px';
+        element.style.position = 'fixed';
+        element.style.left = '0';
+        element.style.top = '0';
         element.style.visibility = 'visible';
         element.style.zIndex = '9999';
-        element.style.opacity = '1'; // 🔥 Убираем прозрачность!
-        element.style.pointerEvents = 'auto';
-        element.style.background = 'white'; // 🔥 Явный фон
+        element.style.opacity = '1';
+        element.style.width = '210mm'; // A4 width
+        element.style.height = 'auto';
+        element.style.background = 'white';
+        element.style.pointerEvents = 'none'; // Чтобы не мешал взаимодействию
 
-        // Даём время на рендер, особенно на слабых устройствах
+        // 🔥 Ждём пока браузер отрисует элемент
         await new Promise(resolve => setTimeout(resolve, 500));
 
+        // Принудительный reflow
+        element.offsetHeight;
+
         const canvas = await html2canvas(element, {
-            scale: 2, // 🔥 Фиксированный масштаб для качества
+            scale: 2,
             useCORS: true,
-            logging: false,
-            backgroundColor: '#ffffff', // 🔥 Критично для мобильных!
             allowTaint: true,
-            scrollY: 0 // 🔥 Игнорируем скролл
+            logging: false,
+            backgroundColor: '#ffffff',
+            // 🔥 Важно для мобильных:
+            scrollX: 0,
+            scrollY: 0,
+            windowWidth: element.scrollWidth,
+            windowHeight: element.scrollHeight,
+            // Отключаем iframe cloning на мобильных
+            foreignObjectRendering: false,
+            // Ускоряем рендеринг
+            imageTimeout: 0,
+            removeContainer: true
         });
 
         const imgData = canvas.toDataURL('image/jpeg', 0.9);
@@ -171,17 +186,18 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
     } catch (error) {
         console.error("PDF generation error:", error);
-        throw error;
+        throw new Error(`Не удалось создать PDF: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`);
     } finally {
-        // Возвращаем стили
-        element.style.display = originalStyle.display;
-        element.style.position = originalStyle.position;
-        element.style.left = originalStyle.left;
-        element.style.top = originalStyle.top;
-        element.style.visibility = originalStyle.visibility;
-        element.style.zIndex = originalStyle.zIndex;
-        element.style.opacity = originalStyle.opacity ?? '1';
-        element.style.pointerEvents = originalStyle.pointerEvents ?? 'auto';
+        // Возвращаем оригинальные стили
+        if (originalStyle.display !== undefined) element.style.display = originalStyle.display;
+        if (originalStyle.position !== undefined) element.style.position = originalStyle.position;
+        if (originalStyle.left !== undefined) element.style.left = originalStyle.left;
+        if (originalStyle.top !== undefined) element.style.top = originalStyle.top;
+        if (originalStyle.visibility !== undefined) element.style.visibility = originalStyle.visibility;
+        if (originalStyle.zIndex !== undefined) element.style.zIndex = originalStyle.zIndex;
+        if (originalStyle.opacity !== undefined) element.style.opacity = originalStyle.opacity;
+        if (originalStyle.width !== undefined) element.style.width = originalStyle.width;
+        if (originalStyle.height !== undefined) element.style.height = originalStyle.height;
     }
 };
   const handleSubmit = (e: React.FormEvent) => {
