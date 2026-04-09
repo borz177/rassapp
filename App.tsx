@@ -193,26 +193,15 @@ useEffect(() => {
     const localUserStr = localStorage.getItem('user');
     let localUser: User | null = null;
 
+    // 3. Восстанавливаем локального пользователя
     if (localUserStr) {
       try {
         localUser = JSON.parse(localUserStr);
         if (localUser) {
+          console.log("✅ Restoring user from localStorage");
           setUser(localUser);
-
-          // 🔹 Загружаем данные из localStorage
-          const localAccounts = JSON.parse(localStorage.getItem('accounts') || '[]');
-          const localSales = JSON.parse(localStorage.getItem('sales') || '[]');
-          const localInvestors = JSON.parse(localStorage.getItem('investors') || '[]');
-          const localSettings = getAppSettings(); // 🔹 Загружаем настройки!
-
-          setAccounts(localAccounts);
-          setSales(localSales);
-          setInvestors(localInvestors);
-          setAppSettings(localSettings); // 🔹 Применяем!
-
-          if (navigator.onLine && token) {
-            await loadData(localUser);
-          }
+          // НЕ выключаем isLoading — попробуем обновить с сервера
+          await loadData(localUser).catch(e => console.warn("⚠️ Local data warning:", e));
         }
       } catch (e) {
         console.error("❌ Failed to parse local user", e);
@@ -221,6 +210,7 @@ useEffect(() => {
       }
     }
 
+    // 4. Если онлайн и есть токен — обновляем с сервера
     if (token && navigator.onLine) {
       try {
         const freshUser = await api.getMe();
@@ -229,18 +219,25 @@ useEffect(() => {
         await loadData(freshUser, !!localUser);
       } catch (err) {
         console.error('❌ Auth refresh failed', err);
+        // Если сервер отверг токен — очищаем всё
         if (!localUser) {
           localStorage.removeItem('token');
           localStorage.removeItem('user');
           setUser(null);
         }
+        // Иначе остаёмся на локальных данных (оффлайн)
       }
     }
 
+    // 5. Если нет ни токена, ни локального пользователя
     if (!token && !localUser) {
       setUser(null);
     }
 
+    // 6. Загружаем настройки
+    setAppSettings(getAppSettings());
+
+    // 7. Выключаем загрузку
     setIsLoading(false);
   };
 
@@ -287,69 +284,41 @@ useEffect(() => {
   return () => clearInterval(interval);
 }, [user]);
 
- const loadData = async (currentUser?: User, skipLoading = false) => {
-  if (!skipLoading && customers.length === 0 && sales.length === 0) {
-    setIsLoading(true);
-  }
+  const loadData = async (currentUser?: User, skipLoading = false) => {
+      if (!skipLoading && customers.length === 0 && sales.length === 0) {
+          setIsLoading(true);
+      }
+      try {
+          const data = await api.fetchAllData();
+          setCustomers(data.customers);
+          setProducts(data.products);
+          setSales(data.sales);
+          setExpenses(data.expenses);
+          setAccounts(data.accounts);
+          setInvestors(data.investors);
+          setPartnerships(data.partnerships);
+          setEmployees(data.employees);
 
-  try {
-    const data = await api.fetchAllData();
+          let loadedSettings = data.settings || getAppSettings();
 
-    // 🔹 Сохраняем цвета инвесторов
-    const localInvestors = JSON.parse(localStorage.getItem('investors') || '[]');
-    const mergedInvestors = data.investors.map(serverInv => {
-      const localInv = localInvestors.find((i: Investor) => i.id === serverInv.id);
-      return {
-        ...serverInv,
-        color: localInv?.color || serverInv.color || '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')
-      };
-    });
+          // Merge WhatsApp settings from User Profile if available
+          const activeUser = currentUser || user;
+          if (activeUser?.whatsapp_settings) {
+              loadedSettings = {
+                  ...loadedSettings,
+                  whatsapp: activeUser.whatsapp_settings
+              };
+          }
 
-    // ✅ Сохраняем в localStorage
-    localStorage.setItem('investors', JSON.stringify(mergedInvestors));
-    localStorage.setItem('customers', JSON.stringify(data.customers));
-    localStorage.setItem('products', JSON.stringify(data.products));
-    localStorage.setItem('sales', JSON.stringify(data.sales));
-    localStorage.setItem('expenses', JSON.stringify(data.expenses));
-    localStorage.setItem('accounts', JSON.stringify(data.accounts));
-    localStorage.setItem('partnerships', JSON.stringify(data.partnerships));
-    localStorage.setItem('employees', JSON.stringify(data.employees));
+          setAppSettings(loadedSettings);
+          saveAppSettings(loadedSettings); // Sync server data to local storage
+      } catch (error) {
+          console.error("Failed to load data", error);
+      } finally {
+          setIsLoading(false);
+      }
+  };
 
-    // ✅ Обновляем state
-    setCustomers(data.customers);
-    setProducts(data.products);
-    setSales(data.sales);
-    setExpenses(data.expenses);
-    setAccounts(data.accounts);
-    setInvestors(mergedInvestors);
-    setPartnerships(data.partnerships);
-    setEmployees(data.employees);
-
-    // 🔹 Настройки: загружаем из localStorage (пользовательские предпочтения)
-    const localSettings = getAppSettings();
-    setAppSettings(localSettings);
-
-    console.log('✅ Data loaded');
-
-  } catch (error) {
-    console.warn('⚠️ Offline mode');
-
-    // 🔹 Загружаем из localStorage
-    setCustomers(JSON.parse(localStorage.getItem('customers') || '[]'));
-    setProducts(JSON.parse(localStorage.getItem('products') || '[]'));
-    setSales(JSON.parse(localStorage.getItem('sales') || '[]'));
-    setExpenses(JSON.parse(localStorage.getItem('expenses') || '[]'));
-    setAccounts(JSON.parse(localStorage.getItem('accounts') || '[]'));
-    setInvestors(JSON.parse(localStorage.getItem('investors') || '[]'));
-    setPartnerships(JSON.parse(localStorage.getItem('partnerships') || '[]'));
-    setEmployees(JSON.parse(localStorage.getItem('employees') || '[]'));
-
-    // 🔹 Настройки из localStorage
-    setAppSettings(getAppSettings());
-  } finally {
-    setIsLoading(false);
-  }
-};
   const isManager = user?.role === 'manager' || user?.role === 'admin';
   const isEmployee = user?.role === 'employee';
   const isInvestor = user?.role === 'investor';
@@ -1212,67 +1181,81 @@ function toggleTheme() {
 }
 
 const handleUpdateSettings = async (newSettings: AppSettings) => {
-    // 🔹 1. Загружаем текущие локальные настройки
-    const localSettings = getAppSettings();
 
-    // 🔹 2. Сливаем настройки (только поля из AppSettings!)
-    const mergedSettings: AppSettings = {
-        // 🔹 Обязательные поля
-        companyName: newSettings.companyName || localSettings.companyName || 'FinUchet',
 
-        // 🔹 Опциональные поля (локальные имеют приоритет для пользовательских предпочтений)
-        sellerPhone: newSettings.sellerPhone || localSettings.sellerPhone,
-        showCents: localSettings.showCents ?? newSettings.showCents ?? true,
-        theme: localSettings.theme ?? newSettings.theme ?? 'PURPLE',
+    // 🔹 1. Обновляем appSettings с НОВЫМИ ссылками на объекты (для триггера re-render)
+    setAppSettings(prev => {
+        const updated = {
+            ...prev,
+            ...newSettings,
+            // 🔹 Гарантируем, что whatsapp — новый объект с новыми templates
+            whatsapp: newSettings.whatsapp
+                ? {
+                    ...newSettings.whatsapp,
+                    templates: newSettings.whatsapp.templates
+                        ? { ...newSettings.whatsapp.templates }
+                        : prev.whatsapp?.templates
+                }
+                : prev.whatsapp
+        };
+        return updated;
+    });
 
-        // 🔹 WhatsApp (полное обновление)
-        whatsapp: newSettings.whatsapp || localSettings.whatsapp,
+    // 🔹 2. Сохраняем в localStorage (локальный кэш)
+    saveAppSettings(newSettings);
 
-        // 🔹 Калькулятор
-        calculator: newSettings.calculator || localSettings.calculator
-    };
-
-    // 🔹 3. Обновляем state
-    setAppSettings(mergedSettings);
-
-    // 🔹 4. Сохраняем в localStorage
-    saveAppSettings(mergedSettings);
-
-    if (user && navigator.onLine) {
+    if (user) {
         try {
-            // 🔹 5. На сервер отправляем ВСЕ настройки (они все в AppSettings)
+            // 🔹 3. Сохраняем общие настройки в БД
+            const settingsId = `settings_${user.id}`;
             await api.saveItem('settings', {
-                id: `settings_${user.id}`,
-                ...mergedSettings,  // ← Все поля из интерфейса
+                id: settingsId,
+                ...newSettings,
+                // 🔹 Добавляем метку времени для invalidation кэша
                 _updated: Date.now()
             });
 
-            // 🔹 6. WhatsApp отдельно
-            if (mergedSettings.whatsapp) {
-                await api.saveWhatsAppSettings(mergedSettings.whatsapp);
+            // 🔹 4. Если есть WhatsApp-настройки — сохраняем их отдельно
+            if (newSettings.whatsapp) {
+                await api.saveWhatsAppSettings({
+                    ...newSettings.whatsapp,
+                    // 🔹 Копируем templates для гарантии новой ссылки
+                    templates: newSettings.whatsapp.templates
+                        ? { ...newSettings.whatsapp.templates }
+                        : undefined
+                });
 
+                // 🔹 5. Обновляем user state с новыми ссылками
                 setUser(prev => {
                     if (!prev) return null;
                     return {
                         ...prev,
-                        whatsapp_settings: mergedSettings.whatsapp
+                        whatsapp_settings: newSettings.whatsapp
+                            ? {
+                                ...newSettings.whatsapp,
+                                templates: newSettings.whatsapp.templates
+                                    ? { ...newSettings.whatsapp.templates }
+                                    : prev.whatsapp_settings?.templates
+                            }
+                            : prev.whatsapp_settings
                     };
                 });
             }
 
+
+
         } catch (e) {
             console.error("❌ Failed to save settings to API", e);
-            if (navigator.onLine) {
-                alert("Ошибка сохранения на сервер. Настройки сохранены локально.");
-            }
+            alert("Ошибка сохранения настроек. Проверьте подключение к интернету.");
         }
     }
 
-    // 🔹 7. Триггер для компонентов
+    // 🔹 6. Триггер для компонентов, которые зависят от настроек WhatsApp
+    // (например, список шаблонов, отправка сообщений)
     setWhatsAppRefreshKey(prev => prev + 1);
 
-    console.log('✅ Settings saved:', mergedSettings);
 };
+
 
 
 if (isPublicMode) {
