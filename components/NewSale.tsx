@@ -458,11 +458,13 @@ const NewSale: React.FC<NewSaleProps> = ({
     if (!createdSale || !selectedCustomer || !appSettings.whatsapp?.enabled) return;
     try {
       const blob = await generatePDFBlob();
-      let cleanProductName = createdSale.productName
-        .replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_')
-        .replace(/\s+/g, '_');
+      const productName = createdSale.productName || 'Dogovor';
+const cleanProductName = productName
+    .replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '') // Удаляем спецсимволы полностью
+    .replace(/\s+/g, '_') // Пробелы на подчеркивания
+    .substring(0, 50); // Максимум 50 символов
 
-      const fileName = `Договор_${cleanProductName}.pdf`;
+const fileName = `Договор_${cleanProductName}.pdf`;
       const success = await sendWhatsAppFile(
         appSettings.whatsapp.idInstance,
         appSettings.whatsapp.apiTokenInstance,

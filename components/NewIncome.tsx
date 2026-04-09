@@ -192,9 +192,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
               try {
                   const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-                  let cleanName = selectedSale.productName.replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '_').replace(/\s+/g, '_');
-                  const finalName = cleanName || 'oplata';
-                  const fileName = `Dogovor_${finalName}.pdf`;
+                  const productName = selectedSale.productName || 'Оплата';
+const cleanName = productName
+    .replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '') // Удаляем спецсимволы
+    .replace(/\s+/g, '_') // Пробелы на подчеркивания
+    .substring(0, 50); // Ограничиваем длину
+
+const fileName = `Договор_${cleanName}.pdf`;
                   const success = await sendWhatsAppFile(
                       appSettings.whatsapp.idInstance,
                       appSettings.whatsapp.apiTokenInstance,
