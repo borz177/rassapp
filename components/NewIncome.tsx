@@ -123,57 +123,32 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
  const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
-    const element = contractRef.current;
 
-    // Сохраняем оригинальные стили
-    const originalStyle = {
-        display: element.style.display,
-        position: element.style.position,
-        left: element.style.left,
-        top: element.style.top,
-        visibility: element.style.visibility,
-        zIndex: element.style.zIndex,
-        opacity: element.style.opacity,
-        width: element.style.width,
-        height: element.style.height
-    };
+    // 🔥 Клонируем элемент вместо работы с оригиналом
+    const clonedElement = contractRef.current.cloneNode(true) as HTMLDivElement;
+
+    // Применяем стили к клону
+    clonedElement.style.position = 'fixed';
+    clonedElement.style.left = '0';
+    clonedElement.style.top = '0';
+    clonedElement.style.visibility = 'visible';
+    clonedElement.style.zIndex = '9999';
+    clonedElement.style.width = '210mm';
+    clonedElement.style.background = 'white';
+    clonedElement.style.opacity = '1';
+
+    document.body.appendChild(clonedElement);
 
     try {
-        // 🔥 ВАЖНО: Делаем элемент видимым и доступным для рендеринга
-        element.style.display = 'block';
-        element.style.position = 'fixed';
-        element.style.left = '0';
-        element.style.top = '0';
-        element.style.visibility = 'visible';
-        element.style.zIndex = '9999';
-        element.style.opacity = '1';
-        element.style.width = '210mm'; // A4 width
-        element.style.height = 'auto';
-        element.style.background = 'white';
-        element.style.pointerEvents = 'none'; // Чтобы не мешал взаимодействию
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-        // 🔥 Ждём пока браузер отрисует элемент
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Принудительный reflow
-        element.offsetHeight;
-
-        const canvas = await html2canvas(element, {
+        const canvas = await html2canvas(clonedElement, {
             scale: 2,
             useCORS: true,
-            allowTaint: true,
             logging: false,
             backgroundColor: '#ffffff',
-            // 🔥 Важно для мобильных:
             scrollX: 0,
-            scrollY: 0,
-            windowWidth: element.scrollWidth,
-            windowHeight: element.scrollHeight,
-            // Отключаем iframe cloning на мобильных
-            foreignObjectRendering: false,
-            // Ускоряем рендеринг
-            imageTimeout: 0,
-            removeContainer: true
+            scrollY: 0
         });
 
         const imgData = canvas.toDataURL('image/jpeg', 0.9);
@@ -184,20 +159,9 @@ const NewIncome: React.FC<NewIncomeProps> = ({
         pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
         return pdf.output('blob');
 
-    } catch (error) {
-        console.error("PDF generation error:", error);
-        throw new Error(`Не удалось создать PDF: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`);
     } finally {
-        // Возвращаем оригинальные стили
-        if (originalStyle.display !== undefined) element.style.display = originalStyle.display;
-        if (originalStyle.position !== undefined) element.style.position = originalStyle.position;
-        if (originalStyle.left !== undefined) element.style.left = originalStyle.left;
-        if (originalStyle.top !== undefined) element.style.top = originalStyle.top;
-        if (originalStyle.visibility !== undefined) element.style.visibility = originalStyle.visibility;
-        if (originalStyle.zIndex !== undefined) element.style.zIndex = originalStyle.zIndex;
-        if (originalStyle.opacity !== undefined) element.style.opacity = originalStyle.opacity;
-        if (originalStyle.width !== undefined) element.style.width = originalStyle.width;
-        if (originalStyle.height !== undefined) element.style.height = originalStyle.height;
+        // Удаляем клон
+        document.body.removeChild(clonedElement);
     }
 };
   const handleSubmit = (e: React.FormEvent) => {
