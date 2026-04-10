@@ -16,6 +16,17 @@ interface NewSaleProps {
   onSubmit: (any) => void;
 }
 
+
+// Форматирует любой российский номер в вид +7 (XXX) XXX-XX-XX
+const formatPhone = (raw: string | undefined): string => {
+    if (!raw) return '+7 (___) ___-__-__';
+    const digits = raw.replace(/\D/g, ''); // Оставляем только цифры
+    if (digits.length === 11 && (digits[0] === '8' || digits[0] === '7')) {
+        const clean = digits[0] === '8' ? '7' + digits.slice(1) : digits;
+        return `+${clean[0]} (${clean.slice(1, 4)}) ${clean.slice(4, 7)}-${clean.slice(7, 9)}-${clean.slice(9)}`;
+    }
+    return raw; // Если формат нестандартный, возвращаем как есть
+};
 const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts,
   onClose, onSelectCustomer, onSubmit
@@ -486,7 +497,7 @@ const handleSendContract = async () => {
     const sale = createdSale;
     const customer = selectedCustomer;
     const companyName = appSettings?.companyName || "Компания";
-    const sellerPhone = appSettings?.sellerPhone || '+7 (___) ___-__-__';
+    const sellerPhone = formatPhone(appSettings?.sellerPhone);
     const hasGuarantor = !!sale.guarantorName;
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }
