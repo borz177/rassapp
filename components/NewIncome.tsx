@@ -121,61 +121,34 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       return showCents ? profit : Math.round(profit);
   }, [selectedSale, amount, showCents]);
 
- // 1. В стилях (renderContractContent) замените Times New Roman на Arial
-const styles = {
-    page: {
-        // ... ваши стили ...
-        fontFamily: 'Arial, sans-serif', // 🔥 ИЗМЕНЕНИЕ: Arial поддерживается везде
-        // ...
-    },
-    // ...
-};
-
-// 2. Обновите функцию генерации PDF
-const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
+ const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
-    const element = contractRef.current;
 
-    // Сохраняем стили
-    const originalStyle = {
-        display: element.style.display,
-        position: element.style.position,
-        left: element.style.left,
-        top: element.style.top,
-        visibility: element.style.visibility,
-        zIndex: element.style.zIndex,
-        opacity: element.style.opacity,
-    };
+    // 🔥 Клонируем элемент вместо работы с оригиналом
+    const clonedElement = contractRef.current.cloneNode(true) as HTMLDivElement;
+
+    // Применяем стили к клону
+    clonedElement.style.position = 'fixed';
+    clonedElement.style.left = '0';
+    clonedElement.style.top = '0';
+    clonedElement.style.visibility = 'visible';
+    clonedElement.style.zIndex = '9999';
+    clonedElement.style.width = '210mm';
+    clonedElement.style.background = 'white';
+    clonedElement.style.opacity = '1';
+
+    document.body.appendChild(clonedElement);
 
     try {
-        // 🔥 КРИТИЧНО: Ждем, пока браузер загрузит все шрифты (особенно кириллицу)
-        await document.fonts.ready;
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-        // Настраиваем элемент для рендера
-        element.style.display = 'block';
-        element.style.position = 'fixed';
-        element.style.left = '0';
-        element.style.top = '0';
-        element.style.visibility = 'visible';
-        element.style.zIndex = '9999';
-        element.style.opacity = '1';
-        element.style.background = 'white';
-
-        // Даем время на перерисовку после смены стилей
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        const canvas = await html2canvas(element, {
+        const canvas = await html2canvas(clonedElement, {
             scale: 2,
             useCORS: true,
             logging: false,
             backgroundColor: '#ffffff',
             scrollX: 0,
-            scrollY: 0,
-            windowWidth: element.scrollWidth,
-            windowHeight: element.scrollHeight,
-            // Отключаем проблемные фичи для мобильных
-            foreignObjectRendering: false,
-            removeContainer: true
+            scrollY: 0
         });
 
         const imgData = canvas.toDataURL('image/jpeg', 0.9);
@@ -187,14 +160,8 @@ const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymen
         return pdf.output('blob');
 
     } finally {
-        // Возвращаем стили обратно
-        element.style.display = originalStyle.display;
-        element.style.position = originalStyle.position;
-        element.style.left = originalStyle.left;
-        element.style.top = originalStyle.top;
-        element.style.visibility = originalStyle.visibility;
-        element.style.zIndex = originalStyle.zIndex;
-        element.style.opacity = originalStyle.opacity ?? '1';
+        // Удаляем клон
+        document.body.removeChild(clonedElement);
     }
 };
   const handleSubmit = (e: React.FormEvent) => {
@@ -223,28 +190,42 @@ const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymen
       if (sourceType === 'CUSTOMER') {
           onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
-              try {
-                  const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-                  const productName = selectedSale.productName || 'Оплата';
-const cleanName = productName
-    .replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '') // Удаляем спецсимволы
-    .replace(/\s+/g, '_') // Пробелы на подчеркивания
-    .substring(0, 50); // Ограничиваем длину
+    try {
+        const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
 
-const fileName = `Договор_${cleanName}.pdf`;
-                  const success = await sendWhatsAppFile(
-                      appSettings.whatsapp.idInstance,
-                      appSettings.whatsapp.apiTokenInstance,
-                      selectedCustomer.phone,
-                      pdfBlob,
-                      fileName
-                  );
-                  if (success) { alert("Договор (PDF) отправлен клиенту в WhatsApp"); }
-                  else { alert("Ошибка отправки PDF в WhatsApp"); }
-              } catch (error: any) {
-   console.error("PDF generation error:", error);
-   alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
-}
+        // 🔥 Формируем имя файла НА РУССКОМ
+        const clientName = selectedCustomer?.name || 'Клиент';
+        const productName = selectedSale?.productName || 'Оплата';
+
+        // Очищаем от спецсимволов, но оставляем русские буквы
+        const cleanClient = clientName
+            .replace(/[^а-яА-ЯёЁ0-9]/g, '') // Оставляем только русские буквы и цифры
+            .substring(0, 20); // Ограничиваем длину
+
+        const cleanProduct = productName
+            .replace(/[^а-яА-ЯёЁ0-9]/g, '')
+            .substring(0, 20);
+
+        // Имя файла на русском
+        const fileName = `Договор_${cleanClient}_${cleanProduct}.pdf`;
+
+        console.log("Отправляю файл:", fileName);
+
+        const success = await sendWhatsAppFile(
+            appSettings.whatsapp.idInstance,
+            appSettings.whatsapp.apiTokenInstance,
+            selectedCustomer.phone,
+            pdfBlob,
+            fileName
+        );
+
+        if (success) alert("Договор отправлен!");
+        else alert("Ошибка отправки");
+    } catch (error) {
+        console.error(error);
+        alert("Ошибка создания PDF");
+    }
+
           }
       } else if (sourceType === 'INVESTOR') {
           onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
@@ -269,7 +250,7 @@ const fileName = `Договор_${cleanName}.pdf`;
       const styles = {
           page: {
               width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
-              fontFamily: 'Arial, sans-serif', fontSize: '12pt', lineHeight: '1.5',
+              fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5',
               display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
               position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
           },
