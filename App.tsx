@@ -933,45 +933,76 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
         phone: updated.phone
       };
 
-      // Сохраняем на сервер
       const savedInvestor = await api.saveItem('investors', linkedInvestor);
+      updateList(setInvestors, savedInvestor, oldInvestorId, 'investors');
 
-      // 🔹 КЛЮЧЕВОЕ: Обновляем state ПРЯМО сейчас, не ждём loadData!
-      setInvestors(prev => {
-        // 1. Удаляем старого
-        const withoutOld = prev.filter(i => i.id !== oldInvestorId);
-        // 2. Добавляем нового (если ещё нет)
-        const exists = withoutOld.some(i => i.id === savedInvestor.id);
-        const newList = exists ? withoutOld : [savedInvestor, ...withoutOld];
-
-        // 3. 🔥 Сохраняем в localStorage
-        localStorage.setItem('investors', JSON.stringify(newList));
-
-        console.log('🔄 Investors state updated:', {
-          oldCount: prev.length,
-          newCount: newList.length,
-          removedId: oldInvestorId,
-          addedId: savedInvestor.id
+      // 🔹 🔥 НОВОЕ: Создаём транзакцию начального депозита (если есть сумма)
+      if (updated.initialAmount > 0 && oldAccount) {
+        console.log('💰 Creating deposit transaction for activated investor:', {
+          investorId: newUser.id,
+          amount: updated.initialAmount,
+          accountId: oldAccount.id
         });
 
-        return newList;
-      });
+        // 1. Создаём приход (Sale типа CASH)
+        const depositTransaction: Sale = {
+          id: `dep_activate_${newUser.id}_${Date.now()}`,
+          userId: user!.id,
+          type: 'CASH',
+          customerId: `system_deposit_${newUser.id}`,
+          productName: 'Начальный депозит (активация)',
+          buyPrice: 0,
+          accountId: oldAccount.id,
+          totalAmount: updated.initialAmount,
+          downPayment: updated.initialAmount,
+          remainingAmount: 0,
+          interestRate: 0,
+          installments: 0,
+          startDate: new Date().toISOString(),
+          status: 'COMPLETED',
+          paymentPlan: []
+        };
+
+        await api.saveItem('sales', depositTransaction);
+        updateList(setSales, depositTransaction, undefined, 'sales');
+
+        // 2. Создаём расход "Взнос инвестора"
+        const depositExpense: Expense = {
+          id: `exp_dep_activate_${newUser.id}`,
+          userId: user!.id,
+          accountId: oldAccount.id,
+          title: `Взнос инвестора: ${updated.name}`,
+          amount: updated.initialAmount,
+          category: 'Инвестиции',
+          date: new Date().toISOString(),
+          investorId: newUser.id,
+          payoutType: 'INVESTMENT',
+          description: 'Начальный взнос при активации'
+        };
+
+        await api.saveItem('expenses', depositExpense);
+        updateList(setExpenses, depositExpense, undefined, 'expenses');
+
+        console.log('✅ Deposit transaction created:', depositTransaction.id);
+      }
 
       // Обновляем счёт
       if (oldAccount) {
-        const updatedAccount = { ...oldAccount, ownerId: newUser.id };
-        await api.saveItem('accounts', updatedAccount);
-        updateList(setAccounts, updatedAccount, undefined, 'accounts');
+        const updatedAccount = {
+          ...oldAccount,
+          ownerId: newUser.id
+        };
+        const savedAccount = await api.saveItem('accounts', updatedAccount);
+        updateList(setAccounts, savedAccount, undefined, 'accounts');
       }
 
       alert(`✅ Инвестор активирован!\nЛогин: ${updated.email}\nПароль: ${tempPassword}`);
 
-      // 🔹 НЕ вызываем loadData() — state уже обновлён!
-      // loadData() может перезаписать свежий state старыми данными
+      setTimeout(() => loadData(), 300);
       return;
     }
 
-    // Для обычных обновлений
+    // Для обычных обновлений...
     const saved = await api.saveItem('investors', updated);
     updateList(setInvestors, saved, undefined, 'investors');
 
@@ -992,7 +1023,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
     alert(hasPassword ? "✅ Инвестор и пароль обновлены!" : "✅ Инвестор обновлён!");
 
   } catch (error: any) {
-    console.error('Ошибка:', error);
+    console.error('Ошибка обновления инвестора:', error);
     alert(`Не удалось обновить: ${error.message}`);
   }
 };
