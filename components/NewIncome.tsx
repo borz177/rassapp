@@ -348,14 +348,12 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
 
                           {/* Остаток с акцентом */}
                           <span style={{
-                              ...styles.sectionItem,
-                              
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          marginTop: '10px'
+                              fontWeight: 'bold',
+                              color: '#dc2626',
+                              fontSize: '12pt'  // Как у остальных полей, или 13pt если хотите чуть крупнее
                           }}>
-            Остаток: {formatNum(remainingDebt)} ₽
-        </span>
+    Остаток: {formatNum(remainingDebt)} ₽
+</span>
                       </div>
                   </div>
                   <table style={styles.table}>
