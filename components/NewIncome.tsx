@@ -237,7 +237,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       const hasGuarantor = !!selectedSale.guarantorName;
       const sellerPhone = formatPhone(appSettings?.sellerPhone);
 
-      
+
 // Берём только РЕАЛЬНЫЕ оплаченные платежи из истории
 const existingPayments = (selectedSale.paymentPlan || [])
     .filter(p => p.isRealPayment && p.isPaid)
@@ -260,7 +260,7 @@ if (!currentPaymentAlreadyExists) {
       const styles = {
           page: {
               width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
-              fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5',
+              fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '12pt', lineHeight: '1.5',
               display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
               position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
           },
@@ -273,8 +273,8 @@ if (!currentPaymentAlreadyExists) {
           section: { margin: '0 0 20px 0' },
           sectionItem: { marginBottom: '12px' },
           table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
-          th: { border: '1px solid #000', padding: '12px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
-          td: { border: '1px solid #000', padding: '14px 8px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
+          th: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
+          td: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
           footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
           footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
           signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
