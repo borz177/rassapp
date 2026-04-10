@@ -877,7 +877,21 @@ const handleAddInvestor = async (
     updateList(setSales, savedTx);
 
     // 🔹 5. Если есть расход "закупки" для депозита — создаём его
-    
+    if (amount > 0) {
+      const buyPriceExpense: Expense = {
+        id: `exp_dep_${newInvestorUser.id}`,
+        userId: user.id,
+        accountId: newAccount.id,
+        title: `Взнос инвестора: ${name}`,
+        amount: amount,
+        category: 'Инвестиции',
+        date: new Date().toISOString(),
+        investorId: newInvestorUser.id,
+        payoutType: 'INVESTMENT'
+      };
+      await api.saveItem('expenses', buyPriceExpense);
+      updateList(setExpenses, buyPriceExpense);
+    }
 
     alert("✅ Инвестор создан!");
     return newInvestorUser; // 🔹 Возвращаем пользователя для возможного дальнейшего использования
@@ -902,7 +916,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
       const oldAccount = accounts.find(a => a.ownerId === oldInvestorId);
       const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
 
-      // Создаём пользователя
+      // 1. Создаём пользователя
       const newUser = await api.createSubUser({
         name: updated.name,
         email: updated.email,
@@ -912,25 +926,26 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
         permissions: updated.permissions || {}
       });
 
+      // 2. Обновляем инвестора с НОВЫМ ID (ID пользователя)
       const linkedInvestor = {
         ...updated,
-        id: newUser.id,
+        id: newUser.id, // 🔑 Новый ID = ID пользователя
         email: updated.email,
         phone: updated.phone
       };
 
       const savedInvestor = await api.saveItem('investors', linkedInvestor);
-      updateList(setInvestors, savedInvestor, oldInvestorId, 'investors');
 
-      // 🔹 🔥 НОВОЕ: Создаём транзакцию начального депозита (если есть сумма)
+      // 3. 🔥 ВАЖНО: Удаляем СТАРОГО инвестора и добавляем НОВОГО
+      setInvestors(prev => {
+        // Удаляем старого по старому ID
+        const withoutOld = prev.filter(i => i.id !== oldInvestorId);
+        // Добавляем нового в начало
+        return [savedInvestor, ...withoutOld];
+      });
+
+      // 4. Создаём транзакцию депозита (если есть сумма)
       if (updated.initialAmount > 0 && oldAccount) {
-        console.log('💰 Creating deposit transaction for activated investor:', {
-          investorId: newUser.id,
-          amount: updated.initialAmount,
-          accountId: oldAccount.id
-        });
-
-        // 1. Создаём приход (Sale типа CASH)
         const depositTransaction: Sale = {
           id: `dep_activate_${newUser.id}_${Date.now()}`,
           userId: user!.id,
@@ -952,7 +967,6 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
         await api.saveItem('sales', depositTransaction);
         updateList(setSales, depositTransaction, undefined, 'sales');
 
-        // 2. Создаём расход "Взнос инвестора"
         const depositExpense: Expense = {
           id: `exp_dep_activate_${newUser.id}`,
           userId: user!.id,
@@ -968,27 +982,32 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
 
         await api.saveItem('expenses', depositExpense);
         updateList(setExpenses, depositExpense, undefined, 'expenses');
-
-        console.log('✅ Deposit transaction created:', depositTransaction.id);
       }
 
-      // Обновляем счёт
+      // 5. Обновляем счёт (меняем ownerId на новый ID)
       if (oldAccount) {
         const updatedAccount = {
           ...oldAccount,
-          ownerId: newUser.id
+          ownerId: newUser.id,
+          name: `Счет: ${updated.name}`
         };
         const savedAccount = await api.saveItem('accounts', updatedAccount);
-        updateList(setAccounts, savedAccount, undefined, 'accounts');
+
+        // 🔥 Обновляем счёт: удаляем старый, добавляем новый
+        setAccounts(prev => {
+          const withoutOld = prev.filter(a => a.id !== oldAccount.id);
+          return [savedAccount, ...withoutOld];
+        });
       }
 
       alert(`✅ Инвестор активирован!\nЛогин: ${updated.email}\nПароль: ${tempPassword}`);
 
-      setTimeout(() => loadData(), 300);
+      // Перезагружаем данные для синхронизации
+      setTimeout(() => loadData(), 500);
       return;
     }
 
-    // Для обычных обновлений...
+    // Для обычных обновлений (без активации)
     const saved = await api.saveItem('investors', updated);
     updateList(setInvestors, saved, undefined, 'investors');
 
@@ -1013,6 +1032,10 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
     alert(`Не удалось обновить: ${error.message}`);
   }
 };
+
+
+
+
  const handleDeleteInvestor = async (id: string) => {
   if (!isManager) return;
   if (!window.confirm('Удалить инвестора?')) return;
