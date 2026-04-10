@@ -896,7 +896,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
           // 🔴 НЕ меняем id: oldAccount.id остаётся старым!
         };
         await api.saveItem('accounts', updatedAccount);
-        updateList(setAccounts, updatedAccount); // id счёта не менялся, oldId не нужен
+        updateList(setAccounts, updatedAccount);
       }
 
       alert(`✅ Инвестор активирован!\nЛогин: ${updated.email}\nПароль: ${tempPassword}`);
@@ -904,8 +904,9 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
     }
 
     // 🔹 3. Если активация НЕ нужна — просто сохраняем и обновляем
+    // ← ПЕРЕМЕСТИЛИ updateList СЮДА, только для неактивируемых!
     const saved = await api.saveItem('investors', updated);
-    updateList(setInvestors, saved);  // ← Только здесь, если не активация!
+    updateList(setInvestors, saved);
 
     // 🔹 4. Если пользователь уже есть — просто обновляем его данные
     const userUpdateData: any = {
