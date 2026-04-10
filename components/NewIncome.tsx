@@ -193,23 +193,9 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     try {
         const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
 
-        // 🔥 Формируем имя файла НА РУССКОМ
-        const clientName = selectedCustomer?.name || 'Клиент';
-        const productName = selectedSale?.productName || 'Оплата';
-
-        // Очищаем от спецсимволов, но оставляем русские буквы
-        const cleanClient = clientName
-            .replace(/[^а-яА-ЯёЁ0-9]/g, '') // Оставляем только русские буквы и цифры
-            .substring(0, 20); // Ограничиваем длину
-
-        const cleanProduct = productName
-            .replace(/[^а-яА-ЯёЁ0-9]/g, '')
-            .substring(0, 20);
-
-        // Имя файла на русском
-        const fileName = `Договор_${cleanClient}_${cleanProduct}.pdf`;
-
-        console.log("Отправляю файл:", fileName);
+        // 🔥 ИМЯ ФАЙЛА: только латиница + дата
+        const dateStr = date.replace(/-/g, '');
+        const fileName = `Payment_${dateStr}.pdf`;
 
         const success = await sendWhatsAppFile(
             appSettings.whatsapp.idInstance,
@@ -218,13 +204,13 @@ const NewIncome: React.FC<NewIncomeProps> = ({
             pdfBlob,
             fileName
         );
-
-        if (success) alert("Договор отправлен!");
-        else alert("Ошибка отправки");
-    } catch (error) {
-        console.error(error);
-        alert("Ошибка создания PDF");
+        if (success) alert("Договор (PDF) отправлен клиенту в WhatsApp");
+        else alert("Ошибка отправки PDF в WhatsApp");
+    } catch (error: any) {
+        console.error("PDF generation error:", error);
+        alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
     }
+
 
           }
       } else if (sourceType === 'INVESTOR') {

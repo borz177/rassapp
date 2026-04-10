@@ -454,31 +454,32 @@ const NewSale: React.FC<NewSaleProps> = ({
     }
   };
 
-  const handleSendContract = async () => {
+const handleSendContract = async () => {
     if (!createdSale || !selectedCustomer || !appSettings.whatsapp?.enabled) return;
     try {
-      const blob = await generatePDFBlob();
-      const productName = createdSale.productName || 'Dogovor';
-const cleanProductName = productName
-    .replace(/[^а-яА-ЯёЁa-zA-Z0-9\s-]/g, '') // Удаляем спецсимволы полностью
-    .replace(/\s+/g, '_') // Пробелы на подчеркивания
-    .substring(0, 50); // Максимум 50 символов
+        const blob = await generatePDFBlob();
 
-const fileName = `Договор_${cleanProductName}.pdf`;
-      const success = await sendWhatsAppFile(
-        appSettings.whatsapp.idInstance,
-        appSettings.whatsapp.apiTokenInstance,
-        selectedCustomer.phone,
-        blob,
-        fileName
-      );
-      if (success) alert("Договор успешно отправлен!");
-      else alert("Ошибка отправки WhatsApp");
+        // 🔥 ИМЯ ФАЙЛА: только латиница + дата (без кириллицы!)
+        const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+        const fileName = `Contract_${dateStr}.pdf`;
+
+
+
+        const success = await sendWhatsAppFile(
+            appSettings.whatsapp.idInstance,
+            appSettings.whatsapp.apiTokenInstance,
+            selectedCustomer.phone,
+            blob,
+            fileName
+        );
+
+        if (success) alert("Договор успешно отправлен!");
+        else alert("Ошибка отправки WhatsApp");
     } catch (error) {
-      console.error("Error generating or sending PDF:", error);
-      alert("Ошибка при создании или отправке файла.");
+        console.error("Error generating or sending PDF:", error);
+        alert("Ошибка при создании или отправке файла.");
     }
-  };
+};
 
   const handlePrintContract = () => {
     if (!createdSale) return;
