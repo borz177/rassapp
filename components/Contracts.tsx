@@ -258,19 +258,34 @@ const Contracts: React.FC<ContractsProps> = ({
 
     if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }
 
-    const paidPlan = sale.paymentPlan.filter(p => p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // 🔥 Фильтруем ТОЛЬКО реальные оплаченные платежи
+    const paidPlan = sale.paymentPlan
+        .filter(p => p.isRealPayment && p.isPaid)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
     let rows = '';
 
     if (paidPlan.length > 0) {
-      let currentDebt = sale.totalAmount - sale.downPayment;
-      rows = paidPlan.map((p, index) => {
-        currentDebt -= p.amount;
-        return `<tr><td style="text-align:center">${index + 1}</td><td style="text-align:center">${formatDate(p.date)}</td><td style="text-align:center">${formatCurrency(p.amount, appSettings?.showCents)} ₽</td><td style="text-align:center">${formatCurrency(Math.max(0, currentDebt), appSettings?.showCents)} ₽</td></tr>`;
-      }).join('');
+        let currentDebt = sale.totalAmount - sale.downPayment;
+        rows = paidPlan.map((p, index) => {
+            currentDebt -= p.amount;
+            return `<tr>
+                <td style="text-align:center">${index + 1}</td>
+                <td style="text-align:center">${formatDate(p.date)}</td>
+                <td style="text-align:center">${formatCurrency(p.amount, appSettings?.showCents)} ₽</td>
+                <td style="text-align:center">${formatCurrency(Math.max(0, currentDebt), appSettings?.showCents)} ₽</td>
+            </tr>`;
+        }).join('');
     } else {
-      rows = Array.from({ length: sale.installments || 1 }).map((_, i) =>
-        `<tr><td style="text-align:center">${i + 1}</td><td style="text-align:center;height:30px"></td><td style="text-align:center"></td><td style="text-align:center"></td></tr>`
-      ).join('');
+        // Если реальных платежей ещё нет — показываем пустые строки по сроку
+        rows = Array.from({ length: sale.installments || 1 }).map((_, i) =>
+            `<tr>
+                <td style="text-align:center">${i + 1}</td>
+                <td style="text-align:center;height:30px"></td>
+                <td style="text-align:center"></td>
+                <td style="text-align:center"></td>
+            </tr>`
+        ).join('');
     }
 
     const htmlContent = `<!DOCTYPE html>
