@@ -582,25 +582,80 @@ const dashboardStats = useMemo(() => {
 
 
 // 🔹 Обновлённая updateList с поддержкой смены id
+// 🔹 Обновлённая updateList с поддержкой смены id и отладкой
 const updateList = <T extends { id: string }>(
   setter: React.Dispatch<React.SetStateAction<T[]>>,
   item: T,
-  oldId?: string  // 🔹 Новый параметр: старый ID, если он менялся
+  oldId?: string,           // ← Старый ID, если он менялся (для замены)
+  storageKey?: string       // ← Ключ localStorage для отладки (опционально)
 ) => {
   setter(prev => {
-    // Если передан oldId и он отличается от нового — сначала удаляем старый
-    if (oldId && oldId !== item.id) {
-      const withoutOld = prev.filter(i => i.id !== oldId);
-      // Проверяем, нет ли уже нового (защита от дублей)
-      const exists = withoutOld.some(i => i.id === item.id);
-      if (exists) return withoutOld;
-      return [item, ...withoutOld];
+    // 🔹 Защита от невалидных данных
+    if (!item?.id) {
+      console.warn('⚠️ updateList: item without id', item);
+      return prev;
     }
 
-    // Стандартное поведение (если ID не менялся)
-    const idx = prev.findIndex(i => i.id === item.id);
-    if (idx >= 0) return prev.map(i => i.id === item.id ? item : i);
-    return [item, ...prev];
+    let newList: T[];
+
+    // 🔹 СЛУЧАЙ 1: Меняем ID (старый → новый)
+    if (oldId && oldId !== item.id) {
+      // 1. Удаляем старый элемент
+      const withoutOld = prev.filter(i => i.id !== oldId);
+
+      // 2. Проверяем, нет ли уже нового (защита от дублей)
+      const exists = withoutOld.some(i => i.id === item.id);
+
+      if (exists) {
+        // Уже есть — просто возвращаем список без старого
+        newList = withoutOld;
+        console.log('🔄 updateList: replaced (duplicate prevented)', {
+          oldId,
+          newId: item.id,
+          listLength: withoutOld.length
+        });
+      } else {
+        // Добавляем новый в начало
+        newList = [item, ...withoutOld];
+        console.log('🔄 updateList: replaced', {
+          oldId,
+          newId: item.id,
+          listLength: newList.length
+        });
+      }
+    }
+    // 🔹 СЛУЧАЙ 2: Обновляем существующий или добавляем новый
+    else {
+      const idx = prev.findIndex(i => i.id === item.id);
+
+      if (idx >= 0) {
+        // Обновляем существующий
+        newList = prev.map(i => i.id === item.id ? item : i);
+        console.log('🔄 updateList: updated existing', {
+          id: item.id,
+          index: idx
+        });
+      } else {
+        // Добавляем новый в начало
+        newList = [item, ...prev];
+        console.log('🔄 updateList: added new', {
+          id: item.id,
+          listLength: newList.length
+        });
+      }
+    }
+
+    // 🔹 ОТЛАДКА: Принудительное сохранение в localStorage (только для отладки!)
+    if (storageKey && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(newList));
+        console.log(`💾 Saved to localStorage["${storageKey}"]:`, newList.length, 'items');
+      } catch (e) {
+        console.error(`❌ Failed to save to localStorage["${storageKey}"]`, e);
+      }
+    }
+
+    return newList;
   });
 };
 const removeFromList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, id: string) => { setter(prev => prev.filter(i => i.id !== id)); };
@@ -857,11 +912,26 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
     const isImportedWithoutUser = updated.id.startsWith('inv_') && !updated.id.startsWith('u_inv_');
     const needsActivation = hasEmail && (hasPassword || isImportedWithoutUser);
 
-    // 🔹 2. Если НУЖНА активация — НЕ сохраняем сразу, а активируем
+    console.log('🔍 handleUpdateInvestor:', {
+      investorId: updated.id,
+      investorName: updated.name,
+      hasEmail,
+      hasPassword,
+      isImportedWithoutUser,
+      needsActivation
+    });
+
+    // 🔹 2. Если НУЖНА активация — создаём пользователя и привязываем
     if (needsActivation && !updated.id.startsWith('u_inv_') && !updated.id.startsWith('u_emp_')) {
-      // 🔹 Сохраняем старые ID для корректного обновления списков
+      // 🔹 Сохраняем старые значения ПЕРЕД любыми изменениями
       const oldInvestorId = updated.id;
       const oldAccount = accounts.find(a => a.ownerId === oldInvestorId);
+
+      console.log('🔧 Activating investor:', {
+        oldInvestorId,
+        oldAccountId: oldAccount?.id,
+        newEmail: updated.email
+      });
 
       const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
 
@@ -875,18 +945,28 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
         permissions: updated.permissions || {}
       });
 
+      console.log('✅ User created:', {
+        userId: newUser.id,
+        email: newUser.email
+      });
+
       // 🔹 Обновляем инвестора: меняем ID на ID пользователя
       const linkedInvestor = {
         ...updated,
-        id: newUser.id,  // 🔑 Новый ID
+        id: newUser.id,  // 🔑 Новый ID = ID пользователя
         email: updated.email,
         phone: updated.phone
       };
 
-      await api.saveItem('investors', linkedInvestor);
+      // 🔹 Сохраняем на сервер с НОВЫМ id
+      const savedInvestor = await api.saveItem('investors', linkedInvestor);
+      console.log('💾 Investor saved to server:', {
+        savedId: savedInvestor.id,
+        expectedId: newUser.id
+      });
 
-      // 🔹 КЛЮЧЕВОЕ: передаём oldInvestorId, чтобы updateList удалил старого
-      updateList(setInvestors, linkedInvestor, oldInvestorId);
+      // 🔹 КЛЮЧЕВОЕ: передаём oldInvestorId, чтобы updateList удалил старого и добавил нового
+      updateList(setInvestors, savedInvestor, oldInvestorId, 'investors');
 
       // 🔹 Обновляем счёт: меняем только ownerId, id счёта НЕ меняем!
       if (oldAccount) {
@@ -895,20 +975,30 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
           ownerId: newUser.id  // ✅ Меняем только владельца
           // 🔴 НЕ меняем id: oldAccount.id остаётся старым!
         };
-        await api.saveItem('accounts', updatedAccount);
-        updateList(setAccounts, updatedAccount);
+        const savedAccount = await api.saveItem('accounts', updatedAccount);
+        updateList(setAccounts, savedAccount, undefined, 'accounts');
+
+        console.log('🏦 Account updated:', {
+          accountId: savedAccount.id,
+          newOwnerId: savedAccount.ownerId
+        });
       }
 
       alert(`✅ Инвестор активирован!\nЛогин: ${updated.email}\nПароль: ${tempPassword}`);
+
+      // 🔹 Перезагружаем данные для синхронизации
+      setTimeout(() => loadData(), 300);
+
       return;  // 🔹 ВАЖНО: выходим, чтобы не выполнять код ниже!
     }
 
     // 🔹 3. Если активация НЕ нужна — просто сохраняем и обновляем
-    // ← ПЕРЕМЕСТИЛИ updateList СЮДА, только для неактивируемых!
     const saved = await api.saveItem('investors', updated);
-    updateList(setInvestors, saved);
+    console.log('💾 Investor updated (no activation):', { id: saved.id });
 
-    // 🔹 4. Если пользователь уже есть — просто обновляем его данные
+    updateList(setInvestors, saved, undefined, 'investors');
+
+    // 🔹 4. Если пользователь уже есть — обновляем его данные (пароль, права)
     const userUpdateData: any = {
       id: updated.id,
       name: updated.name,
@@ -923,11 +1013,12 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
     }
 
     await api.updateUser(userUpdateData);
+    console.log('👤 User data updated');
 
     alert(hasPassword ? "✅ Инвестор и пароль обновлены!" : "✅ Инвестор обновлён!");
 
   } catch (error: any) {
-    console.error('Ошибка обновления инвестора:', error);
+    console.error('❌ Ошибка обновления инвестора:', error);
     alert(`Не удалось обновить: ${error.message}`);
   }
 };
