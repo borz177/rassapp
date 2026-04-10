@@ -121,34 +121,61 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       return showCents ? profit : Math.round(profit);
   }, [selectedSale, amount, showCents]);
 
- const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
+ // 1. В стилях (renderContractContent) замените Times New Roman на Arial
+const styles = {
+    page: {
+        // ... ваши стили ...
+        fontFamily: 'Arial, sans-serif', // 🔥 ИЗМЕНЕНИЕ: Arial поддерживается везде
+        // ...
+    },
+    // ...
+};
+
+// 2. Обновите функцию генерации PDF
+const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
+    const element = contractRef.current;
 
-    // 🔥 Клонируем элемент вместо работы с оригиналом
-    const clonedElement = contractRef.current.cloneNode(true) as HTMLDivElement;
-
-    // Применяем стили к клону
-    clonedElement.style.position = 'fixed';
-    clonedElement.style.left = '0';
-    clonedElement.style.top = '0';
-    clonedElement.style.visibility = 'visible';
-    clonedElement.style.zIndex = '9999';
-    clonedElement.style.width = '210mm';
-    clonedElement.style.background = 'white';
-    clonedElement.style.opacity = '1';
-
-    document.body.appendChild(clonedElement);
+    // Сохраняем стили
+    const originalStyle = {
+        display: element.style.display,
+        position: element.style.position,
+        left: element.style.left,
+        top: element.style.top,
+        visibility: element.style.visibility,
+        zIndex: element.style.zIndex,
+        opacity: element.style.opacity,
+    };
 
     try {
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // 🔥 КРИТИЧНО: Ждем, пока браузер загрузит все шрифты (особенно кириллицу)
+        await document.fonts.ready;
 
-        const canvas = await html2canvas(clonedElement, {
+        // Настраиваем элемент для рендера
+        element.style.display = 'block';
+        element.style.position = 'fixed';
+        element.style.left = '0';
+        element.style.top = '0';
+        element.style.visibility = 'visible';
+        element.style.zIndex = '9999';
+        element.style.opacity = '1';
+        element.style.background = 'white';
+
+        // Даем время на перерисовку после смены стилей
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        const canvas = await html2canvas(element, {
             scale: 2,
             useCORS: true,
             logging: false,
             backgroundColor: '#ffffff',
             scrollX: 0,
-            scrollY: 0
+            scrollY: 0,
+            windowWidth: element.scrollWidth,
+            windowHeight: element.scrollHeight,
+            // Отключаем проблемные фичи для мобильных
+            foreignObjectRendering: false,
+            removeContainer: true
         });
 
         const imgData = canvas.toDataURL('image/jpeg', 0.9);
@@ -160,8 +187,14 @@ const NewIncome: React.FC<NewIncomeProps> = ({
         return pdf.output('blob');
 
     } finally {
-        // Удаляем клон
-        document.body.removeChild(clonedElement);
+        // Возвращаем стили обратно
+        element.style.display = originalStyle.display;
+        element.style.position = originalStyle.position;
+        element.style.left = originalStyle.left;
+        element.style.top = originalStyle.top;
+        element.style.visibility = originalStyle.visibility;
+        element.style.zIndex = originalStyle.zIndex;
+        element.style.opacity = originalStyle.opacity ?? '1';
     }
 };
   const handleSubmit = (e: React.FormEvent) => {
@@ -236,7 +269,7 @@ const fileName = `Договор_${cleanName}.pdf`;
       const styles = {
           page: {
               width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
-              fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5',
+              fontFamily: 'Arial, sans-serif', fontSize: '12pt', lineHeight: '1.5',
               display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
               position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
           },
