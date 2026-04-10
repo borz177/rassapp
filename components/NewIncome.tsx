@@ -237,8 +237,6 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       const hasGuarantor = !!selectedSale.guarantorName;
       const sellerPhone = formatPhone(appSettings?.sellerPhone);
 
-      const totalPaid = existingPayments.reduce((sum, p) => sum + p.amount, 0);
-const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPayment - totalPaid);
 
 
 // Берём только РЕАЛЬНЫЕ оплаченные платежи из истории
@@ -259,6 +257,9 @@ if (!currentPaymentAlreadyExists) {
     existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
+
+const totalPaid = existingPayments.reduce((sum, p) => sum + p.amount, 0);
+const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPayment - totalPaid);
 
       const styles = {
           page: {
