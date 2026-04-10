@@ -877,21 +877,7 @@ const handleAddInvestor = async (
     updateList(setSales, savedTx);
 
     // 🔹 5. Если есть расход "закупки" для депозита — создаём его
-    if (amount > 0) {
-      const buyPriceExpense: Expense = {
-        id: `exp_dep_${newInvestorUser.id}`,
-        userId: user.id,
-        accountId: newAccount.id,
-        title: `Взнос инвестора: ${name}`,
-        amount: amount,
-        category: 'Инвестиции',
-        date: new Date().toISOString(),
-        investorId: newInvestorUser.id,
-        payoutType: 'INVESTMENT'
-      };
-      await api.saveItem('expenses', buyPriceExpense);
-      updateList(setExpenses, buyPriceExpense);
-    }
+    
 
     alert("✅ Инвестор создан!");
     return newInvestorUser; // 🔹 Возвращаем пользователя для возможного дальнейшего использования
