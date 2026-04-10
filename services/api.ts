@@ -277,36 +277,65 @@ export const api = {
         }
 
         // Apply pending offline changes to the data
-        if (data) {
-            try {
-                const queue = await offlineStorage.getQueue();
-                for (const item of queue) {
-                    if (!item.collection || !data[item.collection]) continue;
+        // Apply pending offline changes to the data
+if (data) {
+    try {
+        const queue = await offlineStorage.getQueue();
+        for (const item of queue) {
+            if (!item.collection || !data[item.collection]) continue;
 
-                    if (item.type === 'saveItem') {
-                        if (Array.isArray(data[item.collection])) {
-                            // Handle Arrays (Sales, Customers, etc.)
-                            const list = data[item.collection] as any[];
-                            const idx = list.findIndex(i => i.id === item.payload.id);
-                            if (idx >= 0) {
-                                list[idx] = item.payload;
-                            } else {
-                                list.unshift(item.payload);
-                            }
-                        } else {
-                            // Handle Objects (Settings)
-                            data[item.collection] = { ...data[item.collection], ...item.payload };
+            if (item.type === 'saveItem') {
+                if (Array.isArray(data[item.collection])) {
+                    const list = data[item.collection] as any[];
+
+                    // 🔹 1. Ищем по ID (стандартный случай)
+                    let idx = list.findIndex(i => i.id === item.payload.id);
+
+                    // 🔹 2. Если не нашли — ищем по email (для активированных инвесторов!)
+                    if (idx === -1 && item.payload.email) {
+                        idx = list.findIndex(i => i.email === item.payload.email);
+
+                        // 🔹 3. Если нашли по email — обновляем, но сохраняем НОВЫЙ id
+                        if (idx >= 0 && item.payload.id !== list[idx].id) {
+                            console.log('🔄 Queue: ID changed for investor', {
+                                oldId: list[idx].id,
+                                newId: item.payload.id,
+                                email: item.payload.email
+                            });
+                            // Обновляем запись, но с новым ID
+                            list[idx] = { ...list[idx], ...item.payload, id: item.payload.id };
+                            continue; // Пропускаем добавление
                         }
-                    } else if (item.type === 'deleteItem') {
-                         if (Array.isArray(data[item.collection])) {
-                            data[item.collection] = (data[item.collection] as any[]).filter(i => i.id !== item.itemId);
-                         }
                     }
+
+                    // 🔹 4. Стандартное поведение
+                    if (idx >= 0) {
+                        list[idx] = item.payload;
+                    } else {
+                        // 🔹 Проверяем, нет ли дубликата по email перед добавлением
+                        const existsByEmail = item.payload.email &&
+                            list.some(i => i.email === item.payload.email && i.id !== item.payload.id);
+
+                        if (!existsByEmail) {
+                            list.unshift(item.payload);
+                        } else {
+                            console.log('⚠️ Queue: Skipping duplicate by email', item.payload.email);
+                        }
+                    }
+                } else {
+                    // Handle Objects (Settings)
+                    data[item.collection] = { ...data[item.collection], ...item.payload };
                 }
-            } catch (e) {
-                console.error("Error applying offline queue to data", e);
+            } else if (item.type === 'deleteItem') {
+                if (Array.isArray(data[item.collection])) {
+                    data[item.collection] = (data[item.collection] as any[]).filter(i => i.id !== item.itemId);
+                }
             }
         }
+    } catch (e) {
+        console.error("Error applying offline queue to data", e);
+    }
+}
 
         return data;
     },
