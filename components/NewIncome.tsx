@@ -303,12 +303,14 @@ if (!currentPaymentAlreadyExists) {
                       </div>
                       {hasGuarantor && (
                           <div style={styles.fieldRow}>
-                              <span><span style={styles.fieldLabel}>Поручитель:</span> {selectedSale.guarantorName}</span>
+                              <span><span
+                                  style={styles.fieldLabel}>Поручитель:</span> {selectedSale.guarantorName}</span>
                               <span style={styles.phoneField}>Тел: {selectedSale.guarantorPhone}</span>
                           </div>
                       )}
                   </div>
                   <div style={styles.section}>
+                      {/* Строка 1: Товар + Стоимость */}
                       <div style={{
                           ...styles.sectionItem,
                           display: 'flex',
@@ -319,8 +321,9 @@ if (!currentPaymentAlreadyExists) {
                           <span><span style={styles.fieldLabel}>Товар:</span> {selectedSale.productName}</span>
                           <span><span
                               style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
-
                       </div>
+
+                      {/* Строка 2: Срок + Первый взнос */}
                       <div style={{
                           ...styles.sectionItem,
                           display: 'flex',
@@ -328,7 +331,21 @@ if (!currentPaymentAlreadyExists) {
                           marginTop: '10px'
                       }}>
                           <span><span style={styles.fieldLabel}>Срок рассрочки:</span> {selectedSale.installments} мес.</span>
+                          <span><span
+                              style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
+                      </div>
 
+                      {/* Строка 3: Платёж + Остаток (Остаток теперь внизу!) */}
+                      <div style={{
+                          ...styles.sectionItem,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          marginTop: '10px'
+                      }}>
+                          <span><span
+                              style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
+
+                          {/* Остаток с акцентом */}
                           <span style={{
                               fontWeight: 'bold',
                               color: '#dc2626',
@@ -340,12 +357,6 @@ if (!currentPaymentAlreadyExists) {
                           }}>
             Остаток: {formatNum(remainingDebt)} ₽
         </span>
-                      </div>
-                      <div style={{...styles.sectionItem, display: 'flex', justifyContent: 'space-between'}}>
-                          <span><span
-                              style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
-                          <span><span
-                              style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
                       </div>
                   </div>
                   <table style={styles.table}>
@@ -359,21 +370,22 @@ if (!currentPaymentAlreadyExists) {
                       </thead>
                       <tbody>
                       {existingPayments.map((p, index) => {
-                              currentDebt -= p.amount;
-                              const displayDebt = Math.max(0, currentDebt);
-                              return (
-                                  <tr key={index}>
-                                      <td style={styles.td}>{index + 1}</td>
-                                      <td style={styles.td}>{p.date.toLocaleDateString()}</td>
-                                      <td style={styles.td}>{formatNum(p.amount)} ₽</td>
-                                      <td style={styles.td}>{formatNum(displayDebt)} ₽</td>
-                                  </tr>
-                              );
-                          })}
+                          currentDebt -= p.amount;
+                          const displayDebt = Math.max(0, currentDebt);
+                          return (
+                              <tr key={index}>
+                                  <td style={styles.td}>{index + 1}</td>
+                                  <td style={styles.td}>{p.date.toLocaleDateString()}</td>
+                                  <td style={styles.td}>{formatNum(p.amount)} ₽</td>
+                                  <td style={styles.td}>{formatNum(displayDebt)} ₽</td>
+                              </tr>
+                          );
+                      })}
                       </tbody>
                   </table>
-                  <div style={{ margin: '25px 0', fontSize: '11pt', lineHeight: 1.4 }}>
-                      Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку на указанных выше условиях.
+                  <div style={{margin: '25px 0', fontSize: '11pt', lineHeight: 1.4}}>
+                      Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в
+                      рассрочку на указанных выше условиях.
                   </div>
               </div>
               <div style={styles.footerContainer}>
@@ -398,19 +410,20 @@ if (!currentPaymentAlreadyExists) {
       );
   };
 
-  const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Неизвестный счет';
+    const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Неизвестный счет';
 
-  return (
-    <div className="space-y-4 animate-fade-in pb-20">
-        {renderContractContent()}
+    return (
+        <div className="space-y-4 animate-fade-in pb-20">
+            {renderContractContent()}
 
-        <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
-            <button onClick={onClose} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
-            <h2 className="text-xl font-bold text-slate-800">Оформление прихода</h2>
-        </div>
+            <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
+                <button onClick={onClose} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
+                <h2 className="text-xl font-bold text-slate-800">Оформление прихода</h2>
+            </div>
 
-        <div className="flex bg-slate-100 p-1 rounded-xl">
-            <button onClick={() => { setSourceType('CUSTOMER'); setAmount(''); }} className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'CUSTOMER' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Клиент</button>
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+                <button onClick={() => {
+                    setSourceType('CUSTOMER'); setAmount(''); }} className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'CUSTOMER' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Клиент</button>
             <button onClick={() => { setSourceType('INVESTOR'); setAmount(''); }} className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'INVESTOR' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500'}`}>Инвестор</button>
             <button onClick={() => { setSourceType('OTHER'); setAmount(''); }} className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'OTHER' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}>Прочее</button>
         </div>
