@@ -142,6 +142,17 @@ const InfoItem = ({ label, value, color = 'text-slate-800', small = false }: {
   </div>
 );
 
+
+const formatPhone = (raw: string | undefined): string => {
+    if (!raw) return '+7 (___) ___-__-__';
+    const digits = raw.replace(/\D/g, ''); // Оставляем только цифры
+    if (digits.length === 11 && (digits[0] === '8' || digits[0] === '7')) {
+        const clean = digits[0] === '8' ? '7' + digits.slice(1) : digits;
+        return `+${clean[0]} (${clean.slice(1, 4)}) ${clean.slice(4, 7)}-${clean.slice(7, 9)}-${clean.slice(9)}`;
+    }
+    return raw; // Если формат нестандартный, возвращаем как есть
+};
+
 // ─────────────────────────────────────────────────────────────
 // 📋 Основной компонент Contracts
 // ─────────────────────────────────────────────────────────────
@@ -364,16 +375,16 @@ const Contracts: React.FC<ContractsProps> = ({
         <div class="section">
             <div class="field-row">
                 <span><span class="field-label">Продавец:</span> ${companyName}</span>
-                <span>Тел: ${sellerPhone || '+7 (___) ___-__-__'}</span>
+                <span>Тел: ${formatPhone(sellerPhone)}</span>
             </div>
             <div class="field-row">
                 <span><span class="field-label">Покупатель:</span> ${customer?.name || '__________________'}</span>
-                <span>Тел: ${customer?.phone || '+7 (___) ___-__-__'}</span>
+                <span>Тел: ${formatPhone(customer.phone)}</span>
             </div>
             ${hasGuarantor ? `
             <div class="field-row">
                 <span><span class="field-label">Поручитель:</span> ${sale.guarantorName}</span>
-                <span>Тел: ${sale.guarantorPhone || ''}</span>
+                <span>Тел: ${formatPhone(sale.guarantorPhone)}</span>
             </div>` : ''}
         </div>
         <div class="section">
