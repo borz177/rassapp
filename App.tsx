@@ -851,16 +851,13 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
   if (!isManager) return;
 
   try {
-    // 🔹 1. Сохраняем данные инвестора (баланс, процент, права)
-    const saved = await api.saveItem('investors', updated);
-    updateList(setInvestors, saved);
-
-    // 🔹 2. Проверяем: нужно ли создать пользователя для входа
+    // 🔹 1. Проверяем: нужно ли создать пользователя для входа
     const hasEmail = updated.email && updated.email.trim().length > 0;
     const hasPassword = password && password.trim().length > 0;
     const isImportedWithoutUser = updated.id.startsWith('inv_') && !updated.id.startsWith('u_inv_');
     const needsActivation = hasEmail && (hasPassword || isImportedWithoutUser);
 
+    // 🔹 2. Если НУЖНА активация — НЕ сохраняем сразу, а активируем
     if (needsActivation && !updated.id.startsWith('u_inv_') && !updated.id.startsWith('u_emp_')) {
       // 🔹 Сохраняем старые ID для корректного обновления списков
       const oldInvestorId = updated.id;
@@ -887,6 +884,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
       };
 
       await api.saveItem('investors', linkedInvestor);
+
       // 🔹 КЛЮЧЕВОЕ: передаём oldInvestorId, чтобы updateList удалил старого
       updateList(setInvestors, linkedInvestor, oldInvestorId);
 
@@ -902,10 +900,14 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
       }
 
       alert(`✅ Инвестор активирован!\nЛогин: ${updated.email}\nПароль: ${tempPassword}`);
-      return;
+      return;  // 🔹 ВАЖНО: выходим, чтобы не выполнять код ниже!
     }
 
-    // 🔹 3. Если пользователь уже есть — просто обновляем его данные
+    // 🔹 3. Если активация НЕ нужна — просто сохраняем и обновляем
+    const saved = await api.saveItem('investors', updated);
+    updateList(setInvestors, saved);  // ← Только здесь, если не активация!
+
+    // 🔹 4. Если пользователь уже есть — просто обновляем его данные
     const userUpdateData: any = {
       id: updated.id,
       name: updated.name,
