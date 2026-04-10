@@ -225,7 +225,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       if (!selectedSale || !selectedCustomer) return null;
       const companyName = appSettings?.companyName || "Компания";
       const hasGuarantor = !!selectedSale.guarantorName;
-      const sellerPhone = appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance.slice(0, 11)}` : (selectedCustomer?.phone || '+7 (___) ___-__-__');
+      const sellerPhone = appSettings?.sellerPhone || '+7 (___) ___-__-__';
 
       const existingPayments = selectedSale.paymentPlan
           ? selectedSale.paymentPlan.filter(p => p.isPaid).map(p => ({ date: new Date(p.date), amount: p.amount }))

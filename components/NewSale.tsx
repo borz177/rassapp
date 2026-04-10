@@ -300,7 +300,7 @@ const NewSale: React.FC<NewSaleProps> = ({
     const sale = createdSale;
     const companyName = appSettings?.companyName || "Компания";
     const hasGuarantor = !!sale.guarantorName;
-    const sellerPhone = appSettings?.sellerPhone || (appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance}` : '+7 (___) ___-__-__');
+    const sellerPhone = appSettings?.sellerPhone || '+7 (___) ___-__-__';
 
     const styles = {
       page: {
@@ -486,7 +486,7 @@ const handleSendContract = async () => {
     const sale = createdSale;
     const customer = selectedCustomer;
     const companyName = appSettings?.companyName || "Компания";
-    const sellerPhone = appSettings?.sellerPhone || (appSettings?.whatsapp?.idInstance ? `+${appSettings.whatsapp.idInstance}` : '+7 (___) ___-__-__');
+    const sellerPhone = appSettings?.sellerPhone || '+7 (___) ___-__-__';
     const hasGuarantor = !!sale.guarantorName;
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }

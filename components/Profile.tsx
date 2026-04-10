@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../types';
 import { ICONS } from '../constants';
-
+import { getAppSettings } from '../services/storage';
 interface ProfileProps {
   user: User;
   onUpdateProfile: (data: any) => void;
@@ -22,6 +22,11 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onBack, onLogo
   const handleProfileSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdateProfile({ name, email, phone });
+     const settings = getAppSettings();
+    if (settings) {
+        settings.sellerPhone = phone;
+        localStorage.setItem('appSettings', JSON.stringify(settings));
+    }
 
   };
 
