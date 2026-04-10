@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Customer, Account, Investor, Sale } from '../types';
+import { Customer, Account, Investor, Sale,User } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
@@ -15,6 +15,7 @@ interface NewIncomeProps {
   onClose: () => void;
   onSubmit: (data: any) => void;
   onSelectCustomer: () => void;
+    user?: User;
 
 }
 
@@ -29,7 +30,7 @@ const formatPhone = (raw: string | undefined): string => {
     return raw; // Если формат нестандартный, возвращаем как есть
 };
 const NewIncome: React.FC<NewIncomeProps> = ({
-    initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer
+    initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer, user
 }) => {
   const [sourceType, setSourceType] = useState<'CUSTOMER' | 'INVESTOR' | 'OTHER'>('CUSTOMER');
 
@@ -235,7 +236,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       if (!selectedSale || !selectedCustomer) return null;
       const companyName = appSettings?.companyName || "Компания";
       const hasGuarantor = !!selectedSale.guarantorName;
-      const sellerPhone = formatPhone(appSettings?.sellerPhone);
+      const sellerPhone = formatPhone(user?.phone || appSettings?.sellerPhone);
 
 
 

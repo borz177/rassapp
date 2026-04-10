@@ -1601,7 +1601,7 @@ if (!user && !isLoading) {
                   <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts}
                              sales={sales} onClose={() => setCurrentView('DASHBOARD')} onSubmit={handleIncomeSubmit}
                              onSelectCustomer={() => openSelection('SELECT_CUSTOMER', draftSaleData)}
-                             appSettings={appSettings}/>}
+                             appSettings={appSettings} user={user}/>}
               {currentView === 'CREATE_EXPENSE' &&
                   <NewExpense investors={investors} accounts={accounts} onClose={() => setCurrentView('DASHBOARD')}
                               onSubmit={handleExpenseSubmit} appSettings={appSettings}/>}
