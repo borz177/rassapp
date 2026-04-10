@@ -200,7 +200,7 @@ export default function Landing() {
                     {/* Stats */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mt-20 pt-8 border-t border-slate-200">
                         {[
-                            { value: "5000+", label: "Активных пользователей", icon: "👥" },
+                            { value: "100+", label: "Активных пользователей", icon: "👥" },
                             { value: "₽50M+", label: "Учтено средств", icon: "💰" },
                             { value: "99.9%", label: "Доступность", icon: "⚡" },
                             { value: "24/7", label: "Поддержка", icon: "🎧" }

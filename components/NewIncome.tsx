@@ -237,11 +237,25 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       const hasGuarantor = !!selectedSale.guarantorName;
       const sellerPhone = formatPhone(appSettings?.sellerPhone);
 
-      const existingPayments = selectedSale.paymentPlan
-          ? selectedSale.paymentPlan.filter(p => p.isPaid).map(p => ({ date: new Date(p.date), amount: p.amount }))
-          : [];
-      existingPayments.push({ date: new Date(date), amount: Number(amount) });
-      existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
+      
+// Берём только РЕАЛЬНЫЕ оплаченные платежи из истории
+const existingPayments = (selectedSale.paymentPlan || [])
+    .filter(p => p.isRealPayment && p.isPaid)
+    .map(p => ({ date: new Date(p.date), amount: p.amount }))
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+// Добавляем ТЕКУЩИЙ платёж (он ещё не сохранён в sale, поэтому добавляем вручную)
+
+const currentPaymentAlreadyExists = existingPayments.some(
+    p => Math.abs(p.amount - Number(amount)) < 0.01 &&
+         new Date(p.date).getTime() === new Date(date).getTime()
+);
+
+if (!currentPaymentAlreadyExists) {
+    existingPayments.push({ date: new Date(date), amount: Number(amount) });
+    existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
 
       const styles = {
           page: {
