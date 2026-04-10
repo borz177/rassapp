@@ -237,6 +237,9 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       const hasGuarantor = !!selectedSale.guarantorName;
       const sellerPhone = formatPhone(appSettings?.sellerPhone);
 
+      const totalPaid = existingPayments.reduce((sum, p) => sum + p.amount, 0);
+const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPayment - totalPaid);
+
 
 // Берём только РЕАЛЬНЫЕ оплаченные платежи из истории
 const existingPayments = (selectedSale.paymentPlan || [])
@@ -306,27 +309,56 @@ if (!currentPaymentAlreadyExists) {
                       )}
                   </div>
                   <div style={styles.section}>
-                      <div style={styles.sectionItem}><span style={styles.fieldLabel}>Товар:</span> {selectedSale.productName}</div>
-                      <div style={{...styles.sectionItem, display: 'flex', justifyContent: 'space-between', marginTop: '10px'}}>
+                      <div style={{
+                          ...styles.sectionItem,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginBottom: '15px'
+                      }}>
+                          <span><span style={styles.fieldLabel}>Товар:</span> {selectedSale.productName}</span>
+                          <span><span
+                              style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
+
+                      </div>
+                      <div style={{
+                          ...styles.sectionItem,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          marginTop: '10px'
+                      }}>
                           <span><span style={styles.fieldLabel}>Срок рассрочки:</span> {selectedSale.installments} мес.</span>
-                          <span><span style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
+
+                          <span style={{
+                              fontWeight: 'bold',
+                              color: '#dc2626',
+                              fontSize: '13pt',
+                              background: '#fef2f2',
+                              padding: '4px 12px',
+                              borderRadius: '6px',
+                              border: '1px solid #fecaca'
+                          }}>
+            Остаток: {formatNum(remainingDebt)} ₽
+        </span>
                       </div>
                       <div style={{...styles.sectionItem, display: 'flex', justifyContent: 'space-between'}}>
-                          <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
-                          <span><span style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
+                          <span><span
+                              style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
+                          <span><span
+                              style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
                       </div>
                   </div>
                   <table style={styles.table}>
                       <thead>
-                          <tr>
-                              <th style={{...styles.th, width: '10%'}}>№</th>
-                              <th style={{...styles.th, width: '30%'}}>Дата</th>
-                              <th style={{...styles.th, width: '25%'}}>Сумма</th>
-                              <th style={{...styles.th, width: '35%'}}>Остаток долга</th>
-                          </tr>
+                      <tr>
+                          <th style={{...styles.th, width: '10%'}}>№</th>
+                          <th style={{...styles.th, width: '30%'}}>Дата</th>
+                          <th style={{...styles.th, width: '25%'}}>Сумма</th>
+                          <th style={{...styles.th, width: '35%'}}>Остаток долга</th>
+                      </tr>
                       </thead>
                       <tbody>
-                          {existingPayments.map((p, index) => {
+                      {existingPayments.map((p, index) => {
                               currentDebt -= p.amount;
                               const displayDebt = Math.max(0, currentDebt);
                               return (
