@@ -297,7 +297,7 @@ const Contracts: React.FC<ContractsProps> = ({
     <style>
         * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         body { 
-            font-family: 'Times New Roman', Times, serif; 
+            font-family: 'Arial, Helvetica, sans-serif', Times, serif; 
             font-size: 12pt; 
             line-height: 1.5; 
             padding: 30px 25px;

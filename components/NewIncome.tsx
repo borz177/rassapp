@@ -296,17 +296,17 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
                   <div style={styles.section}>
                       <div style={styles.fieldRow}>
                           <span><span style={styles.fieldLabel}>Продавец:</span> {companyName}</span>
-                          <span style={styles.phoneField}>Тел: {sellerPhone}</span>
+                          <span style={styles.phoneField}>Тел: {formatPhone(sellerPhone)}</span>
                       </div>
                       <div style={styles.fieldRow}>
                           <span><span style={styles.fieldLabel}>Покупатель:</span> {selectedCustomer.name}</span>
-                          <span style={styles.phoneField}>Тел: {selectedCustomer.phone}</span>
+                          <span style={styles.phoneField}>Тел: {formatPhone(selectedCustomer.phone)}</span>
                       </div>
                       {hasGuarantor && (
                           <div style={styles.fieldRow}>
                               <span><span
                                   style={styles.fieldLabel}>Поручитель:</span> {selectedSale.guarantorName}</span>
-                              <span style={styles.phoneField}>Тел: {selectedSale.guarantorPhone}</span>
+                              <span style={styles.phoneField}>Тел: {formatPhone(selectedSale.guarantorPhone)} </span>
                           </div>
                       )}
                   </div>
@@ -349,7 +349,7 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
                           {/* Остаток с акцентом */}
                           <span style={{
                               fontWeight: 'bold',
-                              color: '#f17d33',
+                              color: '#dc2626',
                               fontSize: '12pt'  // Как у остальных полей, или 13pt если хотите чуть крупнее
                           }}>
     Остаток: {formatNum(remainingDebt)} ₽
