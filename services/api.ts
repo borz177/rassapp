@@ -406,6 +406,7 @@ export const api = {
     },
 
   // === ОБНОВЛЕНИЕ ПРОФИЛЯ (через users/manage) ===
+// === ОБНОВЛЕНИЕ ПРОФИЛЯ (через users/manage) ===
 updateProfile: async (userId: string, profileData: { name?: string; phone?: string; email?: string }): Promise<User> => {
     const res = await fetch(`${API_URL}/users/manage`, {
         method: 'POST',
@@ -425,20 +426,33 @@ updateProfile: async (userId: string, profileData: { name?: string; phone?: stri
     }
 
     const data = await res.json();
-    console.log('Server response:', data); // { success: true }
+    console.log('Server response:', data);
 
-    // 🔹 Создаём обновлённого пользователя локально
-    const currentUser = await offlineStorage.getCache('user_me');
-    const updatedUser: User = {
-        ...(currentUser || {}),
-        id: userId,
-        ...profileData
-    } as User;
+    // 🔥 ПРИОРИТЕТ 1: Если сервер вернул обновлённого пользователя — используем его
+    if (data.user) {
+        await offlineStorage.setCache('user_me', data.user);
+        return data.user;
+    }
 
-    // Сохраняем в кэш
-    await offlineStorage.setCache('user_me', updatedUser);
+    // 🔥 ПРИОРИТЕТ 2: Фолбэк — запрашиваем актуального пользователя с сервера
+    try {
+        const updatedUser = await api.getMe();
+        await offlineStorage.setCache('user_me', updatedUser);
+        return updatedUser;
+    } catch (error) {
+        console.warn('⚠️ Failed to fetch fresh user, using local merge as last resort');
 
-    return updatedUser;
+        // 🔥 ПОСЛЕДНИЙ ВАРИАНТ: локальное слияние (только если всё остальное не сработало)
+        const currentUser = await offlineStorage.getCache('user_me');
+        const updatedUser: User = {
+            ...(currentUser || {}),
+            id: userId,
+            ...profileData
+        } as User;
+
+        await offlineStorage.setCache('user_me', updatedUser);
+        return updatedUser;
+    }
 },
 
     // === СМЕНА ПАРОЛЯ (отдельный безопасный эндпоинт) ===

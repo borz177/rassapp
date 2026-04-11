@@ -1187,7 +1187,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
   return res.json({ success: true, id: investorId });
 }
 
-    if (action === 'update') {
+   if (action === 'update') {
   const { id, name, email, permissions, allowedInvestorIds, password, phone } = userData;
   const isSelfUpdate = (id === req.user.id);
 
@@ -1196,7 +1196,12 @@ app.post('/api/users/manage', auth, async (req, res) => {
     const permJson = permissions !== undefined ? JSON.stringify(permissions) : null;
     const allowedJson = allowedInvestorIds !== undefined ? JSON.stringify(allowedInvestorIds) : null;
 
-    // 🔹 COALESCE сохраняет старое значение, если пришло null/undefined
+    // 🔹 Преобразуем пустые строки в NULL, чтобы COALESCE корректно очищал поля
+    const safeName = name?.trim() || null;
+    const safeEmail = email?.trim() || null;
+    const safePhone = phone?.trim() || null;
+
+    // 🔹 COALESCE сохраняет старое значение, если пришло null
     let query = `UPDATE users SET 
       name = COALESCE($1, name), 
       email = COALESCE($2, email), 
@@ -1207,11 +1212,11 @@ app.post('/api/users/manage', auth, async (req, res) => {
       WHERE id = $6`;
 
     let params = [
-      name ?? null,
-      email ?? null,
+      safeName,
+      safeEmail,
       permJson,
       allowedJson,
-      phone ?? null,
+      safePhone,  // ✅ Пустая строка → NULL → телефон очистится
       id
     ];
 
@@ -1221,18 +1226,48 @@ app.post('/api/users/manage', auth, async (req, res) => {
       params.push(req.user.id);
     }
 
-    const result = await pool.query(query, params);
+    await pool.query(query, params);
 
-
-    // Смена пароля (отдельно, без COALESCE)
+    // 🔹 Смена пароля (отдельно, без COALESCE)
     if (password && password.trim().length > 0) {
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(password, salt);
       await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, id]);
-
     }
 
-    return res.json({ success: true });
+    // 🔥 ПОЛУЧАЕМ ОБНОВЛЁННОГО ПОЛЬЗОВАТЕЛЯ С СЕРВЕРА
+    const updatedUserResult = await pool.query(
+      `SELECT 
+        id, name, email, phone, role, manager_id, 
+        permissions, allowed_investor_ids, subscription, 
+        created_at, updated_at 
+       FROM users WHERE id = $1`,
+      [id]
+    );
+
+    if (updatedUserResult.rows.length === 0) {
+      return res.status(404).json({ msg: 'User not found after update' });
+    }
+
+    const updatedUser = updatedUserResult.rows[0];
+
+    // 🔥 ВОЗВРАЩАЕМ ПОЛНОГО ПОЛЬЗОВАТЕЛЯ (фронтенд обновит стейт)
+    return res.json({
+      success: true,
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        phone: updatedUser.phone,
+        role: updatedUser.role,
+        managerId: updatedUser.manager_id,
+        permissions: updatedUser.permissions,
+        allowedInvestorIds: updatedUser.allowed_investor_ids,
+        subscription: updatedUser.subscription,
+        createdAt: updatedUser.created_at,
+        updatedAt: updatedUser.updated_at
+      }
+    });
 
   } catch (err) {
     console.error('❌ Database error:', err.message);
@@ -1258,7 +1293,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
       ORDER BY u.created_at DESC
     `;
     const result = await pool.query(query);
-    
+
     const users = result.rows.map(r => ({
       id: r.id,
       name: r.name,
@@ -1270,7 +1305,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
       createdAt: r.created_at,
       apiKey: r.api_key
     }));
-    
+
     res.json(users);
   } catch (e) {
     console.error("Admin fetch users error", e);
