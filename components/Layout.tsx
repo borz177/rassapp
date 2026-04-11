@@ -450,27 +450,38 @@ const Layout: React.FC<LayoutProps> = ({
       {/* Mobile Quick Actions FAB Menu */}
       {!isInvestor && isMenuOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden flex flex-col justify-end pb-24 px-4 animate-fade-in" onClick={() => setIsMenuOpen(false)}>
-          <div className="bg-white rounded-2xl p-4 shadow-2xl space-y-2 mb-4" onClick={e => e.stopPropagation()}>
-             <div className="pb-2 mb-2 border-b border-slate-100"><h3 className="text-slate-500 font-bold text-sm uppercase px-2">Быстрые действия</h3></div>
-             <button onClick={() => handleActionClick('CREATE_SALE')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
-                <div className="bg-indigo-100 p-2 rounded-full" style={{ color: 'var(--color-primary-600)' }}>{ICONS.Sales}</div>
-                <span className="font-semibold">Оформить продажу</span>
-             </button>
-             <button onClick={() => handleActionClick('INCOME')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
-                <div className="bg-emerald-100 p-2 rounded-full text-emerald-600">{ICONS.Income}</div>
-                <span className="font-semibold">Приход (Внести)</span>
-             </button>
-             <button onClick={() => handleActionClick('EXPENSE')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
-                <div className="bg-red-100 p-2 rounded-full text-red-600">{ICONS.Expense}</div>
-                <span className="font-semibold">Расход (Изъять)</span>
-             </button>
-          </div>
+            <div className="bg-white rounded-2xl p-4 shadow-2xl space-y-2 mb-4" onClick={e => e.stopPropagation()}>
+                <div className="pb-2 mb-2 border-b border-slate-100"><h3
+                    className="text-slate-500 font-bold text-sm uppercase px-2">Быстрые действия</h3></div>
+                <button onClick={() => handleActionClick('CREATE_SALE')}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
+                    <div className="bg-indigo-100 p-2 rounded-full"
+                         style={{color: 'var(--color-primary-600)'}}>{ICONS.Sales}</div>
+                    <span className="font-semibold">Оформить продажу</span>
+                </button>
+                <button onClick={() => handleActionClick('INCOME')}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
+                    <div className="bg-emerald-100 p-2 rounded-full text-emerald-600">{ICONS.Income}</div>
+                    <span className="font-semibold">Приход (Внести)</span>
+                </button>
+                <button onClick={() => handleActionClick('EXPENSE')}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
+                    <div className="bg-red-100 p-2 rounded-full text-red-600">{ICONS.Expense}</div>
+                    <span className="font-semibold">Расход (Изъять)</span>
+                </button>
+                <button onClick={() => handleActionClick('OPERATIONS')}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
+                    <div className="bg-slate-100 p-2 rounded-full text-slate-600">{ICONS.List}</div>
+                    <span className="font-semibold">Все операции</span>
+                </button>
+            </div>
         </div>
       )}
 
-      {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-50 px-2 py-2 flex justify-between items-end safe-area-pb">
-        <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
+        {/* Mobile Bottom Navigation */}
+        <nav
+            className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-50 px-2 py-2 flex justify-between items-end safe-area-pb">
+            <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
             <button onClick={() => setView('DASHBOARD')} className={`flex flex-col items-center p-2 ${currentView === 'DASHBOARD' ? 'text-indigo-600' : 'text-slate-400'}`}>
                 {ICONS.Dashboard}<span className="text-[10px] mt-1 font-medium">Главная</span>
             </button>
