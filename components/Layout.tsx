@@ -215,75 +215,79 @@ const Layout: React.FC<LayoutProps> = ({
   };
 
   // Render Desktop Navbar Item with Dropdown
-  const renderNavbarItem = (item: any) => {
-    const hasSubItems = 'subItems' in item;
-    const isActive = currentView === item.id || (hasSubItems && openDropdown === item.id);
-    const visibleSubItems = hasSubItems ? item.subItems.filter((sub: any) => sub.visible !== false) : [];
+  // Render Desktop Navbar Item with Dropdown
+const renderNavbarItem = (item: any) => {
+  const hasSubItems = 'subItems' in item;
+  const isActive = currentView === item.id || (hasSubItems && openDropdown === item.id);
+  const visibleSubItems = hasSubItems ? item.subItems.filter((sub: any) => sub.visible !== false) : [];
 
-    return (
-      <div key={item.id} className="relative" ref={hasSubItems ? dropdownRef : undefined}>
-        <button
-          onClick={() => handleMainItemClick(item)}
-          onMouseEnter={() => hasSubItems && setOpenDropdown(item.id)}  // 🔹 Открываем меню при наведении
-          className="flex items-center gap-2 px-4 py-3 rounded-lg transition-all duration-200 font-medium"
-          style={{
-            backgroundColor: isActive ? 'var(--navbar-activeBg)' : 'transparent',
-            color: isActive ? 'var(--navbar-activeText)' : 'var(--navbar-text)',
-          }}
-        >
-          <span>{item.icon}</span>
-          <span className="hidden lg:inline">{item.label}</span>
-          {hasSubItems && (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="transition-transform" style={{ transform: openDropdown === item.id ? 'rotate(180deg)' : 'none' }}>
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          )}
-          {item.count !== undefined && item.count > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white">{item.count}</span>
-          )}
-        </button>
-
-        {/* Dropdown Menu - 🔹 БЕЗ onMouseLeave */}
-        {hasSubItems && openDropdown === item.id && (
-          <div
-            className="absolute top-full left-0 mt-1 w-56 rounded-xl shadow-xl z-50 overflow-hidden"
-            style={{
-              backgroundColor: 'var(--navbar-bg)',
-              border: `1px solid var(--navbar-border)`,
-              minWidth: '200px'
-            }}
-            // 🔹 УБРАЛИ onMouseLeave — меню закроется только при клике вне
-          >
-            {visibleSubItems.map((sub: any, idx: number) => (
-              <button
-                key={idx}
-                onClick={(e) => {
-                  e.stopPropagation();  // 🔹 Останавливаем всплытие
-                  handleSubItemClick(item.id, sub);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left cursor-pointer"
-                style={{ color: 'var(--navbar-text)' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'var(--navbar-hover)';
-                  e.currentTarget.style.color = 'var(--navbar-activeText)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = 'var(--navbar-text)';
-                }}
-              >
-                <span className="opacity-70">{sub.icon}</span>
-                <span className="flex-1">{sub.label}</span>
-                {sub.count !== undefined && sub.count > 0 && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: 'var(--color-primary-500)', color: '#fff' }}>{sub.count}</span>
-                )}
-              </button>
-            ))}
-          </div>
+  return (
+    <div key={item.id} className="relative" ref={hasSubItems ? dropdownRef : undefined}>
+      {/* 🔹 Главная кнопка */}
+      <button
+        onClick={() => handleMainItemClick(item)}
+        onMouseEnter={() => hasSubItems && setOpenDropdown(item.id)}  // 🔹 Открывает меню при наведении
+        className="flex items-center gap-2 px-4 py-3 rounded-lg transition-all duration-200 font-medium"
+        style={{
+          backgroundColor: isActive ? 'var(--navbar-activeBg)' : 'transparent',
+          color: isActive ? 'var(--navbar-activeText)' : 'var(--navbar-text)',
+        }}
+      >
+        <span>{item.icon}</span>
+        <span className="hidden lg:inline">{item.label}</span>
+        {hasSubItems && (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="transition-transform" style={{ transform: openDropdown === item.id ? 'rotate(180deg)' : 'none' }}>
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
         )}
-      </div>
-    );
-  };
+        {item.count !== undefined && item.count > 0 && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white">{item.count}</span>
+        )}
+      </button>
+
+      {/* 🔹 Dropdown Menu - БЕЗ onMouseLeave! */}
+      {hasSubItems && openDropdown === item.id && (
+        <div
+          className="absolute top-full left-0 mt-1 w-56 rounded-xl shadow-xl z-50 overflow-hidden"
+          style={{
+            backgroundColor: 'var(--navbar-bg)',
+            border: `1px solid var(--navbar-border)`,
+            minWidth: '200px'
+          }}
+          // 🔹 УБРАЛИ onMouseLeave — меню закроется только при клике вне
+        >
+          {visibleSubItems.map((sub: any, idx: number) => (
+            <button
+              key={idx}
+              onClick={(e) => {
+                e.stopPropagation();  // 🔹 Останавливаем всплытие
+                handleSubItemClick(item.id, sub);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left cursor-pointer"
+              style={{ color: 'var(--navbar-text)' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--navbar-hover)';
+                e.currentTarget.style.color = 'var(--navbar-activeText)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = 'var(--navbar-text)';
+              }}
+            >
+              <span className="opacity-70">{sub.icon}</span>
+              <span className="flex-1">{sub.label}</span>
+              {sub.count !== undefined && sub.count > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: 'var(--color-primary-500)', color: '#fff' }}>
+                  {sub.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
