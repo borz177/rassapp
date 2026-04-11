@@ -47,9 +47,7 @@ async function enablePersistentStorage() {
 
     if (!isPersisted) {
       const granted = await navigator.storage.persist();
-      console.log("Persistent storage granted:", granted);
-    } else {
-      console.log("Persistent storage already enabled");
+
     }
 
   }
@@ -198,7 +196,7 @@ useEffect(() => {
       try {
         localUser = JSON.parse(localUserStr);
         if (localUser) {
-          console.log("✅ Restoring user from localStorage");
+
           setUser(localUser);
           // НЕ выключаем isLoading — попробуем обновить с сервера
           await loadData(localUser).catch(e => console.warn("⚠️ Local data warning:", e));
@@ -609,19 +607,11 @@ const updateList = <T extends { id: string }>(
       if (exists) {
         // Уже есть — просто возвращаем список без старого
         newList = withoutOld;
-        console.log('🔄 updateList: replaced (duplicate prevented)', {
-          oldId,
-          newId: item.id,
-          listLength: withoutOld.length
-        });
+
       } else {
         // Добавляем новый в начало
         newList = [item, ...withoutOld];
-        console.log('🔄 updateList: replaced', {
-          oldId,
-          newId: item.id,
-          listLength: newList.length
-        });
+
       }
     }
     // 🔹 СЛУЧАЙ 2: Обновляем существующий или добавляем новый
@@ -631,17 +621,11 @@ const updateList = <T extends { id: string }>(
       if (idx >= 0) {
         // Обновляем существующий
         newList = prev.map(i => i.id === item.id ? item : i);
-        console.log('🔄 updateList: updated existing', {
-          id: item.id,
-          index: idx
-        });
+
       } else {
         // Добавляем новый в начало
         newList = [item, ...prev];
-        console.log('🔄 updateList: added new', {
-          id: item.id,
-          listLength: newList.length
-        });
+
       }
     }
 
@@ -649,7 +633,7 @@ const updateList = <T extends { id: string }>(
     if (storageKey && typeof window !== 'undefined') {
       try {
         localStorage.setItem(storageKey, JSON.stringify(newList));
-        console.log(`💾 Saved to localStorage["${storageKey}"]:`, newList.length, 'items');
+
       } catch (e) {
         console.error(`❌ Failed to save to localStorage["${storageKey}"]`, e);
       }
@@ -1450,16 +1434,7 @@ if (!user && !isLoading) {
 
     // 🔹 ОТЛАДКА: Проверяем фильтрацию
     const filteredAccounts = accounts.filter(a => a.ownerId === activeInvestor.id);
-    console.log('🔍 App.tsx Debug:', {
-      activeInvestorId: activeInvestor.id,
-      totalAccounts: accounts.length,
-      filteredAccountsCount: filteredAccounts.length,
-      filteredAccounts: filteredAccounts.map(a => ({
-        id: a.id,
-        ownerId: a.ownerId,
-        name: a.name
-      }))
-    });
+
 
     return (
       <InvestorDashboard

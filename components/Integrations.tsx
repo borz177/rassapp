@@ -104,7 +104,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
           rate: r.rate
         }))
       });
-      console.log('✅ Конфиг калькулятора сохранён, configId:', calculatorConfigId);
+
     } catch (e) {
       console.error('❌ Не удалось сохранить конфиг калькулятора:', e);
       // Не прерываем сохранение остальных настроек

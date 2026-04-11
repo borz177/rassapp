@@ -269,7 +269,7 @@ export const api = {
             // Try to load from cache
             const cachedData = await offlineStorage.getCache('all_data');
             if (cachedData) {
-                console.log("Loaded data from offline cache");
+
                 data = cachedData;
             } else {
                 throw error;
@@ -426,7 +426,7 @@ updateProfile: async (userId: string, profileData: { name?: string; phone?: stri
     }
 
     const data = await res.json();
-    console.log('Server response:', data);
+
 
     // 🔥 ПРИОРИТЕТ 1: Если сервер вернул обновлённого пользователя — используем его
     if (data.user) {
