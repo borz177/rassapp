@@ -97,14 +97,6 @@ export const THEMES = {
             800: '#1e40af',
             900: '#1e3a8a',
             950: '#172554',
-        },
-        navbar: {
-            bg: '#1e1b4b',
-            text: '#ffffff',
-            border: '#312e81',
-            hover: '#312e81',
-            activeBg: '#7c3aed',
-            activeText: '#ffffff'
         }
     },
     BLUE: {
@@ -134,14 +126,6 @@ export const THEMES = {
             800: '#075985',
             900: '#0c4a6e',
             950: '#082f49',
-        },
-        navbar: {
-            bg: '#172554',
-            text: '#ffffff',
-            border: '#1e3a8a',
-            hover: '#1e3a8a',
-            activeBg: '#2563eb',
-            activeText: '#ffffff'
         }
     },
     GREEN: {
@@ -171,14 +155,6 @@ export const THEMES = {
             800: '#166534',
             900: '#14532d',
             950: '#052e16',
-        },
-        navbar: {
-            bg: '#022c22',
-            text: '#ffffff',
-            border: '#064e3b',
-            hover: '#064e3b',
-            activeBg: '#059669',
-            activeText: '#ffffff'
         }
     },
     BLACK: {
@@ -208,14 +184,6 @@ export const THEMES = {
             800: '#1f2937',
             900: '#111827',
             950: '#030712',
-        },
-        navbar: {
-            bg: '#020617',
-            text: '#f3f4f6',
-            border: '#0f172a',
-            hover: '#0f172a',
-            activeBg: '#475569',
-            activeText: '#ffffff'
         }
     }
 };
