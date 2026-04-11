@@ -1,8 +1,11 @@
-import bcrypt from 'bcryptjs';
+// services/storage.ts
 import { Customer, Product, Sale, Expense, Account, Investor, User, UserPermissions, AppSettings, Partnership } from '../types';
 
+const API_BASE = import.meta.env.PROD 
+  ? 'https://rassrochka.pro/api' 
+  : 'http://localhost:5000/api';
+
 const STORAGE_KEYS = {
-  USERS: 'installmate_users', // New key for auth
   CUSTOMERS: 'installmate_customers',
   PRODUCTS: 'installmate_products',
   SALES: 'installmate_sales',
@@ -13,142 +16,178 @@ const STORAGE_KEYS = {
   APP_SETTINGS: 'installmate_app_settings',
 };
 
-// --- AUTH SERVICES ---
+// --- AUTH SERVICES (через API) ---
 
-export const getUsers = (): User[] => {
-    const usersStr = localStorage.getItem(STORAGE_KEYS.USERS);
-    return usersStr ? JSON.parse(usersStr) : [];
-};
-
-export const saveUsers = (users: User[]): void => {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-};
-
-export const registerUser = async (name: string, email: string, password: string): Promise<User | null> => {
-    const users = getUsers();
-    if (users.find(u => u.email === email)) return null;
-
-    // ✅ Хэшируем пароль перед сохранением
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser: User = {
-        id: `u_${Date.now()}`,
-        name,
-        email,
-        password: hashedPassword,  // ✅ Хэш вместо открытого текста
-        role: 'manager'
-    };
-
-    users.push(newUser);
-    saveUsers(users);
-    return newUser;
-};
-
-export const registerInvestor = (managerId: string, name: string, email: string, password: string): User | null => {
-    const users = getUsers();
-
-    if (users.find(u => u.email === email)) {
-        return null; // User exists
+export const registerUser = async (name: string, email: string, password: string, code: string): Promise<{ token: string; user: User } | null> => {
+  try {
+    const response = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password, code, role: 'manager' })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.msg || 'Registration failed');
     }
-
-    const newUser: User = {
-        id: `u_inv_${Date.now()}`,
-        name,
-        email,
-        password,
-        role: 'investor',
-        managerId: managerId
-    };
-
-    users.push(newUser);
-    saveUsers(users);
-    return newUser;
+    
+    const data = await response.json();
+    // Сохраняем токен
+    localStorage.setItem('auth_token', data.token);
+    return data;
+  } catch (err) {
+    console.error('Register error:', err);
+    return null;
+  }
 };
 
-export const registerEmployee = (
-    managerId: string, 
-    name: string, 
-    email: string, 
-    password: string,
-    permissions: UserPermissions,
-    allowedInvestorIds: string[]
-): User | null => {
-    const users = getUsers();
+export const registerInvestor = async (managerId: string, name: string, email: string, password: string, code: string): Promise<{ token: string; user: User } | null> => {
+  try {
+    const response = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password, code, role: 'investor', managerId })
+    });
+    
+    if (!response.ok) return null;
+    const data = await response.json();
+    localStorage.setItem('auth_token', data.token);
+    return data;
+  } catch (err) {
+    console.error('Register investor error:', err);
+    return null;
+  }
+};
 
-    if (users.find(u => u.email === email)) {
-        return null; // User exists
+export const registerEmployee = async (
+  managerId: string, 
+  name: string, 
+  email: string, 
+  password: string,
+  code: string,
+  permissions: UserPermissions,
+  allowedInvestorIds: string[]
+): Promise<{ token: string; user: User } | null> => {
+  try {
+    const response = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        name, email, password, code, 
+        role: 'employee', managerId, permissions, allowedInvestorIds 
+      })
+    });
+    
+    if (!response.ok) return null;
+    const data = await response.json();
+    localStorage.setItem('auth_token', data.token);
+    return data;
+  } catch (err) {
+    console.error('Register employee error:', err);
+    return null;
+  }
+};
+
+export const loginUser = async (email: string, password: string): Promise<{ token: string; user: User } | null> => {
+  try {
+    const response = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.msg || 'Login failed');
     }
-
-    const newUser: User = {
-        id: `u_emp_${Date.now()}`,
-        name,
-        email,
-        password,
-        role: 'employee',
-        managerId: managerId,
-        permissions,
-        allowedInvestorIds
-    };
-
-    users.push(newUser);
-    saveUsers(users);
-    return newUser;
+    
+    const data = await response.json();
+    localStorage.setItem('auth_token', data.token);
+    return data;
+  } catch (err) {
+    console.error('Login error:', err);
+    return null;
+  }
 };
 
-export const updateEmployee = (employee: User): void => {
-    let users = getUsers();
-    users = users.map(u => u.id === employee.id ? employee : u);
-    saveUsers(users);
+export const logoutUser = (): void => {
+  localStorage.removeItem('auth_token');
 };
 
-export const deleteEmployee = (employeeId: string): void => {
-    let users = getUsers();
-    users = users.filter(u => u.id !== employeeId);
-    saveUsers(users);
+export const getCurrentUser = async (): Promise<User | null> => {
+  const token = localStorage.getItem('auth_token');
+  if (!token) return null;
+  
+  try {
+    const response = await fetch(`${API_BASE}/auth/me`, {
+      headers: { 'x-auth-token': token }
+    });
+    
+    if (!response.ok) {
+      logoutUser();
+      return null;
+    }
+    
+    return await response.json();
+  } catch (err) {
+    console.error('Get user error:', err);
+    return null;
+  }
 };
 
-export const loginUser = async (email: string, password: string): Promise<User | null> => {
-    const users = getUsers();
-    const user = users.find(u => u.email === email);
-    if (!user || !user.password) return null;
-
-    // ✅ Сравниваем пароль с хэшем
-    const isMatch = await bcrypt.compare(password, user.password);
-    return isMatch ? user : null;
+export const sendVerificationCode = async (email: string, type: 'REGISTER' | 'RESET'): Promise<boolean> => {
+  try {
+    const response = await fetch(`${API_BASE}/auth/send-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, type })
+    });
+    return response.ok;
+  } catch (err) {
+    console.error('Send code error:', err);
+    return false;
+  }
 };
 
-export const getEmployees = (managerId: string): User[] => {
-    const users = getUsers();
-    return users.filter(u => u.managerId === managerId && u.role === 'employee');
-}
+export const resetPassword = async (email: string, code: string, newPassword: string): Promise<boolean> => {
+  try {
+    const response = await fetch(`${API_BASE}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code, newPassword })
+    });
+    return response.ok;
+  } catch (err) {
+    console.error('Reset password error:', err);
+    return false;
+  }
+};
 
-// --- DATA HELPERS (ISOLATION LOGIC) ---
+// --- DATA HELPERS (с локальным кэшем + синхронизацией) ---
 
-// Generic loader that filters by User ID
-const loadUserItems = <T extends { userId: string }>(key: string, userId: string): T[] => {
+const loadUserItems = <T extends { userId?: string }>(key: string, userId: string): T[] => {
   const saved = localStorage.getItem(key);
   if (!saved) return [];
   const allItems: T[] = JSON.parse(saved);
-  return allItems.filter(item => item.userId === userId);
+  return allItems.filter(item => item.userId === userId || !item.userId);
 };
 
-// Generic saver that merges User items with others
-const saveUserItems = <T extends { userId: string }>(key: string, userId: string, userItems: T[]): void => {
-    const saved = localStorage.getItem(key);
-    const allItems: T[] = saved ? JSON.parse(saved) : [];
-    
-    // Filter out items belonging to current user (to replace them)
-    const otherItems = allItems.filter(item => item.userId !== userId);
-    
-    // Combine and save
-    const merged = [...otherItems, ...userItems];
-    localStorage.setItem(key, JSON.stringify(merged));
+const saveUserItems = <T extends { userId?: string }>(key: string, userId: string, userItems: T[]): void => {
+  const saved = localStorage.getItem(key);
+  const allItems: T[] = saved ? JSON.parse(saved) : [];
+  const otherItems = allItems.filter(item => item.userId !== userId);
+  const merged = [...otherItems, ...userItems.map(item => ({ ...item, userId }))];
+  localStorage.setItem(key, JSON.stringify(merged));
 };
 
-// --- PUBLIC API ---
+// --- PUBLIC API (локальное хранение + опциональная синхронизация) ---
 
 export const getCustomers = (userId: string) => loadUserItems<Customer>(STORAGE_KEYS.CUSTOMERS, userId);
-export const saveCustomers = (userId: string, data: Customer[]) => saveUserItems(STORAGE_KEYS.CUSTOMERS, userId, data);
+export const saveCustomers = (userId: string, data: Customer[]) => {
+  saveUserItems(STORAGE_KEYS.CUSTOMERS, userId, data);
+  // Опционально: синхронизация с бэкендом
+  // syncData('customers', userId, data);
+};
 
 export const getProducts = (userId: string) => loadUserItems<Product>(STORAGE_KEYS.PRODUCTS, userId);
 export const saveProducts = (userId: string, data: Product[]) => saveUserItems(STORAGE_KEYS.PRODUCTS, userId, data);
@@ -171,11 +210,104 @@ export const savePartnerships = (userId: string, data: Partnership[]) => saveUse
 // --- APP SETTINGS ---
 
 export const getAppSettings = (): AppSettings => {
-    const saved = localStorage.getItem(STORAGE_KEYS.APP_SETTINGS);
-    const defaults: AppSettings = { companyName: 'FinUchet', showCents: true };
-    return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
+  const saved = localStorage.getItem(STORAGE_KEYS.APP_SETTINGS);
+  const defaults: AppSettings = { companyName: 'FinUchet', showCents: true, theme: 'PURPLE' };
+  return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
 };
 
 export const saveAppSettings = (settings: AppSettings): void => {
-    localStorage.setItem(STORAGE_KEYS.APP_SETTINGS, JSON.stringify(settings));
+  localStorage.setItem(STORAGE_KEYS.APP_SETTINGS, JSON.stringify(settings));
 };
+
+// --- EMPLOYEE MANAGEMENT (через API) ---
+
+export const getEmployees = async (managerId: string, token: string): Promise<User[]> => {
+  try {
+    const response = await fetch(`${API_BASE}/data`, {
+      headers: { 'x-auth-token': token }
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.employees || [];
+  } catch (err) {
+    console.error('Get employees error:', err);
+    return [];
+  }
+};
+
+export const createEmployee = async (
+  token: string,
+  name: string, 
+  email: string, 
+  password: string,
+  permissions: UserPermissions,
+  allowedInvestorIds: string[]
+): Promise<User | null> => {
+  try {
+    const response = await fetch(`${API_BASE}/users/manage`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-auth-token': token 
+      },
+      body: JSON.stringify({
+        action: 'create',
+        userData: {
+          name, email, password,
+          role: 'employee',
+          permissions,
+          allowedInvestorIds
+        }
+      })
+    });
+    
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (err) {
+    console.error('Create employee error:', err);
+    return null;
+  }
+};
+
+export const updateEmployee = async (token: string, employee: User): Promise<boolean> => {
+  try {
+    const response = await fetch(`${API_BASE}/users/manage`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-auth-token': token 
+      },
+      body: JSON.stringify({
+        action: 'update',
+        userData: employee
+      })
+    });
+    return response.ok;
+  } catch (err) {
+    console.error('Update employee error:', err);
+    return false;
+  }
+};
+
+export const deleteEmployee = async (token: string, employeeId: string): Promise<boolean> => {
+  try {
+    const response = await fetch(`${API_BASE}/users/manage`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-auth-token': token 
+      },
+      body: JSON.stringify({
+        action: 'delete',
+        userData: { id: employeeId }
+      })
+    });
+    return response.ok;
+  } catch (err) {
+    console.error('Delete employee error:', err);
+    return false;
+  }
+};
+
+// --- HELPER: Получить токен ---
+export const getAuthToken = (): string | null => localStorage.getItem('auth_token');
