@@ -161,22 +161,33 @@ const Layout: React.FC<LayoutProps> = ({
   const toggleDropdown = (id: string) => setOpenDropdown(openDropdown === id ? null : id);
   const toggleProfile = () => setIsProfileOpen(!isProfileOpen);
 
-// В handleSubItemClick:
-const handleSubItemClick = (parentView: ViewState, subItem: any) => {
-   console.log('🔹 Clicked:', subItem.label, 'action:', subItem.action, 'view:', subItem.view);
+  const handleSubItemClick = (parentView: ViewState, subItem: any) => {
+     // 1. Сначала переключаем вкладку
+     if (subItem.view) {
+         setView(subItem.view);
+     }
 
-   if (subItem.view) {
-       console.log('🔹 Setting view:', subItem.view);
-       setView(subItem.view);
-   }
-   if (subItem.action && subItem.action !== 'GOTO_CASH_REGISTER') {
-       setTimeout(() => {
-           console.log('🔹 Calling onAction:', subItem.action);
-           onAction(subItem.action);
-       }, 50);
-   }
-   setOpenDropdown(null);
-};
+     // 2. Выполняем действие с небольшой задержкой
+     if (subItem.action) {
+         if (subItem.action === 'GOTO_CASH_REGISTER') {
+             setView('CASH_REGISTER');
+         } else {
+             // 🔹 Задержка, чтобы view успел переключиться перед открытием модалки
+             setTimeout(() => {
+                 onAction(subItem.action);
+             }, 50);
+         }
+     }
+
+     // 3. Переключение табов для договоров
+     if (subItem.tab && onContractTabChange) {
+         setView(parentView);
+         onContractTabChange(subItem.tab);
+     }
+
+     // 4. Закрываем дропдаун
+     setOpenDropdown(null);
+  };
 
   const handleMainItemClick = (item: any) => {
       if ('subItems' in item) {
@@ -213,12 +224,12 @@ const handleSubItemClick = (parentView: ViewState, subItem: any) => {
       <div key={item.id} className="relative" ref={hasSubItems ? dropdownRef : undefined}>
         <button
           onClick={() => handleMainItemClick(item)}
+          onMouseEnter={() => hasSubItems && setOpenDropdown(item.id)}  // 🔹 Открываем меню при наведении
           className="flex items-center gap-2 px-4 py-3 rounded-lg transition-all duration-200 font-medium"
           style={{
             backgroundColor: isActive ? 'var(--navbar-activeBg)' : 'transparent',
             color: isActive ? 'var(--navbar-activeText)' : 'var(--navbar-text)',
           }}
-          onMouseEnter={() => hasSubItems && setOpenDropdown(item.id)}
         >
           <span>{item.icon}</span>
           <span className="hidden lg:inline">{item.label}</span>
@@ -232,7 +243,7 @@ const handleSubItemClick = (parentView: ViewState, subItem: any) => {
           )}
         </button>
 
-        {/* Dropdown Menu */}
+        {/* Dropdown Menu - 🔹 БЕЗ onMouseLeave */}
         {hasSubItems && openDropdown === item.id && (
           <div
             className="absolute top-full left-0 mt-1 w-56 rounded-xl shadow-xl z-50 overflow-hidden"
@@ -241,35 +252,33 @@ const handleSubItemClick = (parentView: ViewState, subItem: any) => {
               border: `1px solid var(--navbar-border)`,
               minWidth: '200px'
             }}
-
+            // 🔹 УБРАЛИ onMouseLeave — меню закроется только при клике вне
           >
             {visibleSubItems.map((sub: any, idx: number) => (
-  <button
-    key={idx}
-    onClick={(e) => {
-      e.stopPropagation();  // 🔹 Останавливаем всплытие события
-      handleSubItemClick(item.id, sub);
-    }}
-    className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left cursor-pointer"
-    style={{ color: 'var(--navbar-text)' }}
-    onMouseEnter={(e) => {
-      e.currentTarget.style.backgroundColor = 'var(--navbar-hover)';
-      e.currentTarget.style.color = 'var(--navbar-activeText)';
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.backgroundColor = 'transparent';
-      e.currentTarget.style.color = 'var(--navbar-text)';
-    }}
-  >
-    <span className="opacity-70">{sub.icon}</span>
-    <span className="flex-1">{sub.label}</span>
-    {sub.count !== undefined && sub.count > 0 && (
-      <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: 'var(--color-primary-500)', color: '#fff' }}>
-        {sub.count}
-      </span>
-    )}
-  </button>
-))}
+              <button
+                key={idx}
+                onClick={(e) => {
+                  e.stopPropagation();  // 🔹 Останавливаем всплытие
+                  handleSubItemClick(item.id, sub);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left cursor-pointer"
+                style={{ color: 'var(--navbar-text)' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--navbar-hover)';
+                  e.currentTarget.style.color = 'var(--navbar-activeText)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = 'var(--navbar-text)';
+                }}
+              >
+                <span className="opacity-70">{sub.icon}</span>
+                <span className="flex-1">{sub.label}</span>
+                {sub.count !== undefined && sub.count > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: 'var(--color-primary-500)', color: '#fff' }}>{sub.count}</span>
+                )}
+              </button>
+            ))}
           </div>
         )}
       </div>
