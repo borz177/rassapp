@@ -29,7 +29,7 @@ const formatPhone = (raw: string | undefined): string => {
 };
 const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts,
-  onClose, onSelectCustomer, onSubmit
+  onClose, onSelectCustomer, onSubmit, user
 }) => {
   const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(initialData.type || 'INSTALLMENT');
   const [roundingMode, setRoundingMode] = useState<'NONE' | 'DOWN' | 'UP'>(
@@ -311,7 +311,7 @@ const NewSale: React.FC<NewSaleProps> = ({
     const sale = createdSale;
     const companyName = appSettings?.companyName || "Компания";
     const hasGuarantor = !!sale.guarantorName;
-    const sellerPhone = appSettings?.sellerPhone || '+7 (___) ___-__-__';
+    const sellerPhone = formatPhone(user?.phone || appSettings?.sellerPhone)
 
     const styles = {
       page: {
@@ -347,16 +347,16 @@ const NewSale: React.FC<NewSaleProps> = ({
           <div style={styles.section}>
             <div style={styles.fieldRow}>
               <span><span style={styles.fieldLabel}>Продавец:</span> {companyName}</span>
-              <span style={styles.phoneField}>Тел: {sellerPhone}</span>
+              <span style={styles.phoneField}>Тел: {formatPhone(sellerPhone)}</span>
             </div>
             <div style={styles.fieldRow}>
               <span><span style={styles.fieldLabel}>Покупатель:</span> {selectedCustomer.name}</span>
-              <span style={styles.phoneField}>Тел: {selectedCustomer.phone}</span>
+              <span style={styles.phoneField}>Тел: {formatPhone(selectedCustomer.phone)}</span>
             </div>
             {hasGuarantor && (
               <div style={styles.fieldRow}>
                 <span><span style={styles.fieldLabel}>Поручитель:</span> {sale.guarantorName}</span>
-                <span style={styles.phoneField}>Тел: {sale.guarantorPhone}</span>
+                <span style={styles.phoneField}>Тел: {formatPhone(sale.guarantorPhone)}</span>
               </div>
             )}
           </div>
