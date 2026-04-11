@@ -162,22 +162,34 @@ const Layout: React.FC<LayoutProps> = ({
   const toggleProfile = () => setIsProfileOpen(!isProfileOpen);
 
  const handleSubItemClick = (parentView: ViewState, subItem: any) => {
-   console.log('🔹 SUBITEM CLICKED:', subItem.label, subItem.action);  // 🔹 ДОБАВИТЬ
+   console.log('🔹 handleSubItemClick вызван:', subItem.label, subItem.action, subItem.view);
 
+   // 1. Сначала переключаем вкладку
    if (subItem.view) {
-       console.log('🔹 Setting view:', subItem.view);  // 🔹 ДОБАВИТЬ
+       console.log('🔹 setView:', subItem.view);
        setView(subItem.view);
    }
+
+   // 2. Выполняем действие с небольшой задержкой
    if (subItem.action) {
        if (subItem.action === 'GOTO_CASH_REGISTER') {
            setView('CASH_REGISTER');
        } else {
+           console.log('🔹 Вызываем onAction:', subItem.action);
            setTimeout(() => {
-               console.log('🔹 Calling onAction:', subItem.action);  // 🔹 ДОБАВИТЬ
+               console.log('🔹 onAction выполняется:', subItem.action);
                onAction(subItem.action);
-           }, 50);
+           }, 100);
        }
    }
+
+   // 3. Переключение табов для договоров
+   if (subItem.tab && onContractTabChange) {
+       setView(parentView);
+       onContractTabChange(subItem.tab);
+   }
+
+   // 4. Закрываем дропдаун
    setOpenDropdown(null);
 };
 
