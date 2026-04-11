@@ -46,7 +46,9 @@ const Layout: React.FC<LayoutProps> = ({
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
 
   const isInvestor = user?.role === 'investor';
   const investorPermissions = activeInvestor?.permissions;
@@ -57,6 +59,9 @@ const Layout: React.FC<LayoutProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setOpenDropdown(null);
+      }
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setIsProfileOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -124,10 +129,10 @@ const Layout: React.FC<LayoutProps> = ({
       icon: ICONS.Wallet,
       visible: !isInvestor,
       subItems: [
-        { label: 'Счета', action: 'GOTO_CASH_REGISTER', icon: ICONS.Wallet },
-        { label: 'Приход', action: 'INCOME', icon: ICONS.Income },
-        { label: 'Расход', action: 'EXPENSE', icon: ICONS.Expense },
-        { label: 'История', action: 'OPERATIONS', icon: ICONS.List },
+        { label: 'Счета', action: 'GOTO_CASH_REGISTER', icon: ICONS.Wallet, view: 'CASH_REGISTER' },
+        { label: 'Приход', action: 'INCOME', icon: ICONS.Income, view: 'CASH_REGISTER' },
+        { label: 'Расход', action: 'EXPENSE', icon: ICONS.Expense, view: 'CASH_REGISTER' },
+        { label: 'История', action: 'OPERATIONS', icon: ICONS.List, view: 'OPERATIONS' },
       ]
     },
     {
@@ -136,10 +141,10 @@ const Layout: React.FC<LayoutProps> = ({
       icon: ICONS.File,
       visible: !isInvestor || (isInvestor && !!investorPermissions?.canViewContracts),
       subItems: [
-        { label: 'Оформить', action: 'CREATE_SALE', icon: ICONS.AddSmall, visible: !isInvestor },
-        { label: 'Активные', tab: 'ACTIVE', icon: ICONS.Check, count: counts.active, visible: true },
-        { label: 'Просроченные', tab: 'OVERDUE', icon: ICONS.Alert, count: counts.overdue, visible: true },
-        { label: 'Архив', tab: 'ARCHIVE', icon: ICONS.Clock, count: counts.archive, visible: true },
+        { label: 'Оформить', action: 'CREATE_SALE', icon: ICONS.AddSmall, visible: !isInvestor, view: 'CONTRACTS' },
+        { label: 'Активные', tab: 'ACTIVE', icon: ICONS.Check, count: counts.active, visible: true, view: 'CONTRACTS' },
+        { label: 'Просроченные', tab: 'OVERDUE', icon: ICONS.Alert, count: counts.overdue, visible: true, view: 'CONTRACTS' },
+        { label: 'Архив', tab: 'ARCHIVE', icon: ICONS.Clock, count: counts.archive, visible: true, view: 'CONTRACTS' },
       ]
     },
     { id: 'OPERATIONS' as const, label: 'История', icon: ICONS.List, visible: isInvestor && !!investorPermissions?.canViewHistory },
@@ -147,8 +152,6 @@ const Layout: React.FC<LayoutProps> = ({
     { id: 'CUSTOMERS' as const, label: 'Клиенты', icon: ICONS.Customers, visible: !isInvestor },
     { id: 'INVESTORS' as const, label: 'Инвесторы', icon: ICONS.Users, visible: !isInvestor },
     { id: 'EMPLOYEES' as const, label: 'Сотрудники', icon: ICONS.Employees, visible: !isInvestor && (user?.role === 'manager' || user?.role === 'admin') },
-    { id: 'TARIFFS' as const, label: 'Тарифы', icon: ICONS.Tariffs, visible: !isInvestor },
-    { id: 'SETTINGS' as const, label: 'Настройки', icon: ICONS.Settings, visible: !isInvestor },
     { id: 'ADMIN_PANEL' as const, label: 'Админ панель', icon: ICONS.Crown, visible: user?.role === 'admin' },
   ];
 
@@ -156,16 +159,22 @@ const Layout: React.FC<LayoutProps> = ({
 
   const handleFabClick = () => setIsMenuOpen(!isMenuOpen);
   const toggleDropdown = (id: string) => setOpenDropdown(openDropdown === id ? null : id);
+  const toggleProfile = () => setIsProfileOpen(!isProfileOpen);
 
   const handleSubItemClick = (parentView: ViewState, subItem: any) => {
+     if (subItem.view) {
+         setView(subItem.view);
+     }
      if (subItem.action) {
-         if (subItem.action === 'GOTO_CASH_REGISTER') setView('CASH_REGISTER');
-         else onAction(subItem.action);
-     } else if (subItem.tab && onContractTabChange) {
+         if (subItem.action === 'GOTO_CASH_REGISTER') {
+             setView('CASH_REGISTER');
+         } else {
+             onAction(subItem.action);
+         }
+     }
+     if (subItem.tab && onContractTabChange) {
          setView(parentView);
          onContractTabChange(subItem.tab);
-     } else {
-         setView(parentView);
      }
      setOpenDropdown(null);
   };
@@ -182,6 +191,17 @@ const Layout: React.FC<LayoutProps> = ({
   const handleActionClick = (action: string) => {
       setIsMenuOpen(false);
       onAction(action);
+  };
+
+  const handleProfileAction = (action: string) => {
+      setIsProfileOpen(false);
+      if (action === 'PROFILE') {
+          onNavigateToProfile();
+      } else if (action === 'SETTINGS') {
+          setView('SETTINGS');
+      } else if (action === 'TARIFFS') {
+          setView('TARIFFS');
+      }
   };
 
   // Render Desktop Navbar Item with Dropdown
@@ -242,7 +262,7 @@ const Layout: React.FC<LayoutProps> = ({
                 <span className="opacity-70">{sub.icon}</span>
                 <span className="flex-1">{sub.label}</span>
                 {sub.count !== undefined && sub.count > 0 && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary-500 text-white">{sub.count}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: 'var(--color-primary-500)', color: '#fff' }}>{sub.count}</span>
                 )}
               </button>
             ))}
@@ -257,11 +277,13 @@ const Layout: React.FC<LayoutProps> = ({
 
       {/* 🔹 DESKTOP TOP NAVBAR */}
       <header
-        className="hidden md:flex items-center justify-between px-6 py-3 fixed top-0 left-0 right-0 z-40 transition-colors duration-300"
+        className="hidden md:flex items-center justify-between px-6 py-3 fixed top-0 left-0 right-0 z-50 transition-colors duration-300"
         style={{
           backgroundColor: 'var(--navbar-bg)',
           color: 'var(--navbar-text)',
-          borderBottom: `1px solid var(--navbar-border)`
+          borderBottom: `1px solid var(--navbar-border)`,
+          WebkitAppRegion: 'drag',
+          userSelect: 'none'
         }}
       >
         {/* Logo + Company */}
@@ -269,7 +291,8 @@ const Layout: React.FC<LayoutProps> = ({
           <h1
             className="text-xl font-bold bg-clip-text text-transparent"
             style={{
-              backgroundImage: 'linear-gradient(to right, var(--color-primary-400), var(--color-secondary-400))'
+              backgroundImage: 'linear-gradient(to right, var(--color-primary-400), var(--color-secondary-400))',
+              WebkitAppRegion: 'no-drag'
             }}
           >
             {appSettings.companyName}
@@ -287,38 +310,120 @@ const Layout: React.FC<LayoutProps> = ({
         </div>
 
         {/* Navigation Links */}
-        <nav className="flex items-center gap-1">
+        <nav className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' }}>
           {navbarItems.map(item => renderNavbarItem(item))}
         </nav>
 
-        {/* Right Section: Tariff + Profile */}
-        <div className="flex items-center gap-3">
-          {user && !isInvestor && user.role !== 'admin' && (
-            <div
-              className={`hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-opacity hover:opacity-90
-                ${subStatus.expired ? 'bg-red-900/30 border-red-800 text-red-300' : subStatus.isWarning ? 'bg-amber-900/30 border-amber-800 text-amber-300' : 'bg-emerald-900/30 border-emerald-800 text-emerald-300'}
-              `}
-              onClick={() => setView('TARIFFS')}
-            >
-              <span className="font-bold uppercase">{subStatus.planName}</span>
-              <span>{subStatus.expired ? 'Истек' : `${subStatus.daysLeft} дн.`}</span>
-            </div>
-          )}
-
+        {/* Right Section: Profile Dropdown */}
+        <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' }} ref={profileRef}>
           {user && (
-            <button
-              onClick={onNavigateToProfile}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
-              style={{ color: 'var(--navbar-text)' }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--navbar-hover)'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-            >
-              <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
-                   style={{ backgroundColor: 'var(--color-primary-500)', color: '#fff' }}>
-                {user.name.charAt(0).toUpperCase()}
-              </div>
-              <span className="hidden lg:inline text-sm font-medium">{user.name}</span>
-            </button>
+            <div className="relative">
+              <button
+                onClick={toggleProfile}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
+                style={{
+                  color: 'var(--navbar-text)',
+                  backgroundColor: isProfileOpen ? 'var(--navbar-hover)' : 'transparent'
+                }}
+              >
+                <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
+                     style={{ backgroundColor: 'var(--color-primary-500)', color: '#fff' }}>
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+                <span className="hidden lg:inline text-sm font-medium">{user.name}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="transition-transform" style={{ transform: isProfileOpen ? 'rotate(180deg)' : 'none' }}>
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+
+              {/* Profile Dropdown Menu */}
+              {isProfileOpen && (
+                <div
+                  className="absolute top-full right-0 mt-1 w-56 rounded-xl shadow-xl z-50 overflow-hidden"
+                  style={{
+                    backgroundColor: 'var(--navbar-bg)',
+                    border: `1px solid var(--navbar-border)`,
+                  }}
+                >
+                  {/* Subscription Info (if not admin) */}
+                  {user && !isInvestor && user.role !== 'admin' && (
+                    <div
+                      className={`px-4 py-3 border-b text-xs font-medium cursor-pointer transition-opacity hover:opacity-90
+                        ${subStatus.expired ? 'bg-red-900/30 border-red-800 text-red-300' : subStatus.isWarning ? 'bg-amber-900/30 border-amber-800 text-amber-300' : 'bg-emerald-900/30 border-emerald-800 text-emerald-300'}
+                      `}
+                      onClick={() => handleProfileAction('TARIFFS')}
+                    >
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="opacity-70">Тариф:</span>
+                        <span className="font-bold uppercase">{subStatus.planName}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="opacity-70">Статус:</span>
+                        <span className="font-bold">{subStatus.expired ? 'Истек' : `${subStatus.daysLeft} дн.`}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Profile */}
+                  <button
+                    onClick={() => handleProfileAction('PROFILE')}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left"
+                    style={{ color: 'var(--navbar-text)' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'var(--navbar-hover)';
+                      e.currentTarget.style.color = 'var(--navbar-activeText)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--navbar-text)';
+                    }}
+                  >
+                    <span>{ICONS.Settings}</span>
+                    <span className="flex-1">Профиль</span>
+                  </button>
+
+                  {/* Settings */}
+                  {!isInvestor && (
+                    <button
+                      onClick={() => handleProfileAction('SETTINGS')}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left"
+                      style={{ color: 'var(--navbar-text)' }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'var(--navbar-hover)';
+                        e.currentTarget.style.color = 'var(--navbar-activeText)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.color = 'var(--navbar-text)';
+                      }}
+                    >
+                      <span>{ICONS.Settings}</span>
+                      <span className="flex-1">Настройки</span>
+                    </button>
+                  )}
+
+                  {/* Tariffs */}
+                  {!isInvestor && user.role !== 'admin' && (
+                    <button
+                      onClick={() => handleProfileAction('TARIFFS')}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left"
+                      style={{ color: 'var(--navbar-text)' }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'var(--navbar-hover)';
+                        e.currentTarget.style.color = 'var(--navbar-activeText)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.color = 'var(--navbar-text)';
+                      }}
+                    >
+                      <span>{ICONS.Tariffs}</span>
+                      <span className="flex-1">Тарифы</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </header>
@@ -335,8 +440,8 @@ const Layout: React.FC<LayoutProps> = ({
         </div>
       </header>
 
-      {/* Main Content - adjusted for top navbar */}
-      <main className="flex-1 p-4 md:p-6 md:pt-20 mx-auto w-full mb-20 md:mb-0 flex flex-col h-full bg-slate-50">
+      {/* Main Content - 🔹 FIXED: Added mobile top padding */}
+      <main className="flex-1 p-4 md:p-6 mx-auto w-full mb-20 md:mb-0 flex flex-col h-full bg-slate-50 mt-16 md:mt-20">
         <div className="w-full max-w-7xl mx-auto h-full">
             {children}
         </div>
@@ -392,7 +497,7 @@ const Layout: React.FC<LayoutProps> = ({
             <button onClick={() => isInvestor ? setShowInvestorMobileMenu(true) : setView('MORE')} className={`flex flex-col items-center p-2 ${['MORE','PROFILE','CONTRACTS','INVESTORS','EMPLOYEES','SETTINGS','TARIFFS','ADMIN_PANEL'].includes(currentView) ? 'text-indigo-600' : 'text-slate-400'}`}>
                 {ICONS.Menu}<span className="text-[10px] mt-1 font-medium">{isInvestor ? 'Профиль' : 'Еще'}</span>
             </button>
-            {/* Investor mobile menu (same as before) */}
+            {/* Investor mobile menu */}
             {showInvestorMobileMenu && (
               <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in md:hidden" onClick={() => setShowInvestorMobileMenu(false)}>
                 <div className="bg-white w-full max-w-sm rounded-t-3xl p-5 pb-8 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
