@@ -161,31 +161,20 @@ const Layout: React.FC<LayoutProps> = ({
   const toggleDropdown = (id: string) => setOpenDropdown(openDropdown === id ? null : id);
   const toggleProfile = () => setIsProfileOpen(!isProfileOpen);
 
+// В handleSubItemClick:
 const handleSubItemClick = (parentView: ViewState, subItem: any) => {
-   // 1. Сначала переключаем вкладку
+   console.log('🔹 Clicked:', subItem.label, 'action:', subItem.action, 'view:', subItem.view);
+
    if (subItem.view) {
+       console.log('🔹 Setting view:', subItem.view);
        setView(subItem.view);
    }
-
-   // 2. Выполняем действие с небольшой задержкой
-   if (subItem.action) {
-       if (subItem.action === 'GOTO_CASH_REGISTER') {
-           setView('CASH_REGISTER');
-       } else {
-           // 🔹 Задержка, чтобы view успел переключиться перед открытием модалки
-           setTimeout(() => {
-               onAction(subItem.action);
-           }, 50);
-       }
+   if (subItem.action && subItem.action !== 'GOTO_CASH_REGISTER') {
+       setTimeout(() => {
+           console.log('🔹 Calling onAction:', subItem.action);
+           onAction(subItem.action);
+       }, 50);
    }
-
-   // 3. Переключение табов для договоров
-   if (subItem.tab && onContractTabChange) {
-       setView(parentView);
-       onContractTabChange(subItem.tab);
-   }
-
-   // 4. Закрываем дропдаун
    setOpenDropdown(null);
 };
 
@@ -252,7 +241,7 @@ const handleSubItemClick = (parentView: ViewState, subItem: any) => {
               border: `1px solid var(--navbar-border)`,
               minWidth: '200px'
             }}
-            
+
           >
             {visibleSubItems.map((sub: any, idx: number) => (
   <button
