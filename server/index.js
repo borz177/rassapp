@@ -828,19 +828,24 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
 // Get current user
 app.get('/api/auth/me', auth, async (req, res) => {
   try {
+    // 🔥 ДОБАВИЛИ phone в SELECT
     const result = await pool.query(
-      'SELECT id, name, email, role, manager_id, subscription, whatsapp_settings FROM users WHERE id = $1',
+      'SELECT id, name, email, phone, role, manager_id, subscription, whatsapp_settings, api_key FROM users WHERE id = $1',
       [req.user.id]
     );
+
     if (result.rows.length === 0) {
       return res.status(404).json({ msg: 'User not found' });
     }
-    
+
     const user = result.rows[0];
+
+    // 🔥 ДОБАВИЛИ phone в ответ
     res.json({
       id: user.id,
       name: user.name,
       email: user.email,
+      phone: user.phone,  // ← 🔥 ЭТОГО НЕ ХВАТАЛО!
       role: user.role,
       managerId: user.manager_id,
       subscription: user.subscription,
