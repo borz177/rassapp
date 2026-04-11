@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
 import { ICONS, APP_NAME, THEMES } from '../constants';
 
@@ -45,32 +45,41 @@ const Layout: React.FC<LayoutProps> = ({
   supportUnreadCount = 0,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const isInvestor = user?.role === 'investor';
   const investorPermissions = activeInvestor?.permissions;
   const [showInvestorMobileMenu, setShowInvestorMobileMenu] = useState(false);
 
-  // Apply Theme (Primary, Secondary + Sidebar)
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpenDropdown(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Apply Theme (Primary, Secondary + Navbar)
   useEffect(() => {
       const themeKey = appSettings.theme || 'PURPLE';
       const theme = THEMES[themeKey];
 
       if (theme) {
           const root = document.documentElement;
-          
-          // Primary Colors
           Object.entries(theme.primary).forEach(([shade, value]) => {
               root.style.setProperty(`--color-primary-${shade}`, value);
           });
-          // Secondary Colors
           Object.entries(theme.secondary).forEach(([shade, value]) => {
               root.style.setProperty(`--color-secondary-${shade}`, value);
           });
-          // 🔹 Sidebar Colors
-          if (theme.sidebar) {
-              Object.entries(theme.sidebar).forEach(([key, value]) => {
-                  root.style.setProperty(`--sidebar-${key}`, value as string);
+          // 🔹 Navbar variables
+          if (theme.navbar) {
+              Object.entries(theme.navbar).forEach(([key, value]) => {
+                  root.style.setProperty(`--navbar-${key}`, value as string);
               });
           }
       }
@@ -79,12 +88,10 @@ const Layout: React.FC<LayoutProps> = ({
   // Subscription Calc
   const subStatus = useMemo(() => {
       if (!user?.subscription) return { daysLeft: 0, planName: 'Пробный', expired: true, isWarning: true };
-
       const now = new Date();
       const expires = new Date(user.subscription.expiresAt);
       const diffTime = expires.getTime() - now.getTime();
       const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
       return {
           daysLeft,
           planName: PLAN_NAMES[user.subscription.plan] || user.subscription.plan,
@@ -97,32 +104,19 @@ const Layout: React.FC<LayoutProps> = ({
   const counts = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
-    let active = 0;
-    let overdue = 0;
-    let archive = 0;
-
+    let active = 0, overdue = 0, archive = 0;
     const customerIdSet = new Set(customers.map(c => c.id));
     const actualSales = sales.filter(sale => customerIdSet.has(sale.customerId));
-
     actualSales.forEach(sale => {
-      if (sale.status === 'COMPLETED' || sale.remainingAmount === 0) {
-        archive++;
-        return;
-      }
+      if (sale.status === 'COMPLETED' || sale.remainingAmount === 0) { archive++; return; }
       const hasOverduePayment = sale.paymentPlan.some(p => !p.isPaid && new Date(p.date) < today);
-      if (hasOverduePayment) {
-        overdue++;
-      } else {
-        active++;
-      }
+      if (hasOverduePayment) { overdue++; } else { active++; }
     });
-
     return { active, overdue, archive };
   }, [sales, customers]);
 
-  // Desktop Sidebar Items
-  const allSidebarItems = [
+  // Navbar Items
+  const allNavbarItems = [
     { id: 'DASHBOARD' as const, label: 'Главная', icon: ICONS.Dashboard, visible: true },
     {
       id: 'CASH_REGISTER' as const,
@@ -148,12 +142,7 @@ const Layout: React.FC<LayoutProps> = ({
         { label: 'Архив', tab: 'ARCHIVE', icon: ICONS.Clock, count: counts.archive, visible: true },
       ]
     },
-    {
-        id: 'OPERATIONS' as const,
-        label: 'История',
-        icon: ICONS.List,
-        visible: isInvestor && !!investorPermissions?.canViewHistory
-    },
+    { id: 'OPERATIONS' as const, label: 'История', icon: ICONS.List, visible: isInvestor && !!investorPermissions?.canViewHistory },
     { id: 'REPORTS' as const, label: 'Отчеты', icon: ICONS.Dashboard, visible: !isInvestor && user?.role !== 'employee' },
     { id: 'CUSTOMERS' as const, label: 'Клиенты', icon: ICONS.Customers, visible: !isInvestor },
     { id: 'INVESTORS' as const, label: 'Инвесторы', icon: ICONS.Users, visible: !isInvestor },
@@ -163,222 +152,201 @@ const Layout: React.FC<LayoutProps> = ({
     { id: 'ADMIN_PANEL' as const, label: 'Админ панель', icon: ICONS.Crown, visible: user?.role === 'admin' },
   ];
 
-  const sidebarItems = useMemo(() => {
-      return allSidebarItems.filter(item => item.visible);
-  }, [user, counts, isInvestor, investorPermissions]);
+  const navbarItems = useMemo(() => allNavbarItems.filter(item => item.visible), [user, counts, isInvestor, investorPermissions]);
 
-  const handleFabClick = () => {
-    setIsMenuOpen(!isMenuOpen);
-  };
-
-  const toggleMenu = (id: string) => {
-    if (expandedMenu === id) {
-      setExpandedMenu(null);
-    } else {
-      setExpandedMenu(id);
-    }
-  };
+  const handleFabClick = () => setIsMenuOpen(!isMenuOpen);
+  const toggleDropdown = (id: string) => setOpenDropdown(openDropdown === id ? null : id);
 
   const handleSubItemClick = (parentView: ViewState, subItem: any) => {
      if (subItem.action) {
-         if (subItem.action === 'GOTO_CASH_REGISTER') {
-             setView('CASH_REGISTER');
-         } else {
-             onAction(subItem.action);
-         }
+         if (subItem.action === 'GOTO_CASH_REGISTER') setView('CASH_REGISTER');
+         else onAction(subItem.action);
      } else if (subItem.tab && onContractTabChange) {
          setView(parentView);
          onContractTabChange(subItem.tab);
      } else {
          setView(parentView);
      }
+     setOpenDropdown(null);
   };
 
   const handleMainItemClick = (item: any) => {
       if ('subItems' in item) {
-          toggleMenu(item.id);
+          toggleDropdown(item.id);
       } else {
           setView(item.id);
+          setOpenDropdown(null);
       }
   }
-
-  // Render Sidebar Menu Item (Desktop Only) - with dynamic theme styles
-  const renderMenuItem = (item: any) => {
-    const hasSubItems = 'subItems' in item;
-    const isExpanded = expandedMenu === item.id;
-    const isActive = currentView === item.id;
-    const visibleSubItems = hasSubItems ? item.subItems.filter((sub: any) => sub.visible !== false) : [];
-
-    return (
-        <div key={item.id} className="w-full">
-            <button
-                onClick={() => handleMainItemClick(item)}
-                className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200"
-                style={{
-                    backgroundColor: isActive && !hasSubItems ? 'var(--sidebar-activeBg)' : 'transparent',
-                    color: isActive && !hasSubItems ? 'var(--sidebar-activeText)' : 'var(--sidebar-text)',
-                    boxShadow: isActive && !hasSubItems ? '0 4px 14px rgba(0,0,0,0.25)' : 'none'
-                }}
-                onMouseEnter={(e) => {
-                    if (!(isActive && !hasSubItems)) {
-                        e.currentTarget.style.backgroundColor = 'var(--sidebar-hover)';
-                    }
-                }}
-                onMouseLeave={(e) => {
-                    if (!(isActive && !hasSubItems)) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                    }
-                }}
-            >
-                <div className="flex items-center gap-3">
-                    <span>{item.icon}</span>
-                    <span className="font-medium">{item.label}</span>
-                </div>
-                {hasSubItems && (
-                    <span className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                    </span>
-                )}
-            </button>
-
-            {/* Submenu */}
-            {hasSubItems && isExpanded && (
-                <div className="mt-1 ml-4 space-y-1 border-l pl-3" style={{ borderColor: 'var(--sidebar-border)' }}>
-                {visibleSubItems.map((sub: any, idx: number) => (
-                    <button
-                    key={idx}
-                    onClick={() => handleSubItemClick(item.id, sub)}
-                    className="w-full flex items-center justify-between gap-3 px-4 py-2 rounded-lg text-sm transition-colors"
-                    style={{ color: 'var(--sidebar-text)' }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'var(--sidebar-hover)';
-                        e.currentTarget.style.color = 'var(--sidebar-activeText)';
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = 'var(--sidebar-text)';
-                    }}
-                    >
-                        <div className="flex items-center gap-2">
-                            <span className="opacity-70 scale-75">{sub.icon}</span>
-                            <span>{sub.label}</span>
-                        </div>
-                        {sub.count !== undefined && sub.count > 0 && (
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                                sub.label === 'Просроченные' ? 'bg-red-500 text-white' : 
-                                sub.label === 'Активные' ? 'bg-primary-500 text-white' : 'bg-slate-500 text-white'
-                            }`}>
-                                {sub.count}
-                            </span>
-                        )}
-                    </button>
-                ))}
-                </div>
-            )}
-        </div>
-    );
-  };
 
   const handleActionClick = (action: string) => {
       setIsMenuOpen(false);
       onAction(action);
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans">
-      {/* Mobile Top Navbar */}
-      <header className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-40">
-        <div className="h-16 flex items-center px-4">
-          <div className="flex flex-col w-full">
-            <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--color-primary-600)' }}>{appSettings.companyName}</h1>
-            {isOnline && isSyncing && (
-              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">
-                Синхронизация...
-              </span>
-            )}
-          </div>
-        </div>
-      </header>
+  // Render Desktop Navbar Item with Dropdown
+  const renderNavbarItem = (item: any) => {
+    const hasSubItems = 'subItems' in item;
+    const isActive = currentView === item.id || (hasSubItems && openDropdown === item.id);
+    const visibleSubItems = hasSubItems ? item.subItems.filter((sub: any) => sub.visible !== false) : [];
 
-      {/* Desktop Sidebar - Dynamic Theme Colors */}
-      <aside 
-        className="hidden md:flex flex-col w-64 h-screen fixed left-0 top-0 overflow-y-auto z-20 transition-colors duration-300"
+    return (
+      <div key={item.id} className="relative" ref={hasSubItems ? dropdownRef : undefined}>
+        <button
+          onClick={() => handleMainItemClick(item)}
+          className="flex items-center gap-2 px-4 py-3 rounded-lg transition-all duration-200 font-medium"
+          style={{
+            backgroundColor: isActive ? 'var(--navbar-activeBg)' : 'transparent',
+            color: isActive ? 'var(--navbar-activeText)' : 'var(--navbar-text)',
+          }}
+          onMouseEnter={() => hasSubItems && setOpenDropdown(item.id)}
+        >
+          <span>{item.icon}</span>
+          <span className="hidden lg:inline">{item.label}</span>
+          {hasSubItems && (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="transition-transform" style={{ transform: openDropdown === item.id ? 'rotate(180deg)' : 'none' }}>
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          )}
+          {item.count !== undefined && item.count > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white">{item.count}</span>
+          )}
+        </button>
+
+        {/* Dropdown Menu */}
+        {hasSubItems && openDropdown === item.id && (
+          <div
+            className="absolute top-full left-0 mt-1 w-56 rounded-xl shadow-xl z-50 overflow-hidden"
+            style={{
+              backgroundColor: 'var(--navbar-bg)',
+              border: `1px solid var(--navbar-border)`,
+              minWidth: '200px'
+            }}
+            onMouseLeave={() => setOpenDropdown(null)}
+          >
+            {visibleSubItems.map((sub: any, idx: number) => (
+              <button
+                key={idx}
+                onClick={() => handleSubItemClick(item.id, sub)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left"
+                style={{ color: 'var(--navbar-text)' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--navbar-hover)';
+                  e.currentTarget.style.color = 'var(--navbar-activeText)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = 'var(--navbar-text)';
+                }}
+              >
+                <span className="opacity-70">{sub.icon}</span>
+                <span className="flex-1">{sub.label}</span>
+                {sub.count !== undefined && sub.count > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary-500 text-white">{sub.count}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+
+      {/* 🔹 DESKTOP TOP NAVBAR */}
+      <header
+        className="hidden md:flex items-center justify-between px-6 py-3 fixed top-0 left-0 right-0 z-40 transition-colors duration-300"
         style={{
-          backgroundColor: 'var(--sidebar-bg)',
-          color: 'var(--sidebar-text)',
+          backgroundColor: 'var(--navbar-bg)',
+          color: 'var(--navbar-text)',
+          borderBottom: `1px solid var(--navbar-border)`
         }}
       >
-        <div className="p-6 border-b" style={{ borderColor: 'var(--sidebar-border)' }}>
-          <h1 
-            className="text-2xl font-bold tracking-tight bg-clip-text text-transparent"
+        {/* Logo + Company */}
+        <div className="flex items-center gap-4">
+          <h1
+            className="text-xl font-bold bg-clip-text text-transparent"
             style={{
               backgroundImage: 'linear-gradient(to right, var(--color-primary-400), var(--color-secondary-400))'
             }}
           >
             {appSettings.companyName}
           </h1>
-          <div className="mt-2 flex gap-2">
-              {isOnline && isSyncing && <span className="text-[10px] font-bold" style={{ color: 'var(--color-primary-400)', backgroundColor: 'rgba(96, 165, 250, 0.15)', borderColor: 'var(--color-primary-800)', border: '1px solid' }}>Синхронизация...</span>}
-          </div>
-          {user && !isInvestor && user.role !== 'admin' && (
-              <div
-                className={`mt-4 p-3 rounded-lg border text-xs font-medium cursor-pointer transition-colors hover:opacity-90 
-                    ${subStatus.expired ? 'bg-red-900/30 border-red-800 text-red-300' : subStatus.isWarning ? 'bg-amber-900/30 border-amber-800 text-amber-300' : 'bg-emerald-900/30 border-emerald-800 text-emerald-300'}
-                `}
-                onClick={() => setView('TARIFFS')}
-              >
-                  <div className="flex justify-between items-center mb-1">
-                      <span className="opacity-70">Тариф:</span>
-                      <span className="font-bold uppercase tracking-wider">{subStatus.planName}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                      <span className="opacity-70">Статус:</span>
-                      <span className="font-bold">{subStatus.expired ? 'Истек' : `Активен (${subStatus.daysLeft} дн.)`}</span>
-                  </div>
-              </div>
+          {isOnline && isSyncing && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded"
+              style={{
+                color: 'var(--color-primary-400)',
+                backgroundColor: 'rgba(96, 165, 250, 0.15)',
+                border: '1px solid var(--color-primary-800)'
+              }}>
+              Синхронизация...
+            </span>
           )}
         </div>
-        <nav className="flex-1 p-4 space-y-2">
-          {sidebarItems.map(item => renderMenuItem(item))}
+
+        {/* Navigation Links */}
+        <nav className="flex items-center gap-1">
+          {navbarItems.map(item => renderNavbarItem(item))}
         </nav>
 
-        {user && (
-             <div className="p-4 border-t" style={{ borderColor: 'var(--sidebar-border)' }}>
-                <button onClick={onNavigateToProfile} className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors"
-                  style={{ color: 'var(--sidebar-text)' }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--sidebar-hover)'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                >
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold" 
-                         style={{ backgroundColor: 'var(--color-primary-500)', color: '#fff' }}>
-                        {user.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                        <p className="font-semibold text-sm text-left">{user.name}</p>
-                        <p className="text-xs opacity-70 text-left">{user.email}</p>
-                    </div>
-                </button>
-             </div>
-        )}
-      </aside>
+        {/* Right Section: Tariff + Profile */}
+        <div className="flex items-center gap-3">
+          {user && !isInvestor && user.role !== 'admin' && (
+            <div
+              className={`hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-opacity hover:opacity-90
+                ${subStatus.expired ? 'bg-red-900/30 border-red-800 text-red-300' : subStatus.isWarning ? 'bg-amber-900/30 border-amber-800 text-amber-300' : 'bg-emerald-900/30 border-emerald-800 text-emerald-300'}
+              `}
+              onClick={() => setView('TARIFFS')}
+            >
+              <span className="font-bold uppercase">{subStatus.planName}</span>
+              <span>{subStatus.expired ? 'Истек' : `${subStatus.daysLeft} дн.`}</span>
+            </div>
+          )}
 
-      {/* Main Content Area */}
-      <main className="flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50">
+          {user && (
+            <button
+              onClick={onNavigateToProfile}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
+              style={{ color: 'var(--navbar-text)' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--navbar-hover)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
+                   style={{ backgroundColor: 'var(--color-primary-500)', color: '#fff' }}>
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <span className="hidden lg:inline text-sm font-medium">{user.name}</span>
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* 🔹 MOBILE TOP NAVBAR */}
+      <header className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-40">
+        <div className="h-16 flex items-center px-4">
+          <div className="flex flex-col w-full">
+            <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--color-primary-600)' }}>{appSettings.companyName}</h1>
+            {isOnline && isSyncing && (
+              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">Синхронизация...</span>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content - adjusted for top navbar */}
+      <main className="flex-1 p-4 md:p-6 md:pt-20 mx-auto w-full mb-20 md:mb-0 flex flex-col h-full bg-slate-50">
         <div className="w-full max-w-7xl mx-auto h-full">
             {children}
         </div>
       </main>
 
-      {/* Mobile Quick Actions Menu */}
+      {/* Mobile Quick Actions FAB Menu */}
       {!isInvestor && isMenuOpen && (
-        <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden flex flex-col justify-end pb-24 px-4 animate-fade-in"
-          onClick={() => setIsMenuOpen(false)}
-        >
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden flex flex-col justify-end pb-24 px-4 animate-fade-in" onClick={() => setIsMenuOpen(false)}>
           <div className="bg-white rounded-2xl p-4 shadow-2xl space-y-2 mb-4" onClick={e => e.stopPropagation()}>
-             <div className="pb-2 mb-2 border-b border-slate-100">
-                 <h3 className="text-slate-500 font-bold text-sm uppercase px-2">Быстрые действия</h3>
-             </div>
+             <div className="pb-2 mb-2 border-b border-slate-100"><h3 className="text-slate-500 font-bold text-sm uppercase px-2">Быстрые действия</h3></div>
              <button onClick={() => handleActionClick('CREATE_SALE')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
                 <div className="bg-indigo-100 p-2 rounded-full" style={{ color: 'var(--color-primary-600)' }}>{ICONS.Sales}</div>
                 <span className="font-semibold">Оформить продажу</span>
@@ -391,148 +359,70 @@ const Layout: React.FC<LayoutProps> = ({
                 <div className="bg-red-100 p-2 rounded-full text-red-600">{ICONS.Expense}</div>
                 <span className="font-semibold">Расход (Изъять)</span>
              </button>
-             <button onClick={() => handleActionClick('OPERATIONS')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
-                <div className="bg-slate-100 p-2 rounded-full text-slate-600">{ICONS.List}</div>
-                <span className="font-semibold">Все операции</span>
-             </button>
           </div>
         </div>
       )}
 
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-50 px-2 py-2 flex justify-between items-end safe-area-pb">
-
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
             <button onClick={() => setView('DASHBOARD')} className={`flex flex-col items-center p-2 ${currentView === 'DASHBOARD' ? 'text-indigo-600' : 'text-slate-400'}`}>
-                {ICONS.Dashboard}
-                <span className="text-[10px] mt-1 font-medium">Главная</span>
+                {ICONS.Dashboard}<span className="text-[10px] mt-1 font-medium">Главная</span>
             </button>
             {!isInvestor && (
               <button onClick={() => setView('CASH_REGISTER')} className={`flex flex-col items-center p-2 ${currentView === 'CASH_REGISTER' ? 'text-indigo-600' : 'text-slate-400'}`}>
-                  {ICONS.Wallet}
-                  <span className="text-[10px] mt-1 font-medium">Касса</span>
+                  {ICONS.Wallet}<span className="text-[10px] mt-1 font-medium">Касса</span>
               </button>
             )}
         </div>
-
         {!isInvestor && (
           <div className="relative -top-5">
-              <button
-                  onClick={handleFabClick}
-                  className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-300 transition-transform active:scale-95 ${isMenuOpen ? 'bg-slate-800 rotate-45' : 'bg-indigo-600'}`}
-                  style={{ backgroundColor: isMenuOpen ? 'var(--sidebar-bg)' : 'var(--color-primary-600)' }}
-              >
+              <button onClick={handleFabClick} className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-transform active:scale-95 ${isMenuOpen ? 'bg-slate-800 rotate-45' : 'bg-indigo-600'}`}
+                style={{ backgroundColor: isMenuOpen ? 'var(--navbar-bg)' : 'var(--color-primary-600)' }}>
                   {ICONS.Add}
               </button>
           </div>
         )}
-
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
             {!isInvestor && (
-              <button onClick={() => setView('CUSTOMERS')} className={`flex flex-col items-center p-2 ${currentView === 'CUSTOMERS' || currentView === 'CUSTOMER_DETAILS' ? 'text-indigo-600' : 'text-slate-400'}`}>
-                  {ICONS.Customers}
-                  <span className="text-[10px] mt-1 font-medium">Клиенты</span>
+              <button onClick={() => setView('CUSTOMERS')} className={`flex flex-col items-center p-2 ${currentView === 'CUSTOMERS' ? 'text-indigo-600' : 'text-slate-400'}`}>
+                  {ICONS.Customers}<span className="text-[10px] mt-1 font-medium">Клиенты</span>
               </button>
             )}
-            <button
-                onClick={() => {
-                    if (isInvestor) {
-                        setShowInvestorMobileMenu(true);
-                    } else {
-                        setView('MORE');
-                    }
-                }}
-                className={`flex flex-col items-center p-2 ${
-                    currentView === 'MORE' || currentView === 'PROFILE' ||
-                    currentView === 'CONTRACTS' || currentView === 'INVESTORS' ||
-                    currentView === 'EMPLOYEES' || currentView === 'SETTINGS' ||
-                    currentView === 'TARIFFS' || currentView === 'ADMIN_PANEL'
-                        ? 'text-indigo-600' : 'text-slate-400'
-                }`}
-            >
-                {ICONS.Menu}
-                <span className="text-[10px] mt-1 font-medium">{isInvestor ? 'Профиль' : 'Еще'}</span>
+            <button onClick={() => isInvestor ? setShowInvestorMobileMenu(true) : setView('MORE')} className={`flex flex-col items-center p-2 ${['MORE','PROFILE','CONTRACTS','INVESTORS','EMPLOYEES','SETTINGS','TARIFFS','ADMIN_PANEL'].includes(currentView) ? 'text-indigo-600' : 'text-slate-400'}`}>
+                {ICONS.Menu}<span className="text-[10px] mt-1 font-medium">{isInvestor ? 'Профиль' : 'Еще'}</span>
             </button>
-
-            {/* 📱 Мобильное меню для инвестора */}
+            {/* Investor mobile menu (same as before) */}
             {showInvestorMobileMenu && (
-              <div
-                className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in md:hidden"
-                onClick={() => setShowInvestorMobileMenu(false)}
-              >
-                <div
-                  className="bg-white w-full max-w-sm rounded-t-3xl p-5 pb-8 shadow-2xl animate-slide-up"
-                  onClick={e => e.stopPropagation()}
-                >
+              <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in md:hidden" onClick={() => setShowInvestorMobileMenu(false)}>
+                <div className="bg-white w-full max-w-sm rounded-t-3xl p-5 pb-8 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
                     <h3 className="font-bold text-slate-800">Доступные разделы</h3>
-                    <button
-                      onClick={() => setShowInvestorMobileMenu(false)}
-                      className="p-1 text-slate-400 hover:text-slate-600"
-                    >
+                    <button onClick={() => setShowInvestorMobileMenu(false)} className="p-1 text-slate-400 hover:text-slate-600">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                   </div>
-
                   <div className="space-y-2">
-                    {(investorPermissions?.canViewContracts) && (
-                      <button
-                        onClick={() => {
-                          setShowInvestorMobileMenu(false);
-                          setView('CONTRACTS');
-                          onContractTabChange?.('ACTIVE');
-                        }}
-                        className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-indigo-50 rounded-xl text-left transition-colors"
-                      >
-                        <span className="text-indigo-600">{ICONS.File}</span>
-                        <div>
-                          <p className="font-semibold text-slate-800">Договоры</p>
-                          <p className="text-xs text-slate-500">Просмотр активных сделок</p>
-                        </div>
+                    {investorPermissions?.canViewContracts && (
+                      <button onClick={() => { setShowInvestorMobileMenu(false); setView('CONTRACTS'); onContractTabChange?.('ACTIVE'); }} className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-indigo-50 rounded-xl text-left">
+                        <span className="text-indigo-600">{ICONS.File}</span><div><p className="font-semibold">Договоры</p><p className="text-xs text-slate-500">Просмотр сделок</p></div>
                       </button>
                     )}
-
-                    {(investorPermissions?.canViewHistory) && (
-                      <button
-                        onClick={() => {
-                          setShowInvestorMobileMenu(false);
-                          setView('OPERATIONS');
-                        }}
-                        className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-indigo-50 rounded-xl text-left transition-colors"
-                      >
-                        <span className="text-indigo-600">{ICONS.List}</span>
-                        <div>
-                          <p className="font-semibold text-slate-800">История операций</p>
-                          <p className="text-xs text-slate-500">Все платежи и движения</p>
-                        </div>
+                    {investorPermissions?.canViewHistory && (
+                      <button onClick={() => { setShowInvestorMobileMenu(false); setView('OPERATIONS'); }} className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-indigo-50 rounded-xl text-left">
+                        <span className="text-indigo-600">{ICONS.List}</span><div><p className="font-semibold">История</p><p className="text-xs text-slate-500">Все операции</p></div>
                       </button>
-                    )}
-
-                    {!investorPermissions?.canViewContracts && !investorPermissions?.canViewHistory && (
-                      <div className="text-center py-6 text-slate-400 text-sm">
-                        Нет доступных разделов
-                      </div>
                     )}
                   </div>
-
-                  <button
-                    onClick={() => setShowInvestorMobileMenu(false)}
-                    className="w-full mt-4 py-3 bg-slate-100 text-slate-700 font-medium rounded-xl hover:bg-slate-200 transition-colors"
-                  >
-                    Закрыть
-                  </button>
+                  <button onClick={() => setShowInvestorMobileMenu(false)} className="w-full mt-4 py-3 bg-slate-100 text-slate-700 font-medium rounded-xl">Закрыть</button>
                 </div>
               </div>
             )}
         </div>
       </nav>
 
-      {/* 🔹 Плавающая кнопка техподдержки (только десктоп) */}
-      {supportButton && (
-        <div className="hidden md:block">
-          {supportButton}
-        </div>
-      )}
+      {/* Support button (desktop) */}
+      {supportButton && <div className="hidden md:block">{supportButton}</div>}
     </div>
   );
 };
