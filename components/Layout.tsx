@@ -162,34 +162,27 @@ const Layout: React.FC<LayoutProps> = ({
   const toggleProfile = () => setIsProfileOpen(!isProfileOpen);
 
  const handleSubItemClick = (parentView: ViewState, subItem: any) => {
-   console.log('🔹 handleSubItemClick вызван:', subItem.label, subItem.action, subItem.view);
+   console.log('🔹 handleSubItemClick:', subItem.label, subItem.action);
 
-   // 1. Сначала переключаем вкладку
    if (subItem.view) {
-       console.log('🔹 setView:', subItem.view);
        setView(subItem.view);
    }
 
-   // 2. Выполняем действие с небольшой задержкой
    if (subItem.action) {
        if (subItem.action === 'GOTO_CASH_REGISTER') {
            setView('CASH_REGISTER');
        } else {
-           console.log('🔹 Вызываем onAction:', subItem.action);
-           setTimeout(() => {
-               console.log('🔹 onAction выполняется:', subItem.action);
-               onAction(subItem.action);
-           }, 100);
+           // Убрали setTimeout - выполняем сразу
+           console.log('🔹 Выполняем onAction:', subItem.action);
+           onAction(subItem.action);
        }
    }
 
-   // 3. Переключение табов для договоров
    if (subItem.tab && onContractTabChange) {
        setView(parentView);
        onContractTabChange(subItem.tab);
    }
 
-   // 4. Закрываем дропдаун
    setOpenDropdown(null);
 };
 
@@ -227,10 +220,10 @@ const renderNavbarItem = (item: any) => {
 
   return (
     <div key={item.id} className="relative" ref={hasSubItems ? dropdownRef : undefined}>
-      {/* 🔹 Главная кнопка */}
+      {/* Главная кнопка */}
       <button
         onClick={() => handleMainItemClick(item)}
-        onMouseEnter={() => hasSubItems && setOpenDropdown(item.id)}  // 🔹 Открывает меню при наведении
+        onMouseEnter={() => hasSubItems && setOpenDropdown(item.id)}
         className="flex items-center gap-2 px-4 py-3 rounded-lg transition-all duration-200 font-medium"
         style={{
           backgroundColor: isActive ? 'var(--navbar-activeBg)' : 'transparent',
@@ -249,7 +242,7 @@ const renderNavbarItem = (item: any) => {
         )}
       </button>
 
-      {/* 🔹 Dropdown Menu - БЕЗ onMouseLeave! */}
+      {/* Dropdown Menu - БЕЗ onMouseLeave! */}
       {hasSubItems && openDropdown === item.id && (
         <div
           className="absolute top-full left-0 mt-1 w-56 rounded-xl shadow-xl z-50 overflow-hidden"
@@ -258,13 +251,13 @@ const renderNavbarItem = (item: any) => {
             border: `1px solid var(--navbar-border)`,
             minWidth: '200px'
           }}
-          // 🔹 УБРАЛИ onMouseLeave — меню закроется только при клике вне
+          // 🔥 ВАЖНО: здесь НЕ должно быть onMouseLeave!
         >
           {visibleSubItems.map((sub: any, idx: number) => (
             <button
               key={idx}
-              onClick={(e) => {
-                e.stopPropagation();  // 🔹 Останавливаем всплытие
+              onClick={() => {
+                console.log('✅ КЛИК НА КНОПКУ:', sub.label, sub.action);
                 handleSubItemClick(item.id, sub);
               }}
               className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left cursor-pointer"
