@@ -161,23 +161,33 @@ const Layout: React.FC<LayoutProps> = ({
   const toggleDropdown = (id: string) => setOpenDropdown(openDropdown === id ? null : id);
   const toggleProfile = () => setIsProfileOpen(!isProfileOpen);
 
-  const handleSubItemClick = (parentView: ViewState, subItem: any) => {
-     if (subItem.view) {
-         setView(subItem.view);
-     }
-     if (subItem.action) {
-         if (subItem.action === 'GOTO_CASH_REGISTER') {
-             setView('CASH_REGISTER');
-         } else {
-             onAction(subItem.action);
-         }
-     }
-     if (subItem.tab && onContractTabChange) {
-         setView(parentView);
-         onContractTabChange(subItem.tab);
-     }
-     setOpenDropdown(null);
-  };
+const handleSubItemClick = (parentView: ViewState, subItem: any) => {
+   // 1. Сначала устанавливаем нужную вкладку
+   if (subItem.view) {
+       setView(subItem.view);
+   }
+
+   // 2. Затем выполняем действие (открытие модалки)
+   if (subItem.action) {
+       if (subItem.action === 'GOTO_CASH_REGISTER') {
+           setView('CASH_REGISTER');
+       } else {
+           // Небольшая задержка, чтобы view успел переключиться
+           setTimeout(() => {
+               onAction(subItem.action);
+           }, 50);
+       }
+   }
+
+   // 3. Переключение табов для договоров
+   if (subItem.tab && onContractTabChange) {
+       setView(parentView);
+       onContractTabChange(subItem.tab);
+   }
+
+   // 4. Закрываем дропдаун
+   setOpenDropdown(null);
+};
 
   const handleMainItemClick = (item: any) => {
       if ('subItems' in item) {
@@ -242,29 +252,33 @@ const Layout: React.FC<LayoutProps> = ({
               border: `1px solid var(--navbar-border)`,
               minWidth: '200px'
             }}
-            onMouseLeave={() => setOpenDropdown(null)}
+            
           >
             {visibleSubItems.map((sub: any, idx: number) => (
-              <button
-                key={idx}
-                onClick={() => handleSubItemClick(item.id, sub)}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left"
-                style={{ color: 'var(--navbar-text)' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'var(--navbar-hover)';
-                  e.currentTarget.style.color = 'var(--navbar-activeText)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = 'var(--navbar-text)';
-                }}
-              >
-                <span className="opacity-70">{sub.icon}</span>
-                <span className="flex-1">{sub.label}</span>
-                {sub.count !== undefined && sub.count > 0 && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: 'var(--color-primary-500)', color: '#fff' }}>{sub.count}</span>
-                )}
-              </button>
+                <button
+                    key={idx}
+                    onClick={(e) => {
+                        e.stopPropagation();  // 🔹 Останавливаем всплытие
+                        handleSubItemClick(item.id, sub);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left"
+                    style={{color: 'var(--navbar-text)'}}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'var(--navbar-hover)';
+                        e.currentTarget.style.color = 'var(--navbar-activeText)';
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.color = 'var(--navbar-text)';
+                    }}
+                >
+                    <span className="opacity-70">{sub.icon}</span>
+                    <span className="flex-1">{sub.label}</span>
+                    {sub.count !== undefined && sub.count > 0 && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full"
+                              style={{backgroundColor: 'var(--color-primary-500)', color: '#fff'}}>{sub.count}</span>
+                    )}
+                </button>
             ))}
           </div>
         )}
@@ -272,27 +286,27 @@ const Layout: React.FC<LayoutProps> = ({
     );
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+    return (
+        <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
 
-      {/* 🔹 DESKTOP TOP NAVBAR */}
-      <header
-        className="hidden md:flex items-center justify-between px-6 py-3 fixed top-0 left-0 right-0 z-50 transition-colors duration-300"
-        style={{
-          backgroundColor: 'var(--navbar-bg)',
-          color: 'var(--navbar-text)',
-          borderBottom: `1px solid var(--navbar-border)`,
-          WebkitAppRegion: 'drag',
-          userSelect: 'none'
-        }}
-      >
-        {/* Logo + Company */}
-        <div className="flex items-center gap-4">
-          <h1
-            className="text-xl font-bold bg-clip-text text-transparent"
-            style={{
-              backgroundImage: 'linear-gradient(to right, var(--color-primary-400), var(--color-secondary-400))',
-              WebkitAppRegion: 'no-drag'
+            {/* 🔹 DESKTOP TOP NAVBAR */}
+            <header
+                className="hidden md:flex items-center justify-between px-6 py-3 fixed top-0 left-0 right-0 z-50 transition-colors duration-300"
+                style={{
+                    backgroundColor: 'var(--navbar-bg)',
+                    color: 'var(--navbar-text)',
+                    borderBottom: `1px solid var(--navbar-border)`,
+                    WebkitAppRegion: 'drag',
+                    userSelect: 'none'
+                }}
+            >
+                {/* Logo + Company */}
+                <div className="flex items-center gap-4">
+                    <h1
+                        className="text-xl font-bold bg-clip-text text-transparent"
+                        style={{
+                            backgroundImage: 'linear-gradient(to right, var(--color-primary-400), var(--color-secondary-400))',
+                            WebkitAppRegion: 'no-drag'
             }}
           >
             {appSettings.companyName}
