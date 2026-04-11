@@ -412,7 +412,10 @@ updateProfile: async (userId: string, profileData: { name?: string; phone?: stri
         headers: getAuthHeader(),
         body: JSON.stringify({
             action: 'update',
-            userData: { id: userId, ...profileData }
+            userData: {
+                id: userId,
+                ...profileData
+            }
         })
     });
 
@@ -421,10 +424,18 @@ updateProfile: async (userId: string, profileData: { name?: string; phone?: stri
         throw new Error(`Server error ${res.status}: ${errorText}`);
     }
 
-    // 🔥 Вместо локального сбора — запрашиваем актуального пользователя с сервера!
-    const updatedUser = await api.getMe(); // ← Используем существующий метод
+    const data = await res.json();
+    console.log('Server response:', data); // { success: true }
 
-    // Кэшируем
+    // 🔹 Создаём обновлённого пользователя локально
+    const currentUser = await offlineStorage.getCache('user_me');
+    const updatedUser: User = {
+        ...(currentUser || {}),
+        id: userId,
+        ...profileData
+    } as User;
+
+    // Сохраняем в кэш
     await offlineStorage.setCache('user_me', updatedUser);
 
     return updatedUser;
