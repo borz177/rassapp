@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
 import { ICONS, APP_NAME, THEMES } from '../constants';
@@ -42,30 +41,38 @@ const Layout: React.FC<LayoutProps> = ({
   onNavigateToProfile,
   isOnline = true,
   isSyncing = false,
-  supportButton, // 🔹 Добавили сюда
+  supportButton,
   supportUnreadCount = 0,
-}) => {  const [isMenuOpen, setIsMenuOpen] = useState(false);
+}) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
   const isInvestor = user?.role === 'investor';
   const investorPermissions = activeInvestor?.permissions;
   const [showInvestorMobileMenu, setShowInvestorMobileMenu] = useState(false);
 
-  // Apply Theme
+  // Apply Theme (Primary, Secondary + Sidebar)
   useEffect(() => {
       const themeKey = appSettings.theme || 'PURPLE';
       const theme = THEMES[themeKey];
 
       if (theme) {
           const root = document.documentElement;
-          // Apply Primary Colors
+          
+          // Primary Colors
           Object.entries(theme.primary).forEach(([shade, value]) => {
               root.style.setProperty(`--color-primary-${shade}`, value);
           });
-          // Apply Secondary Colors
+          // Secondary Colors
           Object.entries(theme.secondary).forEach(([shade, value]) => {
               root.style.setProperty(`--color-secondary-${shade}`, value);
           });
+          // 🔹 Sidebar Colors
+          if (theme.sidebar) {
+              Object.entries(theme.sidebar).forEach(([key, value]) => {
+                  root.style.setProperty(`--sidebar-${key}`, value as string);
+              });
+          }
       }
   }, [appSettings.theme]);
 
@@ -89,7 +96,7 @@ const Layout: React.FC<LayoutProps> = ({
   // Calculate counts for badges
   const counts = useMemo(() => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalize to midnight to match Contracts logic
+    today.setHours(0, 0, 0, 0);
 
     let active = 0;
     let overdue = 0;
@@ -195,24 +202,33 @@ const Layout: React.FC<LayoutProps> = ({
       }
   }
 
-  // Render Sidebar Menu Item (Desktop Only)
+  // Render Sidebar Menu Item (Desktop Only) - with dynamic theme styles
   const renderMenuItem = (item: any) => {
     const hasSubItems = 'subItems' in item;
     const isExpanded = expandedMenu === item.id;
     const isActive = currentView === item.id;
-
-    // Filter subitems if visibility logic exists
     const visibleSubItems = hasSubItems ? item.subItems.filter((sub: any) => sub.visible !== false) : [];
 
     return (
         <div key={item.id} className="w-full">
             <button
                 onClick={() => handleMainItemClick(item)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${
-                isActive && !hasSubItems
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' 
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                }`}
+                className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200"
+                style={{
+                    backgroundColor: isActive && !hasSubItems ? 'var(--sidebar-activeBg)' : 'transparent',
+                    color: isActive && !hasSubItems ? 'var(--sidebar-activeText)' : 'var(--sidebar-text)',
+                    boxShadow: isActive && !hasSubItems ? '0 4px 14px rgba(0,0,0,0.25)' : 'none'
+                }}
+                onMouseEnter={(e) => {
+                    if (!(isActive && !hasSubItems)) {
+                        e.currentTarget.style.backgroundColor = 'var(--sidebar-hover)';
+                    }
+                }}
+                onMouseLeave={(e) => {
+                    if (!(isActive && !hasSubItems)) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                    }
+                }}
             >
                 <div className="flex items-center gap-3">
                     <span>{item.icon}</span>
@@ -227,12 +243,21 @@ const Layout: React.FC<LayoutProps> = ({
 
             {/* Submenu */}
             {hasSubItems && isExpanded && (
-                <div className="mt-1 ml-4 space-y-1 border-l border-slate-700 pl-3">
+                <div className="mt-1 ml-4 space-y-1 border-l pl-3" style={{ borderColor: 'var(--sidebar-border)' }}>
                 {visibleSubItems.map((sub: any, idx: number) => (
                     <button
                     key={idx}
                     onClick={() => handleSubItemClick(item.id, sub)}
-                    className="w-full flex items-center justify-between gap-3 px-4 py-2 rounded-lg text-sm transition-colors text-slate-400 hover:text-white hover:bg-slate-800"
+                    className="w-full flex items-center justify-between gap-3 px-4 py-2 rounded-lg text-sm transition-colors"
+                    style={{ color: 'var(--sidebar-text)' }}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'var(--sidebar-hover)';
+                        e.currentTarget.style.color = 'var(--sidebar-activeText)';
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.color = 'var(--sidebar-text)';
+                    }}
                     >
                         <div className="flex items-center gap-2">
                             <span className="opacity-70 scale-75">{sub.icon}</span>
@@ -241,7 +266,7 @@ const Layout: React.FC<LayoutProps> = ({
                         {sub.count !== undefined && sub.count > 0 && (
                             <span className={`text-[10px] px-2 py-0.5 rounded-full ${
                                 sub.label === 'Просроченные' ? 'bg-red-500 text-white' : 
-                                sub.label === 'Активные' ? 'bg-indigo-500 text-white' : 'bg-slate-500 text-white'
+                                sub.label === 'Активные' ? 'bg-primary-500 text-white' : 'bg-slate-500 text-white'
                             }`}>
                                 {sub.count}
                             </span>
@@ -262,32 +287,38 @@ const Layout: React.FC<LayoutProps> = ({
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans">
       {/* Mobile Top Navbar */}
- {/* Mobile Top Navbar */}
-<header
-  className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-40"
+      <header className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-40">
+        <div className="h-16 flex items-center px-4">
+          <div className="flex flex-col w-full">
+            <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--color-primary-600)' }}>{appSettings.companyName}</h1>
+            {isOnline && isSyncing && (
+              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">
+                Синхронизация...
+              </span>
+            )}
+          </div>
+        </div>
+      </header>
 
->
-  <div className="h-16 flex items-center px-4">
-    <div className="flex flex-col w-full">
-      <h1 className="text-xl font-bold tracking-tight text-indigo-600">{appSettings.companyName}</h1>
-      {isOnline && isSyncing && (
-        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">
-          Синхронизация...
-        </span>
-      )}
-    </div>
-  </div>
-</header>
-
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto z-20">
-        <div className="p-6 border-b border-slate-800">
-          <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+      {/* Desktop Sidebar - Dynamic Theme Colors */}
+      <aside 
+        className="hidden md:flex flex-col w-64 h-screen fixed left-0 top-0 overflow-y-auto z-20 transition-colors duration-300"
+        style={{
+          backgroundColor: 'var(--sidebar-bg)',
+          color: 'var(--sidebar-text)',
+        }}
+      >
+        <div className="p-6 border-b" style={{ borderColor: 'var(--sidebar-border)' }}>
+          <h1 
+            className="text-2xl font-bold tracking-tight bg-clip-text text-transparent"
+            style={{
+              backgroundImage: 'linear-gradient(to right, var(--color-primary-400), var(--color-secondary-400))'
+            }}
+          >
             {appSettings.companyName}
           </h1>
           <div className="mt-2 flex gap-2">
-              {/*{!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}*/}
-              {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}
+              {isOnline && isSyncing && <span className="text-[10px] font-bold" style={{ color: 'var(--color-primary-400)', backgroundColor: 'rgba(96, 165, 250, 0.15)', borderColor: 'var(--color-primary-800)', border: '1px solid' }}>Синхронизация...</span>}
           </div>
           {user && !isInvestor && user.role !== 'admin' && (
               <div
@@ -312,28 +343,33 @@ const Layout: React.FC<LayoutProps> = ({
         </nav>
 
         {user && (
-             <div className="p-4 border-t border-slate-800">
-                <button onClick={onNavigateToProfile} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800 transition-colors">
-                    <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center font-bold">
+             <div className="p-4 border-t" style={{ borderColor: 'var(--sidebar-border)' }}>
+                <button onClick={onNavigateToProfile} className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors"
+                  style={{ color: 'var(--sidebar-text)' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--sidebar-hover)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold" 
+                         style={{ backgroundColor: 'var(--color-primary-500)', color: '#fff' }}>
                         {user.name.charAt(0).toUpperCase()}
                     </div>
                     <div>
                         <p className="font-semibold text-sm text-left">{user.name}</p>
-                        <p className="text-xs text-slate-400 text-left">{user.email}</p>
+                        <p className="text-xs opacity-70 text-left">{user.email}</p>
                     </div>
                 </button>
              </div>
         )}
       </aside>
 
-      {/* Main Content Area - Updated margins and centering */}
+      {/* Main Content Area */}
       <main className="flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50">
         <div className="w-full max-w-7xl mx-auto h-full">
             {children}
         </div>
       </main>
 
-      {/* Mobile Quick Actions Menu (Triggered by FAB) - ONLY FOR MANAGER/EMPLOYEE */}
+      {/* Mobile Quick Actions Menu */}
       {!isInvestor && isMenuOpen && (
         <div
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden flex flex-col justify-end pb-24 px-4 animate-fade-in"
@@ -344,7 +380,7 @@ const Layout: React.FC<LayoutProps> = ({
                  <h3 className="text-slate-500 font-bold text-sm uppercase px-2">Быстрые действия</h3>
              </div>
              <button onClick={() => handleActionClick('CREATE_SALE')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
-                <div className="bg-indigo-100 p-2 rounded-full text-indigo-600">{ICONS.Sales}</div>
+                <div className="bg-indigo-100 p-2 rounded-full" style={{ color: 'var(--color-primary-600)' }}>{ICONS.Sales}</div>
                 <span className="font-semibold">Оформить продажу</span>
              </button>
              <button onClick={() => handleActionClick('INCOME')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
@@ -384,6 +420,7 @@ const Layout: React.FC<LayoutProps> = ({
               <button
                   onClick={handleFabClick}
                   className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-300 transition-transform active:scale-95 ${isMenuOpen ? 'bg-slate-800 rotate-45' : 'bg-indigo-600'}`}
+                  style={{ backgroundColor: isMenuOpen ? 'var(--sidebar-bg)' : 'var(--color-primary-600)' }}
               >
                   {ICONS.Add}
               </button>
@@ -400,7 +437,6 @@ const Layout: React.FC<LayoutProps> = ({
             <button
                 onClick={() => {
                     if (isInvestor) {
-                        // Показываем меню с доступными разделами
                         setShowInvestorMobileMenu(true);
                     } else {
                         setView('MORE');
@@ -418,90 +454,85 @@ const Layout: React.FC<LayoutProps> = ({
                 <span className="text-[10px] mt-1 font-medium">{isInvestor ? 'Профиль' : 'Еще'}</span>
             </button>
 
-            {/* 📱 Мобильное меню для инвестора (показывает доступные разделы) */}
-{showInvestorMobileMenu && (
-  <div
-    className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in md:hidden"
-    onClick={() => setShowInvestorMobileMenu(false)}
-  >
-    <div
-      className="bg-white w-full max-w-sm rounded-t-3xl p-5 pb-8 shadow-2xl animate-slide-up"
-      onClick={e => e.stopPropagation()}
-    >
-      <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-        <h3 className="font-bold text-slate-800">Доступные разделы</h3>
-        <button
-          onClick={() => setShowInvestorMobileMenu(false)}
-          className="p-1 text-slate-400 hover:text-slate-600"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
+            {/* 📱 Мобильное меню для инвестора */}
+            {showInvestorMobileMenu && (
+              <div
+                className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in md:hidden"
+                onClick={() => setShowInvestorMobileMenu(false)}
+              >
+                <div
+                  className="bg-white w-full max-w-sm rounded-t-3xl p-5 pb-8 shadow-2xl animate-slide-up"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                    <h3 className="font-bold text-slate-800">Доступные разделы</h3>
+                    <button
+                      onClick={() => setShowInvestorMobileMenu(false)}
+                      className="p-1 text-slate-400 hover:text-slate-600"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
 
-      <div className="space-y-2">
-        {/* Договоры */}
-        {(investorPermissions?.canViewContracts) && (
-          <button
-            onClick={() => {
-              setShowInvestorMobileMenu(false);
-              setView('CONTRACTS');
-              onContractTabChange?.('ACTIVE');
-            }}
-            className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-indigo-50 rounded-xl text-left transition-colors"
-          >
-            <span className="text-indigo-600">{ICONS.File}</span>
-            <div>
-              <p className="font-semibold text-slate-800">Договоры</p>
-              <p className="text-xs text-slate-500">Просмотр активных сделок</p>
-            </div>
-          </button>
-        )}
+                  <div className="space-y-2">
+                    {(investorPermissions?.canViewContracts) && (
+                      <button
+                        onClick={() => {
+                          setShowInvestorMobileMenu(false);
+                          setView('CONTRACTS');
+                          onContractTabChange?.('ACTIVE');
+                        }}
+                        className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-indigo-50 rounded-xl text-left transition-colors"
+                      >
+                        <span className="text-indigo-600">{ICONS.File}</span>
+                        <div>
+                          <p className="font-semibold text-slate-800">Договоры</p>
+                          <p className="text-xs text-slate-500">Просмотр активных сделок</p>
+                        </div>
+                      </button>
+                    )}
 
-        {/* История */}
-        {(investorPermissions?.canViewHistory) && (
-          <button
-            onClick={() => {
-              setShowInvestorMobileMenu(false);
-              setView('OPERATIONS');
-            }}
-            className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-indigo-50 rounded-xl text-left transition-colors"
-          >
-            <span className="text-indigo-600">{ICONS.List}</span>
-            <div>
-              <p className="font-semibold text-slate-800">История операций</p>
-              <p className="text-xs text-slate-500">Все платежи и движения</p>
-            </div>
-          </button>
-        )}
+                    {(investorPermissions?.canViewHistory) && (
+                      <button
+                        onClick={() => {
+                          setShowInvestorMobileMenu(false);
+                          setView('OPERATIONS');
+                        }}
+                        className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-indigo-50 rounded-xl text-left transition-colors"
+                      >
+                        <span className="text-indigo-600">{ICONS.List}</span>
+                        <div>
+                          <p className="font-semibold text-slate-800">История операций</p>
+                          <p className="text-xs text-slate-500">Все платежи и движения</p>
+                        </div>
+                      </button>
+                    )}
 
-        {/* Профиль (заглушка, если нет других разрешений) */}
-        {!investorPermissions?.canViewContracts && !investorPermissions?.canViewHistory && (
-          <div className="text-center py-6 text-slate-400 text-sm">
-            Нет доступных разделов
-          </div>
-        )}
-      </div>
+                    {!investorPermissions?.canViewContracts && !investorPermissions?.canViewHistory && (
+                      <div className="text-center py-6 text-slate-400 text-sm">
+                        Нет доступных разделов
+                      </div>
+                    )}
+                  </div>
 
-      {/* Кнопка закрытия */}
-      <button
-        onClick={() => setShowInvestorMobileMenu(false)}
-        className="w-full mt-4 py-3 bg-slate-100 text-slate-700 font-medium rounded-xl hover:bg-slate-200 transition-colors"
-      >
-        Закрыть
-      </button>
-    </div>
-  </div>
-)}
-
+                  <button
+                    onClick={() => setShowInvestorMobileMenu(false)}
+                    className="w-full mt-4 py-3 bg-slate-100 text-slate-700 font-medium rounded-xl hover:bg-slate-200 transition-colors"
+                  >
+                    Закрыть
+                  </button>
+                </div>
+              </div>
+            )}
         </div>
-
       </nav>
-         {/* 🔹 Плавающая кнопка техподдержки (только десктоп) */}
-{supportButton && (
-  <div className="hidden md:block">
-    {supportButton}
-  </div>
-)}
+
+      {/* 🔹 Плавающая кнопка техподдержки (только десктоп) */}
+      {supportButton && (
+        <div className="hidden md:block">
+          {supportButton}
+        </div>
+      )}
     </div>
   );
 };

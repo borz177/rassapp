@@ -536,7 +536,7 @@ app.post(
   }
 
   // 🔥 Формируем ответ
-  responseText = `╔════════════════╗\n     *📋 Детали договоров*\n╚════════════════╝\n\n`;
+  responseText = `╔══════════════╗\n     *📋 Детали договоров*\n╚══════════════╝\n\n`;
 
   for (const [productName, data] of productsMap) {
     totalDebt += data.debt;
@@ -544,7 +544,6 @@ app.post(
 
     responseText += `━━━━━━━━━━━━━━━━━\n`;
     responseText += `🔹 *${productName}*\n`;
-    responseText += `━━━━━━━━━━━━━━━━━\n`;
     responseText += `• Ежемесячный платёж: *${formatMoney(data.monthly)} ₽*\n`;
 
     if (data.debt > 0.01) {
