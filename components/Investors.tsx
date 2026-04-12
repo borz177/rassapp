@@ -58,7 +58,7 @@ const Investors: React.FC<InvestorsProps> = ({
 const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    
+
 
     // 🔹 СТАЛО: имя обязательно, email — нет
     if (!formName.trim()) {
@@ -156,12 +156,7 @@ const handleSubmit = (e: React.FormEvent) => {
 
                       />
 
-                      {formEmail.trim() === '' && (
-    <p className="text-[10px] text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
-        ⚠️ Инвестор без email не сможет войти в систему.
-        Данные будут доступны только вам в панели администратора.
-    </p>
-)}
+
                       <input
                           type="text" // Visible for creation
                           placeholder={editingId ? "Новый пароль (необязательно)" : "Пароль"}
@@ -171,6 +166,12 @@ const handleSubmit = (e: React.FormEvent) => {
 
                       />
                   </div>
+                      {formEmail.trim() === '' && (
+    <p className="text-[10px] text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+        ⚠️ Инвестор без email не сможет войти в систему.
+        Данные будут доступны только вам в панели администратора.
+    </p>
+)}
                   <div className="grid grid-cols-2 gap-3">
                       {/* 🔹 Сумма инвестиций — ТОЛЬКО при создании */}
                       {!editingId && (
