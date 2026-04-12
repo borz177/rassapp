@@ -1,6 +1,6 @@
 
 const DB_NAME = 'InstallMateDB';
-const DB_VERSION = 1;
+const DB_VERSION = 3;
 const STORES = {
   SYNC_QUEUE: 'syncQueue',
   CACHE: 'cache'

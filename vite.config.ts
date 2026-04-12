@@ -105,16 +105,19 @@ export default defineConfig(({ mode }) => {
 
     // 🔹 Исключаем xlsx из предсборки
     optimizeDeps: {
-      exclude: ['xlsx']
+      exclude: ['xlsx','bcryptjs']
+
     },
 
     // 🔹 Настройки сборки
     build: {
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
-        external: ['xlsx'], // Используется как внешняя библиотека (CDN)
+
+        external: ['xlsx','bcryptjs'], // Используется как внешняя библиотека (CDN)
         output: {
           globals: {
+
             xlsx: 'XLSX' // Глобальная переменная из CDN
           }
         }
