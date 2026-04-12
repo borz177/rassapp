@@ -653,35 +653,97 @@ app.post(
 // Send Verification Code
 app.post('/api/auth/send-code', async (req, res) => {
   const { email, type } = req.body;
+
   try {
     const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
     const userExists = userCheck.rows.length > 0;
-    
+
     if (type === 'REGISTER' && userExists) {
       return res.status(400).json({ msg: 'Пользователь с таким Email уже существует' });
     }
     if (type === 'RESET' && !userExists) {
       return res.status(400).json({ msg: 'Пользователь не найден' });
     }
-    
+
     const code = generateCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    
+
     await pool.query(`
       INSERT INTO verification_codes (email, code, expires_at, attempts)
       VALUES ($1, $2, $3, 0)
       ON CONFLICT (email)
       DO UPDATE SET code = $2, expires_at = $3, attempts = 0
     `, [email, code, expiresAt]);
+
+    const subject = type === 'REGISTER'
+      ? '🔐 Код подтверждения регистрации — FinUchet'
+      : '🔄 Код восстановления пароля — FinUchet';
+
+    // 🎨 Простой шаблон с инлайн-стилями (работает во всех почтовиках)
+    const html = `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc">
+  <div style="max-width:480px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08)">
     
-    const subject = type === 'REGISTER' ? 'Код подтверждения регистрации' : 'Код восстановления пароля';
-    const message = `Ваш код подтверждения для FinUchet: ${code}. Код действителен 10 минут.`;
+    <!-- Шапка с градиентом -->
+    <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:24px;text-align:center">
+      <div style="color:#fff;font-size:20px;font-weight:600;margin-bottom:4px">FinUchet</div>
+      <div style="color:rgba(255,255,255,0.9);font-size:16px">
+        ${type === 'REGISTER' ? 'Добро пожаловать!' : 'Восстановление доступа'}
+      </div>
+    </div>
     
-    await sendEmail(email, subject, message);
+    <!-- Контент -->
+    <div style="padding:28px 24px">
+      <p style="margin:0 0 20px;color:#334155;font-size:15px;line-height:1.5">
+        Здравствуйте!<br><br>
+        ${type === 'REGISTER' 
+          ? 'Подтвердите ваш email для завершения регистрации в FinUchet.' 
+          : 'Используйте код ниже для сброса пароля.'}
+      </p>
+      
+      <!-- Блок с кодом -->
+      <div style="background:#f1f5f9;border:2px dashed:#cbd5e1;border-radius:10px;padding:20px;text-align:center;margin:24px 0">
+        <div style="font-size:28px;font-weight:700;color:#1e293b;letter-spacing:6px;font-family:monospace">
+          ${code}
+        </div>
+        <div style="color:#64748b;font-size:13px;margin-top:8px">⏱ Действителен 10 минут</div>
+      </div>
+      
+      <p style="margin:0;color:#64748b;font-size:14px">
+        💡 Если кнопка не работает, скопируйте код вручную и вставьте его в приложении.
+      </p>
+    </div>
+    
+    <!-- Футер -->
+    <div style="background:#f8fafc;padding:16px 24px;text-align:center;border-top:1px solid #e2e8f0">
+      <p style="margin:4px 0;color:#94a3b8;font-size:13px">
+        ${type === 'REGISTER' 
+          ? 'Если вы не регистрировались, просто проигнорируйте это письмо.' 
+          : 'Если вы не запрашивали сброс пароля, проигнорируйте это письмо.'}
+      </p>
+      <p style="margin:8px 0 0;color:#94a3b8;font-size:13px">
+        © ${new Date().getFullYear()} FinUchet • <a href="https://wayuchet.ru" style="color:#4f46e5;text-decoration:none">wayuchet.ru</a>
+      </p>
+    </div>
+    
+  </div>
+</body>
+</html>
+    `;
+
+    // Текстовая версия для фолбэка
+    const text = `Ваш код подтверждения для FinUchet: ${code}. Код действителен 10 минут.`;
+
+    // 📧 Отправка с поддержкой HTML
+    await sendEmail(email, subject, text, html);
+
     res.json({ msg: 'Код отправлен' });
+
   } catch (err) {
     console.error('Send Code Error:', err);
-    res.status(500).send('Server error');
+    res.status(500).json({ msg: 'Ошибка сервера при отправке кода' });
   }
 });
 
