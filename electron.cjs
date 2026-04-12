@@ -9,13 +9,6 @@ function createWindow() {
   icon: path.join(__dirname, "build", "icon.ico"),
 
 
-   frame: false,
-
-    // 🔹 Цвет фона при загрузке (должен совпадать с navbar.bg)
-    backgroundColor: '#1e1b4b',
-
-    // 🔹 Показывать окно после загрузки
-    show: false,
 
 })
 
