@@ -134,30 +134,6 @@ const initDB = async () => {
       END $$;
     `);
 
-
-
-    await pool.query(`
-      DO $$
-      BEGIN
-        -- Делаем email nullable (UNIQUE остаётся, NULL не конфликтует)
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns 
-          WHERE table_name='users' AND column_name='email' AND is_nullable='NO'
-        ) THEN
-          ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
-        END IF;
-        
-        -- Делаем password nullable
-        IF EXISTS (
-          SELECT 1 FROM information_schema.columns 
-          WHERE table_name='users' AND column_name='password' AND is_nullable='NO'
-        ) THEN
-          ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
-        END IF;
-      END $$;
-    `);
-
-
     // Data Items Table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS data_items (
@@ -817,18 +793,12 @@ app.post('/api/auth/reset-password', async (req, res) => {
 // ✅ ИСПРАВЛЕННЫЙ ЛОГИН С RATE LIMITING
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
-  const user = result.rows[0];
   
   // ✅ Простая валидация входных данных
   if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
     return res.status(400).json({ msg: 'Email и пароль обязательны' });
   }
-  if (!user.password) {
-  return res.status(403).json({ msg: 'Для этого аккаунта вход по паролю не настроен' });
-}
 
-const isMatch = await bcrypt.compare(password, user.password);
-if (!isMatch) return res.status(400).json({ msg: 'Неверные учетные данные' });
   try {
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) return res.status(400).json({ msg: 'Неверные учетные данные' });
@@ -862,7 +832,6 @@ if (!isMatch) return res.status(400).json({ msg: 'Неверные учетны�
 // Get current user
 app.get('/api/auth/me', auth, async (req, res) => {
   try {
-
     // 🔥 ДОБАВИЛИ phone в SELECT
     const result = await pool.query(
       'SELECT id, name, email, phone, role, manager_id, subscription, whatsapp_settings, api_key FROM users WHERE id = $1',
@@ -1149,372 +1118,179 @@ app.post('/api/users/manage', auth, async (req, res) => {
   }
 
   try {
+    if (action === 'create') {
+      const { name, email, password, role, permissions, allowedInvestorIds, phone } = userData;
 
-if (action === 'create') {
-  const { name, email, password, role, permissions, allowedInvestorIds, phone } = userData;
+      // Check existence
+      const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+      if (userCheck.rows.length > 0) {
+        return res.status(400).json({ msg: 'User already exists' });
+      }
 
-  // =================================================================
-  // 🔹 СЛУЧАЙ 1: Инвестор БЕЗ email — создаём ТОЛЬКО в data_items
-  // =================================================================
-  if (role === 'investor' && (!email || !email.trim())) {
+      // Create ID
+      const id = role === 'investor' ? `u_inv_${Date.now()}` : `u_emp_${Date.now()}`;
 
-    // Генерируем уникальный ID для инвестора (префикс inv_ для ясности)
-    const investorId = `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Hash Password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Данные инвестора для data_items
-    const investorData = {
-      id: investorId,
-      userId: req.user.id,  // Ссылка на менеджера-владельца
-      name: name?.trim() || '',
-      email: '',            // Пустой — нет доступа к входу
-      phone: phone || '',
-      joinedDate: new Date().toISOString(),
-      initialAmount: 0,
-      profitPercentage: 0,
-      permissions: permissions || { canViewContracts: false, canViewHistory: false },
-      notes: 'Создан без логина — доступ только через панель менеджера',
-      color: '#' + Math.floor(Math.random()*16777215).toString(16)
-    };
+      // Insert linked to current manager (req.user.id)
+      await pool.query(
+        `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, phone) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          id,
+          name,
+          email,
+          hashedPassword,
+          role,
+          req.user.id,
+          JSON.stringify(permissions || {}),
+          JSON.stringify(allowedInvestorIds || []),
+          phone || null
+        ]
+      );
 
-    // 1. Сохраняем инвестора в data_items
-    await pool.query(`
-      INSERT INTO data_items (id, user_id, type, data, created_at, updated_at)
-      VALUES ($1, $2, 'investors', $3, NOW(), NOW())
-    `, [investorId, req.user.id, JSON.stringify(investorData)]);
+      return res.json({
+        id, name, email, role, managerId: req.user.id, permissions, allowedInvestorIds, phone
+      });
+    }
 
-    // 2. Создаём счёт инвестора (привязанный к этому инвестору)
-    const accountId = `acc_${investorId}`;
-    const accountData = {
-      id: accountId,
-      userId: req.user.id,
-      name: `Счёт: ${name?.trim() || 'Инвестор'}`,
-      type: 'INVESTOR',
-      ownerId: investorId,  // 🔹 Ссылка на ID инвестора из data_items
-      balance: 0,
-      currency: 'RUB',
-      isArchived: false
-    };
-    await pool.query(`
-      INSERT INTO data_items (id, user_id, type, data, created_at, updated_at)
-      VALUES ($1, $2, 'accounts', $3, NOW(), NOW())
-    `, [accountId, req.user.id, JSON.stringify(accountData)]);
+    if (action === 'delete') {
+  const investorId = userData.id;
+  const managerId = req.user.id;
 
-    // 🔹 Возвращаем ТОЛЬКО investorData — фронтенд добавит его в стейт один раз
-    return res.json({
-      success: true,
-      investor: investorData,  // ← Один объект, без дублей
-      account: accountData,
-      message: 'Инвестор создан без доступа к входу (только просмотр)'
-    });
-  }
+  // 1. Удаляем из users (всегда под manager_id)
+  await pool.query('DELETE FROM users WHERE id = $1 AND manager_id = $2', [investorId, managerId]);
 
-  // =================================================================
-  // 🔹 СЛУЧАЙ 2: Пользователь/инвестор С email — создаём в users + data_items
-  // =================================================================
-  const cleanEmail = email?.trim();
-  if (!cleanEmail) {
-    return res.status(400).json({ msg: 'Email обязателен для пользователей с доступом к входу' });
-  }
+  // 2. ✅ Удаляем профиль инвестора (ищем в обоих местах)
+  await pool.query(`
+    DELETE FROM data_items 
+    WHERE type = 'investors' 
+    AND data->>'id' = $1 
+    AND (user_id = $2 OR user_id = $1)  -- ← Проверяем и manager_id, и investor_id
+  `, [investorId, managerId]);
 
-  // Проверка: не занят ли email
-  const userCheck = await pool.query('SELECT id FROM users WHERE email = $1', [cleanEmail]);
-  if (userCheck.rows.length > 0) {
-    return res.status(400).json({ msg: 'Пользователь с таким Email уже существует' });
-  }
+  // 3. ✅ Удаляем счёт инвестора (ищем в обоих местах)
+  await pool.query(`
+    DELETE FROM data_items 
+    WHERE type = 'accounts' 
+    AND data->>'ownerId' = $1 
+    AND (user_id = $2 OR user_id = $1)
+  `, [investorId, managerId]);
 
-  // Проверка пароля
-  if (!password || password.trim().length < 6) {
-    return res.status(400).json({ msg: 'Пароль должен содержать минимум 6 символов' });
-  }
+  // 4. ✅ Удаляем операции инвестора (универсальный поиск)
+  await pool.query(`
+    DELETE FROM data_items 
+    WHERE (user_id = $1 OR user_id = $2)  -- ← Проверяем оба user_id
+    AND type IN ('sales', 'expenses')
+    AND (
+      data->>'accountId' = ANY(
+        SELECT data->>'id' FROM data_items 
+        WHERE type = 'accounts' AND data->>'ownerId' = $3
+      )
+      OR data->>'customerId' = $3
+    )
+  `, [managerId, investorId, investorId]);
 
-  // Генерация ID: для инвесторов используем тот же ID в users и data_items!
-  const id = role === 'investor' ? `u_inv_${Date.now()}` : `u_emp_${Date.now()}`;
-  const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash(password.trim(), salt);
-
-  // 1. Вставка в таблицу users (только для аутентификации!)
-  await pool.query(
-    `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, phone, created_at, updated_at) 
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())`,
-    [
-      id,
-      name?.trim() || '',
-      cleanEmail,
-      hashedPassword,
-      role,
-      req.user.id,
-      JSON.stringify(permissions || {}),
-      JSON.stringify(allowedInvestorIds || []),
-      phone || null
-    ]
-  );
-
-  // 2. 🔹 Для инвесторов: создаём запись в data_items — С ТЕМ ЖЕ ID
-  if (role === 'investor') {
-    const investorData = {
-      id: id,  // 🔹 КЛЮЧЕВОЕ: тот же ID, что и в users (u_inv_...)
-      userId: req.user.id,
-      name: name?.trim() || '',
-      email: cleanEmail,
-      phone: phone || '',
-      joinedDate: new Date().toISOString(),
-      initialAmount: 0,
-      profitPercentage: 0,
-      permissions: permissions || { canViewContracts: false, canViewHistory: false },
-      notes: '',
-      color: '#' + Math.floor(Math.random()*16777215).toString(16)
-    };
-
-    await pool.query(`
-      INSERT INTO data_items (id, user_id, type, data, created_at, updated_at)
-      VALUES ($1, $2, 'investors', $3, NOW(), NOW())
-    `, [id, req.user.id, JSON.stringify(investorData)]);
-
-    // Создаём счёт инвестора
-    const accountId = `acc_${id}`;  // 🔹 Привязка к тому же ID
-    await pool.query(`
-      INSERT INTO data_items (id, user_id, type, data, created_at, updated_at)
-      VALUES ($1, $2, 'accounts', $3, NOW(), NOW())
-    `, [accountId, req.user.id, JSON.stringify({
-      id: accountId,
-      userId: req.user.id,
-      name: `Счёт: ${name?.trim() || 'Инвестор'}`,
-      type: 'INVESTOR',
-      ownerId: id,  // 🔹 ownerId = ID инвестора (из users/data_items)
-      balance: 0,
-      currency: 'RUB',
-      isArchived: false
-    })]);
-
-    // 🔹 Возвращаем investorData — фронтенд добавит его в стейт ОДИН РАЗ
-    return res.json({
-      success: true,
-      investor: investorData,  // ← Один объект, ID совпадает с users
-      message: 'Инвестор создан с доступом к входу'
-    });
-  }
-
-  // 3. 🔹 Для сотрудников/менеджеров: возвращаем базовые данные
-  return res.json({
-    success: true,
-    id,
-    name: name?.trim(),
-    email: cleanEmail,
-    role,
-    managerId: req.user.id,
-    permissions,
-    allowedInvestorIds,
-    phone
-  });
+  return res.json({ success: true, id: investorId });
 }
 
-    // =====================================================
-    // === DELETE: Удаление пользователя/инвестора ===
-    // =====================================================
-    if (action === 'delete') {
-      const investorId = userData.id;
-      const managerId = req.user.id;
+   if (action === 'update') {
+  const { id, name, email, permissions, allowedInvestorIds, password, phone } = userData;
+  const isSelfUpdate = (id === req.user.id);
 
-      // 1. Удаляем из users (если есть запись)
-      await pool.query('DELETE FROM users WHERE id = $1 AND manager_id = $2', [investorId, managerId]);
+  try {
+    // Безопасная сериализация JSON
+    const permJson = permissions !== undefined ? JSON.stringify(permissions) : null;
+    const allowedJson = allowedInvestorIds !== undefined ? JSON.stringify(allowedInvestorIds) : null;
 
-      // 2. Удаляем профиль инвестора из data_items (ищем в обоих местах)
-      await pool.query(`
-        DELETE FROM data_items 
-        WHERE type = 'investors' 
-        AND data->>'id' = $1 
-        AND (user_id = $2 OR user_id = $1)
-      `, [investorId, managerId]);
+    // 🔹 Преобразуем пустые строки в NULL, чтобы COALESCE корректно очищал поля
+    const safeName = name?.trim() || null;
+    const safeEmail = email?.trim() || null;
+    const safePhone = phone?.trim() || null;
 
-      // 3. Удаляем счёт инвестора
-      await pool.query(`
-        DELETE FROM data_items 
-        WHERE type = 'accounts' 
-        AND data->>'ownerId' = $1 
-        AND (user_id = $2 OR user_id = $1)
-      `, [investorId, managerId]);
+    // 🔹 COALESCE сохраняет старое значение, если пришло null
+    let query = `UPDATE users SET 
+      name = COALESCE($1, name), 
+      email = COALESCE($2, email), 
+      permissions = COALESCE($3, permissions), 
+      allowed_investor_ids = COALESCE($4, allowed_investor_ids), 
+      phone = COALESCE($5, phone), 
+      updated_at = NOW() 
+      WHERE id = $6`;
 
-      // 4. Удаляем операции инвестора (продажи/расходы)
-      await pool.query(`
-        DELETE FROM data_items 
-        WHERE (user_id = $1 OR user_id = $2)
-        AND type IN ('sales', 'expenses')
-        AND (
-          data->>'accountId' = ANY(
-            SELECT data->>'id' FROM data_items 
-            WHERE type = 'accounts' AND data->>'ownerId' = $3
-          )
-          OR data->>'customerId' = $3
-        )
-      `, [managerId, investorId, investorId]);
+    let params = [
+      safeName,
+      safeEmail,
+      permJson,
+      allowedJson,
+      safePhone,  // ✅ Пустая строка → NULL → телефон очистится
+      id
+    ];
 
-      return res.json({ success: true, id: investorId });
+    // Проверка manager_id только для чужих профилей
+    if (!isSelfUpdate) {
+      query += ` AND manager_id = $7`;
+      params.push(req.user.id);
     }
 
-    // =====================================================
-    // === UPDATE: Обновление пользователя/инвестора ===
-    // =====================================================
-    if (action === 'update') {
-      const { id, name, email, permissions, allowedInvestorIds, password, phone, role } = userData;
-      const isSelfUpdate = (id === req.user.id);
+    await pool.query(query, params);
 
-      // Получаем текущие данные пользователя (если есть в users)
-      const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
-      const existingUser = userResult.rows[0];
-
-      // 🔹 НОВАЯ ЛОГИКА: Если инвестор без логина получает email — создаём запись в users
-      if (role === 'investor' && email?.trim() && !existingUser) {
-        const cleanEmail = email.trim();
-
-        // Проверка: не занят ли email
-        const emailCheck = await pool.query('SELECT id FROM users WHERE email = $1', [cleanEmail]);
-        if (emailCheck.rows.length > 0 && emailCheck.rows[0].id !== id) {
-          return res.status(400).json({ msg: 'Email уже занят другим пользователем' });
-        }
-
-        // Требуем пароль при добавлении логина
-        if (!password || password.trim().length < 6) {
-          return res.status(400).json({ msg: 'При добавлении email требуется пароль (мин. 6 символов)' });
-        }
-
-        // Создаём запись в users
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password.trim(), salt);
-
-        await pool.query(`
-          INSERT INTO users (id, name, email, password, role, manager_id, phone, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-        `, [id, name?.trim() || '', cleanEmail, hashedPassword, 'investor', req.user.id, phone || null]);
-
-        // Обновляем email в data_items
-        await pool.query(`
-          UPDATE data_items 
-          SET data = jsonb_set(data, '{email}', $1), updated_at = NOW()
-          WHERE id = $2 AND type = 'investors'
-        `, [JSON.stringify(cleanEmail), id]);
-
-        // Возвращаем обновлённого пользователя
-        const updatedUser = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
-        return res.json({
-          success: true,
-          user: {
-            id: updatedUser.rows[0].id,
-            name: updatedUser.rows[0].name,
-            email: updatedUser.rows[0].email,
-            phone: updatedUser.rows[0].phone,
-            role: updatedUser.rows[0].role,
-            managerId: updatedUser.rows[0].manager_id,
-            permissions: updatedUser.rows[0].permissions,
-            allowedInvestorIds: updatedUser.rows[0].allowed_investor_ids
-          },
-          message: 'Инвестору добавлен доступ к входу'
-        });
-      }
-
-      // 🔹 СТАНДАРТНОЕ ОБНОВЛЕНИЕ (если пользователь есть в users)
-      if (existingUser) {
-        // Безопасная сериализация JSON
-        const permJson = permissions !== undefined ? JSON.stringify(permissions) : null;
-        const allowedJson = allowedInvestorIds !== undefined ? JSON.stringify(allowedInvestorIds) : null;
-
-        // Преобразуем пустые строки в NULL для COALESCE
-        const safeName = name?.trim() || null;
-        const safeEmail = email?.trim() || null;
-        const safePhone = phone?.trim() || null;
-
-        let query = `UPDATE users SET 
-          name = COALESCE($1, name), 
-          email = COALESCE($2, email), 
-          permissions = COALESCE($3, permissions), 
-          allowed_investor_ids = COALESCE($4, allowed_investor_ids), 
-          phone = COALESCE($5, phone), 
-          updated_at = NOW() 
-          WHERE id = $6`;
-
-        let params = [safeName, safeEmail, permJson, allowedJson, safePhone, id];
-
-        // Проверка manager_id только для чужих профилей
-        if (!isSelfUpdate) {
-          query += ` AND manager_id = $7`;
-          params.push(req.user.id);
-        }
-
-        await pool.query(query, params);
-
-        // Смена пароля (отдельно, без COALESCE)
-        if (password && password.trim().length > 0) {
-          const salt = await bcrypt.genSalt(10);
-          const hashedPassword = await bcrypt.hash(password.trim(), salt);
-          await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, id]);
-        }
-
-        // Получаем и возвращаем обновлённого пользователя
-        const updatedUserResult = await pool.query(
-          `SELECT id, name, email, phone, role, manager_id, permissions, allowed_investor_ids, subscription, created_at, updated_at FROM users WHERE id = $1`,
-          [id]
-        );
-
-        if (updatedUserResult.rows.length === 0) {
-          return res.status(404).json({ msg: 'User not found after update' });
-        }
-
-        const updatedUser = updatedUserResult.rows[0];
-        return res.json({
-          success: true,
-          user: {
-            id: updatedUser.id,
-            name: updatedUser.name,
-            email: updatedUser.email,
-            phone: updatedUser.phone,
-            role: updatedUser.role,
-            managerId: updatedUser.manager_id,
-            permissions: updatedUser.permissions,
-            allowedInvestorIds: updatedUser.allowed_investor_ids,
-            subscription: updatedUser.subscription,
-            createdAt: updatedUser.created_at,
-            updatedAt: updatedUser.updated_at
-          }
-        });
-      } else {
-        // 🔹 Если пользователя нет в users, но есть в data_items (инвестор без логина)
-        // Обновляем только данные в data_items
-        const investorResult = await pool.query(`
-          SELECT data FROM data_items WHERE id = $1 AND type = 'investors' AND (user_id = $2 OR data->>'id' = $1)
-        `, [id, req.user.id]);
-
-        if (investorResult.rows.length > 0) {
-          const currentData = investorResult.rows[0].data;
-          const updatedData = {
-            ...currentData,
-            name: name !== undefined ? name : currentData.name,
-            phone: phone !== undefined ? phone : currentData.phone,
-            permissions: permissions !== undefined ? permissions : currentData.permissions,
-            // email не обновляем, т.к. для добавления нужно создать запись в users (см. выше)
-            updated_at: new Date().toISOString()
-          };
-
-          await pool.query(`
-            UPDATE data_items SET data = $1, updated_at = NOW() WHERE id = $2 AND type = 'investors'
-          `, [JSON.stringify(updatedData), id]);
-
-          return res.json({
-            success: true,
-            investor: updatedData,
-            message: 'Данные инвестора обновлены'
-          });
-        }
-
-        return res.status(404).json({ msg: 'Investor not found' });
-      }
+    // 🔹 Смена пароля (отдельно, без COALESCE)
+    if (password && password.trim().length > 0) {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+      await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, id]);
     }
 
-    return res.status(400).json({ msg: 'Invalid action' });
+    // 🔥 ПОЛУЧАЕМ ОБНОВЛЁННОГО ПОЛЬЗОВАТЕЛЯ С СЕРВЕРА
+    const updatedUserResult = await pool.query(
+      `SELECT 
+        id, name, email, phone, role, manager_id, 
+        permissions, allowed_investor_ids, subscription, 
+        created_at, updated_at 
+       FROM users WHERE id = $1`,
+      [id]
+    );
 
+    if (updatedUserResult.rows.length === 0) {
+      return res.status(404).json({ msg: 'User not found after update' });
+    }
+
+    const updatedUser = updatedUserResult.rows[0];
+
+    // 🔥 ВОЗВРАЩАЕМ ПОЛНОГО ПОЛЬЗОВАТЕЛЯ (фронтенд обновит стейт)
+    return res.json({
+      success: true,
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        phone: updatedUser.phone,
+        role: updatedUser.role,
+        managerId: updatedUser.manager_id,
+        permissions: updatedUser.permissions,
+        allowedInvestorIds: updatedUser.allowed_investor_ids,
+        subscription: updatedUser.subscription,
+        createdAt: updatedUser.created_at,
+        updatedAt: updatedUser.updated_at
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Database error:', err.message);
+    return res.status(500).json({ msg: 'Update failed', error: err.message });
+  }
+}
+
+    res.json({ success: true });
   } catch (e) {
-    console.error('Manage users error:', e);
-    res.status(500).json({ msg: 'Server Error', error: e.message });
+    console.error(e);
+    res.status(500).send('Server Error');
   }
 });
+
 // --- ADMIN ROUTES ---
 app.get('/api/admin/users', adminAuth, async (req, res) => {
   try {

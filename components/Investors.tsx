@@ -42,67 +42,44 @@ const Investors: React.FC<InvestorsProps> = ({
       setActiveMenuId(null);
   };
 
-  // ✅ ИСПРАВЛЕНО: безопасная обработка полей с fallback на пустую строку
   const handleStartEdit = (inv: Investor) => {
-      setFormName(inv.name || '');
-      setFormPhone(inv.phone || '');
-      setFormEmail(inv.email || '');  // ✅ Fallback: undefined → ''
-      setFormAmount((inv.initialAmount || 0).toString());
-      setFormProfitPercentage((inv.profitPercentage || 0).toString());
+      setFormName(inv.name);
+      setFormPhone(inv.phone);
+      setFormEmail(inv.email);
+      setFormAmount(inv.initialAmount.toString());
+      setFormProfitPercentage(inv.profitPercentage.toString());
       setFormPermissions(inv.permissions || { canViewContracts: false, canViewHistory: false });
-      setFormPassword('');
+      setFormPassword(''); // Password not typically editable directly or shown
       setEditingId(inv.id);
       setIsAdding(true);
       setActiveMenuId(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-
-      // ✅ Безопасная обработка: защит от .trim() на undefined
-      const safeName = formName?.trim() || '';
-      const safeEmail = formEmail?.trim() || '';
-      const safePhone = formPhone?.trim() || '';
-
-      // Имя обязательно
-      if (!safeName) {
-          alert("Имя инвестора обязательно");
-          return;
-      }
-
-      if (editingId && onUpdateInvestor) {
-          const inv = investors.find(i => i.id === editingId);
-          if (inv) {
-              onUpdateInvestor({
-                  ...inv,
-                  name: safeName,
-                  phone: safePhone,
-                  email: safeEmail || undefined,  // ✅ Пустая строка → undefined
-                  initialAmount: Number(formAmount) || inv.initialAmount || 0,
-                  profitPercentage: Number(formProfitPercentage) || 0,
-                  permissions: formPermissions
-              }, formPassword || undefined);
-          }
-          resetForm();
-
-      } else {
-          // Создание нового: пароль обязателен только если указан email
-          if (safeEmail && !formPassword) {
-              alert("Если указан Email, пароль обязателен для входа");
-              return;
-          }
-
-          onAddInvestor(
-              safeName,
-              safePhone,
-              safeEmail,              // ✅ Может быть пустым
-              formPassword || '',     // ✅ Может быть пустым
-              Number(formAmount) || 0,
-              Number(formProfitPercentage) || 0,
-              formPermissions
-          );
-          resetForm();
-      }
+    e.preventDefault();
+    if(formName.trim() && formEmail.trim()) {
+        if (editingId && onUpdateInvestor) {
+            const inv = investors.find(i => i.id === editingId);
+            if (inv) {
+                onUpdateInvestor({
+                    ...inv,
+                    name: formName,
+                    phone: formPhone,
+                    email: formEmail,
+                    initialAmount: Number(formAmount),
+                    profitPercentage: Number(formProfitPercentage),
+                    permissions: formPermissions
+                }, formPassword);
+            }
+        } else {
+            if (!formPassword) {
+                alert("Пароль обязателен для нового инвестора");
+                return;
+            }
+            onAddInvestor(formName, formPhone, formEmail, formPassword, Number(formAmount), Number(formProfitPercentage), formPermissions);
+        }
+        resetForm();
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -137,94 +114,60 @@ const Investors: React.FC<InvestorsProps> = ({
 
               <div className="space-y-3">
                   <input
-                      placeholder="Имя Фамилия *"
-                      className="w-full p-3 border border-slate-200 rounded-xl outline-none"
-                      value={formName}
-                      onChange={e => setFormName(e.target.value)}
-                      required
+                    placeholder="Имя Фамилия"
+                    className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                    value={formName}
+                    onChange={e => setFormName(e.target.value)}
+                    required
                   />
                   <input
-                      placeholder="Телефон"
-                      className="w-full p-3 border border-slate-200 rounded-xl outline-none"
-                      value={formPhone}
-                      onChange={e => setFormPhone(e.target.value)}
+                    placeholder="Телефон"
+                    className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                    value={formPhone}
+                    onChange={e => setFormPhone(e.target.value)}
                   />
                   <div className="grid grid-cols-2 gap-3">
-                      <input
-                          type="email"
-                          placeholder="Email для входа (необязательно)"
-                          className="w-full p-3 border border-slate-200 rounded-xl outline-none"
-                          value={formEmail}
-                          onChange={e => setFormEmail(e.target.value)}
-                          // ✅ Убрали required — email необязателен
-                      />
-                      <input
-                          type="text"
-                          placeholder={editingId ? "Новый пароль (необязательно)" : "Пароль"}
-                          className="w-full p-3 border border-slate-200 rounded-xl outline-none"
-                          value={formPassword}
-                          onChange={e => setFormPassword(e.target.value)}
-                          required={!editingId && !!formEmail.trim()} // ✅ Пароль нужен только при создании с email
-                      />
+                    <input
+                        type="email"
+                        placeholder="Email (Логин)"
+                        className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                        value={formEmail}
+                        onChange={e => setFormEmail(e.target.value)}
+                        required
+                    />
+                    <input
+                        type="text" // Visible for creation
+                        placeholder={editingId ? "Новый пароль (необязательно)" : "Пароль"}
+                        className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                        value={formPassword}
+                        onChange={e => setFormPassword(e.target.value)}
+                        required={!editingId}
+                    />
                   </div>
-
-                  {/* ✅ Подсказка: инвестор без email не может войти */}
-                  {formEmail.trim() === '' && (
-                      <p className="text-[10px] text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
-                          ⚠️ Инвестор без email не сможет войти в систему.
-                          Данные будут доступны только вам в панели администратора.
-                      </p>
-                  )}
-
-                  {/* Предупреждение: указан email, но нет пароля */}
-                  {formEmail.trim() && !formPassword && !editingId && (
-                      <p className="text-[10px] text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200">
-                          🔐 Указан email, но не задан пароль — инвестор не сможет войти.
-                      </p>
-                  )}
-
                   <div className="grid grid-cols-2 gap-3">
-                      {/* 🔹 Сумма инвестиций — ТОЛЬКО при создании */}
-                      {!editingId && (
-                          <div className="relative">
-                              <span className="absolute left-3 top-3.5 text-slate-400">₽</span>
-                              <input
-                                  type="number"
-                                  placeholder="Сумма инвестиций"
-                                  className="w-full p-3 pl-8 border border-slate-200 rounded-xl outline-none font-bold"
-                                  value={formAmount}
-                                  onChange={e => setFormAmount(e.target.value)}
-                                  required={!editingId}
-                              />
-                          </div>
-                      )}
-
-                      {/* 🔹 Процент прибыли — всегда виден */}
-                      <div className={`relative ${!editingId ? '' : 'col-span-2'}`}>
-                          <span className="absolute right-4 top-3.5 text-slate-400">%</span>
-                          <input
-                              type="number"
-                              placeholder="Процент прибыли"
-                              className="w-full p-3 pr-8 border border-slate-200 rounded-xl outline-none font-bold"
-                              value={formProfitPercentage}
-                              onChange={e => setFormProfitPercentage(e.target.value)}
-                              required
-                          />
-                      </div>
+                    <div className="relative">
+                       <span className="absolute left-3 top-3.5 text-slate-400">₽</span>
+                       <input
+                          type="number"
+                          placeholder="Сумма инвестиций"
+                          className="w-full p-3 pl-8 border border-slate-200 rounded-xl outline-none font-bold"
+                          value={formAmount}
+                          onChange={e => setFormAmount(e.target.value)}
+                          required
+                      />
+                    </div>
+                     <div className="relative">
+                       <span className="absolute right-4 top-3.5 text-slate-400">%</span>
+                       <input
+                          type="number"
+                          placeholder="Процент прибыли"
+                          className="w-full p-3 pr-8 border border-slate-200 rounded-xl outline-none font-bold"
+                          value={formProfitPercentage}
+                          onChange={e => setFormProfitPercentage(e.target.value)}
+                          required
+                      />
+                    </div>
                   </div>
-
-                  {/* ✅ Опционально: показ текущей суммы при редактировании */}
-                  {editingId && formAmount && (
-                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                          <p className="text-xs text-slate-500 mb-1">Первоначальные инвестиции</p>
-                          <p className="text-lg font-bold text-slate-800">
-                              {Number(formAmount).toLocaleString('ru-RU')} ₽
-                          </p>
-                          <p className="text-[10px] text-slate-400 mt-1">
-                              • Поле доступно только при создании инвестора
-                          </p>
-                      </div>
-                  )}
 
                   {/* Permissions */}
                   <div className="bg-slate-50 p-4 rounded-xl space-y-3">
@@ -232,10 +175,10 @@ const Investors: React.FC<InvestorsProps> = ({
                       <div className="space-y-2">
                           <label className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
                               <input
-                                  type="checkbox"
-                                  className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                  checked={formPermissions.canViewContracts}
-                                  onChange={e => setFormPermissions({...formPermissions, canViewContracts: e.target.checked})}
+                                type="checkbox"
+                                className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                checked={formPermissions.canViewContracts}
+                                onChange={e => setFormPermissions({...formPermissions, canViewContracts: e.target.checked})}
                               />
                               <div className="text-sm">
                                   <span className="font-semibold text-slate-800 block">Просмотр договоров</span>
@@ -244,10 +187,10 @@ const Investors: React.FC<InvestorsProps> = ({
                           </label>
                           <label className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
                               <input
-                                  type="checkbox"
-                                  className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                  checked={formPermissions.canViewHistory}
-                                  onChange={e => setFormPermissions({...formPermissions, canViewHistory: e.target.checked})}
+                                type="checkbox"
+                                className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                checked={formPermissions.canViewHistory}
+                                onChange={e => setFormPermissions({...formPermissions, canViewHistory: e.target.checked})}
                               />
                               <div className="text-sm">
                                   <span className="font-semibold text-slate-800 block">Просмотр истории</span>
@@ -276,21 +219,18 @@ const Investors: React.FC<InvestorsProps> = ({
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold text-lg">
-                            {inv.name?.charAt(0) || '?'}
+                            {inv.name.charAt(0)}
                         </div>
                         <div>
-                            <h3 className="font-bold text-slate-800">{inv.name || 'Без имени'}</h3>
-                            {/* ✅ Безопасное отображение email */}
-                            <p className="text-xs text-slate-500">
-                                {inv.email ? inv.email : <span className="text-slate-400 italic">без email</span>}
-                            </p>
+                            <h3 className="font-bold text-slate-800">{inv.name}</h3>
+                            <p className="text-xs text-slate-500">{inv.email}</p>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-3">
                         <div className="text-right mr-2 hidden sm:block">
                             <p className="text-xs text-slate-400">Процент</p>
-                            <p className="text-sm font-bold text-indigo-600">{inv.profitPercentage || 0}%</p>
+                            <p className="text-sm font-bold text-indigo-600">{inv.profitPercentage}%</p>
                         </div>
                         <button
                             onClick={(e) => {

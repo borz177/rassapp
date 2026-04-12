@@ -71,7 +71,7 @@ export interface Investor {
   id: string; // This will match the User.id
   userId: string; // The Manager's ID
   name: string;
-  email?: string;
+  email: string; // Login email
   phone: string;
   joinedDate: string;
   // This now represents the current investment balance, not just the initial deposit.
@@ -213,10 +213,6 @@ export interface AppSettings {
   theme?: 'PURPLE' | 'BLUE' | 'GREEN' | 'BLACK';
   showCents?: boolean;
 }
-
-
-
-
 
 export type ViewState =
   | 'DASHBOARD'
