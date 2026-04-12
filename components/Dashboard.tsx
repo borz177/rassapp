@@ -217,32 +217,38 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [paymentDateFilter, setPaymentDateFilter] = useState<'ALL' | 'TODAY' | 'TOMORROW'>('ALL');
 
-  const calculatedStats = useMemo(() => {
-      const filteredSales = selectedAccountId
-          ? sales.filter(s => s.accountId === selectedAccountId)
-          : sales;
+ const calculatedStats = useMemo(() => {
+    const filteredSales = selectedAccountId
+        ? sales.filter(s => s.accountId === selectedAccountId)
+        : sales;
 
-      let totalRevenue = 0;
-      let totalOutstanding = 0;
-      let installmentSalesTotal = 0;
+    let totalRevenue = 0;
+    let totalOutstanding = 0;
+    let installmentSalesTotal = 0;
 
-      filteredSales.forEach(sale => {
-          const isSystemTransaction = sale.customerId.startsWith('system_');
-          if (!isSystemTransaction) {
-              const collected = sale.downPayment + sale.paymentPlan
-                  .filter(p => p.isPaid && p.isRealPayment !== false)
-                  .reduce((sum, p) => sum + p.amount, 0);
+    // 🔹 Создаём Set инвесторских ID для быстрой проверки
+    const investorIds = new Set(investors.map(i => i.id));
 
-              totalRevenue += collected;
-              totalOutstanding += sale.remainingAmount;
-              if (sale.type === 'INSTALLMENT') {
-                  installmentSalesTotal += sale.totalAmount;
-              }
-          }
-      });
+    filteredSales.forEach(sale => {
+        const isSystemTransaction = sale.customerId.startsWith('system_');
+        const isInvestorTransaction = investorIds.has(sale.customerId); // ← новая проверка
 
-      return { totalRevenue, totalOutstanding, installmentSalesTotal };
-  }, [sales, selectedAccountId]);
+        // Исключаем и системные, и инвесторские транзакции
+        if (!isSystemTransaction && !isInvestorTransaction) {
+            const collected = sale.downPayment + sale.paymentPlan
+                .filter(p => p.isPaid && p.isRealPayment !== false)
+                .reduce((sum, p) => sum + p.amount, 0);
+
+            totalRevenue += collected;
+            totalOutstanding += sale.remainingAmount;
+            if (sale.type === 'INSTALLMENT') {
+                installmentSalesTotal += sale.totalAmount;
+            }
+        }
+    });
+
+    return { totalRevenue, totalOutstanding, installmentSalesTotal };
+}, [sales, selectedAccountId, investors]); // ← добавили investors в зависимости
 
 
   const profitStats = useMemo(() => {
