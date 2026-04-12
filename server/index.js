@@ -622,18 +622,7 @@ app.post(
     calculatorUrl += `&l=${encodeURIComponent(shortRules)}`;
   }
 
-  // Определяем максимальный срок и ставку для отображения
-  let displayMaxTerm = maxMonths;
-  let displayRate = defaultRate;
 
-  if (termRates.length > 0) {
-    const sorted = [...termRates].sort((a, b) => b.months - a.months);
-    displayMaxTerm = sorted[0].months;
-    const rateForMax = sorted.find(r => r.months === displayMaxTerm);
-    if (rateForMax) {
-      displayRate = rateForMax.rate;
-    }
-  }
 
   // Формируем красивое сообщение
   responseText = `╔════════════════╗
@@ -649,7 +638,8 @@ app.post(
 
         await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId, responseText);
 
-        const updatedCustomer = { ...customerData, lastBotResponse: command, lastNoContractsMessage: customerData.lastNoContractsMessage };
+        const updatedCustomer = { ...customerData, lastBotResponse: command, lastCommand: command,              // ← Для защиты от повторов
+          lastCommandTime: now, lastNoContractsMessage: customerData.lastNoContractsMessage };
         await pool.query(`UPDATE data_items SET data = $1 WHERE id = $2`, [JSON.stringify(updatedCustomer), customerId]);
         return;
       }
