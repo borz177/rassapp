@@ -24,9 +24,12 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
 
   // 🔹 ФИЛЬТРАЦИЯ: Показываем только продажи этого инвестора
   const investorSales = useMemo(() => {
-    if (!investorAccount) return [];
-    return sales.filter(s => s.accountId === investorAccount.id);
-  }, [sales, investorAccount]);
+  if (!investorAccount) return [];
+  return sales.filter(s =>
+    s.accountId === investorAccount.id &&
+    !s.customerId.startsWith('system_')  // ← ИСКЛЮЧАЕМ инвестиции и системные операции
+  );
+}, [sales, investorAccount]);
 
   // 🔹 ФИЛЬТРАЦИЯ: Показываем только расходы этого инвестора
   const investorExpenses = useMemo(() => {
@@ -51,29 +54,35 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
   }, [investorSales, investorExpenses, investorAccount]);
 
   // 🔹 СТАТИСТИКА: Правильные расчёты
-  const stats = useMemo(() => {
-    let totalCollected = 0;
-    let totalOutstanding = 0;
-    let totalSalesAmount = 0;
+// 🔹 СТАТИСТИКА: Только клиентские сделки (исключаем инвестиции)
+const stats = useMemo(() => {
+  let totalCollected = 0;
+  let totalOutstanding = 0;
+  let totalSalesAmount = 0;
 
-    investorSales.forEach(sale => {
-      totalCollected += sale.downPayment;
-      sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
-        .forEach(p => totalCollected += p.amount);
+  investorSales.forEach(sale => {
+    // 🔥 ИСКЛЮЧАЕМ системные транзакции (взносы инвестора)
+    if (sale.customerId.startsWith('system_')) return;
 
-      totalOutstanding += sale.remainingAmount;
-      totalSalesAmount += sale.totalAmount;
-    });
+    // ✅ Считаем только клиентские платежи
+    totalCollected += sale.downPayment;
+    sale.paymentPlan
+      .filter(p => p.isPaid && p.isRealPayment !== false)
+      .forEach(p => totalCollected += p.amount);
 
-    const workingCapital = totalCollected + totalOutstanding;
+    totalOutstanding += sale.remainingAmount;
+    totalSalesAmount += sale.totalAmount;
+  });
 
-    return {
-      totalCollected,
-      totalOutstanding,
-      workingCapital,
-      totalSalesAmount
-    };
-  }, [investorSales]);
+  const workingCapital = totalCollected + totalOutstanding;
+
+  return {
+    totalCollected,      // ← "Собрано" (только от клиентов)
+    totalOutstanding,    // ← "Долг клиентов"
+    workingCapital,      // ← "В обороте" (только клиентская часть)
+    totalSalesAmount     // ← "Продажи" (только клиентские сделки)
+  };
+}, [investorSales]);  // ← investorSales уже отфильтрован по accountId
 
   // 🔹 ПРИБЫЛЬ: Как в InvestorDetails
   const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
