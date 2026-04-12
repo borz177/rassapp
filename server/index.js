@@ -476,7 +476,25 @@ app.post(
       else if (text.includes('условия')) command = 'conditions';
 
       if (command) {
-        if (customerData.lastBotResponse === command) return;
+          if (customerData.lastCommandTime === undefined) {
+    customerData.lastCommandTime = null;
+  }
+  if (customerData.lastCommand === undefined) {
+    customerData.lastCommand = null;
+  }
+
+  // 🔥 ЗАЩИТА ОТ СПАМА: 30 секунд между одинаковыми командами
+  const now = Date.now();
+  const lastCommandTime = customerData.lastCommandTime || 0;
+  const lastCommand = customerData.lastCommand;
+
+  if (lastCommand === command && (now - lastCommandTime) < 30000) {
+    const secondsLeft = Math.ceil((30000 - (now - lastCommandTime)) / 1000);
+    // Можно отправить сообщение клиенту (опционально):
+     await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId,
+     `⏳ Пожалуйста, подождите ${secondsLeft} сек. перед повторным запросом.`);
+    return;
+  }
 
         let responseText = '';
 
@@ -623,9 +641,6 @@ app.post(
 ╚════════════════╝\n\n`;
 
   responseText += `🏢 *${companyName}*\n\n`;
-  responseText += `• Срок: до *${displayMaxTerm} мес.*\n`;
-  responseText += `• Процентная ставка: от *${displayRate}%*\n`;
-  responseText += `• Первый взнос: от *0 ₽*\n\n`;
   responseText += `━━━━━━━━━━━━━━━━━\n\n`;
   responseText += `🔗 *Рассчитайте платёж онлайн:*\n`;
   responseText += `${calculatorUrl}\n\n`;
