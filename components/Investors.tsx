@@ -57,6 +57,7 @@ const Investors: React.FC<InvestorsProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
     if(formName.trim() && formEmail.trim()) {
         if (editingId && onUpdateInvestor) {
             const inv = investors.find(i => i.id === editingId);
@@ -66,12 +67,17 @@ const Investors: React.FC<InvestorsProps> = ({
                     name: formName,
                     phone: formPhone,
                     email: formEmail,
-                    initialAmount: Number(formAmount),
+                    initialAmount: Number(formAmount) || inv.initialAmount, // 🔹 Фоллбэк на старое значение
                     profitPercentage: Number(formProfitPercentage),
                     permissions: formPermissions
                 }, formPassword);
             }
         } else {
+            // 🔹 При создании — проверяем, что сумма заполнена
+            if (!formAmount || Number(formAmount) <= 0) {
+                alert("Сумма инвестиций обязательна для нового инвестора");
+                return;
+            }
             if (!formPassword) {
                 alert("Пароль обязателен для нового инвестора");
                 return;
@@ -80,7 +86,7 @@ const Investors: React.FC<InvestorsProps> = ({
         }
         resetForm();
     }
-  };
+};
 
   const handleDelete = (id: string) => {
       if(window.confirm("Удалить инвестора?")) {
@@ -145,44 +151,54 @@ const Investors: React.FC<InvestorsProps> = ({
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="relative">
-                       <span className="absolute left-3 top-3.5 text-slate-400">₽</span>
-                       <input
-                          type="number"
-                          placeholder="Сумма инвестиций"
-                          className="w-full p-3 pl-8 border border-slate-200 rounded-xl outline-none font-bold"
-                          value={formAmount}
-                          onChange={e => setFormAmount(e.target.value)}
-                          required
-                      />
-                    </div>
-                     <div className="relative">
-                       <span className="absolute right-4 top-3.5 text-slate-400">%</span>
-                       <input
-                          type="number"
-                          placeholder="Процент прибыли"
-                          className="w-full p-3 pr-8 border border-slate-200 rounded-xl outline-none font-bold"
-                          value={formProfitPercentage}
-                          onChange={e => setFormProfitPercentage(e.target.value)}
-                          required
-                      />
-                    </div>
+                      {/* 🔹 Сумма инвестиций — ТОЛЬКО при создании */}
+                      {!editingId && (
+                          <div className="relative">
+                              <span className="absolute left-3 top-3.5 text-slate-400">₽</span>
+                              <input
+                                  type="number"
+                                  placeholder="Сумма инвестиций"
+                                  className="w-full p-3 pl-8 border border-slate-200 rounded-xl outline-none font-bold"
+                                  value={formAmount}
+                                  onChange={e => setFormAmount(e.target.value)}
+                                  required={!editingId} // 🔹 Обязательно только при создании
+                              />
+                          </div>
+                      )}
+
+                      {/* 🔹 Процент прибыли — всегда виден */}
+                      <div className={`relative ${!editingId ? '' : 'col-span-2'}`}>
+                          <span className="absolute right-4 top-3.5 text-slate-400">%</span>
+                          <input
+                              type="number"
+                              placeholder="Процент прибыли"
+                              className="w-full p-3 pr-8 border border-slate-200 rounded-xl outline-none font-bold"
+                              value={formProfitPercentage}
+                              onChange={e => setFormProfitPercentage(e.target.value)}
+                              required
+                          />
+                      </div>
                   </div>
 
                   {/* Permissions */}
                   <div className="bg-slate-50 p-4 rounded-xl space-y-3">
                       <h4 className="text-sm font-bold text-slate-600">Права доступа</h4>
                       <div className="space-y-2">
-                          <label className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
+                          <label
+                              className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
                               <input
-                                type="checkbox"
-                                className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                checked={formPermissions.canViewContracts}
-                                onChange={e => setFormPermissions({...formPermissions, canViewContracts: e.target.checked})}
+                                  type="checkbox"
+                                  className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                  checked={formPermissions.canViewContracts}
+                                  onChange={e => setFormPermissions({
+                                      ...formPermissions,
+                                      canViewContracts: e.target.checked
+                                  })}
                               />
                               <div className="text-sm">
                                   <span className="font-semibold text-slate-800 block">Просмотр договоров</span>
-                                  <span className="text-xs text-slate-500">Доступ к странице "Договоры" (только свои)</span>
+                                  <span
+                                      className="text-xs text-slate-500">Доступ к странице "Договоры" (только свои)</span>
                               </div>
                           </label>
                           <label className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
