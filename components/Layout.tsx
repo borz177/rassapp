@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
 import { ICONS, APP_NAME, THEMES } from '../constants';
-
+import CustomTitleBar from './CustomTitleBar.tsx';
 interface LayoutProps {
   children: React.ReactNode;
   currentView: ViewState;
@@ -296,11 +296,13 @@ const renderNavbarItem = (item: any) => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
 
+        <CustomTitleBar />
       {/* 🔹 DESKTOP TOP NAVBAR */}
       <header
-        className="hidden md:flex items-center justify-between px-6 py-3 fixed top-0 left-0 right-0 z-50 transition-colors duration-300"
-        style={{
-          backgroundColor: 'var(--navbar-bg)',
+         className="hidden md:flex items-center justify-between px-6 py-3 fixed left-0 right-0 z-40 transition-colors duration-300"
+  style={{
+    top: '44px',  // 🔹 Высота CustomTitleBar (44px)
+    backgroundColor: 'var(--navbar-bg)',
           color: 'var(--navbar-text)',
           borderBottom: `1px solid var(--navbar-border)`,
           WebkitAppRegion: 'drag',

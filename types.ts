@@ -214,6 +214,28 @@ export interface AppSettings {
   showCents?: boolean;
 }
 
+
+// ============================================================================
+// 🔹 ELECTRON API TYPES (для кастомного заголовка окна)
+// ============================================================================
+
+export interface ElectronAPI {
+  minimize: () => void;
+  maximize: () => void;
+  close: () => void;
+}
+
+// Расширяем глобальный интерфейс Window для TypeScript
+declare global {
+  interface Window {
+    electronAPI?: ElectronAPI;
+  }
+}
+
+// Этот экспорт нужен, чтобы файл оставался модулем (для declare global)
+export {}
+
+
 export type ViewState =
   | 'DASHBOARD'
   | 'CASH_REGISTER'
