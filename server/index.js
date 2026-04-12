@@ -1149,153 +1149,164 @@ app.post('/api/users/manage', auth, async (req, res) => {
   }
 
   try {
-    // =====================================================
-    // === CREATE: Создание пользователя/инвестора ===
-    // =====================================================
-    if (action === 'create') {
-      const { name, email, password, role, permissions, allowedInvestorIds, phone } = userData;
 
-      // 🔹 НОВАЯ ЛОГИКА: Инвестор без email — создаём ТОЛЬКО в data_items
-      if (role === 'investor' && (!email || !email.trim())) {
+if (action === 'create') {
+  const { name, email, password, role, permissions, allowedInvestorIds, phone } = userData;
 
-        // Генерируем уникальный ID для инвестора (не в users, а для data_items)
-        const investorId = `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  // =================================================================
+  // 🔹 СЛУЧАЙ 1: Инвестор БЕЗ email — создаём ТОЛЬКО в data_items
+  // =================================================================
+  if (role === 'investor' && (!email || !email.trim())) {
 
-        // Данные инвестора для data_items
-        const investorData = {
-          id: investorId,
-          userId: req.user.id,  // Ссылка на менеджера-владельца
-          name: name?.trim() || '',
-          email: '',
-          phone: phone || '',
-          joinedDate: new Date().toISOString(),
-          initialAmount: 0,
-          profitPercentage: 0,
-          permissions: permissions || { canViewContracts: false, canViewHistory: false },
-          notes: 'Создан без логина — доступ только через панель менеджера',
-          color: '#' + Math.floor(Math.random()*16777215).toString(16)
-        };
+    // Генерируем уникальный ID для инвестора (префикс inv_ для ясности)
+    const investorId = `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        // 1. Сохраняем инвестора в data_items
-        await pool.query(`
-          INSERT INTO data_items (id, user_id, type, data, created_at, updated_at)
-          VALUES ($1, $2, 'investors', $3, NOW(), NOW())
-        `, [investorId, req.user.id, JSON.stringify(investorData)]);
+    // Данные инвестора для data_items
+    const investorData = {
+      id: investorId,
+      userId: req.user.id,  // Ссылка на менеджера-владельца
+      name: name?.trim() || '',
+      email: '',            // Пустой — нет доступа к входу
+      phone: phone || '',
+      joinedDate: new Date().toISOString(),
+      initialAmount: 0,
+      profitPercentage: 0,
+      permissions: permissions || { canViewContracts: false, canViewHistory: false },
+      notes: 'Создан без логина — доступ только через панель менеджера',
+      color: '#' + Math.floor(Math.random()*16777215).toString(16)
+    };
 
-        // 2. Создаём счёт инвестора (привязанный к этому инвестору)
-        const accountId = `acc_${investorId}`;
-        const accountData = {
-          id: accountId,
-          userId: req.user.id,
-          name: `Счёт: ${name?.trim() || 'Инвестор'}`,
-          type: 'INVESTOR',
-          ownerId: investorId,  // 🔹 Ссылка на ID инвестора (не пользователя!)
-          balance: 0,
-          currency: 'RUB',
-          isArchived: false
-        };
-        await pool.query(`
-          INSERT INTO data_items (id, user_id, type, data, created_at, updated_at)
-          VALUES ($1, $2, 'accounts', $3, NOW(), NOW())
-        `, [accountId, req.user.id, JSON.stringify(accountData)]);
+    // 1. Сохраняем инвестора в data_items
+    await pool.query(`
+      INSERT INTO data_items (id, user_id, type, data, created_at, updated_at)
+      VALUES ($1, $2, 'investors', $3, NOW(), NOW())
+    `, [investorId, req.user.id, JSON.stringify(investorData)]);
 
-        return res.json({
-          success: true,
-          investor: investorData,
-          account: accountData,
-          message: 'Инвестор создан без доступа к входу (только просмотр)'
-        });
-      }
+    // 2. Создаём счёт инвестора (привязанный к этому инвестору)
+    const accountId = `acc_${investorId}`;
+    const accountData = {
+      id: accountId,
+      userId: req.user.id,
+      name: `Счёт: ${name?.trim() || 'Инвестор'}`,
+      type: 'INVESTOR',
+      ownerId: investorId,  // 🔹 Ссылка на ID инвестора из data_items
+      balance: 0,
+      currency: 'RUB',
+      isArchived: false
+    };
+    await pool.query(`
+      INSERT INTO data_items (id, user_id, type, data, created_at, updated_at)
+      VALUES ($1, $2, 'accounts', $3, NOW(), NOW())
+    `, [accountId, req.user.id, JSON.stringify(accountData)]);
 
-      // 🔹 СТАНДАРТНАЯ ЛОГИКА: Если email указан — создаём в users + data_items
-      const cleanEmail = email?.trim();
-      if (!cleanEmail) {
-        return res.status(400).json({ msg: 'Email обязателен для пользователей с доступом к входу' });
-      }
+    // 🔹 Возвращаем ТОЛЬКО investorData — фронтенд добавит его в стейт один раз
+    return res.json({
+      success: true,
+      investor: investorData,  // ← Один объект, без дублей
+      account: accountData,
+      message: 'Инвестор создан без доступа к входу (только просмотр)'
+    });
+  }
 
-      // Проверка: не занят ли email
-      const userCheck = await pool.query('SELECT id FROM users WHERE email = $1', [cleanEmail]);
-      if (userCheck.rows.length > 0) {
-        return res.status(400).json({ msg: 'Пользователь с таким Email уже существует' });
-      }
+  // =================================================================
+  // 🔹 СЛУЧАЙ 2: Пользователь/инвестор С email — создаём в users + data_items
+  // =================================================================
+  const cleanEmail = email?.trim();
+  if (!cleanEmail) {
+    return res.status(400).json({ msg: 'Email обязателен для пользователей с доступом к входу' });
+  }
 
-      // Проверка пароля
-      if (!password || password.trim().length < 6) {
-        return res.status(400).json({ msg: 'Пароль должен содержать минимум 6 символов' });
-      }
+  // Проверка: не занят ли email
+  const userCheck = await pool.query('SELECT id FROM users WHERE email = $1', [cleanEmail]);
+  if (userCheck.rows.length > 0) {
+    return res.status(400).json({ msg: 'Пользователь с таким Email уже существует' });
+  }
 
-      // Генерация ID и хеширование
-      const id = role === 'investor' ? `u_inv_${Date.now()}` : `u_emp_${Date.now()}`;
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password.trim(), salt);
+  // Проверка пароля
+  if (!password || password.trim().length < 6) {
+    return res.status(400).json({ msg: 'Пароль должен содержать минимум 6 символов' });
+  }
 
-      // Вставка в таблицу users
-      await pool.query(
-        `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, phone, created_at, updated_at) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())`,
-        [
-          id,
-          name?.trim() || '',
-          cleanEmail,
-          hashedPassword,
-          role,
-          req.user.id,
-          JSON.stringify(permissions || {}),
-          JSON.stringify(allowedInvestorIds || []),
-          phone || null
-        ]
-      );
+  // Генерация ID: для инвесторов используем тот же ID в users и data_items!
+  const id = role === 'investor' ? `u_inv_${Date.now()}` : `u_emp_${Date.now()}`;
+  const salt = await bcrypt.genSalt(10);
+  const hashedPassword = await bcrypt.hash(password.trim(), salt);
 
-      // 🔹 Для инвесторов: дополнительно создаём запись в data_items + счёт
-      if (role === 'investor') {
-        const investorData = {
-          id: id,  // 🔹 Используем тот же ID, что и в users
-          userId: req.user.id,
-          name: name?.trim() || '',
-          email: cleanEmail,
-          phone: phone || '',
-          joinedDate: new Date().toISOString(),
-          initialAmount: 0,
-          profitPercentage: 0,
-          permissions: permissions || { canViewContracts: false, canViewHistory: false },
-          notes: '',
-          color: '#' + Math.floor(Math.random()*16777215).toString(16)
-        };
+  // 1. Вставка в таблицу users (только для аутентификации!)
+  await pool.query(
+    `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, phone, created_at, updated_at) 
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())`,
+    [
+      id,
+      name?.trim() || '',
+      cleanEmail,
+      hashedPassword,
+      role,
+      req.user.id,
+      JSON.stringify(permissions || {}),
+      JSON.stringify(allowedInvestorIds || []),
+      phone || null
+    ]
+  );
 
-        await pool.query(`
-          INSERT INTO data_items (id, user_id, type, data, created_at, updated_at)
-          VALUES ($1, $2, 'investors', $3, NOW(), NOW())
-        `, [id, req.user.id, JSON.stringify(investorData)]);
+  // 2. 🔹 Для инвесторов: создаём запись в data_items — С ТЕМ ЖЕ ID
+  if (role === 'investor') {
+    const investorData = {
+      id: id,  // 🔹 КЛЮЧЕВОЕ: тот же ID, что и в users (u_inv_...)
+      userId: req.user.id,
+      name: name?.trim() || '',
+      email: cleanEmail,
+      phone: phone || '',
+      joinedDate: new Date().toISOString(),
+      initialAmount: 0,
+      profitPercentage: 0,
+      permissions: permissions || { canViewContracts: false, canViewHistory: false },
+      notes: '',
+      color: '#' + Math.floor(Math.random()*16777215).toString(16)
+    };
 
-        // Создаём счёт
-        const accountId = `acc_${id}`;
-        await pool.query(`
-          INSERT INTO data_items (id, user_id, type, data, created_at, updated_at)
-          VALUES ($1, $2, 'accounts', $3, NOW(), NOW())
-        `, [accountId, req.user.id, JSON.stringify({
-          id: accountId,
-          userId: req.user.id,
-          name: `Счёт: ${name?.trim() || 'Инвестор'}`,
-          type: 'INVESTOR',
-          ownerId: id,
-          balance: 0,
-          currency: 'RUB',
-          isArchived: false
-        })]);
-      }
+    await pool.query(`
+      INSERT INTO data_items (id, user_id, type, data, created_at, updated_at)
+      VALUES ($1, $2, 'investors', $3, NOW(), NOW())
+    `, [id, req.user.id, JSON.stringify(investorData)]);
 
-      return res.json({
-        success: true,
-        id,
-        name: name?.trim(),
-        email: cleanEmail,
-        role,
-        managerId: req.user.id,
-        permissions,
-        allowedInvestorIds,
-        phone
-      });
-    }
+    // Создаём счёт инвестора
+    const accountId = `acc_${id}`;  // 🔹 Привязка к тому же ID
+    await pool.query(`
+      INSERT INTO data_items (id, user_id, type, data, created_at, updated_at)
+      VALUES ($1, $2, 'accounts', $3, NOW(), NOW())
+    `, [accountId, req.user.id, JSON.stringify({
+      id: accountId,
+      userId: req.user.id,
+      name: `Счёт: ${name?.trim() || 'Инвестор'}`,
+      type: 'INVESTOR',
+      ownerId: id,  // 🔹 ownerId = ID инвестора (из users/data_items)
+      balance: 0,
+      currency: 'RUB',
+      isArchived: false
+    })]);
+
+    // 🔹 Возвращаем investorData — фронтенд добавит его в стейт ОДИН РАЗ
+    return res.json({
+      success: true,
+      investor: investorData,  // ← Один объект, ID совпадает с users
+      message: 'Инвестор создан с доступом к входу'
+    });
+  }
+
+  // 3. 🔹 Для сотрудников/менеджеров: возвращаем базовые данные
+  return res.json({
+    success: true,
+    id,
+    name: name?.trim(),
+    email: cleanEmail,
+    role,
+    managerId: req.user.id,
+    permissions,
+    allowedInvestorIds,
+    phone
+  });
+}
 
     // =====================================================
     // === DELETE: Удаление пользователя/инвестора ===
