@@ -274,24 +274,33 @@ const adminAuth = (req, res, next) => {
 // --- HELPER FUNCTIONS ---
 const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-const sendEmail = async (email, subject, text) => {
-  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-    try {
-      await transporter.sendMail({
-        from: `"FinUchet" <${process.env.SMTP_USER}>`,
-        to: email,
-        subject,
-        text,
-      });
+const sendEmail = async (email, subject, text, html = null) => {
+  // 🔐 Если SMTP не настроен — симулируем успех (для разработки)
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    return true;
+  }
 
-      return true;
-    } catch (error) {
-      console.error('Email send error:', error);
-      return false;
-    }
-  } else {
+  try {
+    await transporter.sendMail({
+      from: `"FinUchet" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject,
+      text,                          // 📝 Текстовая версия (для старых клиентов)
+      html: html || text,           // 🎨 HTML-версия (если передана, иначе используем text)
 
-    return true; // Simulate success
+      // 📬 Опционально: заголовки для улучшения доставляемости
+      headers: {
+        'X-Priority': '3',
+        'X-Mailer': 'FinUchet Auth System'
+      }
+    });
+
+    console.log(`✅ Email sent to ${email}`);
+    return true;
+
+  } catch (error) {
+    console.error('❌ Email send error:', error.message);
+    return false;
   }
 };
 
