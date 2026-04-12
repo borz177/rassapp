@@ -58,32 +58,45 @@ const Investors: React.FC<InvestorsProps> = ({
 const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if(formName.trim() && formEmail.trim()) {
-        if (editingId && onUpdateInvestor) {
-            const inv = investors.find(i => i.id === editingId);
-            if (inv) {
-                onUpdateInvestor({
-                    ...inv,
-                    name: formName,
-                    phone: formPhone,
-                    email: formEmail,
-                    initialAmount: Number(formAmount) || inv.initialAmount, // 🔹 Фоллбэк на старое значение
-                    profitPercentage: Number(formProfitPercentage),
-                    permissions: formPermissions
-                }, formPassword);
-            }
-        } else {
-            // 🔹 При создании — проверяем, что сумма заполнена
-            if (!formAmount || Number(formAmount) <= 0) {
-                alert("Сумма инвестиций обязательна для нового инвестора");
-                return;
-            }
-            if (!formPassword) {
-                alert("Пароль обязателен для нового инвестора");
-                return;
-            }
-            onAddInvestor(formName, formPhone, formEmail, formPassword, Number(formAmount), Number(formProfitPercentage), formPermissions);
+    
+
+    // 🔹 СТАЛО: имя обязательно, email — нет
+    if (!formName.trim()) {
+        alert("Имя инвестора обязательно");
+        return;
+    }
+
+    if (editingId && onUpdateInvestor) {
+        const inv = investors.find(i => i.id === editingId);
+        if (inv) {
+            onUpdateInvestor({
+                ...inv,
+                name: formName,
+                phone: formPhone,
+                email: formEmail.trim() || undefined,  // 🔹 Пустая строка → undefined
+                initialAmount: Number(formAmount) || inv.initialAmount,
+                profitPercentage: Number(formProfitPercentage),
+                permissions: formPermissions
+            }, formPassword || undefined);  // 🔹 Пароль только если ввели
         }
+        resetForm();
+
+    } else {
+        // 🔹 При создании: пароль не обязателен, если нет email
+        if (formEmail.trim() && !formPassword) {
+            alert("Если указан Email, пароль обязателен для входа");
+            return;
+        }
+
+        onAddInvestor(
+            formName,
+            formPhone,
+            formEmail.trim() || '',  // 🔹 Пустая строка допустима
+            formPassword,            // 🔹 Может быть пустым
+            Number(formAmount),
+            Number(formProfitPercentage),
+            formPermissions
+        );
         resetForm();
     }
 };
@@ -116,7 +129,7 @@ const handleSubmit = (e: React.FormEvent) => {
           <form onSubmit={handleSubmit} onClick={e => e.stopPropagation()} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4 animate-fade-in">
               <h3 className="font-bold text-slate-800 border-b border-slate-100 pb-2">
                   {editingId ? 'Редактировать инвестора' : 'Новый инвестор'}
-
+                  
               </h3>
 
               <div className="space-y-3">
@@ -136,19 +149,26 @@ const handleSubmit = (e: React.FormEvent) => {
                   <div className="grid grid-cols-2 gap-3">
                       <input
                           type="email"
-                          placeholder="Email (Логин)"
+                          placeholder="Email для входа "
                           className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                           value={formEmail}
                           onChange={e => setFormEmail(e.target.value)}
 
                       />
+
+                      {formEmail.trim() === '' && (
+    <p className="text-[10px] text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+        ⚠️ Инвестор без email не сможет войти в систему.
+        Данные будут доступны только вам в панели администратора.
+    </p>
+)}
                       <input
                           type="text" // Visible for creation
                           placeholder={editingId ? "Новый пароль (необязательно)" : "Пароль"}
                           className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                           value={formPassword}
                           onChange={e => setFormPassword(e.target.value)}
-                          
+
                       />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -181,8 +201,8 @@ const handleSubmit = (e: React.FormEvent) => {
                       </div>
                   </div>
 
-
-
+                  
+                  
                   {/* Permissions */}
                   <div className="bg-slate-50 p-4 rounded-xl space-y-3">
                       <h4 className="text-sm font-bold text-slate-600">Права доступа</h4>
