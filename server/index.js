@@ -721,19 +721,17 @@ app.post('/api/auth/send-code', async (req, res) => {
       </div>
       
       <p style="margin:0;color:#64748b;font-size:14px">
-        💡 Если кнопка не работает, скопируйте код вручную и вставьте его в приложении.
+        💡  ${type === 'REGISTER' 
+          ? 'Если вы не регистрировались, просто проигнорируйте это письмо.' 
+          : 'Если вы не запрашивали сброс пароля, проигнорируйте это письмо.'}
       </p>
     </div>
     
     <!-- Футер -->
     <div style="background:#f8fafc;padding:16px 24px;text-align:center;border-top:1px solid #e2e8f0">
-      <p style="margin:4px 0;color:#94a3b8;font-size:13px">
-        ${type === 'REGISTER' 
-          ? 'Если вы не регистрировались, просто проигнорируйте это письмо.' 
-          : 'Если вы не запрашивали сброс пароля, проигнорируйте это письмо.'}
-      </p>
+      
       <p style="margin:8px 0 0;color:#94a3b8;font-size:13px">
-        © ${new Date().getFullYear()} FinUchet • <a href="https://wayuchet.ru" style="color:#4f46e5;text-decoration:none">wayuchet.ru</a>
+        © ${new Date().getFullYear()} FinUchet • <a href="https://rassrochka.pro" style="color:#4f46e5;text-decoration:none">wayuchet.ru</a>
       </p>
     </div>
     
