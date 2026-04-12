@@ -61,6 +61,15 @@ const NewExpense: React.FC<NewExpenseProps> = ({
       }
   }, [category]);
 
+
+  useEffect(() => {
+    if (sourceType === 'INVESTOR' && investors.length === 0) {
+        setSourceType('OTHER');
+        setSelectedInvestorId('');
+        setPayoutType(null);
+    }
+}, [investors, sourceType]);
+
   const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
       
@@ -139,21 +148,31 @@ const NewExpense: React.FC<NewExpenseProps> = ({
           <h2 className="text-xl font-bold text-slate-800">Оформление расхода</h2>
       </div>
 
+
       {/* Switcher */}
-      <div className="flex bg-slate-100 p-1 rounded-xl">
-          <button
-             onClick={() => { setSourceType('OTHER'); setAmount(''); }}
-             className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'OTHER' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500'}`}
-          >
-              Общие расходы
-          </button>
-          <button
-             onClick={() => { setSourceType('INVESTOR'); setAmount(''); }}
-             className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${sourceType === 'INVESTOR' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500'}`}
-          >
-              Выплата инвестору
-          </button>
-      </div>
+<div className="flex bg-slate-100 p-1 rounded-xl">
+    {/* Вкладка Общие расходы */}
+    <button
+        onClick={() => { setSourceType('OTHER'); setAmount(''); }}
+        className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
+            sourceType === 'OTHER' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500'
+        }`}
+    >
+        Общие расходы
+    </button>
+
+    {/* Вкладка Выплата инвестору — показываем только если есть инвесторы */}
+    {investors.length > 0 && (
+        <button
+            onClick={() => { setSourceType('INVESTOR'); setAmount(''); }}
+            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
+                sourceType === 'INVESTOR' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500'
+            }`}
+        >
+            Выплата инвестору
+        </button>
+    )}
+</div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
 
