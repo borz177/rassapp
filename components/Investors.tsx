@@ -116,17 +116,7 @@ const handleSubmit = (e: React.FormEvent) => {
           <form onSubmit={handleSubmit} onClick={e => e.stopPropagation()} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4 animate-fade-in">
               <h3 className="font-bold text-slate-800 border-b border-slate-100 pb-2">
                   {editingId ? 'Редактировать инвестора' : 'Новый инвестор'}
-                  {editingId && (
-    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-        <p className="text-xs text-slate-500 mb-1">Первоначальные инвестиции</p>
-        <p className="text-lg font-bold text-slate-800">
-            {Number(formAmount).toLocaleString('ru-RU')} ₽
-        </p>
-        <p className="text-[10px] text-slate-400 mt-1">
-            • Поле доступно только при создании инвестора
-        </p>
-    </div>
-)}
+
               </h3>
 
               <div className="space-y-3">
@@ -150,7 +140,7 @@ const handleSubmit = (e: React.FormEvent) => {
                           className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                           value={formEmail}
                           onChange={e => setFormEmail(e.target.value)}
-                          required
+
                       />
                       <input
                           type="text" // Visible for creation
@@ -158,7 +148,7 @@ const handleSubmit = (e: React.FormEvent) => {
                           className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                           value={formPassword}
                           onChange={e => setFormPassword(e.target.value)}
-                          required={!editingId}
+                          
                       />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -190,6 +180,8 @@ const handleSubmit = (e: React.FormEvent) => {
                           />
                       </div>
                   </div>
+
+
 
                   {/* Permissions */}
                   <div className="bg-slate-50 p-4 rounded-xl space-y-3">
