@@ -42,64 +42,68 @@ const Investors: React.FC<InvestorsProps> = ({
       setActiveMenuId(null);
   };
 
+  // ✅ ИСПРАВЛЕНО: безопасная обработка полей с fallback на пустую строку
   const handleStartEdit = (inv: Investor) => {
-      setFormName(inv.name);
-      setFormPhone(inv.phone);
-      setFormEmail(inv.email);
-      setFormAmount(inv.initialAmount.toString());
-      setFormProfitPercentage(inv.profitPercentage.toString());
+      setFormName(inv.name || '');
+      setFormPhone(inv.phone || '');
+      setFormEmail(inv.email || '');  // ✅ Fallback: undefined → ''
+      setFormAmount((inv.initialAmount || 0).toString());
+      setFormProfitPercentage((inv.profitPercentage || 0).toString());
       setFormPermissions(inv.permissions || { canViewContracts: false, canViewHistory: false });
-      setFormPassword(''); // Password not typically editable directly or shown
+      setFormPassword('');
       setEditingId(inv.id);
       setIsAdding(true);
       setActiveMenuId(null);
   };
 
-const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
 
+      // ✅ Безопасная обработка: защит от .trim() на undefined
+      const safeName = formName?.trim() || '';
+      const safeEmail = formEmail?.trim() || '';
+      const safePhone = formPhone?.trim() || '';
 
+      // Имя обязательно
+      if (!safeName) {
+          alert("Имя инвестора обязательно");
+          return;
+      }
 
-    // 🔹 СТАЛО: имя обязательно, email — нет
-    if (!formName.trim()) {
-        alert("Имя инвестора обязательно");
-        return;
-    }
+      if (editingId && onUpdateInvestor) {
+          const inv = investors.find(i => i.id === editingId);
+          if (inv) {
+              onUpdateInvestor({
+                  ...inv,
+                  name: safeName,
+                  phone: safePhone,
+                  email: safeEmail || undefined,  // ✅ Пустая строка → undefined
+                  initialAmount: Number(formAmount) || inv.initialAmount || 0,
+                  profitPercentage: Number(formProfitPercentage) || 0,
+                  permissions: formPermissions
+              }, formPassword || undefined);
+          }
+          resetForm();
 
-    if (editingId && onUpdateInvestor) {
-        const inv = investors.find(i => i.id === editingId);
-        if (inv) {
-            onUpdateInvestor({
-                ...inv,
-                name: formName,
-                phone: formPhone,
-                email: formEmail.trim() || undefined,  // 🔹 Пустая строка → undefined
-                initialAmount: Number(formAmount) || inv.initialAmount,
-                profitPercentage: Number(formProfitPercentage),
-                permissions: formPermissions
-            }, formPassword || undefined);  // 🔹 Пароль только если ввели
-        }
-        resetForm();
+      } else {
+          // Создание нового: пароль обязателен только если указан email
+          if (safeEmail && !formPassword) {
+              alert("Если указан Email, пароль обязателен для входа");
+              return;
+          }
 
-    } else {
-        // 🔹 При создании: пароль не обязателен, если нет email
-        if (formEmail.trim() && !formPassword) {
-            alert("Если указан Email, пароль обязателен для входа");
-            return;
-        }
-
-        onAddInvestor(
-            formName,
-            formPhone,
-            formEmail.trim() || '',  // 🔹 Пустая строка допустима
-            formPassword,            // 🔹 Может быть пустым
-            Number(formAmount),
-            Number(formProfitPercentage),
-            formPermissions
-        );
-        resetForm();
-    }
-};
+          onAddInvestor(
+              safeName,
+              safePhone,
+              safeEmail,              // ✅ Может быть пустым
+              formPassword || '',     // ✅ Может быть пустым
+              Number(formAmount) || 0,
+              Number(formProfitPercentage) || 0,
+              formPermissions
+          );
+          resetForm();
+      }
+  };
 
   const handleDelete = (id: string) => {
       if(window.confirm("Удалить инвестора?")) {
@@ -129,12 +133,11 @@ const handleSubmit = (e: React.FormEvent) => {
           <form onSubmit={handleSubmit} onClick={e => e.stopPropagation()} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4 animate-fade-in">
               <h3 className="font-bold text-slate-800 border-b border-slate-100 pb-2">
                   {editingId ? 'Редактировать инвестора' : 'Новый инвестор'}
-                  
               </h3>
 
               <div className="space-y-3">
                   <input
-                      placeholder="Имя Фамилия"
+                      placeholder="Имя Фамилия *"
                       className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                       value={formName}
                       onChange={e => setFormName(e.target.value)}
@@ -149,29 +152,37 @@ const handleSubmit = (e: React.FormEvent) => {
                   <div className="grid grid-cols-2 gap-3">
                       <input
                           type="email"
-                          placeholder="Email для входа "
+                          placeholder="Email для входа (необязательно)"
                           className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                           value={formEmail}
                           onChange={e => setFormEmail(e.target.value)}
-
+                          // ✅ Убрали required — email необязателен
                       />
-
-
                       <input
-                          type="text" // Visible for creation
+                          type="text"
                           placeholder={editingId ? "Новый пароль (необязательно)" : "Пароль"}
                           className="w-full p-3 border border-slate-200 rounded-xl outline-none"
                           value={formPassword}
                           onChange={e => setFormPassword(e.target.value)}
-
+                          required={!editingId && !!formEmail.trim()} // ✅ Пароль нужен только при создании с email
                       />
                   </div>
-                      {formEmail.trim() === '' && (
-    <p className="text-[10px] text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
-        ⚠️ Инвестор без email не сможет войти в систему.
-        Данные будут доступны только вам в панели администратора.
-    </p>
-)}
+
+                  {/* ✅ Подсказка: инвестор без email не может войти */}
+                  {formEmail.trim() === '' && (
+                      <p className="text-[10px] text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+                          ⚠️ Инвестор без email не сможет войти в систему.
+                          Данные будут доступны только вам в панели администратора.
+                      </p>
+                  )}
+
+                  {/* Предупреждение: указан email, но нет пароля */}
+                  {formEmail.trim() && !formPassword && !editingId && (
+                      <p className="text-[10px] text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200">
+                          🔐 Указан email, но не задан пароль — инвестор не сможет войти.
+                      </p>
+                  )}
+
                   <div className="grid grid-cols-2 gap-3">
                       {/* 🔹 Сумма инвестиций — ТОЛЬКО при создании */}
                       {!editingId && (
@@ -183,7 +194,7 @@ const handleSubmit = (e: React.FormEvent) => {
                                   className="w-full p-3 pl-8 border border-slate-200 rounded-xl outline-none font-bold"
                                   value={formAmount}
                                   onChange={e => setFormAmount(e.target.value)}
-                                  required={!editingId} // 🔹 Обязательно только при создании
+                                  required={!editingId}
                               />
                           </div>
                       )}
@@ -202,39 +213,41 @@ const handleSubmit = (e: React.FormEvent) => {
                       </div>
                   </div>
 
-                  
-                  
+                  {/* ✅ Опционально: показ текущей суммы при редактировании */}
+                  {editingId && formAmount && (
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                          <p className="text-xs text-slate-500 mb-1">Первоначальные инвестиции</p>
+                          <p className="text-lg font-bold text-slate-800">
+                              {Number(formAmount).toLocaleString('ru-RU')} ₽
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-1">
+                              • Поле доступно только при создании инвестора
+                          </p>
+                      </div>
+                  )}
+
                   {/* Permissions */}
                   <div className="bg-slate-50 p-4 rounded-xl space-y-3">
                       <h4 className="text-sm font-bold text-slate-600">Права доступа</h4>
                       <div className="space-y-2">
-                          <label
-                              className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
+                          <label className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
                               <input
                                   type="checkbox"
                                   className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                                   checked={formPermissions.canViewContracts}
-                                  onChange={e => setFormPermissions({
-                                      ...formPermissions,
-                                      canViewContracts: e.target.checked
-                                  })}
+                                  onChange={e => setFormPermissions({...formPermissions, canViewContracts: e.target.checked})}
                               />
                               <div className="text-sm">
                                   <span className="font-semibold text-slate-800 block">Просмотр договоров</span>
-                                  <span
-                                      className="text-xs text-slate-500">Доступ к странице "Договоры" (только свои)</span>
+                                  <span className="text-xs text-slate-500">Доступ к странице "Договоры" (только свои)</span>
                               </div>
                           </label>
-                          <label
-                              className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
+                          <label className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
                               <input
                                   type="checkbox"
                                   className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                                   checked={formPermissions.canViewHistory}
-                                  onChange={e => setFormPermissions({
-                                      ...formPermissions,
-                                      canViewHistory: e.target.checked
-                                  })}
+                                  onChange={e => setFormPermissions({...formPermissions, canViewHistory: e.target.checked})}
                               />
                               <div className="text-sm">
                                   <span className="font-semibold text-slate-800 block">Просмотр истории</span>
@@ -246,9 +259,7 @@ const handleSubmit = (e: React.FormEvent) => {
               </div>
 
               <div className="flex gap-2 pt-2">
-                  <button type="button" onClick={resetForm}
-                          className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Отмена
-                  </button>
+                  <button type="button" onClick={resetForm} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Отмена</button>
                   <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">
                       {editingId ? 'Сохранить' : 'Создать'}
                   </button>
@@ -256,30 +267,32 @@ const handleSubmit = (e: React.FormEvent) => {
           </form>
       )}
 
-        <div className="grid gap-4">
-            {investors.length === 0 && !isAdding && (
-                <div className="text-center py-8 text-slate-400">Нет инвесторов</div>
-            )}
-            {investors.map(inv => (
-                <div key={inv.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div
-                                className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold text-lg">
-                                {inv.name.charAt(0)}
-                            </div>
-                            <div>
-                            <h3 className="font-bold text-slate-800">{inv.name}</h3>
-                            <p className="text-xs text-slate-500">{inv.email}</p>
+      <div className="grid gap-4">
+        {investors.length === 0 && !isAdding && (
+            <div className="text-center py-8 text-slate-400">Нет инвесторов</div>
+        )}
+        {investors.map(inv => (
+            <div key={inv.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold text-lg">
+                            {inv.name?.charAt(0) || '?'}
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-slate-800">{inv.name || 'Без имени'}</h3>
+                            {/* ✅ Безопасное отображение email */}
+                            <p className="text-xs text-slate-500">
+                                {inv.email ? inv.email : <span className="text-slate-400 italic">без email</span>}
+                            </p>
                         </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-3">
                         <div className="text-right mr-2 hidden sm:block">
                             <p className="text-xs text-slate-400">Процент</p>
-                            <p className="text-sm font-bold text-indigo-600">{inv.profitPercentage}%</p>
+                            <p className="text-sm font-bold text-indigo-600">{inv.profitPercentage || 0}%</p>
                         </div>
-                        <button 
+                        <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setActiveMenuId(activeMenuId === inv.id ? null : inv.id);
@@ -294,19 +307,19 @@ const handleSubmit = (e: React.FormEvent) => {
                 {/* Dropdown Menu */}
                 {activeMenuId === inv.id && (
                     <div className="absolute right-4 top-14 bg-white shadow-xl border border-slate-100 rounded-xl z-20 w-40 overflow-hidden animate-fade-in">
-                        <button 
+                        <button
                             onClick={(e) => { e.stopPropagation(); onViewDetails?.(inv); }}
                             className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                         >
                             <span className="text-indigo-500">{ICONS.File}</span> Инфо
                         </button>
-                        <button 
+                        <button
                             onClick={(e) => { e.stopPropagation(); handleStartEdit(inv); }}
                             className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                         >
                             <span className="text-slate-500">{ICONS.Edit}</span> Изменить
                         </button>
-                        <button 
+                        <button
                             onClick={(e) => { e.stopPropagation(); handleDelete(inv.id); }}
                             className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                         >
