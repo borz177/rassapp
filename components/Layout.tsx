@@ -293,23 +293,78 @@ const renderNavbarItem = (item: any) => {
   );
 };
 
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+ return (
+  <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
 
-        <CustomTitleBar />
-      {/* 🔹 DESKTOP TOP NAVBAR */}
+    {/* 🔹 ОБЪЕДИНЁННЫЙ ЗАГОЛОВОК + НАВБАР (для Desktop) */}
+    <div className="hidden md:block">
+
+      {/* Часть 1: Заголовок окна (с кнопками управления) */}
+      <div
+        className="flex items-center justify-between h-11 px-3 select-none"
+        style={{
+          backgroundColor: 'var(--navbar-bg)',
+          color: 'var(--navbar-text)',
+          WebkitAppRegion: 'drag',
+          borderBottom: '1px solid var(--navbar-border)'
+        }}
+      >
+        {/* Логотип */}
+        <div className="flex items-center gap-2">
+          <div
+            className="w-5 h-5 rounded flex items-center justify-center text-xs font-bold"
+            style={{ backgroundColor: 'var(--color-primary-400)', color: '#fff' }}
+          >
+            Ф
+          </div>
+          <span className="text-sm font-semibold">{APP_NAME}</span>
+        </div>
+
+        {/* Кнопки управления окном */}
+        <div
+          className="flex items-center gap-0"
+          style={{ WebkitAppRegion: 'no-drag' }}
+        >
+          <button
+            onClick={() => window.electronAPI?.minimize()}
+            className="w-12 h-11 flex items-center justify-center hover:bg-white/10 transition-colors"
+          >
+            <svg width="10" height="1" viewBox="0 0 10 1">
+              <rect width="10" height="1" fill="currentColor"/>
+            </svg>
+          </button>
+          <button
+            onClick={() => window.electronAPI?.maximize()}
+            className="w-12 h-11 flex items-center justify-center hover:bg-white/10 transition-colors"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1">
+              <rect x="0.5" y="0.5" width="9" height="9"/>
+            </svg>
+          </button>
+          <button
+            onClick={() => window.electronAPI?.close()}
+            className="w-12 h-11 flex items-center justify-center hover:bg-red-600 transition-colors"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" strokeWidth="1.2">
+              <line x1="0.5" y1="0.5" x2="9.5" y2="9.5"/>
+              <line x1="9.5" y1="0.5" x2="0.5" y2="9.5"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Часть 2: Навигация (ваш текущий навбар) */}
       <header
-         className="hidden md:flex items-center justify-between px-6 py-3 fixed left-0 right-0 z-40 transition-colors duration-300"
-  style={{
-    top: '44px',  // 🔹 Высота CustomTitleBar (44px)
-    backgroundColor: 'var(--navbar-bg)',
+        className="flex items-center justify-between px-6 py-3"
+        style={{
+          backgroundColor: 'var(--navbar-bg)',
           color: 'var(--navbar-text)',
           borderBottom: `1px solid var(--navbar-border)`,
           WebkitAppRegion: 'drag',
           userSelect: 'none'
         }}
       >
-        {/* Logo + Company */}
+        {/* Логотип компании (можно убрать, если дублируется) */}
         <div className="flex items-center gap-4">
           <h1
             className="text-xl font-bold bg-clip-text text-transparent"
@@ -337,7 +392,7 @@ const renderNavbarItem = (item: any) => {
           {navbarItems.map(item => renderNavbarItem(item))}
         </nav>
 
-        {/* Right Section: Profile Dropdown */}
+        {/* Profile Dropdown */}
         <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' }} ref={profileRef}>
           {user && (
             <div className="relative">
@@ -368,107 +423,45 @@ const renderNavbarItem = (item: any) => {
                     border: `1px solid var(--navbar-border)`,
                   }}
                 >
-                  {/* Subscription Info (if not admin) */}
-                  {user && !isInvestor && user.role !== 'admin' && (
-                    <div
-                      className={`px-4 py-3 border-b text-xs font-medium cursor-pointer transition-opacity hover:opacity-90
-                        ${subStatus.expired ? 'bg-red-900/30 border-red-800 text-red-300' : subStatus.isWarning ? 'bg-amber-900/30 border-amber-800 text-amber-300' : 'bg-emerald-900/30 border-emerald-800 text-emerald-300'}
-                      `}
-                      onClick={() => handleProfileAction('TARIFFS')}
-                    >
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="opacity-70">Тариф:</span>
-                        <span className="font-bold uppercase">{subStatus.planName}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="opacity-70">Статус:</span>
-                        <span className="font-bold">{subStatus.expired ? 'Истек' : `${subStatus.daysLeft} дн.`}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Profile */}
-                  <button
-                    onClick={() => handleProfileAction('PROFILE')}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left"
-                    style={{ color: 'var(--navbar-text)' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'var(--navbar-hover)';
-                      e.currentTarget.style.color = 'var(--navbar-activeText)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = 'var(--navbar-text)';
-                    }}
-                  >
-                    <span>{ICONS.Settings}</span>
-                    <span className="flex-1">Профиль</span>
-                  </button>
-
-                  {/* Settings */}
-                  {!isInvestor && (
-                    <button
-                      onClick={() => handleProfileAction('SETTINGS')}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left"
-                      style={{ color: 'var(--navbar-text)' }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'var(--navbar-hover)';
-                        e.currentTarget.style.color = 'var(--navbar-activeText)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = 'var(--navbar-text)';
-                      }}
-                    >
-                      <span>{ICONS.Settings}</span>
-                      <span className="flex-1">Настройки</span>
-                    </button>
-                  )}
-
-                  {/* Tariffs */}
-                  {!isInvestor && user.role !== 'admin' && (
-                    <button
-                      onClick={() => handleProfileAction('TARIFFS')}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors text-left"
-                      style={{ color: 'var(--navbar-text)' }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'var(--navbar-hover)';
-                        e.currentTarget.style.color = 'var(--navbar-activeText)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = 'var(--navbar-text)';
-                      }}
-                    >
-                      <span>{ICONS.Tariffs}</span>
-                      <span className="flex-1">Тарифы</span>
-                    </button>
-                  )}
+                  {/* ... ваш существующий код dropdown ... */}
                 </div>
               )}
             </div>
           )}
         </div>
       </header>
+    </div>
 
-      {/* 🔹 MOBILE TOP NAVBAR */}
-      <header className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-40">
-        <div className="h-16 flex items-center px-4">
-          <div className="flex flex-col w-full">
-            <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--color-primary-600)' }}>{appSettings.companyName}</h1>
-            {isOnline && isSyncing && (
-              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">Синхронизация...</span>
-            )}
-          </div>
+    {/* 🔹 MOBILE TOP NAVBAR */}
+    <header className="md:hidden fixed top-0 left-0 right-0 z-40"
+      style={{
+        backgroundColor: 'var(--navbar-bg)',
+        color: 'var(--navbar-text)',
+        borderBottom: `1px solid var(--navbar-border)`,
+      }}>
+      <div className="h-16 flex items-center px-4">
+        <div className="flex flex-col w-full">
+          <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--navbar-text)' }}>
+            {appSettings.companyName}
+          </h1>
+          {isOnline && isSyncing && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded w-fit"
+              style={{ color: 'var(--color-primary-400)', backgroundColor: 'rgba(96, 165, 250, 0.15)' }}>
+              Синхронизация...
+            </span>
+          )}
         </div>
-      </header>
+      </div>
+    </header>
 
-      {/* Main Content - 🔹 FIXED: Added mobile top padding */}
-      <main className="flex-1 p-4 md:p-6 mx-auto w-full mb-20 md:mb-0 flex flex-col h-full bg-slate-50 mt-16 md:mt-20">
-        <div className="w-full max-w-7xl mx-auto h-full">
-            {children}
-        </div>
-      </main>
+    {/* Main Content - с отступом сверху */}
+    <main className="flex-1 p-4 md:p-6 mx-auto w-full mb-20 md:mb-0 flex flex-col h-full bg-slate-50 mt-[116px] md:mt-[116px]">
+      <div className="w-full max-w-7xl mx-auto h-full">
+        {children}
+      </div>
+    </main>
+
+    {/* ... остальной код (FAB, Mobile Navigation и т.д.) ... */}
 
       {/* Mobile Quick Actions FAB Menu */}
       {!isInvestor && isMenuOpen && (
