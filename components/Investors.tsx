@@ -55,8 +55,9 @@ const Investors: React.FC<InvestorsProps> = ({
       setActiveMenuId(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
     if(formName.trim() && formEmail.trim()) {
         if (editingId && onUpdateInvestor) {
             const inv = investors.find(i => i.id === editingId);
@@ -66,12 +67,17 @@ const Investors: React.FC<InvestorsProps> = ({
                     name: formName,
                     phone: formPhone,
                     email: formEmail,
-                    initialAmount: Number(formAmount),
+                    initialAmount: Number(formAmount) || inv.initialAmount, // 🔹 Фоллбэк на старое значение
                     profitPercentage: Number(formProfitPercentage),
                     permissions: formPermissions
                 }, formPassword);
             }
         } else {
+            // 🔹 При создании — проверяем, что сумма заполнена
+            if (!formAmount || Number(formAmount) <= 0) {
+                alert("Сумма инвестиций обязательна для нового инвестора");
+                return;
+            }
             if (!formPassword) {
                 alert("Пароль обязателен для нового инвестора");
                 return;
@@ -80,7 +86,7 @@ const Investors: React.FC<InvestorsProps> = ({
         }
         resetForm();
     }
-  };
+};
 
   const handleDelete = (id: string) => {
       if(window.confirm("Удалить инвестора?")) {
@@ -110,87 +116,112 @@ const Investors: React.FC<InvestorsProps> = ({
           <form onSubmit={handleSubmit} onClick={e => e.stopPropagation()} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4 animate-fade-in">
               <h3 className="font-bold text-slate-800 border-b border-slate-100 pb-2">
                   {editingId ? 'Редактировать инвестора' : 'Новый инвестор'}
+                  {editingId && (
+    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+        <p className="text-xs text-slate-500 mb-1">Первоначальные инвестиции</p>
+        <p className="text-lg font-bold text-slate-800">
+            {Number(formAmount).toLocaleString('ru-RU')} ₽
+        </p>
+        <p className="text-[10px] text-slate-400 mt-1">
+            • Поле доступно только при создании инвестора
+        </p>
+    </div>
+)}
               </h3>
 
               <div className="space-y-3">
                   <input
-                    placeholder="Имя Фамилия"
-                    className="w-full p-3 border border-slate-200 rounded-xl outline-none"
-                    value={formName}
-                    onChange={e => setFormName(e.target.value)}
-                    required
+                      placeholder="Имя Фамилия"
+                      className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                      value={formName}
+                      onChange={e => setFormName(e.target.value)}
+                      required
                   />
                   <input
-                    placeholder="Телефон"
-                    className="w-full p-3 border border-slate-200 rounded-xl outline-none"
-                    value={formPhone}
-                    onChange={e => setFormPhone(e.target.value)}
+                      placeholder="Телефон"
+                      className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                      value={formPhone}
+                      onChange={e => setFormPhone(e.target.value)}
                   />
                   <div className="grid grid-cols-2 gap-3">
-                    <input
-                        type="email"
-                        placeholder="Email (Логин)"
-                        className="w-full p-3 border border-slate-200 rounded-xl outline-none"
-                        value={formEmail}
-                        onChange={e => setFormEmail(e.target.value)}
-                        required
-                    />
-                    <input
-                        type="text" // Visible for creation
-                        placeholder={editingId ? "Новый пароль (необязательно)" : "Пароль"}
-                        className="w-full p-3 border border-slate-200 rounded-xl outline-none"
-                        value={formPassword}
-                        onChange={e => setFormPassword(e.target.value)}
-                        required={!editingId}
-                    />
+                      <input
+                          type="email"
+                          placeholder="Email (Логин)"
+                          className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                          value={formEmail}
+                          onChange={e => setFormEmail(e.target.value)}
+                          required
+                      />
+                      <input
+                          type="text" // Visible for creation
+                          placeholder={editingId ? "Новый пароль (необязательно)" : "Пароль"}
+                          className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                          value={formPassword}
+                          onChange={e => setFormPassword(e.target.value)}
+                          required={!editingId}
+                      />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="relative">
-                       <span className="absolute left-3 top-3.5 text-slate-400">₽</span>
-                       <input 
-                          type="number"
-                          placeholder="Сумма инвестиций" 
-                          className="w-full p-3 pl-8 border border-slate-200 rounded-xl outline-none font-bold"
-                          value={formAmount}
-                          onChange={e => setFormAmount(e.target.value)}
-                          required
-                      />
-                    </div>
-                     <div className="relative">
-                       <span className="absolute right-4 top-3.5 text-slate-400">%</span>
-                       <input 
-                          type="number"
-                          placeholder="Процент прибыли" 
-                          className="w-full p-3 pr-8 border border-slate-200 rounded-xl outline-none font-bold"
-                          value={formProfitPercentage}
-                          onChange={e => setFormProfitPercentage(e.target.value)}
-                          required
-                      />
-                    </div>
+                      {/* 🔹 Сумма инвестиций — ТОЛЬКО при создании */}
+                      {!editingId && (
+                          <div className="relative">
+                              <span className="absolute left-3 top-3.5 text-slate-400">₽</span>
+                              <input
+                                  type="number"
+                                  placeholder="Сумма инвестиций"
+                                  className="w-full p-3 pl-8 border border-slate-200 rounded-xl outline-none font-bold"
+                                  value={formAmount}
+                                  onChange={e => setFormAmount(e.target.value)}
+                                  required={!editingId} // 🔹 Обязательно только при создании
+                              />
+                          </div>
+                      )}
+
+                      {/* 🔹 Процент прибыли — всегда виден */}
+                      <div className={`relative ${!editingId ? '' : 'col-span-2'}`}>
+                          <span className="absolute right-4 top-3.5 text-slate-400">%</span>
+                          <input
+                              type="number"
+                              placeholder="Процент прибыли"
+                              className="w-full p-3 pr-8 border border-slate-200 rounded-xl outline-none font-bold"
+                              value={formProfitPercentage}
+                              onChange={e => setFormProfitPercentage(e.target.value)}
+                              required
+                          />
+                      </div>
                   </div>
 
                   {/* Permissions */}
                   <div className="bg-slate-50 p-4 rounded-xl space-y-3">
                       <h4 className="text-sm font-bold text-slate-600">Права доступа</h4>
                       <div className="space-y-2">
-                          <label className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
-                              <input 
-                                type="checkbox" 
-                                className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                checked={formPermissions.canViewContracts}
-                                onChange={e => setFormPermissions({...formPermissions, canViewContracts: e.target.checked})}
+                          <label
+                              className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
+                              <input
+                                  type="checkbox"
+                                  className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                  checked={formPermissions.canViewContracts}
+                                  onChange={e => setFormPermissions({
+                                      ...formPermissions,
+                                      canViewContracts: e.target.checked
+                                  })}
                               />
                               <div className="text-sm">
                                   <span className="font-semibold text-slate-800 block">Просмотр договоров</span>
-                                  <span className="text-xs text-slate-500">Доступ к странице "Договоры" (только свои)</span>
+                                  <span
+                                      className="text-xs text-slate-500">Доступ к странице "Договоры" (только свои)</span>
                               </div>
                           </label>
-                          <label className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
-                              <input 
-                                type="checkbox" 
-                                className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                checked={formPermissions.canViewHistory}
-                                onChange={e => setFormPermissions({...formPermissions, canViewHistory: e.target.checked})}
+                          <label
+                              className="flex items-center gap-3 cursor-pointer p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-400 transition-colors">
+                              <input
+                                  type="checkbox"
+                                  className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                  checked={formPermissions.canViewHistory}
+                                  onChange={e => setFormPermissions({
+                                      ...formPermissions,
+                                      canViewHistory: e.target.checked
+                                  })}
                               />
                               <div className="text-sm">
                                   <span className="font-semibold text-slate-800 block">Просмотр истории</span>
@@ -202,7 +233,9 @@ const Investors: React.FC<InvestorsProps> = ({
               </div>
 
               <div className="flex gap-2 pt-2">
-                  <button type="button" onClick={resetForm} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Отмена</button>
+                  <button type="button" onClick={resetForm}
+                          className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Отмена
+                  </button>
                   <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">
                       {editingId ? 'Сохранить' : 'Создать'}
                   </button>
@@ -210,18 +243,19 @@ const Investors: React.FC<InvestorsProps> = ({
           </form>
       )}
 
-      <div className="grid gap-4">
-        {investors.length === 0 && !isAdding && (
-            <div className="text-center py-8 text-slate-400">Нет инвесторов</div>
-        )}
-        {investors.map(inv => (
-            <div key={inv.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold text-lg">
-                            {inv.name.charAt(0)}
-                        </div>
-                        <div>
+        <div className="grid gap-4">
+            {investors.length === 0 && !isAdding && (
+                <div className="text-center py-8 text-slate-400">Нет инвесторов</div>
+            )}
+            {investors.map(inv => (
+                <div key={inv.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div
+                                className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold text-lg">
+                                {inv.name.charAt(0)}
+                            </div>
+                            <div>
                             <h3 className="font-bold text-slate-800">{inv.name}</h3>
                             <p className="text-xs text-slate-500">{inv.email}</p>
                         </div>
