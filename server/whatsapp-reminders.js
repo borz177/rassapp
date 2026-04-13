@@ -100,8 +100,12 @@ if (priorDebt > 0) {
   const now = new Date();
   // Находим дату первого неоплаченного платежа в плане
   const firstOverduePayment = sale.paymentPlan
-    .filter(p => !p.isPaid && new Date(p.date) < now)
-    .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+  .filter(p =>
+    !p.isPaid &&
+    p.isRealPayment !== true &&  // ← добавлено
+    new Date(p.date) < now
+  )
+  .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
 
   if (firstOverduePayment) {
     const firstOverdueDate = new Date(firstOverduePayment.date);
@@ -229,8 +233,12 @@ async function processRemindersForUser(user) {
 
       // 🔹 Рассчитываем задолженность (все неоплаченные платежи до текущего)
       const priorDebt = sale.paymentPlan
-        .filter(p => !p.isPaid && new Date(p.date) < paymentDate)
-        .reduce((sum, p) => sum + p.amount, 0);
+  .filter(p =>
+    !p.isPaid &&
+    p.isRealPayment !== true &&  // ← добавлено: игнорируем «нереальные» платежи
+    new Date(p.date) < paymentDate
+  )
+  .reduce((sum, p) => sum + p.amount, 0);
 
       const totalToPay = payment.amount + priorDebt;
 
