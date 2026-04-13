@@ -170,13 +170,21 @@ async function processRemindersForUser(user) {
 
   const settings = whatsapp_settings;
   const targetTime = settings.reminderTime;
+
+  // 🔹 1. СНАЧАЛА определяем даты (чтобы todayStr был доступен для проверки логов)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split('T')[0];
+
+  // 🔹 2. Проверяем время с окном ±5 минут
   const now = new Date();
-  const currentTime = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const [targetHour, targetMin] = targetTime.split(':').map(Number);
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const targetMinutes = targetHour * 60 + targetMin;
+  const diffMinutes = Math.abs(nowMinutes - targetMinutes);
 
-  // 🔹 Проверяем время запуска (точное совпадение)
-  if (currentTime !== targetTime) return;
-
-
+  // ✅ Если разница больше 5 минут — пропускаем
+  if (diffMinutes > 5) return;
 
   const [salesRes, customersRes] = await Promise.all([
     pool.query('SELECT data FROM data_items WHERE user_id = $1 AND type = $2', [id, 'sales']),
@@ -186,9 +194,7 @@ async function processRemindersForUser(user) {
   const sales = salesRes.rows.map(r => r.data);
   const customers = customersRes.rows.map(r => r.data);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayStr = today.toISOString().split('T')[0];
+  // ❌ УДАЛЕНО: повторное объявление today/todayStr (уже есть выше)
 
   let sentCount = 0;
 
@@ -233,12 +239,12 @@ async function processRemindersForUser(user) {
 
       // 🔹 Рассчитываем задолженность (все неоплаченные платежи до текущего)
       const priorDebt = sale.paymentPlan
-  .filter(p =>
-    !p.isPaid &&
-    p.isRealPayment !== true &&  // ← добавлено: игнорируем «нереальные» платежи
-    new Date(p.date) < paymentDate
-  )
-  .reduce((sum, p) => sum + p.amount, 0);
+        .filter(p =>
+          !p.isPaid &&
+          p.isRealPayment !== true &&  // ← игнорируем «нереальные» платежи
+          new Date(p.date) < paymentDate
+        )
+        .reduce((sum, p) => sum + p.amount, 0);
 
       const totalToPay = payment.amount + priorDebt;
 
@@ -271,12 +277,9 @@ async function processRemindersForUser(user) {
 
         const logType = reminderDay === -1 ? 'заранее' : reminderDay === 0 ? 'сегодня' : 'просрочка';
         const debtInfo = priorDebt > 0 ? ` (долг: ${priorDebt}₽)` : '';
-
       }
     }
   }
-
-
 }
 
 async function runReminders() {
