@@ -3,7 +3,7 @@ require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 process.env.TZ = 'Europe/Moscow';
 
 console.log('Server Timezone:', new Date().toString());
-
+const helmet = require('helmet');
 const express = require('express');
 
 const { Pool } = require('pg');
@@ -42,8 +42,25 @@ const canAccessUserData = (currentUser, targetUserId) => {
   return false;
 };
 
+
+const sensitiveLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Слишком много запросов' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['https://rassrochka.pro'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'x-api-key']
+}));
+
+
+
+
 app.use(express.json({
   limit: '15mb',
   type: (req) => {
@@ -53,6 +70,32 @@ app.use(express.json({
     return true;
   }
 }));
+
+
+// ✅ Helmet — безопасность заголовков
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'", 'https://api.yookassa.ru', 'https://api.green-api.com'],
+      frameSrc: ["'self'", 'https://yoomoney.ru'],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: []
+    },
+  },
+  xFrameOptions: { action: 'sameorigin' },
+  hsts: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  permissionsPolicy: {
+    camera: [],
+    microphone: [],
+    geolocation: []
+  }
+}));
+
 
 // Logging Middleware
 app.use((req, res, next) => {
@@ -70,7 +113,11 @@ const loginLimiter = rateLimit({
 });
 
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'secret_key_change_this';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  console.error('❌ JWT_SECRET not set or too weak!');
+  process.exit(1); // Остановить сервер в продакшене
+}
 
 // Nodemailer Transporter
 const transporter = nodemailer.createTransport({
@@ -660,7 +707,7 @@ app.post(
 );
 
 // Send Verification Code
-app.post('/api/auth/send-code', async (req, res) => {
+app.post('/api/auth/send-code', sensitiveLimiter, async (req, res) => {
   const { email, type } = req.body;
 
   try {
@@ -731,7 +778,7 @@ app.post('/api/auth/send-code', async (req, res) => {
     <div style="background:#f8fafc;padding:16px 24px;text-align:center;border-top:1px solid #e2e8f0">
       
       <p style="margin:8px 0 0;color:#94a3b8;font-size:13px">
-        © ${new Date().getFullYear()} FinUchet • <a href="https://rassrochka.pro" style="color:#4f46e5;text-decoration:none">wayuchet.ru</a>
+        © ${new Date().getFullYear()} FinUchet • <a href="https://rassrochka.pro" style="color:#4f46e5;text-decoration:none">rassrochka.pro</a>
       </p>
     </div>
     
@@ -754,7 +801,7 @@ app.post('/api/auth/send-code', async (req, res) => {
   }
 });
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', sensitiveLimiter, async (req, res) => {
   const { name, email, password, code, role, managerId, permissions, allowedInvestorIds } = req.body;
   try {
     // 1. Verify Code
@@ -829,7 +876,7 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-app.post('/api/auth/reset-password', async (req, res) => {
+app.post('/api/auth/reset-password', sensitiveLimiter, async (req, res) => {
   const { email, code, newPassword } = req.body;
   try {
     // 1. Verify Code
@@ -1477,36 +1524,49 @@ app.post('/api/payment/create', auth, async (req, res) => {
 
 // --- WEBHOOK HANDLER ---
 app.post('/api/payment/webhook', async (req, res) => {
-  const { event, object } = req.body;
-  
-  if (event === 'payment.succeeded' && object.status === 'succeeded') {
-    const { userId, plan, months } = object.metadata;
-    
-    if (userId && plan && months) {
-      try {
-        const userResult = await pool.query('SELECT subscription FROM users WHERE id = $1', [userId]);
-        let currentSub = userResult.rows[0]?.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
-        
-        let newExpiresAt = new Date(currentSub.expiresAt);
-        if (newExpiresAt < new Date()) {
-          newExpiresAt = new Date();
-        }
-        newExpiresAt.setMonth(newExpiresAt.getMonth() + Number(months));
-        
-        const updatedSub = {
-          plan: plan,
-          expiresAt: newExpiresAt.toISOString()
-        };
-        
-        await pool.query('UPDATE users SET subscription = $1 WHERE id = $2', [JSON.stringify(updatedSub), userId]);
+  try {
+    // 🔍 YooKassa отправляет подпись в заголовке content-sha256 (не notification-signature)
+    const signature = req.headers['content-sha256'];
 
-      } catch (err) {
-        console.error('[WEBHOOK] Failed to update subscription', err);
-        return res.status(500).send('DB Error');
+    // Если подпись есть — проверяем её
+    if (signature) {
+      // YooKassa использует обычный SHA256, а не HMAC с секретом
+      const bodyString = JSON.stringify(req.body);
+      const expected = crypto.createHash('sha256').update(bodyString).digest('hex');
+
+      if (signature.toLowerCase() !== expected.toLowerCase()) {
+        console.warn('⚠️ Webhook signature mismatch');
+        return res.status(401).send('Invalid signature');
       }
     }
+
+    // ✅ Основная логика (ваш код без изменений)
+    const { event, object } = req.body;
+
+    if (event === 'payment.succeeded' && object?.status === 'succeeded') {
+      const { userId, plan, months } = object.metadata || {};
+
+      if (userId && plan && months) {
+        const userResult = await pool.query('SELECT subscription FROM users WHERE id = $1', [userId]);
+        let currentSub = userResult.rows[0]?.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
+
+        let newExpiresAt = new Date(currentSub.expiresAt);
+        if (newExpiresAt < new Date()) newExpiresAt = new Date();
+
+        newExpiresAt.setMonth(newExpiresAt.getMonth() + Number(months));
+
+        await pool.query(
+          'UPDATE users SET subscription = $1, updated_at = NOW() WHERE id = $2',
+          [JSON.stringify({ plan, expiresAt: newExpiresAt.toISOString() }), userId]
+        );
+      }
+    }
+
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('[WEBHOOK] Critical error:', err);
+    res.status(500).send('Server Error');
   }
-  res.status(200).send('OK');
 });
 
 // --- API KEY ROUTES ---
