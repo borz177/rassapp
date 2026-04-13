@@ -26,12 +26,14 @@ const ContractInfoModal = ({
   sale,
   customer,
   onClose,
-  appSettings
+  appSettings,
+  activeTab
 }: {
   sale: Sale,
   customer?: Customer,
   onClose: () => void,
-  appSettings?: AppSettings
+  appSettings?: AppSettings,
+  activeTab?: 'ACTIVE' | 'OVERDUE' | 'ARCHIVE'
 }) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -41,7 +43,9 @@ const ContractInfoModal = ({
 
   let expectedPaidByNow = sale.downPayment;
   sale.paymentPlan.forEach(p => {
-    if (new Date(p.date) < today) expectedPaidByNow += p.amount;
+    if (!p.isRealPayment && new Date(p.date) < today) {
+      expectedPaidByNow += p.amount;
+    }
   });
 
   const actualPaidTotal = sale.totalAmount - sale.remainingAmount;
@@ -89,16 +93,29 @@ const ContractInfoModal = ({
             <InfoItem label="След. платеж" value={nextPaymentDate} color="text-indigo-600" small />
           </div>
 
-          <div className="bg-gradient-to-r from-red-50 to-orange-50 p-3 rounded-xl border border-red-100">
-            <div className="flex justify-between items-center">
-              <label className="text-[11px] text-red-600 font-medium">Просрочка</label>
-              <p className="font-bold text-red-600 text-lg">{formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽</p>
-            </div>
-            <div className="flex justify-between items-center mt-1">
-              <label className="text-[11px] text-slate-600">Остаток</label>
-              <p className="font-semibold text-slate-700 text-sm">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
-            </div>
-          </div>
+          {/* Показываем блок просрочки только если НЕ на вкладке ACTIVE и есть просрочка */}
+{activeTab !== 'ACTIVE' && realOverdueAmount > 0 && (
+  <div className="bg-gradient-to-r from-red-50 to-orange-50 p-3 rounded-xl border border-red-100">
+    <div className="flex justify-between items-center">
+      <label className="text-[11px] text-red-600 font-medium">Просрочка</label>
+      <p className="font-bold text-red-600 text-lg">{formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽</p>
+    </div>
+    <div className="flex justify-between items-center mt-1">
+      <label className="text-[11px] text-slate-600">Остаток</label>
+      <p className="font-semibold text-slate-700 text-sm">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
+    </div>
+  </div>
+)}
+
+{/* Если на вкладке ACTIVE — показываем только остаток */}
+{activeTab === 'ACTIVE' && (
+  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+    <div className="flex justify-between items-center">
+      <label className="text-[11px] text-slate-600">Остаток</label>
+      <p className="font-bold text-slate-800 text-lg">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
+    </div>
+  </div>
+)}
 
           {overduePaymentsList.length > 0 && (
             <div className="bg-slate-50 p-3 rounded-xl">
@@ -784,6 +801,7 @@ const Contracts: React.FC<ContractsProps> = ({
           customer={customers.find(c => c.id === selectedSaleForInfo.customerId)}
           onClose={() => setSelectedSaleForInfo(null)}
           appSettings={appSettings}
+          activeTab={activeTab}
         />
       )}
     </div>
