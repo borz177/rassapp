@@ -13,7 +13,9 @@ interface SyncItem {
   payload?: any; // The data being saved
   itemId?: string; // ID of the item being deleted
   timestamp: number;
-  retryCount?: number
+  retryCount?: number;
+  dependsOn?: string[]; // 🔹 IDs других элементов очереди, которые должны выполниться ПЕРЕД этим
+  error?: string; //
 }
 
 interface CacheItem {
@@ -48,37 +50,92 @@ class OfflineStorage {
     });
   }
 
-  async addToQueue(item: Omit<SyncItem, 'id' | 'timestamp'>): Promise<void> {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORES.SYNC_QUEUE, 'readwrite');
-      const store = transaction.objectStore(STORES.SYNC_QUEUE);
-      const syncItem: SyncItem = {
-        ...item,
-        id: crypto.randomUUID(),
-        timestamp: Date.now()
-      };
-      const request = store.add(syncItem);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+ async addToQueue(item: Omit<SyncItem, 'id' | 'timestamp'>): Promise<void> {
+  const db = await this.dbPromise;
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORES.SYNC_QUEUE, 'readwrite');
+    const store = transaction.objectStore(STORES.SYNC_QUEUE);
+
+    const syncItem: SyncItem = {
+      ...item,
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      retryCount: 0,
+      // 🔹 Автоматически определяем зависимости
+      dependsOn: this.extractDependencies(item)
+    };
+
+    const request = store.add(syncItem);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// 🔹 Вспомогательный метод для извлечения зависимостей
+private extractDependencies(item: Omit<SyncItem, 'id' | 'timestamp'>): string[] {
+  const deps: string[] = [];
+
+  // Если это платёж/продажа — ищем в payload customerId
+  if (item.collection === 'sales' && item.payload?.customerId) {
+    // Проверяем, есть ли в очереди операция создания этого клиента
+    // Это упрощённая логика — в реальном приложении нужно проверять IndexedDB
+    deps.push(`customer_${item.payload.customerId}`);
   }
 
-  async getQueue(): Promise<SyncItem[]> {
-    const db = await this.dbPromise;
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORES.SYNC_QUEUE, 'readonly');
-      const store = transaction.objectStore(STORES.SYNC_QUEUE);
-      const request = store.getAll();
-      request.onsuccess = () => {
-          // Sort by timestamp to ensure order
-          const items = request.result as SyncItem[];
-          items.sort((a, b) => a.timestamp - b.timestamp);
-          resolve(items);
-      };
-      request.onerror = () => reject(request.error);
-    });
+  // Аналогично для других зависимостей (accountId, investorId, etc.)
+  if (item.collection === 'sales' && item.payload?.accountId) {
+    deps.push(`account_${item.payload.accountId}`);
   }
+
+  return deps;
+}
+
+async getQueue(): Promise<SyncItem[]> {
+  const db = await this.dbPromise;
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORES.SYNC_QUEUE, 'readonly');
+    const store = transaction.objectStore(STORES.SYNC_QUEUE);
+    const request = store.getAll();
+
+    request.onsuccess = () => {
+      const items = request.result as SyncItem[];
+
+      // 🔹 Топологическая сортировка: сначала элементы без зависимостей
+      const sorted = this.topologicalSort(items);
+      resolve(sorted);
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// 🔹 Простая топологическая сортировка для очереди
+private topologicalSort(items: SyncItem[]): SyncItem[] {
+  const result: SyncItem[] = [];
+  const visited = new Set<string>();
+  const itemMap = new Map(items.map(i => [i.id, i]));
+
+  const visit = (item: SyncItem) => {
+    if (visited.has(item.id)) return;
+
+    // Сначала обрабатываем зависимости
+    if (item.dependsOn?.length) {
+      for (const depId of item.dependsOn) {
+        const dep = items.find(i => i.id === depId || i.payload?.id === depId.replace(/^customer_/, ''));
+        if (dep && !visited.has(dep.id)) {
+          visit(dep);
+        }
+      }
+    }
+
+    visited.add(item.id);
+    result.push(item);
+  };
+
+  // Сортируем по времени, но с учётом зависимостей
+  items.sort((a, b) => a.timestamp - b.timestamp).forEach(visit);
+
+  return result;
+}
 
   async removeFromQueue(id: string): Promise<void> {
     const db = await this.dbPromise;

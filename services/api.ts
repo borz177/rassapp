@@ -17,28 +17,10 @@ const getBaseUrl = () => {
 
 const API_URL = getBaseUrl();
 
-const getAuthHeader = () => {
-    const token = localStorage.getItem('token');
-    return token ? { 'x-auth-token': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
-};
 
-let isSyncing = false;
-
-export const api = {
-    // Sync Logic
-    sync: async () => {
-        if (!navigator.onLine || isSyncing) return;
-        isSyncing = true;
-
-        try {
-            const queue = await offlineStorage.getQueue();
-            if (queue.length === 0) return;
-
-
-
-           for (const item of queue) {
+async function processSyncItem(item: any) {
     try {
-        let res;
+        let res: Response;
 
         if (item.type === 'saveItem') {
             res = await fetch(`${API_URL}/data/${item.collection}`, {
@@ -51,60 +33,99 @@ export const api = {
                 method: 'DELETE',
                 headers: getAuthHeader()
             });
+        } else {
+            return; // Неизвестный тип
         }
 
-        if (res && res.ok) {
-
-            // ✅ Успешно — удаляем из очереди
+        if (res.ok) {
             await offlineStorage.removeFromQueue(item.id);
-
         } else {
+            // 🔹 Умная обработка ошибок: если "зависимость не найдена" — пробуем позже
+            const errorText = await res.text().catch(() => '');
+            const isDependencyError = res.status === 400 && (
+                errorText.toLowerCase().includes('not found') ||
+                errorText.toLowerCase().includes('customer') ||
+                errorText.toLowerCase().includes('reference')
+            );
 
-            console.warn(`Sync failed for item ${item.id}: ${res?.status}`);
-
-            // увеличиваем retry
             item.retryCount = (item.retryCount || 0) + 1;
 
-            if (item.retryCount > 5) {
-
-                console.error("Dropping broken queue item:", item);
-
-                // удаляем сломанный элемент
-                await offlineStorage.removeFromQueue(item.id);
-
-            } else {
-
-                // сохраняем обновлённый retryCount
+            if (isDependencyError && item.retryCount < 3) {
+                // Не удаляем, а обновляем с флагом для повторной попытки
                 await offlineStorage.updateQueueItem(item);
+            } else if (item.retryCount > 5) {
+                console.error(`❌ Dropping item ${item.id} after ${item.retryCount} retries`);
+                await offlineStorage.removeFromQueue(item.id);
+            } else {
+                await offlineStorage.updateQueueItem(item);
+            }
+        }
+    } catch (error) {
+        console.error(`Failed to sync item ${item.id}`, error);
+        item.retryCount = (item.retryCount || 0) + 1;
 
+        if (item.retryCount <= 5) {
+            await offlineStorage.updateQueueItem(item);
+        } else {
+            await offlineStorage.removeFromQueue(item.id);
+        }
+    }
+}
+const getAuthHeader = () => {
+    const token = localStorage.getItem('token');
+    return token ? { 'x-auth-token': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+};
+
+let isSyncing = false;
+
+export const api = {
+    // Sync Logic
+    sync: async () => {
+    if (!navigator.onLine || isSyncing) return;
+    isSyncing = true;
+
+    try {
+        const queue = await offlineStorage.getQueue();
+        if (queue.length === 0) return;
+
+        // 🔹 ШАГ 1: Сначала синхронизируем "базовые" сущности (без зависимостей)
+        const baseCollections = ['customers', 'accounts', 'investors', 'products'];
+
+        // 1a. Создаём/обновляем базовые сущности
+        for (const item of queue) {
+            if (item.type === 'saveItem' && baseCollections.includes(item.collection!)) {
+                await processSyncItem(item);
+            }
+        }
+
+        // 1b. Удаляем базовые сущности
+        for (const item of queue) {
+            if (item.type === 'deleteItem' && baseCollections.includes(item.collection!)) {
+                await processSyncItem(item);
+            }
+        }
+
+        // 🔹 ШАГ 2: Затем — зависимые сущности (sales, expenses)
+        for (const item of queue) {
+            if (item.type === 'saveItem' && !baseCollections.includes(item.collection!)) {
+                await processSyncItem(item);
+            }
+        }
+
+        // 2b. Удаляем зависимые сущности
+        for (const item of queue) {
+            if (item.type === 'deleteItem' && !baseCollections.includes(item.collection!)) {
+                await processSyncItem(item);
             }
         }
 
     } catch (error) {
-
-        console.error(`Failed to sync item ${item.id}`, error);
-
-        // тоже считаем retry
-        item.retryCount = (item.retryCount || 0) + 1;
-
-        if (item.retryCount > 5) {
-
-            await offlineStorage.removeFromQueue(item.id);
-
-        } else {
-
-            await offlineStorage.updateQueueItem(item);
-
-        }
-
-        // ⚠️ останавливаем sync если сеть упала
-        break;
+        console.error('Sync error:', error);
+    } finally {
+        isSyncing = false;
     }
-}
-        } finally {
-            isSyncing = false;
-        }
-    },
+},
+
 
     // Auth
     sendCode: async (email: string, type: 'REGISTER' | 'RESET'): Promise<void> => {

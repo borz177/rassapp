@@ -32,7 +32,7 @@ export const registerUser = async (name: string, email: string, password: string
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser: User = {
-        id: `u_${Date.now()}`,
+        id: crypto.randomUUID(),
         name,
         email,
         password: hashedPassword,  // ✅ Хэш вместо открытого текста
@@ -52,7 +52,7 @@ export const registerInvestor = (managerId: string, name: string, email: string,
     }
 
     const newUser: User = {
-        id: `u_inv_${Date.now()}`,
+        id: crypto.randomUUID(),
         name,
         email,
         password,
@@ -80,7 +80,7 @@ export const registerEmployee = (
     }
 
     const newUser: User = {
-        id: `u_emp_${Date.now()}`,
+        id: crypto.randomUUID(),
         name,
         email,
         password,
