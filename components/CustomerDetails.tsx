@@ -39,9 +39,14 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={e => e.stopPropagation()}>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">Редактировать клиента</h3>
+        // 🔹 Контейнер: добавили items-start для прокрутки сверху
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+            {/* 🔹 Контент модального окна: добавил max-h, overflow-y-auto, my-4 */}
+            <div
+                className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5 max-h-[90vh] overflow-y-auto my-4"
+                onClick={e => e.stopPropagation()}
+            >
+                <h3 className="text-lg font-bold text-slate-800 mb-4 sticky top-0 bg-white pb-2 z-10">Редактировать клиента</h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">ФИО</label>
@@ -75,115 +80,112 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
                         </label>
                     </div>
 
-                    // 🔹 Внутри EditCustomerModal, перед кнопками "Отмена/Сохранить" добавьте:
+                    {/* === СЕКЦИЯ ДОКУМЕНТОВ === */}
+                    <div className="border-t border-slate-100 pt-4">
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Документы клиента</label>
 
-{/* === СЕКЦИЯ ДОКУМЕНТОВ === */}
-<div className="border-t border-slate-100 pt-4">
-    <label className="block text-sm font-medium text-slate-700 mb-2">Документы клиента</label>
+                        {/* Список текущих документов */}
+                        {customer.documents?.length > 0 && (
+                            <div className="space-y-2 mb-3">
+                                {customer.documents.map(doc => (
+                                    <div key={doc.id} className="flex items-center justify-between bg-slate-50 p-3 rounded-xl">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className={`p-2 rounded-lg ${doc.fileType === 'pdf' ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                                {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-medium text-slate-800 truncate">{doc.name}</p>
+                                                <p className="text-xs text-slate-500">
+                                                    {doc.category === 'passport' && '🪪 Паспорт'}
+                                                    {doc.category === 'guarantor' && '🤝 Поручительство'}
+                                                    {doc.category === 'contract' && '📄 Договор'}
+                                                    {doc.category === 'photo' && '📷 Фото'}
+                                                    {doc.category === 'other' && '📎 Другое'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const updatedDocs = customer.documents?.filter(d => d.id !== doc.id) || [];
+                                                onUpdate({ ...customer, documents: updatedDocs });
+                                            }}
+                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                        >
+                                            {ICONS.Delete}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
 
-    {/* Список текущих документов */}
-    {customer.documents?.length > 0 && (
-        <div className="space-y-2 mb-3">
-            {customer.documents.map(doc => (
-                <div key={doc.id} className="flex items-center justify-between bg-slate-50 p-3 rounded-xl">
-                    <div className="flex items-center gap-3 min-w-0">
-                        <div className={`p-2 rounded-lg ${doc.fileType === 'pdf' ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                            {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
-                        </div>
-                        <div className="min-w-0">
-                            <p className="text-sm font-medium text-slate-800 truncate">{doc.name}</p>
-                            <p className="text-xs text-slate-500">
-                                {doc.category === 'passport' && '🪪 Паспорт'}
-                                {doc.category === 'guarantor' && '🤝 Поручительство'}
-                                {doc.category === 'contract' && '📄 Договор'}
-                                {doc.category === 'photo' && '📷 Фото'}
-                                {doc.category === 'other' && '📎 Другое'}
-                            </p>
-                        </div>
+                        {/* Форма добавления документа */}
+                        <details className="group">
+                            <summary className="flex items-center gap-2 text-sm font-medium text-indigo-600 cursor-pointer list-none">
+                                <span className="group-open:rotate-90 transition-transform">▶</span>
+                                Добавить документ
+                            </summary>
+                            <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">
+                                <input
+                                    type="text"
+                                    placeholder="Название документа"
+                                    className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
+                                    id="doc-name"
+                                />
+                                <select
+                                    className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm bg-white"
+                                    id="doc-category"
+                                >
+                                    <option value="passport">🪪 Паспорт</option>
+                                    <option value="guarantor">🤝 Поручительство</option>
+                                    <option value="contract">📄 Договор</option>
+                                    <option value="photo">📷 Фото клиента</option>
+                                    <option value="other">📎 Другое</option>
+                                </select>
+                                <input
+                                    type="file"
+                                    accept="image/*,.pdf"
+                                    className="w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100"
+                                    id="doc-file"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const nameInput = document.getElementById('doc-name') as HTMLInputElement;
+                                        const categorySelect = document.getElementById('doc-category') as HTMLSelectElement;
+                                        const fileInput = document.getElementById('doc-file') as HTMLInputElement;
+
+                                        if (fileInput.files?.[0] && nameInput.value) {
+                                            const file = fileInput.files[0];
+                                            const reader = new FileReader();
+                                            reader.onload = (e) => {
+                                                const newDoc: CustomerDocument = {
+                                                    id: crypto.randomUUID(),
+                                                    name: nameInput.value,
+                                                    category: categorySelect.value as CustomerDocument['category'],
+                                                    fileUrl: e.target?.result as string,
+                                                    fileType: file.type.includes('pdf') ? 'pdf' : 'image',
+                                                    uploadedAt: new Date().toISOString()
+                                                };
+                                                const updatedDocs = [...(customer.documents || []), newDoc];
+                                                onUpdate({ ...customer, documents: updatedDocs });
+
+                                                nameInput.value = '';
+                                                fileInput.value = '';
+                                            };
+                                            reader.readAsDataURL(file);
+                                        }
+                                    }}
+                                    className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700"
+                                >
+                                    Прикрепить документ
+                                </button>
+                            </div>
+                        </details>
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            const updatedDocs = customer.documents?.filter(d => d.id !== doc.id) || [];
-                            onUpdate({ ...customer, documents: updatedDocs });
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
-                    >
-                        {ICONS.Delete}
-                    </button>
-                </div>
-            ))}
-        </div>
-    )}
 
-    {/* Форма добавления документа */}
-    <details className="group">
-        <summary className="flex items-center gap-2 text-sm font-medium text-indigo-600 cursor-pointer list-none">
-            <span className="group-open:rotate-90 transition-transform">▶</span>
-            Добавить документ
-        </summary>
-        <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">
-            <input
-                type="text"
-                placeholder="Название документа"
-                className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
-                id="doc-name"
-            />
-            <select
-                className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm bg-white"
-                id="doc-category"
-            >
-                <option value="passport">🪪 Паспорт</option>
-                <option value="guarantor">🤝 Поручительство</option>
-                <option value="contract">📄 Договор</option>
-                <option value="photo">📷 Фото клиента</option>
-                <option value="other">📎 Другое</option>
-            </select>
-            <input
-                type="file"
-                accept="image/*,.pdf"
-                className="w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100"
-                id="doc-file"
-            />
-            <button
-                type="button"
-                onClick={() => {
-                    const nameInput = document.getElementById('doc-name') as HTMLInputElement;
-                    const categorySelect = document.getElementById('doc-category') as HTMLSelectElement;
-                    const fileInput = document.getElementById('doc-file') as HTMLInputElement;
-
-                    if (fileInput.files?.[0] && nameInput.value) {
-                        const file = fileInput.files[0];
-                        const reader = new FileReader();
-                        reader.onload = (e) => {
-                            const newDoc: CustomerDocument = {
-                                id: crypto.randomUUID(),
-                                name: nameInput.value,
-                                category: categorySelect.value as CustomerDocument['category'],
-                                fileUrl: e.target?.result as string,
-                                fileType: file.type.includes('pdf') ? 'pdf' : 'image',
-                                uploadedAt: new Date().toISOString()
-                            };
-                            const updatedDocs = [...(customer.documents || []), newDoc];
-                            onUpdate({ ...customer, documents: updatedDocs });
-
-                            // Сброс формы
-                            nameInput.value = '';
-                            fileInput.value = '';
-                        };
-                        reader.readAsDataURL(file);
-                    }
-                }}
-                className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700"
-            >
-                Прикрепить документ
-            </button>
-        </div>
-    </details>
-</div>
-
-
-                    <div className="flex gap-3 mt-4">
+                    {/* 🔹 Кнопки зафиксированы внизу, но внутри скроллящейся области */}
+                    <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 sticky bottom-0 bg-white">
                         <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
                         <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
                     </div>
