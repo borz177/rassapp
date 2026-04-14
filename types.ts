@@ -105,6 +105,18 @@ export interface Partnership {
   createdAt: string;
 }
 
+
+export interface CustomerDocument {
+  id: string;
+  name: string;
+  category: 'passport' | 'guarantor' | 'contract' | 'other' | 'photo';
+  fileUrl: string; // base64 или URL
+  fileType: 'image' | 'pdf';
+  uploadedAt: string;
+  description?: string;
+}
+
+
 export interface Customer {
   id: string;
   userId: string; // Owner
@@ -119,6 +131,7 @@ export interface Customer {
   totalPurchases?: number;
   activeContracts?: number;
   overdueContracts?: number;
+  documents?: CustomerDocument[];
 }
 
 export interface Product {
