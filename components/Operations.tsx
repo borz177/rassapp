@@ -24,6 +24,7 @@ const Operations: React.FC<OperationsProps> = ({
 
   const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Неизвестный счет';
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Системная операция';
+  const getAccountInitialBalance = (id: string) => accounts.find(a => a.id === id)?.initialBalance || 0;
 
   const operations = useMemo(() => {
     const incomeOps: any[] = [];
@@ -90,15 +91,41 @@ const Operations: React.FC<OperationsProps> = ({
         raw: e
     }));
 
-    let all = [...incomeOps, ...expenseOps].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    let all = [...incomeOps, ...expenseOps];
 
+    // 🔹 ШАГ 1: Рассчитываем скользящий баланс для каждого счёта
+    // Сортируем по дате (от старых к новым) для корректного расчёта
+    const sortedForCalc = [...all].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const accountBalances: Record<string, number> = {};
+
+    // Инициализируем балансы счетов их начальными значениями
+    accounts.forEach(acc => {
+        accountBalances[acc.id] = acc.initialBalance || 0;
+    });
+
+    sortedForCalc.forEach(op => {
+        const currentBalance = accountBalances[op.accountId] || 0;
+        const newBalance = op.type === 'INCOME'
+            ? currentBalance + op.amount
+            : currentBalance - op.amount;
+
+        op.balanceAfter = newBalance; // 🔹 Сохраняем баланс ПОСЛЕ этой операции
+        op.balanceBefore = currentBalance; // 🔹 Сохраняем баланс ДО этой операции (опционально)
+        accountBalances[op.accountId] = newBalance;
+    });
+
+    // 🔹 ШАГ 2: Применяем фильтры
     if (filterType !== 'ALL') {
         all = all.filter(op => op.type === filterType);
     }
     if (filterAccountId) {
         all = all.filter(op => op.accountId === filterAccountId);
     }
-    return all;
+
+    // 🔹 ШАГ 3: Сортируем для отображения (от новых к старым)
+    return all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
   }, [sales, expenses, filterType, filterAccountId, customers, accounts]);
 
   const groupedOperations = useMemo(() => {
@@ -189,7 +216,14 @@ const Operations: React.FC<OperationsProps> = ({
                               </div>
                               <div className="text-right">
                                   <span className={`font-bold block ${op.type === 'EXPENSE' ? 'text-slate-800' : 'text-emerald-600'}`}>{op.type === 'EXPENSE' ? '-' : '+'}{op.amount.toLocaleString()} ₽</span>
-                                  <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{getAccountName(op.accountId)}</span>
+
+                                  {/* 🔹 Баланс после операции */}
+                                  <div className="mt-1 flex flex-col items-end gap-1">
+                                      <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{getAccountName(op.accountId)}</span>
+                                      <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                                          Баланс: {op.balanceAfter?.toLocaleString('ru-RU')} ₽
+                                      </span>
+                                  </div>
                               </div>
                           </div>
                       ))}
@@ -208,6 +242,17 @@ const Operations: React.FC<OperationsProps> = ({
                   </div>
                   <div className="p-6 space-y-4">
                       <div className="flex justify-between border-b border-slate-100 pb-2"><span className="text-slate-500 text-sm">Счет</span><span className="font-semibold text-slate-800">{getAccountName(selectedOp.accountId)}</span></div>
+
+                      {/* 🔹 Балансы в модалке */}
+                      <div className="flex justify-between border-b border-slate-100 pb-2">
+                          <span className="text-slate-500 text-sm">Баланс до операции</span>
+                          <span className="font-semibold text-slate-700">{selectedOp.balanceBefore?.toLocaleString('ru-RU')} ₽</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-2">
+                          <span className="text-slate-500 text-sm">Баланс после операции</span>
+                          <span className="font-semibold text-emerald-600">{selectedOp.balanceAfter?.toLocaleString('ru-RU')} ₽</span>
+                      </div>
+
                       <div className="flex justify-between border-b border-slate-100 pb-2"><span className="text-slate-500 text-sm">Категория</span><span className="font-semibold text-slate-800">{selectedOp.category}</span></div>
                       {selectedOp.type === 'INCOME' && (
                           <>

@@ -93,6 +93,7 @@ export interface Account {
   balance?: number;
   currency?: string;
   isArchived?: boolean;
+  initialBalance?: number;
 }
 
 export interface Partnership {
