@@ -18,12 +18,25 @@ interface CustomerDetailsProps {
   initialSaleId?: string | null;
 }
 
-const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer, onClose: () => void, onUpdate: (c: Customer) => void }) => {
+const EditCustomerModal = ({
+    customer,
+    onClose,
+    onUpdate,
+    isOnline = navigator.onLine // 🔹 Новый пропс для проверки сети
+}: {
+    customer: Customer,
+    onClose: () => void,
+    onUpdate: (c: Customer) => void,
+    isOnline?: boolean
+}) => {
     const [name, setName] = useState(customer.name);
     const [phone, setPhone] = useState(customer.phone);
     const [address, setAddress] = useState(customer.address || '');
     const [notes, setNotes] = useState(customer.notes || '');
     const [allowWhatsapp, setAllowWhatsapp] = useState(customer.allowWhatsappNotification !== false);
+
+    // 🔹 Состояние для загрузки файла
+    const [isUploading, setIsUploading] = useState(false);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -38,16 +51,74 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
         onClose();
     };
 
+    // 🔹 Функция добавления документа с проверкой офлайн-режима
+    const handleAddDocument = async () => {
+    const nameInput = document.getElementById('doc-name') as HTMLInputElement;
+    const categorySelect = document.getElementById('doc-category') as HTMLSelectElement;
+    const fileInput = document.getElementById('doc-file') as HTMLInputElement;
+
+    if (!isOnline) {
+        alert('📴 Загрузка документов доступна только при подключении к интернету');
+        return;
+    }
+
+    if (!fileInput.files?.[0] || !nameInput.value) {
+        alert('Заполните название и выберите файл');
+        return;
+    }
+
+    setIsUploading(true);
+
+    try {
+        const file = fileInput.files[0];
+
+        if (file.size > 5 * 1024 * 1024) {
+            alert('Файл слишком большой. Максимальный размер: 5 МБ');
+            return;
+        }
+
+        const reader = new FileReader();
+
+        const fileContent = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+        });
+
+        // 🔹 ИСПРАВЛЕНИЕ: Явно указываем тип и приводим id к string
+        const newDoc: CustomerDocument = {
+            id: crypto.randomUUID() as string, // ✅ Явное приведение к string
+            name: nameInput.value,
+            category: categorySelect.value as CustomerDocument['category'],
+            fileUrl: fileContent,
+            fileType: (file.type.includes('pdf') ? 'pdf' : 'image') as CustomerDocument['fileType'],
+            uploadedAt: new Date().toISOString(),
+            fileSize: file.size
+        };
+
+        const updatedDocs = [...(customer.documents || []), newDoc];
+        onUpdate({ ...customer, documents: updatedDocs });
+
+        nameInput.value = '';
+        fileInput.value = '';
+
+    } catch (error) {
+        console.error('❌ Failed to add document:', error);
+        alert('Не удалось загрузить файл. Попробуйте ещё раз.');
+    } finally {
+        setIsUploading(false);
+    }
+};
+
     return (
-        // 🔹 Контейнер: добавили items-start для прокрутки сверху
         <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            {/* 🔹 Контент модального окна: добавил max-h, overflow-y-auto, my-4 */}
             <div
                 className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5 max-h-[90vh] overflow-y-auto my-4"
                 onClick={e => e.stopPropagation()}
             >
                 <h3 className="text-lg font-bold text-slate-800 mb-4 sticky top-0 bg-white pb-2 z-10">Редактировать клиента</h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
+                    {/* ... поля ФИО, телефон, адрес, заметки ... */}
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">ФИО</label>
                         <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} required />
@@ -84,6 +155,17 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
                     <div className="border-t border-slate-100 pt-4">
                         <label className="block text-sm font-medium text-slate-700 mb-2">Документы клиента</label>
 
+                        {/* 🔹 Бейдж офлайн-режима */}
+                        {!isOnline && (
+                            <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
+                                <span className="text-amber-600 mt-0.5">⚠️</span>
+                                <p className="text-xs text-amber-800">
+                                    <strong>Офлайн-режим:</strong> Загрузка новых документов недоступна.
+                                    Вы можете просматривать и удалять уже добавленные файлы.
+                                </p>
+                            </div>
+                        )}
+
                         {/* Список текущих документов */}
                         {customer.documents?.length > 0 && (
                             <div className="space-y-2 mb-3">
@@ -102,6 +184,12 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
                                                     {doc.category === 'photo' && '📷 Фото'}
                                                     {doc.category === 'other' && '📎 Другое'}
                                                 </p>
+                                                {/* Размер файла */}
+                                                {doc.fileSize && (
+                                                    <p className="text-[10px] text-slate-400 mt-0.5">
+                                                        {(doc.fileSize / 1024).toFixed(1)} КБ
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
                                         <button
@@ -111,6 +199,7 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
                                                 onUpdate({ ...customer, documents: updatedDocs });
                                             }}
                                             className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                            disabled={!isOnline} // 🔹 Можно удалять и офлайн (локально)
                                         >
                                             {ICONS.Delete}
                                         </button>
@@ -121,8 +210,8 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
 
                         {/* Форма добавления документа */}
                         <details className="group">
-                            <summary className="flex items-center gap-2 text-sm font-medium text-indigo-600 cursor-pointer list-none">
-                                <span className="group-open:rotate-90 transition-transform">▶</span>
+                            <summary className={`flex items-center gap-2 text-sm font-medium cursor-pointer list-none ${!isOnline ? 'text-slate-400' : 'text-indigo-600'}`}>
+                                <span className={`transition-transform ${!isOnline ? '' : 'group-open:rotate-90'}`}>▶</span>
                                 Добавить документ
                             </summary>
                             <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">
@@ -131,10 +220,12 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
                                     placeholder="Название документа"
                                     className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
                                     id="doc-name"
+                                    disabled={!isOnline} // 🔹 Блокируем ввод офлайн
                                 />
                                 <select
-                                    className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm bg-white"
+                                    className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                                     id="doc-category"
+                                    disabled={!isOnline}
                                 >
                                     <option value="passport">🪪 Паспорт</option>
                                     <option value="guarantor">🤝 Поручительство</option>
@@ -145,46 +236,37 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
                                 <input
                                     type="file"
                                     accept="image/*,.pdf"
-                                    className="w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100"
+                                    className={`w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 disabled:file:bg-slate-100 disabled:file:text-slate-400 disabled:file:cursor-not-allowed`}
                                     id="doc-file"
+                                    disabled={!isOnline} // 🔹 Блокируем выбор файла
                                 />
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        const nameInput = document.getElementById('doc-name') as HTMLInputElement;
-                                        const categorySelect = document.getElementById('doc-category') as HTMLSelectElement;
-                                        const fileInput = document.getElementById('doc-file') as HTMLInputElement;
-
-                                        if (fileInput.files?.[0] && nameInput.value) {
-                                            const file = fileInput.files[0];
-                                            const reader = new FileReader();
-                                            reader.onload = (e) => {
-                                                const newDoc: CustomerDocument = {
-                                                    id: crypto.randomUUID(),
-                                                    name: nameInput.value,
-                                                    category: categorySelect.value as CustomerDocument['category'],
-                                                    fileUrl: e.target?.result as string,
-                                                    fileType: file.type.includes('pdf') ? 'pdf' : 'image',
-                                                    uploadedAt: new Date().toISOString()
-                                                };
-                                                const updatedDocs = [...(customer.documents || []), newDoc];
-                                                onUpdate({ ...customer, documents: updatedDocs });
-
-                                                nameInput.value = '';
-                                                fileInput.value = '';
-                                            };
-                                            reader.readAsDataURL(file);
-                                        }
-                                    }}
-                                    className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700"
+                                    onClick={handleAddDocument}
+                                    disabled={!isOnline || isUploading} // 🔹 Блокируем кнопку офлайн или при загрузке
+                                    className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
+                                        !isOnline 
+                                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+                                            : isUploading 
+                                                ? 'bg-indigo-400 text-white cursor-wait' 
+                                                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                    }`}
                                 >
-                                    Прикрепить документ
+                                    {isUploading ? (
+                                        <>
+                                            <span className="animate-spin">⏳</span> Загрузка...
+                                        </>
+                                    ) : !isOnline ? (
+                                        '📴 Недоступно офлайн'
+                                    ) : (
+                                        'Прикрепить документ'
+                                    )}
                                 </button>
                             </div>
                         </details>
                     </div>
 
-                    {/* 🔹 Кнопки зафиксированы внизу, но внутри скроллящейся области */}
+                    {/* Кнопки */}
                     <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 sticky bottom-0 bg-white">
                         <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
                         <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
@@ -194,7 +276,6 @@ const EditCustomerModal = ({ customer, onClose, onUpdate }: { customer: Customer
         </div>
     );
 };
-
 const CustomerDetails: React.FC<CustomerDetailsProps> = ({
     customer, sales, accounts, investors, appSettings, onBack, onInitiatePayment, onUndoPayment, onEditPayment, onUpdateCustomer, initialSaleId
 }) => {
@@ -502,7 +583,8 @@ const handleSendFullReport = () => {
           <EditCustomerModal 
             customer={customer} 
             onClose={() => setShowEditModal(false)} 
-            onUpdate={onUpdateCustomer} 
+            onUpdate={onUpdateCustomer}
+            isOnline={navigator.onLine}
           />
       )}
     </div>

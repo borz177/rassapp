@@ -1106,8 +1106,30 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
   const handleUpdateProduct = async (updated: Product) => { if (isEmployee && !user?.permissions?.canEdit) return; const saved = await api.saveItem('products', updated); updateList(setProducts, saved); };
   const handleDeleteProduct = async (id: string) => { if (isEmployee && !user?.permissions?.canDelete) return; await api.deleteItem('products', id); removeFromList(setProducts, id); };
   const handleAddCustomer = async (name: string, phone: string, photo: string, address: string) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } if (!user) throw new Error("No user"); const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newCustomer: Customer = { id: crypto.randomUUID(), userId: ownerId, name, phone, email: '', trustScore: 50, notes: '', photo, address }; const saved = await api.saveItem('customers', newCustomer); updateList(setCustomers, saved); return saved; };
-  const handleUpdateCustomer = async (updated: Customer) => { const saved = await api.saveItem('customers', updated); updateList(setCustomers, saved); };
-  const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', partners?: string[]) => { if (user && isManager) { const newAcc = { id: `acc_${Date.now()}`, userId: user.id, name, type, partners }; const saved = await api.saveItem('accounts', newAcc); updateList(setAccounts, saved); } };
+const handleUpdateCustomer = async (updated: Customer) => {
+    try {
+        // 🔹 1. Оптимистичное обновление локального стейта (сразу видим изменения)
+        updateList(setCustomers, updated, undefined, 'customers');
+
+        // 🔹 2. Если онлайн — пробуем сохранить на сервер
+        if (navigator.onLine) {
+            const saved = await api.saveItem('customers', updated);
+
+            // 🔹 3. Если сервер вернул обновлённый объект — синхронизируем стейт
+            // (например, добавил серверные поля: createdAt, updatedAt, _id и т.д.)
+            if (saved && saved.id === updated.id) {
+                updateList(setCustomers, saved, undefined, 'customers');
+            }
+        }
+        // 🔹 4. Если офлайн — данные уже сохранены локально через updateList,
+        // и попадут в очередь синхронизации внутри api.saveItem
+    } catch (error) {
+        console.error('❌ Failed to update customer:', error);
+        // 🔹 Опционально: откат изменений при ошибке
+        // Но для офлайн-режима лучше оставить оптимистичное обновление
+    }
+};
+const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', partners?: string[]) => { if (user && isManager) { const newAcc = { id: `acc_${Date.now()}`, userId: user.id, name, type, partners }; const saved = await api.saveItem('accounts', newAcc); updateList(setAccounts, saved); } };
   const handleSetMainAccount = async (accountId: string) => { if (user && isManager) { const updatedAccounts = accounts.map(acc => { if (acc.id === accountId) { return { ...acc, type: 'MAIN' as const }; } if (acc.type === 'MAIN') { return { ...acc, type: 'CUSTOM' as const }; } return acc; }); setAccounts(updatedAccounts); for(const acc of updatedAccounts) await api.saveItem('accounts', acc); } };
 
   const handleImportData = async (data: {

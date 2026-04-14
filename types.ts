@@ -114,6 +114,7 @@ export interface CustomerDocument {
   fileType: 'image' | 'pdf';
   uploadedAt: string;
   description?: string;
+  fileSize?: number;
 }
 
 
