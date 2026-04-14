@@ -121,7 +121,27 @@ const isLanding = path === "/"
 
 
 
+ // 🔹 Вспомогательная функция для "умного" слияния данных (исправленная версия)
+const mergeServerData = <T extends { id: string }>(
+    current: T[],
+    fresh: T[]
+): T[] => {
+    const freshMap = new Map<string, T>(fresh.map(item => [item.id, item]));
 
+    // 1. Обновляем существующие элементы
+    const updated = current.map(item => {
+        if (freshMap.has(item.id)) {
+            return freshMap.get(item.id)!;
+        }
+        return item;
+    });
+
+    // 2. Удаляем из freshMap те, что уже обработали
+    updated.forEach(item => freshMap.delete(item.id));
+
+    // 3. Добавляем новые элементы с сервера
+    return [...updated, ...Array.from(freshMap.values())];
+};
 
 
 
@@ -132,40 +152,74 @@ const isLanding = path === "/"
   }, [myProfitPeriod]);
 
   // Network Status & Sync
-  useEffect(() => {
-      const handleOnline = () => {
-          setIsOnline(true);
-          handleSync();
-      };
-      const handleOffline = () => setIsOnline(false);
+  // 🔹 Network Status & Sync — ОБНОВЛЁННЫЙ
+useEffect(() => {
+    const handleOnline = async () => {
+        setIsOnline(true);
 
-      window.addEventListener('online', handleOnline);
-      window.addEventListener('offline', handleOffline);
+        // 🔹 Небольшая задержка для стабилизации сети (чтобы запросы не отваливались)
+        await new Promise(resolve => setTimeout(resolve, 800));
 
-      // Initial Sync check
-      if (navigator.onLine) {
-          handleSync();
-      }
+        // 🔹 Тихая фоновая синхронизация
+        await handleSync();
+    };
 
-      return () => {
-          window.removeEventListener('online', handleOnline);
-          window.removeEventListener('offline', handleOffline);
-      };
-  }, []);
+    const handleOffline = () => setIsOnline(false);
 
-  const handleSync = async () => {
-      if (!navigator.onLine) return;
-      setIsSyncing(true);
-      try {
-          await api.sync();
-          // Optional: Reload data after sync to ensure consistency with server
-          // await loadData();
-      } catch (e) {
-          console.error("Sync failed", e);
-      } finally {
-          setIsSyncing(false);
-      }
-  };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // 🔹 Initial Sync check — оставляем, чтобы проверить соединение при старте
+    if (navigator.onLine) {
+        // Запускаем синхронизацию с небольшой задержкой, чтобы не блокировать загрузку
+        setTimeout(() => handleSync(), 1000);
+    }
+
+    return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+    };
+}, []); // ✅ Пустой массив — подписка создаётся только один раз
+
+  
+// 🔹 В App.tsx — исправленная часть handleSync
+const handleSync = async () => {
+    if (!navigator.onLine) return;
+    setIsSyncing(true);
+
+    try {
+        const result = await api.sync();
+
+        if (result.success && result.syncedCollections.size > 0) {
+            console.log(`🔄 Synced: ${[...result.syncedCollections].join(', ')}`);
+
+            const updates: Record<string, any[]> = {};
+
+            for (const collection of result.syncedCollections) {
+                try {
+                    // ✅ ИСПОЛЬЗУЕМ api.get() — он уже содержит URL и заголовки
+                    const data = await api.get<any[]>(`/data/${collection}`);
+                    updates[collection] = data;
+                } catch (e) {
+                    console.warn(`⚠️ Failed to fetch ${collection} for merge:`, e);
+                }
+            }
+
+            // "Умно" мёржим данные
+            if (updates.customers) setCustomers(prev => mergeServerData(prev, updates.customers));
+            if (updates.sales) setSales(prev => mergeServerData(prev, updates.sales));
+            if (updates.expenses) setExpenses(prev => mergeServerData(prev, updates.expenses));
+            if (updates.accounts) setAccounts(prev => mergeServerData(prev, updates.accounts));
+            if (updates.investors) setInvestors(prev => mergeServerData(prev, updates.investors));
+            if (updates.products) setProducts(prev => mergeServerData(prev, updates.products));
+            if (updates.partnerships) setPartnerships(prev => mergeServerData(prev, updates.partnerships));
+        }
+    } catch (e) {
+        console.error("❌ Sync failed", e);
+    } finally {
+        setIsSyncing(false);
+    }
+};
 
   // Initial Data Load (Auth Check & Fetch)
 useEffect(() => {
