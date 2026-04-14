@@ -287,6 +287,31 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
   const [editDate, setEditDate] = useState('');
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
 
+
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Б';
+    const k = 1024;
+    const sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
+
+// 🔹 Функция просмотра документа
+const handleViewDocument = (doc: CustomerDocument) => {
+    if (!doc.fileUrl) return;
+
+    if (doc.fileType === 'image') {
+        // 🔹 Для изображений — открываем в модальном окне
+        setSelectedDocument(doc);
+    } else {
+        // 🔹 Для PDF — открываем в новой вкладке (браузер отрендерит)
+        window.open(doc.fileUrl, '_blank');
+    }
+};
+
+  const [selectedDocument, setSelectedDocument] = useState<CustomerDocument | null>(null);
+
   useEffect(() => {
     if (initialSaleId) {
       setSelectedSaleId(initialSaleId);
@@ -302,10 +327,10 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
   const handleDeleteClick = (paymentId: string) => { setDeletingPaymentId(paymentId); }
   const confirmDelete = () => { if (selectedSale && deletingPaymentId && onUndoPayment) { onUndoPayment(selectedSale.id, deletingPaymentId); setDeletingPaymentId(null); } }
 
-  // ... (handlers remain the same)
 
-// Добавьте эту функцию внутри компонента или вынесите в utils
-// Добавьте эту функцию внутри компонента или вынесите в utils
+
+
+
 const normalizePhoneForWhatsApp = (phone: string): string => {
   // Удаляем все нецифровые символы
   let cleaned = phone.replace(/[^0-9]/g, '');
@@ -545,6 +570,69 @@ const handleSendFullReport = () => {
                   </div>
               </div>
 
+
+              {/* === СЕКЦИЯ ДОКУМЕНТОВ КЛИЕНТА === */}
+{customer.documents && customer.documents.length > 0 && (
+    <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
+        <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                {ICONS.File} Документы
+            </h3>
+            <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full font-medium">
+                {customer.documents.length}
+            </span>
+        </div>
+
+        <div className="space-y-3">
+            {customer.documents.map(doc => (
+                <div
+                    key={doc.id}
+                    className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer group"
+                    onClick={() => handleViewDocument(doc)}
+                >
+                    {/* Иконка типа файла */}
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        doc.fileType === 'pdf' 
+                            ? 'bg-red-100 text-red-600' 
+                            : 'bg-emerald-100 text-emerald-600'
+                    }`}>
+                        {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
+                    </div>
+
+                    {/* Информация о документе */}
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800 truncate">{doc.name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">
+                                {doc.category === 'passport' && '🪪 Паспорт'}
+                                {doc.category === 'guarantor' && '🤝 Поручительство'}
+                                {doc.category === 'contract' && '📄 Договор'}
+                                {doc.category === 'photo' && '📷 Фото'}
+                                {doc.category === 'other' && '📎 Другое'}
+                            </span>
+                            {doc.fileSize && (
+                                <span className="text-[10px] text-slate-400">
+                                    {formatFileSize(doc.fileSize)}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Кнопка просмотра */}
+                    <div className="text-slate-400 group-hover:text-indigo-600 transition-colors">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                    </div>
+                </div>
+            ))}
+        </div>
+    </div>
+)}
+
+
+
               <div className="pt-2">
                   <button onClick={handleSendFullReport} className="w-full bg-slate-800 text-white py-4 rounded-xl font-semibold flex items-center justify-center gap-2">
                       {ICONS.Send} Отправить отчет в WhatsApp
@@ -587,6 +675,59 @@ const handleSendFullReport = () => {
             isOnline={navigator.onLine}
           />
       )}
+
+        {/* === МОДАЛЬНОЕ ОКНО ПРОСМОТРА ИЗОБРАЖЕНИЯ === */}
+{selectedDocument && selectedDocument.fileType === 'image' && (
+    <div
+        className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-fade-in"
+        onClick={() => setSelectedDocument(null)}
+    >
+        <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+            {/* Кнопка закрытия */}
+            <button
+                onClick={() => setSelectedDocument(null)}
+                className="absolute -top-12 right-0 text-white/80 hover:text-white p-2"
+            >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+
+            {/* Изображение */}
+            <div className="bg-white rounded-2xl overflow-hidden shadow-2xl">
+                <img
+                    src={selectedDocument.fileUrl}
+                    alt={selectedDocument.name}
+                    className="w-full h-auto max-h-[80vh] object-contain"
+                />
+
+                {/* Информация о файле */}
+                <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                    <div>
+                        <p className="font-medium text-slate-800">{selectedDocument.name}</p>
+                        <p className="text-xs text-slate-500">
+                            {formatFileSize(selectedDocument.fileSize || 0)} • {new Date(selectedDocument.uploadedAt).toLocaleDateString('ru-RU')}
+                        </p>
+                    </div>
+                    <a
+                        href={selectedDocument.fileUrl}
+                        download={selectedDocument.name}
+                        className="text-indigo-600 text-sm font-medium hover:text-indigo-700 flex items-center gap-1"
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Скачать
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+)}
+
     </div>
   );
 };
