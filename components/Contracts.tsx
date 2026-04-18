@@ -796,9 +796,9 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
                     </>
                 )}
               </button>
-              <div className="bg-red-500 p-2 rounded-xl text-white"><Phone size={20} className="rotate-45"/></div>
+
             </div>
-            <div className="bg-red-500 p-2 rounded-xl text-white"><Phone size={20} className="rotate-45"/></div>
+
           </div>
           <div className="mt-3 pt-3 border-t border-red-200">
             <p className="text-xs text-slate-500 font-medium">Общая просрочка</p>

@@ -471,6 +471,24 @@ const reminderLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+
+
+const massReminderLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000, // 24 часа
+  max: 1, // 1 запрос
+  message: {
+    error: 'Массовая рассылка доступна только 1 раз в 24 часа',
+    nextAttempt: 'Попробуйте завтра'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    
+    return req.user?.id || req.ip;
+  }
+});
+
 /**
  * POST /api/integrations/whatsapp/send-reminder
  * Отправка напоминания о просрочке одному клиенту
@@ -556,7 +574,7 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter,async
  * POST /api/integrations/whatsapp/send-reminder-all
  * Массовая отправка напоминаний всем просроченным клиентам
  */
-app.post('/api/integrations/whatsapp/send-reminder-all', auth, async (req, res) => {
+app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimiter, async (req, res) => {
   try {
     const userId = req.user.id;
     const { template = 'overdue' } = req.body;
