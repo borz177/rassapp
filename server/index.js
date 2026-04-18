@@ -550,6 +550,156 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter,async
 });
 
 
+
+
+/**
+ * POST /api/integrations/whatsapp/send-reminder-all
+ * Массовая отправка напоминаний всем просроченным клиентам
+ */
+app.post('/api/integrations/whatsapp/send-reminder-all', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { template = 'overdue' } = req.body;
+
+    // 🔹 1. Получаем настройки WhatsApp
+    const userRes = await pool.query(
+      `SELECT id, name, whatsapp_settings FROM users WHERE id = $1`,
+      [userId]
+    );
+
+    const user = userRes.rows[0];
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const settings = typeof user.whatsapp_settings === 'string'
+      ? JSON.parse(user.whatsapp_settings)
+      : user.whatsapp_settings;
+
+    if (!settings?.enabled || !settings.idInstance || !settings.apiTokenInstance) {
+      return res.status(400).json({ error: 'WhatsApp not configured' });
+    }
+
+    // 🔹 2. Получаем ВСЕ договоры пользователя
+    const salesRes = await pool.query(
+      `SELECT data FROM data_items WHERE user_id = $1 AND type = 'sales'`,
+      [userId]
+    );
+
+    const sales = salesRes.rows.map(r => r.data);
+
+    // 🔹 3. Получаем всех клиентов
+    const customersRes = await pool.query(
+      `SELECT data FROM data_items WHERE user_id = $1 AND type = 'customers'`,
+      [userId]
+    );
+
+    const customers = customersRes.rows.map(r => r.data);
+
+    // 🔹 4. Фильтруем только ПРОСРОЧЕННЫЕ договоры
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const overdueSales = [];
+
+    for (const sale of sales) {
+      if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') continue;
+
+      // Считаем задолженность
+      let expectedTotal = sale.downPayment || 0;
+
+      for (const p of (sale.paymentPlan || [])) {
+        if (!p.isRealPayment && new Date(p.date) < today) {
+          expectedTotal += (p.amount || 0);
+        }
+      }
+
+      const totalPaid = (sale.totalAmount || 0) - (sale.remainingAmount || 0);
+      const overdueAmount = Math.max(0, expectedTotal - totalPaid);
+
+      // Если есть просрочка — добавляем в список
+      if (overdueAmount > 0) {
+        // Считаем количество просроченных месяцев
+        const overduePayments = (sale.paymentPlan || []).filter(p =>
+          !p.isPaid && !p.isRealPayment && new Date(p.date) < today
+        );
+
+        // Находим первого просроченного клиента
+        const customer = customers.find(c => c.id === sale.customerId);
+
+        if (customer && customer.phone) {
+          overdueSales.push({
+            sale,
+            customer,
+            overdueAmount,
+            monthsOverdue: overduePayments.length
+          });
+        }
+      }
+    }
+
+    // 🔹 5. Отправляем сообщения
+    const results = {
+      total: overdueSales.length,
+      sent: 0,
+      failed: 0,
+      errors: []
+    };
+
+    const defaultOverdueTemplate = `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``;
+
+    const rawTemplate = settings.templates?.[template] || defaultOverdueTemplate;
+
+    for (const item of overdueSales) {
+      try {
+        const message = rawTemplate
+          .replace(/{имя}/g, item.customer.name)
+          .replace(/{товар}/g, item.sale.productName || '')
+          .replace(/{сумма}/g, item.overdueAmount.toLocaleString('ru-RU'))
+          .replace(/{долг}/g, item.overdueAmount.toLocaleString('ru-RU'))
+          .replace(/{итого}/g, item.overdueAmount.toLocaleString('ru-RU'))
+          .replace(/{месяцы}/g, String(item.monthsOverdue))
+          .replace(/{дата}/g, new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }))
+          .replace(/{платеж_блок}/g, `   • Ежемесячный платёж: *${item.overdueAmount.toLocaleString('ru-RU')} ₽*\n`)
+          .replace(/{долг_блок}/g, `   • Задолженность: *${item.overdueAmount.toLocaleString('ru-RU')} ₽* (${item.monthsOverdue} мес.)\n`)
+          .replace(/{итого_блок}/g, `\n💰 *ИТОГО К ОПЛАТЕ: ${item.overdueAmount.toLocaleString('ru-RU')} ₽*`);
+
+        const sent = await sendGreenApiMessage(
+          settings.idInstance,
+          settings.apiTokenInstance,
+          item.customer.phone,
+          message
+        );
+
+        if (sent) {
+          results.sent++;
+          console.log(`✅ Sent to ${item.customer.name} (${item.customer.phone})`);
+        } else {
+          results.failed++;
+          results.errors.push({ customer: item.customer.name, error: 'Green API failed' });
+        }
+
+        // 🔹 Пауза 300ms между сообщениями (чтобы не заблокировали)
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+      } catch (err) {
+        results.failed++;
+        results.errors.push({ customer: item.customer.name, error: err.message });
+        console.error(`❌ Failed to send to ${item.customer.name}:`, err.message);
+      }
+    }
+
+    console.log(`📊 Mass reminder complete: ${results.sent}/${results.total} sent`);
+    return res.json({ success: true, results });
+
+  } catch (err) {
+    console.error('💥 /send-reminder-all error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+
 // --- WHATSAPP WEBHOOK ---
 const normalizePhone = (phone) => {
   let cleaned = phone.replace(/\D/g, '');

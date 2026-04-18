@@ -134,7 +134,7 @@ const handleSendReminder = async () => {
       className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 rounded-xl text-white transition-colors active:scale-95 flex items-center gap-1.5 text-xs font-bold shadow-sm"
       title="Отправить напоминание в WhatsApp"
     >
-      <Phone size={14} className="rotate-90" />
+      {ICONS.Send}
       Напомнить
     </button>
   )}
@@ -300,6 +300,9 @@ const Contracts: React.FC<ContractsProps> = ({
   const [selectedSaleForInfo, setSelectedSaleForInfo] = useState<Sale | null>(null);
   const [currentMenuSale, setCurrentMenuSale] = useState<Sale | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number, left: number } | null>(null);
+  const [showConfirmRemindAll, setShowConfirmRemindAll] = useState(false);
+const [isSendingAll, setIsSendingAll] = useState(false);
+const [sentStats, setSentStats] = useState<{ sent: number; total: number } | null>(null);
 
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Неизвестно';
 
@@ -356,6 +359,27 @@ const Contracts: React.FC<ContractsProps> = ({
       case 'ARCHIVE': return 'Архив';
     }
   };
+
+
+
+  const handleRemindAll = async () => {
+  setIsSendingAll(true);
+  setSentStats(null);
+
+  try {
+    const result = await api.sendOverdueReminderAll();
+    setSentStats({ sent: result.results.sent, total: result.results.total });
+    alert(`✅ Готово!\n\nОтправлено: ${result.results.sent} из ${result.results.total}\n` +
+          (result.results.failed > 0 ? `Не удалось: ${result.results.failed}` : ''));
+    setShowConfirmRemindAll(false);
+  } catch (e: any) {
+    alert(`❌ Ошибка: ${e.message}`);
+  } finally {
+    setIsSendingAll(false);
+  }
+};
+
+
 
   const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
     e.stopPropagation();
@@ -752,7 +776,29 @@ const Contracts: React.FC<ContractsProps> = ({
               <h2 className="text-lg font-bold text-slate-800">Просроченные договоры</h2>
               <p className="text-slate-500 text-xs">Всего: {filteredList.length}</p>
             </div>
-            <div className="bg-red-500 p-2 rounded-xl text-white"><Phone size={20} className="rotate-45" /></div>
+            <div className="flex items-center gap-2">
+              {/* 🔔 КНОПКА "НАПОМНИТЬ ВСЕМ" */}
+              <button
+                  onClick={() => setShowConfirmRemindAll(true)}
+                  disabled={filteredList.length === 0 || isSendingAll}
+                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+              >
+                {isSendingAll ? (
+                    <>
+                      <span
+                          className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                      {sentStats ? `${sentStats.sent}/${sentStats.total}` : 'Отправка...'}
+                    </>
+                ) : (
+                    <>
+                      <Phone size={14} className="rotate-90"/>
+                      Напомнить всем
+                    </>
+                )}
+              </button>
+              <div className="bg-red-500 p-2 rounded-xl text-white"><Phone size={20} className="rotate-45"/></div>
+            </div>
+            <div className="bg-red-500 p-2 rounded-xl text-white"><Phone size={20} className="rotate-45"/></div>
           </div>
           <div className="mt-3 pt-3 border-t border-red-200">
             <p className="text-xs text-slate-500 font-medium">Общая просрочка</p>
@@ -765,13 +811,13 @@ const Contracts: React.FC<ContractsProps> = ({
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+            <Search className="absolute left-3 top-2.5 text-slate-400" size={16}/>
             <input
-              type="text"
-              placeholder="Поиск по имени или товару..."
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
+                type="text"
+                placeholder="Поиск по имени или товару..."
+                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
 
@@ -883,6 +929,59 @@ const Contracts: React.FC<ContractsProps> = ({
           </div>
         </div>
       )}
+
+
+      {showConfirmRemindAll && createPortal(
+  <div
+    className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
+    onClick={() => !isSendingAll && setShowConfirmRemindAll(false)}
+  >
+    <div
+      className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl animate-scale-in"
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
+        <Phone size={24} className="rotate-90" />
+      </div>
+      <h4 className="text-center font-bold text-slate-800 mb-1">Напомнить всем клиентам?</h4>
+      <p className="text-center text-slate-500 text-sm mb-4">
+        Будет отправлено <b>{filteredList.length}</b> напоминаний в WhatsApp о просроченной задолженности.
+      </p>
+
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+        <p className="text-[11px] text-amber-800">
+          💡 Отправка займёт около {Math.ceil(filteredList.length * 0.3 / 60)} мин.
+          Между сообщениями будет пауза 300ms.
+        </p>
+      </div>
+
+      <div className="flex gap-2.5">
+        <button
+          onClick={() => setShowConfirmRemindAll(false)}
+          disabled={isSendingAll}
+          className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition-all disabled:opacity-50"
+        >
+          Отмена
+        </button>
+        <button
+          onClick={handleRemindAll}
+          disabled={isSendingAll}
+          className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {isSendingAll ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              Отправка...
+            </>
+          ) : (
+            '✅ Отправить всем'
+          )}
+        </button>
+      </div>
+    </div>
+  </div>,
+  document.body
+)}
 
       {/* Модалка информации */}
       {selectedSaleForInfo && (

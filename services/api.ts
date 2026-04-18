@@ -661,4 +661,33 @@ sendOverdueReminder: async (payload: {
 },
 
 
+
+/**
+ * Массовая отправка напоминаний всем просроченным клиентам
+ */
+sendOverdueReminderAll: async (payload?: {
+  template?: 'overdue';
+}): Promise<{
+  success: boolean;
+  results: {
+    total: number;
+    sent: number;
+    failed: number;
+    errors: Array<{ customer: string; error: string }>;
+  }
+}> => {
+  const res = await fetch(`${API_URL}/integrations/whatsapp/send-reminder-all`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify(payload || {})
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || data.msg || 'Не удалось отправить напоминания');
+  }
+  return data;
+},
+
+
 };
