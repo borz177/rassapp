@@ -459,7 +459,11 @@ const reminderLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, async (req, res) => {
+/**
+ * POST /api/integrations/whatsapp/send-reminder
+ * Отправка напоминания о просрочке одному клиенту
+ */
+app.post('/api/integrations/whatsapp/send-reminder', auth, async (req, res) => {
   try {
     const { phone, customerName, productName, overdueAmount, monthsOverdue, template = 'overdue' } = req.body;
     const userId = req.user.id;
@@ -470,8 +474,9 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, asyn
     }
 
     // 🔹 2. Получаем настройки WhatsApp пользователя из БД
+    // ✅ УБРАЛИ "companyName" — этой колонки нет в таблице users!
     const userRes = await pool.query(
-      `SELECT id, name, whatsapp_settings, "companyName" FROM users WHERE id = $1`,
+      `SELECT id, name, whatsapp_settings FROM users WHERE id = $1`,
       [userId]
     );
 
@@ -491,7 +496,9 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, asyn
     }
 
     // 🔹 4. Формируем сообщение по шаблону
-    // Используем шаблон из настроек или дефолтный (как в whatsapp-reminders.js)
+    // Берём название компании из настроек WhatsApp или используем дефолтное
+    const companyName = settings.companyName || 'Наша Компания';
+
     const defaultOverdueTemplate = `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``;
 
     const rawTemplate = settings.templates?.[template] || defaultOverdueTemplate;
@@ -518,7 +525,6 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, asyn
     );
 
     if (sent) {
-      // 🔹 (Опционально) Логируем факт отправки — можно добавить таблицу логов позже
       console.log(`✅ Reminder sent to ${customerName} (${phone}) by user ${userId}`);
       return res.json({ success: true, message: 'Reminder sent successfully' });
     } else {
