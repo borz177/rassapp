@@ -406,7 +406,132 @@ app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
   }
 });
 
-// --- WHATSAPP WEBHOOK ---
+
+
+// =====================================================
+// === 🔔 WHATSAPP: ОТПРАВКА НАПОМИНАНИЯ О ПРОСРОЧКЕ ===
+// =====================================================
+
+/**
+ * Вспомогательная функция: отправка сообщения через Green API
+ */
+async function sendGreenApiMessage(idInstance, apiTokenInstance, phone, message) {
+  try {
+    // Нормализация телефона
+    const cleanPhone = phone.replace(/\D/g, '');
+    const formattedPhone = cleanPhone.startsWith('7') ? cleanPhone : '7' + cleanPhone;
+    const chatId = `${formattedPhone}@c.us`;
+
+    // Проверка статуса инстанса (опционально, но надёжно)
+    const stateUrl = `https://api.green-api.com/waInstance${idInstance}/getStateInstance/${apiTokenInstance}`;
+    const stateResponse = await axios.get(stateUrl, { timeout: 5000 });
+
+    if (stateResponse.data?.stateInstance !== 'authorized') {
+      console.warn(`⚠️ Инстанс ${idInstance} не авторизован`);
+      return false;
+    }
+
+    // Отправка сообщения
+    const sendUrl = `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiTokenInstance}`;
+    const response = await axios.post(
+      sendUrl,
+      { chatId, message },
+      { timeout: 10000 }
+    );
+
+    return !!response.data?.idMessage;
+  } catch (e) {
+    console.error('🔴 Green API send error:', e.message);
+    return false;
+  }
+}
+
+/**
+ * POST /api/integrations/whatsapp/send-reminder
+ * Отправка напоминания о просрочке одному клиенту
+ */
+
+
+const reminderLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 минут
+  max: 20, // максимум 20 напоминаний
+  message: { error: 'Слишком много запросов, попробуйте позже' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, async (req, res) => {
+  try {
+    const { phone, customerName, productName, overdueAmount, monthsOverdue, template = 'overdue' } = req.body;
+    const userId = req.user.id;
+
+    // 🔹 1. Валидация входных данных
+    if (!phone || !customerName || overdueAmount === undefined) {
+      return res.status(400).json({ error: 'Missing required fields: phone, customerName, overdueAmount' });
+    }
+
+    // 🔹 2. Получаем настройки WhatsApp пользователя из БД
+    const userRes = await pool.query(
+      `SELECT id, name, whatsapp_settings, "companyName" FROM users WHERE id = $1`,
+      [userId]
+    );
+
+    const user = userRes.rows[0];
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Парсим настройки (могут быть строкой или объектом)
+    const settings = typeof user.whatsapp_settings === 'string'
+      ? JSON.parse(user.whatsapp_settings)
+      : user.whatsapp_settings;
+
+    // 🔹 3. Проверяем, что WhatsApp включен и настроен
+    if (!settings?.enabled || !settings.idInstance || !settings.apiTokenInstance) {
+      return res.status(400).json({ error: 'WhatsApp not configured for this user' });
+    }
+
+    // 🔹 4. Формируем сообщение по шаблону
+    // Используем шаблон из настроек или дефолтный (как в whatsapp-reminders.js)
+    const defaultOverdueTemplate = `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``;
+
+    const rawTemplate = settings.templates?.[template] || defaultOverdueTemplate;
+
+    // Заменяем переменные в шаблоне
+    const message = rawTemplate
+      .replace(/{имя}/g, customerName)
+      .replace(/{товар}/g, productName || '')
+      .replace(/{сумма}/g, (overdueAmount).toLocaleString('ru-RU'))
+      .replace(/{долг}/g, (overdueAmount).toLocaleString('ru-RU'))
+      .replace(/{итого}/g, (overdueAmount).toLocaleString('ru-RU'))
+      .replace(/{месяцы}/g, String(monthsOverdue || 0))
+      .replace(/{дата}/g, new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }))
+      .replace(/{платеж_блок}/g, `   • Ежемесячный платёж: *${(overdueAmount).toLocaleString('ru-RU')} ₽*\n`)
+      .replace(/{долг_блок}/g, `   • Задолженность: *${(overdueAmount).toLocaleString('ru-RU')} ₽* (${monthsOverdue || 0} мес.)\n`)
+      .replace(/{итого_блок}/g, `\n💰 *ИТОГО К ОПЛАТЕ: ${(overdueAmount).toLocaleString('ru-RU')} ₽*`);
+
+    // 🔹 5. Отправляем через Green API
+    const sent = await sendGreenApiMessage(
+      settings.idInstance,
+      settings.apiTokenInstance,
+      phone,
+      message
+    );
+
+    if (sent) {
+      // 🔹 (Опционально) Логируем факт отправки — можно добавить таблицу логов позже
+      console.log(`✅ Reminder sent to ${customerName} (${phone}) by user ${userId}`);
+      return res.json({ success: true, message: 'Reminder sent successfully' });
+    } else {
+      return res.status(502).json({ error: 'Failed to send via Green API' });
+    }
+
+  } catch (err) {
+    console.error('💥 /send-reminder error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
 // --- WHATSAPP WEBHOOK ---
 const normalizePhone = (phone) => {
   let cleaned = phone.replace(/\D/g, '');

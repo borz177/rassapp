@@ -41,6 +41,7 @@ export interface WhatsAppSettings {
   calculator?: CalculatorSettings;
   companyName?: string;
   calculatorConfigId?: string;
+  overdueReminderInterval?: number
 
 }
 
@@ -227,6 +228,16 @@ export interface AppSettings {
   calculator?: CalculatorSettings;
   theme?: 'PURPLE' | 'BLUE' | 'GREEN' | 'BLACK';
   showCents?: boolean;
+}
+
+
+export interface WhatsAppReminderPayload {
+  phone: string;
+  customerName: string;
+  productName: string;
+  overdueAmount: number;
+  monthsOverdue: number;
+  template?: 'overdue';
 }
 
 export type ViewState =

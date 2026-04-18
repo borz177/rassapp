@@ -237,6 +237,21 @@ async function processRemindersForUser(user) {
 
       if (!shouldSend || reminderDay === null) continue;
 
+
+      if (reminderDay === 1 && settings.overdueReminderInterval > 1) {
+  const lastNotif = payment.lastNotificationDate ? new Date(payment.lastNotificationDate) : null;
+
+  if (lastNotif) {
+    const daysSinceLast = Math.floor((today - lastNotif) / (1000 * 60 * 60 * 24));
+
+    // Если с последнего напоминания прошло меньше интервала — пропускаем
+    if (daysSinceLast < settings.overdueReminderInterval) {
+      console.log(`${LOG_PREFIX} ⏭ Пропуск: интервал ${settings.overdueReminderInterval}д, прошло ${daysSinceLast}д`);
+      continue;
+    }
+  }
+}
+
       // 🔹 Рассчитываем задолженность (все неоплаченные платежи до текущего)
       const priorDebt = sale.paymentPlan
         .filter(p =>

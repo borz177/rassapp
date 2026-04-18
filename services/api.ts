@@ -635,5 +635,30 @@ delete: async <T>(url: string): Promise<T> => {
     const json = await res.json();
     if (!res.ok) throw new Error(json.msg || json.error || `DELETE ${url} failed`);
     return json;
-}
+},
+
+
+
+sendOverdueReminder: async (payload: {
+  phone: string;
+  customerName: string;
+  productName: string;
+  overdueAmount: number;
+  monthsOverdue: number;
+  template?: 'overdue';
+}): Promise<{ success: boolean }> => {
+  const res = await fetch(`${API_URL}/integrations/whatsapp/send-reminder`, {
+    method: 'POST',
+    headers: getAuthHeader(), // ✅ Использует ваш x-auth-token из localStorage
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || data.msg || 'Не удалось отправить напоминание');
+  }
+  return data;
+},
+
+
 };

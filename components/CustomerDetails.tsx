@@ -85,6 +85,7 @@ const EditCustomerModal = ({
             reader.readAsDataURL(file);
         });
 
+
         // 🔹 ИСПРАВЛЕНИЕ: Явно указываем тип и приводим id к string
         const newDoc: CustomerDocument = {
             id: crypto.randomUUID() as string, // ✅ Явное приведение к string

@@ -44,6 +44,8 @@ const Integrations: React.FC<IntegrationsProps> = ({
   const [conditionsEnabled, setConditionsEnabled] = useState(true);
 
   const [isExpanded, setIsExpanded] = useState(false);
+  const [overdueInterval, setOverdueInterval] = useState<number>(1);
+
 
   useEffect(() => {
     if (appSettings.whatsapp) {
@@ -55,6 +57,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
       setBotEnabled(appSettings.whatsapp.botEnabled || false);
       setHistoryEnabled(appSettings.whatsapp.historyEnabled ?? true);
       setConditionsEnabled(appSettings.whatsapp.conditionsEnabled ?? true);
+      setOverdueInterval(appSettings.whatsapp.overdueReminderInterval ?? 1);
 
       if (appSettings.whatsapp.templates) {
         const mergedTemplates = { ...DEFAULT_TEMPLATES, ...appSettings.whatsapp.templates };
@@ -129,7 +132,8 @@ const Integrations: React.FC<IntegrationsProps> = ({
     companyName: appSettings?.companyName || 'Наша Компания',
     calculator: appSettings?.calculator,
     // 🔥 3. Сохраняем configId для короткой ссылки
-    calculatorConfigId: calculatorConfigId || appSettings?.whatsapp?.calculatorConfigId
+    calculatorConfigId: calculatorConfigId || appSettings?.whatsapp?.calculatorConfigId,
+    overdueReminderInterval: overdueInterval
   };
 
   // 🔥 4. Обновляем настройки
@@ -382,6 +386,30 @@ const Integrations: React.FC<IntegrationsProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* 🔥 Интервал повторных напоминаний при просрочке */}
+{reminderDays.includes(1) && (
+  <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+    <label className="text-xs font-bold text-amber-800 uppercase mb-2 block">
+      ⏱ Интервал напоминаний при просрочке
+    </label>
+    <select
+      value={overdueInterval}
+      onChange={e => setOverdueInterval(Number(e.target.value))}
+      className="w-full p-2 border border-amber-300 rounded-lg text-sm bg-white text-amber-900 font-medium"
+    >
+      <option value={1}>Каждый день</option>
+      <option value={3}>Раз в 3 дня</option>
+      <option value={7}>Раз в неделю</option>
+      <option value={14}>Раз в 2 недели</option>
+    </select>
+    <p className="text-[10px] text-amber-700 mt-1">
+      💡 Клиент получит повторное напоминание только через указанный интервал,
+      если долг не погашен
+    </p>
+  </div>
+)}
+
 
             <hr className="border-slate-100" />
 

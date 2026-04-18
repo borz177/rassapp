@@ -221,7 +221,7 @@ const handleSync = async () => {
     }
 };
 
-  // Initial Data Load (Auth Check & Fetch)
+
 useEffect(() => {
   enablePersistentStorage();
 

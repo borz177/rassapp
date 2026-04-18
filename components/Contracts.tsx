@@ -38,6 +38,10 @@ const ContractInfoModal = ({
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  // 🔥 STATE для подтверждения отправки напоминания
+  const [showConfirmReminder, setShowConfirmReminder] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+
   const monthlyPayment = sale.paymentPlan[0]?.amount || 0;
   const paidMonths = sale.paymentPlan.filter(p => p.isPaid).length;
 
@@ -56,15 +60,55 @@ const ContractInfoModal = ({
     ? formatDate(nextUnpaidPayment.date)
     : (sale.remainingAmount > 0 ? 'Просрочен' : 'Закрыт');
 
-  const handleCall = () => customer?.phone && window.open(`tel:${customer.phone}`);
+  // 📞 Позвонить
+  const handleCall = () => {
+    if (customer?.phone) {
+      const cleanPhone = customer.phone.replace(/\D/g, '');
+      const formattedPhone = cleanPhone.startsWith('7') ? cleanPhone : '7' + cleanPhone;
+      window.open(`tel:+${formattedPhone}`);
+    }
+  };
 
+  // 💬 WhatsApp (без подтверждения, прямая ссылка)
   const handleWhatsApp = () => {
     if (customer?.phone) {
       const phone = customer.phone.replace(/[^0-9]/g, '');
+      const formattedPhone = phone.startsWith('7') ? phone : '7' + phone;
       const text = `Здравствуйте, ${customer.name}. Напоминаем о задолженности по договору "${sale.productName}" в размере ${formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽.`;
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+      window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(text)}`, '_blank');
     }
   };
+
+  // 🔔 Отправка напоминания через бэкенд (с подтверждением)
+  // В ContractInfoModal.tsx
+
+const handleSendReminder = async () => {
+  if (!customer?.phone) return;
+
+  setIsSending(true);
+  try {
+    await api.sendOverdueReminder({
+      phone: customer.phone,
+      customerName: customer.name,
+      productName: sale.productName,
+      overdueAmount: realOverdueAmount,
+      monthsOverdue: overduePaymentsList.length,
+      template: 'overdue'
+    });
+
+    alert('✅ Напоминание отправлено!');
+    setShowConfirmReminder(false);
+  } catch (e: any) {
+    console.error('❌ Reminder error:', e);
+    alert(`⚠️ ${e.message || 'Ошибка отправки'}`);
+
+    // 🔁 Fallback: открываем WhatsApp вручную
+    handleWhatsApp();
+    setShowConfirmReminder(false);
+  } finally {
+    setIsSending(false);
+  }
+};
 
   return createPortal(
     <div
@@ -75,9 +119,22 @@ const ContractInfoModal = ({
         className="bg-white w-full sm:max-w-sm sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        <div className="px-5 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center gap-3 shrink-0">
-          <div className="text-white bg-white/20 p-2 rounded-xl"><FileText size={18} /></div>
-          <h3 className="text-base font-bold text-white">Информация о договоре</h3>
+        {/* 🔥 ШАПКА С КНОПКОЙ «НАПОМНИТЬ» */}
+        <div className="px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="text-white bg-white/20 p-2 rounded-xl"><FileText size={18} /></div>
+            <h3 className="text-base font-bold text-white">Информация о договоре</h3>
+          </div>
+
+          {/* 🔔 Кнопка «Напомнить» в шапке */}
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowConfirmReminder(true); }}
+            className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 rounded-xl text-white transition-colors active:scale-95 flex items-center gap-1.5 text-xs font-bold shadow-sm"
+            title="Отправить напоминание в WhatsApp"
+          >
+            <Phone size={14} className="rotate-90" />
+            Напомнить
+          </button>
         </div>
 
         <div className="p-4 space-y-3 overflow-y-auto flex-1">
@@ -93,29 +150,28 @@ const ContractInfoModal = ({
             <InfoItem label="След. платеж" value={nextPaymentDate} color="text-indigo-600" small />
           </div>
 
-          {/* Показываем блок просрочки только если НЕ на вкладке ACTIVE и есть просрочка */}
-{activeTab !== 'ACTIVE' && realOverdueAmount > 0 && (
-  <div className="bg-gradient-to-r from-red-50 to-orange-50 p-3 rounded-xl border border-red-100">
-    <div className="flex justify-between items-center">
-      <label className="text-[11px] text-red-600 font-medium">Просрочка</label>
-      <p className="font-bold text-red-600 text-lg">{formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽</p>
-    </div>
-    <div className="flex justify-between items-center mt-1">
-      <label className="text-[11px] text-slate-600">Остаток</label>
-      <p className="font-semibold text-slate-700 text-sm">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
-    </div>
-  </div>
-)}
+          {/* Блок просрочки */}
+          {activeTab !== 'ACTIVE' && realOverdueAmount > 0 && (
+            <div className="bg-gradient-to-r from-red-50 to-orange-50 p-3 rounded-xl border border-red-100">
+              <div className="flex justify-between items-center">
+                <label className="text-[11px] text-red-600 font-medium">Просрочка</label>
+                <p className="font-bold text-red-600 text-lg">{formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽</p>
+              </div>
+              <div className="flex justify-between items-center mt-1">
+                <label className="text-[11px] text-slate-600">Остаток</label>
+                <p className="font-semibold text-slate-700 text-sm">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
+              </div>
+            </div>
+          )}
 
-{/* Если на вкладке ACTIVE — показываем только остаток */}
-{activeTab === 'ACTIVE' && (
-  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-    <div className="flex justify-between items-center">
-      <label className="text-[11px] text-slate-600">Остаток</label>
-      <p className="font-bold text-slate-800 text-lg">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
-    </div>
-  </div>
-)}
+          {activeTab === 'ACTIVE' && (
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+              <div className="flex justify-between items-center">
+                <label className="text-[11px] text-slate-600">Остаток</label>
+                <p className="font-bold text-slate-800 text-lg">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
+              </div>
+            </div>
+          )}
 
           {overduePaymentsList.length > 0 && (
             <div className="bg-slate-50 p-3 rounded-xl">
@@ -132,18 +188,75 @@ const ContractInfoModal = ({
           )}
         </div>
 
+        {/* 🔘 НИЖНИЕ КНОПКИ: Позвонить / WhatsApp */}
         <div className="p-3 bg-slate-50 border-t border-slate-100 flex gap-2 shrink-0">
-          <button onClick={handleCall} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
+          <button
+            onClick={handleCall}
+            className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+          >
             <Phone size={16} /> Позвонить
           </button>
-          <button onClick={handleWhatsApp} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
+          <button
+            onClick={handleWhatsApp}
+            className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+          >
             <Phone size={16} /> WhatsApp
           </button>
         </div>
 
-        <button onClick={onClose} className="py-3 text-slate-400 text-sm hover:text-slate-600 hover:bg-slate-50 transition-colors shrink-0">
+        <button
+          onClick={onClose}
+          className="py-3 text-slate-400 text-sm hover:text-slate-600 hover:bg-slate-50 transition-colors shrink-0"
+        >
           Закрыть
         </button>
+
+        {/* 🔔 МОДАЛКА ПОДТВЕРЖДЕНИЯ ОТПРАВКИ */}
+        {showConfirmReminder && createPortal(
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
+            onClick={() => !isSending && setShowConfirmReminder(false)}
+          >
+            <div
+              className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl animate-scale-in"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <Phone size={24} className="rotate-90" />
+              </div>
+              <h4 className="text-center font-bold text-slate-800 mb-1">Отправить напоминание?</h4>
+              <p className="text-center text-slate-500 text-sm mb-4">
+                Клиент <b>{customer?.name}</b> получит сообщение в WhatsApp о задолженности{' '}
+                <b>{formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽</b>
+              </p>
+
+              <div className="flex gap-2.5">
+                <button
+                  onClick={() => setShowConfirmReminder(false)}
+                  disabled={isSending}
+                  className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition-all disabled:opacity-50"
+                >
+                  Отмена
+                </button>
+                <button
+                  onClick={handleSendReminder}
+                  disabled={isSending}
+                  className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isSending ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                      Отправка...
+                    </>
+                  ) : (
+                    '✅ Отправить'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     </div>,
     document.body
@@ -159,15 +272,14 @@ const InfoItem = ({ label, value, color = 'text-slate-800', small = false }: {
   </div>
 );
 
-
 const formatPhone = (raw: string | undefined): string => {
     if (!raw) return '+7 (___) ___-__-__';
-    const digits = raw.replace(/\D/g, ''); // Оставляем только цифры
+    const digits = raw.replace(/\D/g, '');
     if (digits.length === 11 && (digits[0] === '8' || digits[0] === '7')) {
         const clean = digits[0] === '8' ? '7' + digits.slice(1) : digits;
         return `+${clean[0]} (${clean.slice(1, 4)}) ${clean.slice(4, 7)}-${clean.slice(7, 9)}-${clean.slice(9)}`;
     }
-    return raw; // Если формат нестандартный, возвращаем как есть
+    return raw;
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -242,9 +354,6 @@ const Contracts: React.FC<ContractsProps> = ({
     }
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // 📍 Расчёт позиции меню для десктопа
-  // ─────────────────────────────────────────────────────────────
   const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
     e.stopPropagation();
 
@@ -259,10 +368,9 @@ const Contracts: React.FC<ContractsProps> = ({
     const isMobile = window.innerWidth < 640;
 
     if (!isMobile) {
-      // Десктоп: позиционируем меню справа от кнопки
       setMenuPosition({
         top: rect.bottom + window.scrollY + 8,
-        left: rect.right + window.scrollX - 200 // 200px = ширина меню
+        left: rect.right + window.scrollX - 200
       });
     }
 
@@ -274,9 +382,6 @@ const Contracts: React.FC<ContractsProps> = ({
     if (deletingSale) { onDeleteSale(deletingSale.id); setDeletingSale(null); }
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // 🖨 ПЕЧАТЬ (оригинальная версия)
-  // ─────────────────────────────────────────────────────────────
   const printContract = (sale: Sale) => {
     const customer = customers.find(c => c.id === sale.customerId);
     const companyName = appSettings?.companyName || "Компания";
@@ -286,7 +391,6 @@ const Contracts: React.FC<ContractsProps> = ({
 
     if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }
 
-    // 🔥 Фильтруем ТОЛЬКО реальные оплаченные платежи
     const paidPlan = sale.paymentPlan
         .filter(p => p.isRealPayment && p.isPaid)
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -305,7 +409,6 @@ const Contracts: React.FC<ContractsProps> = ({
             </tr>`;
         }).join('');
     } else {
-        // Если реальных платежей ещё нет — показываем пустые строки по сроку
         rows = Array.from({ length: sale.installments || 1 }).map((_, i) =>
             `<tr>
                 <td style="text-align:center">${i + 1}</td>
@@ -457,9 +560,6 @@ const Contracts: React.FC<ContractsProps> = ({
     printWindow.document.close();
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // 📱 МЕНЮ ДЕЙСТВИЙ (Bottom Sheet для мобильных + Dropdown для десктопа)
-  // ─────────────────────────────────────────────────────────────
   const ActionMenu = () => {
     if (!currentMenuSale) return null;
 
@@ -468,15 +568,12 @@ const Contracts: React.FC<ContractsProps> = ({
 
     return createPortal(
       <>
-        {/* Затемнение фона */}
         <div
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9998] animate-fade-in"
           onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
         />
 
-        {/* Меню */}
         {isMobile ? (
-          /* 📱 Mobile Bottom Sheet */
           <div className="fixed left-0 right-0 bottom-0 z-[9999] animate-slide-up">
             <div className="bg-white rounded-t-3xl shadow-2xl w-full mx-auto overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
@@ -510,14 +607,6 @@ const Contracts: React.FC<ContractsProps> = ({
                   <span className="text-indigo-500"><Calendar size={18} /></span>
                   <span>График платежей</span>
                 </button>
-                {/*
-                <button
-                  onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                  className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-                >
-                  <span className="text-slate-500"><Edit3 size={18} /></span>
-                  <span>Редактировать</span>
-                </button>*/}
 
                 <button
                   onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
@@ -549,7 +638,6 @@ const Contracts: React.FC<ContractsProps> = ({
             </div>
           </div>
         ) : (
-          /* 🖥️ Desktop Dropdown */
           <div
             className="fixed z-[9999] bg-white rounded-2xl shadow-2xl w-64 overflow-hidden animate-scale-in border border-slate-100"
             style={{
@@ -670,7 +758,7 @@ const Contracts: React.FC<ContractsProps> = ({
         </div>
       )}
 
-      {/* Фильтры (без даты) */}
+      {/* Фильтры */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div className="relative">
@@ -757,7 +845,6 @@ const Contracts: React.FC<ContractsProps> = ({
                   <p className={`text-base font-bold ${isOverdue ? 'text-red-600' : 'text-slate-800'}`}>
                     {formatCurrency(isOverdue ? overdueSum : sale.totalAmount, appSettings?.showCents)} ₽
                   </p>
-
                 </div>
               </div>
 
