@@ -483,10 +483,7 @@ const massReminderLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    
-    return req.user?.id || req.ip;
-  }
+ 
 });
 
 /**
