@@ -430,7 +430,7 @@ async function sendGreenApiMessage(idInstance, apiTokenInstance, phone, message)
     else if (cleanPhone.length === 10) {
       formattedPhone = '7' + cleanPhone;
     }
-   
+
 
     const chatId = `${formattedPhone}@c.us`;
 

@@ -128,14 +128,16 @@ const handleSendReminder = async () => {
           </div>
 
           {/* 🔔 Кнопка «Напомнить» в шапке */}
-          <button
-            onClick={(e) => { e.stopPropagation(); setShowConfirmReminder(true); }}
-            className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 rounded-xl text-white transition-colors active:scale-95 flex items-center gap-1.5 text-xs font-bold shadow-sm"
-            title="Отправить напоминание в WhatsApp"
-          >
-            <Phone size={14} className="rotate-90" />
-            Напомнить
-          </button>
+          {activeTab === 'OVERDUE' && (
+    <button
+      onClick={(e) => { e.stopPropagation(); setShowConfirmReminder(true); }}
+      className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 rounded-xl text-white transition-colors active:scale-95 flex items-center gap-1.5 text-xs font-bold shadow-sm"
+      title="Отправить напоминание в WhatsApp"
+    >
+      <Phone size={14} className="rotate-90" />
+      Напомнить
+    </button>
+  )}
         </div>
 
         <div className="p-4 space-y-3 overflow-y-auto flex-1">
