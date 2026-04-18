@@ -4,6 +4,7 @@ import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X } from 'lucide-react';
 import { formatCurrency, formatDate } from '../src/utils';
 import { createPortal } from 'react-dom';
+import { api } from '../services/api';
 
 interface ContractsProps {
   sales: Sale[];
