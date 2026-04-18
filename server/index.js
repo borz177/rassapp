@@ -412,17 +412,29 @@ app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
 // === 🔔 WHATSAPP: ОТПРАВКА НАПОМИНАНИЯ О ПРОСРОЧКЕ ===
 // =====================================================
 
-/**
- * Вспомогательная функция: отправка сообщения через Green API
- */
 async function sendGreenApiMessage(idInstance, apiTokenInstance, phone, message) {
   try {
-    // Нормализация телефона
+
     const cleanPhone = phone.replace(/\D/g, '');
-    const formattedPhone = cleanPhone.startsWith('7') ? cleanPhone : '7' + cleanPhone;
+    let formattedPhone = cleanPhone;
+
+
+    if (cleanPhone.startsWith('8')) {
+      formattedPhone = '7' + cleanPhone.slice(1);
+    }
+
+    else if (cleanPhone.startsWith('7')) {
+      formattedPhone = cleanPhone;
+    }
+
+    else if (cleanPhone.length === 10) {
+      formattedPhone = '7' + cleanPhone;
+    }
+   
+
     const chatId = `${formattedPhone}@c.us`;
 
-    // Проверка статуса инстанса (опционально, но надёжно)
+
     const stateUrl = `https://api.green-api.com/waInstance${idInstance}/getStateInstance/${apiTokenInstance}`;
     const stateResponse = await axios.get(stateUrl, { timeout: 5000 });
 
@@ -431,7 +443,7 @@ async function sendGreenApiMessage(idInstance, apiTokenInstance, phone, message)
       return false;
     }
 
-    // Отправка сообщения
+
     const sendUrl = `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiTokenInstance}`;
     const response = await axios.post(
       sendUrl,
@@ -439,13 +451,13 @@ async function sendGreenApiMessage(idInstance, apiTokenInstance, phone, message)
       { timeout: 10000 }
     );
 
+    console.log(`📱 Sent to ${formattedPhone} (clean: ${cleanPhone})`);
     return !!response.data?.idMessage;
   } catch (e) {
     console.error('🔴 Green API send error:', e.message);
     return false;
   }
 }
-
 /**
  * POST /api/integrations/whatsapp/send-reminder
  * Отправка напоминания о просрочке одному клиенту
@@ -463,7 +475,7 @@ const reminderLimiter = rateLimit({
  * POST /api/integrations/whatsapp/send-reminder
  * Отправка напоминания о просрочке одному клиенту
  */
-app.post('/api/integrations/whatsapp/send-reminder', auth, async (req, res) => {
+app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter,async (req, res) => {
   try {
     const { phone, customerName, productName, overdueAmount, monthsOverdue, template = 'overdue' } = req.body;
     const userId = req.user.id;
