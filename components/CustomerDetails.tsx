@@ -390,37 +390,15 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
 
 // 🔹 Функция просмотра документа
 const handleViewDocument = (e: React.MouseEvent, doc: CustomerDocument) => {
-    // 🔹 1. Останавливаем всплытие и стандартное поведение
-    e.stopPropagation();
-    e.preventDefault();
+    e.stopPropagation(); // 🔹 Останавливаем всплытие
 
-    if (!doc.fileUrl) {
-        console.error('❌ No fileUrl');
-        return;
-    }
+    if (!doc.fileUrl) return;
 
-    // 🔹 2. Изображения — модальное окно
+    // 🖼️ Изображения — открываем в модальном окне
     if (doc.fileType === 'image') {
         setSelectedDocument(doc);
-        return;
     }
 
-    // 🔹 3. PDF — формируем абсолютный URL
-    const baseUrl = process.env.REACT_APP_API_URL || window.location.origin;
-    const fileUrl = doc.fileUrl.startsWith('http')
-        ? doc.fileUrl
-        : `${baseUrl}${doc.fileUrl}`;
-
-    console.log('🔗 Opening PDF:', fileUrl);
-
-    // 🔹 4. Открываем с безопасными параметрами
-    const newWindow = window.open(fileUrl, '_blank', 'noopener,noreferrer');
-
-    // 🔹 5. Обработка блокировки поп-апа
-    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-        console.warn('⚠️ Popup blocked');
-        alert('📄 Браузер заблокировал открытие файла.\nРазрешите всплывающие окна для этого сайта.');
-    }
 };
 
   const [selectedDocument, setSelectedDocument] = useState<CustomerDocument | null>(null);
@@ -697,53 +675,86 @@ const handleSendFullReport = () => {
         </div>
 
         <div className="space-y-3">
-            {customer.documents.map(doc => (
-                <div
-                    key={doc.id}
-                    className="... cursor-pointer group"
-                    onClick={(e) => handleViewDocument(e, doc)}  // ← передаём событие
-                >
-                    {/* Иконка типа файла */}
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        doc.fileType === 'pdf'
-                            ? 'bg-red-100 text-red-600'
-                            : 'bg-emerald-100 text-emerald-600'
-                    }`}>
-                        {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
-                    </div>
+            {customer.documents?.map(doc => {
+    // 🔹 Формируем абсолютный URL для скачивания
+    const fileUrl = doc.fileUrl.startsWith('http')
+        ? doc.fileUrl
+        : `${window.location.origin}${doc.fileUrl}`;
 
-                    {/* Информация о документе */}
-                    <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-800 truncate">{doc.name}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">
-                                {doc.category === 'passport' && '🪪 Паспорт'}
-                                {doc.category === 'guarantor' && '🤝 Поручительство'}
-                                {doc.category === 'contract' && '📄 Договор'}
-                                {doc.category === 'photo' && '📷 Фото'}
-                                {doc.category === 'other' && '📎 Другое'}
-                            </span>
-                            {doc.fileSize && (
-                                <span className="text-[10px] text-slate-400">
-                                    {formatFileSize(doc.fileSize)}
-                                </span>
-                            )}
-                        </div>
-                    </div>
+    return (
+        <div
+            key={doc.id}
+            className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors group"
+            // 🔹 Клик по строке: для фото — модальное окно, для PDF — ничего
+            onClick={(e) => handleViewDocument(e, doc)}
+        >
+            {/* Иконка типа файла */}
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                doc.fileType === 'pdf' 
+                    ? 'bg-red-100 text-red-600' 
+                    : 'bg-emerald-100 text-emerald-600 cursor-pointer' // 🔹 Курсор только для фото
+            }`}>
+                {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
+            </div>
 
-                    {/* Кнопка просмотра */}
-                    <div className="text-slate-400 group-hover:text-indigo-600 transition-colors">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                             strokeWidth="2">
+            {/* Информация о документе */}
+            <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-800 truncate">{doc.name}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">
+                        {doc.category === 'passport' && '🪪 Паспорт'}
+                        {doc.category === 'guarantor' && '🤝 Поручительство'}
+                        {doc.category === 'contract' && '📄 Договор'}
+                        {doc.category === 'photo' && '📷 Фото'}
+                        {doc.category === 'other' && '📎 Другое'}
+                    </span>
+                    {doc.fileSize && (
+                        <span className="text-[10px] text-slate-400">
+                            {formatFileSize(doc.fileSize)}
+                        </span>
+                    )}
+                </div>
+            </div>
+
+            {/* 🔹 Кнопки действий */}
+            <div className="flex items-center gap-1">
+                {/* 📄 Для PDF — только кнопка скачать */}
+                {doc.fileType === 'pdf' && (
+                    <a
+                        href={fileUrl}
+                        download={doc.name}
+                        className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
+                        title="Скачать PDF"
+                        onClick={(e) => e.stopPropagation()} // 🔹 Чтобы не срабатывал клик по строке
+                    >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                    </a>
+                )}
+
+                {/* 🖼️ Для фото — кнопка просмотра (опционально, дублирует клик по строке) */}
+                {doc.fileType === 'image' && (
+                    <button
+                        className="p-2 text-slate-400 group-hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors"
+                        title="Просмотреть фото"
+                    >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                             <circle cx="12" cy="12" r="3"/>
                         </svg>
-                    </div>
-                </div>
-            ))}
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+})}
         </div>
     </div>
 )}
+
 
 
               <div className="pt-2">
