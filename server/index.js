@@ -38,7 +38,7 @@ const getTargetUserId = (user) => {
 
 
 
-const uploadDir = path.join(__dirname, 'uploads', 'documents');
+const uploadDir = '/var/www/rassapp/server/uploads/documents';
 const upload = multer({
   storage: multer.diskStorage({
     destination: uploadDir,
