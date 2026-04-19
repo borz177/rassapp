@@ -33,6 +33,30 @@ const getTargetUserId = (user) => {
   return user.id;
 };
 
+
+
+const uploadDir = path.join(__dirname, 'uploads', 'documents');
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: uploadDir,
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      const name = file.originalname.replace(/\.[^/.]+$/, '')
+        .replace(/[^a-zA-Z0-9а-яА-яЁё\-_]/g, '-')
+        .substring(0, 50);
+      const uniqueName = `${Date.now()}-${crypto.randomUUID().slice(0,8)}-${name}${ext}`;
+      cb(null, uniqueName);
+    }
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    const allowed = /jpeg|jpg|png|webp|pdf/;
+    const ext = allowed.test(path.extname(file.originalname).toLowerCase());
+    const mime = allowed.test(file.mimetype) || file.mimetype === 'application/pdf';
+    cb(null, mime && ext);
+  }
+});
+
 // ✅ ХЕЛПЕР: Проверка прав доступа
 const canAccessUserData = (currentUser, targetUserId) => {
   if (currentUser.role === 'admin') return true;
@@ -1532,6 +1556,45 @@ app.delete('/api/user/data', auth, async (req, res) => {
     res.status(500).send('Server Error');
   }
 });
+
+
+
+
+
+
+
+
+// 🔹 Эндпоинт загрузки документа
+app.post('/api/upload/document', auth, upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Файл не выбран' });
+
+  // Возвращаем относительный путь + метаданные
+  res.json({
+    fileUrl: `/uploads/documents/${req.file.filename}`,
+    fileName: req.file.originalname,
+    fileSize: req.file.size,
+    fileType: req.file.mimetype.includes('pdf') ? 'pdf' : 'image',
+    mimeType: req.file.mimetype
+  });
+});
+
+// 🔹 Отдача файлов (защищённая)
+app.get('/uploads/documents/:filename', auth, (req, res) => {
+  const filename = req.params.filename;
+  const filePath = path.join(uploadDir, filename);
+
+  // 🔐 Проверка: файл существует и принадлежит пользователю
+  // (упрощённо: проверяем, что имя содержит userId или используем маппинг в БД)
+  if (!filename.includes(req.user.id) && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Доступ запрещён' });
+  }
+
+  res.sendFile(filePath, (err) => {
+    if (err) res.status(404).json({ error: 'Файл не найден' });
+  });
+});
+
+
 
 // User Management (Create / Update / Delete for Sub-users)
 app.post('/api/users/manage', auth, async (req, res) => {

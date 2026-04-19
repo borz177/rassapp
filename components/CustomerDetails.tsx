@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument} from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate } from '../src/utils';
-
+import { offlineStorage } from '../services/offlineStorage';
 interface CustomerDetailsProps {
   customer: Customer;
   sales: Sale[];
@@ -17,7 +17,32 @@ interface CustomerDetailsProps {
   onUpdateCustomer?: (customer: Customer) => void;
   initialSaleId?: string | null;
 }
+const compressImage = (file: File, maxWidth = 1920): Promise<Blob> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
 
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width;
+        width = maxWidth;
+      }
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(img, 0, 0, width, height);
+      // 🔹 Конвертируем в JPEG с качеством 0.8
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else resolve(file); // Фолбэк: оригинал, если сжатие не удалось
+      }, 'image/jpeg', 0.8);
+    };
+
+    img.onerror = () => resolve(file); // Фолбэк при ошибке
+    img.src = URL.createObjectURL(file);
+  });
+};
 const EditCustomerModal = ({
     customer,
     onClose,
@@ -52,63 +77,97 @@ const EditCustomerModal = ({
     };
 
     // 🔹 Функция добавления документа с проверкой офлайн-режима
-    const handleAddDocument = async () => {
-    const nameInput = document.getElementById('doc-name') as HTMLInputElement;
-    const categorySelect = document.getElementById('doc-category') as HTMLSelectElement;
-    const fileInput = document.getElementById('doc-file') as HTMLInputElement;
+   // 🔹 Функция добавления документа с поддержкой офлайн-режима
+const handleAddDocument = async () => {
+  const nameInput = document.getElementById('doc-name') as HTMLInputElement;
+  const categorySelect = document.getElementById('doc-category') as HTMLSelectElement;
+  const fileInput = document.getElementById('doc-file') as HTMLInputElement;
 
+  if (!fileInput.files?.[0] || !nameInput.value) {
+    alert('Заполните название и выберите файл');
+    return;
+  }
+
+  setIsUploading(true);
+
+  try {
+    const file = fileInput.files[0];
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Файл слишком большой. Максимальный размер: 5 МБ');
+      return;
+    }
+
+    // 🔹 СЖАТИЕ ИЗОБРАЖЕНИЙ (опционально, но рекомендуется)
+    let fileToUpload: File = file;
+    if (file.type.startsWith('image/')) {
+      const compressedBlob = await compressImage(file, 1920); // maxWidth 1920px
+      fileToUpload = new File([compressedBlob], file.name, { type: 'image/jpeg' });
+    }
+
+    let fileUrl: string;
+    let isTemp = false;
+
+    // 🔹 ОФЛАЙН: сохраняем файл локально в IndexedDB
     if (!isOnline) {
-        alert('📴 Загрузка документов доступна только при подключении к интернету');
-        return;
+      const tempId = await offlineStorage.saveTempFile(fileToUpload);
+      fileUrl = tempId; // 🔹 Временно: temp_doc_xxx
+      isTemp = true;
+    }
+    // 🔹 ОНЛАЙН: загружаем на сервер через FormData
+    else {
+      const formData = new FormData();
+      formData.append('file', fileToUpload);
+
+      const res: Response = await fetch('/api/upload/document', {
+    method: 'POST',
+    headers: {
+        'x-auth-token': localStorage.getItem('token') || ''
+        // 🔥 НЕ добавляйте 'Content-Type' — браузер сам установит boundary для FormData!
+    },
+    body: formData
+} as RequestInit);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Ошибка загрузки на сервер');
+      }
+
+      const uploadData = await res.json();
+      fileUrl = uploadData.fileUrl; // 🔹 Реальный путь: /uploads/documents/...
     }
 
-    if (!fileInput.files?.[0] || !nameInput.value) {
-        alert('Заполните название и выберите файл');
-        return;
+    // 🔹 Создаём документ с правильными метаданными
+    const newDoc: CustomerDocument = {
+      id: crypto.randomUUID() as string,
+      name: nameInput.value,
+      category: categorySelect.value as CustomerDocument['category'],
+      fileUrl,                          // 🔹 s3Key, путь или temp_doc_*
+      fileType: (file.type.includes('pdf') ? 'pdf' : 'image') as CustomerDocument['fileType'],
+      uploadedAt: new Date().toISOString(),
+      fileSize: fileToUpload.size,
+      _isTemp: isTemp                   // 🔹 Флаг для UI (опционально)
+    };
+
+    // 🔹 Обновляем стейт клиента
+    const updatedDocs = [...(customer.documents || []), newDoc];
+    onUpdate({ ...customer, documents: updatedDocs });
+
+    // 🔹 Очистка формы
+    nameInput.value = '';
+    fileInput.value = '';
+
+    // 🔹 Уведомление для пользователя
+    if (isTemp) {
+      alert('📴 Файл сохранён локально. Загрузится автоматически при подключении.');
     }
 
-    setIsUploading(true);
-
-    try {
-        const file = fileInput.files[0];
-
-        if (file.size > 5 * 1024 * 1024) {
-            alert('Файл слишком большой. Максимальный размер: 5 МБ');
-            return;
-        }
-
-        const reader = new FileReader();
-
-        const fileContent = await new Promise<string>((resolve, reject) => {
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = () => reject(reader.error);
-            reader.readAsDataURL(file);
-        });
-
-
-        // 🔹 ИСПРАВЛЕНИЕ: Явно указываем тип и приводим id к string
-        const newDoc: CustomerDocument = {
-            id: crypto.randomUUID() as string, // ✅ Явное приведение к string
-            name: nameInput.value,
-            category: categorySelect.value as CustomerDocument['category'],
-            fileUrl: fileContent,
-            fileType: (file.type.includes('pdf') ? 'pdf' : 'image') as CustomerDocument['fileType'],
-            uploadedAt: new Date().toISOString(),
-            fileSize: file.size
-        };
-
-        const updatedDocs = [...(customer.documents || []), newDoc];
-        onUpdate({ ...customer, documents: updatedDocs });
-
-        nameInput.value = '';
-        fileInput.value = '';
-
-    } catch (error) {
-        console.error('❌ Failed to add document:', error);
-        alert('Не удалось загрузить файл. Попробуйте ещё раз.');
-    } finally {
-        setIsUploading(false);
-    }
+  } catch (error: any) {
+    console.error('❌ Failed to add document:', error);
+    alert(error.message || 'Не удалось загрузить файл. Попробуйте ещё раз.');
+  } finally {
+    setIsUploading(false);
+  }
 };
 
     return (
@@ -169,50 +228,81 @@ const EditCustomerModal = ({
 
                         {/* Список текущих документов */}
                         {customer.documents?.length > 0 && (
-                            <div className="space-y-2 mb-3">
-                                {customer.documents.map(doc => (
-                                    <div key={doc.id} className="flex items-center justify-between bg-slate-50 p-3 rounded-xl">
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <div className={`p-2 rounded-lg ${doc.fileType === 'pdf' ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                                                {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
-                                            </div>
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-medium text-slate-800 truncate">{doc.name}</p>
-                                                <p className="text-xs text-slate-500">
-                                                    {doc.category === 'passport' && '🪪 Паспорт'}
-                                                    {doc.category === 'guarantor' && '🤝 Поручительство'}
-                                                    {doc.category === 'contract' && '📄 Договор'}
-                                                    {doc.category === 'photo' && '📷 Фото'}
-                                                    {doc.category === 'other' && '📎 Другое'}
-                                                </p>
-                                                {/* Размер файла */}
-                                                {doc.fileSize && (
-                                                    <p className="text-[10px] text-slate-400 mt-0.5">
-                                                        {(doc.fileSize / 1024).toFixed(1)} КБ
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const updatedDocs = customer.documents?.filter(d => d.id !== doc.id) || [];
-                                                onUpdate({ ...customer, documents: updatedDocs });
-                                            }}
-                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
-                                            disabled={!isOnline} // 🔹 Можно удалять и офлайн (локально)
-                                        >
-                                            {ICONS.Delete}
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+  <div className="space-y-2 mb-3">
+    {customer.documents.map(doc => (
+      <div
+        key={doc.id}
+        className="flex items-center justify-between bg-slate-50 p-3 rounded-xl"
+      >
+        {/* 🔹 Левая часть: иконка + информация */}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          {/* Иконка типа файла */}
+          <div
+            className={`p-2 rounded-lg flex-shrink-0 ${
+              doc.fileType === 'pdf'
+                ? 'bg-red-100 text-red-600'
+                : 'bg-emerald-100 text-emerald-600'
+            }`}
+          >
+            {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
+          </div>
+
+          {/* Информация о документе */}
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-800 truncate">
+              {doc.name}
+            </p>
+            <p className="text-xs text-slate-500">
+              {doc.category === 'passport' && '🪪 Паспорт'}
+              {doc.category === 'guarantor' && '🤝 Поручительство'}
+              {doc.category === 'contract' && '📄 Договор'}
+              {doc.category === 'photo' && '📷 Фото'}
+              {doc.category === 'other' && '📎 Другое'}
+            </p>
+
+            {/* 🔹 Статус ИЛИ размер файла (взаимоисключающие) */}
+            {doc._isTemp || doc.fileUrl?.startsWith('temp_doc_') ? (
+              <span className="text-[10px] text-amber-600 bg-amber-100 px-2 py-0.5 rounded mt-1 inline-block">
+                ⏳ Ожидает загрузки
+              </span>
+            ) : doc.fileSize ? (
+              <p className="text-[10px] text-slate-400 mt-1">
+                {(doc.fileSize / 1024).toFixed(1)} КБ
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        {/* 🔹 Правая часть: кнопка удаления */}
+        <button
+          type="button"
+          onClick={() => {
+            const updatedDocs =
+              customer.documents?.filter(d => d.id !== doc.id) || [];
+            onUpdate({ ...customer, documents: updatedDocs });
+          }}
+          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded flex-shrink-0 ml-2"
+          // 🔹 Можно удалять и офлайн (локально)
+          disabled={!isOnline && !(doc._isTemp || doc.fileUrl?.startsWith('temp_doc_'))}
+          title={
+            !isOnline && !(doc._isTemp || doc.fileUrl?.startsWith('temp_doc_'))
+              ? 'Удаление доступно только онлайн'
+              : 'Удалить документ'
+          }
+        >
+          {ICONS.Delete}
+        </button>
+      </div>
+    ))}
+  </div>
+)}
 
                         {/* Форма добавления документа */}
                         <details className="group">
-                            <summary className={`flex items-center gap-2 text-sm font-medium cursor-pointer list-none ${!isOnline ? 'text-slate-400' : 'text-indigo-600'}`}>
-                                <span className={`transition-transform ${!isOnline ? '' : 'group-open:rotate-90'}`}>▶</span>
+                            <summary
+                                className={`flex items-center gap-2 text-sm font-medium cursor-pointer list-none ${!isOnline ? 'text-slate-400' : 'text-indigo-600'}`}>
+                                <span
+                                    className={`transition-transform ${!isOnline ? '' : 'group-open:rotate-90'}`}>▶</span>
                                 Добавить документ
                             </summary>
                             <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">

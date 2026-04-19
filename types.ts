@@ -111,13 +111,15 @@ export interface CustomerDocument {
   id: string;
   name: string;
   category: 'passport' | 'guarantor' | 'contract' | 'other' | 'photo';
-  fileUrl: string; // base64 или URL
+  fileUrl: string;           // base64 | /uploads/... | s3Key | temp_doc_*
   fileType: 'image' | 'pdf';
   uploadedAt: string;
   description?: string;
   fileSize?: number;
-}
 
+  _isTemp?: boolean;
+  mimeType?: string;
+}
 
 export interface Customer {
   id: string;
