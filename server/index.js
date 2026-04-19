@@ -52,12 +52,20 @@ const upload = multer({
     }
   }),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-  fileFilter: (req, file, cb) => {
-    const allowed = /jpeg|jpg|png|webp|pdf/;
-    const ext = allowed.test(path.extname(file.originalname).toLowerCase());
-    const mime = allowed.test(file.mimetype) || file.mimetype === 'application/pdf';
-    cb(null, mime && ext);
+ fileFilter: (req, file, cb) => {
+  const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
+  const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
+  const ext = path.extname(file.originalname).toLowerCase();
+  const isExtAllowed = allowedExts.includes(ext);
+  const isMimeAllowed = allowedMimes.includes(file.mimetype);
+
+  if (isExtAllowed && isMimeAllowed) {
+    cb(null, true);
+  } else {
+    cb(new Error('Недопустимый формат файла. Разрешены: JPG, PNG, WEBP, PDF'));
   }
+}
 });
 
 // ✅ ХЕЛПЕР: Проверка прав доступа
@@ -93,6 +101,7 @@ app.use(express.json({
   type: (req) => {
     if (req.url.startsWith('/api/payments/webhook')) return false;
     if (req.url.startsWith('/api/upload-image')) return false;
+    if (req.url.startsWith('/api/upload')) return false;
     if (req.url.startsWith('/api/integrations/whatsapp/webhook')) return false;
     return true;
   }
