@@ -1591,12 +1591,10 @@ app.post('/api/upload/document', auth, upload.single('file'), (req, res) => {
 });
 
 // 🔹 Отдача файлов (защищённая)
-app.get('/uploads/documents/:filename', auth, (req, res) => {
+app.get('/uploads/documents/:filename', (req, res) => {
   const filename = req.params.filename;
   const filePath = path.join(uploadDir, filename);
 
-  // 🔐 Проверка: файл существует и принадлежит пользователю
-  // (упрощённо: проверяем, что имя содержит userId или используем маппинг в БД)
   if (!filename.includes(req.user.id) && req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Доступ запрещён' });
   }
