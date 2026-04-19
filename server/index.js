@@ -146,7 +146,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'https:'],
       connectSrc: ["'self'", 'https://api.yookassa.ru', 'https://api.green-api.com'],
-      frameSrc: ["'self'", 'https://yoomoney.ru'],
+      frameSrc: ["'self'", 'https://yoomoney.ru','blob:'],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: []
     },

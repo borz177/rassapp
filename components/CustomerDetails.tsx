@@ -389,15 +389,37 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
 };
 
 // 🔹 Функция просмотра документа
-const handleViewDocument = (doc: CustomerDocument) => {
-    if (!doc.fileUrl) return;
+const handleViewDocument = (e: React.MouseEvent, doc: CustomerDocument) => {
+    // 🔹 1. Останавливаем всплытие и стандартное поведение
+    e.stopPropagation();
+    e.preventDefault();
 
+    if (!doc.fileUrl) {
+        console.error('❌ No fileUrl');
+        return;
+    }
+
+    // 🔹 2. Изображения — модальное окно
     if (doc.fileType === 'image') {
-        // 🔹 Для изображений — открываем в модальном окне
         setSelectedDocument(doc);
-    } else {
-        // 🔹 Для PDF — открываем в новой вкладке (браузер отрендерит)
-        window.open(doc.fileUrl, '_blank');
+        return;
+    }
+
+    // 🔹 3. PDF — формируем абсолютный URL
+    const baseUrl = process.env.REACT_APP_API_URL || window.location.origin;
+    const fileUrl = doc.fileUrl.startsWith('http')
+        ? doc.fileUrl
+        : `${baseUrl}${doc.fileUrl}`;
+
+    console.log('🔗 Opening PDF:', fileUrl);
+
+    // 🔹 4. Открываем с безопасными параметрами
+    const newWindow = window.open(fileUrl, '_blank', 'noopener,noreferrer');
+
+    // 🔹 5. Обработка блокировки поп-апа
+    if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+        console.warn('⚠️ Popup blocked');
+        alert('📄 Браузер заблокировал открытие файла.\nРазрешите всплывающие окна для этого сайта.');
     }
 };
 
@@ -678,13 +700,13 @@ const handleSendFullReport = () => {
             {customer.documents.map(doc => (
                 <div
                     key={doc.id}
-                    className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer group"
-                    onClick={() => handleViewDocument(doc)}
+                    className="... cursor-pointer group"
+                    onClick={(e) => handleViewDocument(e, doc)}  // ← передаём событие
                 >
                     {/* Иконка типа файла */}
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        doc.fileType === 'pdf' 
-                            ? 'bg-red-100 text-red-600' 
+                        doc.fileType === 'pdf'
+                            ? 'bg-red-100 text-red-600'
                             : 'bg-emerald-100 text-emerald-600'
                     }`}>
                         {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
@@ -711,7 +733,8 @@ const handleSendFullReport = () => {
 
                     {/* Кнопка просмотра */}
                     <div className="text-slate-400 group-hover:text-indigo-600 transition-colors">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             strokeWidth="2">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                             <circle cx="12" cy="12" r="3"/>
                         </svg>
@@ -721,7 +744,6 @@ const handleSendFullReport = () => {
         </div>
     </div>
 )}
-
 
 
               <div className="pt-2">
