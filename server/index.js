@@ -1591,7 +1591,7 @@ app.post('/api/upload/document', auth, upload.single('file'), (req, res) => {
 });
 
 // 🔹 Отдача файлов (защищённая)
-app.get('/uploads/documents/:filename', (req, res) => {
+app.get('/uploads/documents/:filename', auth, (req, res) => {
   const filename = req.params.filename;
   const filePath = path.join(uploadDir, filename);
 
