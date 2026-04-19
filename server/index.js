@@ -8,7 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 const helmet = require('helmet');
 const express = require('express');
-
+const multer = require('multer');
 const { Pool } = require('pg');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
