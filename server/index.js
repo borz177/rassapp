@@ -17,7 +17,9 @@ const nodemailer = require('nodemailer');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
-
+const fs = require('fs');
+const fsPromises = fs.promises;
+const sharp = require('sharp');
 
 
 const app = express();
@@ -40,33 +42,27 @@ const getTargetUserId = (user) => {
 
 const uploadDir = '/var/www/rassapp/server/uploads/documents';
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: uploadDir,
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      const name = file.originalname.replace(/\.[^/.]+$/, '')
-        .replace(/[^a-zA-Z0-9а-яА-яЁё\-_]/g, '-')
-        .substring(0, 50);
-      const uniqueName = `${Date.now()}-${crypto.randomUUID().slice(0,8)}-${name}${ext}`;
-      cb(null, uniqueName);
+  // 🔹 Временное хранение в памяти для обработки
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB до сжатия
+  fileFilter: (req, file, cb) => {
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
+    const ext = path.extname(file.originalname).toLowerCase();
+    const isExtAllowed = allowedExts.includes(ext);
+    const isMimeAllowed = allowedMimes.includes(file.mimetype);
+
+    if (isExtAllowed && isMimeAllowed) {
+      cb(null, true);
+    } else {
+      cb(new Error('Недопустимый формат. Разрешены: JPG, PNG, WEBP, PDF'));
     }
-  }),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
- fileFilter: (req, file, cb) => {
-  const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
-  const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-
-  const ext = path.extname(file.originalname).toLowerCase();
-  const isExtAllowed = allowedExts.includes(ext);
-  const isMimeAllowed = allowedMimes.includes(file.mimetype);
-
-  if (isExtAllowed && isMimeAllowed) {
-    cb(null, true);
-  } else {
-    cb(new Error('Недопустимый формат файла. Разрешены: JPG, PNG, WEBP, PDF'));
   }
-}
 });
+
+
+
 
 // ✅ ХЕЛПЕР: Проверка прав доступа
 const canAccessUserData = (currentUser, targetUserId) => {
@@ -85,6 +81,39 @@ const sensitiveLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+
+
+const compressImage = async (inputBuffer, mimetype, maxWidth = 1920, quality = 80) => {
+  try {
+    const image = sharp(inputBuffer);
+    const metadata = await image.metadata();
+
+    // 🔹 Если изображение шире maxWidth — ресайзим
+    let pipeline = image;
+    if (metadata.width && metadata.width > maxWidth) {
+      pipeline = pipeline.resize({ width: maxWidth, withoutEnlargement: true });
+    }
+
+    // 🔹 Конвертируем в JPEG для максимальной совместимости
+    // (можно оставить оригинальный формат, если нужно)
+    const outputBuffer = await pipeline
+      .jpeg({ quality, progressive: true }) // 👈 меняйте quality: 60-90
+      .toBuffer();
+
+    return {
+      buffer: outputBuffer,
+      ext: '.jpg',
+      mimetype: 'image/jpeg'
+    };
+  } catch (err) {
+    console.error('❌ Compression error:', err);
+    // 🔹 Фолбэк: возвращаем оригинал, если сжатие не удалось
+    return { buffer: inputBuffer, ext: path.extname(inputBuffer), mimetype };
+  }
+};
+
+
 // Middleware
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(',') || ['https://rassrochka.pro'],
@@ -1577,17 +1606,52 @@ app.delete('/api/user/data', auth, async (req, res) => {
 
 
 // 🔹 Эндпоинт загрузки документа
-app.post('/api/upload/document', auth, upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Файл не выбран' });
+app.post('/api/upload/document', auth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Файл не выбран' });
+    }
 
-  // Возвращаем относительный путь + метаданные
-  res.json({
-    fileUrl: `/uploads/documents/${req.file.filename}`,
-    fileName: req.file.originalname,
-    fileSize: req.file.size,
-    fileType: req.file.mimetype.includes('pdf') ? 'pdf' : 'image',
-    mimeType: req.file.mimetype
-  });
+    let fileBuffer = req.file.buffer;
+    let fileExt = path.extname(req.file.originalname).toLowerCase();
+    let mimeType = req.file.mimetype;
+    let originalSize = req.file.size;
+
+    // 🔹 СЖАТИЕ ИЗОБРАЖЕНИЙ
+    if (mimeType.startsWith('image/')) {
+      const compressed = await compressImage(fileBuffer, mimeType, 1920, 80);
+      fileBuffer = compressed.buffer;
+      fileExt = compressed.ext;
+      mimeType = compressed.mimetype;
+    }
+
+    // 🔹 Генерация имени файла
+    const safeName = req.file.originalname
+      .replace(/\.[^/.]+$/, '')
+      .replace(/[^a-zA-Z0-9а-яА-яЁё\-_]/g, '-')
+      .substring(0, 50);
+    const filename = `${Date.now()}-${crypto.randomUUID().slice(0,8)}-${safeName}${fileExt}`;
+
+    // 🔹 Сохранение на диск
+    const uploadPath = path.join(uploadDir, filename);
+    await fs.promises.writeFile(uploadPath, fileBuffer);
+
+    // 🔹 Ответ клиенту
+    res.json({
+      success: true,
+      fileUrl: `/uploads/documents/${filename}`,
+      fileName: req.file.originalname,
+      fileSize: fileBuffer.length, // размер ПОСЛЕ сжатия
+      originalSize,                // размер ДО сжатия (для статистики)
+      fileType: mimeType.includes('pdf') ? 'pdf' : 'image',
+      mimeType,
+      compressed: mimeType.startsWith('image/') // флаг: было ли сжатие
+    });
+
+  } catch (error) {
+    console.error('❌ Upload error:', error);
+    res.status(500).json({ error: 'Ошибка сервера при загрузке файла' });
+  }
 });
 
 // 🔹 Отдача файлов (защищённая)
