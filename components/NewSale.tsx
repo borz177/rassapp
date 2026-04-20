@@ -93,20 +93,14 @@ const NewSale: React.FC<NewSaleProps> = ({
   const selectedAccount = accounts.find(a => a.id === formData.accountId);
 
   // Авто-расчёт цены при вводе закупа (только для новых записей!)
- useEffect(() => {
-  if (mode !== 'INSTALLMENT' || initialData.id) return;
-
-  // Авто-заполняем цену ТОЛЬКО если поле пустое (0 или '')
-  if (!formData.price || formData.price === 0) {
-    const suggestedPrice = roundingMode !== 'NONE'
-      ? calculatedValues.totalAmount
-      : baseCalculatedPrice;
-
-    if (suggestedPrice > 0) {
-      setFormData(prev => ({ ...prev, price: suggestedPrice }));
+  useEffect(() => {
+    if (mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && !initialData.id) {
+      const bp = Number(formData.buyPrice);
+      const rate = Number(formData.interestRate);
+      const calculatedPrice = Math.round(bp + (bp * (rate / 100)));
+      setFormData(prev => ({ ...prev, price: calculatedPrice }));
     }
-  }
-}, [roundingMode, baseCalculatedPrice, mode, initialData.id]);
+  }, [formData.buyPrice, formData.interestRate, mode, initialData.id]);
 
   // Авто-расчёт даты первого платежа
   useEffect(() => {
@@ -133,50 +127,52 @@ const NewSale: React.FC<NewSaleProps> = ({
 
   // 🔹 2. Расчёт итоговых значений с учётом округления
   const calculatedValues = useMemo(() => {
-  const downPayment = Number(formData.downPayment) || 0;
-  const installments = Number(formData.installments) || 1;
+    const downPayment = Number(formData.downPayment) || 0;
+    const installments = Number(formData.installments) || 1;
 
-  if (mode === 'CASH') {
-    return {
-      totalAmount: Number(formData.price) || 0,
-      remainingAmount: 0,
-      monthlyPayment: 0
-    };
-  }
+    if (mode === 'CASH') {
+      return {
+        totalAmount: Number(formData.price) || 0,
+        remainingAmount: 0,
+        monthlyPayment: 0
+      };
+    }
 
-  // 🔥 ГЛАВНОЕ: всегда берём цену из formData.price (ручной ввод или авто)
-  let totalAmount = Number(formData.price) || baseCalculatedPrice || 0;
+    // 🔥 КЛЮЧЕВОЕ: При редактировании используем сохранённый totalAmount как базу
+    let totalAmount: number;
+    if (initialData.id && initialData.totalAmount) {
+      totalAmount = initialData.totalAmount;
+    } else {
+      // Для новых записей: база = цена из формы или рассчитанная
+      totalAmount = (roundingMode === 'NONE')
+        ? (Number(formData.price) || baseCalculatedPrice)
+        : baseCalculatedPrice;
+    }
 
-  let remainingAmount = totalAmount - downPayment;
-  if (remainingAmount < 0) remainingAmount = 0;
+    let remainingAmount = totalAmount - downPayment;
+    let monthlyPayment = installments > 0 ? remainingAmount / installments : 0;
 
-  let monthlyPayment = installments > 0 ? remainingAmount / installments : 0;
+    // Применяем округление только для новых записей или если режим изменился
+    if (!initialData.id && roundingMode !== 'NONE' && monthlyPayment > 0) {
+      const roundedMonthly = roundingMode === 'DOWN'
+        ? Math.floor(monthlyPayment / 100) * 100
+        : Math.ceil(monthlyPayment / 100) * 100;
+      monthlyPayment = roundedMonthly;
+      remainingAmount = monthlyPayment * installments;
+      totalAmount = remainingAmount + downPayment;
+    }
 
-  // 🔥 Округляем только ежемесячный платёж (не общую цену!)
-  if (roundingMode !== 'NONE' && monthlyPayment > 0) {
-    const roundedMonthly = roundingMode === 'DOWN'
-      ? Math.floor(monthlyPayment / 100) * 100
-      : Math.ceil(monthlyPayment / 100) * 100;
-
-    monthlyPayment = roundedMonthly;
-    // Пересчитываем остаток и общую сумму под округлённый платёж
-    remainingAmount = monthlyPayment * installments;
-    totalAmount = remainingAmount + downPayment;
-  }
-
-  return {
-    totalAmount: Math.round(totalAmount),
-    remainingAmount: Math.round(remainingAmount),
-    monthlyPayment: Math.round(monthlyPayment)
-  };
-}, [
-  formData.price,        // 🔥 теперь цена — главный триггер пересчёта
-  formData.downPayment,
-  formData.installments,
-  roundingMode,
-  mode,
-  baseCalculatedPrice    // используется только как фолбэк, если price = 0
-]);
+    return { totalAmount, remainingAmount, monthlyPayment };
+  }, [
+    formData.price,
+    formData.downPayment,
+    formData.installments,
+    roundingMode,
+    mode,
+    baseCalculatedPrice,
+    initialData.id,
+    initialData.totalAmount
+  ]);
 
   // 🔹 3. Синхронизация поля "Цена" с режимом округления (только для новых!)
   useEffect(() => {
@@ -234,109 +230,76 @@ const NewSale: React.FC<NewSaleProps> = ({
   };
 
   // 🔥 handleConfirm с сохранением roundingMode
-const handleConfirm = () => {
-  const pDay = formData.paymentDate
-    ? new Date(formData.paymentDate).getDate()
-    : new Date(formData.startDate).getDate();
+  const handleConfirm = () => {
+    const pDay = formData.paymentDate
+      ? new Date(formData.paymentDate).getDate()
+      : new Date(formData.startDate).getDate();
 
-  const saleId = formData.id || Date.now().toString();
-  let finalStartDate = formData.startDate;
-  const now = new Date();
-  const selectedDate = new Date(formData.startDate);
-  const isToday = selectedDate.getDate() === now.getDate() &&
-                  selectedDate.getMonth() === now.getMonth() &&
-                  selectedDate.getFullYear() === now.getFullYear();
+    const saleId = formData.id || Date.now().toString();
+    let finalStartDate = formData.startDate;
+    const now = new Date();
+    const selectedDate = new Date(formData.startDate);
+    const isToday = selectedDate.getDate() === now.getDate() &&
+                    selectedDate.getMonth() === now.getMonth() &&
+                    selectedDate.getFullYear() === now.getFullYear();
 
-  if (isToday) {
-    finalStartDate = now.toISOString();
-  }
+    if (isToday) {
+      finalStartDate = now.toISOString();
+    }
 
-  // 🔥 Приводим все числа заранее
-  const numericData = {
-    buyPrice: Number(formData.buyPrice) || 0,
-    price: Number(formData.price) || 0,
-    downPayment: Number(formData.downPayment) || 0,
-    installments: Number(formData.installments) || 0,
-    interestRate: Number(formData.interestRate) || 0,
-  };
-
-  const submissionData = {
-    ...formData,
-    ...numericData,
-    id: saleId,
-    startDate: finalStartDate,
-    paymentDay: pDay,
-    roundingMode,
-  };
-
-  let finalSaleData;
-  if (mode === 'CASH') {
-    finalSaleData = {
-      ...submissionData,
-      type: 'CASH',
-      totalAmount: numericData.price,
-      downPayment: numericData.price,
-      remainingAmount: 0,
-      installments: 0,
-      interestRate: 0,
-      roundingMode: 'NONE',
+    const submissionData = {
+      ...formData,
+      id: saleId,
+      startDate: finalStartDate,
+      paymentDay: pDay,
+      buyPrice: Number(formData.buyPrice),
+      price: Number(formData.price),
+      downPayment: Number(formData.downPayment),
+      installments: Number(formData.installments),
+      interestRate: Number(formData.interestRate),
+      roundingMode, // ← 🔥 СОХРАНЯЕМ режим округления
     };
-  } else {
-    // 🔥 INSTALLMENT: total = цена + первый взнос
-    const totalAmount = numericData.price + numericData.downPayment;
-    const remainingAmount = numericData.price; // цена в рассрочку = остаток после взноса
 
-    finalSaleData = {
-      ...submissionData,
-      type: 'INSTALLMENT',
-      totalAmount,
-      remainingAmount,
-    };
-  }
+    let finalSaleData;
+    if (mode === 'CASH') {
+      finalSaleData = {
+        ...submissionData,
+        type: 'CASH',
+        totalAmount: calculatedValues.totalAmount,
+        downPayment: calculatedValues.totalAmount,
+        remainingAmount: 0,
+        installments: 0,
+        interestRate: 0,
+        roundingMode: 'NONE',
+      };
+    } else {
+      finalSaleData = {
+        ...submissionData,
+        type: 'INSTALLMENT',
+        totalAmount: calculatedValues.totalAmount,
+        remainingAmount: calculatedValues.remainingAmount,
+        // roundingMode уже в submissionData
+      };
+    }
 
-  // 🔥 Генерация платежного плана с защитой от NaN
-  const paymentPlan = mode === 'CASH' || finalSaleData.installments <= 0
-    ? []
-    : (() => {
-        const count = finalSaleData.installments;
-        const basePayment = finalSaleData.remainingAmount / count;
+    const paymentPlan = mode === 'CASH' ? [] : Array.from({ length: finalSaleData.installments }).map((_, idx) => {
+      const pDate = new Date(finalSaleData.paymentDate || finalSaleData.startDate);
+      pDate.setMonth(pDate.getMonth() + idx);
+      return {
+        id: `pay_${Date.now()}_${idx}`,
+        saleId,
+        amount: Number((finalSaleData.remainingAmount / finalSaleData.installments).toFixed(2)),
+        date: pDate.toISOString(),
+        isPaid: false
+      };
+    });
 
-        // Применяем округление к ежемесячному платежу
-        const roundedPayment = roundingMode !== 'NONE'
-          ? (roundingMode === 'DOWN'
-              ? Math.floor(basePayment / 100) * 100
-              : Math.ceil(basePayment / 100) * 100)
-          : Math.round(basePayment);
-
-        let accumulated = 0;
-        return Array.from({ length: count }).map((_, idx) => {
-          const pDate = new Date(finalSaleData.paymentDate || finalSaleData.startDate);
-          pDate.setMonth(pDate.getMonth() + idx);
-
-          // Последний платёж корректируем, чтобы сумма сошлась копейка в копейку
-          const amount = idx === count - 1
-            ? Number((finalSaleData.remainingAmount - accumulated).toFixed(2))
-            : Number(roundedPayment.toFixed(2));
-
-          accumulated += amount;
-
-          return {
-            id: `pay_${saleId}_${idx}`,
-            saleId,
-            amount,
-            date: pDate.toISOString(),
-            isPaid: false
-          };
-        });
-      })();
-
-  const fullSaleObject = { ...finalSaleData, paymentPlan };
-
-  setCreatedSale(fullSaleObject);
-  setShowConfirmModal(false);
-  onSubmit(fullSaleObject);
-  setShowSuccessModal(true);
-};
+    const fullSaleObject = { ...finalSaleData, paymentPlan };
+    setCreatedSale(fullSaleObject);
+    setShowConfirmModal(false);
+    onSubmit(fullSaleObject);
+    setShowSuccessModal(true);
+  };
   const updateMode = (newMode: 'INSTALLMENT' | 'CASH') => {
     setMode(newMode);
     setFormData(prev => ({ ...prev, mode: newMode }));
