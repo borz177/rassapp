@@ -14,6 +14,8 @@ const AdminPanel: React.FC = () => {
     const [plan, setPlan] = useState<SubscriptionPlan>('STANDARD');
     const [months, setMonths] = useState(1);
     const [actionLoading, setActionLoading] = useState(false);
+    const [inputValue, setInputValue] = useState(''); // Для отображения в инпуте
+const [isCustom, setIsCustom] = useState(false);
 
     // API Key Modal
     const [apiModalUser, setApiModalUser] = useState<User | null>(null);
@@ -37,10 +39,14 @@ const AdminPanel: React.FC = () => {
     };
 
     const handleOpenModal = (user: User) => {
-        setSelectedUser(user);
-        setPlan(user.subscription?.plan || 'START');
-        setMonths(1);
-    };
+    setSelectedUser(user);
+    setPlan(user.subscription?.plan || 'START');
+
+    // Сброс периодов
+    setMonths(1);
+    setInputValue('');
+    setIsCustom(false);
+};
 
     const handleOpenApiModal = (user: User) => {
         setApiModalUser(user);
@@ -267,59 +273,76 @@ const AdminPanel: React.FC = () => {
                 </div>
 
                 {/* Period Selection */}
-                <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">
-                        Срок действия
-                    </label>
+               {/* Period Selection */}
+<div>
+    <label className="block text-sm font-bold text-slate-700 mb-2">
+        Срок действия
+    </label>
 
-                    {/* Quick select buttons */}
-                    <div className="flex flex-wrap gap-2 mb-3">
-                        {[1, 3, 6, 12].map(m => (
-                            <button
-                                key={m}
-                                onClick={() => setMonths(m)}
-                                className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
-                                    months === m 
-                                        ? 'bg-slate-800 text-white border-slate-800' 
-                                        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
-                                }`}
-                            >
-                                {m} мес.
-                            </button>
-                        ))}
-                        <button
-                            onClick={() => setMonths(999)}
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
-                                months === 999 
-                                    ? 'bg-emerald-600 text-white border-emerald-600' 
-                                    : 'bg-white text-emerald-600 border-emerald-200 hover:border-emerald-400'
-                            }`}
-                            title="Бессрочно"
-                        >
-                            ∞
-                        </button>
-                    </div>
+    {/* Quick select buttons */}
+    <div className="flex flex-wrap gap-2 mb-3">
+        {[1, 3, 6, 12].map(m => (
+            <button
+                key={m}
+                type="button"
+                onClick={() => {
+                    setMonths(m);
+                    setInputValue(''); // Очищаем поле инпута
+                    setIsCustom(false);
+                }}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                    months === m && !isCustom
+                        ? 'bg-slate-800 text-white border-slate-800' 
+                        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+                }`}
+            >
+                {m} мес.
+            </button>
+        ))}
+        <button
+            type="button"
+            onClick={() => {
+                setMonths(999);
+                setInputValue('');
+                setIsCustom(false);
+            }}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                months === 999 && !isCustom
+                    ? 'bg-emerald-600 text-white border-emerald-600' 
+                    : 'bg-white text-emerald-600 border-emerald-200 hover:border-emerald-400'
+            }`}
+            title="Бессрочно"
+        >
+            ∞
+        </button>
+    </div>
 
-                    {/* Custom input */}
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="number"
-                            min="1"
-                            max="120"
-                            value={months === 999 ? '' : months}
-                            onChange={(e) => {
-                                const val = parseInt(e.target.value) || 1;
-                                setMonths(Math.min(Math.max(val, 1), 120));
-                            }}
-                            placeholder="Другой срок"
-                            disabled={months === 999}
-                            className="..."
-                        />
-                        <span className="text-sm text-slate-500 whitespace-nowrap">
-                            {months === 999 ? 'бессрочно' : 'мес.'}
-                        </span>
-                    </div>
-                </div>
+    {/* Custom input */}
+    <div className="flex items-center gap-2">
+        <input
+            type="number"
+            min="1"
+            max="120"
+            value={isCustom ? inputValue : ''}
+            onChange={(e) => {
+                setInputValue(e.target.value);
+                setIsCustom(true);
+
+                const val = parseInt(e.target.value);
+                if (!isNaN(val) && val > 0) {
+                    setMonths(Math.min(val, 120));
+                }
+            }}
+            onFocus={(e) => e.target.select()} // Выделяет всё при клике для мгновенной замены
+            placeholder="Введите срок"
+            disabled={months === 999}
+            className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-indigo-500 disabled:bg-slate-50 disabled:text-slate-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        />
+        <span className="text-sm text-slate-500 whitespace-nowrap">
+            {months === 999 ? 'бессрочно' : 'мес.'}
+        </span>
+    </div>
+</div>
 
                 {/* Expiration Preview */}
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
