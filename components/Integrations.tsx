@@ -46,6 +46,8 @@ const Integrations: React.FC<IntegrationsProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [overdueInterval, setOverdueInterval] = useState<number>(1);
 
+  const [showPreview, setShowPreview] = useState(false);
+
 
   useEffect(() => {
     if (appSettings.whatsapp) {
@@ -174,6 +176,71 @@ const Integrations: React.FC<IntegrationsProps> = ({
     setTemplates(newTemplates);
     setCurrentTemplates(newTemplates);
   };
+
+
+  // 🔹 Сбросить текущий шаблон к значению по умолчанию
+const resetCurrentTemplate = () => {
+  if (!window.confirm('Вернуть шаблон к значению по умолчанию?')) {
+    return;
+  }
+
+  const newTemplates = { ...templates };
+
+  if (activeTemplateTab === 'UPCOMING') {
+    newTemplates.upcoming = DEFAULT_TEMPLATES.upcoming;
+  } else if (activeTemplateTab === 'TODAY') {
+    newTemplates.today = DEFAULT_TEMPLATES.today;
+  } else if (activeTemplateTab === 'OVERDUE') {
+    newTemplates.overdue = DEFAULT_TEMPLATES.overdue;
+  }
+
+  setTemplates(newTemplates);
+  setCurrentTemplates(newTemplates);
+};
+
+// 🔹 Сбросить ВСЕ шаблоны к значениям по умолчанию
+const resetAllTemplates = () => {
+  if (!window.confirm('Вернуть ВСЕ шаблоны к значениям по умолчанию?\n\nЭто действие нельзя отменить.')) {
+    return;
+  }
+
+  setTemplates(DEFAULT_TEMPLATES);
+  setCurrentTemplates(DEFAULT_TEMPLATES);
+};
+
+
+// 🔹 Предпросмотр шаблона с подставленными данными
+const previewTemplate = () => {
+  const template = getCurrentTemplate();
+
+  // Пример данных для предпросмотра
+  const sampleData = {
+    имя: 'Алишер',
+    товар: 'iPhone 15 Pro',
+    сумма: '20 000',
+    дата: '20 апреля 2026 г.',
+    долг: '45 000',
+    итого: '65 000',
+    месяцы: '3',
+    платеж_блок: '   • Платёж по плану: *20 000 ₽*\n   • Остаток за этот месяц: *20 000 ₽*\n',
+    долг_блок: '   • Задолженность: *45 000 ₽* (3 мес.)\n',
+    итого_блок: '\n💰 *ИТОГО К ОПЛАТЕ: 65 000 ₽*',
+  };
+
+  // Заменяем переменные на примеры
+  let preview = template;
+  Object.entries(sampleData).forEach(([key, value]) => {
+    preview = preview.replace(new RegExp(`{${key}}`, 'g'), value);
+  });
+
+  // Сохраняем в состояние для отображения в модальном окне
+  setPreviewContent(preview);
+  setShowPreview(true);
+};
+
+// 🔹 Состояние для контента предпросмотра
+const [previewContent, setPreviewContent] = useState('');
+
 
   const getCurrentTemplate = () => {
     if (activeTemplateTab === 'UPCOMING') return templates.upcoming;
@@ -452,29 +519,66 @@ const Integrations: React.FC<IntegrationsProps> = ({
               </div>
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <textarea
-                  className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-indigo-400 h-32 resize-none"
-                  value={getCurrentTemplate()}
-                  onChange={e => updateTemplate(e.target.value)}
-                  placeholder="Текст сообщения..."
+                    className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-indigo-400 h-32 resize-none"
+                    value={getCurrentTemplate()}
+                    onChange={e => updateTemplate(e.target.value)}
+                    placeholder="Текст сообщения..."
                 />
-                <div className="mt-3">
-                  <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Переменные:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {['имя', 'товар', 'сумма', 'дата', 'долг', 'итого', 'месяцы', 'долг_блок'].map(v => (
+                <div className="mt-3 space-y-3">
+                  {/* Переменные */}
+                  <div>
+                    <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Переменные:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['имя', 'товар', 'сумма', 'дата', 'долг', 'итого', 'месяцы', 'долг_блок'].map(v => (
+                          <button
+                              key={v}
+                              onClick={() => insertVariable(v)}
+                              className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+                          >
+                            {`{${v}}`}
+                          </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 🔹 Кнопки сброса */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+                    {/* 🔹 Кнопка предпросмотра — слева */}
+                    <button
+                        type="button"
+                        onClick={previewTemplate}
+                        className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1"
+                        title="Посмотреть, как будет выглядеть сообщение"
+                    >
+                      👁️ Предпросмотр
+                    </button>
+
+                    {/* 🔹 Кнопки сброса — справа */}
+                    <div className="flex items-center gap-3">
                       <button
-                        key={v}
-                        onClick={() => insertVariable(v)}
-                        className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+                          type="button"
+                          onClick={resetCurrentTemplate}
+                          className="text-[10px] text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1"
+                          title="Сбросить только этот шаблон"
                       >
-                        {`{${v}}`}
+                        ↩️ Этот шаблон
                       </button>
-                    ))}
+
+                      <button
+                          type="button"
+                          onClick={resetAllTemplates}
+                          className="text-[10px] text-red-600 hover:text-red-800 font-medium flex items-center gap-1"
+                          title="Сбросить все 3 шаблона"
+                      >
+                        🗑️ Все по умолчанию
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <hr className="border-slate-100" />
+            <hr className="border-slate-100"/>
 
             {/* ЧАТ-БОТ */}
             <div className="space-y-4">
@@ -483,23 +587,26 @@ const Integrations: React.FC<IntegrationsProps> = ({
                   🤖 Чат-бот (Автоответчик)
                 </h4>
                 <div
-                  className="relative inline-flex items-center cursor-pointer"
-                  onClick={() => setBotEnabled(!botEnabled)}
+                    className="relative inline-flex items-center cursor-pointer"
+                    onClick={() => setBotEnabled(!botEnabled)}
                 >
                   <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    checked={botEnabled}
-                    onChange={() => {}}
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={botEnabled}
+                      onChange={() => {
+                      }}
                   />
-                  <div className={`w-11 h-6 rounded-full peer peer-checked:bg-indigo-600 peer-focus:outline-none transition-colors ${botEnabled ? 'bg-indigo-600' : 'bg-slate-200'}`}>
-                    <div className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform ${botEnabled ? 'translate-x-full' : ''}`}></div>
+                  <div
+                      className={`w-11 h-6 rounded-full peer peer-checked:bg-indigo-600 peer-focus:outline-none transition-colors ${botEnabled ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                    <div
+                        className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform ${botEnabled ? 'translate-x-full' : ''}`}></div>
                   </div>
                 </div>
               </div>
 
               {botEnabled && (
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4 animate-fade-in">
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4 animate-fade-in">
                   {/* Webhook URL */}
                   <div>
                     <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Webhook URL</label>
