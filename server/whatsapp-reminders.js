@@ -214,6 +214,78 @@ function calculateEffectiveRemaining(sale, targetPaymentId) {
   };
 }
 
+
+
+// 🔹 Функция 1: Рассчитывает остатки по ВСЕМ платежам договора (FIFO)
+// Возвращает массив плановых платежей с актуальным полем remaining
+function calculateSalePaymentStates(sale) {
+  const realPayments = sale.paymentPlan
+    .filter(p => p.isRealPayment === true && !p.isRefund)
+    .map(p => ({ ...p, dateObj: new Date(p.date), amount: p.amount }))
+    .sort((a, b) => a.dateObj - b.dateObj);
+
+  const scheduled = sale.paymentPlan
+    .filter(p => p.isRealPayment !== true)
+    .map(p => ({ ...p, dateObj: new Date(p.date), remaining: p.amount }))
+    .sort((a, b) => a.dateObj - b.dateObj);
+
+  // Применяем FIFO
+  for (const real of realPayments) {
+    let moneyLeft = real.amount;
+    for (const plan of scheduled) {
+      if (moneyLeft <= 0 || plan.remaining <= 0) continue;
+      const pay = Math.min(moneyLeft, plan.remaining);
+      plan.remaining -= pay;
+      moneyLeft -= pay;
+    }
+  }
+
+  return scheduled.filter(p => p.remaining > 0.01); // Возвращаем только неоплаченные
+}
+
+// 🔹 Функция 2: Формирует ОДНО объединённое сообщение для клиента
+function buildConsolidatedMessage(customerData, totalToPay, settings) {
+  const { customer, items, totalDueToday, totalOverdue } = customerData;
+  const todayStr = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  let message = `🔔 *Напоминание об оплате*\n\n*${customer.name}!*\n\n`;
+
+  // 🔹 Блок "Сегодня"
+  const dueToday = items.filter(i => i.diffDays === 0);
+  if (dueToday.length > 0) {
+    message += `📅 *Сегодня*, *${todayStr}* — день оплаты!\n\n`;
+    dueToday.forEach(item => {
+      message += `🔸 *${item.productName}*\n   • К оплате: *${item.remaining.toLocaleString('ru-RU')} ₽*\n\n`;
+    });
+  }
+
+  // 🔹 Блок "Просрочка"
+  const overdue = items.filter(i => i.diffDays < 0);
+  if (overdue.length > 0) {
+    message += `⚠️ *Есть просроченные платежи:*\n\n`;
+    // Группируем просрочку по товарам для компактности
+    const overdueByProduct = {};
+    overdue.forEach(item => {
+      if (!overdueByProduct[item.productName]) overdueByProduct[item.productName] = { amount: 0, count: 0 };
+      overdueByProduct[item.productName].amount += item.remaining;
+      overdueByProduct[item.productName].count++;
+    });
+
+    for (const [prod, data] of Object.entries(overdueByProduct)) {
+      message += `🔸 *${prod}*\n   • Задолженность: *${data.amount.toLocaleString('ru-RU')} ₽* (${data.count} мес.)\n\n`;
+    }
+  }
+
+  // 🔹 ИТОГО (ВСЕГДА = сегодня + просрочка)
+  if (totalToPay > 0) {
+    message += `💰 *ИТОГО К ОПЛАТЕ: ${totalToPay.toLocaleString('ru-RU')} ₽*\n\n`;
+  }
+
+  message += `\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``;
+  return message;
+}
+
+
 async function processRemindersForUser(user) {
   const { id, whatsapp_settings } = user;
 
@@ -222,21 +294,14 @@ async function processRemindersForUser(user) {
   }
 
   const settings = whatsapp_settings;
-  const targetTime = settings.reminderTime;
-
-  // 🔹 1. СНАЧАЛА определяем даты
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().split('T')[0];
 
-  // 🔹 2. Проверяем время с окном ±5 минут
+  // 🔹 Проверка времени ±5 мин
   const now = new Date();
-  const [targetHour, targetMin] = targetTime.split(':').map(Number);
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const targetMinutes = targetHour * 60 + targetMin;
-  const diffMinutes = Math.abs(nowMinutes - targetMinutes);
-
-  // ✅ Если разница больше 5 минут — пропускаем
+  const [targetHour, targetMin] = settings.reminderTime.split(':').map(Number);
+  const diffMinutes = Math.abs((now.getHours() * 60 + now.getMinutes()) - (targetHour * 60 + targetMin));
   if (diffMinutes > 5) return;
 
   const [salesRes, customersRes] = await Promise.all([
@@ -247,175 +312,108 @@ async function processRemindersForUser(user) {
   const sales = salesRes.rows.map(r => r.data);
   const customers = customersRes.rows.map(r => r.data);
 
-  let sentCount = 0;
-
-  // 🔹 ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: умный расчёт остатков (FIFO)
-  // Распределяет реальные оплаты по плановым платежам хронологически
-  const calculateEffectiveRemaining = (sale, targetPaymentId) => {
-    const now = new Date();
-
-    // 1. Собираем ВСЕ реальные поступления (деньги, которые клиент фактически внёс)
-    const realPayments = sale.paymentPlan
-      .filter(p => p.isRealPayment === true && !p.isRefund)
-      .map(p => ({ ...p, dateObj: new Date(p.date), allocated: 0 }))
-      .sort((a, b) => a.dateObj - b.dateObj); // Сортируем по дате: старые сначала
-
-    // 2. Собираем плановые платежи (график)
-    const scheduledPayments = sale.paymentPlan
-      .filter(p => p.isRealPayment !== true)
-      .map(p => ({ ...p, dateObj: new Date(p.date), remaining: p.amount }))
-      .sort((a, b) => a.dateObj - b.dateObj);
-
-    // 3. Алгоритм FIFO: "гасим" старые долги новыми деньгами
-    for (const real of realPayments) {
-      let moneyLeft = real.amount;
-
-      for (const plan of scheduledPayments) {
-        if (moneyLeft <= 0) break;
-        if (plan.remaining <= 0) continue;
-
-        // Сколько можем погасить этим платежом
-        const pay = Math.min(moneyLeft, plan.remaining);
-        plan.remaining -= pay;
-        moneyLeft -= pay;
-      }
-    }
-
-    // 4. Находим целевой платёж (по которому отправляем напоминание)
-    const target = scheduledPayments.find(p => p.id === targetPaymentId);
-    if (!target) return { currentRemaining: 0, priorDebt: 0, totalToPay: 0, firstOverdueDate: null };
-
-    const currentRemaining = Math.max(0, target.remaining);
-
-    // 5. Считаем задолженность по ПРОШЛЫМ платежам (дата < сегодня)
-    let priorDebt = 0;
-    let firstOverdueDate = null;
-
-    for (const p of scheduledPayments) {
-      if (p.id === targetPaymentId) continue; // Сам текущий платёж не включаем в "долг"
-
-      if (p.dateObj < now && p.remaining > 0.01) {
-        priorDebt += p.remaining;
-        if (!firstOverdueDate || p.dateObj < firstOverdueDate) {
-          firstOverdueDate = p.dateObj;
-        }
-      }
-    }
-
-    // 6. ИТОГО = текущий остаток + старый долг
-    return {
-      currentRemaining,
-      priorDebt,
-      totalToPay: currentRemaining + priorDebt,
-      firstOverdueDate
-    };
-  };
+  // 🔹 Хранилище для группировки по клиентам
+  const customerReminders = {};
 
   for (const sale of sales) {
     if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') continue;
+    if (!sale.paymentPlan || sale.paymentPlan.length === 0) continue;
 
     const customer = customers.find(c => c.id === sale.customerId);
     if (!customer || !customer.phone) continue;
 
-    for (const payment of sale.paymentPlan) {
-      // 🔹 Пропускаем оплаченные и уже уведомлённые сегодня
-       if (payment.isPaid || payment.isRealPayment === true || payment.lastNotificationDate === todayStr) {
-    continue;
-  }
+    // 1. Рассчитываем актуальные остатки по всем платежам этого договора
+    const paymentStates = calculateSalePaymentStates(sale);
 
-      const paymentDate = new Date(payment.date);
-      paymentDate.setHours(0, 0, 0, 0);
+    // 2. Находим платежи, подходящие под текущие настройки напоминаний
+    for (const p of paymentStates) {
+      const pDate = new Date(p.date);
+      pDate.setHours(0, 0, 0, 0);
+      const diffDays = Math.ceil((pDate - today) / (1000 * 60 * 60 * 24));
 
-      // 🔹 Рассчитываем разницу в днях
-      const diffDays = Math.ceil((paymentDate - today) / (1000 * 60 * 60 * 24));
+      let triggerType = null;
+      if (diffDays === 1 && settings.reminderDays.includes(-1)) triggerType = 'upcoming';
+      else if (diffDays === 0 && settings.reminderDays.includes(0)) triggerType = 'today';
+      else if (diffDays < 0 && settings.reminderDays.includes(1)) triggerType = 'overdue';
 
-      // 🔹 Определяем, нужно ли отправлять напоминание
-      let shouldSend = false;
-      let reminderDay = null;
+      if (!triggerType) continue;
 
-      if (diffDays === 1 && settings.reminderDays.includes(-1)) {
-        shouldSend = true;
-        reminderDay = -1;
-      }
-      else if (diffDays === 0 && settings.reminderDays.includes(0)) {
-        shouldSend = true;
-        reminderDay = 0;
-      }
-      else if (diffDays < 0 && settings.reminderDays.includes(1)) {
-        shouldSend = true;
-        reminderDay = 1;
-      }
-
-      if (!shouldSend || reminderDay === null) continue;
-
-      // 🔹 Проверка интервала для просроченных
-      if (reminderDay === 1 && settings.overdueReminderInterval > 1) {
-        const lastNotif = payment.lastNotificationDate ? new Date(payment.lastNotificationDate) : null;
+      // Проверка интервала для просроченных
+      if (triggerType === 'overdue' && settings.overdueReminderInterval > 1) {
+        const lastNotif = p.lastNotificationDate ? new Date(p.lastNotificationDate) : null;
         if (lastNotif) {
           const daysSinceLast = Math.floor((today - lastNotif) / (1000 * 60 * 60 * 24));
-          if (daysSinceLast < settings.overdueReminderInterval) {
-            console.log(`${LOG_PREFIX} ⏭ Пропуск: интервал ${settings.overdueReminderInterval}д, прошло ${daysSinceLast}д`);
-            continue;
-          }
+          if (daysSinceLast < settings.overdueReminderInterval) continue;
         }
       }
 
-      // 🔹 === НОВЫЙ РАСЧЁТ С УЧЁТОМ ЧАСТИЧНЫХ ОПЛАТ ===
-      const { currentRemaining, priorDebt, totalToPay, firstOverdueDate } =
-        calculateEffectiveRemaining(sale, payment.id);
-
-      // 🔹 Считаем месяцы просрочки
-      let monthsDiff = 0;
-      if (priorDebt > 0 && firstOverdueDate) {
-        monthsDiff = Math.max(1,
-          (today.getFullYear() - firstOverdueDate.getFullYear()) * 12 +
-          (today.getMonth() - firstOverdueDate.getMonth()) +
-          (today.getDate() >= firstOverdueDate.getDate() ? 1 : 0)
-        );
+      // 3. Группируем данные по клиенту
+      if (!customerReminders[customer.id]) {
+        customerReminders[customer.id] = {
+          customer,
+          items: [],
+          totalDueToday: 0,
+          totalOverdue: 0,
+          paymentsToUpdate: []
+        };
       }
 
-      // 🔹 Определяем сумму для отображения в сообщении
-      // Если есть частичная оплата — показываем остаток, иначе полную сумму
-      const displayAmount = (currentRemaining > 0 && currentRemaining < payment.amount)
-        ? currentRemaining
-        : payment.amount;
+      const clientData = customerReminders[customer.id];
+      clientData.items.push({
+        productName: sale.productName,
+        date: p.date,
+        remaining: p.remaining,
+        diffDays,
+        triggerType
+      });
 
-      // 🔹 Формируем сообщение с правильными цифрами
-      const message = buildPaymentMessage(
-        sale,
-        customer,
-        { ...payment, amount: displayAmount }, // Подменяем сумму для отображения
-        priorDebt,
-        totalToPay,
-        reminderDay,
-        settings.templates
-      );
-
-      const success = await sendWhatsAppMessage(
-        settings.idInstance,
-        settings.apiTokenInstance,
-        customer.phone,
-        message
-      );
-
-      if (success) {
-        // 🔹 Обновляем дату последнего уведомления
-        payment.lastNotificationDate = todayStr;
-        await pool.query(
-          `UPDATE data_items SET data = $1 WHERE id = $2 AND user_id = $3`,
-          [JSON.stringify(sale), sale.id, id]
-        );
-        sentCount++;
-
-        const logType = reminderDay === -1 ? 'заранее' : reminderDay === 0 ? 'сегодня' : 'просрочка';
-        const debtInfo = priorDebt > 0 ? ` (долг: ${priorDebt}₽)` : '';
-        console.log(`${LOG_PREFIX} ✅ Отправлено ${logType} ${customer.phone} ${debtInfo}`);
+      // Считаем суммы для ИТОГО
+      if (diffDays < 0) {
+        clientData.totalOverdue += p.remaining;
+      } else if (diffDays === 0) {
+        clientData.totalDueToday += p.remaining;
       }
+
+      // Сохраняем ссылки для обновления lastNotificationDate
+      clientData.paymentsToUpdate.push({ saleId: sale.id, paymentId: p.id, saleRef: sale });
+    }
+  }
+
+  // 🔹 Отправляем ОДНО сообщение на каждого клиента
+  let sentCount = 0;
+  for (const custId of Object.keys(customerReminders)) {
+    const data = customerReminders[custId];
+
+    // ✅ КЛЮЧЕВОЕ: ИТОГО = Сегодняшний платёж + Вся просрочка
+    const totalToPay = data.totalDueToday + data.totalOverdue;
+
+    const message = buildConsolidatedMessage(data, totalToPay, settings);
+    const success = await sendWhatsAppMessage(
+      settings.idInstance,
+      settings.apiTokenInstance,
+      data.customer.phone,
+      message
+    );
+
+    if (success) {
+      // Обновляем даты уведомлений в БД
+      for (const ref of data.paymentsToUpdate) {
+        const saleInDb = ref.saleRef;
+        const payment = saleInDb.paymentPlan.find(p => p.id === ref.paymentId);
+        if (payment) {
+          payment.lastNotificationDate = todayStr;
+          await pool.query(
+            `UPDATE data_items SET data = $1 WHERE id = $2 AND user_id = $3`,
+            [JSON.stringify(saleInDb), ref.saleId, id]
+          );
+        }
+      }
+      sentCount++;
     }
   }
 
   if (sentCount > 0) {
-    console.log(`${LOG_PREFIX} 📊 Всего отправлено: ${sentCount}`);
+    console.log(`${LOG_PREFIX} 📊 Отправлено объединённых сообщений: ${sentCount}`);
   }
 }
 
