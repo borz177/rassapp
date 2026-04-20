@@ -684,6 +684,75 @@ const [previewContent, setPreviewContent] = useState('');
           </div>
         )}
       </div>
+
+      {/* 🔹 МОДАЛЬНОЕ ОКНО ПРЕДПРОСМОТРА */}
+{showPreview && (
+  <div
+    className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
+    onClick={() => setShowPreview(false)}
+  >
+    <div
+      className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-scale-in"
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Заголовок */}
+      <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-emerald-50">
+        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+          <span className="text-lg">👁️</span> Предпросмотр сообщения
+        </h3>
+        <button
+          onClick={() => setShowPreview(false)}
+          className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* Контент предпросмотра */}
+      <div className="p-4 max-h-[60vh] overflow-y-auto">
+        {/* Имитация пузыря сообщения WhatsApp */}
+        <div className="bg-[#dcf8c6] rounded-2xl rounded-tr-sm p-4 shadow-sm border border-emerald-100">
+          <pre className="whitespace-pre-wrap text-sm text-slate-800 font-sans leading-relaxed">
+            {previewContent}
+          </pre>
+        </div>
+
+        {/* Подсказка */}
+        <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+          <p className="text-[10px] text-slate-500">
+            💡 <b>Примечание:</b> Это пример. В реальном сообщении переменные заменятся на данные клиента.
+          </p>
+        </div>
+      </div>
+
+      {/* Кнопки */}
+      <div className="flex gap-3 p-4 border-t border-slate-100 bg-slate-50">
+        <button
+          onClick={() => setShowPreview(false)}
+          className="flex-1 py-2.5 bg-slate-200 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-300 transition-colors"
+        >
+          Закрыть
+        </button>
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(previewContent);
+            alert('📋 Скопировано!');
+          }}
+          className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl font-medium text-sm hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          Копировать
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 };
