@@ -8,7 +8,6 @@ export enum PaymentStatus {
 export type SubscriptionPlan = 'TRIAL' | 'START' | 'STANDARD' | 'BUSINESS';
 
 export interface UserSubscription {
-    months: number;
   plan: SubscriptionPlan;
   expiresAt: string; // ISO String
 }
