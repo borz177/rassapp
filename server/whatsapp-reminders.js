@@ -75,6 +75,7 @@ function calculateSalePaymentStates(sale) {
 }
 
 // 🔹 Формирует объединённое сообщение для клиента
+// 🔹 Формирует объединённое сообщение для клиента
 function buildConsolidatedMessage(customerData, totalToPay) {
   const { customer, items } = customerData;
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -88,10 +89,10 @@ function buildConsolidatedMessage(customerData, totalToPay) {
   items.forEach(item => {
     if (!products[item.productName]) {
       products[item.productName] = {
-        currentDue: 0,
-        overdueDebt: 0,
-        firstOverdueDate: null,
-        originalAmount: item.originalAmount
+        currentDue: 0,           // Сумма на сегодня/завтра
+        overdueDebt: 0,          // Сумма просрочки
+        firstOverdueDate: null,  // Дата первой просрочки для расчёта месяцев
+        originalAmount: item.originalAmount // Фиксированный платёж из графика
       };
     }
     if (item.diffDays >= 0) {
@@ -104,10 +105,10 @@ function buildConsolidatedMessage(customerData, totalToPay) {
     }
   });
 
-  // Заголовок
+  // 🔹 Заголовок
   let message = `🔔 *Напоминание ${isOverdueOnly ? 'о просрочке' : 'об оплате'}*\n\n*${customer.name}!*\n\n`;
 
-  // Блок даты (только если есть Сегодня/Завтра)
+  // 🔹 Блок даты (только если есть Сегодня/Завтра)
   if (hasUpcoming) {
     const targetItem = items.find(i => i.diffDays === 1 || i.diffDays === 0);
     const targetDate = new Date(targetItem.dateObj);
@@ -116,12 +117,17 @@ function buildConsolidatedMessage(customerData, totalToPay) {
     message += `📅 *${dayWord}*, *${dateStr}* — день оплаты!\n\n`;
   }
 
-  // Блоки товаров
+  // 🔹 Блок предупреждения для режима "только просрочка"
+  if (isOverdueOnly) {
+    message += `⚠️ Оплата по договору просрочена!\n\n`;
+  }
+
+  // 🔹 Блоки товаров
   for (const [name, data] of Object.entries(products)) {
     message += `🔸 *${name}*\n`;
 
     if (data.currentDue > 0) {
-      message += `   • К оплате: *${data.currentDue.toLocaleString('ru-RU')} ₽*\n`;
+      message += `   • К оплате: *${data.currentDue.toLocaleString('ru-RU')} ₽*\n\n`;
     }
 
     if (data.overdueDebt > 0) {
@@ -136,7 +142,7 @@ function buildConsolidatedMessage(customerData, totalToPay) {
 
       // В режиме "ТОЛЬКО просрочка" показываем фиксированный платёж
       if (isOverdueOnly) {
-        message += `   • ежемесячный платеж: *${data.originalAmount.toLocaleString('ru-RU')} ₽*\n`;
+        message += `   • Ежемесячный платёж: *${data.originalAmount.toLocaleString('ru-RU')} ₽*\n`;
       }
 
       message += `   • Задолженность: *${data.overdueDebt.toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
@@ -144,8 +150,13 @@ function buildConsolidatedMessage(customerData, totalToPay) {
     message += `\n`;
   }
 
-  // ИТОГО
-  if (totalToPay > 0) {
+  // 🔹 ИТОГО: показываем ТОЛЬКО если:
+  // 1. Есть задолженность по любому товару ИЛИ
+  // 2. Более 1 товара с оплатой на сегодня/завтра
+  const productsWithDue = Object.values(products).filter(p => p.currentDue > 0).length;
+  const hasAnyOverdue = Object.values(products).some(p => p.overdueDebt > 0);
+
+  if (totalToPay > 0 && (hasAnyOverdue || productsWithDue > 1)) {
     message += `💰 *ИТОГО К ОПЛАТЕ: ${totalToPay.toLocaleString('ru-RU')} ₽*\n\n`;
   }
 
