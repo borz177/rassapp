@@ -290,16 +290,20 @@ const handleClearData = async () => {
 
       {/* Import Modal */}
       {showImportModal && (
-          <DataImport
-              onClose={() => setShowImportModal(false)}
-              onImportSuccess={() => {
-                  setShowImportModal(false);
-                  alert("Данные успешно импортированы! Страница будет перезагружена.");
-                  window.location.reload();
-              }}
-              currentUserId={currentUserId}
-          />
-      )}
+    <DataImport
+        onClose={() => setShowImportModal(false)}
+        onImportSuccess={() => {
+            // Логи с дубликатами уже видны в окне импорта.
+            // Ждём 15 секунд, потом закрываем, показываем alert и перезагружаем.
+            setTimeout(() => {
+                setShowImportModal(false);
+                alert("✅ Данные успешно импортированы! Страница будет перезагружена.");
+                window.location.reload();
+            }, 15000); // 15000 мс = 15 секунд
+        }}
+        currentUserId={currentUserId}
+    />
+)}
 
     </div>
   );
