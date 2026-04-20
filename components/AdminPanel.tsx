@@ -227,54 +227,139 @@ const AdminPanel: React.FC = () => {
             )}
 
             {/* Manual Subscription Modal */}
-            {selectedUser && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedUser(null)}>
-                    <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-xl font-bold text-slate-800 mb-1">Управление тарифом</h3>
-                        <p className="text-sm text-slate-500 mb-4">Для пользователя: <span className="font-bold">{selectedUser.name}</span></p>
+           {/* Manual Subscription Modal */}
+{selectedUser && (
+    <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+        onClick={() => setSelectedUser(null)}
+    >
+        <div
+            className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6"
+            onClick={e => e.stopPropagation()}
+        >
+            <h3 className="text-xl font-bold text-slate-800 mb-1">Управление тарифом</h3>
+            <p className="text-sm text-slate-500 mb-4">
+                Для пользователя: <span className="font-bold">{selectedUser.name}</span>
+            </p>
 
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Выберите план</label>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {['START', 'STANDARD', 'BUSINESS'].map((p) => (
-                                        <button
-                                            key={p}
-                                            onClick={() => setPlan(p as SubscriptionPlan)}
-                                            className={`py-2 text-xs font-bold rounded-lg border-2 ${plan === p ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500'}`}
-                                        >
-                                            {p}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Срок действия (мес.)</label>
-                                <div className="flex gap-2">
-                                    {[1, 3, 6, 12, 100].map(m => (
-                                        <button
-                                            key={m}
-                                            onClick={() => setMonths(m)}
-                                            className={`flex-1 py-2 text-xs font-bold rounded-lg border ${months === m ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
-                                        >
-                                            {m === 100 ? '∞' : m}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
+            <div className="space-y-4">
+                {/* Plan Selection */}
+                <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Выберите план</label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {(['START', 'STANDARD', 'BUSINESS'] as SubscriptionPlan[]).map((p) => (
                             <button
-                                onClick={handleUpdateSubscription}
-                                disabled={actionLoading}
-                                className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50"
+                                key={p}
+                                onClick={() => setPlan(p)}
+                                className={`py-2.5 text-xs font-bold rounded-xl border-2 transition-all ${
+                                    plan === p 
+                                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm' 
+                                        : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                                }`}
                             >
-                                {actionLoading ? 'Сохранение...' : 'Активировать / Продлить'}
+                                {p === 'START' && '🚀 '}
+                                {p === 'STANDARD' && '⭐ '}
+                                {p === 'BUSINESS' && '💼 '}
+                                {p}
                             </button>
-                        </div>
+                        ))}
                     </div>
                 </div>
-            )}
+
+                {/* Period Selection */}
+                <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">
+                        Срок действия
+                    </label>
+
+                    {/* Quick select buttons */}
+                    <div className="flex flex-wrap gap-2 mb-3">
+                        {[1, 3, 6, 12].map(m => (
+                            <button
+                                key={m}
+                                onClick={() => setMonths(m)}
+                                className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                                    months === m 
+                                        ? 'bg-slate-800 text-white border-slate-800' 
+                                        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+                                }`}
+                            >
+                                {m} мес.
+                            </button>
+                        ))}
+                        <button
+                            onClick={() => setMonths(999)}
+                            className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                                months === 999 
+                                    ? 'bg-emerald-600 text-white border-emerald-600' 
+                                    : 'bg-white text-emerald-600 border-emerald-200 hover:border-emerald-400'
+                            }`}
+                            title="Бессрочно"
+                        >
+                            ∞
+                        </button>
+                    </div>
+
+                    {/* Custom input */}
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="number"
+                            min="1"
+                            max="999"
+                            value={months === 999 ? '' : months}
+                            onChange={(e) => {
+                                const val = parseInt(e.target.value) || 1;
+                                setMonths(Math.min(Math.max(val, 1), 999));
+                            }}
+                            placeholder="Кол-во месяцев"
+                            disabled={months === 999}
+                            className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
+                        />
+                        <span className="text-sm text-slate-500 whitespace-nowrap">
+                            {months === 999 ? 'бессрочно' : 'мес.'}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Expiration Preview */}
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <div className="flex items-center gap-2 text-sm">
+                        <span className="text-slate-500">📅 Истекает:</span>
+                        <span className="font-bold text-slate-800">
+                            {months === 999
+                                ? 'Не ограничено'
+                                : new Date(Date.now() + months * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('ru-RU', {
+                                    day: 'numeric',
+                                    month: 'long',
+                                    year: 'numeric'
+                                })
+                            }
+                        </span>
+                    </div>
+                </div>
+
+                {/* Action Button */}
+                <button
+                    onClick={handleUpdateSubscription}
+                    disabled={actionLoading}
+                    className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                >
+                    {actionLoading ? (
+                        <>
+                            <span className="animate-spin">⏳</span>
+                            Сохранение...
+                        </>
+                    ) : (
+                        <>
+                            {ICONS.Check}
+                            Активировать / Продлить
+                        </>
+                    )}
+                </button>
+            </div>
+        </div>
+    </div>
+)}
         </div>
     );
 };
