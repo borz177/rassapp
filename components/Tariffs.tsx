@@ -1,8 +1,14 @@
-
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react'; // ← добавили useMemo
 import { ICONS } from '../constants';
 import { api } from '../services/api';
 import { SubscriptionPlan, User } from '../types';
+
+// ← Добавьте этот маппинг, если его нет в файле
+const PLAN_NAMES: { START: string; BUSINESS: string; STANDARD: string } = {
+  START: 'Старт',
+  STANDARD: 'Стандарт',
+  BUSINESS: 'Бизнес'
+};
 
 interface TariffsProps {
     user?: User | null;
@@ -11,9 +17,24 @@ interface TariffsProps {
 const Tariffs: React.FC<TariffsProps> = ({ user }) => {
   const [duration, setDuration] = useState<1 | 3 | 6 | 12>(1);
   const [loading, setLoading] = useState<string | null>(null);
-
-  // State for Confirmation Modal
   const [confirmData, setConfirmData] = useState<{name: string, monthlyPrice: number, basePrice: number} | null>(null);
+
+  // 🔹 Вычисляем статус подписки
+  const subStatus = useMemo(() => {
+    if (!user?.subscription) return { daysLeft: 0, planName: 'Пробный', expired: true, isWarning: true };
+
+    const now = new Date();
+    const expires = new Date(user.subscription.expiresAt);
+    const diffTime = expires.getTime() - now.getTime();
+    const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    return {
+        daysLeft,
+        planName: PLAN_NAMES[user.subscription.plan] || user.subscription.plan,
+        expired: diffTime < 0,
+        isWarning: daysLeft <= 3 && daysLeft >= 0
+    };
+  }, [user]);
 
   const getDiscount = (months: number) => {
     switch(months) {
@@ -126,6 +147,45 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
         <h2 className="text-3xl font-bold text-slate-800">Тарифы</h2>
         <p className="text-slate-500 mt-2">Выберите подходящий план для вашего бизнеса</p>
       </header>
+
+      {/* 🔹 Блок статуса текущей подписки */}
+      {user?.subscription && (
+        <div className={`max-w-2xl mx-auto px-2 p-4 rounded-2xl border-2 flex items-center gap-3 ${
+          subStatus.expired 
+            ? 'bg-red-50 border-red-200 text-red-800' 
+            : subStatus.isWarning 
+              ? 'bg-amber-50 border-amber-200 text-amber-800' 
+              : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+        }`}>
+          <div className={`p-2 rounded-full ${
+            subStatus.expired ? 'bg-red-100' : subStatus.isWarning ? 'bg-amber-100' : 'bg-emerald-100'
+          }`}>
+            {subStatus.expired ? ICONS.Alert : subStatus.isWarning ? ICONS.Clock : ICONS.CheckCircle}
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-sm">
+              {subStatus.expired
+                ? 'Подписка истекла'
+                : subStatus.isWarning
+                  ? `Внимание: осталось ${subStatus.daysLeft} дн.`
+                  : `Активен тариф "${subStatus.planName}"`}
+            </p>
+            {!subStatus.expired && (
+              <p className="text-xs opacity-80">
+                До окончания: {subStatus.daysLeft} {subStatus.daysLeft === 1 ? 'день' : subStatus.daysLeft >= 2 && subStatus.daysLeft <= 4 ? 'дня' : 'дней'}
+              </p>
+            )}
+          </div>
+          {subStatus.expired && (
+            <button
+              onClick={() => document.querySelector('.grid')?.scrollIntoView({ behavior: 'smooth' })}
+              className="px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 transition"
+            >
+              Продлить
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Duration Switcher */}
       <div className="flex justify-center">

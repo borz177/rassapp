@@ -218,6 +218,7 @@ function calculateEffectiveRemaining(sale, targetPaymentId) {
 
 // 🔹 Функция 1: Рассчитывает остатки по ВСЕМ платежам договора (FIFO)
 // Возвращает массив плановых платежей с актуальным полем remaining
+// 🔹 1. Рассчитывает остатки, но сохраняет ОРИГИНАЛЬНУЮ сумму платежа
 function calculateSalePaymentStates(sale) {
   const realPayments = sale.paymentPlan
     .filter(p => p.isRealPayment === true && !p.isRefund)
@@ -226,10 +227,15 @@ function calculateSalePaymentStates(sale) {
 
   const scheduled = sale.paymentPlan
     .filter(p => p.isRealPayment !== true)
-    .map(p => ({ ...p, dateObj: new Date(p.date), remaining: p.amount }))
+    .map(p => ({ 
+      ...p, 
+      dateObj: new Date(p.date), 
+      originalAmount: p.amount, // 🔹 Сохраняем фиксированную сумму из графика
+      remaining: p.amount 
+    }))
     .sort((a, b) => a.dateObj - b.dateObj);
 
-  // Применяем FIFO
+  // FIFO
   for (const real of realPayments) {
     let moneyLeft = real.amount;
     for (const plan of scheduled) {
@@ -240,17 +246,19 @@ function calculateSalePaymentStates(sale) {
     }
   }
 
-  return scheduled.filter(p => p.remaining > 0.01); // Возвращаем только неоплаченные
+  return scheduled.filter(p => p.remaining > 0.01);
 }
 
-// 🔹 Функция 2: Формирует ОДНО объединённое сообщение для клиента
-function buildConsolidatedMessage(customerData, totalToPay, settings) {
-  const { customer, items, totalDueToday, totalOverdue } = customerData;
-  const todayStr = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-
+// 🔹 2. Формирует сообщение ТОЧНО по вашему шаблону
+function buildConsolidatedMessage(customerData, totalToPay) {
+  const { customer, items } = customerData;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  
   let message = `🔔 *Напоминание об оплате*\n\n*${customer.name}!*\n\n`;
 
-  // 🔹 Блок "Сегодня"
+  // 🔹 Блок "СЕГОДНЯ"
   const dueToday = items.filter(i => i.diffDays === 0);
   if (dueToday.length > 0) {
     message += `📅 *Сегодня*, *${todayStr}* — день оплаты!\n\n`;
@@ -259,24 +267,43 @@ function buildConsolidatedMessage(customerData, totalToPay, settings) {
     });
   }
 
-  // 🔹 Блок "Просрочка"
+  // 🔹 Блок "ПРОСРОЧКА" (строго по вашему формату)
   const overdue = items.filter(i => i.diffDays < 0);
   if (overdue.length > 0) {
-    message += `⚠️ *Есть просроченные платежи:*\n\n`;
-    // Группируем просрочку по товарам для компактности
-    const overdueByProduct = {};
+    message += `⚠️ *Просроченные платежи:*\n\n`;
+    
+    // Группируем просрочку по товарам
+    const overdueMap = {};
     overdue.forEach(item => {
-      if (!overdueByProduct[item.productName]) overdueByProduct[item.productName] = { amount: 0, count: 0 };
-      overdueByProduct[item.productName].amount += item.remaining;
-      overdueByProduct[item.productName].count++;
+      if (!overdueMap[item.productName]) {
+        overdueMap[item.productName] = {
+          totalDebt: 0,
+          originalAmount: item.originalAmount,
+          firstOverdueDate: item.dateObj,
+          count: 0
+        };
+      }
+      overdueMap[item.productName].totalDebt += item.remaining;
+      overdueMap[item.productName].count++;
+      if (item.dateObj < overdueMap[item.productName].firstOverdueDate) {
+        overdueMap[item.productName].firstOverdueDate = item.dateObj;
+      }
     });
 
-    for (const [prod, data] of Object.entries(overdueByProduct)) {
-      message += `🔸 *${prod}*\n   • Задолженность: *${data.amount.toLocaleString('ru-RU')} ₽* (${data.count} мес.)\n\n`;
+    for (const [prod, data] of Object.entries(overdueMap)) {
+      // Считаем месяцы просрочки от ДАТЫ ПЕРВОГО неоплаченного платежа
+      const monthsDiff = Math.max(1,
+        (today.getFullYear() - data.firstOverdueDate.getFullYear()) * 12 +
+        (today.getMonth() - data.firstOverdueDate.getMonth()) +
+        (today.getDate() >= data.firstOverdueDate.getDate() ? 1 : 0)
+      );
+      
+      // 🔹 Формат точно как в вашем примере
+      message += `🔸 *${prod}*\n   • ежемесячный платеж - *${data.originalAmount.toLocaleString('ru-RU')} ₽*\n   • Задолженность: *${data.totalDebt.toLocaleString('ru-RU')} ₽* (${monthsDiff} мес.)\n\n`;
     }
   }
 
-  // 🔹 ИТОГО (ВСЕГДА = сегодня + просрочка)
+  // 🔹 ИТОГО = Сегодня + Просрочка
   if (totalToPay > 0) {
     message += `💰 *ИТОГО К ОПЛАТЕ: ${totalToPay.toLocaleString('ru-RU')} ₽*\n\n`;
   }
@@ -363,6 +390,8 @@ async function processRemindersForUser(user) {
         productName: sale.productName,
         date: p.date,
         remaining: p.remaining,
+        originalAmount: p.originalAmount, // 🔹 Добавлено
+        dateObj: p.dateObj,  
         diffDays,
         triggerType
       });

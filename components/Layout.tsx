@@ -289,23 +289,7 @@ const Layout: React.FC<LayoutProps> = ({
               {/*{!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}*/}
               {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}
           </div>
-          {user && !isInvestor && user.role !== 'admin' && (
-              <div
-                className={`mt-4 p-3 rounded-lg border text-xs font-medium cursor-pointer transition-colors hover:opacity-90 
-                    ${subStatus.expired ? 'bg-red-900/30 border-red-800 text-red-300' : subStatus.isWarning ? 'bg-amber-900/30 border-amber-800 text-amber-300' : 'bg-emerald-900/30 border-emerald-800 text-emerald-300'}
-                `}
-                onClick={() => setView('TARIFFS')}
-              >
-                  <div className="flex justify-between items-center mb-1">
-                      <span className="opacity-70">Тариф:</span>
-                      <span className="font-bold uppercase tracking-wider">{subStatus.planName}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                      <span className="opacity-70">Статус:</span>
-                      <span className="font-bold">{subStatus.expired ? 'Истек' : `Активен (${subStatus.daysLeft} дн.)`}</span>
-                  </div>
-              </div>
-          )}
+
         </div>
         <nav className="flex-1 p-4 space-y-2">
           {sidebarItems.map(item => renderMenuItem(item))}
