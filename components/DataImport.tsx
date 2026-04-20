@@ -106,6 +106,14 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess, curre
     };
 
     const processImport = async () => {
+        interface DuplicateInfo {
+    clientName: string;
+    productName: string;
+    amount: number;
+    date: string;
+    paymentNum?: string;
+}
+const duplicatesFound: DuplicateInfo[] = [];
         if (!file) return;
         setIsProcessing(true);
         addLog("🚀 Начало обработки файла...");
@@ -531,9 +539,17 @@ if (!investor) {
                     }
 
                     if (isDuplicatePayment(selectedSale, amount, paymentDateIso, paymentNum)) {
-                        skippedDuplicates++;
-                        continue;
-                    }
+    skippedDuplicates++;
+    // 🔹 Сохраняем информацию о дубликате для отчёта
+    duplicatesFound.push({
+        clientName: clientName,
+        productName: productName,
+        amount: amount,
+        date: new Date(paymentDateIso).toLocaleDateString('ru-RU'),
+        paymentNum: paymentNum || undefined
+    });
+    continue;
+}
 
                     selectedSale.paymentPlan.push({
                         id: `pay_real_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -617,6 +633,31 @@ if (!investor) {
 
                 addLog("✅ Импорт успешно завершён!");
                 addLog(`📈 Итог: ${newCustomersCount} клиентов, ${newSalesCount + updatedSalesCount} продаж, ${realPaymentsCount} платежей`);
+
+
+                // === 🚨 ОТЧЁТ ПО ДУБЛИКАТАМ ===
+if (duplicatesFound.length > 0) {
+    addLog(`\n⚠️ НАЙДЕНО ДУБЛИКАТОВ: ${duplicatesFound.length}`);
+    addLog("─".repeat(50));
+
+    // Группируем дубликаты по клиентам для удобного просмотра
+    const byClient = new Map<string, DuplicateInfo[]>();
+    duplicatesFound.forEach(d => {
+        const key = d.clientName;
+        if (!byClient.has(key)) byClient.set(key, []);
+        byClient.get(key)!.push(d);
+    });
+
+    for (const [client, dups] of byClient) {
+        addLog(`👤 Клиент: ${client}`);
+        dups.forEach((dup, idx) => {
+            addLog(`   ${idx + 1}. Товар: "${dup.productName}" | Сумма: ${dup.amount.toLocaleString('ru-RU')} ₽ | Дата: ${dup.date}${dup.paymentNum ? ` | №${dup.paymentNum}` : ''}`);
+        });
+        addLog("");
+    }
+    addLog("─".repeat(50));
+    addLog("💡 Совет: Проверьте эти платежи вручную перед завершением импорта.");
+}
 
                 setTimeout(() => {
                     setIsProcessing(false);
