@@ -269,10 +269,24 @@ const initDB = async () => {
     `);
 
     // Indexes
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_manager_id ON users(manager_id);`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_data_items_user_id ON data_items(user_id);`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_data_items_type ON data_items(type);`);
+    // Indexes
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`);
+await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email));`);
+
+await pool.query(`
+  DO $$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'users_email_unique_ci'
+    ) THEN
+      ALTER TABLE users ADD CONSTRAINT users_email_unique_ci UNIQUE USING INDEX idx_users_email_lower;
+    END IF;
+  END $$;
+`);
+
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_manager_id ON users(manager_id);`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_data_items_user_id ON data_items(user_id);`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_data_items_type ON data_items(type);`);
 
     // === ТАБЛИЦЫ ТЕХПОДДЕРЖКИ ===
 
@@ -1083,8 +1097,9 @@ app.post(
 app.post('/api/auth/send-code', sensitiveLimiter, async (req, res) => {
   const { email, type } = req.body;
 
+  const normalizedEmail = email.toLowerCase().trim();
   try {
-    const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [normalizedEmail]);
     const userExists = userCheck.rows.length > 0;
 
     if (type === 'REGISTER' && userExists) {
@@ -1097,12 +1112,12 @@ app.post('/api/auth/send-code', sensitiveLimiter, async (req, res) => {
     const code = generateCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await pool.query(`
+   await pool.query(`
       INSERT INTO verification_codes (email, code, expires_at, attempts)
       VALUES ($1, $2, $3, 0)
       ON CONFLICT (email)
       DO UPDATE SET code = $2, expires_at = $3, attempts = 0
-    `, [email, code, expiresAt]);
+    `, [normalizedEmail, code, expiresAt]);
 
     const subject = type === 'REGISTER'
       ? '🔐 Код подтверждения регистрации — FinUchet'
@@ -1164,7 +1179,7 @@ app.post('/api/auth/send-code', sensitiveLimiter, async (req, res) => {
     const text = `Ваш код подтверждения для FinUchet: ${code}. Код действителен 10 минут.`;
 
     // 📧 Отправка с поддержкой HTML
-    await sendEmail(email, subject, text, html);
+    await sendEmail(normalizedEmail, subject, text, html);
 
     res.json({ msg: 'Код отправлен' });
 
@@ -1176,9 +1191,10 @@ app.post('/api/auth/send-code', sensitiveLimiter, async (req, res) => {
 
 app.post('/api/auth/register', sensitiveLimiter, async (req, res) => {
   const { name, email, password, code, role, managerId, permissions, allowedInvestorIds } = req.body;
+  const normalizedEmail = email.toLowerCase().trim();
   try {
     // 1. Verify Code
-    const codeCheck = await pool.query('SELECT * FROM verification_codes WHERE email = $1', [email]);
+    const codeCheck = await pool.query('SELECT * FROM verification_codes WHERE email = $1', [normalizedEmail]);
     if (codeCheck.rows.length === 0) {
       return res.status(400).json({ msg: 'Сначала запросите код' });
     }
@@ -1191,7 +1207,7 @@ app.post('/api/auth/register', sensitiveLimiter, async (req, res) => {
     }
     
     // 2. Check User Existence
-    const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [normalizedEmail]);
     if (userCheck.rows.length > 0) {
       return res.status(400).json({ msg: 'Пользователь уже существует' });
     }
@@ -1218,7 +1234,7 @@ app.post('/api/auth/register', sensitiveLimiter, async (req, res) => {
       [
         id,
         name,
-        email,
+        normalizedEmail,
         hashedPassword,
         role || 'manager',
         managerId || null,
@@ -1229,7 +1245,7 @@ app.post('/api/auth/register', sensitiveLimiter, async (req, res) => {
     );
     
     // Clean up code
-    await pool.query('DELETE FROM verification_codes WHERE email = $1', [email]);
+      await pool.query('DELETE FROM verification_codes WHERE email = $1', [normalizedEmail]);
     
     // Create default account for managers
     if (!role || role === 'manager' || role === 'admin') {
@@ -1242,7 +1258,7 @@ app.post('/api/auth/register', sensitiveLimiter, async (req, res) => {
     }
     
     const token = jwt.sign({ id, role: role || 'manager', managerId }, JWT_SECRET, { expiresIn: '30d' });
-    res.json({ token, user: { id, name, email, role: role || 'manager', managerId, permissions, allowedInvestorIds, subscription } });
+    res.json({ token, user: { id, name, email: normalizedEmail, role: role || 'manager', managerId, permissions, allowedInvestorIds, subscription } });
   } catch (err) {
     console.error('Register Error:', err);
     res.status(500).send('Server error');
@@ -1251,9 +1267,10 @@ app.post('/api/auth/register', sensitiveLimiter, async (req, res) => {
 
 app.post('/api/auth/reset-password', sensitiveLimiter, async (req, res) => {
   const { email, code, newPassword } = req.body;
+  const normalizedEmail = email.toLowerCase().trim();
   try {
     // 1. Verify Code
-    const codeCheck = await pool.query('SELECT * FROM verification_codes WHERE email = $1', [email]);
+    const codeCheck = await pool.query('SELECT * FROM verification_codes WHERE email = $1', [normalizedEmail]);
     if (codeCheck.rows.length === 0) {
       return res.status(400).json({ msg: 'Сначала запросите код' });
     }
@@ -1268,10 +1285,10 @@ app.post('/api/auth/reset-password', sensitiveLimiter, async (req, res) => {
     // 2. Update Password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
-    await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE email = $2', [hashedPassword, email]);
+    await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE email = $2', [hashedPassword, normalizedEmail]);
     
     // Clean up code
-    await pool.query('DELETE FROM verification_codes WHERE email = $1', [email]);
+    await pool.query('DELETE FROM verification_codes WHERE email = $1', [normalizedEmail]);
     res.json({ msg: 'Пароль успешно изменен' });
   } catch (err) {
     console.error('Reset Password Error:', err);
@@ -1287,9 +1304,12 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
   if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
     return res.status(400).json({ msg: 'Email и пароль обязательны' });
   }
+  const normalizedEmail = email.toLowerCase().trim();
+
 
   try {
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const result = await pool.query('SELECT * FROM users WHERE email = $1', [normalizedEmail]);
+
     if (result.rows.length === 0) return res.status(400).json({ msg: 'Неверные учетные данные' });
     
     const user = result.rows[0];
