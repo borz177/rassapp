@@ -432,9 +432,8 @@ addLog("💰 Этап 2: Импорт реальных платежей...");
 for (const row of paymentsData) {
     const clientName = String(row['Клиент'] || '').trim();
 
-    // 🔧 FIX: Поддержка обеих версий названия колонки
+    // Поддержка обеих версий названия колонки
     const productNameRaw = String(row['Товар'] || row['Товар (Уникальный)'] || '').trim();
-    // 🔧 FIX: Убираем "(ID: ...)" из названия товара
     const productName = productNameRaw.replace(/\s*\(ID:\s*\d+\)\s*$/i, '').trim();
 
     const paymentStatus = String(row['Статус платежа'] || '');
@@ -462,136 +461,91 @@ for (const row of paymentsData) {
 
     const paymentDateIso = parseExcelDate(dateVal);
     const paymentTime = new Date(paymentDateIso).getTime();
-    const paymentInvestor = String(row['Инвестор'] || '').trim();
 
-    // === 🔥 УЛУЧШЕННЫЙ ВЫБОР ПРОДАЖИ ДЛЯ ПЛАТЕЖА ===
+    // 🔥 ГЛАВНОЕ ИСПРАВЛЕНИЕ: Умный выбор продажи
     let selectedSale: Sale | undefined;
+    let bestScore = -1;
 
-    // 1. Сначала ищем точный дубликат по номеру платежа
-    if (paymentNum) {
-        selectedSale = candidates.find(s =>
-            s.paymentPlan.some(p =>
-                p.isRealPayment &&
-                p.note?.includes(`Импорт №${paymentNum}`) &&
-                Math.abs(new Date(p.date).getTime() - paymentTime) < 86400000 &&
-                Math.abs(p.amount - amount) < 1.0
-            )
-        );
-        if (selectedSale) {
-            addLog(`⏭️ Пропущен дубликат платежа №${paymentNum}`);
-            skippedDuplicates++;
-            continue;
+    for (const sale of candidates) {
+        let score = 0;
+        const saleStartDate = new Date(sale.startDate).getTime();
+
+        // ❌ Платеж не может быть раньше начала продажи (минус 3 дня запас)
+        if (paymentTime < saleStartDate - 259200000) {
+            continue; // Пропускаем эту продажу
         }
-    }
 
-    // 2. Фильтруем кандидатов
-    let filtered = [...candidates];
+        // ✅ КРИТЕРИЙ 1: Точное совпадение суммы с плановым платежом (самый важный!)
+        const expectedMonthlyPayment = sale.installments > 0
+            ? (sale.totalAmount - sale.downPayment) / sale.installments
+            : 0;
 
-    // 🔹 Фильтр по инвестору/счету
-    if (paymentInvestor) {
-        const inv = investors.find(i => i.name.toLowerCase() === paymentInvestor.toLowerCase());
-        if (inv) {
-            const invAccount = accounts.find(a => a.ownerId === inv.id);
-            if (invAccount) {
-                const accountMatches = filtered.filter(s => s.accountId === invAccount.id);
-                if (accountMatches.length > 0) {
-                    filtered = accountMatches;
-                    addLog(`🔍 Найдено ${filtered.length} продаж по инвестору ${paymentInvestor}`);
-                }
-            }
+        const amountDiff = Math.abs(expectedMonthlyPayment - amount);
+        if (amountDiff < 50) { // ±50 рублей
+            score += 1000; // Максимальный приоритет
+        } else if (amountDiff < 500) {
+            score += 100;
+        } else {
+            score -= 1000; // Штраф за несовпадение суммы
         }
-    }
 
-    // 🔹 Фильтр по статусу товара
-    if (productStatus) {
-        const targetStatus = productStatus.includes('Завершен') ? 'COMPLETED' : 'ACTIVE';
-        const statusMatches = filtered.filter(s => s.status === targetStatus);
-        if (statusMatches.length > 0) filtered = statusMatches;
-    }
-
-    // 🔹 🔥 ГЛАВНОЕ: Фильтр по дате (платеж не может быть раньше начала продажи + 5 дней)
-    filtered = filtered.filter(s => {
-        const saleStart = new Date(s.startDate).getTime();
-        return paymentTime >= saleStart - 86400000 * 5; // 5 дней запас
-    });
-
-    // 🔹 🔥 ГЛАВНОЕ: Фильтр по номеру платежа (если есть)
-    if (paymentNum) {
-        const withoutNum = filtered.filter(s =>
-            !s.paymentPlan.some(p => p.isRealPayment && p.note?.includes(`Импорт №${paymentNum}`))
-        );
-        if (withoutNum.length > 0) filtered = withoutNum;
-    }
-
-    // 🔹 🔥 ГЛАВНОЕ: Фильтр по СУММЕ платежа (самый важный критерий!)
-    if (filtered.length > 1) {
-        const amountMatches = filtered.filter(s => {
-            // Проверяем точное совпадение с плановым платежом
-            const planMatch = s.paymentPlan.some(p =>
-                !p.isRealPayment && Math.abs(p.amount - amount) < 1.0
+        // ✅ КРИТЕРИЙ 2: Проверка на дубликат по номеру платежа
+        if (paymentNum) {
+            const hasThisPayment = sale.paymentPlan.some(p =>
+                p.isRealPayment && p.note?.includes(`Импорт №${paymentNum}`)
             );
-
-            // Или проверяем средний месячный платеж
-            if (s.installments > 0) {
-                const monthly = (s.totalAmount - s.downPayment) / s.installments;
-                if (Math.abs(monthly - amount) < 50) return true; // ±50 рублей
+            if (hasThisPayment) {
+                continue; // Уже есть такой платеж
             }
+            score += 500;
+        }
 
-            return planMatch;
-        });
+        // ✅ КРИТЕРИЙ 3: Близость даты платежа к дате продажи
+        const daysFromSaleStart = (paymentTime - saleStartDate) / 86400000;
+        if (daysFromSaleStart >= 0 && daysFromSaleStart <= 10) {
+            score += 200; // Платеж в первые 10 дней
+        } else if (daysFromSaleStart <= 40) {
+            score += 100; // Платеж в первый месяц
+        }
 
-        if (amountMatches.length > 0) {
-            filtered = amountMatches;
-            addLog(`💰 Найдено ${filtered.length} продаж по сумме ${amount.toLocaleString('ru-RU')} ₽`);
+        // ✅ КРИТЕРИЙ 4: Проверка по статусу товара
+        if (productStatus) {
+            const targetStatus = productStatus.includes('Завершен') ? 'COMPLETED' : 'ACTIVE';
+            if (sale.status === targetStatus) {
+                score += 150;
+            }
+        }
+
+        // ✅ КРИТЕРИЙ 5: Платеж еще не был добавлен в эту продажу
+        const alreadyHasThisPayment = sale.paymentPlan.some(p =>
+            p.isRealPayment &&
+            Math.abs(p.amount - amount) < 1.0 &&
+            Math.abs(new Date(p.date).getTime() - paymentTime) < 86400000
+        );
+        if (alreadyHasThisPayment) {
+            continue; // Уже есть такой платеж
+        }
+
+        // Выбираем продажу с наилучшим счетом
+        if (score > bestScore) {
+            bestScore = score;
+            selectedSale = sale;
         }
     }
 
-    // 🔹 🔥 ГЛАВНОЕ: Если всё ещё несколько вариантов, выбираем по ближайшей дате
-    if (filtered.length > 1) {
-        filtered.sort((a, b) => {
-            const aStart = new Date(a.startDate).getTime();
-            const bStart = new Date(b.startDate).getTime();
-
-            // Ищем ближайшую дату первого платежа
-            const aFirstPayment = a.paymentPlan.find(p => !p.isRealPayment);
-            const bFirstPayment = b.paymentPlan.find(p => !p.isRealPayment);
-
-            if (aFirstPayment && bFirstPayment) {
-                const aDiff = Math.abs(new Date(aFirstPayment.date).getTime() - paymentTime);
-                const bDiff = Math.abs(new Date(bFirstPayment.date).getTime() - paymentTime);
-                return aDiff - bDiff;
-            }
-
-            return aStart - bStart;
-        });
-
-        addLog(`📅 Выбрана продажа от ${new Date(filtered[0].startDate).toLocaleDateString('ru-RU')} (ближайшая к платежу)`);
-    }
-
-    // Выбираем первую из отфильтрованных
-    if (filtered.length > 0) {
-        selectedSale = filtered[0];
-    } else {
-        // Fallback: берем первую из всех кандидатов
-        selectedSale = candidates[0];
-        addLog(`⚠️ Использован fallback для ${clientName} - ${productName}`);
+    if (!selectedSale) {
+        // Fallback: выбираем первую продажу, где еще нет такого платежа
+        selectedSale = candidates.find(s =>
+            !s.paymentPlan.some(p =>
+                p.isRealPayment &&
+                Math.abs(p.amount - amount) < 1.0 &&
+                Math.abs(new Date(p.date).getTime() - paymentTime) < 86400000
+            )
+        ) || candidates[0];
     }
 
     if (!selectedSale) {
         skippedNotFound++;
-        continue;
-    }
-
-    // Проверяем на дубликат
-    if (isDuplicatePayment(selectedSale, amount, paymentDateIso, paymentNum)) {
-        skippedDuplicates++;
-        duplicatesFound.push({
-            clientName: clientName,
-            productName: productName,
-            amount: amount,
-            date: new Date(paymentDateIso).toLocaleDateString('ru-RU'),
-            paymentNum: paymentNum || undefined
-        });
         continue;
     }
 
@@ -609,7 +563,7 @@ for (const row of paymentsData) {
     });
 
     realPaymentsCount++;
-    addLog(`✅ Платеж ${amount.toLocaleString('ru-RU')} ₽ добавлен в продажу от ${new Date(selectedSale.startDate).toLocaleDateString('ru-RU')}`);
+    addLog(`✅ Платеж ${amount.toLocaleString('ru-RU')} ₽ → Продажа от ${new Date(selectedSale.startDate).toLocaleDateString('ru-RU')} (ожидалось ${(selectedSale.installments > 0 ? ((selectedSale.totalAmount - selectedSale.downPayment) / selectedSale.installments).toFixed(0) : 'N/A')} ₽)`);
 }
 
                 for (const salesList of processedSalesMap.values()) {
