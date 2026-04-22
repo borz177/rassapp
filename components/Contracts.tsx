@@ -83,16 +83,30 @@ const ContractInfoModal = ({
   // 🔔 Отправка напоминания через бэкенд (с подтверждением)
   // В ContractInfoModal.tsx
 
+// 🔔 Отправка напоминания через бэкенд (с подтверждением)
 const handleSendReminder = async () => {
   if (!customer?.phone) return;
 
   setIsSending(true);
   try {
+    // 🔹 Рассчитываем фиксированный ежемесячный платёж из графика
+    const monthlyPayment = sale.paymentPlan
+      .filter(p => !p.isRealPayment) // Только плановые платежи
+      .map(p => p.amount)[0] || 0;   // Берём первый (все обычно одинаковые)
+
+    // 🔹 Итого к оплате = текущий платёж + вся просрочка
+    const totalToPay = monthlyPayment + realOverdueAmount;
+
     await api.sendOverdueReminder({
       phone: customer.phone,
       customerName: customer.name,
       productName: sale.productName,
+
+      // 🔹 КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ:
+      monthlyPayment: monthlyPayment,    
       overdueAmount: realOverdueAmount,
+      totalToPay: totalToPay,
+
       monthsOverdue: overduePaymentsList.length,
       template: 'overdue'
     });
@@ -102,9 +116,7 @@ const handleSendReminder = async () => {
   } catch (e: any) {
     console.error('❌ Reminder error:', e);
     alert(`⚠️ ${e.message || 'Ошибка отправки'}`);
-
-    // 🔁 Fallback: открываем WhatsApp вручную
-    handleWhatsApp();
+    handleWhatsApp(); // Fallback
     setShowConfirmReminder(false);
   } finally {
     setIsSending(false);

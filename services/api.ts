@@ -644,6 +644,8 @@ sendOverdueReminder: async (payload: {
   customerName: string;
   productName: string;
   overdueAmount: number;
+  monthlyPayment?: number;  // ← добавьте этот параметр
+  totalToPay?: number;
   monthsOverdue: number;
   template?: 'overdue';
 }): Promise<{ success: boolean }> => {
