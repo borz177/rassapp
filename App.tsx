@@ -769,43 +769,25 @@ const handleIncomeSubmit = async (data: any) => {
     if (!user) return;
 
     if (data.type === 'CUSTOMER_PAYMENT') {
-  const { saleId, amount, discount, isFullRepayment } = data;
-  const sale = sales.find(s => s.id === saleId);
+        const { saleId, amount } = data;
+        const sale = sales.find(s => s.id === saleId);
 
-  if (sale) {
-    const updatedSale = { ...sale };
+        if (sale) {
+            const updatedSale = { ...sale };
+            updatedSale.remainingAmount = Math.max(0, updatedSale.remainingAmount - amount);
+            updatedSale.paymentPlan.push({
+                id: `paid_${Date.now()}`,
+                saleId: sale.id,
+                amount: amount,
+                date: data.date,
+                isPaid: true,
+                isRealPayment: true
+            });
 
-    // Рассчитываем реальное уменьшение долга
-    const discountValue = discount?.amount || 0;
-    const paymentAmount = Number(amount) + discountValue; // Клиент платит + скидка = весь долг
+            if (updatedSale.remainingAmount === 0) updatedSale.status = 'COMPLETED';
 
-    updatedSale.remainingAmount = 0; // Полное погашение
-
-    // Добавляем платеж в историю
-    updatedSale.paymentPlan.push({
-      id: `paid_${Date.now()}`,
-      saleId: sale.id,
-      amount: Number(amount),           // Фактически полученная сумма
-      discount: discountValue,          // Сумма скидки
-      date: data.date,
-      isPaid: true,
-      isRealPayment: true,
-      isFullRepayment: isFullRepayment  // Флаг для отчётов
-    });
-
-    // Сохраняем применённую скидку в договоре
-    if (discountValue > 0) {
-      updatedSale.discountApplied = {
-        ...discount,
-        appliedAt: new Date(data.date).toISOString()
-      };
-    }
-
-    updatedSale.status = 'COMPLETED';
-    updatedSale.completedAt = new Date(data.date).toISOString();
-
-    const savedSale = await api.saveItem('sales', updatedSale);
-    updateList(setSales, savedSale);
+            const savedSale = await api.saveItem('sales', updatedSale);
+            updateList(setSales, savedSale);
 
             // 👇 ПОСЛЕ УСПЕШНОГО СОХРАНЕНИЯ ПЕРЕХОДИМ К ДЕТАЛЯМ ДОГОВОРА
             // Сохраняем ID для перехода

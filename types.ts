@@ -158,8 +158,6 @@ export interface Payment {
   note?: string;
   isRealPayment?: boolean;
   importedAt?: string;
-  discount?: number;              // Сумма скидки по этому платежу
-  isFullRepayment?: boolean;
 }
 
 export interface Expense {
@@ -212,13 +210,6 @@ export interface Sale {
   paymentPlan: Payment[];
   notes?: string;
   price?: number;
-  discountApplied?: {
-    amount: number;        // Сумма скидки
-    percentage?: number;   // Процент скидки (опционально)
-    reason?: string;       // Причина (опционально)
-    appliedAt: string;     // Дата применения
-  };
-  completedAt?: string;
 }
 
 export interface TermRate {
@@ -233,7 +224,6 @@ export interface CalculatorSettings {
 }
 
 export interface AppSettings {
-  fullRepaymentDiscount: any;
   companyName: string;
   sellerPhone?: string;
   whatsapp?: WhatsAppSettings;
