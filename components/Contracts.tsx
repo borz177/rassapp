@@ -80,8 +80,6 @@ const ContractInfoModal = ({
     }
   };
 
-  // 🔔 Отправка напоминания через бэкенд (с подтверждением)
-  // В ContractInfoModal.tsx
 
 // 🔔 Отправка напоминания через бэкенд (с подтверждением)
 const handleSendReminder = async () => {
@@ -98,18 +96,14 @@ const handleSendReminder = async () => {
     const totalToPay = monthlyPayment + realOverdueAmount;
 
     await api.sendOverdueReminder({
-      phone: customer.phone,
-      customerName: customer.name,
-      productName: sale.productName,
-
-      // 🔹 КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ:
-      monthlyPayment: monthlyPayment,    
-      overdueAmount: realOverdueAmount,
-      totalToPay: totalToPay,
-
-      monthsOverdue: overduePaymentsList.length,
-      template: 'overdue'
-    });
+  phone: customer.phone,
+  customerName: customer.name,
+  productName: sale.productName,
+  monthlyPayment: monthlyPayment,    // ← фиксированный платёж
+  overdueAmount: realOverdueAmount,  // ← реальный долг
+  monthsOverdue: overduePaymentsList.length,
+  template: 'overdue'
+});
 
     alert('✅ Напоминание отправлено!');
     setShowConfirmReminder(false);

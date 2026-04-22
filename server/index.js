@@ -575,11 +575,11 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, asyn
       phone,
       customerName,
       productName,
-      overdueAmount,      // 🔹 Реальный долг (после частичных оплат)
-      monthlyPayment,     // 🔹 НОВОЕ: фиксированный платёж из графика
+      overdueAmount,      // Реальный долг (после частичных оплат)
+      monthlyPayment,     // Фиксированный платёж из графика
       monthsOverdue,
-      template = 'overdue',
-      totalToPay          // 🔹 НОВОЕ: итоговая сумма к оплате (опционально)
+      template = 'overdue'
+      // 🔹 totalToPay больше не нужен — ИТОГО = только долг
     } = req.body;
 
     const userId = req.user.id;
@@ -613,22 +613,22 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, asyn
 
     const rawTemplate = settings.templates?.[template] || defaultOverdueTemplate;
 
-    // 🔹 4. Заменяем переменные (ОБНОВЛЕНО)
+    // 🔹 4. Заменяем переменные (ОБНОВЛЕНО: ИТОГО = только долг)
     const message = rawTemplate
       .replace(/{имя}/g, customerName)
       .replace(/{товар}/g, productName || '')
-      // 🔹 {сумма} = фиксированный ежемесячный платёж из графика
+      // {сумма} = фиксированный платёж из графика (с фолбэком на overdueAmount)
       .replace(/{сумма}/g, (monthlyPayment !== undefined ? monthlyPayment : overdueAmount).toLocaleString('ru-RU'))
-      // 🔹 {долг} = реальный долг после частичных оплат
+      // {долг} = реальный долг после частичных оплат
       .replace(/{долг}/g, (overdueAmount).toLocaleString('ru-RU'))
-      // 🔹 {итого} = либо переданное значение, либо сумма платежа + долга
-      .replace(/{итого}/g, (totalToPay !== undefined ? totalToPay : (monthlyPayment || overdueAmount) + overdueAmount).toLocaleString('ru-RU'))
+      // 🔹 {итого} = ТОЛЬКО долг (без добавления monthlyPayment!)
+      .replace(/{итого}/g, (overdueAmount).toLocaleString('ru-RU'))
       .replace(/{месяцы}/g, String(monthsOverdue || 0))
       .replace(/{дата}/g, new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }))
       // 🔹 Блоки с правильными значениями
       .replace(/{платеж_блок}/g, `   • Ежемесячный платёж: *${(monthlyPayment !== undefined ? monthlyPayment : overdueAmount).toLocaleString('ru-RU')} ₽*\n`)
       .replace(/{долг_блок}/g, `   • Задолженность: *${(overdueAmount).toLocaleString('ru-RU')} ₽* (${monthsOverdue || 0} мес.)\n`)
-      .replace(/{итого_блок}/g, `\n💰 *ИТОГО К ОПЛАТЕ: ${(totalToPay !== undefined ? totalToPay : (monthlyPayment || overdueAmount) + overdueAmount).toLocaleString('ru-RU')} ₽*`);
+      .replace(/{итого_блок}/g, `\n💰 *ИТОГО К ОПЛАТЕ: ${(overdueAmount).toLocaleString('ru-RU')} ₽*`);
 
     // 🔹 5. Отправка через Green API
     const sent = await sendGreenApiMessage(
@@ -650,7 +650,6 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, asyn
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
-
 
 /**
  * POST /api/integrations/whatsapp/send-reminder-all
@@ -685,7 +684,6 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
       `SELECT data FROM data_items WHERE user_id = $1 AND type = 'sales'`,
       [userId]
     );
-
     const sales = salesRes.rows.map(r => r.data);
 
     // 🔹 3. Получаем всех клиентов
@@ -693,45 +691,43 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
       `SELECT data FROM data_items WHERE user_id = $1 AND type = 'customers'`,
       [userId]
     );
-
     const customers = customersRes.rows.map(r => r.data);
 
     // 🔹 4. Фильтруем только ПРОСРОЧЕННЫЕ договоры
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     const overdueSales = [];
 
     for (const sale of sales) {
       if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') continue;
 
-      // Считаем задолженность
+      // 🔹 Считаем задолженность (FIFO-логика)
       let expectedTotal = sale.downPayment || 0;
-
       for (const p of (sale.paymentPlan || [])) {
         if (!p.isRealPayment && new Date(p.date) < today) {
           expectedTotal += (p.amount || 0);
         }
       }
-
       const totalPaid = (sale.totalAmount || 0) - (sale.remainingAmount || 0);
       const overdueAmount = Math.max(0, expectedTotal - totalPaid);
 
-      // Если есть просрочка — добавляем в список
       if (overdueAmount > 0) {
-        // Считаем количество просроченных месяцев
         const overduePayments = (sale.paymentPlan || []).filter(p =>
           !p.isPaid && !p.isRealPayment && new Date(p.date) < today
         );
-
-        // Находим первого просроченного клиента
         const customer = customers.find(c => c.id === sale.customerId);
 
         if (customer && customer.phone) {
+          // 🔹 НОВОЕ: считаем фиксированный ежемесячный платёж из графика
+          const monthlyPayment = (sale.paymentPlan || [])
+            .filter(p => !p.isRealPayment)
+            .map(p => p.amount)[0] || 0;
+
           overdueSales.push({
             sale,
             customer,
-            overdueAmount,
+            overdueAmount,              // Реальный долг (после частичных оплат)
+            monthlyPayment,             // Фиксированный платёж из графика
             monthsOverdue: overduePayments.length
           });
         }
@@ -739,28 +735,26 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
     }
 
     // 🔹 5. Отправляем сообщения
-    const results = {
-      total: overdueSales.length,
-      sent: 0,
-      failed: 0,
-      errors: []
-    };
-
+    const results = { total: overdueSales.length, sent: 0, failed: 0, errors: [] };
     const defaultOverdueTemplate = `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``;
 
     const rawTemplate = settings.templates?.[template] || defaultOverdueTemplate;
 
     for (const item of overdueSales) {
       try {
+        // 🔹 КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ в подстановке переменных:
         const message = rawTemplate
           .replace(/{имя}/g, item.customer.name)
           .replace(/{товар}/g, item.sale.productName || '')
-          .replace(/{сумма}/g, item.overdueAmount.toLocaleString('ru-RU'))
+          // {сумма} = фиксированный платёж из графика (НЕ меняется от частичных оплат)
+          .replace(/{сумма}/g, item.monthlyPayment.toLocaleString('ru-RU'))
+          // {долг} = реальный долг (после учёта частичных оплат)
           .replace(/{долг}/g, item.overdueAmount.toLocaleString('ru-RU'))
+          // {итого} = ТОЛЬКО долг (без добавления ежемесячного платежа!)
           .replace(/{итого}/g, item.overdueAmount.toLocaleString('ru-RU'))
           .replace(/{месяцы}/g, String(item.monthsOverdue))
           .replace(/{дата}/g, new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }))
-          .replace(/{платеж_блок}/g, `   • Ежемесячный платёж: *${item.overdueAmount.toLocaleString('ru-RU')} ₽*\n`)
+          .replace(/{платеж_блок}/g, `   • Ежемесячный платёж: *${item.monthlyPayment.toLocaleString('ru-RU')} ₽*\n`)
           .replace(/{долг_блок}/g, `   • Задолженность: *${item.overdueAmount.toLocaleString('ru-RU')} ₽* (${item.monthsOverdue} мес.)\n`)
           .replace(/{итого_блок}/g, `\n💰 *ИТОГО К ОПЛАТЕ: ${item.overdueAmount.toLocaleString('ru-RU')} ₽*`);
 
@@ -779,7 +773,7 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
           results.errors.push({ customer: item.customer.name, error: 'Green API failed' });
         }
 
-        // 🔹 Пауза 300ms между сообщениями (чтобы не заблокировали)
+        // Пауза 300ms между сообщениями
         await new Promise(resolve => setTimeout(resolve, 300));
 
       } catch (err) {
