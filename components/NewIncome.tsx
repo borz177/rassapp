@@ -42,6 +42,10 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [note, setNote] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
+
+  const [applyFullRepaymentDiscount, setApplyFullRepaymentDiscount] = useState(false);
+const [discountAmount, setDiscountAmount] = useState(0);
+
   const [sendHistory, setSendHistory] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const contractRef = useRef<HTMLDivElement>(null);
@@ -115,6 +119,17 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 }, [investors, sourceType]);
 
 
+  useEffect(() => {
+  if (applyFullRepaymentDiscount && selectedSale && discountConfig?.enabled) {
+    const remaining = selectedSale.remainingAmount;
+    const discount = calculatedDiscount;
+    const finalAmount = Math.max(0, remaining - discount);
+
+    setAmount(showCents ? finalAmount.toFixed(2) : Math.round(finalAmount).toString());
+  }
+}, [applyFullRepaymentDiscount, selectedSale, calculatedDiscount, discountConfig, showCents]);
+
+
   const recommendedAmount = useMemo(() => {
       if (selectedSale) {
           const paidTotal = selectedSale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
@@ -140,6 +155,42 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       const profit = numAmount * margin;
       return showCents ? profit : Math.round(profit);
   }, [selectedSale, amount, showCents]);
+
+
+
+//  Вычислите скидку
+  const discountConfig = useMemo(() => {
+  return appSettings?.fullRepaymentDiscount;
+}, [appSettings]);
+
+const calculatedDiscount = useMemo(() => {
+  if (!selectedSale || !discountConfig?.enabled || !applyFullRepaymentDiscount) {
+    return 0;
+  }
+
+  const remaining = selectedSale.remainingAmount;
+
+  // Проверка минимальной суммы долга
+  if (discountConfig.minRemainingAmount && remaining < discountConfig.minRemainingAmount) {
+    return 0;
+  }
+
+  // Расчёт скидки
+  if (discountConfig.type === 'PERCENTAGE') {
+    return Math.round((remaining * discountConfig.value / 100) * 100) / 100;
+  } else {
+    // FIXED: не больше чем остаток долга
+    return Math.min(discountConfig.value, remaining);
+  }
+}, [selectedSale, discountConfig, applyFullRepaymentDiscount]);
+
+// Скорректированная сумма к оплате
+const amountWithDiscount = useMemo(() => {
+  const numAmount = Number(amount) || 0;
+  return showCents
+    ? (numAmount - calculatedDiscount).toFixed(2)
+    : Math.round(numAmount - calculatedDiscount).toString();
+}, [amount, calculatedDiscount, showCents]);
 
  const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
@@ -196,6 +247,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   const handleConfirm = async () => {
       const numAmount = Number(amount);
+
       let finalDate = date;
       const now = new Date();
       const selectedDate = new Date(date);
@@ -205,10 +257,19 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
       if (isToday) { finalDate = now.toISOString(); }
 
-      const commonData = { amount: numAmount, date: finalDate };
+      const commonData = {
+    amount: numAmount,
+    date: finalDate,
+    // Добавляем данные о скидке
+    discount: applyFullRepaymentDiscount ? {
+      amount: calculatedDiscount,
+      percentage: discountConfig?.type === 'PERCENTAGE' ? discountConfig.value : undefined,
+      appliedAt: new Date().toISOString()
+    } : undefined
+  };
 
       if (sourceType === 'CUSTOMER') {
-          onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
+          onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId, isFullRepayment: applyFullRepaymentDiscount  });
           if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
     try {
         const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
@@ -572,6 +633,48 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
                                 )}
                             </div>
                         )}
+                        {/* После блока с суммой, внутри sourceType === 'CUSTOMER' */}
+{sourceType === 'CUSTOMER' && selectedSale && discountConfig?.enabled && (
+  <div className="bg-gradient-to-r from-emerald-50 to-teal-50 p-4 rounded-xl border border-emerald-100">
+    <label className="flex items-start gap-3 cursor-pointer">
+      <input
+        type="checkbox"
+        checked={applyFullRepaymentDiscount}
+        onChange={(e) => setApplyFullRepaymentDiscount(e.target.checked)}
+        className="mt-1 w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500"
+      />
+      <div className="flex-1">
+        <div className="font-semibold text-emerald-800">
+          Полное погашение со скидкой
+        </div>
+        <div className="text-sm text-emerald-600 mt-1">
+          {discountConfig.type === 'PERCENTAGE'
+            ? `Скидка ${discountConfig.value}% при оплате всего остатка`
+            : `Скидка ${formatNum(discountConfig.value)}₽ при полной оплате`
+          }
+        </div>
+
+        {applyFullRepaymentDiscount && calculatedDiscount > 0 && (
+          <div className="mt-3 p-3 bg-white rounded-lg border border-emerald-200">
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Остаток долга:</span>
+              <span className="font-medium">{formatNum(selectedSale.remainingAmount)} ₽</span>
+            </div>
+            <div className="flex justify-between text-sm text-emerald-600">
+              <span>Скидка:</span>
+              <span className="font-bold">−{formatNum(calculatedDiscount)} ₽</span>
+            </div>
+            <div className="border-t border-emerald-100 my-2"></div>
+            <div className="flex justify-between font-bold text-lg">
+              <span>К оплате:</span>
+              <span className="text-emerald-700">{formatNum(Number(amountWithDiscount))} ₽</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </label>
+  </div>
+)}
                     </div>
                     {sourceType === 'CUSTOMER' && appSettings.whatsapp?.enabled && (
                         <div className="flex items-center justify-between border-t border-slate-100 pt-3">
