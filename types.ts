@@ -233,6 +233,7 @@ export interface CalculatorSettings {
 }
 
 export interface AppSettings {
+  fullRepaymentDiscount: any;
   companyName: string;
   sellerPhone?: string;
   whatsapp?: WhatsAppSettings;

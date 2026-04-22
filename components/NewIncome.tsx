@@ -67,6 +67,40 @@ const [discountAmount, setDiscountAmount] = useState(0);
     });
   };
 
+  //  Вычислите скидку
+  const discountConfig = useMemo(() => {
+  return appSettings?.fullRepaymentDiscount;
+}, [appSettings]);
+
+const calculatedDiscount = useMemo(() => {
+  if (!selectedSale || !discountConfig?.enabled || !applyFullRepaymentDiscount) {
+    return 0;
+  }
+
+  const remaining = selectedSale.remainingAmount;
+
+  // Проверка минимальной суммы долга
+  if (discountConfig.minRemainingAmount && remaining < discountConfig.minRemainingAmount) {
+    return 0;
+  }
+
+  // Расчёт скидки
+  if (discountConfig.type === 'PERCENTAGE') {
+    return Math.round((remaining * discountConfig.value / 100) * 100) / 100;
+  } else {
+    // FIXED: не больше чем остаток долга
+    return Math.min(discountConfig.value, remaining);
+  }
+}, [selectedSale, discountConfig, applyFullRepaymentDiscount]);
+
+// Скорректированная сумма к оплате
+const amountWithDiscount = useMemo(() => {
+  const numAmount = Number(amount) || 0;
+  return showCents
+    ? (numAmount - calculatedDiscount).toFixed(2)
+    : Math.round(numAmount - calculatedDiscount).toString();
+}, [amount, calculatedDiscount, showCents]);
+
   useEffect(() => {
     if (initialData?.type === 'CUSTOMER_PAYMENT') {
         setSourceType('CUSTOMER');
@@ -158,39 +192,6 @@ const [discountAmount, setDiscountAmount] = useState(0);
 
 
 
-//  Вычислите скидку
-  const discountConfig = useMemo(() => {
-  return appSettings?.fullRepaymentDiscount;
-}, [appSettings]);
-
-const calculatedDiscount = useMemo(() => {
-  if (!selectedSale || !discountConfig?.enabled || !applyFullRepaymentDiscount) {
-    return 0;
-  }
-
-  const remaining = selectedSale.remainingAmount;
-
-  // Проверка минимальной суммы долга
-  if (discountConfig.minRemainingAmount && remaining < discountConfig.minRemainingAmount) {
-    return 0;
-  }
-
-  // Расчёт скидки
-  if (discountConfig.type === 'PERCENTAGE') {
-    return Math.round((remaining * discountConfig.value / 100) * 100) / 100;
-  } else {
-    // FIXED: не больше чем остаток долга
-    return Math.min(discountConfig.value, remaining);
-  }
-}, [selectedSale, discountConfig, applyFullRepaymentDiscount]);
-
-// Скорректированная сумма к оплате
-const amountWithDiscount = useMemo(() => {
-  const numAmount = Number(amount) || 0;
-  return showCents
-    ? (numAmount - calculatedDiscount).toFixed(2)
-    : Math.round(numAmount - calculatedDiscount).toString();
-}, [amount, calculatedDiscount, showCents]);
 
  const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
