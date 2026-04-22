@@ -206,15 +206,22 @@ async function processRemindersForUser(user) {
       pDate.setHours(0, 0, 0, 0);
       const diffDays = Math.ceil((pDate - today) / (1000 * 60 * 60 * 24));
 
-      let triggerType = null;
-      if (diffDays === 1 && settings.reminderDays.includes(-1)) triggerType = 'upcoming';
-      else if (diffDays === 0 && settings.reminderDays.includes(0)) triggerType = 'today';
-      else if (diffDays < 0 && settings.reminderDays.includes(1)) triggerType = 'overdue';
+      // 🔹 ИЗМЕНЕНИЕ: определяем, является ли платёж триггером для отправки
+      let isTrigger = false;
+      if (diffDays === 1 && settings.reminderDays.includes(-1)) isTrigger = true;
+      else if (diffDays === 0 && settings.reminderDays.includes(0)) isTrigger = true;
+      else if (diffDays < 0 && settings.reminderDays.includes(1)) isTrigger = true;
 
-      if (!triggerType) continue;
+      // 🔹 ИЗМЕНЕНИЕ: добавляем ВСЕ просрочки (даже если триггер не включён)
+      // и платежи на сегодня/завтра (если они триггеры)
+      const isOverdue = diffDays < 0;
+      const isUpcomingOrToday = diffDays === 0 || diffDays === 1;
+
+      if (!isOverdue && !isUpcomingOrToday) continue; // Пропускаем будущие платежи
+      if (!isTrigger && !isOverdue) continue; // Пропускаем, если не триггер и не просрочка
 
       // Проверка интервала для просроченных
-      if (triggerType === 'overdue' && settings.overdueReminderInterval > 1) {
+      if (isOverdue && settings.overdueReminderInterval > 1) {
         const lastNotif = p.lastNotificationDate ? new Date(p.lastNotificationDate) : null;
         if (lastNotif) {
           const daysSinceLast = Math.floor((today - lastNotif) / (1000 * 60 * 60 * 24));
@@ -229,11 +236,18 @@ async function processRemindersForUser(user) {
           items: [],
           totalDueToday: 0,
           totalOverdue: 0,
-          paymentsToUpdate: []
+          paymentsToUpdate: [],
+          hasTrigger: false // 🔹 Флаг: есть ли триггер для отправки
         };
       }
 
       const clientData = customerReminders[customer.id];
+
+      // Если это триггер — помечаем
+      if (isTrigger) {
+        clientData.hasTrigger = true;
+      }
+
       clientData.items.push({
         productName: sale.productName,
         date: p.date,
@@ -241,7 +255,7 @@ async function processRemindersForUser(user) {
         originalAmount: p.originalAmount,
         dateObj: p.dateObj,
         diffDays,
-        triggerType
+        triggerType: isTrigger ? (diffDays === 1 ? 'upcoming' : diffDays === 0 ? 'today' : 'overdue') : 'debt_only'
       });
 
       if (diffDays < 0) {
@@ -250,17 +264,22 @@ async function processRemindersForUser(user) {
         clientData.totalDueToday += p.remaining;
       }
 
-      clientData.paymentsToUpdate.push({ saleId: sale.id, paymentId: p.id, saleRef: sale });
+      // Обновляем lastNotificationDate только для триггеров
+      if (isTrigger) {
+        clientData.paymentsToUpdate.push({ saleId: sale.id, paymentId: p.id, saleRef: sale });
+      }
     }
   }
 
-  // Отправка сообщений
+  // Отправка сообщений ТОЛЬКО если есть триггер
   let sentCount = 0;
   for (const custId of Object.keys(customerReminders)) {
     const data = customerReminders[custId];
-    const totalToPay = data.totalDueToday + data.totalOverdue;
 
-    // 🔹 ИСПРАВЛЕНО: убран лишний параметр settings
+    // 🔹 ИЗМЕНЕНИЕ: отправляем только если есть триггер (сегодня/завтра/просрочка)
+    if (!data.hasTrigger) continue;
+
+    const totalToPay = data.totalDueToday + data.totalOverdue;
     const message = buildConsolidatedMessage(data, totalToPay);
 
     const success = await sendWhatsAppMessage(
@@ -271,6 +290,7 @@ async function processRemindersForUser(user) {
     );
 
     if (success) {
+      // Обновляем даты уведомлений
       for (const ref of data.paymentsToUpdate) {
         const saleInDb = ref.saleRef;
         const payment = saleInDb.paymentPlan.find(p => p.id === ref.paymentId);
