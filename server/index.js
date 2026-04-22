@@ -569,18 +569,27 @@ const massReminderLimiter = rateLimit({
  * POST /api/integrations/whatsapp/send-reminder
  * Отправка напоминания о просрочке одному клиенту
  */
-app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter,async (req, res) => {
+app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, async (req, res) => {
   try {
-    const { phone, customerName, productName, overdueAmount, monthsOverdue, template = 'overdue' } = req.body;
+    const {
+      phone,
+      customerName,
+      productName,
+      overdueAmount,      // 🔹 Реальный долг (после частичных оплат)
+      monthlyPayment,     // 🔹 НОВОЕ: фиксированный платёж из графика
+      monthsOverdue,
+      template = 'overdue',
+      totalToPay          // 🔹 НОВОЕ: итоговая сумма к оплате (опционально)
+    } = req.body;
+
     const userId = req.user.id;
 
-    // 🔹 1. Валидация входных данных
+    // 🔹 1. Валидация
     if (!phone || !customerName || overdueAmount === undefined) {
       return res.status(400).json({ error: 'Missing required fields: phone, customerName, overdueAmount' });
     }
 
-    // 🔹 2. Получаем настройки WhatsApp пользователя из БД
-    // ✅ УБРАЛИ "companyName" — этой колонки нет в таблице users!
+    // 🔹 2. Получаем настройки пользователя
     const userRes = await pool.query(
       `SELECT id, name, whatsapp_settings FROM users WHERE id = $1`,
       [userId]
@@ -591,38 +600,37 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter,async
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Парсим настройки (могут быть строкой или объектом)
     const settings = typeof user.whatsapp_settings === 'string'
       ? JSON.parse(user.whatsapp_settings)
       : user.whatsapp_settings;
 
-    // 🔹 3. Проверяем, что WhatsApp включен и настроен
     if (!settings?.enabled || !settings.idInstance || !settings.apiTokenInstance) {
       return res.status(400).json({ error: 'WhatsApp not configured for this user' });
     }
 
-    // 🔹 4. Формируем сообщение по шаблону
-    // Берём название компании из настроек WhatsApp или используем дефолтное
-    const companyName = settings.companyName || 'Наша Компания';
-
+    // 🔹 3. Формируем сообщение
     const defaultOverdueTemplate = `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``;
 
     const rawTemplate = settings.templates?.[template] || defaultOverdueTemplate;
 
-    // Заменяем переменные в шаблоне
+    // 🔹 4. Заменяем переменные (ОБНОВЛЕНО)
     const message = rawTemplate
       .replace(/{имя}/g, customerName)
       .replace(/{товар}/g, productName || '')
-      .replace(/{сумма}/g, (overdueAmount).toLocaleString('ru-RU'))
+      // 🔹 {сумма} = фиксированный ежемесячный платёж из графика
+      .replace(/{сумма}/g, (monthlyPayment !== undefined ? monthlyPayment : overdueAmount).toLocaleString('ru-RU'))
+      // 🔹 {долг} = реальный долг после частичных оплат
       .replace(/{долг}/g, (overdueAmount).toLocaleString('ru-RU'))
-      .replace(/{итого}/g, (overdueAmount).toLocaleString('ru-RU'))
+      // 🔹 {итого} = либо переданное значение, либо сумма платежа + долга
+      .replace(/{итого}/g, (totalToPay !== undefined ? totalToPay : (monthlyPayment || overdueAmount) + overdueAmount).toLocaleString('ru-RU'))
       .replace(/{месяцы}/g, String(monthsOverdue || 0))
       .replace(/{дата}/g, new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }))
-      .replace(/{платеж_блок}/g, `   • Ежемесячный платёж: *${(overdueAmount).toLocaleString('ru-RU')} ₽*\n`)
+      // 🔹 Блоки с правильными значениями
+      .replace(/{платеж_блок}/g, `   • Ежемесячный платёж: *${(monthlyPayment !== undefined ? monthlyPayment : overdueAmount).toLocaleString('ru-RU')} ₽*\n`)
       .replace(/{долг_блок}/g, `   • Задолженность: *${(overdueAmount).toLocaleString('ru-RU')} ₽* (${monthsOverdue || 0} мес.)\n`)
-      .replace(/{итого_блок}/g, `\n💰 *ИТОГО К ОПЛАТЕ: ${(overdueAmount).toLocaleString('ru-RU')} ₽*`);
+      .replace(/{итого_блок}/g, `\n💰 *ИТОГО К ОПЛАТЕ: ${(totalToPay !== undefined ? totalToPay : (monthlyPayment || overdueAmount) + overdueAmount).toLocaleString('ru-RU')} ₽*`);
 
-    // 🔹 5. Отправляем через Green API
+    // 🔹 5. Отправка через Green API
     const sent = await sendGreenApiMessage(
       settings.idInstance,
       settings.apiTokenInstance,
@@ -642,8 +650,6 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter,async
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
-
-
 
 
 /**
