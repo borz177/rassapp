@@ -50,29 +50,47 @@ const Integrations: React.FC<IntegrationsProps> = ({
 
 
   useEffect(() => {
-    if (appSettings.whatsapp) {
-      setWaEnabled(appSettings.whatsapp.enabled);
-      setIdInstance(appSettings.whatsapp.idInstance);
-      setApiToken(appSettings.whatsapp.apiTokenInstance || '');
-      setReminderTime(appSettings.whatsapp.reminderTime);
-      setReminderDays(appSettings.whatsapp.reminderDays);
-      setBotEnabled(appSettings.whatsapp.botEnabled || false);
-      setHistoryEnabled(appSettings.whatsapp.historyEnabled ?? true);
-      setConditionsEnabled(appSettings.whatsapp.conditionsEnabled ?? true);
-      setOverdueInterval(appSettings.whatsapp.overdueReminderInterval ?? 1);
+  const wa = appSettings.whatsapp;
+  if (!wa) return;
 
-      if (appSettings.whatsapp.templates) {
-        const mergedTemplates = { ...DEFAULT_TEMPLATES, ...appSettings.whatsapp.templates };
-        setTemplates(mergedTemplates);
-        setCurrentTemplates(mergedTemplates);
-      }
-      setIsExpanded(appSettings.whatsapp.enabled);
-      if (appSettings.whatsapp.enabled && appSettings.whatsapp.idInstance && appSettings.whatsapp.apiTokenInstance) {
-        checkConnection(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance).catch(console.error);
+  // 1. Синхронизируем локальные стейты с пришедшими настройками
+  setWaEnabled(wa.enabled);
+  setIdInstance(wa.idInstance);
+  setApiToken(wa.apiTokenInstance || '');
+  setReminderTime(wa.reminderTime);
+  setReminderDays(wa.reminderDays);
+  setBotEnabled(wa.botEnabled || false);
+  setHistoryEnabled(wa.historyEnabled ?? true);
+  setConditionsEnabled(wa.conditionsEnabled ?? true);
+  setOverdueInterval(wa.overdueReminderInterval ?? 1);
+
+  // 2. Мержим шаблоны (не перезаписываем полностью, чтобы не потерять дефолтные поля)
+  if (wa.templates) {
+    const merged = { ...DEFAULT_TEMPLATES, ...wa.templates };
+    setTemplates(merged);
+    setCurrentTemplates(merged);
+  }
+
+  // 3. Раскрываем панель только если интеграция активна
+  setIsExpanded(wa.enabled);
+
+  // 4. Проверяем статус соединения
+  if (wa.enabled && wa.idInstance && wa.apiTokenInstance) {
+    checkConnection(wa.idInstance, wa.apiTokenInstance)
+      .then(() => {
+        // checkConnection внутри уже обновляет connectionStatus и setIsTesting
+        // Скрываем токен только после успешной инициализации
         setIsTokenVisible(false);
-      }
-    }
-  }, [appSettings]);
+      })
+      .catch(() => {
+        setConnectionStatus('ERROR');
+        setIsTokenVisible(false);
+      });
+  } else {
+    // Если выключено или нет данных — сбрасываем статус подключения
+    setConnectionStatus('IDLE');
+  }
+}, [appSettings]);
 
   useEffect(() => {
     if (appSettings.whatsapp?.templates) {
@@ -261,13 +279,86 @@ const [previewContent, setPreviewContent] = useState('');
     return options;
   };
 
-  const handleToggleEnable = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const newState = !waEnabled;
-    setWaEnabled(newState);
-    if (newState) setIsExpanded(true);
-    else setIsExpanded(false);
+// 🔹 Подключение WhatsApp
+const handleConnect = async () => {
+  if (!idInstance || !apiToken) {
+    alert('⚠️ Введите idInstance и apiTokenInstance');
+    return;
+  }
+
+  setIsTesting(true);
+  try {
+    const isAuth = await checkGreenApiConnection(idInstance, apiToken);
+
+    if (isAuth) {
+      setConnectionStatus('AUTHORIZED');
+      setWaEnabled(true);
+      setIsExpanded(true);
+      setIsTokenVisible(false);
+
+      // 🔥 Сохраняем настройки
+      const updatedSettings: AppSettings = {
+        ...appSettings,
+        whatsapp: {
+          ...appSettings.whatsapp,
+          enabled: true,
+          idInstance,
+          apiTokenInstance: apiToken,
+          reminderTime,
+          reminderDays,
+          templates,
+          botEnabled,
+          historyEnabled,
+          conditionsEnabled,
+          overdueReminderInterval: overdueInterval,
+          calculatorConfigId: appSettings.whatsapp?.calculatorConfigId,
+          companyName: appSettings?.companyName || 'Наша Компания',
+          calculator: appSettings?.calculator,
+        }
+      };
+      await onUpdateSettings(updatedSettings);
+
+      alert('✅ WhatsApp успешно подключён!');
+      onSettingsChanged?.();
+    } else {
+      setConnectionStatus('NOT_AUTHORIZED');
+      alert('❌ Не удалось авторизоваться. Проверьте idInstance и apiTokenInstance');
+    }
+  } catch (error) {
+    setConnectionStatus('ERROR');
+    console.error('Ошибка подключения:', error);
+    alert('❌ Ошибка соединения. Проверьте интернет и данные API');
+  } finally {
+    setIsTesting(false);
+  }
+};
+
+// 🔹 Отключение WhatsApp
+const handleDisconnect = () => {
+  if (!window.confirm('⚠️ Отключить интеграцию с WhatsApp?\n\nНапоминания и чат-бот перестанут работать.')) {
+    return;
+  }
+
+  setWaEnabled(false);
+  setIsExpanded(false);
+  setConnectionStatus('IDLE');
+
+  // 🔥 Сохраняем отключённое состояние
+  const updatedSettings: AppSettings = {
+    ...appSettings,
+    whatsapp: {
+      ...appSettings.whatsapp,
+      enabled: false,
+      // 🔸 Опционально: очищаем токены при отключении
+      // idInstance: '',
+      // apiTokenInstance: '',
+    }
   };
+  onUpdateSettings(updatedSettings);
+  onSettingsChanged?.();
+
+  alert('🔌 WhatsApp отключён');
+};
 
   const handleCardClick = () => {
     if (waEnabled) {
@@ -321,46 +412,81 @@ const [previewContent, setPreviewContent] = useState('');
 
           <div className="flex items-center gap-4">
             {waEnabled && (
-                <div className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="6 9 12 15 18 9"/>
-                  </svg>
-                </div>
-            )}
-            <div
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const newState = !waEnabled;
-                  setWaEnabled(newState);
-                  setIsExpanded(newState);
-                }}
-                className="relative inline-flex items-center cursor-pointer"
-            >
-              <input
-                  type="checkbox"
-                  className="sr-only"
-                  checked={waEnabled}
-                  readOnly // ← вместо onChange={() => {}}
-              />
-              <div
-                  className={`w-11 h-6 rounded-full transition-colors ${waEnabled ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-                <div
-                    className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform ${waEnabled ? 'translate-x-5' : 'translate-x-0'}`}
-                />
+              <div className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
               </div>
-            </div>
+            )}
+            {/* === Кнопки подключения вместо переключателя === */}
+<div className="flex items-center gap-3">
+  {!waEnabled ? (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        handleConnect();
+      }}
+      disabled={!idInstance || !apiToken || isTesting}
+      className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+        !idInstance || !apiToken
+          ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+          : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-200'
+      }`}
+    >
+      {isTesting ? (
+        <>
+          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          Проверка...
+        </>
+      ) : (
+        <>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          Подключить
+        </>
+      )}
+    </button>
+  ) : (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        handleDisconnect();
+      }}
+      className="px-4 py-2 rounded-xl text-sm font-bold bg-red-100 text-red-700 hover:bg-red-200 transition-all flex items-center gap-2"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+        <line x1="12" y1="2" x2="12" y2="12"/>
+      </svg>
+      Отключить
+    </button>
+  )}
+
+  {/* Статус подключения */}
+  <div className="flex items-center gap-2 text-xs">
+    <div className={`w-2.5 h-2.5 rounded-full ${
+      connectionStatus === 'AUTHORIZED' ? 'bg-emerald-500 animate-pulse' : 
+      connectionStatus === 'ERROR' ? 'bg-red-500' : 'bg-slate-300'
+    }`} />
+    <span className="text-slate-500 font-medium">
+      {connectionStatus === 'AUTHORIZED' ? 'Активно' :
+       connectionStatus === 'ERROR' ? 'Ошибка' : 'Не подключено'}
+    </span>
+  </div>
+</div>
           </div>
         </div>
 
         {waEnabled && isExpanded && (
-            <div className="p-5 space-y-6 border-t border-slate-100 animate-fade-in">
-              {/* Credentials */}
-              <div className="space-y-4">
-                <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-700">
-                  <p>1. Зарегистрируйтесь на <a href="https://console.green-api.com" target="_blank" rel="noreferrer"
-                                                className="underline font-bold">Green API Console</a>.</p>
-                  <p>2. Создайте инстанс (можно Developer — бесплатно).</p>
-                  <p>3. Скопируйте <b>idInstance</b> и <b>apiTokenInstance</b> сюда.</p>
+          <div className="p-5 space-y-6 border-t border-slate-100 animate-fade-in">
+            {/* Credentials */}
+            <div className="space-y-4">
+              <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-700">
+                <p>1. Зарегистрируйтесь на <a href="https://console.green-api.com" target="_blank" rel="noreferrer" className="underline font-bold">Green API Console</a>.</p>
+                <p>2. Создайте инстанс (можно Developer — бесплатно).</p>
+                <p>3. Скопируйте <b>idInstance</b> и <b>apiTokenInstance</b> сюда.</p>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
