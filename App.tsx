@@ -933,12 +933,13 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
     const hasEmail = updated.email && updated.email.trim().length > 0;
     const hasPassword = password && password.trim().length > 0;
     const isImportedWithoutUser = updated.id.startsWith('inv_') && !updated.id.startsWith('u_inv_');
+
+    // 🔹 АКТИВАЦИЯ: если есть email и (пароль или импортирован без пользователя)
     const needsActivation = hasEmail && (hasPassword || isImportedWithoutUser);
 
     if (needsActivation && !updated.id.startsWith('u_inv_') && !updated.id.startsWith('u_emp_')) {
       const oldInvestorId = updated.id;
       const oldAccount = accounts.find(a => a.ownerId === oldInvestorId);
-      const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
 
       // 🔹 0. Проверка на дубликат email
       try {
@@ -954,9 +955,10 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
         console.warn('⚠️ Не удалось проверить email:', e);
       }
 
+      // 🔹 🔥 ОДНО ОБЪЯВЛЕНИЕ tempPassword (исправлено!)
       const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
 
-      // 🔹 1. Создаём ПОЛЬЗОВАТЕЛЯ
+      // 🔹 1. Создаём ПОЛЬЗОВАТЕЛЯ для входа
       let newUser;
       try {
         newUser = await api.createSubUser({
@@ -975,14 +977,15 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
         throw userErr;
       }
 
-      // 🔹 2. Создаём инвестора с НОВЫМ ID — 🔥 ЯВНО ПЕРЕДАЁМ ВСЕ ПОЛЯ
+      // 🔹 2. Создаём инвестора с НОВЫМ ID (ID пользователя)
       const linkedInvestor: Investor = {
         ...updated,
-        id: newUser.id,
-        userId: user!.id,
+        id: newUser.id,           // 🔑 Новый ID = ID пользователя
+        userId: user!.id,         // 🔑 ownerId менеджера
         email: updated.email!.trim(),
         phone: updated.phone,
-        profitPercentage: updated.profitPercentage,  // 🔥 ЯВНОЕ КОПИРОВАНИЕ
+        // 🔥 ЯВНО КОПИРУЕМ ВСЕ ПОЛЯ, включая profitPercentage
+        profitPercentage: updated.profitPercentage,
         initialAmount: updated.initialAmount,
         joinedDate: updated.joinedDate,
         permissions: updated.permissions
@@ -990,23 +993,25 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
 
       const savedInvestor = await api.saveItem('investors', linkedInvestor);
 
-      // 🔹 3. Удаляем старого инвестора
+      // 🔹 3. 🗑️ УДАЛЯЕМ СТАРОГО ИНВЕСТОРА С СЕРВЕРА (КРИТИЧНО!)
       try {
         await api.deleteItem('investors', oldInvestorId);
+        console.log(`🗑️ Старый инвестор ${oldInvestorId} удалён`);
       } catch (delErr) {
         console.warn('⚠️ Не удалось удалить старого инвестора:', delErr);
       }
 
-      // 🔹 4. Обновляем стейт
+      // 🔹 4. Обновляем локальный стейт: ЗАМЕНЯЕМ старого на нового
       setInvestors(prev => {
         const withoutOld = prev.filter(i => i.id !== oldInvestorId);
+        // Проверка на дубликат по email
         const isDuplicate = withoutOld.some(i =>
           i.email?.toLowerCase() === updated.email?.toLowerCase() && i.id !== newUser.id
         );
         return isDuplicate ? withoutOld : [savedInvestor, ...withoutOld];
       });
 
-      // 🔹 5-6. Транзакции и счета (без изменений)
+      // 🔹 5. Транзакции депозита (если есть сумма и счёт)
       if (updated.initialAmount > 0 && oldAccount) {
         const depositTransaction: Sale = {
           id: `dep_activate_${newUser.id}_${Date.now()}`,
@@ -1029,6 +1034,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
         updateList(setSales, depositTransaction, undefined, 'sales');
       }
 
+      // 🔹 6. Обновляем счёт: меняем ownerId
       if (oldAccount) {
         const updatedAccount = {
           ...oldAccount,
@@ -1043,19 +1049,16 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
       }
 
       alert(`✅ Инвестор активирован!\nЛогин: ${updated.email}\nПароль: ${tempPassword}`);
+
+      // 🔹 7. Перезагружаем данные с задержкой
       setTimeout(() => loadData(), 1000);
-      return;
+      return; // 🔥 ВАЖНО: выходим!
     }
 
-    // 🔹 ОБЫЧНОЕ ОБНОВЛЕНИЕ — 🔥 ЯВНО СОХРАНЯЕМ profitPercentage
-    const investorToUpdate: Investor = {
-      ...updated,
-      profitPercentage: updated.profitPercentage,  // 🔥 ЯВНОЕ УКАЗАНИЕ
-      initialAmount: updated.initialAmount,
-      permissions: updated.permissions
-    };
-
-    const saved = await api.saveItem('investors', investorToUpdate);
+    // ========================================
+    // ОБЫЧНОЕ ОБНОВЛЕНИЕ (без активации)
+    // ========================================
+    const saved = await api.saveItem('investors', updated);
     updateList(setInvestors, saved, undefined, 'investors');
 
     // Обновляем пользователя ТОЛЬКО если это уже активированный инвестор
@@ -1080,7 +1083,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
       }
     }
 
-    alert("✅ Инвестор обновлён!");
+    alert(hasPassword ? "✅ Инвестор и пароль обновлены!" : "✅ Инвестор обновлён!");
 
   } catch (error: any) {
     console.error('❌ Ошибка обновления инвестора:', error);
