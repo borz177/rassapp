@@ -65,16 +65,21 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, account, sa
       return total;
   }, [sales, expenses, account]);
 
-  const expectedTotalProfit = useMemo(() => {
+  // В InvestorDetails.tsx заменить expectedTotalProfit:
+const expectedTotalProfit = useMemo(() => {
     if (!account || !investor.profitPercentage) return 0;
-    // Include both ACTIVE and COMPLETED sales
-    const activeSales = sales.filter(s => s.accountId === account.id && (s.status === 'ACTIVE' || s.status === 'COMPLETED') && s.buyPrice > 0);
-    const totalProfitFromActiveSales = activeSales.reduce((sum, sale) => {
-        const saleProfit = sale.totalAmount - sale.buyPrice;
-        return sum + (saleProfit > 0 ? saleProfit : 0);
+
+    const activeSales = sales.filter(s =>
+        s.accountId === account.id &&
+        (s.status === 'ACTIVE' || s.status === 'DRAFT') && // 🔸 Только активные
+        s.buyPrice > 0 && s.totalAmount > 0
+    );
+
+    return activeSales.reduce((sum, sale) => {
+        const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
+        return sum + (sale.remainingAmount * profitMargin * investor.profitPercentage / 100);
     }, 0);
-    return totalProfitFromActiveSales * (investor.profitPercentage / 100);
-  }, [sales, account, investor]);
+}, [sales, account, investor]);
 
   const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
       if (!account) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, profitAccruals: [] };

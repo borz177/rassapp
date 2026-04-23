@@ -1588,10 +1588,7 @@ app.post('/api/data/:type', auth, async (req, res) => {
     }
 
     const itemData = req.body;
-    console.log(`📥 Received ${type}:`, {
-      id: itemData.id,
-      profitPercentage: itemData.profitPercentage
-    });
+
 
     let targetUserId = getTargetUserId(req.user);
 
@@ -1613,7 +1610,7 @@ app.post('/api/data/:type', auth, async (req, res) => {
         updated_at = NOW();
     `, [id, targetUserId, type, JSON.stringify(itemData)]);
 
-    console.log(`✅ Saved ${type} ${id} with profitPercentage:`, itemData.profitPercentage);
+
     res.json(itemData);
   } catch (err) {
     console.error(err);
