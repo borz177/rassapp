@@ -299,7 +299,7 @@ const handleClearData = async () => {
                 setShowImportModal(false);
                 alert("✅ Данные успешно импортированы! Страница будет перезагружена.");
                 window.location.reload();
-            }, 15000); // 15000 мс = 15 секунд
+            }, 5000); // 15000 мс = 15 секунд
         }}
         currentUserId={currentUserId}
     />

@@ -261,13 +261,7 @@ const [previewContent, setPreviewContent] = useState('');
     return options;
   };
 
-  const handleToggleEnable = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const newState = !waEnabled;
-    setWaEnabled(newState);
-    if (newState) setIsExpanded(true);
-    else setIsExpanded(false);
-  };
+
 
   const handleCardClick = () => {
     if (waEnabled) {
@@ -327,12 +321,28 @@ const [previewContent, setPreviewContent] = useState('');
                 </svg>
               </div>
             )}
-            <div onClick={handleToggleEnable} className="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" className="sr-only peer" checked={waEnabled} onChange={() => {}} />
-              <div className={`w-11 h-6 rounded-full peer peer-checked:bg-emerald-500 peer-focus:outline-none ${waEnabled ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-                <div className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform peer-checked:translate-x-full`}></div>
-              </div>
-            </div>
+            {/* ✅ Исправленный переключатель */}
+<div className="relative inline-flex items-center cursor-pointer">
+  <input
+    type="checkbox"
+    className="sr-only peer"
+    checked={waEnabled}
+    onChange={(e) => {
+      const newState = e.target.checked;
+      setWaEnabled(newState);
+      setIsExpanded(newState); // раскрываем/сворачиваем при переключении
+    }}
+  />
+  <div
+    className={`w-11 h-6 rounded-full peer peer-checked:bg-emerald-500 peer-focus:outline-none transition-colors ${
+      waEnabled ? 'bg-emerald-500' : 'bg-slate-200'
+    }`}
+  >
+    <div
+      className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform peer-checked:translate-x-full`}
+    ></div>
+  </div>
+</div>
           </div>
         </div>
 
