@@ -261,7 +261,13 @@ const [previewContent, setPreviewContent] = useState('');
     return options;
   };
 
-
+  const handleToggleEnable = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newState = !waEnabled;
+    setWaEnabled(newState);
+    if (newState) setIsExpanded(true);
+    else setIsExpanded(false);
+  };
 
   const handleCardClick = () => {
     if (waEnabled) {
@@ -315,50 +321,46 @@ const [previewContent, setPreviewContent] = useState('');
 
           <div className="flex items-center gap-4">
             {waEnabled && (
-              <div className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </div>
+                <div className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </div>
             )}
-            {/* ✅ Переключатель WhatsApp с правильной обработкой */}
-<label className="relative inline-flex items-center cursor-pointer">
-  <input
-    type="checkbox"
-    className="sr-only peer"
-    checked={waEnabled}
-    onChange={(e) => {
-      e.stopPropagation(); // ← Останавливаем всплытие
-      const newState = e.target.checked;
-      setWaEnabled(newState);
-      setIsExpanded(newState);
-    }}
-    onClick={(e) => {
-      e.stopPropagation(); // ← Двойная защита
-    }}
-  />
-  <div
-    onClick={(e) => e.stopPropagation()} // ← Останавливаем клик на div
-    className={`w-11 h-6 rounded-full peer peer-checked:bg-emerald-500 peer-focus:outline-none transition-colors ${
-      waEnabled ? 'bg-emerald-500' : 'bg-slate-200'
-    }`}
-  >
-    <div
-      className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform peer-checked:translate-x-full`}
-    ></div>
-  </div>
-</label>
+            <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const newState = !waEnabled;
+                  setWaEnabled(newState);
+                  setIsExpanded(newState);
+                }}
+                className="relative inline-flex items-center cursor-pointer"
+            >
+              <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={waEnabled}
+                  readOnly // ← вместо onChange={() => {}}
+              />
+              <div
+                  className={`w-11 h-6 rounded-full transition-colors ${waEnabled ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                <div
+                    className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform ${waEnabled ? 'translate-x-5' : 'translate-x-0'}`}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
         {waEnabled && isExpanded && (
-          <div className="p-5 space-y-6 border-t border-slate-100 animate-fade-in">
-            {/* Credentials */}
-            <div className="space-y-4">
-              <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-700">
-                <p>1. Зарегистрируйтесь на <a href="https://console.green-api.com" target="_blank" rel="noreferrer" className="underline font-bold">Green API Console</a>.</p>
-                <p>2. Создайте инстанс (можно Developer — бесплатно).</p>
-                <p>3. Скопируйте <b>idInstance</b> и <b>apiTokenInstance</b> сюда.</p>
+            <div className="p-5 space-y-6 border-t border-slate-100 animate-fade-in">
+              {/* Credentials */}
+              <div className="space-y-4">
+                <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-700">
+                  <p>1. Зарегистрируйтесь на <a href="https://console.green-api.com" target="_blank" rel="noreferrer"
+                                                className="underline font-bold">Green API Console</a>.</p>
+                  <p>2. Создайте инстанс (можно Developer — бесплатно).</p>
+                  <p>3. Скопируйте <b>idInstance</b> и <b>apiTokenInstance</b> сюда.</p>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
