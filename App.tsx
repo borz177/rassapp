@@ -130,14 +130,7 @@ const mergeServerData = <T extends { id: string }>(
 
   const updated = current.map(item => {
     if (freshMap.has(item.id)) {
-      const serverItem = freshMap.get(item.id)!;
-      // 🔹 СОХРАНЯЕМ локальные поля, если их нет на сервере
-      return {
-        ...item,
-        ...serverItem,
-        // 🔹 ЯВНО СОХРАНЯЕМ profitPercentage из сервера (используем any для TypeScript)
-        profitPercentage: (serverItem as any).profitPercentage ?? (item as any).profitPercentage
-      };
+      return freshMap.get(item.id)!;
     }
     return item;
   });
