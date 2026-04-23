@@ -38,45 +38,63 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
   }, [expenses, investorAccount]);
 
   // 🔹 БАЛАНС: Как в InvestorDetails (взносы + платежи - все расходы)
-  const balance = useMemo(() => {
-    if (!investorAccount) return 0;
-    let total = 0;
+  // 🔹 БАЛАНС СЧЁТА: Все поступления − Все расходы (как в InvestorDetails)
+const balance = useMemo(() => {
+  if (!investorAccount) return 0;
 
-    investorSales.forEach(s => {
-      total += s.downPayment;
-      s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
-        .forEach(p => total += p.amount);
+  let totalInflow = 0;
+  let totalOutflow = 0;
+
+  // 💰 ВСЕ поступления на счёт (включая системные/депозиты)
+  sales
+    .filter(s => s.accountId === investorAccount.id)
+    .forEach(s => {
+      totalInflow += Number(s.downPayment || 0);
+      s.paymentPlan
+        .filter(p => p.isPaid && p.isRealPayment !== false)
+        .forEach(p => totalInflow += Number(p.amount || 0));
     });
 
-    investorExpenses.forEach(e => total -= e.amount);
+  // 💸 ВСЕ расходы со счёта
+  expenses
+    .filter(e => e.accountId === investorAccount.id)
+    .forEach(e => totalOutflow += Number(e.amount || 0));
 
-    return total;
-  }, [investorSales, investorExpenses, investorAccount]);
+  return totalInflow - totalOutflow;
+}, [sales, expenses, investorAccount]); // ⚠️ Важно: зависимости от исходных массивов
 
-  // 🔹 СТАТИСТИКА: Правильные расчёты
-  const stats = useMemo(() => {
-    let totalCollected = 0;
-    let totalOutstanding = 0;
-    let totalSalesAmount = 0;
 
-    investorSales.forEach(sale => {
-      totalCollected += sale.downPayment;
-      sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
-        .forEach(p => totalCollected += p.amount);
+  // 🔹 СТАТИСТИКА: Исправленные расчёты
+const stats = useMemo(() => {
+  let totalCollected = 0;
+  let totalOutstanding = 0;
+  let totalSalesAmount = 0;
 
-      totalOutstanding += sale.remainingAmount;
-      totalSalesAmount += sale.totalAmount;
-    });
+  investorSales.forEach(sale => {
+    // Считаем ВСЕ поступления (для карточки "Собрано")
+    totalCollected += sale.downPayment;
+    sale.paymentPlan
+      .filter(p => p.isPaid && p.isRealPayment !== false)
+      .forEach(p => totalCollected += p.amount);
 
-    const workingCapital = totalCollected + totalOutstanding;
+    // Считаем ВСЕ остатки (для карточки "Долг клиентов")
+    totalOutstanding += sale.remainingAmount;
 
-    return {
-      totalCollected,
-      totalOutstanding,
-      workingCapital,
-      totalSalesAmount
-    };
-  }, [investorSales]);
+    // Считаем общий объём сделок
+    totalSalesAmount += sale.totalAmount;
+  });
+
+  // 🔹 ОБРОТ = баланс счёта + долг клиентов
+  // balance уже учитывает: поступления − расходы − выплаты
+  const workingCapital = balance + totalOutstanding;
+
+  return {
+    totalCollected,
+    totalOutstanding,
+    totalSalesAmount,
+    workingCapital  // 🔹 Теперь показывает реальные активы инвестора
+  };
+}, [investorSales, balance]);  // ⚠️ Добавьте balance в зависимости!
 
   // 🔹 ПРИБЫЛЬ: Как в InvestorDetails
   const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
