@@ -38,7 +38,53 @@ const getTargetUserId = (user) => {
   return user.id;
 };
 
+// 🔹 Фильтрация данных для сотрудника по allowed_investor_ids
+const filterDataForEmployee = (dataByType, allowedInvestorIds) => {
+  // Если нет ограничений — возвращаем всё
+  if (!allowedInvestorIds || allowedInvestorIds.length === 0) return dataByType;
 
+  const filtered = { ...dataByType };
+
+  // 1. Фильтруем инвесторов
+  filtered.investors = (filtered.investors || []).filter(inv =>
+    allowedInvestorIds.includes(inv.id)
+  );
+
+  // 2. Создаём сет разрешённых account.ownerId для быстрой проверки
+  const allowedAccountOwnerIds = new Set(
+    filtered.investors.map(inv => inv.id)
+  );
+
+  // 3. Фильтруем счета (только те, что принадлежат разрешённым инвесторам)
+  filtered.accounts = (filtered.accounts || []).filter(acc =>
+    !acc.ownerId || allowedAccountOwnerIds.has(acc.ownerId)
+  );
+
+  // 4. Создаём сет разрешённых accountId
+  const allowedAccountIds = new Set(
+    filtered.accounts.map(acc => acc.id)
+  );
+
+  // 5. Фильтруем продажи и расходы по accountId
+  filtered.sales = (filtered.sales || []).filter(sale =>
+    !sale.accountId || allowedAccountIds.has(sale.accountId)
+  );
+
+  filtered.expenses = (filtered.expenses || []).filter(expense =>
+    !expense.accountId || allowedAccountIds.has(expense.accountId)
+  );
+
+  // 6. Партнёрства (если есть связь с инвесторами)
+  if (filtered.partnerships) {
+    filtered.partnerships = filtered.partnerships.filter(p =>
+      !p.partnerIds || p.partnerIds.some(pid => allowedInvestorIds.includes(pid))
+    );
+  }
+
+  // 7. Клиентов НЕ фильтруем (они общие), но на фронте можно скрыть их сделки
+
+  return filtered;
+};
 
 const uploadDir = '/var/www/rassapp/server/uploads/documents';
 const upload = multer({
@@ -1497,7 +1543,9 @@ if (req.user.role === 'investor') {
       }
     });
 
+
     // Fetch Employees (только менеджеры/админы видят сотрудников)
+        // Fetch Employees (только менеджеры/админы видят сотрудников)
     let employees = [];
     if (req.user.role === 'manager' || req.user.role === 'admin') {
       const usersResult = await pool.query(
@@ -1514,7 +1562,17 @@ if (req.user.role === 'investor') {
       }));
     }
 
-    res.json({ ...result, employees });
+    // 🔹 🔥 НОВОЕ: Фильтрация для сотрудников по allowedInvestorIds
+    let finalResult = { ...result, employees };
+
+    if (req.user.role === 'employee' && req.user.allowed_investor_ids) {
+      const allowedIds = parseAllowedInvestorIds(req.user.allowed_investor_ids);
+      if (allowedIds.length > 0) {
+        finalResult = filterDataForEmployee(finalResult, allowedIds);
+      }
+    }
+
+    res.json(finalResult);  // ← Отправляем уже отфильтрованные данные
   } catch (err) {
     console.error(err);
     res.status(500).send('Server Error');

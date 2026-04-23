@@ -694,6 +694,28 @@ const updateList = <T extends { id: string }>(
 };
 const removeFromList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, id: string) => { setter(prev => prev.filter(i => i.id !== id)); };
 
+// 🔹 Фильтрация данных для сотрудника по разрешённым инвесторам
+const filterDataForEmployee = <T extends { accountId?: string; ownerId?: string }>(
+  items: T[],
+  allowedInvestorIds: string[] | undefined,
+  accounts: Account[]
+): T[] => {
+  // Если нет ограничений — возвращаем всё
+  if (!allowedInvestorIds || allowedInvestorIds.length === 0) return items;
+
+  return items.filter(item => {
+    // Если у элемента есть accountId — проверяем, принадлежит ли он разрешённому инвестору
+    if (item.accountId) {
+      const account = accounts.find(a => a.id === item.accountId);
+      return account?.ownerId && allowedInvestorIds.includes(account.ownerId);
+    }
+    // Если у элемента есть ownerId (например, сам инвестор)
+    if (item.ownerId) {
+      return allowedInvestorIds.includes(item.ownerId);
+    }
+    return false;
+  });
+};
   const handleSaveSale = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const saleId = data.id || Date.now().toString(); const paymentScheduleStartDate = data.paymentDate ? new Date(data.paymentDate) : new Date(data.startDate); if (!data.paymentDate) { paymentScheduleStartDate.setMonth(paymentScheduleStartDate.getMonth() + 1); } const preferredDay = paymentScheduleStartDate.getDate(); const saleData = { ...data, id: saleId, userId: ownerId, paymentDay: preferredDay, paymentPlan: data.type === 'CASH' ? [] : (data.paymentPlan || Array.from({ length: data.installments }).map((_, idx) => { const pDate = new Date(paymentScheduleStartDate); pDate.setMonth(pDate.getMonth() + idx); return { id: `pay_${Date.now()}_${idx}`, saleId: saleId, amount: Number((data.remainingAmount / data.installments).toFixed(2)), date: pDate.toISOString(), isPaid: false, isRealPayment: false }; })) }; const existingSaleIndex = sales.findIndex(s => s.id === data.id); const saleToSave = existingSaleIndex >= 0 ? { ...sales[existingSaleIndex], ...saleData } : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' }; const savedSale = await api.saveItem('sales', saleToSave); updateList(setSales, savedSale); if (existingSaleIndex < 0) { if (Number(data.buyPrice) > 0) { const buyPriceExpense: Expense = { id: `exp_sale_${saleId}`, userId: ownerId, accountId: data.accountId, title: `Закуп: ${data.productName}`, amount: Number(data.buyPrice), category: 'Себестоимость', date: data.startDate, isRefund: false }; const savedExpense = await api.saveItem('expenses', buyPriceExpense); updateList(setExpenses, savedExpense); } if (data.productId) { const prod = products.find(p => p.id === data.productId); if(prod) { const updatedProd = { ...prod, stock: prod.stock - 1 }; const savedProd = await api.saveItem('products', updatedProd); updateList(setProducts, savedProd); } } } setEditingSale(null); };
   const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
 const handleDeleteSale = async (saleId: string) => {
