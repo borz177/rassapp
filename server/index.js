@@ -1536,9 +1536,7 @@ app.post('/api/data/:type', auth, async (req, res) => {
 
     let targetUserId = getTargetUserId(req.user);
 
-    if (type === 'investors' && itemData.id?.startsWith('u_inv_')) {
-      targetUserId = itemData.id;
-    }
+   
 
     if (!canAccessUserData(req.user, targetUserId)) {
       return res.status(403).json({ error: 'Доступ запрещён' });
@@ -1575,7 +1573,10 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
 
     let targetUserId = getTargetUserId(req.user);
 
-   
+    // ✅ Для инвесторов: удаляем только свои данные
+    if (type === 'investors' && req.user.role === 'investor') {
+      targetUserId = req.user.id;
+    }
 
     if (!canAccessUserData(req.user, targetUserId)) {
       return res.status(403).json({ error: 'Доступ запрещён' });
