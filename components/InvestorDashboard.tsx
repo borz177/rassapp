@@ -65,36 +65,37 @@ const balance = useMemo(() => {
 
 
   // 🔹 СТАТИСТИКА: Исправленные расчёты
-const stats = useMemo(() => {
-  let totalCollected = 0;
-  let totalOutstanding = 0;
-  let totalSalesAmount = 0;
+  // 🔹 СТАТИСТИКА: Исправленные расчёты
+  const stats = useMemo(() => {
+    let totalCollected = 0;
+    let totalOutstanding = 0;
+    let totalSalesAmount = 0;
 
-  investorSales.forEach(sale => {
-    // Считаем ВСЕ поступления (для карточки "Собрано")
-    totalCollected += sale.downPayment;
-    sale.paymentPlan
-      .filter(p => p.isPaid && p.isRealPayment !== false)
-      .forEach(p => totalCollected += p.amount);
+    // Берём только реальные договоры (активные и закрытые)
+   const validSales = investorSales.filter(s =>
+  (s.status === 'ACTIVE' || s.status === 'COMPLETED' || (s.status === 'DRAFT' && s.downPayment > 0))
+  && s.buyPrice > 0
+);
 
-    // Считаем ВСЕ остатки (для карточки "Долг клиентов")
-    totalOutstanding += sale.remainingAmount;
+    validSales.forEach(sale => {
+      // 📊 Продажи: общая сумма договоров
+      totalSalesAmount += Number(sale.totalAmount) || 0;
 
-    // Считаем общий объём сделок
-    totalSalesAmount += sale.totalAmount;
-  });
+      // 💰 Собрано: фактически поступившие платежи
+      totalCollected += Number(sale.downPayment) || 0;
+      sale.paymentPlan
+        .filter(p => p.isPaid && p.isRealPayment !== false)
+        .forEach(p => totalCollected += Number(p.amount) || 0);
 
-  // 🔹 ОБРОТ = баланс счёта + долг клиентов
-  // balance уже учитывает: поступления − расходы − выплаты
-  const workingCapital = balance + totalOutstanding;
+      // 💸 Долг: остаток к оплате
+      totalOutstanding += Number(sale.remainingAmount) || 0;
+    });
 
-  return {
-    totalCollected,
-    totalOutstanding,
-    totalSalesAmount,
-    workingCapital  // 🔹 Теперь показывает реальные активы инвестора
-  };
-}, [investorSales, balance]);  // ⚠️ Добавьте balance в зависимости!
+    // 🔄 Оборот: деньги на счёте + долг клиентов
+    const workingCapital = balance + totalOutstanding;
+
+    return { totalCollected, totalOutstanding, totalSalesAmount, workingCapital };
+  }, [investorSales, balance]); // ⚠️ Добавлен balance в зависимости
 
   // 🔹 ПРИБЫЛЬ: Как в InvestorDetails
   const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
