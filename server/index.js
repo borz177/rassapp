@@ -1456,18 +1456,19 @@ if (req.user.role === 'manager' || req.user.role === 'admin') {
     ))
   `;
 }
-
-// 🔹 НОВОЕ: Инвесторы видят ТОЛЬКО свои данные
+// 🔹 Инвесторы видят ТОЛЬКО свои данные
 if (req.user.role === 'investor') {
   query = `
     SELECT * FROM data_items 
-    WHERE user_id = $1  -- Личные настройки, профиль
-    OR (type = 'accounts' AND data->>'ownerId' = $1)  -- Свои счета
-    OR (type = 'sales' AND data->>'accountId' IN (  -- Продажи на своих счетах
+    WHERE user_id = $1  -- Личные настройки
+    -- 🔥 ОБЯЗАТЕЛЬНО: Загрузка профиля самого инвестора
+    OR (type = 'investors' AND data->>'id' = $1)
+    OR (type = 'accounts' AND data->>'ownerId' = $1)
+    OR (type = 'sales' AND data->>'accountId' IN (
       SELECT data->>'id' FROM data_items 
       WHERE type = 'accounts' AND data->>'ownerId' = $1
     ))
-    OR (type = 'expenses' AND data->>'accountId' IN (  -- Расходы на своих счетах
+    OR (type = 'expenses' AND data->>'accountId' IN (
       SELECT data->>'id' FROM data_items 
       WHERE type = 'accounts' AND data->>'ownerId' = $1
     ))
@@ -1536,7 +1537,7 @@ app.post('/api/data/:type', auth, async (req, res) => {
 
     let targetUserId = getTargetUserId(req.user);
 
-   
+
 
     if (!canAccessUserData(req.user, targetUserId)) {
       return res.status(403).json({ error: 'Доступ запрещён' });
