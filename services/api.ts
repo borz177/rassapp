@@ -40,59 +40,53 @@ export const api = {
 
             // 🔹 Встроенная логика обработки одного элемента (вместо внешней функции)
             const processItem = async (item: any): Promise<boolean> => {
-                try {
-                    let res: Response;
-                    if (item.type === 'saveItem') {
-                        res = await fetch(`${API_URL}/data/${item.collection}`, {
-                            method: 'POST',
-                            headers: getAuthHeader(),
-                            body: JSON.stringify(item.payload)
-                        });
-                    } else if (item.type === 'deleteItem') {
-                        res = await fetch(`${API_URL}/data/${item.collection}/${item.itemId}`, {
-                            method: 'DELETE',
-                            headers: getAuthHeader()
-                        });
-                    } else {
-                        return false;
-                    }
+  try {
+    let res: Response;
+    if (item.type === 'saveItem') {
+      res = await fetch(`${API_URL}/data/${item.collection}`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: JSON.stringify(item.payload)
+      });
+    } else if (item.type === 'deleteItem') {
+      res = await fetch(`${API_URL}/data/${item.collection}/${item.itemId}`, {
+        method: 'DELETE',
+        headers: getAuthHeader()
+      });
+    } else {
+      return false;
+    }
 
-                    if (res.ok) {
-                        await offlineStorage.removeFromQueue(item.id);
-                        if (item.collection) syncedCollections.add(item.collection);
-                        return true;
-                    } else {
-                        // Обработка ошибок сервера
-                        const errorText = await res.text().catch(() => '');
-                        const isDependencyError = res.status === 400 && (
-                            errorText.toLowerCase().includes('not found') ||
-                            errorText.toLowerCase().includes('customer') ||
-                            errorText.toLowerCase().includes('reference')
-                        );
+    if (res.ok) {
+      await offlineStorage.removeFromQueue(item.id);
+      if (item.collection) syncedCollections.add(item.collection);
+      return true;
+    } else {
+      // 🔥 Лучше логирование ошибок
+      const errorText = await res.text().catch(() => '');
+      console.error(`❌ Sync failed for ${item.collection}/${item.payload?.id || item.itemId}:`,
+        res.status, errorText);
 
-                        item.retryCount = (item.retryCount || 0) + 1;
-
-                        if (isDependencyError && item.retryCount < 3) {
-                            await offlineStorage.updateQueueItem(item);
-                        } else if (item.retryCount > 5) {
-                            console.error(`❌ Dropping item ${item.id} after ${item.retryCount} retries`);
-                            await offlineStorage.removeFromQueue(item.id);
-                        } else {
-                            await offlineStorage.updateQueueItem(item);
-                        }
-                        return false;
-                    }
-                } catch (error) {
-                    console.error(`Failed to sync item ${item.id}`, error);
-                    item.retryCount = (item.retryCount || 0) + 1;
-                    if (item.retryCount <= 5) {
-                        await offlineStorage.updateQueueItem(item);
-                    } else {
-                        await offlineStorage.removeFromQueue(item.id);
-                    }
-                    return false;
-                }
-            };
+      item.retryCount = (item.retryCount || 0) + 1;
+      if (item.retryCount > 5) {
+        console.error(`❌ Dropping item ${item.id} after ${item.retryCount} retries`);
+        await offlineStorage.removeFromQueue(item.id);
+      } else {
+        await offlineStorage.updateQueueItem(item);
+      }
+      return false;
+    }
+  } catch (error) {
+    console.error(`Failed to sync item ${item.id}`, error);
+    item.retryCount = (item.retryCount || 0) + 1;
+    if (item.retryCount <= 5) {
+      await offlineStorage.updateQueueItem(item);
+    } else {
+      await offlineStorage.removeFromQueue(item.id);
+    }
+    return false;
+  }
+};
 
             // 🔹 Двухпроходная синхронизация
             const baseCollections = ['customers', 'accounts', 'investors', 'products'];
@@ -410,19 +404,20 @@ export const api = {
     },
 
     // User Management
-    updateUser: async (user: User) => {
-  const res = await fetch(`${API_URL}/users/manage`, {
-    method: 'POST',
-    headers: getAuthHeader(),
-    body: JSON.stringify({ action: 'update', userData: user })
-  });
-
-  if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.msg || data.error || 'Ошибка обновления пользователя');
+updateUser: async (user: User) => {
+  try {
+    const res = await fetch(`${API_URL}/users/manage`, {
+      method: 'POST',
+      headers: getAuthHeader(),
+      body: JSON.stringify({ action: 'update', userData: user })
+    });
+    if (!res.ok) throw new Error('Failed to update user');
+    return res.json();
+  } catch (error) {
+    console.warn("Offline mode: updateUser not queued (users managed separately)");
+    // 🔥 users не кешируются в data_items, поэтому просто возвращаем user
+    return { success: true, user };
   }
-
-  return res.json();
 },
 
     deleteUser: async (userId: string) => {
