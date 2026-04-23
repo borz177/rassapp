@@ -1524,21 +1524,15 @@ if (req.user.role === 'investor') {
 app.post('/api/data/:type', auth, async (req, res) => {
   try {
     const { type } = req.params;
-
-    // 🔐 Валидация типа данных
     if (!VALID_DATA_TYPES.includes(type)) {
       return res.status(400).json({ error: 'Недопустимый тип данных' });
     }
 
     const itemData = req.body;
 
-    // ✅ Базовая логика: сотрудники → managerId, остальные → свой id
+    // ✅ ИСПРАВЛЕНО: Убрали специальную логику для инвесторов
+    // Теперь ВСЕ данные сохраняются под targetUserId (менеджером)
     let targetUserId = getTargetUserId(req.user);
-
-    // ✅ СПЕЦИАЛЬНАЯ ЛОГИКА ДЛЯ ИНВЕСТОРОВ — ОСТАВЬТЕ ЭТО!
-if (type === 'investors' && itemData.id?.startsWith('u_inv_')) {
-  targetUserId = itemData.id;  // ← Сохраняем под ID инвестора
-}
 
     // 🔐 Проверка прав доступа
     if (!canAccessUserData(req.user, targetUserId)) {
@@ -1546,13 +1540,12 @@ if (type === 'investors' && itemData.id?.startsWith('u_inv_')) {
     }
 
     const id = itemData.id;
-
     await pool.query(`
       INSERT INTO data_items (id, user_id, type, data, updated_at)
       VALUES ($1, $2, $3, $4, NOW())
-      ON CONFLICT (id) 
-      DO UPDATE SET 
-        data = EXCLUDED.data, 
+      ON CONFLICT (id)
+      DO UPDATE SET
+        data = EXCLUDED.data,
         type = EXCLUDED.type,
         user_id = EXCLUDED.user_id,
         updated_at = NOW();
