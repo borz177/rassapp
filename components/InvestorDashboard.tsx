@@ -122,31 +122,20 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
   }, [investorSales, investorExpenses, investorAccount]);
 
   // 🔹 Ожидаемая прибыль: Как в InvestorDetails
-  // 🔹 Ожидаемая прибыль: от остатка долга по АКТИВНЫМ сделкам
-const expectedTotalProfit = useMemo(() => {
-  if (!investorAccount || !investor.profitPercentage) return 0;
+  const expectedTotalProfit = useMemo(() => {
+    if (!investorAccount || !investor.profitPercentage) return 0;
 
-  // 🔧 Фильтруем только активные и черновые сделки (не завершённые!)
-  const activeSales = investorSales.filter(s =>
-    (s.status === 'ACTIVE' || s.status === 'DRAFT') &&
-    s.buyPrice > 0 &&
-    s.totalAmount > 0 &&
-    s.remainingAmount > 0  // 🔧 Только если ещё есть что получать
-  );
+    const activeSales = investorSales.filter(s =>
+      (s.status === 'ACTIVE' || s.status === 'COMPLETED') && s.buyPrice > 0
+    );
 
-  return activeSales.reduce((sum, sale) => {
-    // 🔧 Маржа прибыли: доля прибыли в каждом рубле выручки
-    const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
+    const totalProfitFromActiveSales = activeSales.reduce((sum, sale) => {
+      const saleProfit = sale.totalAmount - sale.buyPrice;
+      return sum + (saleProfit > 0 ? saleProfit : 0);
+    }, 0);
 
-    // 🔧 Прибыль, которая ещё может быть получена с остатка долга
-    const grossProfitFromRemaining = sale.remainingAmount * profitMargin;
-
-    // 🔧 Доля инвестора в этой потенциальной прибыли
-    const investorShare = grossProfitFromRemaining * (investor.profitPercentage / 100);
-
-    return sum + investorShare;
-  }, 0);
-}, [investorSales, investorAccount, investor.profitPercentage]);
+    return totalProfitFromActiveSales * (investor.profitPercentage / 100);
+  }, [investorSales, investorAccount, investor.profitPercentage]);
 
   // 🔹 Доступно к выводу
   const availableToWithdraw = useMemo(() => {
