@@ -848,7 +848,7 @@ const handleAddInvestor = async (
   }
 
   try {
-    // 🔹 1. Создаём ПОЛЬЗОВАТЕЛЯ для входа (запись в таблице users)
+    // 🔹 1. Создаём ПОЛЬЗОВАТЕЛЯ для входа
     const newInvestorUser = await api.createSubUser({
       name,
       email,
@@ -858,9 +858,9 @@ const handleAddInvestor = async (
       permissions
     });
 
-    // 🔹 2. Создаём запись инвестора в data_items, привязанную к пользователю
+    // 🔹 2. Создаём запись инвестора в data_items
     const newInvestor: Investor = {
-      id: newInvestorUser.id,  // 🔑 ID инвестора = ID пользователя!
+      id: newInvestorUser.id,
       userId: user.id,
       name,
       phone,
@@ -874,13 +874,13 @@ const handleAddInvestor = async (
     const savedInv = await api.saveItem('investors', newInvestor);
     updateList(setInvestors, savedInv);
 
-    // 🔹 3. Создаём счёт инвестора (привязанный к пользователю)
+    // 🔹 3. Создаём счёт инвестора
     const newAccount: Account = {
-      id: `acc_${newInvestorUser.id}`,  // 🔑 Уникальный ID счёта
+      id: `acc_${newInvestorUser.id}`,
       userId: user.id,
       name: `Счет: ${name}`,
       type: 'INVESTOR',
-      ownerId: newInvestorUser.id,  // 🔑 ownerId = ID пользователя для фильтрации
+      ownerId: newInvestorUser.id,
       currency: 'RUB',
       isArchived: false
     };
@@ -888,7 +888,7 @@ const handleAddInvestor = async (
     const savedAcc = await api.saveItem('accounts', newAccount);
     updateList(setAccounts, savedAcc);
 
-    // 🔹 4. Создаём транзакцию начального депозита (для истории и баланса)
+    // 🔹 4. Создаём транзакцию депозита
     const depositTransaction: Sale = {
       id: `dep_${Date.now()}`,
       userId: user.id,
@@ -910,16 +910,18 @@ const handleAddInvestor = async (
     const savedTx = await api.saveItem('sales', depositTransaction);
     updateList(setSales, savedTx);
 
-    // 🔹 5. Если есть расход "закупки" для депозита — создаём его
-
-
     alert("✅ Инвестор создан!");
-    return newInvestorUser; // 🔹 Возвращаем пользователя для возможного дальнейшего использования
+    return newInvestorUser;
 
   } catch(e: any) {
+    // 🔹 🔥 ПРОСТАЯ обработка ошибки занятого email
+    if (e.message?.includes('Email уже занят') || e.message?.includes('already exists')) {
+      alert('⚠️ Email уже занят');
+      return;
+    }
     console.error("❌ Ошибка создания инвестора:", e);
     alert(`Ошибка: ${e.message || 'Не удалось создать инвестора'}`);
-    throw e; // 🔹 Пробрасываем ошибку вверх для обработки
+    throw e;
   }
 };
 
@@ -941,24 +943,10 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
       const oldInvestorId = updated.id;
       const oldAccount = accounts.find(a => a.ownerId === oldInvestorId);
 
-      // 🔹 0. Проверка на дубликат email
-      try {
-        const existingUsers = await api.get<{id: string; email: string}[]>('/admin/users');
-        const emailConflict = existingUsers.find(u =>
-          u.email?.toLowerCase() === updated.email?.toLowerCase() && u.id !== oldInvestorId
-        );
-        if (emailConflict) {
-          alert(`⚠️ Email "${updated.email}" уже занят!`);
-          return;
-        }
-      } catch (e) {
-        console.warn('⚠️ Не удалось проверить email:', e);
-      }
-
-      // 🔹 🔥 ОДНО ОБЪЯВЛЕНИЕ tempPassword (исправлено!)
+      // 🔹 🔥 ОДНО ОБЪЯВЛЕНИЕ tempPassword
       const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
 
-      // 🔹 1. Создаём ПОЛЬЗОВАТЕЛЯ для входа
+      // 🔹 1. Создаём ПОЛЬЗОВАТЕЛЯ — сервер сам проверит email глобально
       let newUser;
       try {
         newUser = await api.createSubUser({
@@ -970,8 +958,9 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
           permissions: updated.permissions || {}
         });
       } catch (userErr: any) {
-        if (userErr.message?.includes('already exists')) {
-          alert(`⚠️ Пользователь с email "${updated.email}" уже существует.`);
+        // 🔹 🔥 ПРОСТАЯ обработка: только "Email уже занят"
+        if (userErr.message?.includes('Email уже занят') || userErr.message?.includes('already exists')) {
+          alert('⚠️ Email уже занят');
           return;
         }
         throw userErr;
@@ -984,7 +973,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
         userId: user!.id,         // 🔑 ownerId менеджера
         email: updated.email!.trim(),
         phone: updated.phone,
-        // 🔥 ЯВНО КОПИРУЕМ ВСЕ ПОЛЯ, включая profitPercentage
+        // 🔥 ЯВНО КОПИРУЕМ ВСЕ ПОЛЯ
         profitPercentage: updated.profitPercentage,
         initialAmount: updated.initialAmount,
         joinedDate: updated.joinedDate,
@@ -1086,6 +1075,11 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
     alert(hasPassword ? "✅ Инвестор и пароль обновлены!" : "✅ Инвестор обновлён!");
 
   } catch (error: any) {
+    // 🔹 🔥 ПРОСТАЯ обработка ошибки занятого email
+    if (error.message?.includes('Email уже занят') || error.message?.includes('already exists')) {
+      alert('⚠️ Email уже занят');
+      return;
+    }
     console.error('❌ Ошибка обновления инвестора:', error);
     alert(`Не удалось обновить: ${error.message}`);
   }

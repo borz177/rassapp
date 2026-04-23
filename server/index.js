@@ -1697,72 +1697,75 @@ app.post('/api/users/manage', auth, async (req, res) => {
   }
 
   try {
+    // ========================================
+    // 🔹 ACTION: CREATE
+    // ========================================
     if (action === 'create') {
-  const { name, email, password, role, permissions, allowedInvestorIds, phone } = userData;
+      const { name, email, password, role, permissions, allowedInvestorIds, phone } = userData;
 
-  // Check existence (case-insensitive)
-  const userCheck = await pool.query(
-    'SELECT * FROM users WHERE LOWER(email) = LOWER($1)',
-    [email]
-  );
-  if (userCheck.rows.length > 0) {
-    return res.status(400).json({
-      msg: 'Пользователь с таким Email уже существует',
-      existingUserId: userCheck.rows[0].id
-    });
-  }
+      // 🔹 Проверка email (регистронезависимая)
+      const userCheck = await pool.query(
+        'SELECT * FROM users WHERE LOWER(email) = LOWER($1)',
+        [email]
+      );
+      if (userCheck.rows.length > 0) {
+        return res.status(400).json({
+          msg: 'Пользователь с таким Email уже существует',
+          existingUserId: userCheck.rows[0].id
+        });
+      }
 
-  // Create ID
-  const id = role === 'investor' ? `u_inv_${Date.now()}` : `u_emp_${Date.now()}`;
+      // 🔹 Создаём ID
+      const id = role === 'investor' ? `u_inv_${Date.now()}` : `u_emp_${Date.now()}`;
 
-  // Hash Password
-  const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash(password, salt);
+      // 🔹 Хэшируем пароль
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
 
-  // Insert linked to current manager (req.user.id)
-  await pool.query(
-    `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, phone) 
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [
-      id,
-      name,
-      email,
-      hashedPassword,
-      role,
-      req.user.id,
-      JSON.stringify(permissions || {}),
-      JSON.stringify(allowedInvestorIds || []),
-      phone || null
-    ]
-  );
+      // 🔹 Создаём пользователя
+      await pool.query(
+        `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, phone) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          id,
+          name,
+          email,
+          hashedPassword,
+          role,
+          req.user.id,
+          JSON.stringify(permissions || {}),
+          JSON.stringify(allowedInvestorIds || []),
+          phone || null
+        ]
+      );
 
-  // 🔹 🔥 НОВОЕ: Если это инвестор — создаём профиль в data_items
-  if (role === 'investor') {
-    const investorData = {
-      id: id,  // 🔑 Тот же ID, что у пользователя
-      userId: req.user.id,  // ID менеджера-создателя
-      name,
-      email,
-      phone: phone || '',
-      initialAmount: 0,
-      profitPercentage: 0,
-      joinedDate: new Date().toISOString(),
-      permissions: permissions || {},
-      allowedInvestorIds: allowedInvestorIds || []
-    };
+      // 🔹 🔥 НОВОЕ: Если это инвестор — создаём профиль в data_items
+      if (role === 'investor') {
+        const investorData = {
+          id: id,  // 🔑 Тот же ID, что у пользователя
+          userId: req.user.id,  // ID менеджера-создателя
+          name,
+          email,
+          phone: phone || '',
+          initialAmount: 0,
+          profitPercentage: 0,
+          joinedDate: new Date().toISOString(),
+          permissions: permissions || {},
+          allowedInvestorIds: allowedInvestorIds || []
+        };
 
-    await pool.query(`
-      INSERT INTO data_items (id, user_id, type, data, updated_at)
-      VALUES ($1, $2, $3, $4, NOW())
-      ON CONFLICT (id) DO UPDATE 
-      SET data = EXCLUDED.data, updated_at = NOW()
-    `, [id, req.user.id, 'investors', JSON.stringify(investorData)]);
-  }
+        await pool.query(`
+          INSERT INTO data_items (id, user_id, type, data, updated_at)
+          VALUES ($1, $2, $3, $4, NOW())
+          ON CONFLICT (id) DO UPDATE 
+          SET data = EXCLUDED.data, updated_at = NOW()
+        `, [id, req.user.id, 'investors', JSON.stringify(investorData)]);
+      }
 
-  return res.json({
-    id, name, email, role, managerId: req.user.id, permissions, allowedInvestorIds, phone
-  });
-}
+      return res.json({
+        id, name, email, role, managerId: req.user.id, permissions, allowedInvestorIds, phone
+      });
+    }
 
     if (action === 'delete') {
   const investorId = userData.id;
