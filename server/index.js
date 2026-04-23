@@ -1529,12 +1529,17 @@ app.post('/api/data/:type', auth, async (req, res) => {
     }
 
     const itemData = req.body;
+    console.log(`📥 Received ${type}:`, {
+      id: itemData.id,
+      profitPercentage: itemData.profitPercentage
+    });
 
-    // ✅ ИСПРАВЛЕНО: Убрали специальную логику для инвесторов
-    // Теперь ВСЕ данные сохраняются под targetUserId (менеджером)
     let targetUserId = getTargetUserId(req.user);
 
-    // 🔐 Проверка прав доступа
+    if (type === 'investors' && itemData.id?.startsWith('u_inv_')) {
+      targetUserId = itemData.id;
+    }
+
     if (!canAccessUserData(req.user, targetUserId)) {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
@@ -1551,6 +1556,7 @@ app.post('/api/data/:type', auth, async (req, res) => {
         updated_at = NOW();
     `, [id, targetUserId, type, JSON.stringify(itemData)]);
 
+    console.log(`✅ Saved ${type} ${id} with profitPercentage:`, itemData.profitPercentage);
     res.json(itemData);
   } catch (err) {
     console.error(err);

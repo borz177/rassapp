@@ -350,33 +350,39 @@ export const api = {
     },
 
     // CRUD
-    saveItem: async (type: string, item: any): Promise<any> => {
-        // Optimistic update support
-        try {
-            const res = await fetch(`${API_URL}/data/${type}`, {
-                method: 'POST',
-                headers: getAuthHeader(),
-                body: JSON.stringify(item)
-            });
-            if (!res.ok) throw new Error(`Failed to save ${type}`);
-            const savedItem = await res.json();
+   saveItem: async (type: string, item: any): Promise<any> => {
+  console.log(`💾 Saving ${type}:`, {
+    id: item.id,
+    profitPercentage: item.profitPercentage,
+    fullItem: item
+  });
 
-            // Update cache if possible (simple append/update)
-            // Ideally we should re-fetch or update the specific cache entry
-            // For now, we rely on the UI updating its state via the return value
-            return savedItem;
-        } catch (error) {
-            console.warn("Offline mode: saving to queue", error);
-            // Save to offline queue
-            await offlineStorage.addToQueue({
-                type: 'saveItem',
-                collection: type,
-                payload: item
-            });
-            // Return the item as if it was saved (Optimistic)
-            return item;
-        }
-    },
+  try {
+    const res = await fetch(`${API_URL}/data/${type}`, {
+      method: 'POST',
+      headers: getAuthHeader(),
+      body: JSON.stringify(item)
+    });
+
+    if (!res.ok) throw new Error(`Failed to save ${type}`);
+
+    const savedItem = await res.json();
+    console.log(`✅ Server response for ${item.id}:`, {
+      profitPercentage: savedItem.profitPercentage,
+      fullItem: savedItem
+    });
+
+    return savedItem;
+  } catch (error) {
+    console.warn("Offline mode: saving to queue", error);
+    await offlineStorage.addToQueue({
+      type: 'saveItem',
+      collection: type,
+      payload: item
+    });
+    return item;
+  }
+},
 
     deleteItem: async (type: string, id: string) => {
         try {

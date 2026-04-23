@@ -123,24 +123,27 @@ const isLanding = path === "/"
 
  // 🔹 Вспомогательная функция для "умного" слияния данных (исправленная версия)
 const mergeServerData = <T extends { id: string }>(
-    current: T[],
-    fresh: T[]
+  current: T[],
+  fresh: T[]
 ): T[] => {
-    const freshMap = new Map<string, T>(fresh.map(item => [item.id, item]));
+  const freshMap = new Map<string, T>(fresh.map(item => [item.id, item]));
 
-    // 1. Обновляем существующие элементы
-    const updated = current.map(item => {
-        if (freshMap.has(item.id)) {
-            return freshMap.get(item.id)!;
-        }
-        return item;
-    });
+  const updated = current.map(item => {
+    if (freshMap.has(item.id)) {
+      const serverItem = freshMap.get(item.id)!;
+      // 🔹 СОХРАНЯЕМ локальные поля, если их нет на сервере
+      return {
+        ...item,
+        ...serverItem,
+        // 🔹 ЯВНО СОХРАНЯЕМ profitPercentage из сервера (используем any для TypeScript)
+        profitPercentage: (serverItem as any).profitPercentage ?? (item as any).profitPercentage
+      };
+    }
+    return item;
+  });
 
-    // 2. Удаляем из freshMap те, что уже обработали
-    updated.forEach(item => freshMap.delete(item.id));
-
-    // 3. Добавляем новые элементы с сервера
-    return [...updated, ...Array.from(freshMap.values())];
+  updated.forEach(item => freshMap.delete(item.id));
+  return [...updated, ...Array.from(freshMap.values())];
 };
 
 
@@ -937,13 +940,12 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
     const hasEmail = updated.email && updated.email.trim().length > 0;
     const hasPassword = password && password.trim().length > 0;
     const isImportedWithoutUser = updated.id.startsWith('inv_') && !updated.id.startsWith('u_inv_');
-
-    // 🔹 АКТИВАЦИЯ: если есть email и (пароль или импортирован без пользователя)
     const needsActivation = hasEmail && (hasPassword || isImportedWithoutUser);
 
     if (needsActivation && !updated.id.startsWith('u_inv_') && !updated.id.startsWith('u_emp_')) {
       const oldInvestorId = updated.id;
       const oldAccount = accounts.find(a => a.ownerId === oldInvestorId);
+      const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
 
       // 🔹 0. Проверка на дубликат email
       try {
@@ -961,7 +963,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
 
       const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
 
-      // 🔹 1. Создаём ПОЛЬЗОВАТЕЛЯ для входа
+      // 🔹 1. Создаём ПОЛЬЗОВАТЕЛЯ
       let newUser;
       try {
         newUser = await api.createSubUser({
@@ -980,36 +982,38 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
         throw userErr;
       }
 
-      // 🔹 2. Создаём инвестора с НОВЫМ ID (ID пользователя)
+      // 🔹 2. Создаём инвестора с НОВЫМ ID — 🔥 ЯВНО ПЕРЕДАЁМ ВСЕ ПОЛЯ
       const linkedInvestor: Investor = {
         ...updated,
-        id: newUser.id,           // 🔑 Новый ID = ID пользователя
-        userId: user!.id,         // 🔑 ownerId менеджера
+        id: newUser.id,
+        userId: user!.id,
         email: updated.email!.trim(),
-        phone: updated.phone
+        phone: updated.phone,
+        profitPercentage: updated.profitPercentage,  // 🔥 ЯВНОЕ КОПИРОВАНИЕ
+        initialAmount: updated.initialAmount,
+        joinedDate: updated.joinedDate,
+        permissions: updated.permissions
       };
 
       const savedInvestor = await api.saveItem('investors', linkedInvestor);
 
-      // 🔹 3. 🗑️ УДАЛЯЕМ СТАРОГО ИНВЕСТОРА С СЕРВЕРА (КРИТИЧНО!)
+      // 🔹 3. Удаляем старого инвестора
       try {
         await api.deleteItem('investors', oldInvestorId);
-        console.log(`🗑️ Старый инвестор ${oldInvestorId} удалён`);
       } catch (delErr) {
         console.warn('⚠️ Не удалось удалить старого инвестора:', delErr);
       }
 
-      // 🔹 4. Обновляем локальный стейт: ЗАМЕНЯЕМ старого на нового
+      // 🔹 4. Обновляем стейт
       setInvestors(prev => {
         const withoutOld = prev.filter(i => i.id !== oldInvestorId);
-        // Проверка на дубликат по email
         const isDuplicate = withoutOld.some(i =>
           i.email?.toLowerCase() === updated.email?.toLowerCase() && i.id !== newUser.id
         );
         return isDuplicate ? withoutOld : [savedInvestor, ...withoutOld];
       });
 
-      // 🔹 5. Транзакции депозита (если есть сумма и счёт)
+      // 🔹 5-6. Транзакции и счета (без изменений)
       if (updated.initialAmount > 0 && oldAccount) {
         const depositTransaction: Sale = {
           id: `dep_activate_${newUser.id}_${Date.now()}`,
@@ -1032,7 +1036,6 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
         updateList(setSales, depositTransaction, undefined, 'sales');
       }
 
-      // 🔹 6. Обновляем счёт: меняем ownerId
       if (oldAccount) {
         const updatedAccount = {
           ...oldAccount,
@@ -1047,16 +1050,19 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
       }
 
       alert(`✅ Инвестор активирован!\nЛогин: ${updated.email}\nПароль: ${tempPassword}`);
-
-      // 🔹 7. Перезагружаем данные с задержкой
       setTimeout(() => loadData(), 1000);
-      return; // 🔥 ВАЖНО: выходим!
+      return;
     }
 
-    // ========================================
-    // ОБЫЧНОЕ ОБНОВЛЕНИЕ (без активации)
-    // ========================================
-    const saved = await api.saveItem('investors', updated);
+    // 🔹 ОБЫЧНОЕ ОБНОВЛЕНИЕ — 🔥 ЯВНО СОХРАНЯЕМ profitPercentage
+    const investorToUpdate: Investor = {
+      ...updated,
+      profitPercentage: updated.profitPercentage,  // 🔥 ЯВНОЕ УКАЗАНИЕ
+      initialAmount: updated.initialAmount,
+      permissions: updated.permissions
+    };
+
+    const saved = await api.saveItem('investors', investorToUpdate);
     updateList(setInvestors, saved, undefined, 'investors');
 
     // Обновляем пользователя ТОЛЬКО если это уже активированный инвестор
@@ -1081,7 +1087,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
       }
     }
 
-    alert(hasPassword ? "✅ Инвестор и пароль обновлены!" : "✅ Инвестор обновлён!");
+    alert("✅ Инвестор обновлён!");
 
   } catch (error: any) {
     console.error('❌ Ошибка обновления инвестора:', error);
