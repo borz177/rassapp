@@ -276,19 +276,7 @@ const PaymentDetailsModal = ({
           }
         });
       } else {
-        // 🔹 Полученные: первый взнос + оплаченные реальные платежи
-        if (sale.downPayment > 0) {
-          const startDate = new Date(sale.startDate);
-          if (startDate >= monthStart && startDate <= monthEnd) {
-            result.push({
-              sale,
-              customerName: customer?.name || 'Неизвестно',
-              amount: sale.downPayment,
-              date: sale.startDate,
-              isOverdue: false
-            });
-          }
-        }
+        
         sale.paymentPlan.forEach(p => {
           if (p.isPaid && p.isRealPayment !== false) {
             const paymentDate = new Date(p.date);
@@ -714,13 +702,7 @@ const receivedPaymentsThisMonth = useMemo(() => {
         if (sale.customerId.startsWith('system_')) return;
         if (investors.some(i => i.id === sale.customerId)) return;
 
-        // Первый взнос
-        if (sale.downPayment > 0) {
-            const startDate = new Date(sale.startDate);
-            if (startDate >= monthStart && startDate <= monthEnd) {
-                received += sale.downPayment;
-            }
-        }
+
 
         // Оплаченные платежи по графику
         sale.paymentPlan.forEach(payment => {
