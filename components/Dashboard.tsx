@@ -222,6 +222,7 @@ const PaymentDetailsModal = ({
 }) => {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const today = new Date(); today.setHours(0,0,0,0);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
   const items = useMemo(() => {
@@ -247,13 +248,23 @@ const PaymentDetailsModal = ({
 
       const customer = customers.find(c => c.id === sale.customerId);
 
-      if (type === 'expected') {
+            if (type === 'expected') {
+        // 🔹 Проверяем общую просрочку перед добавлением платежей клиента
+        let expectedTotalForCheck = sale.downPayment;
+        sale.paymentPlan.forEach(p => {
+            if (!p.isRealPayment && new Date(p.date) < today) expectedTotalForCheck += p.amount;
+        });
+        const clientOverdue = Math.max(0, expectedTotalForCheck - (sale.totalAmount - sale.remainingAmount));
+
+        // ⛔ Если клиент в графике (просрочки нет) — не показываем его здесь
+        if (clientOverdue <= 0) return;
+
         // 🔹 Ожидаемые: плановые, неоплаченные, дата в этом месяце
         sale.paymentPlan.forEach(p => {
           if ((p.isRealPayment === false || p.isRealPayment === undefined) && !p.isPaid) {
             const paymentDate = new Date(p.date);
             if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-              const isOverdue = paymentDate < new Date().setHours(0,0,0,0);
+              const isOverdue = paymentDate < today;
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
@@ -642,10 +653,10 @@ const [selectedPaymentType, setSelectedPaymentType] = useState<'expected' | 'rec
 
 
 
-  // 📊 Ожидаемые платежи в этом месяце (плановые, ещё не оплаченные)
-// 📊 Ожидаемые платежи в этом месяце (плановые, ещё не оплаченные)
+ // 📊 Ожидаемые платежи в этом месяце (ТОЛЬКО для должников)
 const expectedPaymentsThisMonth = useMemo(() => {
     const now = new Date();
+    const today = new Date(); today.setHours(0,0,0,0);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
@@ -656,10 +667,22 @@ const expectedPaymentsThisMonth = useMemo(() => {
 
     let expected = 0;
 
+    // 🔹 Функция расчёта реальной просрочки
+    const getOverdueAmount = (sale: Sale) => {
+        let exp = sale.downPayment;
+        sale.paymentPlan.forEach(p => {
+            if (!p.isRealPayment && new Date(p.date) < today) exp += p.amount;
+        });
+        return Math.max(0, exp - (sale.totalAmount - sale.remainingAmount));
+    };
+
     filteredSales.forEach(sale => {
         if (sale.customerId.startsWith('system_')) return;
         if (investors.some(i => i.id === sale.customerId)) return;
         if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
+
+        // 🔹 ГЛАВНОЕ: пропускаем клиентов без просрочки
+        if (getOverdueAmount(sale) <= 0) return;
 
         sale.paymentPlan.forEach(payment => {
             if ((payment.isRealPayment === false || payment.isRealPayment === undefined) && !payment.isPaid) {
@@ -672,7 +695,7 @@ const expectedPaymentsThisMonth = useMemo(() => {
     });
 
     return Math.round(expected * 100) / 100;
-}, [sales, investors, selectedAccountId]); // ← Добавили selectedAccountId
+}, [sales, investors, selectedAccountId]);
 
 // 💰 Полученные платежи за этот месяц (фактически оплаченные)
 const receivedPaymentsThisMonth = useMemo(() => {
