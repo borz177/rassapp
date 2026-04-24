@@ -653,7 +653,12 @@ const receivedPaymentsThisMonth = useMemo(() => {
       </p>
   </div>
 
-                        {/* 7. Ожидаемые платежи в этом месяце */}
+
+
+
+                    </div>
+
+                       {/* 7. Ожидаемые платежи в этом месяце */}
 <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 flex flex-col relative overflow-hidden cursor-default">
     <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
     <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-4 z-10 relative group-hover:bg-amber-500 group-hover:text-white transition-colors duration-300 shadow-sm">
@@ -688,11 +693,6 @@ const receivedPaymentsThisMonth = useMemo(() => {
         </p>
     </div>
 </div>
-
-
-                    </div>
-
-
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
