@@ -518,15 +518,16 @@ const Dashboard: React.FC<DashboardProps> = ({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                         </svg>
                     </div>
-                    <div className="z-10 relative mt-auto">
-                        <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                          В обороте
-                        </p>
-                        <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                            {formatCurrency(currentWorkingCapital, appSettings.showCents)}
-                            <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-                        </p>
-                    </div>
+                      <div className="z-10 relative mt-auto">
+                          <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
+                              В обороте
+                          </p>
+                          <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                              {formatCurrency(currentWorkingCapital, appSettings.showCents)}
+                              <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                          </p>
+                          <p className="text-xs text-slate-500 mb-2">Деньги на счете+долг клиентов</p>
+                      </div>
                   </div>
 
                     {/* 4. Продажи в рассрочку */}
