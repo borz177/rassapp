@@ -335,8 +335,6 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
     ? 'Нет ожидаемых платежей в этом месяце'
     : 'Нет полученных платежей в этом месяце';
 
-
-
   return createPortal(
     <div
       className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
@@ -363,13 +361,13 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
           </button>
         </div>
 
-       {/* Итого */}
-<div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-  <span className="text-sm text-slate-500">Получено платежей</span>
-  <span className="text-lg font-bold text-slate-800">
-    {formatCurrency(totalAmount, appSettings.showCents)} ₽
-  </span>
-</div>
+        {/* Итого */}
+        <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+          <span className="text-sm text-slate-500">Итого</span>
+          <span className="text-lg font-bold text-slate-800">
+            {formatCurrency(totalAmount, appSettings.showCents)} ₽
+          </span>
+        </div>
 
         {/* Список */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -677,7 +675,6 @@ const expectedPaymentsThisMonth = useMemo(() => {
 }, [sales, investors, selectedAccountId]); // ← Добавили selectedAccountId
 
 // 💰 Полученные платежи за этот месяц (фактически оплаченные)
-
 const receivedPaymentsThisMonth = useMemo(() => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -694,7 +691,15 @@ const receivedPaymentsThisMonth = useMemo(() => {
         if (sale.customerId.startsWith('system_')) return;
         if (investors.some(i => i.id === sale.customerId)) return;
 
-        // 🔹 ТОЛЬКО оплаченные платежи по графику (первые взносы убраны)
+        // Первый взнос
+        if (sale.downPayment > 0) {
+            const startDate = new Date(sale.startDate);
+            if (startDate >= monthStart && startDate <= monthEnd) {
+                received += sale.downPayment;
+            }
+        }
+
+        // Оплаченные платежи по графику
         sale.paymentPlan.forEach(payment => {
             if (payment.isPaid && payment.isRealPayment !== false) {
                 const paymentDate = new Date(payment.date);
