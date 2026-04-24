@@ -87,9 +87,10 @@ const Layout: React.FC<LayoutProps> = ({
   }, [user]);
 
   // Calculate counts for badges
-  const counts = useMemo(() => {
+  // В компоненте Layout замени counts на эту версию:
+const counts = useMemo(() => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalize to midnight to match Contracts logic
+    today.setHours(0, 0, 0, 0);
 
     let active = 0;
     let overdue = 0;
@@ -99,12 +100,24 @@ const Layout: React.FC<LayoutProps> = ({
     const actualSales = sales.filter(sale => customerIdSet.has(sale.customerId));
 
     actualSales.forEach(sale => {
+      // Архив: завершенные или полностью оплаченные
       if (sale.status === 'COMPLETED' || sale.remainingAmount === 0) {
         archive++;
         return;
       }
-      const hasOverduePayment = sale.paymentPlan.some(p => !p.isPaid && new Date(p.date) < today);
-      if (hasOverduePayment) {
+
+      // 🔥 ТА ЖЕ ЛОГИКА, ЧТО В CONTRACTS COMPONENT
+      let expectedTotal = sale.downPayment;
+      sale.paymentPlan.forEach(p => {
+        // Важно: используем isRealPayment, а не isPaid!
+        if (!p.isRealPayment && new Date(p.date) < today) {
+          expectedTotal += p.amount;
+        }
+      });
+      const totalPaid = sale.totalAmount - sale.remainingAmount;
+      const overdueAmount = Math.max(0, expectedTotal - totalPaid);
+
+      if (overdueAmount > 0) {
         overdue++;
       } else {
         active++;
@@ -112,7 +125,7 @@ const Layout: React.FC<LayoutProps> = ({
     });
 
     return { active, overdue, archive };
-  }, [sales, customers]);
+}, [sales, customers]);
 
   // Desktop Sidebar Items
   const allSidebarItems = [
