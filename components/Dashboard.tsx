@@ -301,9 +301,35 @@ const PaymentDetailsModal = ({
       if (!a.isOverdue && b.isOverdue) return 1;
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
-}, [sales, customers, investors, type, monthStart, monthEnd, selectedAccountId]); 
+}, [sales, customers, investors, type, monthStart, monthEnd, selectedAccountId]);
 
   const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
+
+// 🔹 РАЗДЕЛЯЕМ на платежи по графику и первые взносы
+const { installmentTotal, downPaymentTotal } = useMemo(() => {
+    let instTotal = 0;
+    let dpTotal = 0;
+
+    items.forEach(item => {
+        // 🔹 Первый взнос определяется по тому, что дата платежа = дата договора
+        // и сумма совпадает с downPayment договора
+        const isDownPayment =
+            item.date === item.sale.startDate &&
+            item.amount === item.sale.downPayment &&
+            item.sale.downPayment > 0;
+
+        if (isDownPayment) {
+            dpTotal += item.amount;
+        } else {
+            instTotal += item.amount;
+        }
+    });
+
+    return {
+        installmentTotal: Math.round(instTotal * 100) / 100,
+        downPaymentTotal: Math.round(dpTotal * 100) / 100
+    };
+}, [items]);
   const title = type === 'expected' ? 'Ожидаемые платежи' : 'Полученные платежи';
   const emptyText = type === 'expected'
     ? 'Нет ожидаемых платежей в этом месяце'
@@ -336,12 +362,34 @@ const PaymentDetailsModal = ({
         </div>
 
         {/* Итого */}
-        <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-          <span className="text-sm text-slate-500">Итого</span>
-          <span className="text-lg font-bold text-slate-800">
-            {formatCurrency(totalAmount, appSettings.showCents)} ₽
-          </span>
+        {/* 🔹 Разделённые итоги: Платежи + Первые взносы */}
+<div className="px-4 py-3 bg-slate-50 border-b border-slate-100 space-y-2">
+    {/* Платежи по графику */}
+    <div className="flex justify-between items-center">
+        <span className="text-sm text-slate-500">Платежи</span>
+        <span className="text-base font-semibold text-slate-700">
+            {formatCurrency(installmentTotal, appSettings.showCents)} ₽
+        </span>
+    </div>
+
+    {/* Первые взносы (показываем только если есть) */}
+    {downPaymentTotal > 0 && (
+        <div className="flex justify-between items-center pt-1 border-t border-slate-200">
+            <span className="text-sm text-slate-500">Первые взносы</span>
+            <span className="text-base font-semibold text-slate-700">
+                {formatCurrency(downPaymentTotal, appSettings.showCents)} ₽
+            </span>
         </div>
+    )}
+
+    {/* Общая сумма */}
+    <div className="flex justify-between items-center pt-2 border-t border-slate-300">
+        <span className="text-sm font-bold text-slate-600">Всего</span>
+        <span className="text-lg font-bold text-slate-800">
+            {formatCurrency(totalAmount, appSettings.showCents)} ₽
+        </span>
+    </div>
+</div>
 
         {/* Список */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
