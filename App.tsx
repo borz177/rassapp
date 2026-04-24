@@ -1494,8 +1494,7 @@ if (!user && !isLoading) {
   return <Auth onLogin={handleAuthSuccess} />;
 }
 
-    let currentUser;
-    return (
+  return (
 
        <Layout
     currentView={currentView}
@@ -1528,7 +1527,7 @@ if (!user && !isLoading) {
                   <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital}
                              accountBalances={accountBalances} onAction={handleAction}
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
-                             accounts={accounts} appSettings={appSettings} investors={investors} isAdmin={currentUser?.role === 'admin'} />}
+                             accounts={accounts} appSettings={appSettings} investors={investors}/>}
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
 {/* 🔹 Дашборд инвестора — с проверкой на загрузку данных */}
 {currentView === 'DASHBOARD' && isInvestor && activeInvestor && (
