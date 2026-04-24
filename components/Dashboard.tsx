@@ -526,7 +526,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               {formatCurrency(currentWorkingCapital, appSettings.showCents)}
                               <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
                           </p>
-                          <p className="text-xs text-slate-500 mb-2">Деньги на счете+долг клиентов</p>
+                          
                       </div>
                   </div>
 
