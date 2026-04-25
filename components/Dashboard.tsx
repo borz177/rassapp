@@ -244,7 +244,7 @@ const PaymentDetailsModal = ({
     filteredSales.forEach(sale => { // ← Используем filteredSales вместо sales
       if (sale.customerId.startsWith('system_')) return;
       if (investorIds.has(sale.customerId)) return;
-      
+
 
       const customer = customers.find(c => c.id === sale.customerId);
 
@@ -889,6 +889,7 @@ const receivedPaymentsThisMonth = useMemo(() => {
           {formatCurrency(profitStats.expectedProfit, appSettings.showCents)}
           <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
+
   </div>
 
 
@@ -914,6 +915,7 @@ const receivedPaymentsThisMonth = useMemo(() => {
                                 {formatCurrency(expectedPaymentsThisMonth, appSettings.showCents)}
                                 <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
                             </p>
+                            <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
                         </div>
                         <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
                             <svg className="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none"
@@ -935,16 +937,17 @@ const receivedPaymentsThisMonth = useMemo(() => {
                                 <text x="5" y="18" fontSize="16" fontWeight="bold">✓</text>
                             </svg>
                         </div>
-                        <div className="z-10 relative mt-auto">
-                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                                Получено в этом месяце
-                            </p>
-                            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                                {formatCurrency(receivedPaymentsThisMonth, appSettings.showCents)}
-                                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-                            </p>
-                        </div>
-                        <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <div className="z-10 relative mt-auto">
+                             <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
+                                 Получено в этом месяце
+                             </p>
+                             <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                                 {formatCurrency(receivedPaymentsThisMonth, appSettings.showCents)}
+                                 <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                             </p>
+                             <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
+                         </div>
+                         <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
                             <svg className="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none"
                                  stroke="currentColor" strokeWidth="2">
                                 <polyline points="9 18 15 12 9 6"/>
