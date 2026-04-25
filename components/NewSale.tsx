@@ -769,32 +769,33 @@ const handleSendContract = async () => {
     )}
   </div>
 
-  {/* 🔹 Чекбокс "Взнос = наценка" */}
-  {mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && (
-    <label className="flex items-start gap-2.5 p-2.5 rounded-xl cursor-pointer group hover:bg-slate-50 transition-colors">
-      <div className="relative mt-0.5">
-        <input
-          type="checkbox"
-          checked={downPaymentFromMarkup}
-          onChange={(e) => setDownPaymentFromMarkup(e.target.checked)}
-          className="w-4.5 h-4.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
-        />
-        {/* 🔹 Анимация при активации */}
-        {downPaymentFromMarkup && (
-          <span className="absolute inset-0 rounded-full bg-indigo-100 animate-ping opacity-20" />
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <span className="text-xs text-slate-600 group-hover:text-indigo-600 transition-colors font-medium">
-          Первый взнос = сумма наценки
-        </span>
-          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-            +{Math.round(Number(formData.buyPrice) * formData.interestRate / 100).toLocaleString()} ₽
-          </span>
+  {/* 🔹 Чекбокс "Взнос = наценка" (в одну строку) */}
+{mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && (
+  <label className="flex items-center gap-3 p-3 rounded-xl cursor-pointer group hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200">
+    {/* Чекбокс */}
+    <div className="relative flex-shrink-0">
+      <input
+        type="checkbox"
+        checked={downPaymentFromMarkup}
+        onChange={(e) => setDownPaymentFromMarkup(e.target.checked)}
+        className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
+      />
+      {downPaymentFromMarkup && (
+        <span className="absolute inset-0 rounded-full bg-indigo-100 animate-ping opacity-20" />
+      )}
+    </div>
 
-      </div>
-    </label>
-  )}
+    {/* Текст + Сумма в один ряд */}
+    <div className="flex-1 flex items-center justify-between gap-3 min-w-0">
+      <span className="text-xs text-slate-600 group-hover:text-indigo-600 transition-colors font-medium truncate">
+        Первый взнос = сумма наценки
+      </span>
+      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg whitespace-nowrap flex-shrink-0">
+        +{Math.round(Number(formData.buyPrice) * formData.interestRate / 100).toLocaleString()} ₽
+      </span>
+    </div>
+  </label>
+)}
 
 
 </div>
