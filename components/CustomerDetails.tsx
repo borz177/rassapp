@@ -16,6 +16,7 @@ interface CustomerDetailsProps {
   onEditPayment?: (saleId: string, paymentId: string, newDate: string) => void;
   onUpdateCustomer?: (customer: Customer) => void;
   initialSaleId?: string | null;
+  onDeleteCustomer?: (customerId: string) => void;
 }
 const compressImage = (file: File, maxWidth = 1920): Promise<Blob> => {
   return new Promise((resolve) => {
@@ -368,7 +369,8 @@ const handleAddDocument = async () => {
     );
 };
 const CustomerDetails: React.FC<CustomerDetailsProps> = ({
-    customer, sales, accounts, investors, appSettings, onBack, onInitiatePayment, onUndoPayment, onEditPayment, onUpdateCustomer, initialSaleId
+    customer, sales, accounts, investors, appSettings, onBack, onInitiatePayment, onUndoPayment, onEditPayment, onUpdateCustomer, initialSaleId,
+    onDeleteCustomer,
 }) => {
   const [activeTab, setActiveTab] = useState<'INFO' | 'INSTALLMENTS'>('INFO');
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
@@ -377,6 +379,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [editDate, setEditDate] = useState('');
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
 
 
@@ -419,7 +422,21 @@ const handleViewDocument = (e: React.MouseEvent, doc: CustomerDocument) => {
   const confirmDelete = () => { if (selectedSale && deletingPaymentId && onUndoPayment) { onUndoPayment(selectedSale.id, deletingPaymentId); setDeletingPaymentId(null); } }
 
 
+const handleDeleteRequest = () => {
+  // 🔒 ГЛАВНАЯ ПРОВЕРКА: нет привязанных договоров
+  if (customerSales.length > 0) {
+    alert('⛔ Невозможно удалить клиента! У него есть привязанные договоры. Сначала удалите или закройте их.');
+    return;
+  }
+  setShowDeleteModal(true);
+};
 
+const confirmDeleteCustomer = () => {
+  if (onDeleteCustomer) {
+    onDeleteCustomer(customer.id);
+    onBack(); // Возвращаем пользователя к списку клиентов
+  }
+};
 
 
 const normalizePhoneForWhatsApp = (phone: string): string => {
@@ -756,10 +773,16 @@ const handleSendFullReport = () => {
 )}
 
 
-
               <div className="pt-2">
-                  <button onClick={handleSendFullReport} className="w-full bg-slate-800 text-white py-4 rounded-xl font-semibold flex items-center justify-center gap-2">
+                  <button onClick={handleSendFullReport}
+                          className="w-full bg-slate-800 text-white py-4 rounded-xl font-semibold flex items-center justify-center gap-2">
                       {ICONS.Send} Отправить отчет в WhatsApp
+                  </button>
+                  <button
+                      onClick={handleDeleteRequest}
+                      className="w-full bg-white border-2 border-red-100 text-red-500 hover:bg-red-50 hover:border-red-200 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all"
+                  >
+                      {ICONS.Delete} Удалить клиента
                   </button>
               </div>
           </div>
@@ -850,6 +873,36 @@ const handleSendFullReport = () => {
             </div>
         </div>
     </div>
+)}
+
+
+
+        {showDeleteModal && (
+  <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+    <div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl animate-scale-in">
+      <div className="w-14 h-14 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+        {ICONS.Delete}
+      </div>
+      <h3 className="text-lg font-bold text-slate-800 text-center mb-2">Удалить клиента?</h3>
+      <p className="text-center text-slate-500 mb-6 text-sm">
+        Это действие нельзя отменить. Все данные клиента будут удалены безвозвратно.
+      </p>
+      <div className="flex gap-3">
+        <button
+          onClick={() => setShowDeleteModal(false)}
+          className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition"
+        >
+          Отмена
+        </button>
+        <button
+          onClick={confirmDeleteCustomer}
+          className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition shadow-lg shadow-red-200"
+        >
+          Да, удалить
+        </button>
+      </div>
+    </div>
+  </div>
 )}
 
     </div>

@@ -1139,6 +1139,52 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
     loadData();
   }
 };
+
+
+
+ const handleDeleteCustomer = async (customerId: string) => {
+  // 🔹 1. ГЛАВНАЯ ПРОВЕРКА: есть ли привязанные договоры?
+  const customerSales = sales.filter(s => s.customerId === customerId);
+
+  if (customerSales.length > 0) {
+    alert(`⛔ Невозможно удалить клиента!
+    
+У него есть ${customerSales.length} привязанных договоров:
+${customerSales.map(s => `• ${s.productName}`).join('\n')}
+
+Сначала удалите или закройте все договоры.`);
+    return;
+  }
+
+  // 🔹 2. Подтверждение удаления
+  if (!window.confirm('Вы уверены, что хотите удалить этого клиента?\n\nЭто действие нельзя отменить.')) {
+    return;
+  }
+
+  try {
+    // 🔹 3. Удаляем с сервера (и в очередь офлайн-режима)
+    await api.deleteItem('customers', customerId);
+
+    // 🔹 4. Обновляем локальный стейт
+    removeFromList(setCustomers, customerId);
+
+    // 🔹 5. Если открыта детальная страница — закрываем её
+    if (selectedCustomerId === customerId) {
+      setSelectedCustomerId(null);
+      setCurrentView(previousView === 'CUSTOMER_DETAILS' ? 'CUSTOMERS' : previousView);
+    }
+
+    // 🔹 6. Уведомление об успехе
+    alert('✅ Клиент успешно удален');
+
+  } catch (error) {
+    console.error('❌ Ошибка удаления клиента:', error);
+    alert('Не удалось удалить клиента. Проверьте подключение к интернету.');
+  }
+};
+
+
+
   const handleAddProduct = async (name: string, price: number, stock: number) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } if (user) { const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newProd = { id: crypto.randomUUID(), userId: ownerId, name, price, category: 'Общее', stock }; const saved = await api.saveItem('products', newProd); updateList(setProducts, saved); } };
   const handleUpdateProduct = async (updated: Product) => { if (isEmployee && !user?.permissions?.canEdit) return; const saved = await api.saveItem('products', updated); updateList(setProducts, saved); };
   const handleDeleteProduct = async (id: string) => { if (isEmployee && !user?.permissions?.canDelete) return; await api.deleteItem('products', id); removeFromList(setProducts, id); };
@@ -1658,6 +1704,7 @@ if (!user && !isLoading) {
                       onUndoPayment={handleUndoPayment}
                       onEditPayment={handleEditPayment}
                       onUpdateCustomer={handleUpdateCustomer}
+                      onDeleteCustomer={handleDeleteCustomer}
                       appSettings={appSettings}
                   />
               )}

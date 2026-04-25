@@ -15,6 +15,7 @@ interface CustomersProps {
   onUndoPayment: (saleId: string, paymentId: string) => void;
   onEditPayment: (saleId: string, paymentId: string, newDate: string) => void;
   onUpdateCustomer: (customer: Customer) => void;
+  onDeleteCustomer: (customerId: string) => void;
 }
 
 const Customers: React.FC<CustomersProps> = ({
@@ -28,7 +29,8 @@ const Customers: React.FC<CustomersProps> = ({
   onInitiatePayment,
   onUndoPayment,
   onEditPayment,
-  onUpdateCustomer
+  onUpdateCustomer,
+  onDeleteCustomer
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -63,6 +65,7 @@ const Customers: React.FC<CustomersProps> = ({
           onUndoPayment={onUndoPayment}
           onEditPayment={onEditPayment}
           onUpdateCustomer={onUpdateCustomer}
+          onDeleteCustomer={onDeleteCustomer}
         />
       );
     }
