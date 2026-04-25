@@ -750,7 +750,7 @@ const handleDeleteSale = async (saleId: string) => {
     }
 
     try {
-        // 🔹 2. ВОЗВРАТ ПЕРВОГО ВЗНОСА НА СЧЁТ (если он был)
+        // 🔹 2. ВОЗВРАТ ПЕРВОГО ВЗНОСА (если был)
         if (sale.downPayment > 0 && sale.accountId) {
             const refundExpense: Expense = {
                 id: `refund_${saleId}_${Date.now()}`,
@@ -760,7 +760,7 @@ const handleDeleteSale = async (saleId: string) => {
                 amount: sale.downPayment,
                 category: 'Возврат клиента',
                 date: new Date().toISOString(),
-                isRefund: true,  // 🔥 КЛЮЧЕВОЙ ФЛАГ!
+                isRefund: true,  // 🔥 Ключевой флаг!
                 payoutType: undefined,
                 investorId: undefined
             };
@@ -768,15 +768,30 @@ const handleDeleteSale = async (saleId: string) => {
             updateList(setExpenses, refundExpense);
         }
 
-        // 🔹 3. Удаляем расход закупки (если есть)
-        try {
-            await api.deleteItem('expenses', `exp_sale_${saleId}`);
-            setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${saleId}`));
-        } catch (err) {
-            // Игнорируем, если запись не найдена
+        // 🔹 3. 🎯 УДАЛЕНИЕ РАСХОДА ЗАКУПА (надёжный поиск)
+        if (sale.buyPrice > 0 && sale.accountId) {
+            // Ищем расход закупа по нескольким критериям
+            const buyExpense = expenses.find(e =>
+                e.accountId === sale.accountId &&
+                e.category === 'Себестоимость' &&
+                e.title?.includes(sale.productName) &&
+                Math.abs(e.amount - sale.buyPrice) < 0.01 // Сравнение с допуском
+            );
+
+            if (buyExpense) {
+                // Удаляем с сервера
+                await api.deleteItem('expenses', buyExpense.id).catch(() => {
+                    // Игнорируем, если не найдено на сервере
+                });
+                // Удаляем из локального стейта
+                removeFromList(setExpenses, buyExpense.id);
+                console.log(`✅ Удалён расход закупа: ${buyExpense.id}`);
+            } else {
+                console.warn(`⚠️ Расход закупа не найден для договора ${saleId}`);
+            }
         }
 
-        // 🔹 4. Удаляем договор
+        // 🔹 4. Удаляем сам договор
         await api.deleteItem('sales', saleId);
         removeFromList(setSales, saleId);
 
@@ -794,7 +809,7 @@ const handleDeleteSale = async (saleId: string) => {
             }
         }
 
-        alert('✅ Договор удалён. Средства возвращены на счёт.');
+        alert('✅ Договор удалён. Средства и товар возвращены.');
 
     } catch (error) {
         console.error('❌ Ошибка удаления договора:', error);
