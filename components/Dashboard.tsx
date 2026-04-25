@@ -416,237 +416,6 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
   );
 };
 
-
-
-
-
-
-// ─────────────────────────────────────────────────────────────
-// 💰 Модалка с детализацией прибыли
-// ─────────────────────────────────────────────────────────────
-const ProfitDetailsModal = ({
-  type,
-  sales,
-  customers,
-  investors,
-  selectedAccountId,
-  onClose,
-  onViewSchedule,
-  appSettings
-}: {
-  type: 'expected' | 'received';
-  sales: Sale[];
-  customers: Customer[];
-  investors: Investor[];
-  selectedAccountId?: string | null;
-  onClose: () => void;
-  onViewSchedule?: (sale: Sale) => void;
-  appSettings: AppSettings;
-}) => {
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  monthStart.setHours(0, 0, 0, 0);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-  const today = new Date(); today.setHours(0,0,0,0);
-
-  const items = useMemo(() => {
-    const result: Array<{
-      sale: Sale;
-      customerName: string;
-      amount: number;      // сумма платежа
-      profit: number;      // прибыль с этого платежа
-      margin: number;      // маржа в %
-      date: string;
-      isOverdue: boolean;
-    }> = [];
-
-    const investorIds = new Set(investors.map(i => i.id));
-    const filteredSales = selectedAccountId
-        ? sales.filter(s => s.accountId === selectedAccountId)
-        : sales;
-
-    filteredSales.forEach(sale => {
-      if (sale.customerId.startsWith('system_')) return;
-      if (investorIds.has(sale.customerId)) return;
-      if (!sale.buyPrice || sale.buyPrice <= 0) return;
-      if (sale.totalAmount <= 0) return;
-
-      const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
-      if (profitMargin <= 0) return;
-
-      const customer = customers.find(c => c.id === sale.customerId);
-
-      sale.paymentPlan.forEach(payment => {
-        if (payment.isRealPayment !== true) {
-          const paymentDate = new Date(payment.date);
-          paymentDate.setHours(0, 0, 0, 0);
-
-          if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-            const isPaid = payment.isPaid;
-            const isOverdue = paymentDate < today && !isPaid;
-
-            // 🔹 Фильтрация по типу модалки
-            if (type === 'expected' && !isPaid) {
-              result.push({
-                sale,
-                customerName: customer?.name || 'Неизвестно',
-                amount: payment.amount,
-                profit: payment.amount * profitMargin,
-                margin: profitMargin,
-                date: payment.date,
-                isOverdue
-              });
-            } else if (type === 'received' && isPaid) {
-              result.push({
-                sale,
-                customerName: customer?.name || 'Неизвестно',
-                amount: payment.amount,
-                profit: payment.amount * profitMargin,
-                margin: profitMargin,
-                date: payment.date,
-                isOverdue: false
-              });
-            }
-          }
-        }
-      });
-    });
-
-    // Сортировка: сначала просроченные, потом по дате
-    return result.sort((a, b) => {
-      if (a.isOverdue && !b.isOverdue) return -1;
-      if (!a.isOverdue && b.isOverdue) return 1;
-      return new Date(b.date).getTime() - new Date(a.date).getTime();
-    });
-  }, [sales, customers, investors, type, monthStart, monthEnd, selectedAccountId]);
-
-  const totalProfit = items.reduce((sum, item) => sum + item.profit, 0);
-  const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
-
-  const title = type === 'expected' ? 'Ожидаемая прибыль' : 'Полученная прибыль';
-  const emptyText = type === 'expected'
-    ? 'Нет ожидаемой прибыли в этом месяце'
-    : 'Нет полученной прибыли в этом месяце';
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Шапка */}
-        <div className={`px-4 py-3 flex items-center justify-between shrink-0 ${
-          type === 'expected' 
-            ? 'bg-gradient-to-r from-blue-500 to-indigo-500' 
-            : 'bg-gradient-to-r from-emerald-500 to-teal-500'
-        }`}>
-          <div className="flex items-center gap-3">
-            <div className="text-white bg-white/20 p-2 rounded-xl">
-              <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-              </svg>
-            </div>
-            <h3 className="text-base font-bold text-white">{title}</h3>
-          </div>
-          <button onClick={onClose} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-
-        {/* Итого */}
-        <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 shrink-0">
-          <div className="flex justify-between items-center mb-1">
-            <span className="text-sm text-slate-500">Прибыль</span>
-            <span className="text-lg font-bold text-slate-800">
-              {formatCurrency(Math.round(totalProfit * 100) / 100, appSettings.showCents)} ₽
-            </span>
-          </div>
-          <div className="flex justify-between items-center text-xs text-slate-400">
-            <span>Оборот</span>
-            <span>{formatCurrency(Math.round(totalAmount * 100) / 100, appSettings.showCents)} ₽</span>
-          </div>
-        </div>
-
-        {/* Список */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {items.length === 0 ? (
-            <div className="text-center py-8 text-slate-400">
-              <div className="text-4xl mb-2 opacity-30">📊</div>
-              <p className="text-sm">{emptyText}</p>
-            </div>
-          ) : items.map((item, idx) => (
-            <div
-              key={`${item.sale.id}-${item.date}-${idx}`}
-              className="bg-white p-3 rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-sm transition-all"
-            >
-              <div className="flex justify-between items-start mb-2">
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-slate-800 text-sm truncate">{item.customerName}</p>
-                  <p className="text-xs text-slate-500 truncate">{item.sale.productName}</p>
-                </div>
-                <div className="text-right ml-3">
-                  <p className="font-bold text-sm text-emerald-600">
-                    +{formatCurrency(Math.round(item.profit * 100) / 100, appSettings.showCents)} ₽
-                  </p>
-                  <p className="text-[10px] text-slate-400">
-                    маржа {(item.margin * 100).toFixed(1)}%
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-[10px] text-slate-400">
-                <span>{formatDate(item.date)}</span>
-                <div className="flex gap-1">
-                  {type === 'expected' && (
-                    <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[10px] font-medium">
-                      Ожидается
-                    </span>
-                  )}
-                  {type === 'received' && (
-                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-medium">
-                      Получено
-                    </span>
-                  )}
-                  {item.isOverdue && (
-                    <span className="px-2 py-0.5 bg-rose-50 text-rose-600 rounded-full text-[10px] font-medium">
-                      Просрочено
-                    </span>
-                  )}
-                  {onViewSchedule && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onViewSchedule(item.sale); onClose(); }}
-                      className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg font-medium hover:bg-indigo-100 transition-colors"
-                    >
-                      График
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Кнопка закрытия */}
-        <button
-          onClick={onClose}
-          className="py-3 text-slate-400 text-sm hover:text-slate-600 hover:bg-slate-50 transition-colors shrink-0 border-t border-slate-100"
-        >
-          Закрыть
-        </button>
-      </div>
-    </div>,
-    document.body
-  );
-};
-
-
-
-
 const Dashboard: React.FC<DashboardProps> = ({
     sales,
     customers,
@@ -678,9 +447,6 @@ const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(nu
 const [showCalendarPicker, setShowCalendarPicker] = useState(false);
 const [calendarMonth, setCalendarMonth] = useState(new Date());
 
-
-
-const [showProfitModal, setShowProfitModal] = useState(false);
  const calculatedStats = useMemo(() => {
     const filteredSales = selectedAccountId
         ? sales.filter(s => s.accountId === selectedAccountId)
@@ -1235,7 +1001,8 @@ useEffect(() => {
                     </div>
 
 
-                    {/* 7. Ожидаемые платежи в этом месяце — СТАТИЧНАЯ КАРТОЧКА */}
+
+                     {/* 7. Ожидаемые платежи в этом месяце — СТАТИЧНАЯ КАРТОЧКА */}
                     <div
                         className="bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col relative overflow-hidden cursor-default"
                         // 🔥 УБРАЛИ: onClick, hover-эффекты, cursor-pointer
@@ -1290,7 +1057,7 @@ useEffect(() => {
                     </div>
 
 
-                    {/* 6. Ожидаемая прибыль */}
+                       {/* 6. Ожидаемая прибыль */}
 
                     <div
                         className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
@@ -1342,66 +1109,19 @@ useEffect(() => {
                     </div>
 
 
-                    <div
-                        className="bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col relative overflow-hidden cursor-default"
-                    >
-                        <div
-                            className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full opacity-50 pointer-events-none"></div>
-                        <div
-                            className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600 mb-4 z-10 relative shadow-sm">
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor"
-                                 viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                      d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
-                            </svg>
-                        </div>
-                        <div className="z-10 relative mt-auto">
-                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                                Ожидается прибыли
-                            </p>
-                            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                                {formatCurrency(expectedProfitThisMonth, appSettings.showCents)}
-                                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-                            </p>
-                            <p className="text-[10px] sm:text-xs text-slate-300 mt-1">От плановых платежей</p>
-                        </div>
-                    </div>
-
-                    {/* 10. Полученная прибыль в этом месяце — КЛИКАБЕЛЬНАЯ */}
-                    <div
-                        className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-pointer"
-                        onClick={() => setShowProfitModal(true)}
-                    >
-                        <div
-                            className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-                        <div
-                            className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor"
-                                 viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                        </div>
-                        <div className="z-10 relative mt-auto">
-                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                                Получено прибыли
-                            </p>
-                            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                                {formatCurrency(receivedProfitThisMonth, appSettings.showCents)}
-                                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-                            </p>
-                            <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
-                        </div>
-                        <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <svg className="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" strokeWidth="2">
-                                <polyline points="9 18 15 12 9 6"/>
-                            </svg>
-                        </div>
-                    </div>
 
 
                 </div>
+
+
+
+
+
+
+
+
+
+
 
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1424,28 +1144,27 @@ useEffect(() => {
                                     <div className="min-w-0">
                                         <p className="font-bold text-sm text-slate-800 truncate">{customers.find(c => c.id === sale.customerId)?.name}</p>
                                         <p className="text-xs text-slate-500 mt-1">{sale.productName} • {formatDate(sale.startDate)}</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setSelectedSaleForModal(sale)}
-                                        className="text-xs bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-700 px-4 py-2 rounded-lg font-semibold hover:from-indigo-100 hover:to-indigo-200 transition-all group-hover:scale-105 whitespace-nowrap"
-                                    >
-                                        Детали
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => setSelectedSaleForModal(sale)}
+                                    className="text-xs bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-700 px-4 py-2 rounded-lg font-semibold hover:from-indigo-100 hover:to-indigo-200 transition-all group-hover:scale-105 whitespace-nowrap"
+                                  >
+                                    Детали
+                                  </button>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
 
-                    <div
-                        className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-all">
-                        <h3 className="text-lg font-semibold text-slate-700 mb-4 flex items-center gap-2">
-                            <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
-                            Быстрые действия
-                        </h3>
-                        <div className="space-y-4">
-                            <button
-                                onClick={() => onAction('CREATE_SALE')}
-                                className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white py-4 rounded-xl font-semibold shadow-lg shadow-indigo-200 hover:shadow-xl hover:from-indigo-700 hover:to-indigo-600 transition-all hover:-translate-y-0.5"
+                  <div className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-all">
+                       <h3 className="text-lg font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                        <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
+                        Быстрые действия
+                      </h3>
+                       <div className="space-y-4">
+                          <button
+                            onClick={() => onAction('CREATE_SALE')}
+                            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white py-4 rounded-xl font-semibold shadow-lg shadow-indigo-200 hover:shadow-xl hover:from-indigo-700 hover:to-indigo-600 transition-all hover:-translate-y-0.5"
                           >
                             <span className="text-lg">+</span> Новая рассрочка
                           </button>
@@ -1768,24 +1487,6 @@ useEffect(() => {
     appSettings={appSettings}
   />
 )}
-          
-
-          {/* Модалка с деталями прибыли */}
-{showProfitModal && (
-  <ProfitDetailsModal
-    type="received"
-    sales={sales}
-    customers={customers}
-    investors={investors}
-    selectedAccountId={selectedAccountId}
-    onClose={() => setShowProfitModal(false)}
-    onViewSchedule={onViewSchedule}
-    appSettings={appSettings}
-  />
-)}
-
-
-
       </div>
     </div>
   );
