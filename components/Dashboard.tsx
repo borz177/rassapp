@@ -634,10 +634,11 @@ if (selectedCalendarDate) {
 
 
 
-// 📊 Ожидаемые платежи в этом месяце (ВСЕ плановые платежи, фиксированная сумма)
+// 📊 Ожидаемые платежи в этом месяце (исправленная версия)
 const expectedPaymentsThisMonth = useMemo(() => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    monthStart.setHours(0, 0, 0, 0); // 🔹 Нормализуем
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
     const filteredSales = selectedAccountId
@@ -649,14 +650,17 @@ const expectedPaymentsThisMonth = useMemo(() => {
     filteredSales.forEach(sale => {
         if (sale.customerId.startsWith('system_')) return;
         if (investors.some(i => i.id === sale.customerId)) return;
-        // 🔹 Убрали фильтр по статусу — считаем все договоры
+        // 🔹 Если нужно — верни фильтр по статусу:
+        if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
 
-        // 🔹 ВСЕ плановые платежи в этом месяце (и оплаченные, и нет)
         sale.paymentPlan.forEach(payment => {
-            if ((payment.isRealPayment === false || payment.isRealPayment === undefined)) {
+            // 🔹 Надёжная проверка: только плановые платежи
+            if (payment.isRealPayment !== true) {
                 const paymentDate = new Date(payment.date);
+                paymentDate.setHours(0, 0, 0, 0); // 🔹 Нормализуем дату!
+
                 if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-                    expected += payment.amount; // ✅ Считаем ВСЕ платежи по графику
+                    expected += payment.amount;
                 }
             }
         });
@@ -949,14 +953,14 @@ useEffect(() => {
     </div>
     <div className="z-10 relative mt-auto">
         <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-            Ожидается в этом месяце
+            Ожидаемые платежи
         </p>
         <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
             {formatCurrency(expectedPaymentsThisMonth, appSettings.showCents)}
             <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
         </p>
         {/* 🔥 УБРАЛИ: "Нажмите для деталей" */}
-        <p className="text-[10px] sm:text-xs text-slate-300 mt-1">Плановые платежи по графику</p>
+        <p className="text-[10px] sm:text-xs text-slate-300 mt-1">От клиентов в этом месяце</p>
     </div>
     {/* 🔥 УБРАЛИ: стрелочку-индикатор клика */}
 </div>
