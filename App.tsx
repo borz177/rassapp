@@ -98,6 +98,11 @@ const isLanding = path === "/"
   const [showSupportChat, setShowSupportChat] = useState(false);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [showBlockedDeleteModal, setShowBlockedDeleteModal] = useState<{
+  customerId: string;
+  customerName: string;
+  contracts: Array<{ id: string; productName: string }>;
+} | null>(null);
 
 
 
@@ -1144,21 +1149,24 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
 
 
 
- const handleDeleteCustomer = async (customerId: string) => {
+const handleDeleteCustomer = async (customerId: string) => {
   // 🔹 1. ГЛАВНАЯ ПРОВЕРКА: есть ли привязанные договоры?
   const customerSales = sales.filter(s => s.customerId === customerId);
 
   if (customerSales.length > 0) {
-    alert(`⛔ Невозможно удалить клиента!
-    
-У него есть ${customerSales.length} привязанных договоров:
-${customerSales.map(s => `• ${s.productName}`).join('\n')}
-
-Сначала удалите или закройте все договоры.`);
+    // 🔹 Вместо alert — открываем красивую модалку
+    setShowBlockedDeleteModal({
+      customerId,
+      customerName: customers.find(c => c.id === customerId)?.name || 'Клиент',
+      contracts: customerSales.map(s => ({
+        id: s.id,
+        productName: s.productName
+      }))
+    });
     return;
   }
 
-  // 🔹 2. Показываем модальное окно подтверждения (вместо window.confirm)
+  // 🔹 2. Если договоров нет — показываем модалку подтверждения удаления
   setShowDeleteConfirm(customerId);
 };
 
@@ -2179,6 +2187,89 @@ if (!user && !isLoading) {
     </div>
   </div>
 )}
+
+
+
+
+           {/* === МОДАЛЬНОЕ ОКНО: НЕЛЬЗЯ УДАЛИТЬ (ЕСТЬ ДОГОВОРЫ) === */}
+{showBlockedDeleteModal && (
+  <div
+    className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
+    onClick={() => setShowBlockedDeleteModal(null)}
+  >
+    <div
+      className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-2xl animate-scale-in"
+      onClick={e => e.stopPropagation()}
+    >
+      {/* 🔴 Иконка предупреждения */}
+      <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+
+      {/* 🔹 Заголовок */}
+      <h3 className="text-lg font-bold text-slate-800 text-center mb-1">
+        Невозможно удалить
+      </h3>
+      <p className="text-center text-slate-500 mb-4 text-sm">
+        У клиента <strong>{showBlockedDeleteModal.customerName}</strong> есть активные договоры
+      </p>
+
+      {/* 🔹 Список договоров */}
+      <div className="bg-slate-50 rounded-xl p-4 mb-6 max-h-48 overflow-y-auto">
+        <p className="text-xs font-medium text-slate-500 mb-2 uppercase">
+          Привязанные договоры ({showBlockedDeleteModal.contracts.length})
+        </p>
+        <ul className="space-y-2">
+          {showBlockedDeleteModal.contracts.map(contract => (
+            <li
+              key={contract.id}
+              className="flex items-center gap-2 text-sm text-slate-700 bg-white px-3 py-2 rounded-lg border border-slate-100"
+            >
+              <span className="text-slate-400 flex-shrink-0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+              </span>
+              <span className="truncate">{contract.productName}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* 🔹 Текст инструкции */}
+      <p className="text-center text-slate-500 text-sm mb-6">
+        Сначала удалите привязанные договоры.
+      </p>
+
+      {/* 🔹 Кнопки действий */}
+      <div className="flex gap-3">
+        <button
+          onClick={() => {
+            setShowBlockedDeleteModal(null);
+            // 🔹 Переход к клиенту → вкладка рассрочек
+            setSelectedCustomerId(showBlockedDeleteModal.customerId);
+            setCurrentView('CUSTOMER_DETAILS');
+          }}
+          className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+        >
+          Перейти к договорам
+        </button>
+        <button
+          onClick={() => setShowBlockedDeleteModal(null)}
+          className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+        >
+          Понятно
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
 
 
