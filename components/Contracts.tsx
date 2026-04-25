@@ -1,7 +1,19 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, User, AppSettings } from '../types';
 import { ICONS } from '../constants';
-import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X } from 'lucide-react';
+import {
+  Phone,
+  Search,
+  Wallet,
+  MoreVertical,
+  FileText,
+  Calendar,
+  Edit3,
+  Printer,
+  Trash2,
+  X,
+  CalendarIcon
+} from 'lucide-react';
 import { formatCurrency, formatDate } from '../src/utils';
 import { createPortal } from 'react-dom';
 import { api } from '../services/api';
@@ -666,7 +678,7 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
                   onClick={() => { onViewSchedule(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
                   className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
                 >
-                  <span className="text-indigo-500"><Calendar size={18} /></span>
+                  <span className="text-indigo-500"><CalendarIcon size={18} /></span>
                   <span>График платежей</span>
                 </button>
 
@@ -736,7 +748,7 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
                     }}
                     className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
                 >
-                  <span className="text-indigo-500"><Calendar size={16}/></span>
+                  <span className="text-indigo-500"><CalendarIcon size={16}/></span>
                   <span>График</span>
                 </button>
 

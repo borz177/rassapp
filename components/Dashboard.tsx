@@ -186,7 +186,7 @@ const PaymentActionModal = ({
                         onClick={() => { onViewSchedule(sale); onClose(); }}
                         className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors rounded-xl border-t border-slate-100 pt-3.5 mt-1"
                     >
-                        <span className="text-indigo-500"><Calendar size={18} /></span>
+                        <span className="text-indigo-500"><CalendarIcon size={18}/></span>
                         <span>График платежей</span>
                     </button>
                 </div>
@@ -335,7 +335,7 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
         }`}>
           <div className="flex items-center gap-3">
             <div className="text-white bg-white/20 p-2 rounded-xl">
-              {type === 'expected' ? <Calendar size={18} /> : <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="currentColor"><text x="4" y="17" fontSize="14">✓</text></svg>}
+              {type === 'expected' ? <CalendarIcon size={18} />  : <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="currentColor"><text x="4" y="17" fontSize="14">✓</text></svg>}
             </div>
             <h3 className="text-base font-bold text-white">{title}</h3>
           </div>
