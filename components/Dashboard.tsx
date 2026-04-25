@@ -634,42 +634,29 @@ if (selectedCalendarDate) {
 
 
 
- // 📊 Ожидаемые платежи в этом месяце (ТОЛЬКО для должников)
+// 📊 Ожидаемые платежи в этом месяце (ВСЕ плановые платежи, фиксированная сумма)
 const expectedPaymentsThisMonth = useMemo(() => {
     const now = new Date();
-    const today = new Date(); today.setHours(0,0,0,0);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    // 🔹 Фильтрация по выбранному счёту
     const filteredSales = selectedAccountId
         ? sales.filter(s => s.accountId === selectedAccountId)
         : sales;
 
     let expected = 0;
 
-    // 🔹 Функция расчёта реальной просрочки
-    const getOverdueAmount = (sale: Sale) => {
-        let exp = sale.downPayment;
-        sale.paymentPlan.forEach(p => {
-            if (!p.isRealPayment && new Date(p.date) < today) exp += p.amount;
-        });
-        return Math.max(0, exp - (sale.totalAmount - sale.remainingAmount));
-    };
-
     filteredSales.forEach(sale => {
         if (sale.customerId.startsWith('system_')) return;
         if (investors.some(i => i.id === sale.customerId)) return;
-        if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
+        // 🔹 Убрали фильтр по статусу — считаем все договоры
 
-        // 🔹 ГЛАВНОЕ: пропускаем клиентов без просрочки
-        if (getOverdueAmount(sale) <= 0) return;
-
+        // 🔹 ВСЕ плановые платежи в этом месяце (и оплаченные, и нет)
         sale.paymentPlan.forEach(payment => {
-            if ((payment.isRealPayment === false || payment.isRealPayment === undefined) && !payment.isPaid) {
+            if ((payment.isRealPayment === false || payment.isRealPayment === undefined)) {
                 const paymentDate = new Date(payment.date);
                 if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-                    expected += payment.amount;
+                    expected += payment.amount; // ✅ Считаем ВСЕ платежи по графику
                 }
             }
         });
@@ -951,32 +938,28 @@ useEffect(() => {
                     </div>
 
                        {/* 7. Ожидаемые платежи в этом месяце */}
-                    <div
-                        className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 flex flex-col relative overflow-hidden cursor-default"
-                        onClick={() => setSelectedPaymentType('expected')}>
-                        <div
-                            className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-                        <div
-                            className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-4 z-10 relative group-hover:bg-amber-500 group-hover:text-white transition-colors duration-300 shadow-sm">
-                            <CalendarIcon size={20}/>
-                        </div>
-                        <div className="z-10 relative mt-auto">
-                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                                Ожидается в этом месяце
-                            </p>
-                            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                                {formatCurrency(expectedPaymentsThisMonth, appSettings.showCents)}
-                                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-                            </p>
-                            <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
-                        </div>
-                        <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <svg className="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" strokeWidth="2">
-                                <polyline points="9 18 15 12 9 6"/>
-                            </svg>
-                        </div>
-                    </div>
+                    {/* 7. Ожидаемые платежи в этом месяце — СТАТИЧНАЯ КАРТОЧКА */}
+<div
+    className="bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col relative overflow-hidden cursor-default"
+    // 🔥 УБРАЛИ: onClick, hover-эффекты, cursor-pointer
+>
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 rounded-full opacity-50 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-4 z-10 relative shadow-sm">
+        <CalendarIcon size={20}/>
+    </div>
+    <div className="z-10 relative mt-auto">
+        <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
+            Ожидается в этом месяце
+        </p>
+        <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+            {formatCurrency(expectedPaymentsThisMonth, appSettings.showCents)}
+            <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+        </p>
+        {/* 🔥 УБРАЛИ: "Нажмите для деталей" */}
+        <p className="text-[10px] sm:text-xs text-slate-300 mt-1">Плановые платежи по графику</p>
+    </div>
+    {/* 🔥 УБРАЛИ: стрелочку-индикатор клика */}
+</div>
 
                     {/* 8. Полученные платежи за этот месяц */}
                      <div
