@@ -244,7 +244,7 @@ const PaymentDetailsModal = ({
     filteredSales.forEach(sale => { // ← Используем filteredSales вместо sales
       if (sale.customerId.startsWith('system_')) return;
       if (investorIds.has(sale.customerId)) return;
-      if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
+      
 
       const customer = customers.find(c => c.id === sale.customerId);
 
