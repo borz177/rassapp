@@ -725,7 +725,7 @@ const handleSendContract = async () => {
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">{mode === 'INSTALLMENT' ? 'Цена в рассрочку' : 'Цена продажи'}</label>
             <input type="number" min="0" className="w-full p-3 border border-slate-300 rounded-lg outline-none font-bold text-slate-900 bg-white" value={formData.price === 0 ? '' : formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} placeholder="0" />
-            {mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && (<p className="text-xs text-indigo-600 mt-1">Автоматически рассчитано: {formData.buyPrice} + {formData.interestRate}%</p>)}
+
           </div>
           {mode === 'INSTALLMENT' && (
             <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4">
@@ -733,33 +733,73 @@ const handleSendContract = async () => {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Срок (мес.)</label>
                 <input type="number" min="1" max="24" className="w-full p-3 border border-slate-300 rounded-lg outline-none text-slate-900 bg-white" value={formData.installments === 0 ? '' : formData.installments} onChange={e => setFormData({ ...formData, installments: e.target.value })} placeholder="0" />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Первый взнос (₽)</label>
-                <input type="number" min="0" max={calculatedValues.totalAmount} className="w-full p-3 border border-slate-300 rounded-lg outline-none text-slate-900 bg-white" value={formData.downPayment === 0 ? '' : formData.downPayment} onChange={e => setFormData({ ...formData, downPayment: e.target.value })} placeholder="0" />
-              </div>
-              {/* Найдите блок с полем "Первый взнос" и добавьте после него: */}
+              {/* 🔹 Первый взнос + чекбокс наценки */}
+<div className="space-y-2">
+  <label className="block text-sm font-medium text-slate-700 mb-1">
+    Первый взнос (₽)
+  </label>
 
-{mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && (
-  <div className="mt-2">
-    <label className="flex items-center gap-2 cursor-pointer group">
-      <input
-        type="checkbox"
-        checked={downPaymentFromMarkup}
-        onChange={(e) => setDownPaymentFromMarkup(e.target.checked)}
-        className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-      />
-      <span className="text-xs text-slate-600 group-hover:text-indigo-600 transition-colors">
-        Первый взнос = сумма наценки{" "}
-        <span className="font-bold text-emerald-600">
-          ({Math.round(Number(formData.buyPrice) * formData.interestRate / 100).toLocaleString()} ₽)
-        </span>
-      </span>
-    </label>
-    <p className="text-[10px] text-slate-400 mt-1 ml-6">
-      Клиент оплачивает прибыль сразу, в рассрочку — только закуп
-    </p>
+  <div className="relative">
+    <input
+      type="number"
+      min="0"
+      max={calculatedValues.totalAmount}
+      className={`w-full p-3 pr-12 border rounded-lg outline-none text-slate-900 bg-white transition-all ${
+        downPaymentFromMarkup 
+          ? 'border-emerald-300 bg-emerald-50/50 ring-2 ring-emerald-100' 
+          : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+      }`}
+      value={formData.downPayment === 0 ? '' : formData.downPayment}
+      onChange={(e) => {
+        setFormData({ ...formData, downPayment: e.target.value });
+        // Сбрасываем чекбокс при ручном изменении
+        if (downPaymentFromMarkup) setDownPaymentFromMarkup(false);
+      }}
+      placeholder="0"
+      disabled={downPaymentFromMarkup}
+    />
+
+    {/* 🔹 Индикатор авто-заполнения */}
+    {downPaymentFromMarkup && (
+      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+    )}
   </div>
-)}
+
+  {/* 🔹 Чекбокс "Взнос = наценка" */}
+  {mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && (
+    <label className="flex items-start gap-2.5 p-2.5 rounded-xl cursor-pointer group hover:bg-slate-50 transition-colors">
+      <div className="relative mt-0.5">
+        <input
+          type="checkbox"
+          checked={downPaymentFromMarkup}
+          onChange={(e) => setDownPaymentFromMarkup(e.target.checked)}
+          className="w-4.5 h-4.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
+        />
+        {/* 🔹 Анимация при активации */}
+        {downPaymentFromMarkup && (
+          <span className="absolute inset-0 rounded-full bg-indigo-100 animate-ping opacity-20" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <span className="text-xs text-slate-600 group-hover:text-indigo-600 transition-colors font-medium">
+          Первый взнос = сумма наценки
+        </span>
+        <div className="flex items-center gap-1.5 mt-0.5">
+         
+          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+            +{Math.round(Number(formData.buyPrice) * formData.interestRate / 100).toLocaleString()} ₽
+          </span>
+        </div>
+      </div>
+    </label>
+  )}
+
+
+</div>
             </div>
           )}
         </div>
@@ -786,36 +826,6 @@ const handleSendContract = async () => {
                 </div>
               </div>
               <div className="flex justify-between text-sm pt-3 border-t border-indigo-100"><span className="text-indigo-800 font-semibold">Платёж в месяц</span><span className="text-indigo-800 font-bold">{calculatedValues.monthlyPayment.toLocaleString(undefined, { maximumFractionDigits: 0 })} ₽</span></div>
-
-              {/* В блоке с итоговой информацией (после "Платёж в месяц") добавьте: */}
-
-{mode === 'INSTALLMENT' && downPaymentFromMarkup && Number(formData.buyPrice) > 0 && (
-  <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-100 mt-3">
-    <p className="text-xs font-semibold text-emerald-700 mb-2">💰 Структура оплаты:</p>
-    <div className="space-y-1 text-xs">
-      <div className="flex justify-between">
-        <span className="text-slate-500">Первый взнос (наценка):</span>
-        <span className="font-bold text-emerald-600">
-          {Math.round(Number(formData.buyPrice) * formData.interestRate / 100).toLocaleString()} ₽
-        </span>
-      </div>
-      <div className="flex justify-between">
-        <span className="text-slate-500">В рассрочку (закуп):</span>
-        <span className="font-bold text-slate-700">
-          {Number(formData.buyPrice).toLocaleString()} ₽
-        </span>
-      </div>
-      <div className="flex justify-between pt-1 border-t border-emerald-100">
-        <span className="text-slate-500">× {formData.installments} мес. =</span>
-        <span className="font-bold text-indigo-600">
-          {Math.round(Number(formData.buyPrice) / formData.installments).toLocaleString()} ₽/мес
-        </span>
-      </div>
-    </div>
-  </div>
-)}
-
-
             </>
           )}
         </div>
