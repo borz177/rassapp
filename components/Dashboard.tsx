@@ -200,7 +200,7 @@ const PaymentActionModal = ({
 // 📋 Модалка с детализацией платежей
 // ─────────────────────────────────────────────────────────────
 const PaymentDetailsModal = ({
-  type,
+  type, // 'expected' теперь означает "модалка ожидаемых платежей"
   sales,
   customers,
   investors,
@@ -210,7 +210,7 @@ const PaymentDetailsModal = ({
   onViewSchedule,
   appSettings
 }: {
-  type: 'expected' | 'received';
+  type: 'expected'; // 🔹 Теперь только 'expected' для этой модалки
   sales: Sale[];
   customers: Customer[];
   investors: Investor[];
@@ -220,6 +220,8 @@ const PaymentDetailsModal = ({
   onViewSchedule?: (sale: Sale) => void;
   appSettings: AppSettings;
 }) => {
+  const [activeTab, setActiveTab] = useState<'expected' | 'received'>('expected');
+
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const today = new Date(); today.setHours(0,0,0,0);
@@ -235,36 +237,26 @@ const PaymentDetailsModal = ({
     }> = [];
 
     const investorIds = new Set(investors.map(i => i.id));
-
-    // 🔹 ФИЛЬТРАЦИЯ ПО ВЫБРАННОМУ СЧЁТУ
     const filteredSales = selectedAccountId
         ? sales.filter(s => s.accountId === selectedAccountId)
         : sales;
 
-    filteredSales.forEach(sale => { // ← Используем filteredSales вместо sales
+    filteredSales.forEach(sale => {
       if (sale.customerId.startsWith('system_')) return;
       if (investorIds.has(sale.customerId)) return;
-      
+      if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
 
       const customer = customers.find(c => c.id === sale.customerId);
 
-            if (type === 'expected') {
-        // 🔹 Проверяем общую просрочку перед добавлением платежей клиента
-        let expectedTotalForCheck = sale.downPayment;
-        sale.paymentPlan.forEach(p => {
-            if (!p.isRealPayment && new Date(p.date) < today) expectedTotalForCheck += p.amount;
-        });
-        const clientOverdue = Math.max(0, expectedTotalForCheck - (sale.totalAmount - sale.remainingAmount));
+      // 🔹 ВСЕ плановые платежи в этом месяце
+      sale.paymentPlan.forEach(p => {
+        if ((p.isRealPayment === false || p.isRealPayment === undefined)) {
+          const paymentDate = new Date(p.date);
+          if (paymentDate >= monthStart && paymentDate <= monthEnd) {
+            const isOverdue = paymentDate < today && !p.isPaid;
 
-        // ⛔ Если клиент в графике (просрочки нет) — не показываем его здесь
-        if (clientOverdue <= 0) return;
-
-        // 🔹 Ожидаемые: плановые, неоплаченные, дата в этом месяце
-        sale.paymentPlan.forEach(p => {
-          if ((p.isRealPayment === false || p.isRealPayment === undefined) && !p.isPaid) {
-            const paymentDate = new Date(p.date);
-            if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-              const isOverdue = paymentDate < today;
+            // 🔸 ФИЛЬТРАЦИЯ ПО ТАБУ
+            if (activeTab === 'expected' && !p.isPaid) {
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
@@ -272,15 +264,7 @@ const PaymentDetailsModal = ({
                 date: p.date,
                 isOverdue
               });
-            }
-          }
-        });
-      } else {
-
-        sale.paymentPlan.forEach(p => {
-          if (p.isPaid && p.isRealPayment !== false) {
-            const paymentDate = new Date(p.date);
-            if (paymentDate >= monthStart && paymentDate <= monthEnd) {
+            } else if (activeTab === 'received' && p.isPaid) {
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
@@ -290,8 +274,8 @@ const PaymentDetailsModal = ({
               });
             }
           }
-        });
-      }
+        }
+      });
     });
 
     // Сортировка: сначала просроченные, потом по дате
@@ -300,119 +284,156 @@ const PaymentDetailsModal = ({
       if (!a.isOverdue && b.isOverdue) return 1;
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
-}, [sales, customers, investors, type, monthStart, monthEnd, selectedAccountId]);
+  }, [sales, customers, investors, activeTab, monthStart, monthEnd, selectedAccountId]);
 
   const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
 
-// 🔹 РАЗДЕЛЯЕМ на платежи по графику и первые взносы
-const { installmentTotal, downPaymentTotal } = useMemo(() => {
-    const total = items.reduce((sum, item) => sum + item.amount, 0);
-    return {
-        installmentTotal: Math.round(total * 100) / 100,
-        downPaymentTotal: 0 // 🔹 Больше не используется, но оставили для совместимости
-    };
-}, [items]);
+  const installmentTotal = useMemo(() => {
+      return Math.round(totalAmount * 100) / 100;
+  }, [totalAmount]);
   const title = type === 'expected' ? 'Ожидаемые платежи' : 'Полученные платежи';
   const emptyText = type === 'expected'
     ? 'Нет ожидаемых платежей в этом месяце'
     : 'Нет полученных платежей в этом месяце';
 
-  return createPortal(
+return createPortal(
+  <div
+    className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+    onClick={onClose}
+  >
     <div
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
+      className="bg-white w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+      onClick={e => e.stopPropagation()}
     >
-      <div
-        className="bg-white w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Шапка */}
-        <div className={`px-4 py-3 flex items-center justify-between shrink-0 ${
-          type === 'expected' 
-            ? 'bg-gradient-to-r from-amber-500 to-orange-500' 
-            : 'bg-gradient-to-r from-emerald-500 to-teal-500'
-        }`}>
-          <div className="flex items-center gap-3">
-            <div className="text-white bg-white/20 p-2 rounded-xl">
-              {type === 'expected' ? <Calendar size={18} /> : <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="currentColor"><text x="4" y="17" fontSize="14">✓</text></svg>}
-            </div>
-            <h3 className="text-base font-bold text-white">{title}</h3>
+      {/* Шапка */}
+      <div className="px-4 py-3 flex items-center justify-between shrink-0 bg-gradient-to-r from-amber-500 to-orange-500">
+        <div className="flex items-center gap-3">
+          <div className="text-white bg-white/20 p-2 rounded-xl">
+            <Calendar size={18} />
           </div>
-          <button onClick={onClose} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+          <h3 className="text-base font-bold text-white">Платежи в этом месяце</h3>
         </div>
-
-       {/* Итого */}
-<div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-  <span className="text-sm text-slate-500">Итого</span>
-  <span className="text-lg font-bold text-slate-800">
-    {formatCurrency(installmentTotal, appSettings.showCents)} ₽
-  </span>
-</div>
-        {/* Список */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {items.length === 0 ? (
-            <div className="text-center py-8 text-slate-400">
-              <div className="text-4xl mb-2 opacity-30">📭</div>
-              <p className="text-sm">{emptyText}</p>
-            </div>
-          ) : items.map((item, idx) => (
-            <div
-              key={`${item.sale.id}-${item.date}-${idx}`}
-              className="bg-white p-3 rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-sm transition-all"
-            >
-              <div className="flex justify-between items-start mb-2">
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-slate-800 text-sm truncate">{item.customerName}</p>
-                  <p className="text-xs text-slate-500 truncate">{item.sale.productName}</p>
-                </div>
-                <div className="text-right ml-3">
-                  <p className={`font-bold text-sm ${item.isOverdue ? 'text-red-600' : 'text-slate-800'}`}>
-                    {formatCurrency(item.amount, appSettings.showCents)} ₽
-                  </p>
-                  {item.isOverdue && (
-                    <span className="text-[10px] text-red-500 font-medium">Просрочено</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-[10px] text-slate-400">
-                <span>{formatDate(item.date)}</span>
-                <div className="flex gap-1">
-                  {type === 'expected' && onInitiatePayment && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onInitiatePayment(item.sale, item.amount); onClose(); }}
-                      className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg font-medium hover:bg-emerald-100 transition-colors"
-                    >
-                      + Платёж
-                    </button>
-                  )}
-                  {onViewSchedule && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onViewSchedule(item.sale); onClose(); }}
-                      className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg font-medium hover:bg-indigo-100 transition-colors"
-                    >
-                      График
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Кнопка закрытия */}
-        <button
-          onClick={onClose}
-          className="py-3 text-slate-400 text-sm hover:text-slate-600 hover:bg-slate-50 transition-colors shrink-0 border-t border-slate-100"
-        >
-          Закрыть
+        <button onClick={onClose} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
         </button>
       </div>
-    </div>,
-    document.body
-  );
+
+      {/* 🔹 ТАБЫ */}
+      <div className="flex border-b border-slate-200 shrink-0">
+        <button
+          onClick={() => setActiveTab('expected')}
+          className={`flex-1 py-3 text-sm font-bold transition-all relative ${
+            activeTab === 'expected'
+              ? 'text-amber-600'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Ожидаемые
+          {activeTab === 'expected' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-500"></div>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('received')}
+          className={`flex-1 py-3 text-sm font-bold transition-all relative ${
+            activeTab === 'received'
+              ? 'text-emerald-600'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Полученные
+          {activeTab === 'received' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500"></div>
+          )}
+        </button>
+      </div>
+
+      {/* Итого */}
+      <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center shrink-0">
+        <span className="text-sm text-slate-500">
+          {activeTab === 'expected' ? 'К оплате' : 'Оплачено'}
+        </span>
+        <span className="text-lg font-bold text-slate-800">
+          {formatCurrency(installmentTotal, appSettings.showCents)} ₽
+        </span>
+      </div>
+
+      {/* Список */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {items.length === 0 ? (
+          <div className="text-center py-8 text-slate-400">
+            <div className="text-4xl mb-2 opacity-30">
+              {activeTab === 'expected' ? '📭' : '📬'}
+            </div>
+            <p className="text-sm">
+              {activeTab === 'expected'
+                ? 'Нет ожидаемых платежей'
+                : 'Нет полученных платежей'}
+            </p>
+          </div>
+        ) : items.map((item, idx) => (
+          <div
+            key={`${item.sale.id}-${item.date}-${idx}`}
+            className="bg-white p-3 rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-sm transition-all"
+          >
+            <div className="flex justify-between items-start mb-2">
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-slate-800 text-sm truncate">
+                  {item.customerName}
+                </p>
+                <p className="text-xs text-slate-500 truncate">
+                  {item.sale.productName}
+                </p>
+              </div>
+              <div className="text-right ml-3">
+                <p className={`font-bold text-sm ${item.isOverdue ? 'text-red-600' : 'text-slate-800'}`}>
+                  {formatCurrency(item.amount, appSettings.showCents)} ₽
+                </p>
+                {item.isOverdue && (
+                  <span className="text-[10px] text-red-500 font-medium">Просрочено</span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-[10px] text-slate-400">
+              <span>{formatDate(item.date)}</span>
+              <div className="flex gap-1">
+                {activeTab === 'expected' && onInitiatePayment && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onInitiatePayment(item.sale, item.amount); onClose(); }}
+                    className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg font-medium hover:bg-emerald-100 transition-colors"
+                  >
+                    + Платёж
+                  </button>
+                )}
+                {onViewSchedule && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onViewSchedule(item.sale); onClose(); }}
+                    className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg font-medium hover:bg-indigo-100 transition-colors"
+                  >
+                    График
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Кнопка закрытия */}
+      <button
+        onClick={onClose}
+        className="py-3 text-slate-400 text-sm hover:text-slate-600 hover:bg-slate-50 transition-colors shrink-0 border-t border-slate-100"
+      >
+        Закрыть
+      </button>
+    </div>
+  </div>,
+  document.body
+);
 };
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -624,41 +645,29 @@ const [selectedPaymentType, setSelectedPaymentType] = useState<'expected' | 'rec
 
 
  // 📊 Ожидаемые платежи в этом месяце (ТОЛЬКО для должников)
+// 📊 Ожидаемые платежи в этом месяце (ВСЕ плановые платежи)
 const expectedPaymentsThisMonth = useMemo(() => {
     const now = new Date();
-    const today = new Date(); today.setHours(0,0,0,0);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    // 🔹 Фильтрация по выбранному счёту
     const filteredSales = selectedAccountId
         ? sales.filter(s => s.accountId === selectedAccountId)
         : sales;
 
     let expected = 0;
 
-    // 🔹 Функция расчёта реальной просрочки
-    const getOverdueAmount = (sale: Sale) => {
-        let exp = sale.downPayment;
-        sale.paymentPlan.forEach(p => {
-            if (!p.isRealPayment && new Date(p.date) < today) exp += p.amount;
-        });
-        return Math.max(0, exp - (sale.totalAmount - sale.remainingAmount));
-    };
-
     filteredSales.forEach(sale => {
         if (sale.customerId.startsWith('system_')) return;
         if (investors.some(i => i.id === sale.customerId)) return;
         if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
 
-        // 🔹 ГЛАВНОЕ: пропускаем клиентов без просрочки
-        if (getOverdueAmount(sale) <= 0) return;
-
+        // 🔹 ВСЕ плановые платежи в этом месяце (и оплаченные, и нет)
         sale.paymentPlan.forEach(payment => {
-            if ((payment.isRealPayment === false || payment.isRealPayment === undefined) && !payment.isPaid) {
+            if ((payment.isRealPayment === false || payment.isRealPayment === undefined)) {
                 const paymentDate = new Date(payment.date);
                 if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-                    expected += payment.amount;
+                    expected += payment.amount; // ✅ Считаем ВСЕ платежи
                 }
             }
         });
@@ -899,7 +908,8 @@ const receivedPaymentsThisMonth = useMemo(() => {
                        {/* 7. Ожидаемые платежи в этом месяце */}
                     <div
                         className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 flex flex-col relative overflow-hidden cursor-default"
-                        onClick={() => setSelectedPaymentType('expected')}>
+                        onClick={() => setSelectedPaymentType('expected')}
+                    >
                         <div
                             className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
                         <div
@@ -924,7 +934,7 @@ const receivedPaymentsThisMonth = useMemo(() => {
                     </div>
 
                     {/* 8. Полученные платежи за этот месяц */}
-                     <div
+                    <div
                         className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default"
                         onClick={() => setSelectedPaymentType('received')}>
                         <div
@@ -1172,13 +1182,13 @@ const receivedPaymentsThisMonth = useMemo(() => {
                 appSettings={appSettings}
             />
         )}
-          {selectedPaymentType && (
+{selectedPaymentType === 'expected' && (
   <PaymentDetailsModal
-    type={selectedPaymentType}
+    type="expected"
     sales={sales}
     customers={customers}
     investors={investors}
-    selectedAccountId={selectedAccountId} // ← Добавили
+    selectedAccountId={selectedAccountId}
     onClose={() => setSelectedPaymentType(null)}
     onInitiatePayment={onInitiatePayment}
     onViewSchedule={onViewSchedule}
