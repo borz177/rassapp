@@ -914,7 +914,7 @@ useEffect(() => {
                             </p>
                         </div>
                     </div>
-                    
+
 
 
                      {/* 7. Ожидаемые платежи в этом месяце — СТАТИЧНАЯ КАРТОЧКА */}
@@ -970,13 +970,9 @@ useEffect(() => {
                             </svg>
                         </div>
                     </div>
-                </div>
 
 
-
-
-
-                     {/* 6. Ожидаемая прибыль */}
+                       {/* 6. Ожидаемая прибыль */}
 
                     <div
                         className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
@@ -1026,6 +1022,17 @@ useEffect(() => {
                             </p>
                         </div>
                     </div>
+
+
+
+
+                </div>
+
+
+
+
+
+
 
 
 
