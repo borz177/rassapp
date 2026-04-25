@@ -88,6 +88,7 @@ const NewSale: React.FC<NewSaleProps> = ({
 
   const [suggestions, setSuggestions] = useState<Product[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [downPaymentFromMarkup, setDownPaymentFromMarkup] = useState(false);
 
   const selectedCustomer = customers.find(c => c.id === formData.customerId);
   const selectedAccount = accounts.find(a => a.id === formData.accountId);
@@ -101,6 +102,13 @@ const NewSale: React.FC<NewSaleProps> = ({
       setFormData(prev => ({ ...prev, price: calculatedPrice }));
     }
   }, [formData.buyPrice, formData.interestRate, mode, initialData.id]);
+
+  useEffect(() => {
+  if (mode === 'INSTALLMENT' && downPaymentFromMarkup && Number(formData.buyPrice) > 0) {
+    const markupAmount = Math.round(Number(formData.buyPrice) * Number(formData.interestRate) / 100);
+    setFormData(prev => ({ ...prev, downPayment: markupAmount }));
+  }
+}, [downPaymentFromMarkup, formData.buyPrice, formData.interestRate, mode]);
 
   // Авто-расчёт даты первого платежа
   useEffect(() => {
@@ -729,6 +737,29 @@ const handleSendContract = async () => {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Первый взнос (₽)</label>
                 <input type="number" min="0" max={calculatedValues.totalAmount} className="w-full p-3 border border-slate-300 rounded-lg outline-none text-slate-900 bg-white" value={formData.downPayment === 0 ? '' : formData.downPayment} onChange={e => setFormData({ ...formData, downPayment: e.target.value })} placeholder="0" />
               </div>
+              {/* Найдите блок с полем "Первый взнос" и добавьте после него: */}
+
+{mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && (
+  <div className="mt-2">
+    <label className="flex items-center gap-2 cursor-pointer group">
+      <input
+        type="checkbox"
+        checked={downPaymentFromMarkup}
+        onChange={(e) => setDownPaymentFromMarkup(e.target.checked)}
+        className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+      />
+      <span className="text-xs text-slate-600 group-hover:text-indigo-600 transition-colors">
+        Первый взнос = сумма наценки{" "}
+        <span className="font-bold text-emerald-600">
+          ({Math.round(Number(formData.buyPrice) * formData.interestRate / 100).toLocaleString()} ₽)
+        </span>
+      </span>
+    </label>
+    <p className="text-[10px] text-slate-400 mt-1 ml-6">
+      Клиент оплачивает прибыль сразу, в рассрочку — только закуп
+    </p>
+  </div>
+)}
             </div>
           )}
         </div>
@@ -755,6 +786,36 @@ const handleSendContract = async () => {
                 </div>
               </div>
               <div className="flex justify-between text-sm pt-3 border-t border-indigo-100"><span className="text-indigo-800 font-semibold">Платёж в месяц</span><span className="text-indigo-800 font-bold">{calculatedValues.monthlyPayment.toLocaleString(undefined, { maximumFractionDigits: 0 })} ₽</span></div>
+
+              {/* В блоке с итоговой информацией (после "Платёж в месяц") добавьте: */}
+
+{mode === 'INSTALLMENT' && downPaymentFromMarkup && Number(formData.buyPrice) > 0 && (
+  <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-100 mt-3">
+    <p className="text-xs font-semibold text-emerald-700 mb-2">💰 Структура оплаты:</p>
+    <div className="space-y-1 text-xs">
+      <div className="flex justify-between">
+        <span className="text-slate-500">Первый взнос (наценка):</span>
+        <span className="font-bold text-emerald-600">
+          {Math.round(Number(formData.buyPrice) * formData.interestRate / 100).toLocaleString()} ₽
+        </span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-slate-500">В рассрочку (закуп):</span>
+        <span className="font-bold text-slate-700">
+          {Number(formData.buyPrice).toLocaleString()} ₽
+        </span>
+      </div>
+      <div className="flex justify-between pt-1 border-t border-emerald-100">
+        <span className="text-slate-500">× {formData.installments} мес. =</span>
+        <span className="font-bold text-indigo-600">
+          {Math.round(Number(formData.buyPrice) / formData.installments).toLocaleString()} ₽/мес
+        </span>
+      </div>
+    </div>
+  </div>
+)}
+
+
             </>
           )}
         </div>
