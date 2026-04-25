@@ -516,13 +516,12 @@ const handleSendFullReport = () => {
       .filter(p => p.isRealPayment === true)
       .reduce((sum, p) => sum + p.amount, 0);
 
-    // Calculate total plan amount already marked as paid
+
     const totalAllocated = selectedSale.paymentPlan
       .filter(p => p.isPaid && p.isRealPayment !== true) // Plan items (false or undefined)
       .reduce((sum, p) => sum + p.amount, 0);
 
-    // Determine surplus (money received but not yet allocated to a specific plan item)
-    // For legacy data, totalRealMoney is 0, so surplus is 0.
+
     let surplus = Math.max(0, totalRealMoney - totalAllocated);
 
     const scheduled = selectedSale.paymentPlan
@@ -652,24 +651,38 @@ const handleSendFullReport = () => {
       <div className="flex border-b border-slate-200"><button onClick={() => setActiveTab('INFO')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INFO' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>Информация</button><button onClick={() => setActiveTab('INSTALLMENTS')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INSTALLMENTS' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>Рассрочки</button></div>
       {activeTab === 'INFO' && (
           <div className="space-y-4 pt-2">
-              <div className="flex justify-center"><div className="w-32 h-32 rounded-full bg-slate-200 overflow-hidden border-4 border-white shadow-lg">{customer.photo ? <img src={customer.photo} alt={customer.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-400 text-4xl font-bold">{customer.name.charAt(0)}</div>}</div></div>
+              <div className="flex justify-center">
+                  <div
+                      className="w-32 h-32 rounded-full bg-slate-200 overflow-hidden border-4 border-white shadow-lg">{customer.photo ?
+                      <img src={customer.photo} alt={customer.name} className="w-full h-full object-cover"/> : <div
+                          className="w-full h-full flex items-center justify-center text-slate-400 text-4xl font-bold">{customer.name.charAt(0)}</div>}</div>
+              </div>
 
               {/* Info Card with Edit Button */}
               <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 space-y-4 relative">
                   {onUpdateCustomer && (
                       <button
-                        onClick={() => setShowEditModal(true)}
-                        className="absolute top-4 right-4 p-2 bg-slate-50 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
+                          onClick={() => setShowEditModal(true)}
+                          className="absolute top-4 right-4 p-2 bg-slate-50 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
                       >
                           {ICONS.Edit}
                       </button>
                   )}
-                  <div><label className="text-xs text-slate-400 uppercase">Телефон</label><p className="text-lg font-medium text-slate-800">{customer.phone}</p></div>
+                  <div><label className="text-xs text-slate-400 uppercase">Телефон</label><p
+                      className="text-lg font-medium text-slate-800">{customer.phone}</p></div>
                   {customer.address && (
-                      <div><label className="text-xs text-slate-400 uppercase">Адрес</label><p className="text-base font-medium text-slate-800">{customer.address}</p></div>
+                      <div><label className="text-xs text-slate-400 uppercase">Адрес</label><p
+                          className="text-base font-medium text-slate-800">{customer.address}</p></div>
                   )}
-                  <div><label className="text-xs text-slate-400 uppercase">Рейтинг доверия</label><div className="flex items-center gap-2 mt-1"><div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden"><div className="bg-emerald-500 h-full" style={{ width: `${customer.trustScore}%` }}></div></div><span className="text-sm font-bold">{customer.trustScore}%</span></div></div>
-                  <div><label className="text-xs text-slate-400 uppercase">Заметки</label><p className="text-sm text-slate-600 mt-1">{customer.notes || 'Нет заметок'}</p></div>
+                  <div><label className="text-xs text-slate-400 uppercase">Рейтинг доверия</label>
+                      <div className="flex items-center gap-2 mt-1">
+                          <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
+                              <div className="bg-emerald-500 h-full" style={{width: `${customer.trustScore}%`}}></div>
+                          </div>
+                          <span className="text-sm font-bold">{customer.trustScore}%</span></div>
+                  </div>
+                  <div><label className="text-xs text-slate-400 uppercase">Заметки</label><p
+                      className="text-sm text-slate-600 mt-1">{customer.notes || 'Нет заметок'}</p></div>
                   <div>
                       <label className="text-xs text-slate-400 uppercase">Напоминания WhatsApp</label>
                       <p className={`text-sm mt-1 font-bold ${customer.allowWhatsappNotification !== false ? 'text-emerald-600' : 'text-slate-400'}`}>
@@ -680,44 +693,45 @@ const handleSendFullReport = () => {
 
 
               {/* === СЕКЦИЯ ДОКУМЕНТОВ КЛИЕНТА === */}
-{customer.documents && customer.documents.length > 0 && (
-    <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
-        <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                {ICONS.File} Документы
-            </h3>
-            <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full font-medium">
+              {customer.documents && customer.documents.length > 0 && (
+                  <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
+                      <div className="flex items-center justify-between mb-4">
+                          <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                              {ICONS.File} Документы
+                          </h3>
+                          <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full font-medium">
                 {customer.documents.length}
             </span>
-        </div>
+                      </div>
 
-        <div className="space-y-3">
-            {customer.documents?.map(doc => {
-    // 🔹 Формируем абсолютный URL для скачивания
-    const fileUrl = doc.fileUrl.startsWith('http')
-        ? doc.fileUrl
-        : `${window.location.origin}${doc.fileUrl}`;
+                      <div className="space-y-3">
+                          {customer.documents?.map(doc => {
+                              // 🔹 Формируем абсолютный URL для скачивания
+                              const fileUrl = doc.fileUrl.startsWith('http')
+                                  ? doc.fileUrl
+                                  : `${window.location.origin}${doc.fileUrl}`;
 
-    return (
-        <div
-            key={doc.id}
-            className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors group"
-            // 🔹 Клик по строке: для фото — модальное окно, для PDF — ничего
-            onClick={(e) => handleViewDocument(e, doc)}
-        >
-            {/* Иконка типа файла */}
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                doc.fileType === 'pdf' 
-                    ? 'bg-red-100 text-red-600' 
-                    : 'bg-emerald-100 text-emerald-600 cursor-pointer' // 🔹 Курсор только для фото
-            }`}>
-                {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
-            </div>
+                              return (
+                                  <div
+                                      key={doc.id}
+                                      className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors group"
+                                      // 🔹 Клик по строке: для фото — модальное окно, для PDF — ничего
+                                      onClick={(e) => handleViewDocument(e, doc)}
+                                  >
+                                      {/* Иконка типа файла */}
+                                      <div
+                                          className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                              doc.fileType === 'pdf'
+                                                  ? 'bg-red-100 text-red-600'
+                                                  : 'bg-emerald-100 text-emerald-600 cursor-pointer' // 🔹 Курсор только для фото
+                                          }`}>
+                                          {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
+                                      </div>
 
-            {/* Информация о документе */}
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800 truncate">{doc.name}</p>
-                <div className="flex items-center gap-2 mt-0.5">
+                                      {/* Информация о документе */}
+                                      <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-medium text-slate-800 truncate">{doc.name}</p>
+                                          <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[10px] text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">
                         {doc.category === 'passport' && '🪪 Паспорт'}
                         {doc.category === 'guarantor' && '🤝 Поручительство'}
@@ -725,52 +739,54 @@ const handleSendFullReport = () => {
                         {doc.category === 'photo' && '📷 Фото'}
                         {doc.category === 'other' && '📎 Другое'}
                     </span>
-                    {doc.fileSize && (
-                        <span className="text-[10px] text-slate-400">
+                                              {doc.fileSize && (
+                                                  <span className="text-[10px] text-slate-400">
                             {formatFileSize(doc.fileSize)}
                         </span>
-                    )}
-                </div>
-            </div>
+                                              )}
+                                          </div>
+                                      </div>
 
-            {/* 🔹 Кнопки действий */}
-            <div className="flex items-center gap-1">
-                {/* 📄 Для PDF — только кнопка скачать */}
-                {doc.fileType === 'pdf' && (
-                    <a
-                        href={fileUrl}
-                        download={doc.name}
-                        className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
-                        title="Скачать PDF"
-                        onClick={(e) => e.stopPropagation()} // 🔹 Чтобы не срабатывал клик по строке
-                    >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                            <polyline points="7 10 12 15 17 10"/>
-                            <line x1="12" y1="15" x2="12" y2="3"/>
-                        </svg>
-                    </a>
-                )}
+                                      {/* 🔹 Кнопки действий */}
+                                      <div className="flex items-center gap-1">
+                                          {/* 📄 Для PDF — только кнопка скачать */}
+                                          {doc.fileType === 'pdf' && (
+                                              <a
+                                                  href={fileUrl}
+                                                  download={doc.name}
+                                                  className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                  title="Скачать PDF"
+                                                  onClick={(e) => e.stopPropagation()} // 🔹 Чтобы не срабатывал клик по строке
+                                              >
+                                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                                       stroke="currentColor" strokeWidth="2">
+                                                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                                      <polyline points="7 10 12 15 17 10"/>
+                                                      <line x1="12" y1="15" x2="12" y2="3"/>
+                                                  </svg>
+                                              </a>
+                                          )}
 
-                {/* 🖼️ Для фото — кнопка просмотра (опционально, дублирует клик по строке) */}
-                {doc.fileType === 'image' && (
-                    <button
-                        className="p-2 text-slate-400 group-hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors"
-                        title="Просмотреть фото"
-                    >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                            <circle cx="12" cy="12" r="3"/>
-                        </svg>
-                    </button>
-                )}
-            </div>
-        </div>
-    );
-})}
-        </div>
-    </div>
-)}
+                                          {/* 🖼️ Для фото — кнопка просмотра (опционально, дублирует клик по строке) */}
+                                          {doc.fileType === 'image' && (
+                                              <button
+                                                  className="p-2 text-slate-400 group-hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                                  title="Просмотреть фото"
+                                              >
+                                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                                       stroke="currentColor" strokeWidth="2">
+                                                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                                      <circle cx="12" cy="12" r="3"/>
+                                                  </svg>
+                                              </button>
+                                          )}
+                                      </div>
+                                  </div>
+                              );
+                          })}
+                      </div>
+                  </div>
+              )}
 
 
               <div className="pt-2">
@@ -778,22 +794,50 @@ const handleSendFullReport = () => {
                           className="w-full bg-slate-800 text-white py-4 rounded-xl font-semibold flex items-center justify-center gap-2">
                       {ICONS.Send} Отправить отчет в WhatsApp
                   </button>
-                  <button
-                      onClick={handleDeleteRequest}
-                      className="w-full bg-white border-2 border-red-100 text-red-500 hover:bg-red-50 hover:border-red-200 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all"
-                  >
-                      {ICONS.Delete} Удалить клиента
-                  </button>
+
               </div>
+<div className="pt-2">
+             {/* === КНОПКА УДАЛЕНИЯ КЛИЕНТА === */}
+{onDeleteCustomer && (
+  <button
+    onClick={(e) => {
+      e.stopPropagation();
+
+      // 🔹 1. Проверка: есть ли привязанные договоры?
+      const hasContracts = sales.some(s => s.customerId === customer.id);
+
+      if (hasContracts) {
+        const contractCount = sales.filter(s => s.customerId === customer.id).length;
+        alert(`⛔ Невозможно удалить клиента!
+        
+У него есть ${contractCount} привязанных договоров.
+Сначала удалите или закройте их в разделе "Рассрочки".`);
+        return;
+      }
+
+      // 🔹 2. Вызываем пропс → открывает модалку в App.tsx
+      onDeleteCustomer(customer.id);
+    }}
+    className="w-full mt-2 bg-white border-2 border-red-100 text-red-500
+               hover:bg-red-50 hover:border-red-200 hover:text-red-600
+               py-3 rounded-xl font-semibold flex items-center justify-center gap-2
+               transition-all duration-200 group"
+  >
+    <span className="group-hover:scale-110 transition-transform">{ICONS.Delete}</span>
+    Удалить клиента
+  </button>
+)}
+    </div>
           </div>
       )}
-      {activeTab === 'INSTALLMENTS' && (
-          <div className="space-y-3 pt-2">
-              {customerSales.length === 0 && <div className="text-center py-10 text-slate-400">Нет активных рассрочек</div>}
-              {customerSales.map(sale => {
-                  const investorName = getInvestorInfo(sale);
-                  return (
-                    <div key={sale.id} onClick={() => setSelectedSaleId(sale.id)} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm active:bg-slate-50 cursor-pointer">
+        {activeTab === 'INSTALLMENTS' && (
+            <div className="space-y-3 pt-2">
+                {customerSales.length === 0 &&
+                    <div className="text-center py-10 text-slate-400">Нет активных рассрочек</div>}
+                {customerSales.map(sale => {
+                    const investorName = getInvestorInfo(sale);
+                    return (
+                        <div key={sale.id} onClick={() => setSelectedSaleId(sale.id)} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm active:bg-slate-50 cursor-pointer">
                         <div className="flex justify-between items-start mb-2">
                             <h3 className="font-bold text-slate-800">{sale.productName}</h3>
                             <span className={`text-xs px-2 py-1 rounded-full ${sale.remainingAmount === 0 ? 'bg-slate-100 text-slate-600' : 'bg-indigo-100 text-indigo-700'}`}>{sale.remainingAmount === 0 ? 'Закрыто' : 'Активно'}</span>

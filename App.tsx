@@ -97,6 +97,8 @@ const isLanding = path === "/"
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [showSupportChat, setShowSupportChat] = useState(false);
 
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+
 
 
   const [myProfitPeriod, setMyProfitPeriod] = useState(() => {
@@ -1156,10 +1158,14 @@ ${customerSales.map(s => `• ${s.productName}`).join('\n')}
     return;
   }
 
-  // 🔹 2. Подтверждение удаления
-  if (!window.confirm('Вы уверены, что хотите удалить этого клиента?\n\nЭто действие нельзя отменить.')) {
-    return;
-  }
+  // 🔹 2. Показываем модальное окно подтверждения (вместо window.confirm)
+  setShowDeleteConfirm(customerId);
+};
+
+// 🔹 Внутренняя функция для фактического удаления (вызывается после подтверждения)
+const confirmDeleteCustomer = async () => {
+  const customerId = showDeleteConfirm;
+  if (!customerId) return;
 
   try {
     // 🔹 3. Удаляем с сервера (и в очередь офлайн-режима)
@@ -1180,6 +1186,9 @@ ${customerSales.map(s => `• ${s.productName}`).join('\n')}
   } catch (error) {
     console.error('❌ Ошибка удаления клиента:', error);
     alert('Не удалось удалить клиента. Проверьте подключение к интернету.');
+  } finally {
+    // 🔹 Закрываем модалку в любом случае
+    setShowDeleteConfirm(null);
   }
 };
 
@@ -2121,6 +2130,57 @@ if (!user && !isLoading) {
 
       </div>
     )}
+
+           {/* === МОДАЛЬНОЕ ОКНО: ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ КЛИЕНТА === */}
+{showDeleteConfirm && (
+  <div
+    className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
+    onClick={() => setShowDeleteConfirm(null)}
+  >
+    <div
+      className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-2xl animate-scale-in"
+      onClick={e => e.stopPropagation()}
+    >
+      {/* 🔴 Иконка предупреждения */}
+      <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+
+      {/* 🔹 Заголовок */}
+      <h3 className="text-lg font-bold text-slate-800 text-center mb-2">
+        Удалить клиента?
+      </h3>
+
+      {/* 🔹 Текст предупреждения */}
+      <p className="text-center text-slate-500 mb-6 text-sm leading-relaxed">
+        Это действие <strong className="text-slate-700">нельзя отменить</strong>.<br/>
+        Все данные клиента будут удалены безвозвратно.
+      </p>
+
+      {/* 🔹 Кнопки действий */}
+      <div className="flex gap-3">
+        <button
+          onClick={() => setShowDeleteConfirm(null)}
+          className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300"
+        >
+          Отмена
+        </button>
+        <button
+          onClick={confirmDeleteCustomer}
+          className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors shadow-lg shadow-red-200 focus:outline-none focus:ring-2 focus:ring-red-300"
+        >
+          Да, удалить
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
 
   </Layout>
 );
