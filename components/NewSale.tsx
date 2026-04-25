@@ -788,12 +788,10 @@ const handleSendContract = async () => {
         <span className="text-xs text-slate-600 group-hover:text-indigo-600 transition-colors font-medium">
           Первый взнос = сумма наценки
         </span>
-        <div className="flex items-center gap-1.5 mt-0.5">
-         
           <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
             +{Math.round(Number(formData.buyPrice) * formData.interestRate / 100).toLocaleString()} ₽
           </span>
-        </div>
+
       </div>
     </label>
   )}
