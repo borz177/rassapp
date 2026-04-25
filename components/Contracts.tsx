@@ -388,28 +388,72 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
 
 
   const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
-    e.stopPropagation();
+  e.stopPropagation();
 
-    if (activeMenuId === sale.id) {
-      setActiveMenuId(null);
-      setCurrentMenuSale(null);
-      setMenuPosition(null);
-      return;
+  if (activeMenuId === sale.id) {
+    setActiveMenuId(null);
+    setCurrentMenuSale(null);
+    setMenuPosition(null);
+    return;
+  }
+
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const isMobile = window.innerWidth < 640;
+
+  if (!isMobile) {
+    const MENU_WIDTH = 256; // w-64 = 16rem = 256px
+    const MENU_HEIGHT = 280; // примерная высота меню
+    const PADDING = 12; // отступ от края экрана
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const scrollY = window.scrollY;
+    const scrollX = window.scrollX;
+
+    // 🔹 Вертикаль: проверяем, есть ли место снизу
+    const spaceBelow = viewportHeight - rect.bottom;
+    const spaceAbove = rect.top;
+
+    let menuTop: number;
+    if (spaceBelow >= MENU_HEIGHT + PADDING) {
+      // ✅ Места снизу достаточно — показываем под кнопкой
+      menuTop = rect.bottom + scrollY + 8;
+    } else if (spaceAbove >= MENU_HEIGHT + PADDING) {
+      // ✅ Места сверху достаточно — показываем над кнопкой
+      menuTop = rect.top + scrollY - MENU_HEIGHT - 8;
+    } else {
+      // ⚠️ Места мало — центрируем по кнопке, но в пределах экрана
+      menuTop = Math.max(
+        PADDING + scrollY,
+        Math.min(rect.top + scrollY - MENU_HEIGHT / 2, viewportHeight - MENU_HEIGHT - PADDING + scrollY)
+      );
     }
 
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const isMobile = window.innerWidth < 640;
+    // 🔹 Горизонталь: проверяем, есть ли место справа
+    const spaceRight = viewportWidth - rect.right;
+    const spaceLeft = rect.left;
 
-    if (!isMobile) {
-      setMenuPosition({
-        top: rect.bottom + window.scrollY + 8,
-        left: rect.right + window.scrollX - 200
-      });
+    let menuLeft: number;
+    if (spaceRight >= MENU_WIDTH + PADDING) {
+      // ✅ Места справа достаточно — выравниваем по правому краю кнопки
+      menuLeft = rect.right + scrollX - MENU_WIDTH;
+    } else if (spaceLeft >= MENU_WIDTH + PADDING) {
+      // ✅ Места слева достаточно — выравниваем по левому краю кнопки
+      menuLeft = rect.left + scrollX;
+    } else {
+      // ⚠️ Места мало — центрируем по горизонтали
+      menuLeft = Math.max(
+        PADDING + scrollX,
+        Math.min(rect.left + scrollX - MENU_WIDTH / 2, viewportWidth - MENU_WIDTH - PADDING + scrollX)
+      );
     }
 
-    setActiveMenuId(sale.id);
-    setCurrentMenuSale(sale);
-  };
+    setMenuPosition({ top: menuTop, left: menuLeft });
+  }
+
+  setActiveMenuId(sale.id);
+  setCurrentMenuSale(sale);
+};
 
   const handleDeleteConfirm = () => {
     if (deletingSale) { onDeleteSale(deletingSale.id); setDeletingSale(null); }
@@ -672,7 +716,7 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
           </div>
         ) : (
           <div
-            className="fixed z-[9999] bg-white rounded-2xl shadow-2xl w-64 overflow-hidden animate-scale-in border border-slate-100"
+            className="fixed z-[9999] bg-white rounded-2xl shadow-2xl w-64 overflow-hidden animate-scale-in border border-slate-100 max-h-[85vh] overflow-y-auto"
             style={{
               top: `${menuPosition?.top || 0}px`,
               left: `${menuPosition?.left || 0}px`
