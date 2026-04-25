@@ -544,94 +544,93 @@ const [calendarMonth, setCalendarMonth] = useState(new Date());
           .slice(0, 5);
   }, [sales, selectedAccountId]);
 
-  const upcomingAndOverduePayments = useMemo(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-    const tomorrowEnd = new Date(tomorrow);
-    tomorrowEnd.setHours(23, 59, 59, 999);
+  // Найдите useMemo upcomingAndOverduePayments и исправьте:
 
-    const today = new Date();
-    const todayEnd = new Date(today);
-    today.setHours(0,0,0,0);
-    todayEnd.setHours(23, 59, 59, 999);
-    const todayStr = today.toDateString();
+const upcomingAndOverduePayments = useMemo(() => {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+  const tomorrowEnd = new Date(tomorrow);
+  tomorrowEnd.setHours(23, 59, 59, 999);
 
-    const payments: { sale: Sale, customerName: string, totalDue: number, isTomorrow: boolean, isToday: boolean, isOverdue: boolean }[] = [];
+  const today = new Date();
+  const todayEnd = new Date(today);
+  today.setHours(0,0,0,0);
+  todayEnd.setHours(23, 59, 59, 999);
+  const todayStr = today.toDateString();
 
-    sales.forEach(sale => {
-      if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
+  const payments: { sale: Sale, customerName: string, totalDue: number, isTomorrow: boolean, isToday: boolean, isOverdue: boolean }[] = [];
 
-      const realInstallmentPayments = sale.paymentPlan
-          .filter(p => p.isPaid && p.isRealPayment !== false)
-          .reduce((sum, p) => sum + p.amount, 0);
+  sales.forEach(sale => {
+    if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
 
-      let paymentPool = realInstallmentPayments;
-      const planItems = sale.paymentPlan
-          .filter(p => p.isRealPayment === false || p.isRealPayment === undefined)
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const realInstallmentPayments = sale.paymentPlan
+        .filter(p => p.isPaid && p.isRealPayment !== false)
+        .reduce((sum, p) => sum + p.amount, 0);
 
-      let relevantAmount = 0;
-      let isTomorrowPayment = false;
-      let isTodayPayment = false;
-      let isOverduePayment = false;
+    let paymentPool = realInstallmentPayments;
+    const planItems = sale.paymentPlan
+        .filter(p => p.isRealPayment === false || p.isRealPayment === undefined)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-      planItems.forEach(p => {
-          const amountDue = p.amount;
-          const coveredByPool = Math.min(amountDue, paymentPool);
-          paymentPool -= coveredByPool;
-          const actualDue = amountDue - coveredByPool;
+    let relevantAmount = 0;
+    let isTomorrowPayment = false;
+    let isTodayPayment = false;
+    let isOverduePayment = false;
 
-          if (actualDue > 0.01) {
-              const paymentDate = new Date(p.date);
-              paymentDate.setHours(0,0,0,0);
-              const isPast = paymentDate < today;
-              const isToday = paymentDate.toDateString() === todayStr;
-              const isTomorrow = paymentDate >= tomorrow && paymentDate <= tomorrowEnd;
+    planItems.forEach(p => {
+        const amountDue = p.amount;
+        const coveredByPool = Math.min(amountDue, paymentPool);
+        paymentPool -= coveredByPool;
+        const actualDue = amountDue - coveredByPool;
 
-             // Внутри useMemo для upcomingAndOverduePayments добавьте проверку selectedCalendarDate:
+        if (actualDue > 0.01) {
+            const paymentDate = new Date(p.date);
+            paymentDate.setHours(0,0,0,0);
+            const isPast = paymentDate < today;
+            const isToday = paymentDate.toDateString() === todayStr;
+            const isTomorrow = paymentDate >= tomorrow && paymentDate <= tomorrowEnd;
 
-let include = false;
-if (selectedCalendarDate) {
-  // Если выбрана дата в календаре — показываем только её
-  const selectedDateStr = selectedCalendarDate.toDateString();
-  if (paymentDate.toDateString() === selectedDateStr) include = true;
-} else if (paymentDateFilter === 'ALL') {
-  if (isToday || isTomorrow) include = true;
-} else if (paymentDateFilter === 'TODAY') {
-  if (isToday) include = true;
-} else if (paymentDateFilter === 'TOMORROW') {
-  if (isTomorrow) include = true;
-}
+            let include = false;
+            if (selectedCalendarDate) {
+              // ✅ Если выбрана дата в календаре — показываем только её
+              const selectedDateStr = selectedCalendarDate.toDateString();
+              if (paymentDate.toDateString() === selectedDateStr) include = true;
+            } else if (paymentDateFilter === 'ALL') {
+              if (isToday || isTomorrow) include = true;
+            } else if (paymentDateFilter === 'TODAY') {
+              if (isToday) include = true;
+            } else if (paymentDateFilter === 'TOMORROW') {
+              if (isTomorrow) include = true;
+            }
 
-              if (include) {
-                  relevantAmount += actualDue;
-                  if (isTomorrow) isTomorrowPayment = true;
-                  if (isToday) isTodayPayment = true;
-                  if (isPast) isOverduePayment = true;
-              }
-          }
+            if (include) {
+                relevantAmount += actualDue;
+                if (isTomorrow) isTomorrowPayment = true;
+                if (isToday) isTodayPayment = true;
+                if (isPast) isOverduePayment = true;
+            }
+        }
+    });
+
+    if (relevantAmount > 0) {
+      payments.push({
+        sale: sale,
+        customerName: customers.find(c => c.id === sale.customerId)?.name || 'Неизвестный клиент',
+        totalDue: Math.round(relevantAmount * 100) / 100,
+        isTomorrow: isTomorrowPayment && !isTodayPayment,
+        isToday: isTodayPayment,
+        isOverdue: isOverduePayment
       });
+    }
+  });
 
-      if (relevantAmount > 0) {
-        payments.push({
-          sale: sale,
-          customerName: customers.find(c => c.id === sale.customerId)?.name || 'Неизвестный клиент',
-          totalDue: Math.round(relevantAmount * 100) / 100,
-          isTomorrow: isTomorrowPayment && !isTodayPayment,
-          isToday: isTodayPayment,
-          isOverdue: isOverduePayment
-        });
-      }
-    });
-
-    return payments.sort((a,b) => {
-        if (a.isToday && !b.isToday) return -1;
-        if (!a.isToday && b.isToday) return 1;
-        return a.totalDue - b.totalDue;
-    });
-  }, [sales, customers, paymentDateFilter]);
-
+  return payments.sort((a,b) => {
+      if (a.isToday && !b.isToday) return -1;
+      if (!a.isToday && b.isToday) return 1;
+      return a.totalDue - b.totalDue;
+  });
+}, [sales, customers, paymentDateFilter, selectedCalendarDate]);
 
 
 // 📊 Ожидаемые платежи в этом месяце (исправленная версия)
@@ -1229,126 +1228,137 @@ useEffect(() => {
       </div>
       
       {/* 🔹 Кнопка календаря */}
-      <div className="relative" data-calendar-picker>
-        <button
-          onClick={() => {
-            setShowCalendarPicker(!showCalendarPicker);
-            if (!showCalendarPicker) {
-              setSelectedCalendarDate(null);
-              setPaymentDateFilter('ALL');
+<div className="relative" data-calendar-picker>
+  <button
+    onClick={() => {
+      setShowCalendarPicker(!showCalendarPicker);
+      if (!showCalendarPicker) {
+        setSelectedCalendarDate(null);
+        setPaymentDateFilter('ALL');
+      }
+    }}
+    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 border ${
+      selectedCalendarDate
+        ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-indigo-600 shadow-md shadow-indigo-200'
+        : 'bg-white/70 backdrop-blur-sm text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+    }`}
+  >
+    <CalendarIcon size={16} />
+    {selectedCalendarDate ? formatDate(selectedCalendarDate.toISOString()) : 'Календарь'}
+    {selectedCalendarDate && (
+      <button
+        onClick={(e) => { e.stopPropagation(); setSelectedCalendarDate(null); }}
+        className="ml-1 w-4 h-4 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center"
+      >
+        ✕
+      </button>
+    )}
+  </button>
+
+  {/* 🔹 Выпадающий календарь — ИСПРАВЛЕННЫЙ */}
+  {showCalendarPicker && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:absolute sm:inset-auto sm:top-full sm:left-0 sm:m-0 sm:p-0 sm:w-auto sm:justify-start">
+      {/* Затемнение фона для мобильных */}
+      <div
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm sm:hidden"
+        onClick={() => setShowCalendarPicker(false)}
+      />
+
+      {/* Сам календарь */}
+      <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 w-full max-w-[320px] animate-in fade-in zoom-in-95 duration-200 sm:min-w-[280px]">
+        {/* Заголовок календаря */}
+        <div className="flex items-center justify-between mb-3">
+          <button
+            onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1))}
+            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <span className="text-sm font-bold text-slate-700 capitalize">
+            {calendarMonth.toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
+          </span>
+          <button
+            onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1))}
+            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+
+        {/* Сетка дней */}
+        <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400 mb-2">
+          {['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d => <span key={d}>{d}</span>)}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {(() => {
+            const days: JSX.Element[] = [];
+            const firstDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+            const lastDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0);
+            const startOffset = (firstDay.getDay() + 6) % 7; // Пн = 0
+
+            // Пустые ячейки до первого дня месяца
+            for (let i = 0; i < startOffset; i++) {
+              days.push(<div key={`empty-${i}`} className="aspect-square" />);
             }
-          }}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 border ${
-            selectedCalendarDate
-              ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-indigo-600 shadow-md shadow-indigo-200'
-              : 'bg-white/70 backdrop-blur-sm text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
-          }`}
-        >
-          <CalendarIcon size={16} />
-          {selectedCalendarDate ? formatDate(selectedCalendarDate.toLocaleDateString('ru-RU')) : 'Календарь'}
-          {selectedCalendarDate && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setSelectedCalendarDate(null); }}
-              className="ml-1 w-4 h-4 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center"
-            >
-              ✕
-            </button>
-          )}
-        </button>
-        
-        {/* 🔹 Выпадающий календарь */}
-        {showCalendarPicker && (
-          <div className="absolute top-full left-0 mt-2 z-50 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 min-w-[280px] animate-in fade-in zoom-in-95 duration-200">
-            {/* Заголовок календаря */}
-            <div className="flex items-center justify-between mb-3">
-              <button
-                onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1))}
-                className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <ChevronLeft size={18} />
-              </button>
-              <span className="text-sm font-bold text-slate-700">
-                {calendarMonth.toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
-              </span>
-              <button
-                onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1))}
-                className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <ChevronRight size={18} />
-              </button>
-            </div>
-            
-            {/* Сетка дней */}
-            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-slate-400 mb-1">
-              {['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d => <span key={d}>{d}</span>)}
-            </div>
-            {/* Сетка дней */}
-<div className="grid grid-cols-7 gap-1">
-  {(() => {
-    const days: JSX.Element[] = [];
-    const firstDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
-    const lastDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0);
-    const startOffset = (firstDay.getDay() + 6) % 7; // Пн = 0
 
-    // Пустые ячейки до первого дня месяца
-    for (let i = 0; i < startOffset; i++) {
-      days.push(<div key={`empty-${i}`} className="aspect-square" />);
-    }
+            // Дни месяца
+            for (let d = 1; d <= lastDay.getDate(); d++) {
+              const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), d);
+              date.setHours(0, 0, 0, 0);
+              const dateKey = date.toDateString();
+              const amount = getPaymentsByDate.get(dateKey) || 0;
+              const hasPayments = amount > 0;
+              const isToday = date.toDateString() === new Date().toDateString();
+              const isSelected = selectedCalendarDate?.toDateString() === dateKey;
 
-    // Дни месяца
-    for (let d = 1; d <= lastDay.getDate(); d++) {
-      const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), d);
-      date.setHours(0, 0, 0, 0);
-      const dateKey = date.toDateString();
+              days.push(
+                <button
+                  key={d}
+                  onClick={() => {
+                    setSelectedCalendarDate(date);
+                    setShowCalendarPicker(false);
+                  }}
+                  className={`aspect-square rounded-xl text-xs flex flex-col items-center justify-center relative transition-all font-semibold ${
+                    isSelected
+                      ? 'bg-gradient-to-br from-indigo-600 to-indigo-500 text-white font-bold shadow-lg scale-105'
+                      : isToday
+                        ? 'bg-indigo-100 text-indigo-700 font-bold border-2 border-indigo-300'
+                        : hasPayments
+                          ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                          : 'hover:bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  <span className="text-sm">{d}</span>
+                  {hasPayments && (
+                    <span className={`text-[9px] font-bold mt-0.5 ${
+                      isSelected ? 'text-white/90' : 'text-emerald-700'
+                    }`}>
+                      {amount >= 1000 ? `${(amount/1000).toFixed(1)}к` : amount}
+                    </span>
+                  )}
+                  {hasPayments && !isSelected && (
+                    <span className="absolute bottom-1 w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                  )}
+                </button>
+              );
+            }
+            return days;
+          })()}
+        </div>
 
-      // ✅ ИСПРАВЛЕНО: используем getPaymentsByDate из useMemo
-      const amount = getPaymentsByDate.get(dateKey) || 0;
-
-      const hasPayments = amount > 0;
-      const isToday = date.toDateString() === new Date().toDateString();
-      const isSelected = selectedCalendarDate?.toDateString() === dateKey;
-
-      days.push(
-        <button
-          key={d}
-          onClick={() => {
-            setSelectedCalendarDate(date);
-            setShowCalendarPicker(false);
-          }}
-          className={`aspect-square rounded-lg text-xs flex flex-col items-center justify-center relative transition-all ${
-            isSelected
-              ? 'bg-indigo-600 text-white font-bold shadow-md'
-              : isToday
-                ? 'bg-indigo-100 text-indigo-700 font-semibold'
-                : hasPayments
-                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                  : 'hover:bg-slate-100 text-slate-600'
-          }`}
-        >
-          <span>{d}</span>
-          {hasPayments && !isSelected && (
-            <span className="text-[9px] font-bold text-emerald-600 mt-0.5">
-              {amount >= 1000 ? `${Math.round(amount/1000)}к` : `${amount}`}
-            </span>
-          )}
-          {hasPayments && !isSelected && (
-            <span className="absolute bottom-1 w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-          )}
-        </button>
-      );
-    }
-    return days;
-  })()}
-</div>
-            
-            {/* Легенда */}
-            <div className="flex items-center justify-center gap-3 mt-3 pt-3 border-t border-slate-100 text-[10px] text-slate-400">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-indigo-100 rounded" /> Сегодня</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-emerald-50 rounded" /> Есть платежи</span>
-            </div>
-          </div>
-        )}
+        {/* Легенда */}
+        <div className="flex items-center justify-center gap-3 mt-3 pt-3 border-t border-slate-100 text-[10px] text-slate-500">
+          <span className="flex items-center gap-1">
+            <span className="w-3 h-3 bg-indigo-100 rounded border border-indigo-300" /> Сегодня
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-3 h-3 bg-emerald-50 rounded border border-emerald-200" /> Есть платежи
+          </span>
+        </div>
       </div>
+    </div>
+  )}
+</div>
       
       {/* Сброс фильтра */}
       {selectedCalendarDate && (
