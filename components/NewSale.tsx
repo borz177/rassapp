@@ -788,7 +788,7 @@ const handleSendContract = async () => {
     {/* Текст + Сумма в один ряд */}
     <div className="flex-1 flex items-center justify-between gap-3 min-w-0">
       <span className="text-xs text-slate-600 group-hover:text-indigo-600 transition-colors font-medium truncate">
-        Первый взнос = сумма наценки
+        Взнос
       </span>
       <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg whitespace-nowrap flex-shrink-0">
         +{Math.round(Number(formData.buyPrice) * formData.interestRate / 100).toLocaleString()} ₽
