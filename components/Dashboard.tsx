@@ -1329,16 +1329,11 @@ useEffect(() => {
                   }`}
                 >
                   <span className="text-sm">{d}</span>
-                  {hasPayments && (
-                    <span className={`text-[9px] font-bold mt-0.5 ${
-                      isSelected ? 'text-white/90' : 'text-emerald-700'
-                    }`}>
-                      {amount >= 1000 ? `${(amount/1000).toFixed(1)}к` : amount}
-                    </span>
-                  )}
                   {hasPayments && !isSelected && (
-                    <span className="absolute bottom-1 w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                  )}
+  <span className="text-[9px] font-bold text-emerald-600 mt-0.5">
+    {amount >= 1000 ? `${Math.round(amount/1000)}к` : `${amount}`}
+  </span>
+)}
                 </button>
               );
             }
