@@ -380,6 +380,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
   const [editDate, setEditDate] = useState('');
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showBlockedDeleteModal, setShowBlockedDeleteModal] = useState(false);
 
 
 
@@ -798,25 +799,26 @@ const handleSendFullReport = () => {
               </div>
 <div className="pt-2">
              {/* === КНОПКА УДАЛЕНИЯ КЛИЕНТА === */}
+{/* === КНОПКА УДАЛЕНИЯ КЛИЕНТА === */}
 {onDeleteCustomer && (
   <button
     onClick={(e) => {
       e.stopPropagation();
 
       // 🔹 1. Проверка: есть ли привязанные договоры?
-      const hasContracts = sales.some(s => s.customerId === customer.id);
+      const customerContracts = sales.filter(s => s.customerId === customer.id);
 
-      if (hasContracts) {
-        const contractCount = sales.filter(s => s.customerId === customer.id).length;
-        alert(`⛔ Невозможно удалить клиента!
-        
-У него есть ${contractCount} привязанных договоров.
-Сначала удалите или закройте их в разделе "Рассрочки".`);
+      if (customerContracts.length > 0) {
+        // 🔹 Вместо alert — открываем локальную модалку
+        setShowBlockedDeleteModal(true);
         return;
       }
 
-      // 🔹 2. Вызываем пропс → открывает модалку в App.tsx
-      onDeleteCustomer(customer.id);
+      // 🔹 2. Если договоров нет — вызываем пропс для удаления
+      if (window.confirm(`Удалить клиента "${customer.name}"?\n\nЭто действие нельзя отменить.`)) {
+        onDeleteCustomer(customer.id);
+        onBack();
+      }
     }}
     className="w-full mt-2 bg-white border-2 border-red-100 text-red-500
                hover:bg-red-50 hover:border-red-200 hover:text-red-600
@@ -943,6 +945,87 @@ const handleSendFullReport = () => {
           className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition shadow-lg shadow-red-200"
         >
           Да, удалить
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
+
+
+        {/* === МОДАЛЬНОЕ ОКНО: НЕЛЬЗЯ УДАЛИТЬ (ЕСТЬ ДОГОВОРЫ) === */}
+{showBlockedDeleteModal && (
+  <div
+    className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
+    onClick={() => setShowBlockedDeleteModal(false)}
+  >
+    <div
+      className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-2xl animate-scale-in"
+      onClick={e => e.stopPropagation()}
+    >
+      {/* 🔴 Иконка предупреждения */}
+      <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+
+      {/* 🔹 Заголовок */}
+      <h3 className="text-lg font-bold text-slate-800 text-center mb-1">
+        Невозможно удалить
+      </h3>
+      <p className="text-center text-slate-500 mb-4 text-sm">
+        У клиента <strong>{customer.name}</strong> есть активные договоры
+      </p>
+
+      {/* 🔹 Список договоров */}
+      <div className="bg-slate-50 rounded-xl p-4 mb-6 max-h-48 overflow-y-auto">
+        <p className="text-xs font-medium text-slate-500 mb-2 uppercase">
+          Привязанные договоры ({sales.filter(s => s.customerId === customer.id).length})
+        </p>
+        <ul className="space-y-2">
+          {sales.filter(s => s.customerId === customer.id).map(contract => (
+            <li
+              key={contract.id}
+              className="flex items-center gap-2 text-sm text-slate-700 bg-white px-3 py-2 rounded-lg border border-slate-100"
+            >
+              <span className="text-slate-400 flex-shrink-0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+              </span>
+              <span className="truncate">{contract.productName}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* 🔹 Текст инструкции */}
+      <p className="text-center text-slate-500 text-sm mb-6">
+        Сначала удалите или закройте все договоры в разделе <strong>«Рассрочки»</strong>
+      </p>
+
+      {/* 🔹 Кнопки действий */}
+      <div className="flex gap-3">
+        <button
+          onClick={() => {
+            setShowBlockedDeleteModal(false);
+            // 🔹 Переход на вкладку рассрочек
+            setActiveTab('INSTALLMENTS');
+          }}
+          className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+        >
+          Перейти к договорам
+        </button>
+        <button
+          onClick={() => setShowBlockedDeleteModal(false)}
+          className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+        >
+          Понятно
         </button>
       </div>
     </div>
