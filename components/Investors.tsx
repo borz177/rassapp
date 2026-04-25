@@ -72,18 +72,14 @@ const Investors: React.FC<InvestorsProps> = ({
                     permissions: formPermissions
                 }, formPassword);
             }
-        } else {
-            // 🔹 При создании — проверяем, что сумма заполнена
-            if (!formAmount || Number(formAmount) <= 0) {
-                alert("Сумма инвестиций обязательна для нового инвестора");
-                return;
-            }
-            if (!formPassword) {
-                alert("Пароль обязателен для нового инвестора");
-                return;
-            }
-            onAddInvestor(formName, formPhone, formEmail, formPassword, Number(formAmount), Number(formProfitPercentage), formPermissions);
-        }
+        }  else {
+    if (!formPassword) {
+        alert("Пароль обязателен для нового инвестора");
+        return;
+    }
+    // 🔹 Сумма теперь необязательна, по умолчанию 0
+    onAddInvestor(formName, formPhone, formEmail, formPassword, Number(formAmount) || 0, Number(formProfitPercentage), formPermissions);
+}
         resetForm();
     }
 };
@@ -151,20 +147,7 @@ const Investors: React.FC<InvestorsProps> = ({
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                      {/* 🔹 Сумма инвестиций — ТОЛЬКО при создании */}
-                      {!editingId && (
-                          <div className="relative">
-                              <span className="absolute left-3 top-3.5 text-slate-400">₽</span>
-                              <input
-                                  type="number"
-                                  placeholder="Сумма инвестиций"
-                                  className="w-full p-3 pl-8 border border-slate-200 rounded-xl outline-none font-bold"
-                                  value={formAmount}
-                                  onChange={e => setFormAmount(e.target.value)}
-                                  required={!editingId} // 🔹 Обязательно только при создании
-                              />
-                          </div>
-                      )}
+
 
                       {/* 🔹 Процент прибыли — всегда виден */}
                       <div className={`relative ${!editingId ? '' : 'col-span-2'}`}>

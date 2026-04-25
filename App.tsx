@@ -858,7 +858,7 @@ const handleAddInvestor = async (
   phone: string,
   email: string,
   pass: string,
-  amount: number,
+  amount: number, // теперь может быть 0
   profitPercentage: number,
   permissions: InvestorPermissions
 ) => {
@@ -870,7 +870,7 @@ const handleAddInvestor = async (
   }
 
   try {
-    // 🔹 1. Создаём ПОЛЬЗОВАТЕЛЯ для входа
+    // 1. Создаём пользователя
     const newInvestorUser = await api.createSubUser({
       name,
       email,
@@ -880,14 +880,14 @@ const handleAddInvestor = async (
       permissions
     });
 
-    // 🔹 2. Создаём запись инвестора в data_items
+    // 2. Создаём запись инвестора
     const newInvestor: Investor = {
       id: newInvestorUser.id,
       userId: user.id,
       name,
       phone,
       email,
-      initialAmount: amount,
+      initialAmount: amount, // может быть 0
       joinedDate: new Date().toISOString(),
       profitPercentage,
       permissions
@@ -896,7 +896,7 @@ const handleAddInvestor = async (
     const savedInv = await api.saveItem('investors', newInvestor);
     updateList(setInvestors, savedInv);
 
-    // 🔹 3. Создаём счёт инвестора
+    // 3. Создаём счёт инвестора
     const newAccount: Account = {
       id: `acc_${newInvestorUser.id}`,
       userId: user.id,
@@ -910,33 +910,34 @@ const handleAddInvestor = async (
     const savedAcc = await api.saveItem('accounts', newAccount);
     updateList(setAccounts, savedAcc);
 
-    // 🔹 4. Создаём транзакцию депозита
-    const depositTransaction: Sale = {
-      id: `dep_${Date.now()}`,
-      userId: user.id,
-      type: 'CASH',
-      customerId: `system_deposit_${newInvestorUser.id}`,
-      productName: 'Начальный депозит',
-      buyPrice: 0,
-      accountId: newAccount.id,
-      totalAmount: amount,
-      downPayment: amount,
-      remainingAmount: 0,
-      interestRate: 0,
-      installments: 0,
-      startDate: new Date().toISOString(),
-      status: 'COMPLETED',
-      paymentPlan: []
-    };
+    // 4. 🔹 Создаём транзакцию депозита ТОЛЬКО если сумма > 0
+    if (amount > 0) {
+      const depositTransaction: Sale = {
+        id: `dep_${Date.now()}`,
+        userId: user.id,
+        type: 'CASH',
+        customerId: `system_deposit_${newInvestorUser.id}`,
+        productName: 'Начальный депозит',
+        buyPrice: 0,
+        accountId: newAccount.id,
+        totalAmount: amount,
+        downPayment: amount,
+        remainingAmount: 0,
+        interestRate: 0,
+        installments: 0,
+        startDate: new Date().toISOString(),
+        status: 'COMPLETED',
+        paymentPlan: []
+      };
 
-    const savedTx = await api.saveItem('sales', depositTransaction);
-    updateList(setSales, savedTx);
+      const savedTx = await api.saveItem('sales', depositTransaction);
+      updateList(setSales, savedTx);
+    }
 
     alert("✅ Инвестор создан!");
     return newInvestorUser;
 
   } catch(e: any) {
-    // 🔹 🔥 ПРОСТАЯ обработка ошибки занятого email
     if (e.message?.includes('Email уже занят') || e.message?.includes('already exists')) {
       alert('⚠️ Email уже занят');
       return;
