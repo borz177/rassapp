@@ -401,51 +401,36 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
   const isMobile = window.innerWidth < 640;
 
   if (!isMobile) {
-    const MENU_WIDTH = 256; // w-64 = 16rem = 256px
-    const MENU_HEIGHT = 280; // примерная высота меню
-    const PADDING = 12; // отступ от края экрана
+    const MENU_WIDTH = 256; // w-64
+    const MENU_HEIGHT = 320; // примерная высота с запасом
+    const GAP = 8; // отступ от кнопки
 
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const scrollY = window.scrollY;
-    const scrollX = window.scrollX;
-
-    // 🔹 Вертикаль: проверяем, есть ли место снизу
-    const spaceBelow = viewportHeight - rect.bottom;
+    // 🔹 Вертикаль: проверяем место снизу/сверху ОТНОСИТЕЛЬНО VIEWPORT
+    const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
 
     let menuTop: number;
-    if (spaceBelow >= MENU_HEIGHT + PADDING) {
-      // ✅ Места снизу достаточно — показываем под кнопкой
-      menuTop = rect.bottom + scrollY + 8;
-    } else if (spaceAbove >= MENU_HEIGHT + PADDING) {
-      // ✅ Места сверху достаточно — показываем над кнопкой
-      menuTop = rect.top + scrollY - MENU_HEIGHT - 8;
+    if (spaceBelow >= MENU_HEIGHT + GAP) {
+      menuTop = rect.bottom + GAP; // снизу от кнопки
+    } else if (spaceAbove >= MENU_HEIGHT + GAP) {
+      menuTop = rect.top - MENU_HEIGHT - GAP; // сверху от кнопки
     } else {
-      // ⚠️ Места мало — центрируем по кнопке, но в пределах экрана
-      menuTop = Math.max(
-        PADDING + scrollY,
-        Math.min(rect.top + scrollY - MENU_HEIGHT / 2, viewportHeight - MENU_HEIGHT - PADDING + scrollY)
-      );
+      // центрируем по кнопке, но в пределах экрана
+      menuTop = Math.max(GAP, Math.min(rect.top - MENU_HEIGHT / 2, window.innerHeight - MENU_HEIGHT - GAP));
     }
 
-    // 🔹 Горизонталь: проверяем, есть ли место справа
-    const spaceRight = viewportWidth - rect.right;
+    // 🔹 Горизонталь: проверяем место справа/слева
+    const spaceRight = window.innerWidth - rect.right;
     const spaceLeft = rect.left;
 
     let menuLeft: number;
-    if (spaceRight >= MENU_WIDTH + PADDING) {
-      // ✅ Места справа достаточно — выравниваем по правому краю кнопки
-      menuLeft = rect.right + scrollX - MENU_WIDTH;
-    } else if (spaceLeft >= MENU_WIDTH + PADDING) {
-      // ✅ Места слева достаточно — выравниваем по левому краю кнопки
-      menuLeft = rect.left + scrollX;
+    if (spaceRight >= MENU_WIDTH + GAP) {
+      menuLeft = rect.right - MENU_WIDTH; // выравниваем по правому краю кнопки
+    } else if (spaceLeft >= MENU_WIDTH + GAP) {
+      menuLeft = rect.left; // выравниваем по левому краю кнопки
     } else {
-      // ⚠️ Места мало — центрируем по горизонтали
-      menuLeft = Math.max(
-        PADDING + scrollX,
-        Math.min(rect.left + scrollX - MENU_WIDTH / 2, viewportWidth - MENU_WIDTH - PADDING + scrollX)
-      );
+      // центрируем по горизонтали
+      menuLeft = Math.max(GAP, Math.min(rect.left - MENU_WIDTH / 2, window.innerWidth - MENU_WIDTH - GAP));
     }
 
     setMenuPosition({ top: menuTop, left: menuLeft });
@@ -715,66 +700,91 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
             </div>
           </div>
         ) : (
-          <div
-            className="fixed z-[9999] bg-white rounded-2xl shadow-2xl w-64 overflow-hidden animate-scale-in border border-slate-100 max-h-[85vh] overflow-y-auto"
-            style={{
-              top: `${menuPosition?.top || 0}px`,
-              left: `${menuPosition?.left || 0}px`
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
-              <p className="text-sm font-semibold text-slate-800 truncate">{customer?.name}</p>
-              <p className="text-xs text-slate-500 truncate">{currentMenuSale.productName}</p>
+            <div
+                className="fixed z-[9999] bg-white rounded-2xl shadow-2xl w-64 overflow-hidden animate-scale-in border border-slate-100 max-h-[85vh] overflow-y-auto"
+                style={{
+                  top: `${menuPosition?.top ?? 0}px`,
+                  left: `${menuPosition?.left ?? 0}px`
+                }}
+                onClick={e => e.stopPropagation()}
+            >
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+                <p className="text-sm font-semibold text-slate-800 truncate">{customer?.name}</p>
+                <p className="text-xs text-slate-500 truncate">{currentMenuSale.productName}</p>
+              </div>
+
+              <div className="py-2">
+                <button
+                    onClick={() => {
+                      setSelectedSaleForInfo(currentMenuSale);
+                      setActiveMenuId(null);
+                      setCurrentMenuSale(null);
+                      setMenuPosition(null);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
+                >
+                  <span className="text-blue-500"><FileText size={16}/></span>
+                  <span>Информация</span>
+                </button>
+
+                <button
+                    onClick={() => {
+                      onViewSchedule(currentMenuSale);
+                      setActiveMenuId(null);
+                      setCurrentMenuSale(null);
+                      setMenuPosition(null);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
+                >
+                  <span className="text-indigo-500"><Calendar size={16}/></span>
+                  <span>График</span>
+                </button>
+
+                <button
+                    onClick={() => {
+                      onEditSale(currentMenuSale);
+                      setActiveMenuId(null);
+                      setCurrentMenuSale(null);
+                      setMenuPosition(null);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+                >
+                  <span className="text-slate-500"><Edit3 size={16}/></span>
+                  <span>Редактировать</span>
+                </button>
+
+                <button
+                    onClick={() => {
+                      printContract(currentMenuSale);
+                      setActiveMenuId(null);
+                      setCurrentMenuSale(null);
+                      setMenuPosition(null);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+                >
+                  <span className="text-slate-500"><Printer size={16}/></span>
+                  <span>Печать</span>
+                </button>
+              </div>
+
+              <div className="border-t border-slate-100 py-2">
+                <button
+                    onClick={() => {
+                      setDeletingSale(currentMenuSale);
+                      setActiveMenuId(null);
+                      setCurrentMenuSale(null);
+                      setMenuPosition(null);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                >
+                  <span className="text-red-500"><Trash2 size={16}/></span>
+                  <span>Удалить</span>
+                </button>
+              </div>
             </div>
-
-            <div className="py-2">
-              <button
-                onClick={() => { setSelectedSaleForInfo(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
-              >
-                <span className="text-blue-500"><FileText size={16} /></span>
-                <span>Информация</span>
-              </button>
-
-              <button
-                onClick={() => { onViewSchedule(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
-              >
-                <span className="text-indigo-500"><Calendar size={16} /></span>
-                <span>График</span>
-              </button>
-
-              <button
-                onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-              >
-                <span className="text-slate-500"><Edit3 size={16} /></span>
-                <span>Редактировать</span>
-              </button>
-
-              <button
-                onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-              >
-                <span className="text-slate-500"><Printer size={16} /></span>
-                <span>Печать</span>
-              </button>
-            </div>
-
-            <div className="border-t border-slate-100 py-2">
-              <button
-                onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
-              >
-                <span className="text-red-500"><Trash2 size={16} /></span>
-                <span>Удалить</span>
-              </button>
-            </div>
-          </div>
         )}
       </>,
-      document.body
+        document.body
     );
   };
 
