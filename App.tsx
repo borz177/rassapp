@@ -731,13 +731,12 @@ const handleDeleteSale = async (saleId: string) => {
     }
 
     const sale = sales.find(s => s.id === saleId);
-
     if (!sale) {
         alert("Договор не найден");
         return;
     }
 
-    // 🔹 1. Проверка платежей по графику
+    // 🔹 1. Проверка: есть ли оплаченные платежи по графику?
     const installmentPayments = sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false);
     const installmentAmount = installmentPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
@@ -750,32 +749,41 @@ const handleDeleteSale = async (saleId: string) => {
         return;
     }
 
-    // ❌ УБИРАЕМ: создание expense "Возврат закупки"
-    // Просто удаляем оригинальный expense — этого достаточно!
-
-    // 🔹 2. Удаляем расход закупки (если есть)
     try {
-        await api.deleteItem('expenses', `exp_sale_${saleId}`);
-        setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${saleId}`));
-    } catch (err) {
-        // Игнорируем, если запись не найдена
-    }
+        // 🔹 2. ВОЗВРАТ ПЕРВОГО ВЗНОСА НА СЧЁТ (если он был)
+        if (sale.downPayment > 0 && sale.accountId) {
+            const refundExpense: Expense = {
+                id: `refund_${saleId}_${Date.now()}`,
+                userId: sale.userId,
+                accountId: sale.accountId,
+                title: `Возврат: ${sale.productName}`,
+                amount: sale.downPayment,
+                category: 'Возврат клиента',
+                date: new Date().toISOString(),
+                isRefund: true,  // 🔥 КЛЮЧЕВОЙ ФЛАГ!
+                payoutType: undefined,
+                investorId: undefined
+            };
+            await api.saveItem('expenses', refundExpense);
+            updateList(setExpenses, refundExpense);
+        }
 
-    // 🔹 3. Удаляем договор
-    try {
+        // 🔹 3. Удаляем расход закупки (если есть)
+        try {
+            await api.deleteItem('expenses', `exp_sale_${saleId}`);
+            setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${saleId}`));
+        } catch (err) {
+            // Игнорируем, если запись не найдена
+        }
+
+        // 🔹 4. Удаляем договор
         await api.deleteItem('sales', saleId);
         removeFromList(setSales, saleId);
-    } catch (err) {
-        console.error('❌ Ошибка удаления договора:', err);
-        alert('Не удалось удалить договор.');
-        return;
-    }
 
-    // 🔹 4. Возвращаем товар на склад
-    if (sale.productId) {
-        const prod = products.find(p => p.id === sale.productId);
-        if (prod) {
-            try {
+        // 🔹 5. Возвращаем товар на склад
+        if (sale.productId) {
+            const prod = products.find(p => p.id === sale.productId);
+            if (prod) {
                 const updatedProd = {
                     ...prod,
                     stock: (prod.stock || 0) + 1,
@@ -783,10 +791,14 @@ const handleDeleteSale = async (saleId: string) => {
                 };
                 const savedProd = await api.saveItem('products', updatedProd);
                 updateList(setProducts, savedProd);
-            } catch (err) {
-                console.error('❌ Ошибка обновления остатка:', err);
             }
         }
+
+        alert('✅ Договор удалён. Средства возвращены на счёт.');
+
+    } catch (error) {
+        console.error('❌ Ошибка удаления договора:', error);
+        alert('Не удалось удалить договор.');
     }
 };
 const handleViewSaleSchedule = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView('CONTRACTS'); setCurrentView('CUSTOMER_DETAILS'); };
