@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, AppSettings, Investor} from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate } from '../src/utils';
-import { Calendar } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import {createPortal} from "react-dom";
+
 
 interface DashboardProps {
   sales: Sale[];
@@ -442,6 +443,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   // В начале компонента Dashboard, рядом с другими useState:
 const [selectedPaymentType, setSelectedPaymentType] = useState<'expected' | 'received' | null>(null);
 
+const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(null);
+const [showCalendarPicker, setShowCalendarPicker] = useState(false);
+const [calendarMonth, setCalendarMonth] = useState(new Date());
+
  const calculatedStats = useMemo(() => {
     const filteredSales = selectedAccountId
         ? sales.filter(s => s.accountId === selectedAccountId)
@@ -584,14 +589,20 @@ const [selectedPaymentType, setSelectedPaymentType] = useState<'expected' | 'rec
               const isToday = paymentDate.toDateString() === todayStr;
               const isTomorrow = paymentDate >= tomorrow && paymentDate <= tomorrowEnd;
 
-              let include = false;
-              if (paymentDateFilter === 'ALL') {
-                  if (isToday || isTomorrow) include = true;
-              } else if (paymentDateFilter === 'TODAY') {
-                  if (isToday) include = true;
-              } else if (paymentDateFilter === 'TOMORROW') {
-                  if (isTomorrow) include = true;
-              }
+             // Внутри useMemo для upcomingAndOverduePayments добавьте проверку selectedCalendarDate:
+
+let include = false;
+if (selectedCalendarDate) {
+  // Если выбрана дата в календаре — показываем только её
+  const selectedDateStr = selectedCalendarDate.toDateString();
+  if (paymentDate.toDateString() === selectedDateStr) include = true;
+} else if (paymentDateFilter === 'ALL') {
+  if (isToday || isTomorrow) include = true;
+} else if (paymentDateFilter === 'TODAY') {
+  if (isToday) include = true;
+} else if (paymentDateFilter === 'TOMORROW') {
+  if (isTomorrow) include = true;
+}
 
               if (include) {
                   relevantAmount += actualDue;
@@ -697,6 +708,48 @@ const receivedPaymentsThisMonth = useMemo(() => {
 
     return Math.round(received * 100) / 100;
 }, [sales, investors, selectedAccountId]);
+
+
+
+// Добавьте перед return компонента Dashboard:
+const getPaymentsByDate = useMemo(() => {
+  const map = new Map<string, number>();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  sales.forEach(sale => {
+    if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
+
+    const planItems = sale.paymentPlan
+      .filter(p => p.isRealPayment === false || p.isRealPayment === undefined)
+      .filter(p => !p.isPaid);
+
+    planItems.forEach(p => {
+      const paymentDate = new Date(p.date);
+      paymentDate.setHours(0, 0, 0, 0);
+      const dateKey = paymentDate.toDateString();
+      const current = map.get(dateKey) || 0;
+      map.set(dateKey, current + p.amount);
+    });
+  });
+
+  return map;
+}, [sales]);
+
+
+// Добавьте в конец компонента Dashboard, перед return:
+useEffect(() => {
+  const handleClickOutside = (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (!target.closest('[data-calendar-picker]')) {
+      setShowCalendarPicker(false);
+    }
+  };
+  if (showCalendarPicker) {
+    document.addEventListener('click', handleClickOutside);
+  }
+  return () => document.removeEventListener('click', handleClickOutside);
+}, [showCalendarPicker]);
 
 
   return (
@@ -1020,139 +1073,267 @@ const receivedPaymentsThisMonth = useMemo(() => {
         )}
 
         {/* Upcoming Payments Tab */}
-        {activeTab === 'upcoming' && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="flex gap-2 p-1 bg-white/70 backdrop-blur-sm rounded-xl w-fit shadow-sm">
-                  <button
-                      onClick={() => setPaymentDateFilter('ALL')}
-                      className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all duration-300 ${
-                          paymentDateFilter === 'ALL' 
-                            ? 'bg-gradient-to-r from-slate-800 to-slate-700 text-white shadow-md' 
-                            : 'text-slate-600 hover:text-indigo-600'
-                      }`}
-                  >
-                      Все
-                  </button>
-                  <button
-                      onClick={() => setPaymentDateFilter('TODAY')}
-                      className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all duration-300 ${
-                          paymentDateFilter === 'TODAY' 
-                            ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-md shadow-emerald-200' 
-                            : 'text-slate-600 hover:text-emerald-600'
-                      }`}
-                  >
-                      Сегодня
-                  </button>
-                  <button
-                      onClick={() => setPaymentDateFilter('TOMORROW')}
-                      className={`px-5 py-2.5 rounded-lg text-xs font-bold transition-all duration-300 ${
-                          paymentDateFilter === 'TOMORROW' 
-                            ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-white shadow-md shadow-amber-200' 
-                            : 'text-slate-600 hover:text-amber-500'
-                      }`}
-                  >
-                      Завтра
-                  </button>
-              </div>
-
-              {upcomingAndOverduePayments.length === 0 ? (
-                  <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl border border-dashed border-slate-200">
-                    <div className="text-6xl mb-4 opacity-30">📅</div>
-                    <p className="text-slate-400 font-medium">Нет платежей на сегодня и завтра</p>
-                    <p className="text-xs text-slate-300 mt-1">Все платежи по расписанию</p>
-                  </div>
-              ) : (
-                  <div className="space-y-3">
-                    {upcomingAndOverduePayments.map((p, idx) => (
-                        <div
-                            key={p.sale.id}
-                            onClick={(e) => {
-                                e.stopPropagation(); // ← Останавливаем всплытие
-                                setSelectedPaymentForAction({
-                                    sale: p.sale,
-                                    customerName: p.customerName,
-                                    totalDue: p.totalDue
-                                });
-                            }}
-                            className="group bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 relative animate-in fade-in slide-in-from-bottom-2 cursor-pointer"
-                            style={{animationDelay: `${idx * 100}ms`}}
-                        >
-                            <div className="flex items-center justify-between">
-                                {/* Левая часть: имя + товар (без иконки) */}
-                                <div className="flex items-center gap-4 min-w-0 flex-1">
-                                    <div className="min-w-0">
-                                        <p className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors break-words leading-tight">
-                                            {p.customerName}
-                                        </p>
-                                        <p className="text-xs text-slate-500 mt-0.5 break-words">
-                                            {p.sale.productName}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {/* Правая часть: сумма + статусы ПОД суммой */}
-                                <div className="text-right flex-shrink-0 pl-4">
-                                    <p className="text-lg font-bold text-indigo-600 whitespace-nowrap">
-                                        {formatCurrency(p.totalDue, appSettings.showCents)} ₽
-                                    </p>
-                                    {/* Статусы перенесены под сумму */}
-                                    {p.isToday && (
-                                        <p className="text-[10px] font-bold text-emerald-600 mt-0.5">СЕГОДНЯ</p>
-                                    )}
-                                    {p.isTomorrow && (
-                                        <p className="text-[10px] font-bold text-amber-600 mt-0.5">ЗАВТРА</p>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Блок задолженности */}
-                            {(() => {
-    // 🔹 Функция расчёта просрочки (как в Contracts.tsx)
-    const calculateOverdueAmount = (sale: Sale) => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        // Сколько должно было быть оплачено к сегодня (только плановые платежи)
-        let expectedPaid = sale.downPayment;
-        sale.paymentPlan.forEach(p => {
-            const paymentDate = new Date(p.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            // Учитываем только "реальные" плановые платежи (isRealPayment !== true)
-            if ((!p.isRealPayment || p.isRealPayment === undefined) && paymentDate < today) {
-                expectedPaid += p.amount;
+       {activeTab === 'upcoming' && (
+  <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
+    {/* 🔹 Фильтры + Календарь */}
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex gap-1 p-1 bg-white/70 backdrop-blur-sm rounded-xl shadow-sm">
+        <button
+          onClick={() => { setSelectedCalendarDate(null); setPaymentDateFilter('ALL'); }}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
+            !selectedCalendarDate && paymentDateFilter === 'ALL'
+              ? 'bg-gradient-to-r from-slate-800 to-slate-700 text-white shadow-md'
+              : 'text-slate-600 hover:text-indigo-600'
+          }`}
+        >
+          Все
+        </button>
+        <button
+          onClick={() => { setSelectedCalendarDate(null); setPaymentDateFilter('TODAY'); }}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
+            !selectedCalendarDate && paymentDateFilter === 'TODAY'
+              ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-md shadow-emerald-200'
+              : 'text-slate-600 hover:text-emerald-600'
+          }`}
+        >
+          Сегодня
+        </button>
+        <button
+          onClick={() => { setSelectedCalendarDate(null); setPaymentDateFilter('TOMORROW'); }}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
+            !selectedCalendarDate && paymentDateFilter === 'TOMORROW'
+              ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-white shadow-md shadow-amber-200'
+              : 'text-slate-600 hover:text-amber-500'
+          }`}
+        >
+          Завтра
+        </button>
+      </div>
+      
+      {/* 🔹 Кнопка календаря */}
+      <div className="relative" data-calendar-picker>
+        <button
+          onClick={() => {
+            setShowCalendarPicker(!showCalendarPicker);
+            if (!showCalendarPicker) {
+              setSelectedCalendarDate(null);
+              setPaymentDateFilter('ALL');
             }
-        });
-
-        // Сколько фактически оплачено
-        const actualPaid = sale.totalAmount - sale.remainingAmount;
-
-        // Просрочка = разница между ожидаемым и фактическим
-        return Math.max(0, expectedPaid - actualPaid);
-    };
-
-    const overdueDebt = calculateOverdueAmount(p.sale);
-
-    if (overdueDebt <= 0) return null;
-
-    return (
-        <div className="mt-4 pt-3 border-t border-dashed border-rose-200">
-            <div className="flex items-center justify-between text-xs">
-                <span className="text-rose-600 font-medium flex items-center gap-1">
-                    ⚠️ Задолженность
-                </span>
-                <span className="font-bold text-rose-700 whitespace-nowrap">
-                    {formatCurrency(overdueDebt, appSettings.showCents)} ₽
-                </span>
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 border ${
+            selectedCalendarDate
+              ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-indigo-600 shadow-md shadow-indigo-200'
+              : 'bg-white/70 backdrop-blur-sm text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+          }`}
+        >
+          <CalendarIcon size={16} />
+          {selectedCalendarDate ? formatDate(selectedCalendarDate.toLocaleDateString('ru-RU')) : 'Календарь'}
+          {selectedCalendarDate && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setSelectedCalendarDate(null); }}
+              className="ml-1 w-4 h-4 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center"
+            >
+              ✕
+            </button>
+          )}
+        </button>
+        
+        {/* 🔹 Выпадающий календарь */}
+        {showCalendarPicker && (
+          <div className="absolute top-full left-0 mt-2 z-50 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 min-w-[280px] animate-in fade-in zoom-in-95 duration-200">
+            {/* Заголовок календаря */}
+            <div className="flex items-center justify-between mb-3">
+              <button
+                onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1))}
+                className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="text-sm font-bold text-slate-700">
+                {calendarMonth.toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
+              </span>
+              <button
+                onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1))}
+                className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <ChevronRight size={18} />
+              </button>
             </div>
-        </div>
-    );
-})()}
-                        </div>
-                    ))}
-                  </div>
-              )}
+            
+            {/* Сетка дней */}
+            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-slate-400 mb-1">
+              {['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d => <span key={d}>{d}</span>)}
+            </div>
+            {/* Сетка дней */}
+<div className="grid grid-cols-7 gap-1">
+  {(() => {
+    const days: JSX.Element[] = [];
+    const firstDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+    const lastDay = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0);
+    const startOffset = (firstDay.getDay() + 6) % 7; // Пн = 0
+
+    // Пустые ячейки до первого дня месяца
+    for (let i = 0; i < startOffset; i++) {
+      days.push(<div key={`empty-${i}`} className="aspect-square" />);
+    }
+
+    // Дни месяца
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), d);
+      date.setHours(0, 0, 0, 0);
+      const dateKey = date.toDateString();
+
+      // ✅ ИСПРАВЛЕНО: используем getPaymentsByDate из useMemo
+      const amount = getPaymentsByDate.get(dateKey) || 0;
+
+      const hasPayments = amount > 0;
+      const isToday = date.toDateString() === new Date().toDateString();
+      const isSelected = selectedCalendarDate?.toDateString() === dateKey;
+
+      days.push(
+        <button
+          key={d}
+          onClick={() => {
+            setSelectedCalendarDate(date);
+            setShowCalendarPicker(false);
+          }}
+          className={`aspect-square rounded-lg text-xs flex flex-col items-center justify-center relative transition-all ${
+            isSelected
+              ? 'bg-indigo-600 text-white font-bold shadow-md'
+              : isToday
+                ? 'bg-indigo-100 text-indigo-700 font-semibold'
+                : hasPayments
+                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  : 'hover:bg-slate-100 text-slate-600'
+          }`}
+        >
+          <span>{d}</span>
+          {hasPayments && !isSelected && (
+            <span className="text-[9px] font-bold text-emerald-600 mt-0.5">
+              {amount >= 1000 ? `${Math.round(amount/1000)}к` : `${amount}`}
+            </span>
+          )}
+          {hasPayments && !isSelected && (
+            <span className="absolute bottom-1 w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+          )}
+        </button>
+      );
+    }
+    return days;
+  })()}
+</div>
+            
+            {/* Легенда */}
+            <div className="flex items-center justify-center gap-3 mt-3 pt-3 border-t border-slate-100 text-[10px] text-slate-400">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-indigo-100 rounded" /> Сегодня</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-emerald-50 rounded" /> Есть платежи</span>
+            </div>
           </div>
         )}
+      </div>
+      
+      {/* Сброс фильтра */}
+      {selectedCalendarDate && (
+        <button
+          onClick={() => setSelectedCalendarDate(null)}
+          className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          Сбросить
+        </button>
+      )}
+    </div>
+
+    {/* 🔹 Список платежей */}
+    {upcomingAndOverduePayments.length === 0 ? (
+      <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl border border-dashed border-slate-200">
+        <div className="text-6xl mb-4 opacity-30">📅</div>
+        <p className="text-slate-400 font-medium">
+          {selectedCalendarDate ? 'Нет платежей на выбранную дату' : 'Нет платежей на сегодня и завтра'}
+        </p>
+        <p className="text-xs text-slate-300 mt-1">Все платежи по расписанию</p>
+      </div>
+    ) : (
+      <div className="space-y-3">
+        {upcomingAndOverduePayments.map((p, idx) => (
+          <div
+            key={p.sale.id}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedPaymentForAction({
+                sale: p.sale,
+                customerName: p.customerName,
+                totalDue: p.totalDue
+              });
+            }}
+            className="group bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 relative animate-in fade-in slide-in-from-bottom-2 cursor-pointer"
+            style={{animationDelay: `${idx * 100}ms`}}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4 min-w-0 flex-1">
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors break-words leading-tight">
+                    {p.customerName}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5 break-words">
+                    {p.sale.productName}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right flex-shrink-0 pl-4">
+                <p className="text-lg font-bold text-indigo-600 whitespace-nowrap">
+                  {formatCurrency(p.totalDue, appSettings.showCents)} ₽
+                </p>
+                {p.isToday && !selectedCalendarDate && (
+                  <p className="text-[10px] font-bold text-emerald-600 mt-0.5">СЕГОДНЯ</p>
+                )}
+                {p.isTomorrow && !selectedCalendarDate && (
+                  <p className="text-[10px] font-bold text-amber-600 mt-0.5">ЗАВТРА</p>
+                )}
+               {selectedCalendarDate && (
+  <p className="text-[10px] font-bold text-indigo-600 mt-0.5">
+
+    {formatDate(selectedCalendarDate.toLocaleDateString('ru-RU'))}
+  </p>
+)}
+              </div>
+            </div>
+            {/* Блок задолженности */}
+            {(() => {
+              const calculateOverdueAmount = (sale: Sale) => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                let expectedPaid = sale.downPayment;
+                sale.paymentPlan.forEach(p => {
+                  const paymentDate = new Date(p.date);
+                  paymentDate.setHours(0, 0, 0, 0);
+                  if ((!p.isRealPayment || p.isRealPayment === undefined) && paymentDate < today) {
+                    expectedPaid += p.amount;
+                  }
+                });
+                const actualPaid = sale.totalAmount - sale.remainingAmount;
+                return Math.max(0, expectedPaid - actualPaid);
+              };
+              const overdueDebt = calculateOverdueAmount(p.sale);
+              if (overdueDebt <= 0) return null;
+              return (
+                <div className="mt-4 pt-3 border-t border-dashed border-rose-200">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-rose-600 font-medium flex items-center gap-1">
+                      ⚠️ Задолженность
+                    </span>
+                    <span className="font-bold text-rose-700 whitespace-nowrap">
+                      {formatCurrency(overdueDebt, appSettings.showCents)} ₽
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+)}
 
           {selectedSaleForModal && (
               <SaleDetailsModal
