@@ -917,7 +917,7 @@ const receivedPaymentsThisMonth = useMemo(() => {
                     </div>
 
                        {/* 7. Ожидаемые платежи в этом месяце */}
-                   {/* <div
+                    <div
                         className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 flex flex-col relative overflow-hidden cursor-default"
                         onClick={() => setSelectedPaymentType('expected')}>
                         <div
@@ -941,10 +941,10 @@ const receivedPaymentsThisMonth = useMemo(() => {
                                 <polyline points="9 18 15 12 9 6"/>
                             </svg>
                         </div>
-                    </div>*/}
+                    </div>
 
                     {/* 8. Полученные платежи за этот месяц */}
-                    {/* <div
+                     <div
                         className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default"
                         onClick={() => setSelectedPaymentType('received')}>
                         <div
@@ -970,7 +970,7 @@ const receivedPaymentsThisMonth = useMemo(() => {
                                 <polyline points="9 18 15 12 9 6"/>
                             </svg>
                         </div>
-                    </div>*/}
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
