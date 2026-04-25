@@ -306,27 +306,10 @@ const PaymentDetailsModal = ({
 
 // 🔹 РАЗДЕЛЯЕМ на платежи по графику и первые взносы
 const { installmentTotal, downPaymentTotal } = useMemo(() => {
-    let instTotal = 0;
-    let dpTotal = 0;
-
-    items.forEach(item => {
-        // 🔹 Первый взнос определяется по тому, что дата платежа = дата договора
-        // и сумма совпадает с downPayment договора
-        const isDownPayment =
-            item.date === item.sale.startDate &&
-            item.amount === item.sale.downPayment &&
-            item.sale.downPayment > 0;
-
-        if (isDownPayment) {
-            dpTotal += item.amount;
-        } else {
-            instTotal += item.amount;
-        }
-    });
-
+    const total = items.reduce((sum, item) => sum + item.amount, 0);
     return {
-        installmentTotal: Math.round(instTotal * 100) / 100,
-        downPaymentTotal: Math.round(dpTotal * 100) / 100
+        installmentTotal: Math.round(total * 100) / 100,
+        downPaymentTotal: 0 // 🔹 Больше не используется, но оставили для совместимости
     };
 }, [items]);
   const title = type === 'expected' ? 'Ожидаемые платежи' : 'Полученные платежи';
@@ -360,14 +343,13 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
           </button>
         </div>
 
-        {/* Итого */}
-        <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-          <span className="text-sm text-slate-500">Итого</span>
-          <span className="text-lg font-bold text-slate-800">
-            {formatCurrency(totalAmount, appSettings.showCents)} ₽
-          </span>
-        </div>
-
+       {/* Итого */}
+<div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+  <span className="text-sm text-slate-500">Итого</span>
+  <span className="text-lg font-bold text-slate-800">
+    {formatCurrency(installmentTotal, appSettings.showCents)} ₽
+  </span>
+</div>
         {/* Список */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           {items.length === 0 ? (
@@ -686,12 +668,12 @@ const expectedPaymentsThisMonth = useMemo(() => {
 }, [sales, investors, selectedAccountId]);
 
 // 💰 Полученные платежи за этот месяц (фактически оплаченные)
+
 const receivedPaymentsThisMonth = useMemo(() => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    // 🔹 Фильтрация по выбранному счёту
     const filteredSales = selectedAccountId
         ? sales.filter(s => s.accountId === selectedAccountId)
         : sales;
@@ -702,9 +684,7 @@ const receivedPaymentsThisMonth = useMemo(() => {
         if (sale.customerId.startsWith('system_')) return;
         if (investors.some(i => i.id === sale.customerId)) return;
 
-
-
-        // Оплаченные платежи по графику
+        // 🔥 УБРАЛИ первый взнос — считаем только оплаченные платежи по графику
         sale.paymentPlan.forEach(payment => {
             if (payment.isPaid && payment.isRealPayment !== false) {
                 const paymentDate = new Date(payment.date);
