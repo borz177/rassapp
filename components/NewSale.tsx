@@ -191,21 +191,21 @@ useEffect(() => {
     initialData.totalAmount
   ]);
 
-  // 🔹 3. Синхронизация поля "Цена" с режимом округления (только для новых!)
-  useEffect(() => {
-    if (mode !== 'INSTALLMENT' || initialData.id) return; // Не меняем при редактировании!
+// 🔹 3. Синхронизация поля "Цена" с режимом округления (только для новых!)
+useEffect(() => {
+  // 🔥 НОВОЕ: Если цена введена вручную — НЕ трогаем её
+  if (mode !== 'INSTALLMENT' || initialData.id || isPriceManual) return;
 
-    if (roundingMode !== 'NONE') {
-      if (calculatedValues.totalAmount !== Number(formData.price)) {
-        setFormData(prev => ({ ...prev, price: calculatedValues.totalAmount }));
-      }
-    } else {
-      if (baseCalculatedPrice > 0 && Number(formData.price) !== baseCalculatedPrice) {
-        setFormData(prev => ({ ...prev, price: baseCalculatedPrice }));
-      }
+  if (roundingMode !== 'NONE') {
+    if (calculatedValues.totalAmount !== Number(formData.price)) {
+      setFormData(prev => ({ ...prev, price: calculatedValues.totalAmount }));
     }
-  }, [roundingMode, calculatedValues.totalAmount, baseCalculatedPrice, mode, initialData.id]);
-
+  } else {
+    if (baseCalculatedPrice > 0 && Number(formData.price) !== baseCalculatedPrice) {
+      setFormData(prev => ({ ...prev, price: baseCalculatedPrice }));
+    }
+  }
+}, [roundingMode, calculatedValues.totalAmount, baseCalculatedPrice, mode, initialData.id, isPriceManual]);
   const handleProductChange = (val: string) => {
     setFormData(prev => ({ ...prev, productName: val, productId: '' }));
     if (val.length > 0) {
@@ -786,8 +786,13 @@ const handleSendContract = async () => {
                   }`}
                   value={formData.price === 0 ? '' : formData.price}
                   onChange={e => {
-                    setFormData({...formData, price: e.target.value});
-                    setIsPriceManual(true); // Включаем ручной режим
+                    const val = e.target.value;
+
+                    setFormData({
+                      ...formData,
+                      price: val === '' ? 0 : Number(val)
+                    });
+                    setIsPriceManual(true);
                   }}
                   placeholder="0"
               />
@@ -801,16 +806,7 @@ const handleSendContract = async () => {
                   </div>
               )}
             </div>
-            {!isPriceManual && mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && (
-                <p className="text-xs text-emerald-600 mt-1">
-                  ✨ Рассчитано: {formData.buyPrice} + {formData.interestRate}%
-                </p>
-            )}
-            {isPriceManual && mode === 'INSTALLMENT' && (
-                <p className="text-xs text-slate-400 mt-1">
-                  🔒 Ручной режим (измените закуп или наценку, чтобы сбросить)
-                </p>
-            )}
+
           </div>
 
           {/* 🔹 Срок и Первый взнос */}
@@ -878,7 +874,7 @@ const handleSendContract = async () => {
                         <div className="flex-1 flex items-center justify-between gap-3 min-w-0">
               <span
                   className="text-xs text-slate-600 group-hover:text-indigo-600 transition-colors font-medium truncate">
-                Первый взнос = сумма наценки
+                Взнос
               </span>
                           <span
                               className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg whitespace-nowrap flex-shrink-0">
@@ -888,24 +884,7 @@ const handleSendContract = async () => {
                       </label>
                   )}
 
-                  {/* 💡 Подсказка при активации */}
-                  {downPaymentFromMarkup && (
-                      <div
-                          className="flex items-center gap-2 p-2.5 bg-emerald-50/70 border border-emerald-100 rounded-xl">
-                        <div
-                            className="w-5 h-5 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
-                          <span className="text-emerald-600 text-xs">💡</span>
-                        </div>
-                        <p className="text-[11px] text-emerald-700 leading-snug">
-                          В рассрочку пойдёт только закуп: <span
-                            className="font-bold">{Number(formData.buyPrice).toLocaleString()} ₽</span>
-                          <span className="text-emerald-500"> ÷ {formData.installments} мес. = </span>
-                          <span className="font-bold text-indigo-600">
-                {Math.round(Number(formData.buyPrice) / formData.installments).toLocaleString()} ₽/мес
-              </span>
-                        </p>
-                      </div>
-                  )}
+                  
                 </div>
               </div>
           )}
