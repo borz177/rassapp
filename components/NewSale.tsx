@@ -203,6 +203,15 @@ useEffect(() => {
   }
 }, [roundingMode, calculatedValues.totalAmount, formData.price, mode, initialData.id, isPriceManual]);
 
+
+
+useEffect(() => {
+  if (roundingMode === 'NONE') {
+    setIsPriceManual(false);
+  }
+}, [roundingMode]);
+
+
 // 🔹 3. Синхронизация поля "Цена" с режимом округления (только для новых!)
 useEffect(() => {
   // 🔥 НОВОЕ: Если цена введена вручную — НЕ трогаем её
@@ -218,6 +227,10 @@ useEffect(() => {
     }
   }
 }, [roundingMode, calculatedValues.totalAmount, baseCalculatedPrice, mode, initialData.id, isPriceManual]);
+
+
+
+
   const handleProductChange = (val: string) => {
     setFormData(prev => ({ ...prev, productName: val, productId: '' }));
     if (val.length > 0) {
