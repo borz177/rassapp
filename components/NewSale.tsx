@@ -40,6 +40,7 @@ const NewSale: React.FC<NewSaleProps> = ({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdSale, setCreatedSale] = useState<any>(null);
+  const [isPriceManual, setIsPriceManual] = useState(false);
 
   const contractRef = useRef<HTMLDivElement>(null);
   const mainAccount = accounts.find(a => a.type === 'MAIN');
@@ -94,14 +95,21 @@ const NewSale: React.FC<NewSaleProps> = ({
   const selectedAccount = accounts.find(a => a.id === formData.accountId);
 
   // Авто-расчёт цены при вводе закупа (только для новых записей!)
-  useEffect(() => {
-    if (mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && !initialData.id) {
-      const bp = Number(formData.buyPrice);
-      const rate = Number(formData.interestRate);
-      const calculatedPrice = Math.round(bp + (bp * (rate / 100)));
-      setFormData(prev => ({ ...prev, price: calculatedPrice }));
-    }
-  }, [formData.buyPrice, formData.interestRate, mode, initialData.id]);
+// 🔍 НАЙДИТЕ ЭТОТ БЛОК И ЗАМЕНИТЕ ЕГО:
+useEffect(() => {
+  if (mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && !initialData.id) {
+
+    // ✅ НОВОЕ: Если цена введена вручную, не пересчитываем автоматически
+    if (isPriceManual) return;
+
+    const bp = Number(formData.buyPrice);
+    const rate = Number(formData.interestRate);
+    const calculatedPrice = Math.round(bp + (bp * (rate / 100)));
+
+    // Обновляем цену, только если пользователь её не трогал
+    setFormData(prev => ({ ...prev, price: calculatedPrice }));
+  }
+}, [formData.buyPrice, formData.interestRate, mode, initialData.id, isPriceManual]); // Добавили isPriceManual в зависимости
 
   useEffect(() => {
   if (mode === 'INSTALLMENT' && downPaymentFromMarkup && Number(formData.buyPrice) > 0) {
@@ -711,112 +719,202 @@ const handleSendContract = async () => {
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
           <div className="grid grid-cols-2 gap-4">
+            {/* 1. Поле Закуп */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Закуп (Себест.)</label>
-              <input type="number" min="0" className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900" value={formData.buyPrice === 0 ? '' : formData.buyPrice} onChange={e => setFormData({ ...formData, buyPrice: e.target.value })} placeholder="0" />
+              <input
+                  type="number"
+                  min="0"
+                  className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900"
+                  value={formData.buyPrice === 0 ? '' : formData.buyPrice}
+                  onChange={e => {
+                    setFormData({...formData, buyPrice: e.target.value});
+                    // 🔥 ВАЖНО: Сбрасываем ручной режим, чтобы цена пересчиталась автоматически
+                    setIsPriceManual(false);
+                  }}
+                  placeholder="0"
+              />
             </div>
+
+            {/* 2. Поле Наценка (добавил сюда для полноты картины, так как они в одном ряду) */}
             {mode === 'INSTALLMENT' && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Наценка (%)</label>
-                <input type="number" min="0" className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900" value={formData.interestRate === 0 ? '' : formData.interestRate} onChange={e => setFormData({ ...formData, interestRate: e.target.value })} placeholder="0" />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Наценка (%)</label>
+                  <input
+                      type="number"
+                      min="0"
+                      className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900"
+                      value={formData.interestRate === 0 ? '' : formData.interestRate}
+                      onChange={e => {
+                        setFormData({...formData, interestRate: e.target.value});
+                        // 🔥 ВАЖНО: При изменении наценки тоже сбрасываем ручной режим
+                        setIsPriceManual(false);
+                      }}
+                      placeholder="0"
+                  />
+                </div>
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">{mode === 'INSTALLMENT' ? 'Цена в рассрочку' : 'Цена продажи'}</label>
-            <input type="number" min="0" className="w-full p-3 border border-slate-300 rounded-lg outline-none font-bold text-slate-900 bg-white" value={formData.price === 0 ? '' : formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} placeholder="0" />
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {mode === 'INSTALLMENT' ? 'Цена в рассрочку' : 'Цена продажи'}
+            </label>
 
+            <div className="relative">
+              <input
+                  type="number"
+                  min="0"
+                  className={`w-full p-3 border rounded-lg outline-none font-bold text-slate-900 bg-white transition-all ${
+                      isPriceManual
+                          ? 'border-indigo-400 ring-2 ring-indigo-100'
+                          : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                  }`}
+                  value={formData.price === 0 ? '' : formData.price}
+                  onChange={e => {
+                    setFormData({...formData, price: e.target.value});
+                    // ✅ НОВОЕ: Включаем ручной режим при вводе
+                    setIsPriceManual(true);
+                  }}
+                  placeholder="0"
+              />
+
+              {/* Визуальная подсказка режима */}
+              {mode === 'INSTALLMENT' && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase">
+                    {isPriceManual ? (
+                        <span className="text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">
+            Вручную
+          </span>
+                    ) : (
+                        <span className="text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full">
+            Авто
+          </span>
+                    )}
+                  </div>
+              )}
+            </div>
+
+            {/* Подсказка под полем */}
+            {!isPriceManual && mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && (
+                <p className="text-xs text-emerald-600 mt-1">
+                  ✨ Рассчитано: {formData.buyPrice} + {formData.interestRate}%
+                </p>
+            )}
+            {isPriceManual && mode === 'INSTALLMENT' && (
+                <p className="text-xs text-slate-400 mt-1">
+                  🔒 Ручной режим (измените закуп или наценку, чтобы сбросить)
+                </p>
+            )}
           </div>
           {mode === 'INSTALLMENT' && (
-            <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Срок (мес.)</label>
-                <input type="number" min="1" max="24" className="w-full p-3 border border-slate-300 rounded-lg outline-none text-slate-900 bg-white" value={formData.installments === 0 ? '' : formData.installments} onChange={e => setFormData({ ...formData, installments: e.target.value })} placeholder="0" />
-              </div>
-              {/* 🔹 Первый взнос + чекбокс наценки */}
-<div className="space-y-2">
-  <label className="block text-sm font-medium text-slate-700 mb-1">
-    Первый взнос (₽)
-  </label>
+              <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Срок (мес.)</label>
+                  <input type="number" min="1" max="24"
+                         className="w-full p-3 border border-slate-300 rounded-lg outline-none text-slate-900 bg-white"
+                         value={formData.installments === 0 ? '' : formData.installments}
+                         onChange={e => setFormData({...formData, installments: e.target.value})} placeholder="0"/>
+                </div>
+                {/* 🔹 Первый взнос + чекбокс наценки */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Первый взнос (₽)
+                  </label>
 
-  <div className="relative">
-    <input
-      type="number"
-      min="0"
-      max={calculatedValues.totalAmount}
-      className={`w-full p-3 pr-12 border rounded-lg outline-none text-slate-900 bg-white transition-all ${
-        downPaymentFromMarkup 
-          ? 'border-emerald-300 bg-emerald-50/50 ring-2 ring-emerald-100' 
-          : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
-      }`}
-      value={formData.downPayment === 0 ? '' : formData.downPayment}
-      onChange={(e) => {
-        setFormData({ ...formData, downPayment: e.target.value });
-        // Сбрасываем чекбокс при ручном изменении
-        if (downPaymentFromMarkup) setDownPaymentFromMarkup(false);
-      }}
-      placeholder="0"
-      disabled={downPaymentFromMarkup}
-    />
+                  <div className="relative">
+                    <input
+                        type="number"
+                        min="0"
+                        max={calculatedValues.totalAmount}
+                        className={`w-full p-3 pr-12 border rounded-lg outline-none text-slate-900 bg-white transition-all ${
+                            downPaymentFromMarkup
+                                ? 'border-emerald-300 bg-emerald-50/50 ring-2 ring-emerald-100'
+                                : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                        }`}
+                        value={formData.downPayment === 0 ? '' : formData.downPayment}
+                        onChange={(e) => {
+                          setFormData({...formData, downPayment: e.target.value});
+                          // Сбрасываем чекбокс при ручном изменении
+                          if (downPaymentFromMarkup) setDownPaymentFromMarkup(false);
+                        }}
+                        placeholder="0"
+                        disabled={downPaymentFromMarkup}
+                    />
 
-    {/* 🔹 Индикатор авто-заполнения */}
-    {downPaymentFromMarkup && (
-      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500">
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
-      </div>
-    )}
-  </div>
+                    {/* 🔹 Индикатор авто-заполнения */}
+                    {downPaymentFromMarkup && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/>
+                          </svg>
+                        </div>
+                    )}
+                  </div>
 
-  {/* 🔹 Чекбокс "Взнос = наценка" (в одну строку) */}
-{mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && (
-  <label className="flex items-center gap-3 p-3 rounded-xl cursor-pointer group hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200">
-    {/* Чекбокс */}
-    <div className="relative flex-shrink-0">
-      <input
-        type="checkbox"
-        checked={downPaymentFromMarkup}
-        onChange={(e) => setDownPaymentFromMarkup(e.target.checked)}
-        className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
-      />
-      {downPaymentFromMarkup && (
-        <span className="absolute inset-0 rounded-full bg-indigo-100 animate-ping opacity-20" />
-      )}
-    </div>
+                  {/* 🔹 Чекбокс "Взнос = наценка" (в одну строку) */}
+                  {mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && (
+                      <label
+                          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer group hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200">
+                        {/* Чекбокс */}
+                        <div className="relative flex-shrink-0">
+                          <input
+                              type="checkbox"
+                              checked={downPaymentFromMarkup}
+                              onChange={(e) => setDownPaymentFromMarkup(e.target.checked)}
+                              className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
+                          />
+                          {downPaymentFromMarkup && (
+                              <span className="absolute inset-0 rounded-full bg-indigo-100 animate-ping opacity-20"/>
+                          )}
+                        </div>
 
-    {/* Текст + Сумма в один ряд */}
-    <div className="flex-1 flex items-center justify-between gap-3 min-w-0">
+                        {/* Текст + Сумма в один ряд */}
+                        <div className="flex-1 flex items-center justify-between gap-3 min-w-0">
       <span className="text-xs text-slate-600 group-hover:text-indigo-600 transition-colors font-medium truncate">
         Взнос
       </span>
-      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg whitespace-nowrap flex-shrink-0">
+                          <span
+                              className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg whitespace-nowrap flex-shrink-0">
         +{Math.round(Number(formData.buyPrice) * formData.interestRate / 100).toLocaleString()} ₽
       </span>
-    </div>
-  </label>
-)}
+                        </div>
+                      </label>
+                  )}
 
 
-</div>
-            </div>
+                </div>
+              </div>
           )}
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
           <h3 className="text-sm font-semibold text-slate-600">Поручитель (необязательно)</h3>
           <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-xs font-medium text-slate-500 mb-1">ФИО Поручителя</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900" value={formData.guarantorName} onChange={e => setFormData({ ...formData, guarantorName: e.target.value })} /></div>
-            <div><label className="block text-xs font-medium text-slate-500 mb-1">Телефон поручителя</label><input type="text" className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900" value={formData.guarantorPhone} onChange={e => setFormData({ ...formData, guarantorPhone: e.target.value })} /></div>
+            <div><label className="block text-xs font-medium text-slate-500 mb-1">ФИО Поручителя</label><input
+                type="text"
+                className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900"
+                value={formData.guarantorName}
+                onChange={e => setFormData({...formData, guarantorName: e.target.value})}/></div>
+            <div><label className="block text-xs font-medium text-slate-500 mb-1">Телефон поручителя</label><input
+                type="text"
+                className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900"
+                value={formData.guarantorPhone}
+                onChange={e => setFormData({...formData, guarantorPhone: e.target.value})}/></div>
           </div>
         </div>
 
-        <div className={`${mode === 'INSTALLMENT' ? 'bg-indigo-50 border-indigo-100' : 'bg-emerald-50 border-emerald-100'} p-5 rounded-xl space-y-3 border`}>
-          <div className="flex justify-between text-sm"><span className="text-slate-500">{mode === 'INSTALLMENT' ? 'Итоговая цена' : 'Цена продажи'}</span><span className="font-medium text-slate-900">{calculatedValues.totalAmount.toLocaleString()} ₽</span></div>
+        <div
+            className={`${mode === 'INSTALLMENT' ? 'bg-indigo-50 border-indigo-100' : 'bg-emerald-50 border-emerald-100'} p-5 rounded-xl space-y-3 border`}>
+          <div className="flex justify-between text-sm"><span
+              className="text-slate-500">{mode === 'INSTALLMENT' ? 'Итоговая цена' : 'Цена продажи'}</span><span
+              className="font-medium text-slate-900">{calculatedValues.totalAmount.toLocaleString()} ₽</span></div>
           {mode === 'INSTALLMENT' && (
-            <>
-              <div className="flex justify-between text-sm"><span className="text-slate-500">Чистая прибыль</span><span className="font-medium text-emerald-600">+{Math.round(calculatedValues.totalAmount - Number(formData.buyPrice)).toLocaleString()} ₽</span></div>
-              <div className="flex flex-col gap-2 text-sm pt-3 border-t border-indigo-100">
+              <>
+                <div className="flex justify-between text-sm"><span
+                    className="text-slate-500">Чистая прибыль</span><span
+                    className="font-medium text-emerald-600">+{Math.round(calculatedValues.totalAmount - Number(formData.buyPrice)).toLocaleString()} ₽</span>
+                </div>
+                <div className="flex flex-col gap-2 text-sm pt-3 border-t border-indigo-100">
                 <span className="text-slate-500 font-medium">Округление платежа (до 100 ₽)</span>
                 <div className="flex bg-slate-100 p-1 rounded-lg">
                   <button type="button" onClick={() => setRoundingMode('NONE')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'NONE' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Нет</button>
