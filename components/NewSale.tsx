@@ -143,53 +143,53 @@ useEffect(() => {
   }, [formData.buyPrice, formData.interestRate]);
 
   // 🔹 2. Расчёт итоговых значений с учётом округления
-  const calculatedValues = useMemo(() => {
-    const downPayment = Number(formData.downPayment) || 0;
-    const installments = Number(formData.installments) || 1;
+ // 🔹 2. Расчёт итоговых значений с учётом округления
+const calculatedValues = useMemo(() => {
+  const downPayment = Number(formData.downPayment) || 0;
+  const installments = Number(formData.installments) || 1;
 
-    if (mode === 'CASH') {
-      return {
-        totalAmount: Number(formData.price) || 0,
-        remainingAmount: 0,
-        monthlyPayment: 0
-      };
-    }
+  if (mode === 'CASH') {
+    return {
+      totalAmount: Number(formData.price) || 0,
+      remainingAmount: 0,
+      monthlyPayment: 0
+    };
+  }
 
-    // 🔥 КЛЮЧЕВОЕ: При редактировании используем сохранённый totalAmount как базу
-    let totalAmount: number;
-    if (initialData.id && initialData.totalAmount) {
-      totalAmount = initialData.totalAmount;
-    } else {
-      // Для новых записей: база = цена из формы или рассчитанная
-      totalAmount = (roundingMode === 'NONE')
-        ? (Number(formData.price) || baseCalculatedPrice)
-        : baseCalculatedPrice;
-    }
+  // 🔥 КЛЮЧЕВОЕ: При редактировании используем сохранённый totalAmount
+  let totalAmount: number;
+  if (initialData.id && initialData.totalAmount) {
+    totalAmount = initialData.totalAmount;
+  } else {
+    // ✅ Всегда берём цену из формы (ручную или авто-расчёт)
+    totalAmount = Number(formData.price) || baseCalculatedPrice;
+  }
 
-    let remainingAmount = totalAmount - downPayment;
-    let monthlyPayment = installments > 0 ? remainingAmount / installments : 0;
+  let remainingAmount = totalAmount - downPayment;
+  let monthlyPayment = installments > 0 ? remainingAmount / installments : 0;
 
-    // Применяем округление только для новых записей или если режим изменился
-    if (!initialData.id && roundingMode !== 'NONE' && monthlyPayment > 0) {
-      const roundedMonthly = roundingMode === 'DOWN'
-        ? Math.floor(monthlyPayment / 100) * 100
-        : Math.ceil(monthlyPayment / 100) * 100;
-      monthlyPayment = roundedMonthly;
-      remainingAmount = monthlyPayment * installments;
-      totalAmount = remainingAmount + downPayment;
-    }
+  // 🔹 Применяем округление к ежемесячному платежу
+  if (!initialData.id && roundingMode !== 'NONE' && monthlyPayment > 0) {
+    const roundedMonthly = roundingMode === 'DOWN'
+      ? Math.floor(monthlyPayment / 100) * 100
+      : Math.ceil(monthlyPayment / 100) * 100;
 
-    return { totalAmount, remainingAmount, monthlyPayment };
-  }, [
-    formData.price,
-    formData.downPayment,
-    formData.installments,
-    roundingMode,
-    mode,
-    baseCalculatedPrice,
-    initialData.id,
-    initialData.totalAmount
-  ]);
+    monthlyPayment = roundedMonthly;
+    remainingAmount = monthlyPayment * installments;
+    totalAmount = remainingAmount + downPayment; // 🔥 Пересчитываем итог!
+  }
+
+  return { totalAmount, remainingAmount, monthlyPayment };
+}, [
+  formData.price,           // ✅ Добавили зависимость
+  formData.downPayment,
+  formData.installments,
+  roundingMode,
+  mode,
+  baseCalculatedPrice,
+  initialData.id,
+  initialData.totalAmount
+]);
 
 // 🔹 3. Синхронизация поля "Цена" с режимом округления (только для новых!)
 useEffect(() => {
@@ -884,7 +884,7 @@ const handleSendContract = async () => {
                       </label>
                   )}
 
-                  
+
                 </div>
               </div>
           )}
