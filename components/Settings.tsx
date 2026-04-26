@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AppSettings, ViewState } from '../types';
 import { ICONS, APP_VERSION, THEMES } from '../constants';
@@ -14,12 +13,13 @@ interface SettingsProps {
   currentUserId?: string;
 }
 
-const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNavigate, onSettingsChanged,currentUserId }) => {
+const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNavigate, onSettingsChanged, currentUserId }) => {
   const [companyName, setCompanyName] = useState(appSettings.companyName);
 
   // Clear Data Modal State
   const [showClearModal, setShowClearModal] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [clearCooldown, setClearCooldown] = useState(0); // ⏱ Кулдаун для кнопки сброса
   const [showImportModal, setShowImportModal] = useState(false);
 
   // Legal Docs View State
@@ -28,6 +28,16 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
   useEffect(() => {
     setCompanyName(appSettings.companyName);
   }, [appSettings]);
+
+  // 🔁 Эффект обратного отсчёта для кулдауна
+  useEffect(() => {
+    if (clearCooldown > 0) {
+      const timer = setInterval(() => {
+        setClearCooldown(prev => prev - 1);
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [clearCooldown]);
 
   const handleSave = () => {
     onUpdateSettings({
@@ -45,13 +55,19 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       });
   };
 
-const handleClearData = async () => {
+  const handleClearData = async () => {
+    // Блокируем повторные нажатия во время кулдауна
+    if (clearCooldown > 0 || isClearing) return;
+    
+    // 🔴 Запускаем 10-секундный кулдаун СРАЗУ
+    setClearCooldown(10);
     setIsClearing(true);
+    
     try {
         // 1. Сначала очищаем данные на сервере
         await api.resetAccountData();
 
-        // 2. Unregister Service Worker (чтобы остановить Workbox)
+        // 2. Unregister Service Worker
         if ('serviceWorker' in navigator) {
             const registrations = await navigator.serviceWorker.getRegistrations();
             for (const registration of registrations) {
@@ -81,13 +97,15 @@ const handleClearData = async () => {
             await Promise.all(cacheNames.map(name => caches.delete(name)));
         }
 
-        // 6. Перенаправляем на корень (не reload!)
+        // 6. Перенаправляем на корень
         window.location.href = '/';
 
     } catch (error) {
         console.error('Clear data error:', error);
         alert("Ошибка при очистке данных. Попробуйте снова.");
         setIsClearing(false);
+        // При ошибке сбрасываем кулдаун, чтобы пользователь мог повторить попытку
+        setClearCooldown(0);
     }
 };
 
@@ -279,31 +297,55 @@ const handleClearData = async () => {
                       </p>
                   </div>
                   <div className="flex gap-3 pt-2">
-                      <button onClick={() => setShowClearModal(false)} className="flex-1 py-3 bg-slate-100 font-bold text-slate-600 rounded-xl">Отмена</button>
-                      <button onClick={handleClearData} disabled={isClearing} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl disabled:opacity-70">
-                          {isClearing ? 'Удаление...' : 'Сбросить'}
+                      <button 
+                          onClick={() => {
+                              setShowClearModal(false);
+                              setClearCooldown(0); // Сбрасываем кулдаун при закрытии
+                          }} 
+                          className="flex-1 py-3 bg-slate-100 font-bold text-slate-600 rounded-xl"
+                      >
+                          Отмена
+                      </button>
+                      <button 
+                          onClick={handleClearData} 
+                          disabled={isClearing || clearCooldown > 0} 
+                          className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl disabled:opacity-70 transition-all"
+                      >
+                          {clearCooldown > 0 
+                              ? `Подождите ${clearCooldown}с...` 
+                              : isClearing 
+                                  ? 'Удаление...' 
+                                  : 'Сбросить'
+                          }
                       </button>
                   </div>
+                  {/* Визуальный индикатор прогресса кулдауна */}
+                  {clearCooldown > 0 && (
+                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div 
+                              className="bg-red-500 h-full transition-all duration-1000 ease-linear"
+                              style={{ width: `${(clearCooldown / 10) * 100}%` }}
+                          />
+                      </div>
+                  )}
               </div>
           </div>
       )}
 
       {/* Import Modal */}
       {showImportModal && (
-    <DataImport
-        onClose={() => setShowImportModal(false)}
-        onImportSuccess={() => {
-            // Логи с дубликатами уже видны в окне импорта.
-            // Ждём 15 секунд, потом закрываем, показываем alert и перезагружаем.
-            setTimeout(() => {
-                setShowImportModal(false);
-                alert("✅ Данные успешно импортированы! Страница будет перезагружена.");
-                window.location.reload();
-            }, 5000); // 15000 мс = 15 секунд
-        }}
-        currentUserId={currentUserId}
-    />
-)}
+        <DataImport
+            onClose={() => setShowImportModal(false)}
+            onImportSuccess={() => {
+                setTimeout(() => {
+                    setShowImportModal(false);
+                    alert("✅ Данные успешно импортированы! Страница будет перезагружена.");
+                    window.location.reload();
+                }, 5000);
+            }}
+            currentUserId={currentUserId}
+        />
+      )}
 
     </div>
   );
