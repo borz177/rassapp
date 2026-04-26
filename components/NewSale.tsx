@@ -191,6 +191,18 @@ const calculatedValues = useMemo(() => {
   initialData.totalAmount
 ]);
 
+
+useEffect(() => {
+  if (mode !== 'INSTALLMENT' || initialData.id) return;
+  if (!isPriceManual) return; // Только если цена введена вручную
+  if (roundingMode === 'NONE') return; // Только если округление включено
+
+  // Если рассчитанный итог отличается от текущей цены — обновляем
+  if (calculatedValues.totalAmount !== Number(formData.price)) {
+    setFormData(prev => ({ ...prev, price: calculatedValues.totalAmount }));
+  }
+}, [roundingMode, calculatedValues.totalAmount, formData.price, mode, initialData.id, isPriceManual]);
+
 // 🔹 3. Синхронизация поля "Цена" с режимом округления (только для новых!)
 useEffect(() => {
   // 🔥 НОВОЕ: Если цена введена вручную — НЕ трогаем её
