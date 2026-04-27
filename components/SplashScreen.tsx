@@ -13,14 +13,10 @@ export default function SplashScreen({ progress }: Props) {
 
       <div className="loader">
 
-        <div
-          className="bar"
-          style={{ width: progress + "%" }}
-        />
 
       </div>
 
-     
+
 
     </div>
   )
