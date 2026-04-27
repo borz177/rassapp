@@ -16,35 +16,43 @@
 }
 
 .logo {
-  /* Задаем фиксированный размер (должен быть квадратным) */
-  width: 200px;
-  height: 200px;
-
-  /* Делает изображение идеально круглым */
-  border-radius: 52%;
-
-  /* Гарантирует, что картинка заполнит круг без искажений */
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
   object-fit: cover;
 
-  /* Центрирование и тень для красоты (опционально) */
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  /* Красивая тень для объёма */
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+
+  /* Анимация с лёгким парением */
+  animation: floatIn 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
+@keyframes floatIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) translateY(-30px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
 
+/* Дополнительная анимация парения после появления */
 .logo {
   animation:
     floatIn 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
     floating 3s ease-in-out infinite 1.2s;
 }
 
-/* Сама анимация: плавное увеличение и появление */
-@keyframes popIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.5);
+@keyframes floating {
+  0%, 100% {
+    transform: translateY(0px);
   }
-  100% {
-    opacity: 1;
-    transform: scale(1);
+  50% {
+    transform: translateY(-10px);
   }
 }
