@@ -98,6 +98,9 @@ const isLanding = path === "/"
   const [showSupportChat, setShowSupportChat] = useState(false);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+
+
+  const [showSplash, setShowSplash] = useState(true);
   const [showBlockedDeleteModal, setShowBlockedDeleteModal] = useState<{
   customerId: string;
   customerName: string;
@@ -226,6 +229,8 @@ const handleSync = async () => {
 
 
 useEffect(() => {
+
+  setShowSplash(true);
   enablePersistentStorage();
 
   const initApp = async () => {
@@ -294,6 +299,10 @@ useEffect(() => {
 
     // 7. Выключаем загрузку
     setIsLoading(false);
+
+    setTimeout(() => {
+      setShowSplash(false);
+    }, 1500);
   };
 
   initApp();
@@ -1564,11 +1573,11 @@ if (isPublicMode) {
 }
 
 // 2. Загрузка (проверка сессии, подгрузка данных)
-if (isLoading) {
-  return <SplashScreen progress={loadingProgress} />
+if (showSplash || isLoading) {
+  return <SplashScreen progress={isLoading ? loadingProgress : 100} />
 }
 // 🔹 ПРОВЕРКА АВТОРИЗАЦИИ (перед Layout!)
-if (!user && !isLoading) {
+if (!user && !showSplash) {
   const isPWA = window.matchMedia('(display-mode: standalone)').matches;
 
   // В PWA или нативном приложении — сразу Auth
