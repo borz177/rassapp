@@ -1,13 +1,21 @@
-import "./SplashScreen.css"
-
-// Если вам нужно убрать сплеш-скрин через время, добавьте таймер в useEffect
-// Если он должен висеть вечно (пока приложение грузится), оставьте так.
-
 export default function SplashScreen() {
   return (
     <div className="splash">
-      {/* Убедитесь, что путь к картинке правильный */}
-      <img src="/splash.png" className="logo" alt="App Logo" />
+      <div className="logo-container">
+        {/* Пульсирующие кольца */}
+        <div className="pulse-ring"></div>
+        <div className="pulse-ring"></div>
+        <div className="pulse-ring"></div>
+
+        {/* Свечение */}
+        <div className="glow"></div>
+
+        {/* Вращающаяся градиентная рамка */}
+        <div className="gradient-border"></div>
+
+        {/* Логотип */}
+        <img src="/splash.png" className="logo" alt="App Logo" />
+      </div>
     </div>
   )
 }
