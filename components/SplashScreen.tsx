@@ -1,23 +1,13 @@
 import "./SplashScreen.css"
-import { useEffect, useState } from "react"
+
+// Если вам нужно убрать сплеш-скрин через время, добавьте таймер в useEffect
+// Если он должен висеть вечно (пока приложение грузится), оставьте так.
 
 export default function SplashScreen() {
-  const [isVisible, setIsVisible] = useState(true)
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsVisible(false)
-      // Здесь переход на главный экран
-    }, 2000) // 2 секунды
-
-    return () => clearTimeout(timer)
-  }, [])
-
-  if (!isVisible) return null
-
   return (
     <div className="splash">
-      <img src="/splash.png" className="logo" alt="Logo" />
+      {/* Убедитесь, что путь к картинке правильный */}
+      <img src="/splash.png" className="logo" alt="App Logo" />
     </div>
   )
 }
