@@ -302,7 +302,7 @@ useEffect(() => {
 
     setTimeout(() => {
       setShowSplash(false);
-    }, 1000);
+    }, 700);
   };
 
   initApp();
