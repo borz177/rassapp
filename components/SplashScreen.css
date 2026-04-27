@@ -18,7 +18,7 @@
 .logo {
   width: 220px;
   height: 220px;
-  border-radius: 50%;
+  border-radius: 55%;
   object-fit: cover;
 
   /* Красивая тень для объёма */
