@@ -11,10 +11,7 @@ export default function SplashScreen({ progress }: Props) {
 
       <img src="/splash.png" className="logo" />
 
-      <div className="loader">
-
-
-      </div>
+     
 
 
 
