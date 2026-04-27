@@ -1,20 +1,9 @@
 import "./SplashScreen.css"
 
-interface Props {
-  progress: number
-}
-
-export default function SplashScreen({ progress }: Props) {
-
+export default function SplashScreen() {
   return (
     <div className="splash">
-
-      <img src="/splash.png" className="logo" />
-
-
-
-
-
+      <img src="/splash.png" className="logo" alt="Splash Screen" />
     </div>
   )
 }

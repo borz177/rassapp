@@ -1,33 +1,17 @@
 .splash {
   height: 100vh;
-  background: #0f172a;
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Убирает скролл, если картинка чуть выходит за границы */
   display: flex;
-  flex-direction: column;
   justify-content: center;
   align-items: center;
 }
 
 .logo {
-  width: 120px;
-  margin-bottom: 40px;
-}
-
-.loader {
-  width: 220px;
-  height: 6px;
-  background: #1e293b;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.bar {
+  width: 100%;
   height: 100%;
-  background: #22c55e;
-  transition: width .3s ease;
-}
-
-.text {
-  margin-top: 20px;
-  color: #94a3b8;
-  font-size: 14px;
+  object-fit: cover; /* Картинка заполнит весь экран без пустых полей */
+  display: block;
 }
