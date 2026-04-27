@@ -20,13 +20,7 @@ export default function SplashScreen({ progress }: Props) {
 
       </div>
 
-      <div className="text">
-
-        {progress < 40 && "Подключение..."}
-        {progress >= 40 && progress < 90 && "Загрузка данных..."}
-        {progress >= 90 && "Почти готово..."}
-
-      </div>
+     
 
     </div>
   )
