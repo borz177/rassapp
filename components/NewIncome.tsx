@@ -231,185 +231,194 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     setShowConfirmModal(false);
   };
 
-   const renderContractContent = () => {
-    if (!selectedSale || !selectedCustomer) return null;
-    const companyName = appSettings?.companyName || "Компания";
-    const hasGuarantor = !!selectedSale.guarantorName;
-    const sellerPhone = formatPhone(user?.phone || appSettings?.sellerPhone);
+  const renderContractContent = () => {
+  if (!selectedSale || !selectedCustomer) return null;
+  const companyName = appSettings?.companyName || "Компания";
+  const hasGuarantor = !!selectedSale.guarantorName;
+  const sellerPhone = formatPhone(user?.phone || appSettings?.sellerPhone);
 
-    // ✅ 1. Берём ТОЛЬКО сохранённые реальные платежи из paymentPlan
-    const savedPayments = (selectedSale.paymentPlan || [])
-      .filter(p => p.isRealPayment && p.isPaid)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  // ✅ 1. Берём ТОЛЬКО сохранённые реальные платежи из paymentPlan
+  const savedPayments = (selectedSale.paymentPlan || [])
+    .filter(p => p.isRealPayment && p.isPaid)
+    .map(p => ({
+      id: p.id,
+      amount: p.amount,
+      date: new Date(p.date),
+      isReal: true
+    }))
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
 
-    // ✅ 2. Проверяем дубликат ТОЧНО по сумме и дате
-    const numAmount = Number(amount);
-    const isAlreadySaved = numAmount > 0 && savedPayments.some(p =>
-      Math.abs(p.amount - numAmount) < 0.01 &&
-      new Date(p.date).toDateString() === new Date(date).toDateString()
-    );
+  // ✅ 2. Вспомогательная функция: сравнение дат по календарю (не по миллисекундам!)
+  const isSameCalendarDate = (d1: Date, d2: Date) =>
+    d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
 
-    // ✅ 3. Формируем массив для отображения (сохранённые + текущий, если не сохранён)
-    const displayPayments = savedPayments.map(p => ({
-      ...p,
-      dateObj: new Date(p.date),
-      id: p.id
-    }));
+  // ✅ 3. Проверяем дубликат: сумма + календарная дата
+  const numAmount = Number(amount);
+  const inputDate = new Date(date);
 
-    if (!isAlreadySaved && numAmount > 0) {
-      displayPayments.push({
-        id: `temp_${Date.now()}`,
-        saleId: selectedSale.id,
-        date: new Date(date).toISOString(),
-        dateObj: new Date(date),
-        amount: numAmount,
-        isRealPayment: false,
-        isPaid: false
-      });
-      displayPayments.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime());
-    }
+  const isDuplicate = savedPayments.some(p =>
+    Math.abs(p.amount - numAmount) < 0.01 &&
+    isSameCalendarDate(p.date, inputDate)
+  );
 
-    // ✅ 4. Расчёт остатка ТОЛЬКО по реальным сохранённым платежам (для отображения сверху)
-    const totalPaid = savedPayments.reduce((sum, p) => sum + p.amount, 0);
-    const initialDebt = selectedSale.totalAmount - selectedSale.downPayment;
-    const remainingDebt = Math.max(0, initialDebt - totalPaid);
+  // ✅ 4. Формируем итоговый список: сохранённые + текущий (если не дубликат)
+  const displayPayments = [...savedPayments];
 
-    const styles = {
-      page: {
-        width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
-        fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '12pt', lineHeight: '1.5',
-        display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
-        position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
-      },
-      contentWrapper: { flex: 1 },
-      h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
-      headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
-      fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
-      fieldLabel: { fontWeight: 'bold' as const },
-      phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
-      section: { margin: '0 0 20px 0' },
-      sectionItem: { marginBottom: '12px' },
-      table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
-      th: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
-      td: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
-      footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
-      footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
-      signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
-      signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
-      signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
-    };
+  if (!isDuplicate && numAmount > 0) {
+    displayPayments.push({
+      id: `temp_${Date.now()}_${numAmount}`,
+      saleId: selectedSale.id,  // 🔥 Обязательно для TypeScript
+      amount: numAmount,
+      date: inputDate,
+      isReal: false
+    });
+  }
+  displayPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-    // ✅ 5. Переменная для расчёта остатка в таблице (последовательное вычитание)
-    let currentDebt = initialDebt;
+  // ✅ 5. Расчёт остатка
+  const initialDebt = selectedSale.totalAmount - selectedSale.downPayment;
+  let currentDebt = initialDebt; // Ваша рабочая логика последовательного вычитания
 
-    return (
-      <div ref={contractRef} style={styles.page}>
-        <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
-        <div style={styles.headerInfo}>Дата: {new Date(selectedSale.startDate).toLocaleDateString()}</div>
-        <div style={styles.contentWrapper}>
-          <div style={styles.section}>
-            <div style={styles.fieldRow}>
-              <span><span style={styles.fieldLabel}>Продавец:</span> {companyName}</span>
-              <span style={styles.phoneField}>Тел: {formatPhone(sellerPhone)}</span>
-            </div>
-            <div style={styles.fieldRow}>
-              <span><span style={styles.fieldLabel}>Покупатель:</span> {selectedCustomer.name}</span>
-              <span style={styles.phoneField}>Тел: {formatPhone(selectedCustomer.phone)}</span>
-            </div>
-            {hasGuarantor && (
-              <div style={styles.fieldRow}>
-                <span><span style={styles.fieldLabel}>Поручитель:</span> {selectedSale.guarantorName}</span>
-                <span style={styles.phoneField}>Тел: {formatPhone(selectedSale.guarantorPhone)} </span>
-              </div>
-            )}
+  // ✅ Стили (без изменений)
+  const styles = {
+    page: {
+      width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
+      fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '12pt', lineHeight: '1.5',
+      display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
+      position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
+    },
+    contentWrapper: { flex: 1 },
+    h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
+    headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
+    fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
+    fieldLabel: { fontWeight: 'bold' as const },
+    phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
+    section: { margin: '0 0 20px 0' },
+    sectionItem: { marginBottom: '12px' },
+    table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
+    th: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
+    td: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
+    footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
+    footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
+    signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
+    signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
+    signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
+  };
+
+  // ✅ Расчёт отображаемого остатка (для блока сверху)
+  const totalPaid = savedPayments.reduce((sum, p) => sum + p.amount, 0);
+  const remainingDebt = Math.max(0, initialDebt - totalPaid);
+
+  return (
+    <div ref={contractRef} style={styles.page}>
+      <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
+      <div style={styles.headerInfo}>Дата: {new Date(selectedSale.startDate).toLocaleDateString()}</div>
+      <div style={styles.contentWrapper}>
+        <div style={styles.section}>
+          <div style={styles.fieldRow}>
+            <span><span style={styles.fieldLabel}>Продавец:</span> {companyName}</span>
+            <span style={styles.phoneField}>Тел: {formatPhone(sellerPhone)}</span>
           </div>
-          <div style={styles.section}>
-            <div style={{
-              ...styles.sectionItem,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '15px'
-            }}>
-              <span><span style={styles.fieldLabel}>Товар:</span> {selectedSale.productName}</span>
-              <span><span style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
-            </div>
-            <div style={{
-              ...styles.sectionItem,
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginTop: '10px'
-            }}>
-              <span><span style={styles.fieldLabel}>Срок рассрочки:</span> {selectedSale.installments} мес.</span>
-              <span><span style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
-            </div>
-            <div style={{
-              ...styles.sectionItem,
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginTop: '10px'
-            }}>
-              <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
-              <span style={{
-                fontWeight: 'bold',
-                color: '#ef8228',
-                fontSize: '12pt'
-              }}>
-                Остаток: {formatNum(remainingDebt)} ₽
-              </span>
-            </div>
+          <div style={styles.fieldRow}>
+            <span><span style={styles.fieldLabel}>Покупатель:</span> {selectedCustomer.name}</span>
+            <span style={styles.phoneField}>Тел: {formatPhone(selectedCustomer.phone)}</span>
           </div>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={{...styles.th, width: '10%'}}>№</th>
-                <th style={{...styles.th, width: '30%'}}>Дата</th>
-                <th style={{...styles.th, width: '25%'}}>Сумма</th>
-                <th style={{...styles.th, width: '35%'}}>Остаток долга</th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* ✅ ИСПРАВЛЕННЫЙ tbody: используем displayPayments и currentDebt */}
-              {displayPayments.map((p, index) => {
-                currentDebt -= p.amount;
-                const displayDebt = Math.max(0, currentDebt);
-                return (
-                  <tr key={p.id}>
-                    <td style={styles.td}>{index + 1}</td>
-                    <td style={styles.td}>{p.dateObj.toLocaleDateString()}</td>
-                    <td style={styles.td}>{formatNum(p.amount)} ₽</td>
-                    <td style={styles.td}>{formatNum(displayDebt)} ₽</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div style={{margin: '25px 0', fontSize: '11pt', lineHeight: 1.4}}>
-            Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в
-            рассрочку на указанных выше условиях.
+          {hasGuarantor && (
+            <div style={styles.fieldRow}>
+              <span><span style={styles.fieldLabel}>Поручитель:</span> {selectedSale.guarantorName}</span>
+              <span style={styles.phoneField}>Тел: {formatPhone(selectedSale.guarantorPhone)} </span>
+            </div>
+          )}
+        </div>
+        <div style={styles.section}>
+          <div style={{
+            ...styles.sectionItem,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '15px'
+          }}>
+            <span><span style={styles.fieldLabel}>Товар:</span> {selectedSale.productName}</span>
+            <span><span style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
+          </div>
+          <div style={{
+            ...styles.sectionItem,
+            display: 'flex',
+            justifyContent: 'space-between',
+            marginTop: '10px'
+          }}>
+            <span><span style={styles.fieldLabel}>Срок рассрочки:</span> {selectedSale.installments} мес.</span>
+            <span><span style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
+          </div>
+          <div style={{
+            ...styles.sectionItem,
+            display: 'flex',
+            justifyContent: 'space-between',
+            marginTop: '10px'
+          }}>
+            <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
+            <span style={{
+              fontWeight: 'bold',
+              color: '#ef8228',
+              fontSize: '12pt'
+            }}>
+              Остаток: {formatNum(remainingDebt)} ₽
+            </span>
           </div>
         </div>
-        <div style={styles.footerContainer}>
-          <div style={styles.footer}>
-            <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={{...styles.th, width: '10%'}}>№</th>
+              <th style={{...styles.th, width: '30%'}}>Дата</th>
+              <th style={{...styles.th, width: '25%'}}>Сумма</th>
+              <th style={{...styles.th, width: '35%'}}>Остаток долга</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* ✅ ИСПРАВЛЕННАЯ ТАБЛИЦА: ваша логика + правильные данные */}
+            {displayPayments.map((p, index) => {
+              currentDebt -= p.amount;  // Ваша рабочая логика!
+              const displayDebt = Math.max(0, currentDebt);
+              return (
+                <tr key={p.id}>  {/* ✅ Используем ID, а не index */}
+                  <td style={styles.td}>{index + 1}</td>
+                  <td style={styles.td}>{p.date.toLocaleDateString()}</td>
+                  <td style={styles.td}>{formatNum(p.amount)} ₽</td>
+                  <td style={styles.td}>{formatNum(displayDebt)} ₽</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div style={{margin: '25px 0', fontSize: '11pt', lineHeight: 1.4}}>
+          Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в
+          рассрочку на указанных выше условиях.
+        </div>
+      </div>
+      <div style={styles.footerContainer}>
+        <div style={styles.footer}>
+          <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
+            <div style={styles.signatureLine}></div>
+            <div style={styles.signatureLabel}>Продавец</div>
+          </div>
+          {hasGuarantor && (
+            <div style={styles.signatureBlock('30%')}>
               <div style={styles.signatureLine}></div>
-              <div style={styles.signatureLabel}>Продавец</div>
+              <div style={styles.signatureLabel}>Поручитель</div>
             </div>
-            {hasGuarantor && (
-              <div style={styles.signatureBlock('30%')}>
-                <div style={styles.signatureLine}></div>
-                <div style={styles.signatureLabel}>Поручитель</div>
-              </div>
-            )}
-            <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
-              <div style={styles.signatureLine}></div>
-              <div style={styles.signatureLabel}>Покупатель</div>
-            </div>
+          )}
+          <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
+            <div style={styles.signatureLine}></div>
+            <div style={styles.signatureLabel}>Покупатель</div>
           </div>
         </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Неизвестный счет';
 
