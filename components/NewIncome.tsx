@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Customer, Account, Investor, Sale, User } from '../types';
+import { Customer, Account, Investor, Sale,User } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
@@ -15,24 +15,25 @@ interface NewIncomeProps {
   onClose: () => void;
   onSubmit: (data: any) => void;
   onSelectCustomer: () => void;
-  user?: User;
+    user?: User;
+
 }
 
 // Форматирует любой российский номер в вид +7 (XXX) XXX-XX-XX
 const formatPhone = (raw: string | undefined): string => {
-  if (!raw) return '+7 (___) ___-__-__';
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length === 11 && (digits[0] === '8' || digits[0] === '7')) {
-    const clean = digits[0] === '8' ? '7' + digits.slice(1) : digits;
-    return `+${clean[0]} (${clean.slice(1, 4)}) ${clean.slice(4, 7)}-${clean.slice(7, 9)}-${clean.slice(9)}`;
-  }
-  return raw;
+    if (!raw) return '+7 (___) ___-__-__';
+    const digits = raw.replace(/\D/g, ''); // Оставляем только цифры
+    if (digits.length === 11 && (digits[0] === '8' || digits[0] === '7')) {
+        const clean = digits[0] === '8' ? '7' + digits.slice(1) : digits;
+        return `+${clean[0]} (${clean.slice(1, 4)}) ${clean.slice(4, 7)}-${clean.slice(7, 9)}-${clean.slice(9)}`;
+    }
+    return raw; // Если формат нестандартный, возвращаем как есть
 };
-
 const NewIncome: React.FC<NewIncomeProps> = ({
-  initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer, user
+    initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer, user
 }) => {
   const [sourceType, setSourceType] = useState<'CUSTOMER' | 'INVESTOR' | 'OTHER'>('CUSTOMER');
+
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId || '');
   const [selectedSaleId, setSelectedSaleId] = useState('');
   const [selectedInvestorId, setSelectedInvestorId] = useState('');
@@ -40,6 +41,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+
   const [sendHistory, setSendHistory] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const contractRef = useRef<HTMLDivElement>(null);
@@ -49,9 +51,11 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const selectedSale = useMemo(() => sales.find(s => s.id === selectedSaleId), [sales, selectedSaleId]);
   const selectedInvestor = useMemo(() => investors.find(i => i.id === selectedInvestorId), [investors, selectedInvestorId]);
 
+  // Получаем настройки и определяем флаг показа копеек
   const appSettings = getAppSettings();
   const showCents = appSettings?.showCents || false;
 
+  // Вспомогательная функция для форматирования чисел в зависимости от настроек
   const formatNum = (val: number) => {
     return val.toLocaleString(undefined, {
       minimumFractionDigits: showCents ? 2 : 0,
@@ -61,82 +65,89 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   useEffect(() => {
     if (initialData?.type === 'CUSTOMER_PAYMENT') {
-      setSourceType('CUSTOMER');
-      setSelectedCustomerId(initialData.customerId || '');
-      setSelectedSaleId(initialData.saleId || '');
-      setAmount(initialData.amount?.toString() || '');
+        setSourceType('CUSTOMER');
+        setSelectedCustomerId(initialData.customerId || '');
+        setSelectedSaleId(initialData.saleId || '');
+        setAmount(initialData.amount?.toString() || '');
     }
   }, [initialData]);
 
   useEffect(() => {
-    if (selectedSale) {
-      const paidTotal = selectedSale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
-      const scheduledPayments = selectedSale.paymentPlan.filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      let paymentPool = paidTotal;
-      let suggestedAmount = selectedSale.remainingAmount;
-      for (const p of scheduledPayments) {
-        const paymentDue = p.amount;
-        const coveredByPool = Math.min(paymentDue, paymentPool);
-        paymentPool -= coveredByPool;
-        const remainingForThisInstallment = paymentDue - coveredByPool;
-        if (remainingForThisInstallment > 0.01) { suggestedAmount = remainingForThisInstallment; break; }
+      if (selectedSale) {
+          const paidTotal = selectedSale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
+          const scheduledPayments = selectedSale.paymentPlan.filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          let paymentPool = paidTotal;
+          let suggestedAmount = selectedSale.remainingAmount;
+          for (const p of scheduledPayments) {
+              const paymentDue = p.amount;
+              const coveredByPool = Math.min(paymentDue, paymentPool);
+              paymentPool -= coveredByPool;
+              const remainingForThisInstallment = paymentDue - coveredByPool;
+              if (remainingForThisInstallment > 0.01) { suggestedAmount = remainingForThisInstallment; break; }
+          }
+          if (!amount) {
+              // Округляем подставляемую сумму, если копейки выключены
+              setAmount(suggestedAmount > 0 ? (showCents ? suggestedAmount.toFixed(2) : Math.round(suggestedAmount).toString()) : '');
+          }
+          setTargetAccountId(selectedSale.accountId);
       }
-      if (!amount) {
-        setAmount(suggestedAmount > 0 ? (showCents ? suggestedAmount.toFixed(2) : Math.round(suggestedAmount).toString()) : '');
-      }
-      setTargetAccountId(selectedSale.accountId);
-    }
   }, [selectedSale, showCents]);
 
   useEffect(() => {
-    if (selectedInvestor) {
-      const invAccount = accounts.find(a => a.ownerId === selectedInvestor.id);
-      if (invAccount) setTargetAccountId(invAccount.id);
-    }
+      if (selectedInvestor) {
+          const invAccount = accounts.find(a => a.ownerId === selectedInvestor.id);
+          if (invAccount) setTargetAccountId(invAccount.id);
+      }
   }, [selectedInvestor, accounts]);
 
   useEffect(() => {
-    if (sourceType === 'OTHER' && accounts.length > 0 && !targetAccountId) {
-      setTargetAccountId(accounts[0].id);
-    }
+      if (sourceType === 'OTHER' && accounts.length > 0 && !targetAccountId) {
+          setTargetAccountId(accounts[0].id);
+      }
   }, [sourceType, accounts, targetAccountId]);
+
 
   useEffect(() => {
     if (sourceType === 'INVESTOR' && investors.length === 0) {
-      setSourceType('CUSTOMER');
-      setSelectedInvestorId('');
+        setSourceType('CUSTOMER');
+        setSelectedInvestorId('');
     }
-  }, [investors, sourceType]);
+}, [investors, sourceType]);
+
 
   const recommendedAmount = useMemo(() => {
-    if (selectedSale) {
-      const paidTotal = selectedSale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
-      const scheduledPayments = selectedSale.paymentPlan.filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      let paymentPool = paidTotal;
-      for (const p of scheduledPayments) {
-        const paymentDue = p.amount;
-        const coveredByPool = Math.min(paymentDue, paymentPool);
-        paymentPool -= coveredByPool;
-        if (paymentDue - coveredByPool > 0.01) return paymentDue - coveredByPool;
+      if (selectedSale) {
+          const paidTotal = selectedSale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
+          const scheduledPayments = selectedSale.paymentPlan.filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          let paymentPool = paidTotal;
+          for (const p of scheduledPayments) {
+              const paymentDue = p.amount;
+              const coveredByPool = Math.min(paymentDue, paymentPool);
+              paymentPool -= coveredByPool;
+              if (paymentDue - coveredByPool > 0.01) return paymentDue - coveredByPool;
+          }
+          return selectedSale.remainingAmount;
       }
-      return selectedSale.remainingAmount;
-    }
-    return 0;
+      return 0;
   }, [selectedSale]);
 
   const currentPaymentProfit = useMemo(() => {
-    if (!selectedSale || !amount) return 0;
-    const numAmount = Number(amount);
-    if (selectedSale.totalAmount <= 0) return 0;
-    const totalProfit = selectedSale.totalAmount - selectedSale.buyPrice;
-    const margin = totalProfit / selectedSale.totalAmount;
-    const profit = numAmount * margin;
-    return showCents ? profit : Math.round(profit);
+      if (!selectedSale || !amount) return 0;
+      const numAmount = Number(amount);
+      if (selectedSale.totalAmount <= 0) return 0;
+      const totalProfit = selectedSale.totalAmount - selectedSale.buyPrice;
+      const margin = totalProfit / selectedSale.totalAmount;
+      const profit = numAmount * margin;
+      return showCents ? profit : Math.round(profit);
   }, [selectedSale, amount, showCents]);
 
-  const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
+ const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
+
+    // 🔥 Клонируем элемент вместо работы с оригиналом
     const clonedElement = contractRef.current.cloneNode(true) as HTMLDivElement;
+
+    // Применяем стили к клону
     clonedElement.style.position = 'fixed';
     clonedElement.style.left = '0';
     clonedElement.style.top = '0';
@@ -145,419 +156,503 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     clonedElement.style.width = '210mm';
     clonedElement.style.background = 'white';
     clonedElement.style.opacity = '1';
+
     document.body.appendChild(clonedElement);
+
     try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const canvas = await html2canvas(clonedElement, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        scrollX: 0,
-        scrollY: 0
-      });
-      const imgData = canvas.toDataURL('image/jpeg', 0.9);
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-      return pdf.output('blob');
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        const canvas = await html2canvas(clonedElement, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff',
+            scrollX: 0,
+            scrollY: 0
+        });
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.9);
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        return pdf.output('blob');
+
     } finally {
-      document.body.removeChild(clonedElement);
+        // Удаляем клон
+        document.body.removeChild(clonedElement);
     }
-  };
-
+};
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const numAmount = Number(amount);
-    if (numAmount <= 0) { alert("Введите сумму больше нуля"); return; }
-    if (sourceType === 'CUSTOMER' && !selectedSaleId) { alert("Выберите договор"); return; }
-    if (sourceType === 'INVESTOR' && (!selectedInvestorId || !targetAccountId)) { alert("Ошибка выбора инвестора или счета"); return; }
-    if (sourceType === 'OTHER' && !targetAccountId) { alert("Выберите счет"); return; }
-
-    // 🔒 ЗАЩИТА ОТ ДУБЛИКАТА ПЕРЕД ОТКРЫТИЕМ МОДАЛКИ
-    if (sourceType === 'CUSTOMER' && selectedSale) {
-      const isDuplicate = selectedSale.paymentPlan.some(p =>
-        p.isPaid && p.isRealPayment &&
-        Math.abs(p.amount - numAmount) < 0.01 &&
-        new Date(p.date).toDateString() === new Date(date).toDateString()
-      );
-      if (isDuplicate) {
-        alert("⚠️ Платёж с такой суммой и датой уже зачислен!");
-        return;
-      }
-    }
-
-    setShowConfirmModal(true);
+      e.preventDefault();
+      const numAmount = Number(amount);
+      if (numAmount <= 0) { alert("Введите сумму больше нуля"); return; }
+      if (sourceType === 'CUSTOMER' && !selectedSaleId) { alert("Выберите договор"); return; }
+      if (sourceType === 'INVESTOR' && (!selectedInvestorId || !targetAccountId)) { alert("Ошибка выбора инвестора или счета"); return; }
+      if (sourceType === 'OTHER' && !targetAccountId) { alert("Выберите счет"); return; }
+      setShowConfirmModal(true);
   };
 
   const handleConfirm = async () => {
-    const numAmount = Number(amount);
-    let finalDate = date;
-    const now = new Date();
-    const selectedDate = new Date(date);
-    const isToday = selectedDate.getDate() === now.getDate() &&
-      selectedDate.getMonth() === now.getMonth() &&
-      selectedDate.getFullYear() === now.getFullYear();
-    if (isToday) { finalDate = now.toISOString(); }
+      const numAmount = Number(amount);
+      let finalDate = date;
+      const now = new Date();
+      const selectedDate = new Date(date);
+      const isToday = selectedDate.getDate() === now.getDate() &&
+                      selectedDate.getMonth() === now.getMonth() &&
+                      selectedDate.getFullYear() === now.getFullYear();
 
-    const commonData = { amount: numAmount, date: finalDate };
-    if (sourceType === 'CUSTOMER') {
-      onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
-      if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
-        try {
-          const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-          const dateStr = date.replace(/-/g, '');
-          const fileName = `Payment_${dateStr}.pdf`;
-          const success = await sendWhatsAppFile(
+      if (isToday) { finalDate = now.toISOString(); }
+
+      const commonData = { amount: numAmount, date: finalDate };
+
+      if (sourceType === 'CUSTOMER') {
+          onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
+          if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
+    try {
+        const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
+
+        // 🔥 ИМЯ ФАЙЛА: только латиница + дата
+        const dateStr = date.replace(/-/g, '');
+        const fileName = `Payment_${dateStr}.pdf`;
+
+        const success = await sendWhatsAppFile(
             appSettings.whatsapp.idInstance,
             appSettings.whatsapp.apiTokenInstance,
             selectedCustomer.phone,
             pdfBlob,
             fileName
-          );
-          if (success) alert("Договор (PDF) отправлен клиенту в WhatsApp");
-          else alert("Ошибка отправки PDF в WhatsApp");
-        } catch (error: any) {
-          console.error("PDF generation error:", error);
-          alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
-        }
-      }
-    } else if (sourceType === 'INVESTOR') {
-      onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
-    } else {
-      onSubmit({ ...commonData, type: 'OTHER_INCOME', accountId: targetAccountId, note: note || "Прочий приход" });
+        );
+        if (success) alert("Договор (PDF) отправлен клиенту в WhatsApp");
+        else alert("Ошибка отправки PDF в WhatsApp");
+    } catch (error: any) {
+        console.error("PDF generation error:", error);
+        alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
     }
-    setShowConfirmModal(false);
+
+
+          }
+      } else if (sourceType === 'INVESTOR') {
+          onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
+      } else {
+          onSubmit({ ...commonData, type: 'OTHER_INCOME', accountId: targetAccountId, note: note || "Прочий приход" });
+      }
+      setShowConfirmModal(false);
   };
 
   const renderContractContent = () => {
-    if (!selectedSale || !selectedCustomer) return null;
-    const companyName = appSettings?.companyName || "Компания";
-    const hasGuarantor = !!selectedSale.guarantorName;
-    const sellerPhone = formatPhone(user?.phone || appSettings?.sellerPhone);
+      if (!selectedSale || !selectedCustomer) return null;
+      const companyName = appSettings?.companyName || "Компания";
+      const hasGuarantor = !!selectedSale.guarantorName;
+      const sellerPhone = formatPhone(user?.phone || appSettings?.sellerPhone);
 
-    // ✅ 1. Берём ТОЛЬКО сохранённые реальные платежи из paymentPlan
-    const savedPayments = (selectedSale.paymentPlan || [])
-      .filter(p => p.isRealPayment && p.isPaid)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    // ✅ 2. Проверяем дубликат ТОЧНО по сумме и дате
-    const numAmount = Number(amount);
-    const isAlreadySaved = numAmount > 0 && savedPayments.some(p =>
-      Math.abs(p.amount - numAmount) < 0.01 &&
-      new Date(p.date).toDateString() === new Date(date).toDateString()
-    );
 
-    // ✅ 3. Формируем массив для отображения (сохранённые + текущий, если не сохранён)
-    const displayPayments = savedPayments.map(p => ({
-      ...p,
-      dateObj: new Date(p.date),
-      id: p.id
-    }));
+// Берём только РЕАЛЬНЫЕ оплаченные платежи из истории
+const existingPayments = (selectedSale.paymentPlan || [])
+    .filter(p => p.isRealPayment && p.isPaid)
+    .map(p => ({ date: new Date(p.date), amount: p.amount }))
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
 
-    if (!isAlreadySaved && numAmount > 0) {
-      displayPayments.push({
-        id: `temp_${Date.now()}`,
-          saleId: selectedSale.id,
-        date: new Date(date).toISOString(),
-        dateObj: new Date(date),
-        amount: numAmount,
-        isRealPayment: false,
-        isPaid: false
-      });
-      displayPayments.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime());
-    }
+// Добавляем ТЕКУЩИЙ платёж (он ещё не сохранён в sale, поэтому добавляем вручную)
 
-    // ✅ 4. Расчёт остатка ТОЛЬКО по реальным сохранённым платежам
-    const totalPaid = savedPayments.reduce((sum, p) => sum + p.amount, 0);
-    const initialDebt = selectedSale.totalAmount - selectedSale.downPayment;
-    const remainingDebt = Math.max(0, initialDebt - totalPaid);
+const currentPaymentAlreadyExists = existingPayments.some(
+    p => Math.abs(p.amount - Number(amount)) < 0.01 &&
+         new Date(p.date).getTime() === new Date(date).getTime()
+);
 
-    const styles = {
-      page: {
-        width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
-        fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '12pt', lineHeight: '1.5',
-        display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
-        position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
-      },
-      contentWrapper: { flex: 1 },
-      h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
-      headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
-      fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
-      fieldLabel: { fontWeight: 'bold' as const },
-      phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
-      section: { margin: '0 0 20px 0' },
-      sectionItem: { marginBottom: '12px' },
-      table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
-      th: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
-      td: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
-      footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
-      footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
-      signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
-      signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
-      signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
-    };
+if (!currentPaymentAlreadyExists) {
+    existingPayments.push({ date: new Date(date), amount: Number(amount) });
+    existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
+}
 
-    return (
-      <div ref={contractRef} style={styles.page}>
-        <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
-        <div style={styles.headerInfo}>Дата: {new Date(selectedSale.startDate).toLocaleDateString()}</div>
-        <div style={styles.contentWrapper}>
-          <div style={styles.section}>
-            <div style={styles.fieldRow}>
-              <span><span style={styles.fieldLabel}>Продавец:</span> {companyName}</span>
-              <span style={styles.phoneField}>Тел: {formatPhone(sellerPhone)}</span>
-            </div>
-            <div style={styles.fieldRow}>
-              <span><span style={styles.fieldLabel}>Покупатель:</span> {selectedCustomer.name}</span>
-              <span style={styles.phoneField}>Тел: {formatPhone(selectedCustomer.phone)}</span>
-            </div>
-            {hasGuarantor && (
-              <div style={styles.fieldRow}>
-                <span><span style={styles.fieldLabel}>Поручитель:</span> {selectedSale.guarantorName}</span>
-                <span style={styles.phoneField}>Тел: {formatPhone(selectedSale.guarantorPhone)} </span>
+
+const totalPaid = existingPayments.reduce((sum, p) => sum + p.amount, 0);
+const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPayment - totalPaid);
+
+      const styles = {
+          page: {
+              width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
+              fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '12pt', lineHeight: '1.5',
+              display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
+              position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
+          },
+          contentWrapper: { flex: 1 },
+          h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
+          headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
+          fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
+          fieldLabel: { fontWeight: 'bold' as const },
+          phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
+          section: { margin: '0 0 20px 0' },
+          sectionItem: { marginBottom: '12px' },
+          table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
+          th: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
+          td: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
+          footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
+          footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
+          signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
+          signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
+          signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
+      };
+
+      let currentDebt = selectedSale.totalAmount - selectedSale.downPayment;
+
+      return (
+          <div ref={contractRef} style={styles.page}>
+              <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
+              <div style={styles.headerInfo}>Дата: {new Date(selectedSale.startDate).toLocaleDateString()}</div>
+              <div style={styles.contentWrapper}>
+                  <div style={styles.section}>
+                      <div style={styles.fieldRow}>
+                          <span><span style={styles.fieldLabel}>Продавец:</span> {companyName}</span>
+                          <span style={styles.phoneField}>Тел: {formatPhone(sellerPhone)}</span>
+                      </div>
+                      <div style={styles.fieldRow}>
+                          <span><span style={styles.fieldLabel}>Покупатель:</span> {selectedCustomer.name}</span>
+                          <span style={styles.phoneField}>Тел: {formatPhone(selectedCustomer.phone)}</span>
+                      </div>
+                      {hasGuarantor && (
+                          <div style={styles.fieldRow}>
+                              <span><span
+                                  style={styles.fieldLabel}>Поручитель:</span> {selectedSale.guarantorName}</span>
+                              <span style={styles.phoneField}>Тел: {formatPhone(selectedSale.guarantorPhone)} </span>
+                          </div>
+                      )}
+                  </div>
+                  <div style={styles.section}>
+                      {/* Строка 1: Товар + Стоимость */}
+                      <div style={{
+                          ...styles.sectionItem,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginBottom: '15px'
+                      }}>
+                          <span><span style={styles.fieldLabel}>Товар:</span> {selectedSale.productName}</span>
+                          <span><span
+                              style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
+                      </div>
+
+                      {/* Строка 2: Срок + Первый взнос */}
+                      <div style={{
+                          ...styles.sectionItem,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          marginTop: '10px'
+                      }}>
+                          <span><span style={styles.fieldLabel}>Срок рассрочки:</span> {selectedSale.installments} мес.</span>
+                          <span><span
+                              style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
+                      </div>
+
+                      {/* Строка 3: Платёж + Остаток (Остаток теперь внизу!) */}
+                      <div style={{
+                          ...styles.sectionItem,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          marginTop: '10px'
+                      }}>
+                          <span><span
+                              style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
+
+                          {/* Остаток с акцентом */}
+                          <span style={{
+                              fontWeight: 'bold',
+                              color: '#ef8228',
+                              fontSize: '12pt'  // Как у остальных полей, или 13pt если хотите чуть крупнее
+                          }}>
+    Остаток: {formatNum(remainingDebt)} ₽
+</span>
+                      </div>
+                  </div>
+                  <table style={styles.table}>
+                      <thead>
+                      <tr>
+                          <th style={{...styles.th, width: '10%'}}>№</th>
+                          <th style={{...styles.th, width: '30%'}}>Дата</th>
+                          <th style={{...styles.th, width: '25%'}}>Сумма</th>
+                          <th style={{...styles.th, width: '35%'}}>Остаток долга</th>
+                      </tr>
+                      </thead>
+                      <tbody>
+                      {existingPayments.map((p, index) => {
+                          currentDebt -= p.amount;
+                          const displayDebt = Math.max(0, currentDebt);
+                          return (
+                              <tr key={index}>
+                                  <td style={styles.td}>{index + 1}</td>
+                                  <td style={styles.td}>{p.date.toLocaleDateString()}</td>
+                                  <td style={styles.td}>{formatNum(p.amount)} ₽</td>
+                                  <td style={styles.td}>{formatNum(displayDebt)} ₽</td>
+                              </tr>
+                          );
+                      })}
+                      </tbody>
+                  </table>
+                  <div style={{margin: '25px 0', fontSize: '11pt', lineHeight: 1.4}}>
+                      Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в
+                      рассрочку на указанных выше условиях.
+                  </div>
               </div>
-            )}
-          </div>
-          <div style={styles.section}>
-            <div style={{
-              ...styles.sectionItem,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '15px'
-            }}>
-              <span><span style={styles.fieldLabel}>Товар:</span> {selectedSale.productName}</span>
-              <span><span style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
-            </div>
-            <div style={{
-              ...styles.sectionItem,
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginTop: '10px'
-            }}>
-              <span><span style={styles.fieldLabel}>Срок рассрочки:</span> {selectedSale.installments} мес.</span>
-              <span><span style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
-            </div>
-            <div style={{
-              ...styles.sectionItem,
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginTop: '10px'
-            }}>
-              <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
-              <span style={{
-                fontWeight: 'bold',
-                color: '#ef8228',
-                fontSize: '12pt'
-              }}>
-                Остаток: {formatNum(remainingDebt)} ₽
-              </span>
-            </div>
-          </div>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={{...styles.th, width: '10%'}}>№</th>
-                <th style={{...styles.th, width: '30%'}}>Дата</th>
-                <th style={{...styles.th, width: '25%'}}>Сумма</th>
-                <th style={{...styles.th, width: '35%'}}>Остаток долга</th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* ✅ Безопасный рендер без мутации переменной */}
-              {displayPayments.map((p, index) => {
-                const paymentsUpToNow = displayPayments.slice(0, index + 1).reduce((s, pp) => s + pp.amount, 0);
-                const rowDebt = Math.max(0, initialDebt - paymentsUpToNow);
-                return (
-                  <tr key={p.id || `row_${index}`}>
-                    <td style={styles.td}>{index + 1}</td>
-                    <td style={styles.td}>{p.dateObj.toLocaleDateString()}</td>
-                    <td style={styles.td}>{formatNum(p.amount)} ₽</td>
-                    <td style={styles.td}>{formatNum(rowDebt)} ₽</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div style={{margin: '25px 0', fontSize: '11pt', lineHeight: 1.4}}>
-            Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в
-            рассрочку на указанных выше условиях.
-          </div>
-        </div>
-        <div style={styles.footerContainer}>
-          <div style={styles.footer}>
-            <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
-              <div style={styles.signatureLine}></div>
-              <div style={styles.signatureLabel}>Продавец</div>
-            </div>
-            {hasGuarantor && (
-              <div style={styles.signatureBlock('30%')}>
-                <div style={styles.signatureLine}></div>
-                <div style={styles.signatureLabel}>Поручитель</div>
+              <div style={styles.footerContainer}>
+                  <div style={styles.footer}>
+                      <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
+                          <div style={styles.signatureLine}></div>
+                          <div style={styles.signatureLabel}>Продавец</div>
+                      </div>
+                      {hasGuarantor && (
+                          <div style={styles.signatureBlock('30%')}>
+                              <div style={styles.signatureLine}></div>
+                              <div style={styles.signatureLabel}>Поручитель</div>
+                          </div>
+                      )}
+                      <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
+                          <div style={styles.signatureLine}></div>
+                          <div style={styles.signatureLabel}>Покупатель</div>
+                      </div>
+                  </div>
               </div>
-            )}
-            <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
-              <div style={styles.signatureLine}></div>
-              <div style={styles.signatureLabel}>Покупатель</div>
-            </div>
           </div>
-        </div>
-      </div>
-    );
+      );
   };
 
-  const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Неизвестный счет';
+    const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Неизвестный счет';
 
-  return (
-    <div className="space-y-4 animate-fade-in pb-20">
-      {renderContractContent()}
-      <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
-        <button onClick={onClose} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
-        <h2 className="text-xl font-bold text-slate-800">Оформление прихода</h2>
-      </div>
-      <div className="flex bg-slate-100 p-1 rounded-xl">
-        <button
-          onClick={() => { setSourceType('CUSTOMER'); setAmount(''); }}
-          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
-            sourceType === 'CUSTOMER' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
-          }`}
-        >Клиент</button>
-        {investors.length > 0 && (
-          <button
-            onClick={() => { setSourceType('INVESTOR'); setAmount(''); }}
-            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
-              sourceType === 'INVESTOR' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500'
-            }`}
-          >Инвестор</button>
-        )}
-        <button
-          onClick={() => { setSourceType('OTHER'); setAmount(''); }}
-          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
-            sourceType === 'OTHER' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'
-          }`}
-        >Прочее</button>
-      </div>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {sourceType === 'CUSTOMER' && (
-          <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Клиент</label>
-              <div onClick={onSelectCustomer} className={`w-full p-3 border rounded-xl cursor-pointer flex justify-between items-center ${selectedCustomerId ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-dashed border-slate-300'}`}>
-                <div className="flex items-center gap-2">
-                  {selectedCustomerId && <div className="text-indigo-600">{ICONS.Customers}</div>}
-                  <span className={selectedCustomerId ? 'text-slate-800 font-bold' : 'text-slate-400'}>{selectedCustomer ? selectedCustomer.name : 'Нажмите для выбора...'}</span>
-                </div>
-                <span className="text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
-              </div>
+    return (
+        <div className="space-y-4 animate-fade-in pb-20">
+            {renderContractContent()}
+
+            <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
+                <button onClick={onClose} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
+                <h2 className="text-xl font-bold text-slate-800">Оформление прихода</h2>
             </div>
-            {selectedCustomerId && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Активный договор</label>
-                {activeCustomerSales.length > 0 ? (
-                  <select className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900" value={selectedSaleId} onChange={e => setSelectedSaleId(e.target.value)}>
-                    <option value="">-- Выберите товар/рассрочку --</option>
-                    {activeCustomerSales.map(s => <option key={s.id} value={s.id}>{s.productName} (Долг: {formatNum(s.remainingAmount)} ₽)</option>)}
-                  </select>
-                ) : <p className="text-slate-500 italic p-2">Нет активных долгов</p>}
-              </div>
-            )}
-            {selectedSale && <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm flex gap-2 items-center"><span className="text-slate-500">Зачисление на счет:</span><span className="font-bold text-slate-800">{getAccountName(selectedSale.accountId)}</span></div>}
-          </div>
-        )}
-        {sourceType === 'INVESTOR' && (
-          <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Выберите инвестора</label>
-              <select className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900" value={selectedInvestorId} onChange={e => setSelectedInvestorId(e.target.value)}>
-                <option value="">-- Список инвесторов --</option>
-                {investors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
-              </select>
-            </div>
-            {targetAccountId && <div className="bg-purple-50 p-3 rounded-lg border border-purple-100 text-sm flex gap-2 items-center"><span className="text-purple-600 font-medium">Счет зачисления:</span><span className="font-bold text-purple-800">{getAccountName(targetAccountId)}</span></div>}
-          </div>
-        )}
-        {sourceType === 'OTHER' && (
-          <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">Назначение / Описание</label><input placeholder="Например: Внесение личных средств" className="w-full p-3 border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={note} onChange={e => setNote(e.target.value)}/></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">Счет зачисления</label><select className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900" value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-          </div>
-        )}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Сумма прихода</label>
-            <div className="relative">
-              <span className="absolute left-4 top-3.5 text-slate-400 text-lg">₽</span>
-              <input type="number" step={showCents ? "0.01" : "1"} placeholder="0" className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={amount} onChange={e => setAmount(e.target.value)} />
-            </div>
-            {sourceType === 'CUSTOMER' && selectedSale && (
-              <div className="flex justify-between items-start mt-2">
-                <p className="text-xs text-slate-400 mt-1">Рек: {formatNum(recommendedAmount)} ₽</p>
-                {currentPaymentProfit > 0 && (
-                  <div className="bg-emerald-50 px-2 py-1 rounded text-right">
-                    <p className="text-xs text-emerald-600 font-medium">Прибыль с платежа</p>
-                    <p className="text-sm font-bold text-emerald-700">+{formatNum(currentPaymentProfit)} ₽</p>
-                  </div>
+
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+                {/* Вкладка Клиент */}
+                <button
+                    onClick={() => {
+                        setSourceType('CUSTOMER');
+                        setAmount('');
+                    }}
+                    className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
+                        sourceType === 'CUSTOMER' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
+                    }`}
+                >
+                    Клиент
+                </button>
+
+                {/* Вкладка Инвестор — показываем только если есть инвесторы */}
+                {investors.length > 0 && (
+                    <button
+                        onClick={() => {
+                            setSourceType('INVESTOR');
+                            setAmount('');
+                        }}
+                        className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
+                            sourceType === 'INVESTOR' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500'
+                        }`}
+                    >
+                        Инвестор
+                    </button>
                 )}
-              </div>
+
+                {/* Вкладка Прочее */}
+                <button
+                    onClick={() => {
+                        setSourceType('OTHER');
+                        setAmount('');
+                    }}
+                    className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
+                        sourceType === 'OTHER' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'
+                    }`}
+                >
+                    Прочее
+                </button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                {sourceType === 'CUSTOMER' && (
+                    <div
+                        className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Клиент</label>
+                            <div onClick={onSelectCustomer}
+                                 className={`w-full p-3 border rounded-xl cursor-pointer flex justify-between items-center ${selectedCustomerId ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-dashed border-slate-300'}`}>
+                                <div className="flex items-center gap-2">
+                                    {selectedCustomerId && <div className="text-indigo-600">{ICONS.Customers}</div>}
+                                    <span
+                                        className={selectedCustomerId ? 'text-slate-800 font-bold' : 'text-slate-400'}>{selectedCustomer ? selectedCustomer.name : 'Нажмите для выбора...'}</span>
+                                </div>
+                                <span className="text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24"
+                                                                      fill="none" stroke="currentColor" strokeWidth="2"
+                                                                      strokeLinecap="round" strokeLinejoin="round"><polyline
+                                    points="9 18 15 12 9 6"/></svg></span>
+                            </div>
+                        </div>
+                        {selectedCustomerId && (
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Активный
+                                    договор</label>
+                                {activeCustomerSales.length > 0 ? (
+                                    <select
+                                        className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
+                                        value={selectedSaleId} onChange={e => setSelectedSaleId(e.target.value)}>
+                                        <option value="">-- Выберите товар/рассрочку --</option>
+                                        {activeCustomerSales.map(s => <option key={s.id}
+                                                                              value={s.id}>{s.productName} (Долг: {formatNum(s.remainingAmount)} ₽)</option>)}
+                                    </select>
+                                ) : <p className="text-slate-500 italic p-2">Нет активных долгов</p>}
+                            </div>
+                        )}
+                        {selectedSale && <div
+                            className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm flex gap-2 items-center">
+                            <span className="text-slate-500">Зачисление на счет:</span><span
+                            className="font-bold text-slate-800">{getAccountName(selectedSale.accountId)}</span></div>}
+                    </div>
+                )}
+
+                {sourceType === 'INVESTOR' && (
+                    <div
+                        className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Выберите инвестора</label>
+                            <select
+                                className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
+                                value={selectedInvestorId} onChange={e => setSelectedInvestorId(e.target.value)}>
+                                <option value="">-- Список инвесторов --</option>
+                                {investors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
+                            </select>
+                        </div>
+                        {targetAccountId && <div
+                            className="bg-purple-50 p-3 rounded-lg border border-purple-100 text-sm flex gap-2 items-center">
+                            <span className="text-purple-600 font-medium">Счет зачисления:</span><span
+                            className="font-bold text-purple-800">{getAccountName(targetAccountId)}</span></div>}
+                    </div>
+                )}
+
+                {sourceType === 'OTHER' && (
+                    <div
+                        className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
+                        <div><label className="block text-sm font-medium text-slate-700 mb-1">Назначение /
+                            Описание</label><input placeholder="Например: Внесение личных средств"
+                                                   className="w-full p-3 border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                                                   value={note} onChange={e => setNote(e.target.value)}/></div>
+                        <div><label className="block text-sm font-medium text-slate-700 mb-1">Счет
+                            зачисления</label><select
+                            className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
+                            value={targetAccountId}
+                            onChange={e => setTargetAccountId(e.target.value)}>{accounts.map(a => <option key={a.id}
+                                                                                                          value={a.id}>{a.name}</option>)}</select>
+                        </div>
+                    </div>
+                )}
+
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Сумма прихода</label>
+                        <div className="relative">
+                            <span className="absolute left-4 top-3.5 text-slate-400 text-lg">₽</span>
+                            <input
+                                type="number"
+                                step={showCents ? "0.01" : "1"}
+                                placeholder="0"
+                                className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                                value={amount}
+                                onChange={e => setAmount(e.target.value)}
+                            />
+                        </div>
+                        {sourceType === 'CUSTOMER' && selectedSale && (
+                            <div className="flex justify-between items-start mt-2">
+                                <p className="text-xs text-slate-400 mt-1">Рек: {formatNum(recommendedAmount)} ₽</p>
+                                {currentPaymentProfit > 0 && (
+                                    <div className="bg-emerald-50 px-2 py-1 rounded text-right">
+                                        <p className="text-xs text-emerald-600 font-medium">Прибыль с платежа</p>
+                                        <p className="text-sm font-bold text-emerald-700">+{formatNum(currentPaymentProfit)} ₽</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                    {sourceType === 'CUSTOMER' && appSettings.whatsapp?.enabled && (
+                        <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                            <div className="flex items-center gap-2">
+                                <span className="text-emerald-500">{ICONS.Send}</span>
+                                <span className="text-sm font-medium text-slate-700">Отправить чек в WhatsApp</span>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" checked={sendHistory}
+                                       onChange={() => setSendHistory(!sendHistory)} className="sr-only peer"/>
+                                <div
+                                    className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                            </label>
+                        </div>
+                    )}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
+                        <input type="date"
+                               className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                               value={date} onChange={e => setDate(e.target.value)}/>
+                    </div>
+                </div>
+                <button type="submit"
+                        className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-transform active:scale-95">Подтвердить
+                    приход
+                </button>
+            </form>
+
+            {showConfirmModal && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+                    onClick={() => setShowConfirmModal(false)}>
+                    <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
+                         onClick={e => e.stopPropagation()}>
+                        <h3 className="text-xl font-bold text-slate-800 text-center">Подтверждение прихода</h3>
+                        <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
+                            {sourceType === 'CUSTOMER' && (
+                                <>
+                                    <div className="flex justify-between"><span
+                                        className="text-slate-500">От кого:</span><span
+                                        className="font-bold text-slate-800">{selectedCustomer?.name}</span></div>
+                                    <div className="flex justify-between"><span
+                                        className="text-slate-500">За что:</span><span
+                                        className="font-medium text-slate-800">{selectedSale?.productName}</span></div>
+                                </>
+                            )}
+                            {sourceType === 'INVESTOR' && (
+                                <div className="flex justify-between"><span
+                                    className="text-slate-500">Инвестор:</span><span
+                                    className="font-bold text-slate-800">{selectedInvestor?.name}</span></div>
+                            )}
+                            {sourceType === 'OTHER' && (
+                                <div className="flex justify-between"><span
+                                    className="text-slate-500">Назначение:</span><span
+                                    className="font-medium text-slate-800">{note}</span></div>
+                            )}
+                            <div className="my-2 border-t border-slate-200"></div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-slate-500">Сумма:</span>
+                                <span
+                                    className="text-xl font-bold text-emerald-600">+{formatNum(Number(amount))} ₽</span>
+                            </div>
+                            <div className="flex justify-between items-center pt-1">
+                                <span className="text-slate-500">Счет:</span>
+                                <span
+                                    className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-xs font-bold">{getAccountName(targetAccountId)}</span>
+                            </div>
+                        </div>
+                        <div className="flex gap-3 pt-2">
+                            <button onClick={() => setShowConfirmModal(false)}
+                                    className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200">Отмена
+                            </button>
+                            <button onClick={handleConfirm}
+                                    className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200">Зачислить
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
-          </div>
-          {sourceType === 'CUSTOMER' && appSettings.whatsapp?.enabled && (
-            <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-              <div className="flex items-center gap-2">
-                <span className="text-emerald-500">{ICONS.Send}</span>
-                <span className="text-sm font-medium text-slate-700">Отправить чек в WhatsApp</span>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" checked={sendHistory} onChange={() => setSendHistory(!sendHistory)} className="sr-only peer"/>
-                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-              </label>
-            </div>
-          )}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
-            <input type="date" className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={date} onChange={e => setDate(e.target.value)}/>
-          </div>
         </div>
-        <button type="submit" className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-transform active:scale-95">Подтвердить приход</button>
-      </form>
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowConfirmModal(false)}>
-          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
-            <h3 className="text-xl font-bold text-slate-800 text-center">Подтверждение прихода</h3>
-            <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
-              {sourceType === 'CUSTOMER' && (
-                <>
-                  <div className="flex justify-between"><span className="text-slate-500">От кого:</span><span className="font-bold text-slate-800">{selectedCustomer?.name}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">За что:</span><span className="font-medium text-slate-800">{selectedSale?.productName}</span></div>
-                </>
-              )}
-              {sourceType === 'INVESTOR' && (
-                <div className="flex justify-between"><span className="text-slate-500">Инвестор:</span><span className="font-bold text-slate-800">{selectedInvestor?.name}</span></div>
-              )}
-              {sourceType === 'OTHER' && (
-                <div className="flex justify-between"><span className="text-slate-500">Назначение:</span><span className="font-medium text-slate-800">{note}</span></div>
-              )}
-              <div className="my-2 border-t border-slate-200"></div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">Сумма:</span>
-                <span className="text-xl font-bold text-emerald-600">+{formatNum(Number(amount))} ₽</span>
-              </div>
-              <div className="flex justify-between items-center pt-1">
-                <span className="text-slate-500">Счет:</span>
-                <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-xs font-bold">{getAccountName(targetAccountId)}</span>
-              </div>
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200">Отмена</button>
-              <button onClick={handleConfirm} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200">Зачислить</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    );
 };
 
 export default NewIncome;
