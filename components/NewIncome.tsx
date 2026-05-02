@@ -358,37 +358,36 @@ const NewIncome: React.FC<NewIncomeProps> = ({
           </div>
           <table style={styles.table}>
             <thead>
-              <tr>
-                <th style={{...styles.th, width: '10%'}}>№</th>
-                <th style={{...styles.th, width: '30%'}}>Дата</th>
-                <th style={{...styles.th, width: '25%'}}>Сумма</th>
-                <th style={{...styles.th, width: '35%'}}>Остаток долга</th>
-              </tr>
+            <tr>
+              <th style={{...styles.th, width: '10%'}}>№</th>
+              <th style={{...styles.th, width: '30%'}}>Дата</th>
+              <th style={{...styles.th, width: '25%'}}>Сумма</th>
+              <th style={{...styles.th, width: '35%'}}>Остаток долга</th>
+            </tr>
             </thead>
-            {/* Исправленная таблица */}
-<tbody>
-  {displayPayments.map((p, index) => {
-    // 🔥 ВАЖНО: для расчёта используем ТОЛЬКО сохранённые платежи
-    const savedPaymentsUpToNow = savedPayments
-      .slice(0, index + 1)
-      .reduce((s, pp) => s + pp.amount, 0);
+            <tbody>
+            {(() => {
+              let cumulativePaid = 0;
+              return displayPayments.map((p, index) => {
+                // 🔥 ВАЖНО: накапливаем ТОЛЬКО реальные платежи
+                if (p.isRealPayment !== false) {
+                  cumulativePaid += p.amount;
+                }
 
-    // Если это временный платёж (не сохранён), показываем текущий остаток
-    const isTempPayment = !p.isRealPayment;
-    const rowDebt = isTempPayment
-      ? remainingDebt  // Показываем остаток ДО этого платежа
-      : Math.max(0, initialDebt - savedPaymentsUpToNow);
+                // Остаток после этого платежа
+                const rowDebt = Math.max(0, initialDebt - cumulativePaid);
 
-    return (
-      <tr key={p.id || `row_${index}`}>
-        <td style={styles.td}>{index + 1}</td>
-        <td style={styles.td}>{p.dateObj.toLocaleDateString()}</td>
-        <td style={styles.td}>{formatNum(p.amount)} ₽</td>
-        <td style={styles.td}>{formatNum(rowDebt)} ₽</td>
-      </tr>
-    );
-  })}
-</tbody>
+                return (
+                    <tr key={p.id || `row_${index}`}>
+                      <td style={styles.td}>{index + 1}</td>
+                      <td style={styles.td}>{p.dateObj.toLocaleDateString()}</td>
+                      <td style={styles.td}>{formatNum(p.amount)} ₽</td>
+                      <td style={styles.td}>{formatNum(rowDebt)} ₽</td>
+                    </tr>
+                );
+              });
+            })()}
+            </tbody>
           </table>
           <div style={{margin: '25px 0', fontSize: '11pt', lineHeight: 1.4}}>
             Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в
@@ -402,8 +401,8 @@ const NewIncome: React.FC<NewIncomeProps> = ({
               <div style={styles.signatureLabel}>Продавец</div>
             </div>
             {hasGuarantor && (
-              <div style={styles.signatureBlock('30%')}>
-                <div style={styles.signatureLine}></div>
+                <div style={styles.signatureBlock('30%')}>
+                  <div style={styles.signatureLine}></div>
                 <div style={styles.signatureLabel}>Поручитель</div>
               </div>
             )}
