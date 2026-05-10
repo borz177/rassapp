@@ -15,7 +15,7 @@ interface NewSaleProps {
     sales: Sale[];
   onClose: () => void;
   onSelectCustomer: (currentData: any) => void;
-  onSubmit: (data: any) => Promise<any>; 
+  onSubmit: (data: any) => Promise<any>;
    onShowNotification?: (  // ← Опционально, для красивых уведомлений
     title: string,
     message: string,
