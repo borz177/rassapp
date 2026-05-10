@@ -759,21 +759,7 @@ const filterDataForEmployee = <T extends { accountId?: string; ownerId?: string 
 const handleSaveSale = async (data: any) => {
   if (!user) return;
 
-  // Состояние для модала уведомлений
-  const [showNotification, setShowNotification] = useState(false);
-  const [notificationData, setNotificationData] = useState<{
-    title: string;
-    message: string;
-    type: 'success' | 'error' | 'warning';
-    actionLabel?: string;
-    onAction?: () => void;
-  } | null>(null);
 
-  // Функция для показа уведомления
-  const showNotificationModal = (title: string, message: string, type: 'success' | 'error' | 'warning', actionLabel?: string, onAction?: () => void) => {
-    setNotificationData({ title, message, type, actionLabel, onAction });
-    setShowNotification(true);
-  };
 
   try {
     const ownerId = isEmployee && user.managerId ? user.managerId : user.id;

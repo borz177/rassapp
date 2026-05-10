@@ -13,7 +13,14 @@ interface NewSaleProps {
   accounts: Account[];
   onClose: () => void;
   onSelectCustomer: (currentData: any) => void;
-  onSubmit: (any) => void;
+  onSubmit: (data: any) => Promise<any>;
+   onShowNotification?: (  // ← Опционально, для красивых уведомлений
+    title: string,
+    message: string,
+    type: 'success' | 'error' | 'warning',
+    actionLabel?: string,
+    onAction?: () => void
+  ) => void;
 }
 
 
@@ -272,7 +279,11 @@ useEffect(() => {
   };
 
   // 🔥 handleConfirm с сохранением roundingMode
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
+  // 🔹 1. Объявляем переменную ДО блока try/catch
+  let fullSaleObject: any = null;
+
+  try {
     const pDay = formData.paymentDate
       ? new Date(formData.paymentDate).getDate()
       : new Date(formData.startDate).getDate();
@@ -299,7 +310,7 @@ useEffect(() => {
       downPayment: Number(formData.downPayment),
       installments: Number(formData.installments),
       interestRate: Number(formData.interestRate),
-      roundingMode, // ← 🔥 СОХРАНЯЕМ режим округления
+      roundingMode,
     };
 
     let finalSaleData;
@@ -320,7 +331,6 @@ useEffect(() => {
         type: 'INSTALLMENT',
         totalAmount: calculatedValues.totalAmount,
         remainingAmount: calculatedValues.remainingAmount,
-        // roundingMode уже в submissionData
       };
     }
 
@@ -336,12 +346,42 @@ useEffect(() => {
       };
     });
 
-    const fullSaleObject = { ...finalSaleData, paymentPlan };
+    // 🔹 2. Присваиваем значение ВНУТРИ try
+    fullSaleObject = { ...finalSaleData, paymentPlan };
+
+    // 🔹 3. Ждём ответ сервера
+    await onSubmit(fullSaleObject);
+
+    // Только при успехе показываем модал
     setCreatedSale(fullSaleObject);
     setShowConfirmModal(false);
-    onSubmit(fullSaleObject);
     setShowSuccessModal(true);
-  };
+
+  } catch (error: any) {
+    console.error('❌ Ошибка сохранения:', error);
+    setShowConfirmModal(false);
+
+    // 🔹 Лимит договоров
+    if (error.isLimitError || error.message?.includes('Превышен лимит') || error.message?.includes('limit')) {
+      alert(`🚫 Лимит договоров превышен!\n\n${error.message}\n\n💡 Удалите старые договоры или смените тариф.`);
+      return;
+    }
+
+    // 🔹 Офлайн-режим
+    if (error.message?.includes('Failed to fetch') || !navigator.onLine) {
+      alert('⚠️ Нет соединения с сервером.\n\nДоговор сохранён локально.');
+      // 🔹 4. Проверяем, что объект успел создаться перед использованием
+      if (fullSaleObject) {
+        setCreatedSale({ ...fullSaleObject, id: `temp_${Date.now()}`, _isOffline: true });
+        setShowSuccessModal(true);
+      }
+      return;
+    }
+
+    // 🔹 Другие ошибки
+    alert(`❌ Ошибка: ${error.message || 'Не удалось сохранить договор'}`);
+  }
+};
   const updateMode = (newMode: 'INSTALLMENT' | 'CASH') => {
     setMode(newMode);
     setFormData(prev => ({ ...prev, mode: newMode }));
