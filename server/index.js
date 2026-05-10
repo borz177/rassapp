@@ -434,20 +434,13 @@ const initDB = async () => {
 
     // Indexes
     // Indexes
-await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`);
-await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email));`);
-
 await pool.query(`
-  DO $$
-  BEGIN
-    IF NOT EXISTS (
-      SELECT 1 FROM pg_constraint WHERE conname = 'users_email_unique_ci'
-    ) THEN
-      ALTER TABLE users ADD CONSTRAINT users_email_unique_ci UNIQUE USING INDEX idx_users_email_lower;
-    END IF;
-  END $$;
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower 
+  ON users (LOWER(email))
 `);
 
+// 🔹 Обычные индексы для производительности
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`);
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_manager_id ON users(manager_id);`);
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_data_items_user_id ON data_items(user_id);`);
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_data_items_type ON data_items(type);`);
@@ -512,7 +505,7 @@ await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_target_role 
   } catch (err) {
     console.error('❌ Error initializing database:', err);
   }
-}; // ← Закрывающая скобка функции
+};
 
 const initSuperAdmin = async () => {
   const adminEmail = process.env.SUPER_ADMIN_EMAIL || 'borz017795@gmail.com';
