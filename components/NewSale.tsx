@@ -5,15 +5,17 @@ import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
 import jsPDF from "jspdf";
 import html2canvas from 'html2canvas';
+import { api } from '../services/api';
 
 interface NewSaleProps {
   initialData: any;
   customers: Customer[];
   products: Product[];
   accounts: Account[];
+    sales: Sale[];
   onClose: () => void;
   onSelectCustomer: (currentData: any) => void;
-  onSubmit: (data: any) => Promise<any>;
+  onSubmit: (data: any) => Promise<any>; 
    onShowNotification?: (  // ← Опционально, для красивых уведомлений
     title: string,
     message: string,
@@ -280,11 +282,11 @@ useEffect(() => {
 
   // 🔥 handleConfirm с сохранением roundingMode
   // 🔥 ОБНОВЛЁННЫЙ handleConfirm — async/await + правильная обработка
+// 🔥 ОБНОВЛЁННЫЙ handleConfirm — async/await + защита от ложного успеха
 const handleConfirm = async () => {
   let fullSaleObject: any = null; // ← Объявляем ДО try/catch
 
   try {
-    // === Подготовка данных (без изменений) ===
     const pDay = formData.paymentDate
       ? new Date(formData.paymentDate).getDate()
       : new Date(formData.startDate).getDate();
@@ -349,7 +351,7 @@ const handleConfirm = async () => {
 
     fullSaleObject = { ...finalSaleData, paymentPlan };
 
-    // 🔥 НОВОЕ: Ждём ответа от сервера ПЕРЕД показом успеха
+    // 🔥 НОВОЕ: Ждём ответ от сервера ПЕРЕД показом успеха
     await onSubmit(fullSaleObject);
 
     // Только если успех — обновляем стейт и показываем модал
@@ -363,10 +365,7 @@ const handleConfirm = async () => {
     // Закрываем модал подтверждения
     setShowConfirmModal(false);
 
-    // 🔹 НЕ показываем setShowSuccessModal здесь!
-    // Ошибка уже обработана в handleSaveSale через showNotificationModal
 
-    // Просто возвращаем — успех НЕ будет показан
     return;
   }
 };

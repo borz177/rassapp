@@ -762,4 +762,61 @@ adminResetUserPassword: async (userId: string, newPassword: string): Promise<voi
 
 
 
+
+    checkLocalContractLimit: async (sales: Sale[]): Promise<{
+  allowed: boolean;
+  reason?: string;
+  current: number;
+  limit: number;
+}> => {
+  try {
+    // Получаем пользователя из кэша
+    const userStr = localStorage.getItem('user');
+    if (!userStr) return { allowed: false, reason: 'Пользователь не авторизован', current: 0, limit: 0 };
+
+    const user = JSON.parse(userStr);
+    if (!user?.subscription) return { allowed: false, reason: 'Нет активной подписки', current: 0, limit: 0 };
+
+    const { plan } = user.subscription;
+
+    // Лимиты тарифов (синхронизировано с бэкендом)
+    const LIMITS: Record<string, { contracts: number }> = {
+      TRIAL: { contracts: 10 },
+      START: { contracts: 100 },
+      STANDARD: { contracts: 500 },
+      BUSINESS: { contracts: -1 } // -1 = безлимит
+    };
+
+    const limit = LIMITS[plan]?.contracts ?? 0;
+
+    // Админы и безлимит — пропускаем
+    if (user.role === 'admin' || limit === -1) {
+      return { allowed: true, current: 0, limit: -1 };
+    }
+
+    // Считаем активные договоры в локальных данных
+    const currentCount = sales.filter(s =>
+      s.status === 'ACTIVE' || s.status === 'DRAFT'
+    ).length;
+
+    if (currentCount >= limit) {
+      return {
+        allowed: false,
+        reason: `Превышен лимит договоров для тарифа "${plan}". Максимум: ${limit}. У вас сейчас: ${currentCount}.`,
+        current: currentCount,
+        limit: limit
+      };
+    }
+
+    return { allowed: true, current: currentCount, limit: limit };
+
+  } catch (err) {
+    console.error('checkLocalContractLimit error:', err);
+    // Fail-open: разрешаем при ошибке, но логируем
+    return { allowed: true, current: 0, limit: -1, reason: 'Ошибка проверки лимита' };
+  }
+},
+
+
+
 };

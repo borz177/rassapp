@@ -757,10 +757,9 @@ const filterDataForEmployee = <T extends { accountId?: string; ownerId?: string 
   });
 };
 // ✅ ОБНОВЛЁННЫЙ handleSaveSale с обработкой ошибок
-const handleSaveSale = async (data: any) => {
+// ✅ ПРАВИЛЬНЫЙ handleSaveSale — без useState внутри!
+const handleSaveSale = async (data: any): Promise<any> => {
   if (!user) return;
-
-
 
   try {
     const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
@@ -832,41 +831,56 @@ const handleSaveSale = async (data: any) => {
       }
     }
 
+    // 🔥 Показываем уведомление об успехе через ГЛОБАЛЬНУЮ функцию (уже объявлена в App)
+    showNotificationModal(
+      '✅ Договор создан!',
+      `Сделка по товару "${data.productName}" успешно оформлена.`,
+      'success',
+      'Печать договора',
+      () => {
+        console.log('Печать договора...');
+      }
+    );
 
     setEditingSale(null);
-    return savedSale;
+    return savedSale; // ← 🔥 Возвращаем для цепочки Promise
 
   } catch (error: any) {
     console.error('❌ Save sale error:', error);
 
     // 🔥 Обработка ошибки лимита
     if (error.isLimitError) {
-      showNotificationModal(
+      showNotificationModal(  // ← Используем глобальную функцию!
         '🚫 Лимит превышен',
         `${error.message}\n\n${error.hint || ''}`.trim(),
         'error',
         'Перейти к тарифам',
-        () => {
-          setCurrentView('TARIFFS'); // Перенаправление на страницу тарифов
-        }
+        () => setCurrentView('TARIFFS')
       );
-      return;
+      throw error; // ← 🔥 Пробрасываем ошибку!
     }
 
+    // 🔥 Обработка сетевых ошибок (офлайн)
     if (error.message?.includes('Failed to fetch') || !navigator.onLine) {
-    // Показываем уведомление и делаем оптимистичное обновление
-    showNotificationModal('⚠️ Офлайн-режим', 'Сохранено локально', 'warning');
-    updateList(setSales, { ...data, id: `temp_${Date.now()}`, _isOffline: true });
-    setEditingSale(null);
-    return;
-  }
+      showNotificationModal(  // ← Используем глобальную функцию!
+        '⚠️ Офлайн-режим',
+        'Нет соединения с сервером.\n\nДоговор сохранён локально.',
+        'warning'
+      );
+      const tempSale = { ...data, id: `temp_${Date.now()}`, _isOffline: true };
+      updateList(setSales, tempSale);
+      setEditingSale(null);
+      return tempSale;
+    }
 
     // 🔥 Другие ошибки
-    showNotificationModal(
+    showNotificationModal(  // ← Используем глобальную функцию!
       '❌ Ошибка сохранения',
-      error.message || 'Не удалось сохранить договор. Попробуйте ещё раз.',
+      error.message || 'Не удалось сохранить договор.',
       'error'
     );
+
+    throw error; // ← 🔥 Пробрасываем ошибку!
   }
 };
 const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
@@ -1934,7 +1948,7 @@ if (!user && !showSplash) {
                            accounts={accounts} onClose={() => {
                       setCurrentView('DASHBOARD');
                       setEditingSale(null);
-                  }} onSelectCustomer={(data) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale}
+                  }} onSelectCustomer={(data) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} onShowNotification={showNotificationModal}
                            appSettings={appSettings}/>}
               {currentView === 'SELECT_CUSTOMER' && <SelectionList title="Выберите клиента" items={customers.map(c => ({
                   id: c.id,
