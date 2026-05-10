@@ -129,9 +129,7 @@ const canAccessUserData = (currentUser, targetUserId) => {
   return false;
 };
 
-
-// ✅ ОБНОВЛЁННЫЙ ХЕЛПЕР: Умная проверка с грандфазерингом
-// ✅ УЛУЧШЕННЫЙ ХЕЛПЕР: Проверка лимита договоров с грандфазерингом
+// ✅ ПРОДАКШЕН-ВЕРСИЯ: checkContractLimit
 const checkContractLimit = async (userId, action = 'create', itemData = null) => {
   try {
     // 1. Получаем пользователя
@@ -160,9 +158,11 @@ const checkContractLimit = async (userId, action = 'create', itemData = null) =>
       return { allowed: false, msg: 'Нет активной подписки' };
     }
 
-    const limits = PLAN_LIMITS[subscription.plan];
-    if (!limits) {
-      return { allowed: false, msg: 'Неизвестный тариф' };
+    // 🔹 Безопасное получение лимитов (защита от undefined)
+    const limits = PLAN_LIMITS?.[subscription.plan];
+    if (!limits || typeof limits.contracts !== 'number') {
+      console.error(`⚠️ Invalid plan limits for plan: ${subscription.plan}`);
+      return { allowed: false, msg: 'Ошибка конфигурации тарифа' };
     }
 
     // 4. Безлимитные тарифы
@@ -172,21 +172,21 @@ const checkContractLimit = async (userId, action = 'create', itemData = null) =>
 
     // 5. 🔥 РАЗНАЯ ЛОГИКА ДЛЯ РАЗНЫХ ДЕЙСТВИЙ
 
-    // ✅ УДАЛЕНИЕ: всегда разрешено (освобождает место)
-    if (action === 'delete' || itemData?.status === 'DELETED') {
+    // ✅ УДАЛЕНИЕ: всегда разрешено
+    if (action === 'delete') {
       return { allowed: true };
     }
 
-    // ✅ ОБНОВЛЕНИЕ существующего: разрешено (не создаёт новый)
+    // ✅ ОБНОВЛЕНИЕ существующего
     if (action === 'update' && itemData?.id) {
       const exists = await pool.query(
         `SELECT 1 FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'sales'`,
         [itemData.id, userId]
       );
       if (exists.rows.length > 0) {
-        return { allowed: true }; // Редактируем существующий
+        return { allowed: true };
       }
-      // Если не существует — считаем как создание (упадёт ниже)
+      // Если не существует — считаем как создание
     }
 
     // 🔥 СОЗДАНИЕ нового: строгая проверка
@@ -198,9 +198,13 @@ const checkContractLimit = async (userId, action = 'create', itemData = null) =>
         [userId]
       );
 
-      const currentCount = parseInt(countResult.rows[0].count);
+      // 🔹 Безопасное парсинг числа
+      const currentCount = parseInt(countResult.rows[0]?.count || '0', 10);
 
       if (currentCount >= limits.contracts) {
+        // 🔹 Логируем попытку превышения для аналитики
+        console.log(`🚫 LIMIT_HIT: user=${userId}, plan=${subscription.plan}, count=${currentCount}, limit=${limits.contracts}`);
+
         return {
           allowed: false,
           msg: `Превышен лимит договоров для тарифа "${subscription.plan}". Максимум: ${limits.contracts}. У вас сейчас: ${currentCount}.`,
@@ -210,13 +214,25 @@ const checkContractLimit = async (userId, action = 'create', itemData = null) =>
       }
     }
 
-    // 6. По умолчанию — разрешаем
     return { allowed: true };
 
   } catch (err) {
-    // 🔐 Fail-safe: при ошибке БД не блокируем пользователя, но логируем
-    console.error('⚠️ checkContractLimit error:', err.message);
-    return { allowed: true, warning: 'Ошибка проверки лимита' };
+    // 🔐 ПРОДАКШЕН: логируем в мониторинг, но не блокируем пользователя
+    console.error('❌ checkContractLimit DB error:', {
+      userId,
+      action,
+      error: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+
+    // 🔹 Опционально: отправить алерт в Sentry/Telegram
+    // if (process.env.SENTRY_DSN) { Sentry.captureException(err); }
+
+    // Fail-safe: разрешаем при ошибке БД, но с предупреждением в ответе
+    return {
+      allowed: true,
+      warning: 'Временная ошибка проверки. Если проблема повторится — обратитесь в поддержку.'
+    };
   }
 };
 
