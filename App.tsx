@@ -38,6 +38,7 @@ import { formatCurrency, formatDate } from './src/utils';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
+import { NotificationModal } from './components/NotificationModal';
 
 
 async function enablePersistentStorage() {
