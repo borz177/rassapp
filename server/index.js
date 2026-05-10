@@ -38,6 +38,16 @@ const getTargetUserId = (user) => {
   return user.id;
 };
 
+
+// ✅ КОНФИГУРАЦИЯ ЛИМИТОВ ТАРИФОВ
+const PLAN_LIMITS = {
+  TRIAL:    { contracts: 10,  investors: 0, employees: 0, whatsapp: false, ai: true  },
+  START:    { contracts: 100, investors: 1, employees: 0, whatsapp: false, ai: false },
+  STANDARD: { contracts: 500, investors: 5, employees: 2, whatsapp: true,  ai: false },
+  BUSINESS: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true  },
+};
+
+
 // 🔹 Фильтрация данных для сотрудника по allowed_investor_ids
 const filterDataForEmployee = (dataByType, allowedInvestorIds) => {
   // Если нет ограничений — возвращаем всё
@@ -118,6 +128,98 @@ const canAccessUserData = (currentUser, targetUserId) => {
   if (currentUser.role === 'investor' && targetUserId === currentUser.id) return true;
   return false;
 };
+
+
+// ✅ ОБНОВЛЁННЫЙ ХЕЛПЕР: Умная проверка с грандфазерингом
+// ✅ УЛУЧШЕННЫЙ ХЕЛПЕР: Проверка лимита договоров с грандфазерингом
+const checkContractLimit = async (userId, action = 'create', itemData = null) => {
+  try {
+    // 1. Получаем пользователя
+    const userResult = await pool.query(
+      `SELECT id, role, subscription FROM users WHERE id = $1`,
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return { allowed: false, msg: 'Пользователь не найден' };
+    }
+
+    const user = userResult.rows[0];
+
+    // 2. Админы и сотрудники — без ограничений
+    if (user.role === 'admin' || user.role === 'employee') {
+      return { allowed: true };
+    }
+
+    // 3. Парсим подписку
+    const subscription = typeof user.subscription === 'string'
+      ? JSON.parse(user.subscription)
+      : user.subscription;
+
+    if (!subscription?.plan) {
+      return { allowed: false, msg: 'Нет активной подписки' };
+    }
+
+    const limits = PLAN_LIMITS[subscription.plan];
+    if (!limits) {
+      return { allowed: false, msg: 'Неизвестный тариф' };
+    }
+
+    // 4. Безлимитные тарифы
+    if (limits.contracts === -1) {
+      return { allowed: true };
+    }
+
+    // 5. 🔥 РАЗНАЯ ЛОГИКА ДЛЯ РАЗНЫХ ДЕЙСТВИЙ
+
+    // ✅ УДАЛЕНИЕ: всегда разрешено (освобождает место)
+    if (action === 'delete' || itemData?.status === 'DELETED') {
+      return { allowed: true };
+    }
+
+    // ✅ ОБНОВЛЕНИЕ существующего: разрешено (не создаёт новый)
+    if (action === 'update' && itemData?.id) {
+      const exists = await pool.query(
+        `SELECT 1 FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'sales'`,
+        [itemData.id, userId]
+      );
+      if (exists.rows.length > 0) {
+        return { allowed: true }; // Редактируем существующий
+      }
+      // Если не существует — считаем как создание (упадёт ниже)
+    }
+
+    // 🔥 СОЗДАНИЕ нового: строгая проверка
+    if (action === 'create') {
+      const countResult = await pool.query(
+        `SELECT COUNT(*) as count FROM data_items 
+         WHERE user_id = $1 AND type = 'sales' 
+         AND (data->>'status' = 'ACTIVE' OR data->>'status' = 'DRAFT')`,
+        [userId]
+      );
+
+      const currentCount = parseInt(countResult.rows[0].count);
+
+      if (currentCount >= limits.contracts) {
+        return {
+          allowed: false,
+          msg: `Превышен лимит договоров для тарифа "${subscription.plan}". Максимум: ${limits.contracts}. У вас сейчас: ${currentCount}.`,
+          details: { current: currentCount, limit: limits.contracts },
+          hint: 'Удалите ненужные договоры или оформите подписку выше.'
+        };
+      }
+    }
+
+    // 6. По умолчанию — разрешаем
+    return { allowed: true };
+
+  } catch (err) {
+    // 🔐 Fail-safe: при ошибке БД не блокируем пользователя, но логируем
+    console.error('⚠️ checkContractLimit error:', err.message);
+    return { allowed: true, warning: 'Ошибка проверки лимита' };
+  }
+};
+
 
 
 const sensitiveLimiter = rateLimit({
@@ -1580,6 +1682,7 @@ if (req.user.role === 'investor') {
 });
 
 // ✅ ИСПРАВЛЕННЫЙ POST /api/data/:type - ВАЛИДАЦИЯ ТИПА
+// ✅ ОБНОВЛЁННЫЙ РОУТ: Добавляем проверку лимита
 app.post('/api/data/:type', auth, async (req, res) => {
   try {
     const { type } = req.params;
@@ -1588,28 +1691,41 @@ app.post('/api/data/:type', auth, async (req, res) => {
     }
 
     const itemData = req.body;
-
-
     let targetUserId = getTargetUserId(req.user);
-
-
 
     if (!canAccessUserData(req.user, targetUserId)) {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
 
+    // 🔥 НОВОЕ: Проверка лимита договоров при создании
+    if (type === 'sales' && itemData.status !== 'DELETED') {
+  // Определяем: создание или обновление?
+  const exists = await pool.query(
+    `SELECT 1 FROM data_items WHERE id = $1 AND type = 'sales'`,
+    [itemData.id]
+  );
+  const action = exists.rows.length > 0 ? 'update' : 'create';
+
+  const limitCheck = await checkContractLimit(targetUserId, action, itemData);
+  if (!limitCheck.allowed) {
+    return res.status(403).json({
+      msg: limitCheck.msg,
+      details: limitCheck.details,
+      hint: limitCheck.hint
+    });
+  }
+}
+
     const id = itemData.id;
     await pool.query(`
       INSERT INTO data_items (id, user_id, type, data, updated_at)
       VALUES ($1, $2, $3, $4, NOW())
-      ON CONFLICT (id)
-      DO UPDATE SET
+      ON CONFLICT (id) DO UPDATE SET
         data = EXCLUDED.data,
         type = EXCLUDED.type,
         user_id = EXCLUDED.user_id,
         updated_at = NOW();
     `, [id, targetUserId, type, JSON.stringify(itemData)]);
-
 
     res.json(itemData);
   } catch (err) {
@@ -1617,7 +1733,6 @@ app.post('/api/data/:type', auth, async (req, res) => {
     res.status(500).send('Server Error');
   }
 });
-
 // ✅ ИСПРАВЛЕННЫЙ DELETE /api/data/:type/:id
 app.delete('/api/data/:type/:id', auth, async (req, res) => {
   try {
@@ -2680,13 +2795,21 @@ app.post('/api/v1/contracts', apiKeyAuth, async (req, res) => {
   try {
     const targetUserId = getTargetUserId(req.user);
     const saleData = req.body;
-    
+
+    const limitCheck = await checkContractLimit(targetUserId, 'create');
+    if (!limitCheck.allowed) {
+      return res.status(403).json({
+        msg: limitCheck.reason,
+        details: { current: limitCheck.current, limit: limitCheck.limit }
+      });
+    }
+
     if (!saleData.customerId || !saleData.totalAmount || !saleData.productName) {
       return res.status(400).json({ msg: 'Missing required fields: customerId, totalAmount, productName' });
     }
-    
+
     const saleId = saleData.id || `sale_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    
+
     const newSale = {
       ...saleData,
       id: saleId,
@@ -2695,13 +2818,13 @@ app.post('/api/v1/contracts', apiKeyAuth, async (req, res) => {
       paymentPlan: saleData.paymentPlan || [],
       startDate: saleData.startDate || new Date().toISOString()
     };
-    
+
     await pool.query(`
       INSERT INTO data_items (id, user_id, type, data, updated_at)
       VALUES ($1, $2, 'sales', $3, NOW())
       ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
     `, [saleId, targetUserId, JSON.stringify(newSale)]);
-    
+
     res.json(newSale);
   } catch (err) {
     console.error("API Create Contract Error:", err);
