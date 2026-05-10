@@ -207,7 +207,7 @@ const checkContractLimit = async (userId, action = 'create', itemData = null) =>
 
         return {
           allowed: false,
-          msg: `Превышен лимит договоров для тарифа "${subscription.plan}". Максимум: ${limits.contracts}. У вас сейчас: ${currentCount}.`,
+          msg: `Превышен лимит договоров для тарифа "${subscription.plan}". Максимум: ${limits.contracts}.`,
           details: { current: currentCount, limit: limits.contracts },
           hint: 'Удалите ненужные договоры или оформите подписку выше.'
         };
