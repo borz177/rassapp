@@ -46,7 +46,6 @@ export interface WhatsAppSettings {
 }
 
 export interface User {
-  blocked: boolean;
   id: string;
   name: string;
   email: string;

@@ -693,13 +693,4 @@ sendOverdueReminderAll: async (payload?: {
 },
 
 
-    adminSetUserStatus(id: string, param2: { blocked: boolean }) {
-        
-    },
-    adminGetStats() {
-        
-    },
-    adminResetUserPassword(id: string, newPassword: string) {
-        
-    }
 };
