@@ -832,17 +832,6 @@ const handleSaveSale = async (data: any) => {
       }
     }
 
-    // 🔥 Показываем красивое уведомление об успехе
-    showNotificationModal(
-      '✅ Договор создан!',
-      `Сделка по товару "${data.productName}" успешно оформлена.`,
-      'success',
-      'Печать договора',
-      () => {
-        // Здесь можно открыть модал печати
-        console.log('Печать договора...');
-      }
-    );
 
     setEditingSale(null);
     return savedSale;
@@ -864,19 +853,13 @@ const handleSaveSale = async (data: any) => {
       return;
     }
 
-    // 🔥 Обработка сетевых ошибок (офлайн)
     if (error.message?.includes('Failed to fetch') || !navigator.onLine) {
-      showNotificationModal(
-        '⚠️ Офлайн-режим',
-        'Нет соединения с сервером.\n\nДоговор сохранён локально и будет синхронизирован при подключении к интернету.',
-        'warning'
-      );
-      // Оптимистичное обновление: добавляем в локальный стейт
-      const tempSale = { ...data, id: `temp_${Date.now()}`, _isOffline: true };
-      updateList(setSales, tempSale);
-      setEditingSale(null);
-      return;
-    }
+    // Показываем уведомление и делаем оптимистичное обновление
+    showNotificationModal('⚠️ Офлайн-режим', 'Сохранено локально', 'warning');
+    updateList(setSales, { ...data, id: `temp_${Date.now()}`, _isOffline: true });
+    setEditingSale(null);
+    return;
+  }
 
     // 🔥 Другие ошибки
     showNotificationModal(

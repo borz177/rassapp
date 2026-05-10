@@ -279,11 +279,12 @@ useEffect(() => {
   };
 
   // 🔥 handleConfirm с сохранением roundingMode
-  const handleConfirm = async () => {
-  // 🔹 1. Объявляем переменную ДО блока try/catch
-  let fullSaleObject: any = null;
+  // 🔥 ОБНОВЛЁННЫЙ handleConfirm — async/await + правильная обработка
+const handleConfirm = async () => {
+  let fullSaleObject: any = null; // ← Объявляем ДО try/catch
 
   try {
+    // === Подготовка данных (без изменений) ===
     const pDay = formData.paymentDate
       ? new Date(formData.paymentDate).getDate()
       : new Date(formData.startDate).getDate();
@@ -346,40 +347,27 @@ useEffect(() => {
       };
     });
 
-    // 🔹 2. Присваиваем значение ВНУТРИ try
     fullSaleObject = { ...finalSaleData, paymentPlan };
 
-    // 🔹 3. Ждём ответ сервера
+    // 🔥 НОВОЕ: Ждём ответа от сервера ПЕРЕД показом успеха
     await onSubmit(fullSaleObject);
 
-    // Только при успехе показываем модал
+    // Только если успех — обновляем стейт и показываем модал
     setCreatedSale(fullSaleObject);
     setShowConfirmModal(false);
     setShowSuccessModal(true);
 
   } catch (error: any) {
-    console.error('❌ Ошибка сохранения:', error);
+    console.error('❌ Save error:', error);
+
+    // Закрываем модал подтверждения
     setShowConfirmModal(false);
 
-    // 🔹 Лимит договоров
-    if (error.isLimitError || error.message?.includes('Превышен лимит') || error.message?.includes('limit')) {
-      alert(`🚫 Лимит договоров превышен!\n\n${error.message}\n\n💡 Удалите старые договоры или смените тариф.`);
-      return;
-    }
+    // 🔹 НЕ показываем setShowSuccessModal здесь!
+    // Ошибка уже обработана в handleSaveSale через showNotificationModal
 
-    // 🔹 Офлайн-режим
-    if (error.message?.includes('Failed to fetch') || !navigator.onLine) {
-      alert('⚠️ Нет соединения с сервером.\n\nДоговор сохранён локально.');
-      // 🔹 4. Проверяем, что объект успел создаться перед использованием
-      if (fullSaleObject) {
-        setCreatedSale({ ...fullSaleObject, id: `temp_${Date.now()}`, _isOffline: true });
-        setShowSuccessModal(true);
-      }
-      return;
-    }
-
-    // 🔹 Другие ошибки
-    alert(`❌ Ошибка: ${error.message || 'Не удалось сохранить договор'}`);
+    // Просто возвращаем — успех НЕ будет показан
+    return;
   }
 };
   const updateMode = (newMode: 'INSTALLMENT' | 'CASH') => {
