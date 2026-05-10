@@ -350,12 +350,9 @@ export const api = {
     },
 
     // CRUD
-   saveItem: async (type: string, item: any): Promise<any> => {
-  console.log(`💾 Saving ${type}:`, {
-    id: item.id,
-    profitPercentage: item.profitPercentage,
-    fullItem: item
-  });
+  // ✅ ОБНОВЛЁННЫЙ saveItem с правильной обработкой ошибок
+saveItem: async (type: string, item: any): Promise<any> => {
+  console.log(`💾 Saving ${type}:`, { id: item.id });
 
   try {
     const res = await fetch(`${API_URL}/data/${type}`, {
@@ -364,23 +361,54 @@ export const api = {
       body: JSON.stringify(item)
     });
 
-    if (!res.ok) throw new Error(`Failed to save ${type}`);
+    // 🔥 Проверяем статус ответа
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+
+      // 🔥 Специальная обработка ошибки 403 (лимит превышен)
+      if (res.status === 403 && (errorData.details?.limit || errorData.msg?.includes('лимит'))) {
+        // ❌ НЕ добавляем в очередь — это ошибка валидации, а не сети!
+        throw {
+          isLimitError: true,
+          message: errorData.msg || 'Превышен лимит договоров',
+          details: errorData.details,
+          hint: errorData.hint
+        };
+      }
+
+      // Другие ошибки сервера
+      throw new Error(errorData.msg || errorData.error || `Failed to save ${type}`);
+    }
 
     const savedItem = await res.json();
-    console.log(`✅ Server response for ${item.id}:`, {
-      profitPercentage: savedItem.profitPercentage,
-      fullItem: savedItem
-    });
-
+    console.log(`✅ Saved ${type}: ${item.id}`);
     return savedItem;
-  } catch (error) {
-    console.warn("Offline mode: saving to queue", error);
-    await offlineStorage.addToQueue({
-      type: 'saveItem',
-      collection: type,
-      payload: item
-    });
-    return item;
+
+  } catch (error: any) {
+    console.warn("⚠️ Save error:", error);
+
+    // 🔥 Проверяем тип ошибки
+    const isLimitError = error.isLimitError === true;
+    const isNetworkError =
+      error.message?.includes('Failed to fetch') ||
+      !navigator.onLine ||
+      error.message?.includes('NetworkError') ||
+      error.name === 'TypeError' && error.message?.includes('fetch');
+
+    // 🔥 В офлайн-очередь добавляем ТОЛЬКО сетевые ошибки
+    if (isNetworkError && !isLimitError) {
+      console.log("📦 Queuing for offline sync (network error)");
+      await offlineStorage.addToQueue({
+        type: 'saveItem',
+        collection: type,
+        payload: item
+      });
+      return item; // Возвращаем для оптимистичного обновления UI
+    }
+
+    // ❌ Ошибки валидации/лимита — НЕ кешируем, пробрасываем дальше
+    console.error("❌ Validation/limit error (not queued):", error.message || error);
+    throw error; // ← Пробрасываем ошибку на фронтенд
   }
 },
 
