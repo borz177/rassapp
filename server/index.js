@@ -2135,6 +2135,98 @@ app.post('/api/admin/generate-user-api-key', adminAuth, async (req, res) => {
   }
 });
 
+
+
+// === АДМИН: СТАТИСТИКА ===
+app.get('/api/admin/stats', adminAuth, async (req, res) => {
+  try {
+    // Всего пользователей
+    const usersCount = await pool.query(
+      `SELECT COUNT(*) as count FROM users WHERE role != 'admin'`
+    );
+
+    // Активные подписки
+    const activeSubs = await pool.query(
+      `SELECT COUNT(*) as count FROM users 
+       WHERE subscription IS NOT NULL 
+       AND (subscription->>'expiresAt')::timestamp > NOW()`
+    );
+
+    // Всего договоров
+    const contractsCount = await pool.query(
+      `SELECT COUNT(*) as count FROM data_items WHERE type = 'sales'`
+    );
+
+    res.json({
+      totalUsers: parseInt(usersCount.rows[0].count),
+      activeSubscriptions: parseInt(activeSubs.rows[0].count),
+      totalContracts: parseInt(contractsCount.rows[0].count)
+    });
+  } catch (err) {
+    console.error('Admin stats error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// === АДМИН: БЛОКИРОВКА ПОЛЬЗОВАТЕЛЯ ===
+app.patch('/api/admin/users/:userId/status', adminAuth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { blocked } = req.body;
+
+    // Добавляем колонку blocked если нет
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='users' AND column_name='blocked'
+        ) THEN
+          ALTER TABLE users ADD COLUMN blocked BOOLEAN DEFAULT FALSE;
+        END IF;
+      END $$;
+    `);
+
+    await pool.query(
+      `UPDATE users SET blocked = $1, updated_at = NOW() WHERE id = $2`,
+      [blocked, userId]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update user status error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// === АДМИН: СБРОС ПАРОЛЯ ===
+app.post('/api/admin/users/:userId/reset-password', adminAuth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ msg: 'Пароль должен быть минимум 6 символов' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    await pool.query(
+      `UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2`,
+      [hashedPassword, userId]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+
+
+
 // --- PAYMENTS (YooKassa) ---
 app.post('/api/payment/create', auth, async (req, res) => {
   const { amount, description, returnUrl, plan, months } = req.body;

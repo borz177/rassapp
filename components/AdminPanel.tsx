@@ -5,9 +5,9 @@ import { ICONS } from '../constants';
 import { api } from '../services/api';
 
 // 🔹 Конфигурация лимитов тарифов
-const PLAN_LIMITS: Record<SubscriptionPlan, { 
-  contracts: number; 
-  investors: number; 
+const PLAN_LIMITS: Record<SubscriptionPlan, {
+  contracts: number;
+  investors: number;
   employees: number;
   whatsapp: boolean;
   ai: boolean;
@@ -49,14 +49,16 @@ const AdminPanel: React.FC = () => {
         loadSystemStats();
     }, []);
 
-    const loadSystemStats = async () => {
-        try {
-            const stats = await api.adminGetStats();
-            setSystemStats(stats);
-        } catch (e) {
-            console.error('Failed to load stats', e);
-        }
-    };
+  const loadSystemStats = async () => {
+    try {
+        const stats = await api.adminGetStats();
+        setSystemStats(stats);
+    } catch (err) {
+        console.error('Failed to load stats:', err);
+        // Устанавливаем дефолтные значения
+        setSystemStats({ totalUsers: 0, activeSubscriptions: 0, totalContracts: 0 });
+    }
+};
 
     const loadUsers = async () => {
         setLoading(true);
@@ -147,29 +149,37 @@ const AdminPanel: React.FC = () => {
         }
     };
 
-    const handleBlockUser = async (user: User, block: boolean) => {
-        if (!window.confirm(`${block ? 'Заблокировать' : 'Разблокировать'} пользователя ${user.name}?`)) return;
-        try {
-            await api.adminSetUserStatus(user.id, { blocked: block });
-            loadUsers();
-            alert(`✅ Пользователь ${block ? 'заблокирован' : 'разблокирован'}`);
-        } catch (e) {
-            alert('❌ Ошибка');
-        }
-    };
+    // Для handleBlockUser (примерно строка 153):
+const handleBlockUser = async (user: User, block: boolean) => {
+    if (!window.confirm(`${block ? 'Заблокировать' : 'Разблокировать'} пользователя ${user.name}?`)) return;
+    try {
+        await api.adminSetUserStatus(user.id, { blocked: block });
+        loadUsers(); // Обновить список
+        alert(`✅ Пользователь ${block ? 'заблокирован' : 'разблокирован'}`);
+    } catch (err) {
+        console.error('Block user error:', err);
+        alert('❌ Ошибка при обновлении статуса');
+    }
+};
 
-    const handleResetUserPassword = async (user: User) => {
-        const newPassword = prompt('Введите новый пароль:') || '';
-        if (!newPassword) return;
-        if (!window.confirm(`Сбросить пароль для ${user.name}?`)) return;
-        
-        try {
-            await api.adminResetUserPassword(user.id, newPassword);
-            alert(`✅ Пароль изменён. Новый: ${newPassword}`);
-        } catch (e) {
-            alert('❌ Ошибка сброса пароля');
-        }
-    };
+// Для handleResetUserPassword (примерно строка 167):
+const handleResetUserPassword = async (user: User) => {
+    const newPassword = prompt('Введите новый пароль (минимум 6 символов):');
+    if (!newPassword) return;
+    if (newPassword.length < 6) {
+        alert('Пароль слишком короткий!');
+        return;
+    }
+    if (!window.confirm(`Сбросить пароль для ${user.name}?`)) return;
+
+    try {
+        await api.adminResetUserPassword(user.id, newPassword);
+        alert(`✅ Пароль изменён!\nНовый пароль: ${newPassword}`);
+    } catch (err) {
+        console.error('Reset password error:', err);
+        alert('❌ Ошибка сброса пароля');
+    }
+};
 
     const filteredUsers = useMemo(() => {
         return users.filter(u =>
@@ -209,14 +219,28 @@ const AdminPanel: React.FC = () => {
     };
 
     // 🔹 Прогресс использования лимита договоров
-    const getContractUsage = (user: User) => {
-        const plan = user.subscription?.plan || 'TRIAL';
-        const limit = PLAN_LIMITS[plan].contracts;
-        const used = user.salesCount || 0;
-        if (limit === -1) return { percent: 0, unlimited: true };
-        return { percent: Math.min(100, (used / limit) * 100), unlimited: false, used, limit };
-    };
+// 🔹 Прогресс использования лимита договоров
+const getContractUsage = (user: User): {
+    percent: number;
+    unlimited: boolean;
+    used: number;
+    limit: number;
+} => {
+    const plan = user.subscription?.plan || 'TRIAL';
+    const limit = PLAN_LIMITS[plan]?.contracts ?? 100; // Безопасное получение
+    const used = user.salesCount || 0;
 
+    if (limit === -1) {
+        return { percent: 0, unlimited: true, used: 0, limit: 0 };
+    }
+
+    return {
+        percent: Math.min(100, (used / limit) * 100),
+        unlimited: false,
+        used,
+        limit
+    };
+};
     return (
         <div className="space-y-6 animate-fade-in pb-20">
             {/* Header */}

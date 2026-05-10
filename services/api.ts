@@ -693,4 +693,45 @@ sendOverdueReminderAll: async (payload?: {
 },
 
 
+
+
+
+    adminGetStats: async (): Promise<{
+  totalUsers: number;
+  activeSubscriptions: number;
+  totalContracts: number;
+}> => {
+  const res = await fetch(`${API_URL}/admin/stats`, {
+    headers: getAuthHeader()
+  });
+  if (!res.ok) throw new Error('Failed to fetch stats');
+  return res.json();
+},
+
+/**
+ * Заблокировать/разблокировать пользователя
+ */
+adminSetUserStatus: async (userId: string, status: { blocked: boolean }): Promise<void> => {
+  const res = await fetch(`${API_URL}/admin/users/${userId}/status`, {
+    method: 'PATCH',
+    headers: getAuthHeader(),
+    body: JSON.stringify(status)
+  });
+  if (!res.ok) throw new Error('Failed to update user status');
+},
+
+/**
+ * Сбросить пароль пользователя
+ */
+adminResetUserPassword: async (userId: string, newPassword: string): Promise<void> => {
+  const res = await fetch(`${API_URL}/admin/users/${userId}/reset-password`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: JSON.stringify({ newPassword })
+  });
+  if (!res.ok) throw new Error('Failed to reset password');
+},
+
+
+
 };

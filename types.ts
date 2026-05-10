@@ -61,6 +61,7 @@ export interface User {
   salesCount?: number;
   lastLogin?: string;
   apiKey?: string;
+  blocked?: boolean;
 }
 
 export interface InvestorPermissions {
