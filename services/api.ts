@@ -350,8 +350,8 @@ export const api = {
     },
 
     // CRUD
-  // ✅ ОБНОВЛЁННЫЙ saveItem с правильной обработкой ошибок
-saveItem: async (type: string, item: any): Promise<any> => {
+// ✅ ОБНОВЛЁННЫЙ saveItem с проверкой лимита в офлайн-режиме
+saveItem: async (type: string, item: any, options?: { skipLimitCheck?: boolean; sales?: Sale[] }): Promise<any> => {
   console.log(`💾 Saving ${type}:`, { id: item.id });
 
   try {
@@ -361,22 +361,19 @@ saveItem: async (type: string, item: any): Promise<any> => {
       body: JSON.stringify(item)
     });
 
-    // 🔥 Проверяем статус ответа
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
 
-      // 🔥 Специальная обработка ошибки 403 (лимит превышен)
+      // 🔥 Обработка ошибки 403 (лимит превышен)
       if (res.status === 403 && (errorData.details?.limit || errorData.msg?.includes('лимит'))) {
-        // ❌ НЕ добавляем в очередь — это ошибка валидации, а не сети!
-        throw {
-          isLimitError: true,
-          message: errorData.msg || 'Превышен лимит договоров',
-          details: errorData.details,
-          hint: errorData.hint
-        };
+        const limitError: any = new Error('LIMIT_EXCEEDED');
+        limitError.isLimitError = true;
+        limitError.message = errorData.msg || 'Превышен лимит договоров';
+        limitError.details = errorData.details;
+        limitError.hint = errorData.hint;
+        throw limitError;
       }
 
-      // Другие ошибки сервера
       throw new Error(errorData.msg || errorData.error || `Failed to save ${type}`);
     }
 
@@ -392,10 +389,52 @@ saveItem: async (type: string, item: any): Promise<any> => {
     const isNetworkError =
       error.message?.includes('Failed to fetch') ||
       !navigator.onLine ||
-      error.message?.includes('NetworkError') ||
       error.name === 'TypeError' && error.message?.includes('fetch');
 
-    // 🔥 В офлайн-очередь добавляем ТОЛЬКО сетевые ошибки
+    // 🔥 НОВОЕ: Проверка лимита ПЕРЕД добавлением в офлайн-очередь!
+    if (isNetworkError && type === 'sales' && item.status !== 'DELETED') {
+      try {
+        // 🔹 Проверяем лимит по локальным данным
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          const LIMITS: Record<string, { contracts: number }> = {
+            TRIAL: { contracts: 10 },
+            START: { contracts: 100 },
+            STANDARD: { contracts: 500 },
+            BUSINESS: { contracts: -1 }
+          };
+
+          const limit = LIMITS[user.subscription?.plan]?.contracts ?? 0;
+
+          // Админы и безлимит — пропускаем
+          if (user.role !== 'admin' && limit !== -1) {
+            // 🔹 Считаем договоры из переданных данных или кэша
+            const salesData = options?.sales ||
+              (await offlineStorage.getCache('all_data'))?.sales || [];
+
+            const currentCount = salesData.filter((s: any) =>
+              s.status === 'ACTIVE' || s.status === 'DRAFT'
+            ).length;
+
+            if (currentCount >= limit) {
+              // 🔥 НЕ добавляем в очередь! Лимит превышен даже офлайн
+              const limitError: any = new Error('LIMIT_EXCEEDED_OFFLINE');
+              limitError.isLimitError = true;
+              limitError.message = `Превышен лимит договоров для тарифа "${user.subscription?.plan}". Максимум: ${limit}. У вас сейчас: ${currentCount}.`;
+              limitError.details = { current: currentCount, limit };
+              limitError.hint = 'В офлайн-режиме тоже действует лимит!';
+              throw limitError;
+            }
+          }
+        }
+      } catch (limitErr) {
+        console.warn('⚠️ Limit check in offline mode failed:', limitErr);
+        // Если ошибка проверки — не блокируем, но логируем
+      }
+    }
+
+    // 🔥 В офлайн-очередь добавляем ТОЛЬКО если это сетевая ошибка И лимит не превышен
     if (isNetworkError && !isLimitError) {
       console.log("📦 Queuing for offline sync (network error)");
       await offlineStorage.addToQueue({
@@ -408,7 +447,7 @@ saveItem: async (type: string, item: any): Promise<any> => {
 
     // ❌ Ошибки валидации/лимита — НЕ кешируем, пробрасываем дальше
     console.error("❌ Validation/limit error (not queued):", error.message || error);
-    throw error; // ← Пробрасываем ошибку на фронтенд
+    throw error;
   }
 },
 

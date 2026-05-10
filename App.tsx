@@ -988,7 +988,7 @@ const handleDeleteSale = async (saleId: string) => {
             }
         }
 
-        alert('✅ Договор удалён. Средства и товар возвращены.');
+        alert('✅ Договор удалён');
 
     } catch (error) {
         console.error('❌ Ошибка удаления договора:', error);
