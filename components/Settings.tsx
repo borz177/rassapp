@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { AppSettings, ViewState } from '../types';
 import { ICONS, APP_VERSION, THEMES } from '../constants';
@@ -14,12 +13,13 @@ interface SettingsProps {
   currentUserId?: string;
 }
 
-const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNavigate, onSettingsChanged,currentUserId }) => {
+const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNavigate, onSettingsChanged, currentUserId }) => {
   const [companyName, setCompanyName] = useState(appSettings.companyName);
 
   // Clear Data Modal State
   const [showClearModal, setShowClearModal] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [confirmCooldown, setConfirmCooldown] = useState(0); // ⏱ Кулдаун для кнопки подтверждения
   const [showImportModal, setShowImportModal] = useState(false);
 
   // Legal Docs View State
@@ -28,6 +28,25 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
   useEffect(() => {
     setCompanyName(appSettings.companyName);
   }, [appSettings]);
+
+  // 🔁 Эффект: при открытии модального окна запускаем 10-секундный кулдаун
+  useEffect(() => {
+    if (showClearModal) {
+      setConfirmCooldown(10);
+      
+      const timer = setInterval(() => {
+        setConfirmCooldown(prev => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(timer);
+    }
+  }, [showClearModal]);
 
   const handleSave = () => {
     onUpdateSettings({
@@ -45,7 +64,10 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       });
   };
 
-const handleClearData = async () => {
+  const handleClearData = async () => {
+    // Защита: не даём нажать, если кулдаун ещё не прошёл
+    if (confirmCooldown > 0 || isClearing) return;
+    
     setIsClearing(true);
     try {
         // 1. Сначала очищаем данные на сервере
@@ -89,11 +111,17 @@ const handleClearData = async () => {
         alert("Ошибка при очистке данных. Попробуйте снова.");
         setIsClearing(false);
     }
-};
+  };
 
   const handleForceUpdate = () => {
       window.location.reload();
-  }
+  };
+
+  // Закрытие модалки сбрасывает кулдаун
+  const handleCloseClearModal = () => {
+      setShowClearModal(false);
+      setConfirmCooldown(0);
+  };
 
   if (legalView === 'PRIVACY') {
       return <PrivacyPolicy onBack={() => setLegalView('NONE')} />;
@@ -267,7 +295,10 @@ const handleClearData = async () => {
 
       {/* Clear Data Modal */}
       {showClearModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowClearModal(false)}>
+          <div 
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" 
+              onClick={handleCloseClearModal}
+          >
               <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-4" onClick={e => e.stopPropagation()}>
                   <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto text-3xl">
                       {ICONS.Alert}
@@ -278,32 +309,77 @@ const handleClearData = async () => {
                           Это действие удалит ВСЕ данные (клиентов, продажи, настройки) с этого устройства. Восстановить их будет невозможно.
                       </p>
                   </div>
+                  
+                  {/* ⏱ Индикатор времени на раздумье */}
+                  {confirmCooldown > 0 && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                          <p className="text-amber-800 text-sm font-medium">
+                              ⏳ Подождите <span className="font-bold text-lg">{confirmCooldown}</span> сек. для подтверждения
+                          </p>
+                      </div>
+                  )}
+                  
                   <div className="flex gap-3 pt-2">
-                      <button onClick={() => setShowClearModal(false)} className="flex-1 py-3 bg-slate-100 font-bold text-slate-600 rounded-xl">Отмена</button>
-                      <button onClick={handleClearData} disabled={isClearing} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl disabled:opacity-70">
-                          {isClearing ? 'Удаление...' : 'Сбросить'}
+                      <button 
+                          onClick={handleCloseClearModal} 
+                          className="flex-1 py-3 bg-slate-100 font-bold text-slate-600 rounded-xl hover:bg-slate-200 transition-colors"
+                      >
+                          Отмена
+                      </button>
+                      <button 
+                          onClick={handleClearData} 
+                          disabled={confirmCooldown > 0 || isClearing} 
+                          className={`flex-1 py-3 font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                              confirmCooldown > 0 || isClearing
+                                  ? 'bg-red-300 text-red-100 cursor-not-allowed' 
+                                  : 'bg-red-600 text-white hover:bg-red-700 hover:scale-[1.02]'
+                          }`}
+                      >
+                          {isClearing ? (
+                              <>
+                                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                  </svg>
+                                  Удаление...
+                              </>
+                          ) : confirmCooldown > 0 ? (
+                              `${confirmCooldown}с...`
+                          ) : (
+                              '✅ Сбросить'
+                          )}
                       </button>
                   </div>
+                  
+                  {/* Прогресс-бар кулдауна */}
+                  {confirmCooldown > 0 && (
+                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div 
+                              className="bg-amber-400 h-full transition-all duration-1000 ease-linear"
+                              style={{ width: `${(confirmCooldown / 10) * 100}%` }}
+                          />
+                      </div>
+                  )}
               </div>
           </div>
       )}
 
       {/* Import Modal */}
       {showImportModal && (
-    <DataImport
-        onClose={() => setShowImportModal(false)}
-        onImportSuccess={() => {
-            // Логи с дубликатами уже видны в окне импорта.
-            // Ждём 15 секунд, потом закрываем, показываем alert и перезагружаем.
-            setTimeout(() => {
-                setShowImportModal(false);
-                alert("✅ Данные успешно импортированы! Страница будет перезагружена.");
-                window.location.reload();
-            }, 5000); // 15000 мс = 15 секунд
-        }}
-        currentUserId={currentUserId}
-    />
-)}
+        <DataImport
+            onClose={() => setShowImportModal(false)}
+            onImportSuccess={() => {
+                // Логи с дубликатами уже видны в окне импорта.
+                // Ждём 5 секунд, потом закрываем, показываем alert и перезагружаем.
+                setTimeout(() => {
+                    setShowImportModal(false);
+                    alert("✅ Данные успешно импортированы! Страница будет перезагружена.");
+                    window.location.reload();
+                }, 5000);
+            }}
+            currentUserId={currentUserId}
+        />
+      )}
 
     </div>
   );
