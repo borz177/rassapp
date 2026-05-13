@@ -590,7 +590,7 @@ const handleSendFullReport = () => {
                   {selectedSale.installments > 0 && (
   <div className="flex justify-between border-b border-slate-50 pb-2">
     <span className="text-slate-500">Ежемесячный платеж</span>
-    <span className="font-bold text-indigo-600">
+    <span className="font-bold text-slate-800">
       {formatCurrency(
         Math.round(
           (selectedSale.totalAmount - selectedSale.downPayment) /
@@ -620,7 +620,7 @@ const handleSendFullReport = () => {
                   {paidPayments.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Нет поступлений</div> : (
                       <table className="w-full text-sm text-left">
                           <thead className="text-xs text-slate-500 uppercase bg-slate-50"><tr><th className="px-4 py-3">Дата</th><th className="px-4 py-3">Сумма</th><th className="px-4 py-3 text-right">Действия</th></tr></thead>
-                          <tbody>{paidPayments.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className="px-4 py-3 text-slate-700">{formatDate(payment.date)}</td><td className="px-4 py-3 font-bold text-emerald-600">+{formatCurrency(payment.amount, appSettings.showCents)}</td><td className="px-4 py-3 text-right"><div className="flex justify-end gap-2"><button onClick={() => handleEditClick(payment)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded">{ICONS.Edit}</button><button onClick={() => handleDeleteClick(payment.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded">{ICONS.Delete}</button></div></td></tr>))}</tbody>
+                          <tbody>{paidPayments.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className="px-4 py-3 text-slate-700">{formatDate(payment.date)}</td><td className="px-4 py-3 font-bold text-emerald-600">+{formatCurrency(payment.amount, appSettings.showCents)} ₽</td><td className="px-4 py-3 text-right"><div className="flex justify-end gap-2"><button onClick={() => handleEditClick(payment)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded">{ICONS.Edit}</button><button onClick={() => handleDeleteClick(payment.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded">{ICONS.Delete}</button></div></td></tr>))}</tbody>
                       </table>
                   )}
               </div>
@@ -630,7 +630,7 @@ const handleSendFullReport = () => {
                   {paymentSchedule.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Все оплачено! 🎉</div> : (
                       <table className="w-full text-sm text-left">
                           <thead className="text-xs text-slate-500 uppercase bg-slate-50"><tr><th className="px-4 py-3">Дата</th><th className="px-4 py-3">Осталось</th><th className="px-4 py-3">Действие</th></tr></thead>
-                          <tbody>{paymentSchedule.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className={`px-4 py-3 ${new Date(payment.date) < new Date() ? 'text-red-500 font-bold' : 'text-slate-700'}`}>{formatDate(payment.date)}</td><td className="px-4 py-3 font-bold text-slate-800">{formatCurrency(payment.amountToPay, appSettings.showCents)}</td>
+                          <tbody>{paymentSchedule.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className={`px-4 py-3 ${new Date(payment.date) < new Date() ? 'text-red-500 font-bold' : 'text-slate-700'}`}>{formatDate(payment.date)}</td><td className="px-4 py-3 font-bold text-slate-800">{formatCurrency(payment.amountToPay, appSettings.showCents)} ₽</td>
                               <td className="px-4 py-3">
                                   <button
                                       onClick={() => {
