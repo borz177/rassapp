@@ -583,14 +583,14 @@ const handleSendFullReport = () => {
                       </div>
                   )}
                   <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Цена закупа</span><span className="font-medium text-slate-800">{formatCurrency(selectedSale.buyPrice, appSettings.showCents)} ₽</span></div>
-                  <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Цена в рассрочку</span><span className="font-bold text-indigo-600">{formatCurrency(selectedSale.totalAmount, appSettings.showCents)} ₽</span></div>
+                  <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Цена в рассрочку</span><span className="font-medium text-slate-800">{formatCurrency(selectedSale.totalAmount, appSettings.showCents)} ₽</span></div>
                   {selectedSale.downPayment > 0 && (
                      <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-500">Первый взнос</span><span className="font-bold text-slate-800">{formatCurrency(selectedSale.downPayment, appSettings.showCents)} ₽</span></div>
                   )}
                   {selectedSale.installments > 0 && (
   <div className="flex justify-between border-b border-slate-50 pb-2">
     <span className="text-slate-500">Ежемесячный платеж</span>
-    <span className="font-bold text-slate-800">
+    <span className="font-bold text-indigo-600">
       {formatCurrency(
         Math.round(
           (selectedSale.totalAmount - selectedSale.downPayment) /
