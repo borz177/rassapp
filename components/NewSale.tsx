@@ -1073,9 +1073,31 @@ const handleSendContract = async () => {
           )}
         </div>
 
-        <button type="submit"
-                className={`w-full text-white py-4 rounded-xl font-bold transition-colors shadow-lg ${mode === 'INSTALLMENT' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'}`}>
-          {formData.id ? 'Сохранить изменения' : (mode === 'INSTALLMENT' ? 'Оформить рассрочку' : 'Провести продажу')}
+        <button
+            type="submit"
+            disabled={isSubmitting}
+            className={`w-full text-white py-4 rounded-xl font-bold transition-colors shadow-lg flex items-center justify-center gap-2 ${
+                isSubmitting
+                    ? 'bg-slate-400 cursor-not-allowed'
+                    : mode === 'INSTALLMENT'
+                        ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+                        : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+            }`}
+        >
+          {isSubmitting ? (
+              <>
+                <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"
+                          fill="none"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+                Сохранение...
+              </>
+          ) : (
+              <>
+                {formData.id ? 'Сохранить изменения' : (mode === 'INSTALLMENT' ? 'Оформить рассрочку' : 'Провести продажу')}
+              </>
+          )}
         </button>
       </form>
 
