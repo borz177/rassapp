@@ -38,24 +38,28 @@ const formatPhone = (raw: string | undefined): string => {
 };
 
 // 🔍 Проверка: есть ли уже похожий активный договор?
+// 🔍 Проверка: есть ли уже похожий активный договор?
 const checkDuplicateSale = (
-  sales: Sale[],
+  sales: Sale[] | undefined,  // ← Разреши undefined
   customerId: string,
   productName: string,
   startDate: string,
   totalAmount: number,
-  excludeId?: string // для режима редактирования
+  excludeId?: string
 ) => {
+  // 🛡️ Защита: если sales не массив — выходим
+  if (!Array.isArray(sales) || sales.length === 0) return undefined;
+
+  // 🛡️ Защита: если totalAmount не число — выходим
+  if (typeof totalAmount !== 'number' || isNaN(totalAmount)) return undefined;
+
   const saleDate = new Date(startDate).toDateString();
 
   return sales.find(sale => {
-    // Пропускаем текущий договор при редактировании
+    if (!sale) return false; // Защита от undefined в массиве
     if (excludeId && sale.id === excludeId) return false;
-
-    // Проверяем только активные/черновики
     if (sale.status === 'DELETED' || sale.status === 'COMPLETED') return false;
 
-    // Сравниваем ключевые поля
     const sameCustomer = sale.customerId === customerId;
     const sameProduct = sale.productName?.toLowerCase() === productName.toLowerCase();
     const sameDate = new Date(sale.startDate).toDateString() === saleDate;
