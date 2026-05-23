@@ -80,6 +80,8 @@ const NewSale: React.FC<NewSaleProps> = ({
   // Modals State
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showWhatsAppConfirmModal, setShowWhatsAppConfirmModal] = useState(false);
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
   const [createdSale, setCreatedSale] = useState<any>(null);
   const [isPriceManual, setIsPriceManual] = useState(false);
 
@@ -621,30 +623,100 @@ const handleConfirm = async () => {
   };
 
 const handleSendContract = async () => {
-    if (!createdSale || !selectedCustomer || !appSettings.whatsapp?.enabled) return;
-    try {
-        const blob = await generatePDFBlob();
-
-        // 🔥 ИМЯ ФАЙЛА: только латиница + дата (без кириллицы!)
-        const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
-        const fileName = `Contract_${dateStr}.pdf`;
+  // 🔥 Показываем модальное окно подтверждения
+  setShowWhatsAppConfirmModal(true);
+};
 
 
+// 🔥 НОВАЯ ФУНКЦИЯ: Отправка после подтверждения (с загрузкой и защитой)
+const handleConfirmSendWhatsApp = async () => {
+  // 🛡️ Защита: если уже идёт отправка — выходим
+  if (isSendingWhatsApp) return;
 
-        const success = await sendWhatsAppFile(
-            appSettings.whatsapp.idInstance,
-            appSettings.whatsapp.apiTokenInstance,
-            selectedCustomer.phone,
-            blob,
-            fileName
+  if (!createdSale || !selectedCustomer || !appSettings.whatsapp?.enabled) {
+    setShowWhatsAppConfirmModal(false);
+    return;
+  }
+
+  // 🔒 Блокируем интерфейс и закрываем модал
+  setIsSendingWhatsApp(true);
+  setShowWhatsAppConfirmModal(false);
+
+  try {
+    // 🔹 Генерация PDF
+    const blob = await generatePDFBlob();
+
+    // 🔹 Имя файла: только латиница + дата (WhatsApp не любит кириллицу!)
+    const dateStr = new Date(createdSale.startDate || Date.now()).toISOString().split('T')[0].replace(/-/g, '');
+    const safeProductName = (createdSale.productName || 'Contract')
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .substring(0, 20);
+    const fileName = `${safeProductName}_${dateStr}.pdf`;
+
+    // 🔹 Нормализация телефона для WhatsApp (убираем всё кроме цифр, добавляем 7)
+    const cleanPhone = selectedCustomer.phone?.replace(/\D/g, '') || '';
+    const whatsappPhone = cleanPhone.startsWith('8')
+      ? '7' + cleanPhone.slice(1)
+      : cleanPhone.startsWith('7')
+        ? cleanPhone
+        : '7' + cleanPhone;
+
+    // 🔹 Отправка через WhatsApp API
+    const success = await sendWhatsAppFile(
+      appSettings.whatsapp.idInstance,
+      appSettings.whatsapp.apiTokenInstance,
+      whatsappPhone,
+      blob,
+      fileName
+    );
+
+    if (success) {
+      // ✅ Успех
+      if (onShowNotification) {
+        onShowNotification(
+          '✅ Отправлено!',
+          `Договор "${createdSale.productName}" отправлен клиенту ${selectedCustomer.name}`,
+          'success'
         );
+      } else {
+        alert("✅ Договор успешно отправлен в WhatsApp!");
+      }
 
-        if (success) alert("Договор успешно отправлен!");
-        else alert("Ошибка отправки WhatsApp");
-    } catch (error) {
-        console.error("Error generating or sending PDF:", error);
-        alert("Ошибка при создании или отправке файла.");
+     
+
+    } else {
+      // ❌ WhatsApp API вернул ошибку
+      throw new Error('Green API вернул ошибку отправки. Проверьте статус инстанса.');
     }
+
+  } catch (error: any) {
+    // 🔴 Обработка ошибок
+    console.error("❌ WhatsApp send error:", {
+      message: error?.message,
+      stack: error?.stack,
+      customer: selectedCustomer?.name,
+      phone: selectedCustomer?.phone
+    });
+
+    const errorMessage = error?.message || 'Неизвестная ошибка';
+
+
+    if (onShowNotification) {
+      onShowNotification(
+        '❌ Ошибка отправки',
+        `Не удалось отправить договор: ${errorMessage}`,
+        'error',
+        'Повторить',
+        () => setShowWhatsAppConfirmModal(true) // Кнопка "Повторить" открывает модал снова
+      );
+    } else {
+      alert(`❌ Ошибка: ${errorMessage}\n\nПроверьте:\n• Статус WhatsApp инстанса\n• Корректность номера телефона\n• Соединение с интернетом`);
+    }
+
+  } finally {
+
+    setIsSendingWhatsApp(false);
+  }
 };
 
   const handlePrintContract = () => {
@@ -1169,6 +1241,94 @@ const handleSendContract = async () => {
             </div>
           </div>
       )}
+
+
+      {/* 🔔 МОДАЛЬНОЕ ОКНО ПОДТВЕРЖДЕНИЯ ОТПРАВКИ В WHATSAPP */}
+{showWhatsAppConfirmModal && (
+  <div
+    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+    onClick={() => setShowWhatsAppConfirmModal(false)}
+  >
+    <div
+      className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Иконка WhatsApp */}
+      <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl">
+        {ICONS.Send}
+      </div>
+
+      {/* Заголовок */}
+      <h3 className="text-xl font-bold text-slate-800 text-center">
+        Отправить договор в WhatsApp?
+      </h3>
+
+      {/* Информация о получателе */}
+      <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
+        <div className="flex justify-between">
+          <span className="text-slate-500">Клиент:</span>
+          <span className="font-bold text-slate-800">{selectedCustomer?.name}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-500">Телефон:</span>
+          <span className="font-medium text-slate-800">{formatPhone(selectedCustomer?.phone)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-500">Договор:</span>
+          <span className="font-medium text-slate-800">{createdSale?.productName}</span>
+        </div>
+        <div className="flex justify-between pt-2 border-t border-slate-200">
+          <span className="text-slate-500">Сумма:</span>
+          <span className="font-bold text-indigo-600">{createdSale?.totalAmount.toLocaleString()} ₽</span>
+        </div>
+      </div>
+
+      {/* Предупреждение */}
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2 items-start">
+        <span className="text-amber-500 flex-shrink-0 mt-0.5">⚠️</span>
+        <p className="text-xs text-amber-800">
+          PDF-файл будет отправлен на номер {formatPhone(selectedCustomer?.phone)}.
+          Убедитесь, что номер корректен.
+        </p>
+      </div>
+
+      {/* Кнопки */}
+      <div className="flex gap-3 pt-2">
+        <button
+            onClick={() => setShowWhatsAppConfirmModal(false)}
+            className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+        >
+          Отмена
+        </button>
+        <button
+            onClick={handleConfirmSendWhatsApp}
+            disabled={isSendingWhatsApp}
+            className={`flex-1 py-3 rounded-xl font-bold transition-colors shadow-lg flex items-center justify-center gap-2 ${
+                isSendingWhatsApp
+                    ? 'bg-slate-400 cursor-not-allowed'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200'
+            }`}
+        >
+          {isSendingWhatsApp ? (
+              <>
+                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"
+                          fill="none"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+                Отправка...
+              </>
+          ) : (
+              <>
+                {ICONS.Send}
+                Отправить
+              </>
+          )}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 };
