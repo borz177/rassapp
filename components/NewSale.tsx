@@ -36,9 +36,37 @@ const formatPhone = (raw: string | undefined): string => {
     }
     return raw; // Если формат нестандартный, возвращаем как есть
 };
+
+// 🔍 Проверка: есть ли уже похожий активный договор?
+const checkDuplicateSale = (
+  sales: Sale[],
+  customerId: string,
+  productName: string,
+  startDate: string,
+  totalAmount: number,
+  excludeId?: string // для режима редактирования
+) => {
+  const saleDate = new Date(startDate).toDateString();
+
+  return sales.find(sale => {
+    // Пропускаем текущий договор при редактировании
+    if (excludeId && sale.id === excludeId) return false;
+
+    // Проверяем только активные/черновики
+    if (sale.status === 'DELETED' || sale.status === 'COMPLETED') return false;
+
+    // Сравниваем ключевые поля
+    const sameCustomer = sale.customerId === customerId;
+    const sameProduct = sale.productName?.toLowerCase() === productName.toLowerCase();
+    const sameDate = new Date(sale.startDate).toDateString() === saleDate;
+    const sameAmount = Math.abs((sale.totalAmount || 0) - totalAmount) < 0.01;
+
+    return sameCustomer && sameProduct && sameDate && sameAmount;
+  });
+};
 const NewSale: React.FC<NewSaleProps> = ({
-  initialData, customers, products, accounts,
-  onClose, onSelectCustomer, onSubmit, user
+  initialData, customers, products, accounts, sales,
+  onClose, onSelectCustomer, onSubmit, onShowNotification, user,
 }) => {
   const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(initialData.type || 'INSTALLMENT');
   const [roundingMode, setRoundingMode] = useState<'NONE' | 'DOWN' | 'UP'>(
@@ -100,6 +128,10 @@ const NewSale: React.FC<NewSaleProps> = ({
   const [suggestions, setSuggestions] = useState<Product[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [downPaymentFromMarkup, setDownPaymentFromMarkup] = useState(false);
+
+  // 🔥 НОВЫЕ СТЕЙТЫ для защиты от дублей и двойных кликов
+const [isSubmitting, setIsSubmitting] = useState(false);
+const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
   const selectedCustomer = customers.find(c => c.id === formData.customerId);
   const selectedAccount = accounts.find(a => a.id === formData.accountId);
@@ -272,26 +304,60 @@ useEffect(() => {
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.customerId || !formData.productName || !formData.accountId) {
-      alert("Заполните все обязательные поля");
-      return;
-    }
-    setShowConfirmModal(true);
-  };
+  e.preventDefault();
 
-  // 🔥 handleConfirm с сохранением roundingMode
-  // 🔥 ОБНОВЛЁННЫЙ handleConfirm — async/await + правильная обработка
-// 🔥 ОБНОВЛЁННЫЙ handleConfirm — async/await + защита от ложного успеха
+  // 🛡️ Защита от повторных отправок
+  if (isSubmitting) return;
+
+  if (!formData.customerId || !formData.productName || !formData.accountId) {
+    alert("Заполните все обязательные поля");
+    return;
+  }
+
+  // 🔍 ПРОВЕРКА НА ДУБЛИКАТ (только для новых договоров)
+  if (!formData.id && mode === 'INSTALLMENT') {
+    const duplicate = checkDuplicateSale(
+      sales, // ← передай sales через props, если нет
+      formData.customerId,
+      formData.productName,
+      formData.startDate,
+      calculatedValues.totalAmount
+    );
+
+    if (duplicate) {
+      setDuplicateWarning(
+        `⚠️ Похожий договор уже существует от ${new Date(duplicate.startDate).toLocaleDateString('ru-RU')}. ` +
+        `Проверьте, не создаёте ли вы дубликат.`
+      );
+      // Показываем предупреждение, но даём продолжить (пользователь может осознанно создать второй)
+      // Если хочешь жёсткую блокировку — раскомментируй:
+      // return;
+    } else {
+      setDuplicateWarning(null);
+    }
+  }
+
+  setShowConfirmModal(true);
+};
+
+
 const handleConfirm = async () => {
-  let fullSaleObject: any = null; // ← Объявляем ДО try/catch
+  // 🔒 Защита от повторных нажатий — если уже отправляем, выходим
+  if (isSubmitting) return;
+
+  // Блокируем интерфейс и начинаем отправку
+  setIsSubmitting(true);
+
+  let fullSaleObject: any = null;
 
   try {
     const pDay = formData.paymentDate
       ? new Date(formData.paymentDate).getDate()
       : new Date(formData.startDate).getDate();
 
-    const saleId = formData.id || Date.now().toString();
+    // 🔥 Генерируем более надёжный ID (не только timestamp)
+    const saleId = formData.id || `sale_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+
     let finalStartDate = formData.startDate;
     const now = new Date();
     const selectedDate = new Date(formData.startDate);
@@ -326,7 +392,7 @@ const handleConfirm = async () => {
         remainingAmount: 0,
         installments: 0,
         interestRate: 0,
-        roundingMode: 'NONE',
+        roundingMode: 'NONE' as const,
       };
     } else {
       finalSaleData = {
@@ -337,6 +403,7 @@ const handleConfirm = async () => {
       };
     }
 
+    // 🔹 Генерация графика платежей
     const paymentPlan = mode === 'CASH' ? [] : Array.from({ length: finalSaleData.installments }).map((_, idx) => {
       const pDate = new Date(finalSaleData.paymentDate || finalSaleData.startDate);
       pDate.setMonth(pDate.getMonth() + idx);
@@ -351,10 +418,10 @@ const handleConfirm = async () => {
 
     fullSaleObject = { ...finalSaleData, paymentPlan };
 
-    // 🔥 НОВОЕ: Ждём ответ от сервера ПЕРЕД показом успеха
+    // 🔥 ОТПРАВКА НА СЕРВЕР — ждём ответ
     await onSubmit(fullSaleObject);
 
-    // Только если успех — обновляем стейт и показываем модал
+    // ✅ Только при успешном ответе — обновляем стейт и показываем модал
     setCreatedSale(fullSaleObject);
     setShowConfirmModal(false);
     setShowSuccessModal(true);
@@ -362,11 +429,26 @@ const handleConfirm = async () => {
   } catch (error: any) {
     console.error('❌ Save error:', error);
 
-    // Закрываем модал подтверждения
+    // Закрываем модал подтверждения (если ещё открыт)
     setShowConfirmModal(false);
 
+    // 🔥 Показываем понятную ошибку пользователю
+    if (onShowNotification) {
+      onShowNotification(
+        'Ошибка сохранения',
+        error?.message || 'Не удалось сохранить договор. Проверьте соединение и попробуйте снова.',
+        'error',
+        'Повторить',
+        () => handleConfirm() // Опционально: кнопка повторной попытки
+      );
+    } else {
+      alert(`❌ Ошибка: ${error?.message || 'Не удалось сохранить договор'}`);
+    }
 
-    return;
+  } finally {
+    // 🔓 ВСЕГДА разблокируем интерфейс, даже если была ошибка
+    // Это критически важно — иначе кнопка зависнет в состоянии "загрузки"
+    setIsSubmitting(false);
   }
 };
   const updateMode = (newMode: 'INSTALLMENT' | 'CASH') => {
