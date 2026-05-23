@@ -101,10 +101,7 @@ if (res.status === 401) {
           }, 200);
           resolve(new Response(JSON.stringify({ redirected: true })));
         },
-        onCancel: () => {
-          (window as any).__sessionExpiredData.show = false;
-          reject(new Error('Session expired - user cancelled'));
-        }
+
       };
 
       // 🔥 Триггерим обновление состояния в App.tsx

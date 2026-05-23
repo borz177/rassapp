@@ -2442,7 +2442,7 @@ if (!user && !showSplash) {
       {/* Информация */}
       <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 space-y-2 text-sm">
         <p className="text-slate-600 dark:text-slate-300">
-          Ваша сессия завершилась из-за бездействия или истечения срока действия токена.
+          Ваша сессия завершилась из-за истечения срока действия токена.
         </p>
         <p className="text-slate-500 dark:text-slate-400 text-xs">
           Для продолжения работы необходимо войти в систему заново.
@@ -2450,33 +2450,27 @@ if (!user && !showSplash) {
       </div>
 
       {/* Кнопки */}
-      <div className="flex gap-3 pt-2">
-        <button
-          onClick={() => sessionHandlers?.onCancel()}
-          className="flex-1 py-3 px-4 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-        >
-          Отмена
-        </button>
-        <button
-          onClick={() => sessionHandlers?.onConfirm()}
-          className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30 transition-all hover:scale-105 active:scale-95"
-        >
-          Войти снова
-        </button>
-      </div>
+        <div className="pt-2">
+            <button
+                onClick={() => sessionHandlers?.onConfirm()}
+                className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30 transition-all hover:scale-105 active:scale-95"
+            >
+                Войти снова
+            </button>
+        </div>
     </div>
   </div>
 )}
 
 
            {/* === МОДАЛЬНОЕ ОКНО: НЕЛЬЗЯ УДАЛИТЬ (ЕСТЬ ДОГОВОРЫ) === */}
-{showBlockedDeleteModal && (
-  <div
-    className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
-    onClick={() => setShowBlockedDeleteModal(null)}
-  >
-    <div
-      className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-2xl animate-scale-in"
+           {showBlockedDeleteModal && (
+               <div
+                   className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
+                   onClick={() => setShowBlockedDeleteModal(null)}
+               >
+                   <div
+                       className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-2xl animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
       {/* 🔴 Иконка предупреждения */}
