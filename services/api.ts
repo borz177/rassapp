@@ -25,7 +25,6 @@ let isSyncing = false;
 
 
 const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
-  // 🔹 Правильное объединение заголовков (без разворачивания Headers-объекта)
   const baseHeaders = getAuthHeader();
   const optionHeaders = options.headers;
 
@@ -33,17 +32,14 @@ const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Re
 
   if (optionHeaders) {
     if (optionHeaders instanceof Headers) {
-      // Если это Headers-объект — конвертируем в plain object
       optionHeaders.forEach((value, key) => {
         mergedHeaders[key] = value;
       });
     } else if (Array.isArray(optionHeaders)) {
-      // Если это массив [key, value][]
       optionHeaders.forEach(([key, value]) => {
         mergedHeaders[key] = value;
       });
     } else if (typeof optionHeaders === 'object') {
-      // Если это plain object
       mergedHeaders = { ...mergedHeaders, ...optionHeaders as Record<string, string> };
     }
   }
@@ -53,30 +49,42 @@ const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Re
     headers: mergedHeaders
   });
 
-  // 🔍 Проверяем на истечение токена
-  if (res.status === 401 || res.status === 400) {
+  // 🔍 ПРОВЕРКА: 401 ЛЮБОЙ (независимо от сообщения)
+  if (res.status === 401) {
+    console.warn('🔒 Auth error detected:', res.status, res.url);
+
+    // Пробуем прочитать ошибку
+    let errorMessage = '';
     try {
       const errorData = await res.clone().json();
-      const code = errorData?.code;
-
-      if (code === 'TOKEN_EXPIRED' || errorData?.msg?.includes('expired')) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('refreshToken');
-
-        if (typeof window !== 'undefined' && (window as any).showNotification) {
-          (window as any).showNotification('⏳ Сессия истекла', 'Войдите в систему снова', 'warning');
-        }
-
-        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-          window.location.href = '/login?expired=1';
-        }
-
-        throw new Error('TOKEN_EXPIRED');
-      }
+      errorMessage = errorData?.msg || errorData?.message || '';
+      console.warn('Server error:', errorData);
     } catch (e) {
-      // Если не удалось распарсить JSON — пробрасываем оригинальный ответ
+      // Если не JSON — игнорируем
     }
+
+    // 🔥 ЧИСТИМ ТОКЕНЫ И РЕДИРЕКТИМ
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('refreshToken');
+
+    // Уведомление
+    if (typeof window !== 'undefined' && (window as any).showNotification) {
+      (window as any).showNotification(
+        '⏳ Сессия истекла',
+        errorMessage || 'Войдите в систему снова',
+        'warning'
+      );
+    } else {
+      alert('⏳ Сессия истекла. Пожалуйста, войдите снова.');
+    }
+
+    // Редирект на логин
+    if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+      window.location.href = '/login?expired=1';
+    }
+
+    throw new Error('TOKEN_EXPIRED');
   }
 
   return res;
