@@ -96,6 +96,33 @@ const filterDataForEmployee = (dataByType, allowedInvestorIds) => {
   return filtered;
 };
 
+
+// ✅ ХЕЛПЕР: Проверка платежа на дубликат
+const checkPaymentDuplicate = async (saleData, amount, date, excludePaymentId = null) => {
+  const paymentPlan = saleData.paymentPlan || [];
+  const paymentDate = new Date(date);
+
+  return paymentPlan.some(p => {
+    // Пропускаем платеж, который обновляем (для edit-режима)
+    if (excludePaymentId && p.id === excludePaymentId) return false;
+
+    // Проверяем только реальные оплаченные платежи
+    if (!p.isPaid || !p.isRealPayment) return false;
+
+    // Сравниваем сумму с допуском 0.01
+    const sameAmount = Math.abs((p.amount || 0) - amount) < 0.01;
+
+    // Сравниваем даты по дням (игнорируем время)
+    const pDate = new Date(p.date || p.actualDate);
+    const sameDate =
+      pDate.getDate() === paymentDate.getDate() &&
+      pDate.getMonth() === paymentDate.getMonth() &&
+      pDate.getFullYear() === paymentDate.getFullYear();
+
+    return sameAmount && sameDate;
+  });
+};
+
 const uploadDir = '/var/www/rassapp/server/uploads/documents';
 const upload = multer({
   // 🔹 Временное хранение в памяти для обработки
@@ -1573,8 +1600,7 @@ app.post('/api/user/subscription', auth, async (req, res) => {
   }
 });
 
-// ✅ ИСПРАВЛЕННЫЙ GET /api/data - ИНВЕСТОРЫ ВИДЯТ ТОЛЬКО СВОИ ДАННЫЕ
-// ✅ ИСПРАВЛЕННЫЙ GET /api/data - МЕНЕДЖЕРЫ ВИДЯТ СВОИ ДАННЫЕ + ДАННЫЕ ИНВЕСТОРОВ
+
 app.get('/api/data', auth, async (req, res) => {
   try {
     const targetUserId = getTargetUserId(req.user);
@@ -1690,8 +1716,7 @@ if (req.user.role === 'investor') {
   }
 });
 
-// ✅ ИСПРАВЛЕННЫЙ POST /api/data/:type - ВАЛИДАЦИЯ ТИПА
-// ✅ ОБНОВЛЁННЫЙ РОУТ: Добавляем проверку лимита
+
 app.post('/api/data/:type', auth, async (req, res) => {
   try {
     const { type } = req.params;
@@ -1708,22 +1733,65 @@ app.post('/api/data/:type', auth, async (req, res) => {
 
     // 🔥 НОВОЕ: Проверка лимита договоров при создании
     if (type === 'sales' && itemData.status !== 'DELETED') {
-  // Определяем: создание или обновление?
-  const exists = await pool.query(
-    `SELECT 1 FROM data_items WHERE id = $1 AND type = 'sales'`,
-    [itemData.id]
-  );
-  const action = exists.rows.length > 0 ? 'update' : 'create';
+      const exists = await pool.query(
+        `SELECT 1 FROM data_items WHERE id = $1 AND type = 'sales'`,
+        [itemData.id]
+      );
+      const action = exists.rows.length > 0 ? 'update' : 'create';
 
-  const limitCheck = await checkContractLimit(targetUserId, action, itemData);
-  if (!limitCheck.allowed) {
-    return res.status(403).json({
-      msg: limitCheck.msg,
-      details: limitCheck.details,
-      hint: limitCheck.hint
-    });
-  }
-}
+      const limitCheck = await checkContractLimit(targetUserId, action, itemData);
+      if (!limitCheck.allowed) {
+        return res.status(403).json({
+          msg: limitCheck.msg,
+          details: limitCheck.details,
+          hint: limitCheck.hint
+        });
+      }
+
+      // 🔥🔥 НОВОЕ: Проверка на дубликат платежа (только для CUSTOMER_PAYMENT)
+      if (itemData.type === 'CUSTOMER_PAYMENT' || itemData.paymentPlan) {
+        // Получаем текущую версию продажи из БД (для сравнения)
+        const existingSaleResult = await pool.query(
+          `SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'sales'`,
+          [itemData.id, targetUserId]
+        );
+
+        // Если это обновление — проверяем дубликаты в новом paymentPlan
+        if (existingSaleResult.rows.length > 0 && itemData.paymentPlan) {
+          const existingSale = existingSaleResult.rows[0].data;
+
+          // Находим новый платёж, который добавили (нет в старой версии)
+          const newPayments = (itemData.paymentPlan || []).filter(newP => {
+            const wasAlreadyPaid = (existingSale.paymentPlan || []).some(
+              oldP => oldP.id === newP.id && oldP.isPaid
+            );
+            return newP.isPaid && newP.isRealPayment && !wasAlreadyPaid;
+          });
+
+          // Проверяем каждый новый платёж на дубликат
+          for (const newPayment of newPayments) {
+            const isDuplicate = await checkPaymentDuplicate(
+              existingSale,
+              newPayment.amount,
+              newPayment.date,
+              newPayment.id // исключаем себя при обновлении
+            );
+
+            if (isDuplicate) {
+              return res.status(409).json({
+                error: 'Дубликат платежа',
+                msg: `Платёж на сумму ${newPayment.amount} ₽ от ${new Date(newPayment.date).toLocaleDateString('ru-RU')} уже был зачислен`,
+                details: {
+                  amount: newPayment.amount,
+                  date: newPayment.date,
+                  saleId: itemData.id
+                }
+              });
+            }
+          }
+        }
+      }
+    }
 
     const id = itemData.id;
     await pool.query(`

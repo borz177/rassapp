@@ -42,6 +42,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [sendHistory, setSendHistory] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const contractRef = useRef<HTMLDivElement>(null);
 
   const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
@@ -168,30 +169,38 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   };
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const numAmount = Number(amount);
-    if (numAmount <= 0) { alert("Введите сумму больше нуля"); return; }
-    if (sourceType === 'CUSTOMER' && !selectedSaleId) { alert("Выберите договор"); return; }
-    if (sourceType === 'INVESTOR' && (!selectedInvestorId || !targetAccountId)) { alert("Ошибка выбора инвестора или счета"); return; }
-    if (sourceType === 'OTHER' && !targetAccountId) { alert("Выберите счет"); return; }
+  e.preventDefault();
 
-    // 🔒 ЗАЩИТА ОТ ДУБЛИКАТА ПЕРЕД ОТКРЫТИЕМ МОДАЛКИ
-    if (sourceType === 'CUSTOMER' && selectedSale) {
-      const isDuplicate = selectedSale.paymentPlan.some(p =>
-        p.isPaid && p.isRealPayment &&
-        Math.abs(p.amount - numAmount) < 0.01 &&
-        new Date(p.date).toDateString() === new Date(date).toDateString()
-      );
-      if (isDuplicate) {
-        alert("⚠️ Платёж с такой суммой и датой уже зачислен!");
-        return;
-      }
+  // 🛡️ Защита от повторных нажатий
+  if (isSubmitting) return;
+
+  const numAmount = Number(amount);
+  if (numAmount <= 0) { alert("Введите сумму больше нуля"); return; }
+  if (sourceType === 'CUSTOMER' && !selectedSaleId) { alert("Выберите договор"); return; }
+  if (sourceType === 'INVESTOR' && (!selectedInvestorId || !targetAccountId)) { alert("Ошибка выбора инвестора или счета"); return; }
+  if (sourceType === 'OTHER' && !targetAccountId) { alert("Выберите счет"); return; }
+
+  // 🔒 Проверка на дубликат
+  if (sourceType === 'CUSTOMER' && selectedSale) {
+    const isDuplicate = selectedSale.paymentPlan.some(p =>
+      p.isPaid && p.isRealPayment &&
+      Math.abs(p.amount - numAmount) < 0.01 &&
+      new Date(p.date).toDateString() === new Date(date).toDateString()
+    );
+    if (isDuplicate) {
+      alert("⚠️ Платёж с такой суммой и датой уже зачислен!");
+      return;
     }
+  }
 
-    setShowConfirmModal(true);
-  };
+  // ✅ Всё ок — блокируем и показываем модалку
+  setIsSubmitting(true);
+  setShowConfirmModal(true);
+};
 
-  const handleConfirm = async () => {
+// 3. Обнови handleConfirm — разблокируем после отправки
+const handleConfirm = async () => {
+  try {
     const numAmount = Number(amount);
     let finalDate = date;
     const now = new Date();
@@ -202,8 +211,10 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     if (isToday) { finalDate = now.toISOString(); }
 
     const commonData = { amount: numAmount, date: finalDate };
+
     if (sourceType === 'CUSTOMER') {
       onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
+
       if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
         try {
           const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
@@ -228,8 +239,18 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     } else {
       onSubmit({ ...commonData, type: 'OTHER_INCOME', accountId: targetAccountId, note: note || "Прочий приход" });
     }
+  } finally {
+
     setShowConfirmModal(false);
-  };
+    setIsSubmitting(false);
+  }
+};
+
+
+const handleCancel = () => {
+  setShowConfirmModal(false);
+  setIsSubmitting(false);
+};
 
   const renderContractContent = () => {
       if (!selectedSale || !selectedCustomer) return null;
@@ -439,97 +460,147 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
           }`}
         >Прочее</button>
       </div>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {sourceType === 'CUSTOMER' && (
-          <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Клиент</label>
-              <div onClick={onSelectCustomer} className={`w-full p-3 border rounded-xl cursor-pointer flex justify-between items-center ${selectedCustomerId ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-dashed border-slate-300'}`}>
-                <div className="flex items-center gap-2">
-                  {selectedCustomerId && <div className="text-indigo-600">{ICONS.Customers}</div>}
-                  <span className={selectedCustomerId ? 'text-slate-800 font-bold' : 'text-slate-400'}>{selectedCustomer ? selectedCustomer.name : 'Нажмите для выбора...'}</span>
+        <form onSubmit={handleSubmit} className="space-y-4">
+            {sourceType === 'CUSTOMER' && (
+                <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Клиент</label>
+                        <div onClick={onSelectCustomer}
+                             className={`w-full p-3 border rounded-xl cursor-pointer flex justify-between items-center ${selectedCustomerId ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-dashed border-slate-300'}`}>
+                            <div className="flex items-center gap-2">
+                                {selectedCustomerId && <div className="text-indigo-600">{ICONS.Customers}</div>}
+                                <span
+                                    className={selectedCustomerId ? 'text-slate-800 font-bold' : 'text-slate-400'}>{selectedCustomer ? selectedCustomer.name : 'Нажмите для выбора...'}</span>
+                            </div>
+                            <span className="text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                                                  stroke="currentColor" strokeWidth="2"
+                                                                  strokeLinecap="round" strokeLinejoin="round"><polyline
+                                points="9 18 15 12 9 6"/></svg></span>
+                        </div>
+                    </div>
+                    {selectedCustomerId && (
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Активный договор</label>
+                            {activeCustomerSales.length > 0 ? (
+                                <select
+                                    className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
+                                    value={selectedSaleId} onChange={e => setSelectedSaleId(e.target.value)}>
+                                    <option value="">-- Выберите товар/рассрочку --</option>
+                                    {activeCustomerSales.map(s => <option key={s.id}
+                                                                          value={s.id}>{s.productName} (Долг: {formatNum(s.remainingAmount)} ₽)</option>)}
+                                </select>
+                            ) : <p className="text-slate-500 italic p-2">Нет активных долгов</p>}
+                        </div>
+                    )}
+                    {selectedSale && <div
+                        className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm flex gap-2 items-center">
+                        <span className="text-slate-500">Зачисление на счет:</span><span
+                        className="font-bold text-slate-800">{getAccountName(selectedSale.accountId)}</span></div>}
                 </div>
-                <span className="text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
-              </div>
-            </div>
-            {selectedCustomerId && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Активный договор</label>
-                {activeCustomerSales.length > 0 ? (
-                  <select className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900" value={selectedSaleId} onChange={e => setSelectedSaleId(e.target.value)}>
-                    <option value="">-- Выберите товар/рассрочку --</option>
-                    {activeCustomerSales.map(s => <option key={s.id} value={s.id}>{s.productName} (Долг: {formatNum(s.remainingAmount)} ₽)</option>)}
-                  </select>
-                ) : <p className="text-slate-500 italic p-2">Нет активных долгов</p>}
-              </div>
             )}
-            {selectedSale && <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm flex gap-2 items-center"><span className="text-slate-500">Зачисление на счет:</span><span className="font-bold text-slate-800">{getAccountName(selectedSale.accountId)}</span></div>}
-          </div>
-        )}
-        {sourceType === 'INVESTOR' && (
-          <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Выберите инвестора</label>
-              <select className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900" value={selectedInvestorId} onChange={e => setSelectedInvestorId(e.target.value)}>
-                <option value="">-- Список инвесторов --</option>
-                {investors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
-              </select>
-            </div>
-            {targetAccountId && <div className="bg-purple-50 p-3 rounded-lg border border-purple-100 text-sm flex gap-2 items-center"><span className="text-purple-600 font-medium">Счет зачисления:</span><span className="font-bold text-purple-800">{getAccountName(targetAccountId)}</span></div>}
-          </div>
-        )}
-        {sourceType === 'OTHER' && (
-          <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">Назначение / Описание</label><input placeholder="Например: Внесение личных средств" className="w-full p-3 border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={note} onChange={e => setNote(e.target.value)}/></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">Счет зачисления</label><select className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900" value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-          </div>
-        )}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Сумма прихода</label>
-            <div className="relative">
-              <span className="absolute left-4 top-3.5 text-slate-400 text-lg">₽</span>
-              <input type="number" step={showCents ? "0.01" : "1"} placeholder="0" className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={amount} onChange={e => setAmount(e.target.value)} />
-            </div>
-            {sourceType === 'CUSTOMER' && selectedSale && (
-              <div className="flex justify-between items-start mt-2">
-                <p className="text-xs text-slate-400 mt-1">Рек: {formatNum(recommendedAmount)} ₽</p>
-                {currentPaymentProfit > 0 && (
-                  <div className="bg-emerald-50 px-2 py-1 rounded text-right">
-                    <p className="text-xs text-emerald-600 font-medium">Прибыль с платежа</p>
-                    <p className="text-sm font-bold text-emerald-700">+{formatNum(currentPaymentProfit)} ₽</p>
-                  </div>
+            {sourceType === 'INVESTOR' && (
+                <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Выберите инвестора</label>
+                        <select
+                            className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
+                            value={selectedInvestorId} onChange={e => setSelectedInvestorId(e.target.value)}>
+                            <option value="">-- Список инвесторов --</option>
+                            {investors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
+                        </select>
+                    </div>
+                    {targetAccountId && <div
+                        className="bg-purple-50 p-3 rounded-lg border border-purple-100 text-sm flex gap-2 items-center">
+                        <span className="text-purple-600 font-medium">Счет зачисления:</span><span
+                        className="font-bold text-purple-800">{getAccountName(targetAccountId)}</span></div>}
+                </div>
+            )}
+            {sourceType === 'OTHER' && (
+                <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
+                    <div><label className="block text-sm font-medium text-slate-700 mb-1">Назначение /
+                        Описание</label><input placeholder="Например: Внесение личных средств"
+                                               className="w-full p-3 border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                                               value={note} onChange={e => setNote(e.target.value)}/></div>
+                    <div><label className="block text-sm font-medium text-slate-700 mb-1">Счет зачисления</label><select
+                        className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
+                        value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>{accounts.map(a =>
+                        <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+                </div>
+            )}
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Сумма прихода</label>
+                    <div className="relative">
+                        <span className="absolute left-4 top-3.5 text-slate-400 text-lg">₽</span>
+                        <input type="number" step={showCents ? "0.01" : "1"} placeholder="0"
+                               className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                               value={amount} onChange={e => setAmount(e.target.value)}/>
+                    </div>
+                    {sourceType === 'CUSTOMER' && selectedSale && (
+                        <div className="flex justify-between items-start mt-2">
+                            <p className="text-xs text-slate-400 mt-1">Рек: {formatNum(recommendedAmount)} ₽</p>
+                            {currentPaymentProfit > 0 && (
+                                <div className="bg-emerald-50 px-2 py-1 rounded text-right">
+                                    <p className="text-xs text-emerald-600 font-medium">Прибыль с платежа</p>
+                                    <p className="text-sm font-bold text-emerald-700">+{formatNum(currentPaymentProfit)} ₽</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+                {sourceType === 'CUSTOMER' && appSettings.whatsapp?.enabled && (
+                    <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                        <div className="flex items-center gap-2">
+                            <span className="text-emerald-500">{ICONS.Send}</span>
+                            <span className="text-sm font-medium text-slate-700">Отправить чек в WhatsApp</span>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked={sendHistory} onChange={() => setSendHistory(!sendHistory)}
+                                   className="sr-only peer"/>
+                            <div
+                                className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                        </label>
+                    </div>
                 )}
-              </div>
-            )}
-          </div>
-          {sourceType === 'CUSTOMER' && appSettings.whatsapp?.enabled && (
-            <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-              <div className="flex items-center gap-2">
-                <span className="text-emerald-500">{ICONS.Send}</span>
-                <span className="text-sm font-medium text-slate-700">Отправить чек в WhatsApp</span>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" checked={sendHistory} onChange={() => setSendHistory(!sendHistory)} className="sr-only peer"/>
-                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-              </label>
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
+                    <input type="date"
+                           className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                           value={date} onChange={e => setDate(e.target.value)}/>
+                </div>
             </div>
-          )}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
-            <input type="date" className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900" value={date} onChange={e => setDate(e.target.value)}/>
-          </div>
-        </div>
-        <button type="submit" className="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-transform active:scale-95">Подтвердить приход</button>
-      </form>
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowConfirmModal(false)}>
-          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
-            <h3 className="text-xl font-bold text-slate-800 text-center">Подтверждение прихода</h3>
-            <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
-              {sourceType === 'CUSTOMER' && (
-                <>
-                  <div className="flex justify-between"><span className="text-slate-500">От кого:</span><span className="font-bold text-slate-800">{selectedCustomer?.name}</span></div>
+            <button
+                type="submit"
+                disabled={isSubmitting}
+                className={`w-full py-4 rounded-xl font-bold shadow-lg transition-transform active:scale-95 ${
+                    isSubmitting
+                        ? 'bg-emerald-400 cursor-not-allowed'
+                        : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+                }`}
+            >
+                {isSubmitting ? (
+                    <span className="flex items-center justify-center gap-2">
+      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg>
+      Обработка...
+    </span>
+                ) : 'Подтвердить приход'}
+            </button>
+        </form>
+        {showConfirmModal && (
+            <div
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+                onClick={() => setShowConfirmModal(false)}>
+                <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
+                     onClick={e => e.stopPropagation()}>
+                    <h3 className="text-xl font-bold text-slate-800 text-center">Подтверждение прихода</h3>
+                    <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
+                        {sourceType === 'CUSTOMER' && (
+                            <>
+                                <div className="flex justify-between"><span
+                                    className="text-slate-500">От кого:</span><span className="font-bold text-slate-800">{selectedCustomer?.name}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">За что:</span><span className="font-medium text-slate-800">{selectedSale?.productName}</span></div>
                 </>
               )}

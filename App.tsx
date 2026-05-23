@@ -668,9 +668,6 @@ const dashboardStats = useMemo(() => {
       }
   };
 
-
-// 🔹 Обновлённая updateList с поддержкой смены id
-// 🔹 Обновлённая updateList с поддержкой смены id и отладкой
 const updateList = <T extends { id: string }>(
   setter: React.Dispatch<React.SetStateAction<T[]>>,
   item: T,
