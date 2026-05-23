@@ -1980,7 +1980,7 @@ if (!user && !showSplash) {
                              onSelectCustomer={() => openSelection('SELECT_CUSTOMER', draftSaleData)}
                              appSettings={appSettings} user={user}/>}
               {currentView === 'CREATE_EXPENSE' &&
-                  <NewExpense investors={investors} accounts={accounts} onClose={() => setCurrentView('DASHBOARD')}
+                  <NewExpense investors={investors} accounts={accounts} expenses={expenses}  onClose={() => setCurrentView('DASHBOARD')}
                               onSubmit={handleExpenseSubmit} appSettings={appSettings}/>}
               {currentView === 'CREATE_SALE' &&
                   <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products}
