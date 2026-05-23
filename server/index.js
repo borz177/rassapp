@@ -571,7 +571,7 @@ const auth = (req, res, next) => {
 if (e.name === 'TokenExpiredError') {
   return res.status(401).json({
     msg: 'Сессия истекла',
-    code: 'TOKEN_EXPIRED' //
+    code: 'TOKEN_EXPIRED'
   });
 }
     return res.status(401).json({ code: 'INVALID_TOKEN', msg: 'Невалидный токен' });
@@ -602,8 +602,8 @@ const sendEmail = async (email, subject, text, html = null) => {
       from: `"FinUchet" <${process.env.SMTP_USER}>`,
       to: email,
       subject,
-      text,                          // 📝 Текстовая версия (для старых клиентов)
-      html: html || text,           // 🎨 HTML-версия (если передана, иначе используем text)
+      text,
+      html: html || text,
 
       // 📬 Опционально: заголовки для улучшения доставляемости
       headers: {
@@ -1448,7 +1448,7 @@ app.post('/api/auth/register', sensitiveLimiter, async (req, res) => {
       );
     }
     
-    const token = jwt.sign({ id, role: role || 'manager', managerId }, JWT_SECRET, { expiresIn: '30d' });
+    const token = jwt.sign({ id, role: role || 'manager', managerId }, JWT_SECRET, { expiresIn: '90d' });
     res.json({ token, user: { id, name, email: normalizedEmail, role: role || 'manager', managerId, permissions, allowedInvestorIds, subscription } });
   } catch (err) {
     console.error('Register Error:', err);
@@ -1507,7 +1507,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ msg: 'Неверные учетные данные' });
     
-    const token = jwt.sign({ id: user.id, role: user.role, managerId: user.manager_id }, JWT_SECRET, { expiresIn: '30d' });
+    const token = jwt.sign({ id: user.id, role: user.role, managerId: user.manager_id }, JWT_SECRET, { expiresIn: '90d' });
     
     res.json({
       token,

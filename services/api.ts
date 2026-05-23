@@ -49,43 +49,52 @@ const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Re
     headers: mergedHeaders
   });
 
-  // 🔍 ПРОВЕРКА: 401 ЛЮБОЙ (независимо от сообщения)
-  if (res.status === 401) {
-    console.warn('🔒 Auth error detected:', res.status, res.url);
+  // Внутри блока обработки 401:
+if (res.status === 401) {
+  console.warn('🔒 Auth error detected:', res.status, res.url);
 
-    // Пробуем прочитать ошибку
-    let errorMessage = '';
-    try {
-      const errorData = await res.clone().json();
-      errorMessage = errorData?.msg || errorData?.message || '';
-      console.warn('Server error:', errorData);
-    } catch (e) {
-      // Если не JSON — игнорируем
+  let errorMessage = '';
+  try {
+    const errorData = await res.clone().json();
+    errorMessage = errorData?.msg || errorData?.message || '';
+  } catch (e) {}
+
+  // 🔥 Чистим токены СРАЗУ
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('refreshToken');
+
+  // 🔥 Показываем уведомление
+  if (typeof window !== 'undefined' && (window as any).showNotification) {
+    (window as any).showNotification(
+      '⏳ Сессия истекла',
+      errorMessage || 'Войдите в систему снова',
+      'warning'
+    );
+  } else {
+    // 🔥 Используем confirm вместо alert — пользователь явно подтверждает переход
+    const confirmed = window.confirm(
+      `⏳ ${errorMessage || 'Сессия истекла'}\n\nПерейти на страницу входа?`
+    );
+
+    // 🔥 Редирект только после подтверждения + небольшая задержка
+    if (confirmed || !errorMessage) {
+      setTimeout(() => {
+        window.location.replace('/login?expired=1'); // replace вместо href — чище
+      }, 100);
     }
-
-    // 🔥 ЧИСТИМ ТОКЕНЫ И РЕДИРЕКТИМ
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('refreshToken');
-
-    // Уведомление
-    if (typeof window !== 'undefined' && (window as any).showNotification) {
-      (window as any).showNotification(
-        '⏳ Сессия истекла',
-        errorMessage || 'Войдите в систему снова',
-        'warning'
-      );
-    } else {
-      alert('⏳ Сессия истекла. Пожалуйста, войдите снова.');
-    }
-
-    // Редирект на логин
-    if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-      window.location.href = '/login?expired=1';
-    }
-
-    throw new Error('TOKEN_EXPIRED');
+    return res; // Возвращаем, чтобы не бросать ошибку лишний раз
   }
+
+  // 🔥 Если есть showNotification — редиректим сразу (не ждём ОК)
+  if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+    setTimeout(() => {
+      window.location.replace('/login?expired=1');
+    }, 300); // Небольшая задержка, чтобы уведомление успело показаться
+  }
+
+  throw new Error('TOKEN_EXPIRED');
+}
 
   return res;
 };
