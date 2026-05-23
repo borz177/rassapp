@@ -682,7 +682,7 @@ const handleConfirmSendWhatsApp = async () => {
         alert("✅ Договор успешно отправлен в WhatsApp!");
       }
 
-     
+
 
     } else {
       // ❌ WhatsApp API вернул ошибку

@@ -1,4 +1,3 @@
-
 import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings } from "../types";
 import { offlineStorage } from "./offlineStorage";
 
@@ -17,8 +16,6 @@ const getBaseUrl = () => {
 
 const API_URL = getBaseUrl();
 
-
-
 const getAuthHeader = () => {
     const token = localStorage.getItem('token');
     return token ? { 'x-auth-token': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
@@ -26,9 +23,67 @@ const getAuthHeader = () => {
 
 let isSyncing = false;
 
+
+const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  // 🔹 Правильное объединение заголовков (без разворачивания Headers-объекта)
+  const baseHeaders = getAuthHeader();
+  const optionHeaders = options.headers;
+
+  let mergedHeaders: Record<string, string> = { ...baseHeaders };
+
+  if (optionHeaders) {
+    if (optionHeaders instanceof Headers) {
+      // Если это Headers-объект — конвертируем в plain object
+      optionHeaders.forEach((value, key) => {
+        mergedHeaders[key] = value;
+      });
+    } else if (Array.isArray(optionHeaders)) {
+      // Если это массив [key, value][]
+      optionHeaders.forEach(([key, value]) => {
+        mergedHeaders[key] = value;
+      });
+    } else if (typeof optionHeaders === 'object') {
+      // Если это plain object
+      mergedHeaders = { ...mergedHeaders, ...optionHeaders as Record<string, string> };
+    }
+  }
+
+  const res = await fetch(url, {
+    ...options,
+    headers: mergedHeaders
+  });
+
+  // 🔍 Проверяем на истечение токена
+  if (res.status === 401 || res.status === 400) {
+    try {
+      const errorData = await res.clone().json();
+      const code = errorData?.code;
+
+      if (code === 'TOKEN_EXPIRED' || errorData?.msg?.includes('expired')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('refreshToken');
+
+        if (typeof window !== 'undefined' && (window as any).showNotification) {
+          (window as any).showNotification('⏳ Сессия истекла', 'Войдите в систему снова', 'warning');
+        }
+
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login?expired=1';
+        }
+
+        throw new Error('TOKEN_EXPIRED');
+      }
+    } catch (e) {
+      // Если не удалось распарсить JSON — пробрасываем оригинальный ответ
+    }
+  }
+
+  return res;
+};
+
 export const api = {
     // Sync Logic
-        // Sync Logic — ПОЛНЫЙ, ГОТОВЫЙ КОД
     sync: async (): Promise<{ success: boolean; syncedCollections: Set<string> }> => {
         if (!navigator.onLine || isSyncing) return { success: false, syncedCollections: new Set() };
         isSyncing = true;
@@ -38,55 +93,58 @@ export const api = {
             const queue = await offlineStorage.getQueue();
             if (queue.length === 0) return { success: true, syncedCollections };
 
-            // 🔹 Встроенная логика обработки одного элемента (вместо внешней функции)
+            // 🔹 Встроенная логика обработки одного элемента
             const processItem = async (item: any): Promise<boolean> => {
-  try {
-    let res: Response;
-    if (item.type === 'saveItem') {
-      res = await fetch(`${API_URL}/data/${item.collection}`, {
-        method: 'POST',
-        headers: getAuthHeader(),
-        body: JSON.stringify(item.payload)
-      });
-    } else if (item.type === 'deleteItem') {
-      res = await fetch(`${API_URL}/data/${item.collection}/${item.itemId}`, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-      });
-    } else {
-      return false;
-    }
+              try {
+                let res: Response;
+                if (item.type === 'saveItem') {
+                  // 🔥 ИСПОЛЬЗУЕМ fetchWithAuth
+                  res = await fetchWithAuth(`${API_URL}/data/${item.collection}`, {
+                    method: 'POST',
+                    body: JSON.stringify(item.payload)
+                  });
+                } else if (item.type === 'deleteItem') {
+                  // 🔥 ИСПОЛЬЗУЕМ fetchWithAuth
+                  res = await fetchWithAuth(`${API_URL}/data/${item.collection}/${item.itemId}`, {
+                    method: 'DELETE'
+                  });
+                } else {
+                  return false;
+                }
 
-    if (res.ok) {
-      await offlineStorage.removeFromQueue(item.id);
-      if (item.collection) syncedCollections.add(item.collection);
-      return true;
-    } else {
-      // 🔥 Лучше логирование ошибок
-      const errorText = await res.text().catch(() => '');
-      console.error(`❌ Sync failed for ${item.collection}/${item.payload?.id || item.itemId}:`,
-        res.status, errorText);
+                if (res.ok) {
+                  await offlineStorage.removeFromQueue(item.id);
+                  if (item.collection) syncedCollections.add(item.collection);
+                  return true;
+                } else {
+                  const errorText = await res.text().catch(() => '');
+                  console.error(`❌ Sync failed for ${item.collection}/${item.payload?.id || item.itemId}:`,
+                    res.status, errorText);
 
-      item.retryCount = (item.retryCount || 0) + 1;
-      if (item.retryCount > 5) {
-        console.error(`❌ Dropping item ${item.id} after ${item.retryCount} retries`);
-        await offlineStorage.removeFromQueue(item.id);
-      } else {
-        await offlineStorage.updateQueueItem(item);
-      }
-      return false;
-    }
-  } catch (error) {
-    console.error(`Failed to sync item ${item.id}`, error);
-    item.retryCount = (item.retryCount || 0) + 1;
-    if (item.retryCount <= 5) {
-      await offlineStorage.updateQueueItem(item);
-    } else {
-      await offlineStorage.removeFromQueue(item.id);
-    }
-    return false;
-  }
-};
+                  item.retryCount = (item.retryCount || 0) + 1;
+                  if (item.retryCount > 5) {
+                    console.error(`❌ Dropping item ${item.id} after ${item.retryCount} retries`);
+                    await offlineStorage.removeFromQueue(item.id);
+                  } else {
+                    await offlineStorage.updateQueueItem(item);
+                  }
+                  return false;
+                }
+              } catch (error) {
+                // Если ошибка "токен истёк" — пробрасываем, чтобы сработал редирект
+                if (error instanceof Error && error.message === 'TOKEN_EXPIRED') {
+                  throw error;
+                }
+                console.error(`Failed to sync item ${item.id}`, error);
+                item.retryCount = (item.retryCount || 0) + 1;
+                if (item.retryCount <= 5) {
+                  await offlineStorage.updateQueueItem(item);
+                } else {
+                  await offlineStorage.removeFromQueue(item.id);
+                }
+                return false;
+              }
+            };
 
             // 🔹 Двухпроходная синхронизация
             const baseCollections = ['customers', 'accounts', 'investors', 'products'];
@@ -127,8 +185,7 @@ export const api = {
         }
     },
 
-
-    // Auth
+    // Auth (ПУБЛИЧНЫЕ — обычный fetch)
     sendCode: async (email: string, type: 'REGISTER' | 'RESET'): Promise<void> => {
         const res = await fetch(`${API_URL}/auth/send-code`, {
             method: 'POST',
@@ -149,11 +206,8 @@ export const api = {
             const data = await res.json();
             if (!res.ok) throw new Error(data.msg || 'Ошибка регистрации');
 
-            // Stores token automatically (Log in)
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
-
-            // Cache user for offline access
             await offlineStorage.setCache('user_me', data.user);
 
             return data.user;
@@ -188,8 +242,6 @@ export const api = {
 
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
-
-            // Cache user for offline access
             await offlineStorage.setCache('user_me', data.user);
 
             return data.user;
@@ -202,41 +254,40 @@ export const api = {
         }
     },
 
+    // 🔥 ЗАЩИЩЁННЫЕ МЕТОДЫ (используют fetchWithAuth)
     getMe: async (): Promise<User> => {
         try {
-            const res = await fetch(`${API_URL}/auth/me`, {
-                headers: getAuthHeader()
-            });
+            // 🔥 fetchWithAuth сам добавит токен и обработает 401
+            const res = await fetchWithAuth(`${API_URL}/auth/me`);
             if (!res.ok) throw new Error('Failed to fetch user');
             const user = await res.json();
-            // Cache user data
             await offlineStorage.setCache('user_me', user);
             return user;
-        } catch (error) {
-            // Try cache
+        } catch (error: any) {
+            // Если токен истёк — fetchWithAuth уже сделал редирект, просто пробуем кэш
+            if (error.message === 'TOKEN_EXPIRED') {
+                const cachedUser = await offlineStorage.getCache('user_me');
+                if (cachedUser) return cachedUser;
+            }
             const cachedUser = await offlineStorage.getCache('user_me');
             if (cachedUser) return cachedUser;
             throw error;
         }
     },
 
-    // User Management - Create Sub-User (Protected, No Login Side-effect)
     createSubUser: async (userData: any): Promise<any> => {
-        const res = await fetch(`${API_URL}/users/manage`, {
+        const res = await fetchWithAuth(`${API_URL}/users/manage`, {
             method: 'POST',
-            headers: getAuthHeader(),
             body: JSON.stringify({ action: 'create', userData })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.msg || 'Ошибка создания пользователя');
-        return data; // Returns the created user object
+        return data;
     },
 
-    // Subscription
     updateSubscription: async (plan: SubscriptionPlan, months: number): Promise<any> => {
-        const res = await fetch(`${API_URL}/user/subscription`, {
+        const res = await fetchWithAuth(`${API_URL}/user/subscription`, {
             method: 'POST',
-            headers: getAuthHeader(),
             body: JSON.stringify({ plan, months })
         });
         const data = await res.json();
@@ -244,21 +295,17 @@ export const api = {
         return data.subscription;
     },
 
-    // WhatsApp Settings
     saveWhatsAppSettings: async (settings: WhatsAppSettings): Promise<void> => {
-        const res = await fetch(`${API_URL}/user/whatsapp`, {
+        const res = await fetchWithAuth(`${API_URL}/user/whatsapp`, {
             method: 'POST',
-            headers: getAuthHeader(),
             body: JSON.stringify(settings)
         });
         if (!res.ok) throw new Error('Failed to save WhatsApp settings');
     },
 
-    // Payments
     createPayment: async (paymentData: { amount: number, description: string, returnUrl: string, plan: SubscriptionPlan, months: number }): Promise<any> => {
-        const res = await fetch(`${API_URL}/payment/create`, {
+        const res = await fetchWithAuth(`${API_URL}/payment/create`, {
             method: 'POST',
-            headers: getAuthHeader(),
             body: JSON.stringify(paymentData)
         });
         const data = await res.json();
@@ -274,24 +321,23 @@ export const api = {
     }> => {
         let data: any = null;
         try {
-            const res = await fetch(`${API_URL}/data`, { headers: getAuthHeader() });
-            if (!res.ok) {
-                if (res.status === 401) {
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('user');
-                    window.location.reload();
-                }
-                throw new Error('Failed to fetch data');
-            }
+            // 🔥 fetchWithAuth сам обработает 401 — ручная проверка удалена
+            const res = await fetchWithAuth(`${API_URL}/data`);
+            if (!res.ok) throw new Error('Failed to fetch data');
+            
             data = await res.json();
-            // Cache the data
             await offlineStorage.setCache('all_data', data);
-        } catch (error) {
+        } catch (error: any) {
+            // Если токен истёк — fetchWithAuth уже сделал редирект
+            if (error.message === 'TOKEN_EXPIRED') {
+                const cachedData = await offlineStorage.getCache('all_data');
+                if (cachedData) return cachedData;
+                throw error;
+            }
+            
             console.error("Fetch Data Error:", error);
-            // Try to load from cache
             const cachedData = await offlineStorage.getCache('all_data');
             if (cachedData) {
-
                 data = cachedData;
             } else {
                 throw error;
@@ -306,40 +352,32 @@ export const api = {
                     if (!item.collection || !data[item.collection]) continue;
 
                     if (item.type === 'saveItem') {
-    if (Array.isArray(data[item.collection])) {
-        const list = data[item.collection] as any[];
+                        if (Array.isArray(data[item.collection])) {
+                            const list = data[item.collection] as any[];
+                            let idx = list.findIndex(i => i.id === item.payload.id);
 
-        // 🔹 1. Ищем по ID
-        let idx = list.findIndex(i => i.id === item.payload.id);
+                            if (idx === -1 && item.collection === 'investors' && item.payload.email) {
+                                idx = list.findIndex(i => i.email === item.payload.email);
+                                if (idx >= 0) {
+                                    list[idx] = { ...list[idx], ...item.payload, id: item.payload.id };
+                                    continue;
+                                }
+                            }
 
-        // 🔹 2. Если не нашли и это инвестор — ищем по email
-        if (idx === -1 && item.collection === 'investors' && item.payload.email) {
-            idx = list.findIndex(i => i.email === item.payload.email);
-
-            // 🔹 3. Если нашли по email — обновляем, но сохраняем НОВЫЙ id
-            if (idx >= 0) {
-                list[idx] = { ...list[idx], ...item.payload, id: item.payload.id };
-                continue; // Пропускаем добавление
-            }
-        }
-
-        // 🔹 4. Стандартное поведение
-        if (idx >= 0) {
-            list[idx] = item.payload;
-        } else {
-            // 🔹 Проверка на дубль по email перед добавлением
-            const isDuplicate = item.collection === 'investors' &&
-                item.payload.email &&
-                list.some(i => i.email === item.payload.email);
-
-            if (!isDuplicate) {
-                list.unshift(item.payload);
-            }
-        }
-    } else {
-        data[item.collection] = { ...data[item.collection], ...item.payload };
-    }
-}
+                            if (idx >= 0) {
+                                list[idx] = item.payload;
+                            } else {
+                                const isDuplicate = item.collection === 'investors' &&
+                                    item.payload.email &&
+                                    list.some(i => i.email === item.payload.email);
+                                if (!isDuplicate) {
+                                    list.unshift(item.payload);
+                                }
+                            }
+                        } else {
+                            data[item.collection] = { ...data[item.collection], ...item.payload };
+                        }
+                    }
                 }
             } catch (e) {
                 console.error("Error applying offline queue to data", e);
@@ -350,114 +388,112 @@ export const api = {
     },
 
     // CRUD
-// ✅ ОБНОВЛЁННЫЙ saveItem с проверкой лимита в офлайн-режиме
-saveItem: async (type: string, item: any, options?: { skipLimitCheck?: boolean; sales?: Sale[] }): Promise<any> => {
-  console.log(`💾 Saving ${type}:`, { id: item.id });
+    saveItem: async (type: string, item: any, options?: { skipLimitCheck?: boolean; sales?: Sale[] }): Promise<any> => {
+      console.log(`💾 Saving ${type}:`, { id: item.id });
 
-  try {
-    const res = await fetch(`${API_URL}/data/${type}`, {
-      method: 'POST',
-      headers: getAuthHeader(),
-      body: JSON.stringify(item)
-    });
+      try {
+        // 🔥 fetchWithAuth сам добавит заголовки
+        const res = await fetchWithAuth(`${API_URL}/data/${type}`, {
+          method: 'POST',
+          body: JSON.stringify(item)
+        });
 
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
 
-      // 🔥 Обработка ошибки 403 (лимит превышен)
-      if (res.status === 403 && (errorData.details?.limit || errorData.msg?.includes('лимит'))) {
-        const limitError: any = new Error('LIMIT_EXCEEDED');
-        limitError.isLimitError = true;
-        limitError.message = errorData.msg || 'Превышен лимит договоров';
-        limitError.details = errorData.details;
-        limitError.hint = errorData.hint;
-        throw limitError;
-      }
+          if (res.status === 403 && (errorData.details?.limit || errorData.msg?.includes('лимит'))) {
+            const limitError: any = new Error('LIMIT_EXCEEDED');
+            limitError.isLimitError = true;
+            limitError.message = errorData.msg || 'Превышен лимит договоров';
+            limitError.details = errorData.details;
+            limitError.hint = errorData.hint;
+            throw limitError;
+          }
 
-      throw new Error(errorData.msg || errorData.error || `Failed to save ${type}`);
-    }
-
-    const savedItem = await res.json();
-    console.log(`✅ Saved ${type}: ${item.id}`);
-    return savedItem;
-
-  } catch (error: any) {
-    console.warn("⚠️ Save error:", error);
-
-    // 🔥 Проверяем тип ошибки
-    const isLimitError = error.isLimitError === true;
-    const isNetworkError =
-      error.message?.includes('Failed to fetch') ||
-      !navigator.onLine ||
-      error.name === 'TypeError' && error.message?.includes('fetch');
-
-    // 🔥 НОВОЕ: Проверка лимита ПЕРЕД добавлением в офлайн-очередь!
-if (isNetworkError && type === 'sales' && item.status !== 'DELETED') {
-  try {
-    // 🔹 Проверяем лимит по локальным данным
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      const user = JSON.parse(userStr);
-      const LIMITS: Record<string, { contracts: number }> = {
-        TRIAL: { contracts: 10 },
-        START: { contracts: 100 },
-        STANDARD: { contracts: 500 },
-        BUSINESS: { contracts: -1 }
-      };
-
-      const limit = LIMITS[user.subscription?.plan]?.contracts ?? 0;
-
-      // Админы и безлимит — пропускаем
-      if (user.role !== 'admin' && limit !== -1) {
-        // 🔹 Считаем договоры из переданных данных или кэша
-        const salesData = options?.sales ||
-          (await offlineStorage.getCache('all_data'))?.sales || [];
-
-        const currentCount = salesData.filter((s: any) =>
-          s.status === 'ACTIVE' || s.status === 'DRAFT'
-        ).length;
-
-        if (currentCount >= limit) {
-          // 🔥 НЕ добавляем в очередь! Лимит превышен даже офлайн
-          const limitError: any = new Error('LIMIT_EXCEEDED_OFFLINE');
-          limitError.isLimitError = true;
-          limitError.message = `Превышен лимит договоров для тарифа "${user.subscription?.plan}". Максимум: ${limit}. У вас сейчас: ${currentCount}.`;
-          limitError.details = { current: currentCount, limit };
-          limitError.hint = 'В офлайн-режиме тоже действует лимит!';
-          throw limitError; // 🔥 Выбрасываем ошибку — НЕ возвращаем данные!
+          throw new Error(errorData.msg || errorData.error || `Failed to save ${type}`);
         }
+
+        const savedItem = await res.json();
+        console.log(`✅ Saved ${type}: ${item.id}`);
+        return savedItem;
+
+      } catch (error: any) {
+        // 🔥 Если токен истёк — пробрасываем, fetchWithAuth уже сделал редирект
+        if (error.message === 'TOKEN_EXPIRED') {
+          throw error;
+        }
+
+        console.warn("⚠️ Save error:", error);
+
+        const isLimitError = error.isLimitError === true;
+        const isNetworkError =
+          error.message?.includes('Failed to fetch') ||
+          !navigator.onLine ||
+          (error.name === 'TypeError' && error.message?.includes('fetch'));
+
+        if (isNetworkError && type === 'sales' && item.status !== 'DELETED') {
+          try {
+            const userStr = localStorage.getItem('user');
+            if (userStr) {
+              const user = JSON.parse(userStr);
+              const LIMITS: Record<string, { contracts: number }> = {
+                TRIAL: { contracts: 10 },
+                START: { contracts: 100 },
+                STANDARD: { contracts: 500 },
+                BUSINESS: { contracts: -1 }
+              };
+
+              const limit = LIMITS[user.subscription?.plan]?.contracts ?? 0;
+
+              if (user.role !== 'admin' && limit !== -1) {
+                const salesData = options?.sales ||
+                  (await offlineStorage.getCache('all_data'))?.sales || [];
+
+                const currentCount = salesData.filter((s: any) =>
+                  s.status === 'ACTIVE' || s.status === 'DRAFT'
+                ).length;
+
+                if (currentCount >= limit) {
+                  const limitError: any = new Error('LIMIT_EXCEEDED_OFFLINE');
+                  limitError.isLimitError = true;
+                  limitError.message = `Превышен лимит договоров для тарифа "${user.subscription?.plan}". Максимум: ${limit}. У вас сейчас: ${currentCount}.`;
+                  limitError.details = { current: currentCount, limit };
+                  limitError.hint = 'В офлайн-режиме тоже действует лимит!';
+                  throw limitError;
+                }
+              }
+            }
+          } catch (limitErr) {
+            console.warn('⚠️ Limit check in offline mode failed:', limitErr);
+          }
+        }
+
+        if (isNetworkError && !isLimitError) {
+          console.log("📦 Queuing for offline sync (network error)");
+          await offlineStorage.addToQueue({
+            type: 'saveItem',
+            collection: type,
+            payload: item
+          });
+          return item;
+        }
+
+        console.error("❌ Validation/limit error (not queued):", error.message || error);
+        throw error;
       }
-    }
-  } catch (limitErr) {
-    console.warn('⚠️ Limit check in offline mode failed:', limitErr);
-    // Если ошибка проверки — не блокируем, но логируем
-  }
-}
-
-// 🔥 В офлайн-очередь добавляем ТОЛЬКО если это сетевая ошибка И лимит не превышен
-if (isNetworkError && !isLimitError) {
-  console.log("📦 Queuing for offline sync (network error)");
-  await offlineStorage.addToQueue({
-    type: 'saveItem',
-    collection: type,
-    payload: item
-  });
-  return item; // Возвращаем для оптимистичного обновления UI
-}
-
-// ❌ Ошибки валидации/лимита — НЕ кешируем, пробрасываем дальше
-console.error("❌ Validation/limit error (not queued):", error.message || error);
-throw error; // ← 🔥 Пробрасываем ошибку!
-  }
-},
+    },
 
     deleteItem: async (type: string, id: string) => {
         try {
-            await fetch(`${API_URL}/data/${type}/${id}`, {
-                method: 'DELETE',
-                headers: getAuthHeader()
+            // 🔥 fetchWithAuth
+            await fetchWithAuth(`${API_URL}/data/${type}/${id}`, {
+                method: 'DELETE'
             });
-        } catch (error) {
+        } catch (error: any) {
+            // Если токен истёк — не кешируем удаление
+            if (error.message === 'TOKEN_EXPIRED') {
+                throw error;
+            }
             console.warn("Offline mode: queuing delete", error);
             await offlineStorage.addToQueue({
                 type: 'deleteItem',
@@ -467,95 +503,80 @@ throw error; // ← 🔥 Пробрасываем ошибку!
         }
     },
 
-    // Account Reset
     resetAccountData: async () => {
-        const res = await fetch(`${API_URL}/user/data`, {
-            method: 'DELETE',
-            headers: getAuthHeader()
+        const res = await fetchWithAuth(`${API_URL}/user/data`, {
+            method: 'DELETE'
         });
         if (!res.ok) throw new Error('Failed to reset account');
     },
 
-    // User Management
-updateUser: async (user: User) => {
-  try {
-    const res = await fetch(`${API_URL}/users/manage`, {
-      method: 'POST',
-      headers: getAuthHeader(),
-      body: JSON.stringify({ action: 'update', userData: user })
-    });
-    if (!res.ok) throw new Error('Failed to update user');
-    return res.json();
-  } catch (error) {
-    console.warn("Offline mode: updateUser not queued (users managed separately)");
-    // 🔥 users не кешируются в data_items, поэтому просто возвращаем user
-    return { success: true, user };
-  }
-},
+    updateUser: async (user: User) => {
+      try {
+        const res = await fetchWithAuth(`${API_URL}/users/manage`, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'update', userData: user })
+        });
+        if (!res.ok) throw new Error('Failed to update user');
+        return res.json();
+      } catch (error: any) {
+        if (error.message === 'TOKEN_EXPIRED') throw error;
+        console.warn("Offline mode: updateUser not queued (users managed separately)");
+        return { success: true, user };
+      }
+    },
 
     deleteUser: async (userId: string) => {
-        await fetch(`${API_URL}/users/manage`, {
+        await fetchWithAuth(`${API_URL}/users/manage`, {
             method: 'POST',
-            headers: getAuthHeader(),
             body: JSON.stringify({ action: 'delete', userData: { id: userId } })
         });
     },
 
-  // === ОБНОВЛЕНИЕ ПРОФИЛЯ (через users/manage) ===
-// === ОБНОВЛЕНИЕ ПРОФИЛЯ (через users/manage) ===
-updateProfile: async (userId: string, profileData: { name?: string; phone?: string; email?: string }): Promise<User> => {
-    const res = await fetch(`${API_URL}/users/manage`, {
-        method: 'POST',
-        headers: getAuthHeader(),
-        body: JSON.stringify({
-            action: 'update',
-            userData: {
+    updateProfile: async (userId: string, profileData: { name?: string; phone?: string; email?: string }): Promise<User> => {
+        const res = await fetchWithAuth(`${API_URL}/users/manage`, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'update',
+                userData: {
+                    id: userId,
+                    ...profileData
+                }
+            })
+        });
+
+        if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`Server error ${res.status}: ${errorText}`);
+        }
+
+        const data = await res.json();
+
+        if (data.user) {
+            await offlineStorage.setCache('user_me', data.user);
+            return data.user;
+        }
+
+        try {
+            const updatedUser = await api.getMe();
+            await offlineStorage.setCache('user_me', updatedUser);
+            return updatedUser;
+        } catch (error) {
+            console.warn('⚠️ Failed to fetch fresh user, using local merge as last resort');
+            const currentUser = await offlineStorage.getCache('user_me');
+            const updatedUser: User = {
+                ...(currentUser || {}),
                 id: userId,
                 ...profileData
-            }
-        })
-    });
+            } as User;
 
-    if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`Server error ${res.status}: ${errorText}`);
-    }
+            await offlineStorage.setCache('user_me', updatedUser);
+            return updatedUser;
+        }
+    },
 
-    const data = await res.json();
-
-
-    // 🔥 ПРИОРИТЕТ 1: Если сервер вернул обновлённого пользователя — используем его
-    if (data.user) {
-        await offlineStorage.setCache('user_me', data.user);
-        return data.user;
-    }
-
-    // 🔥 ПРИОРИТЕТ 2: Фолбэк — запрашиваем актуального пользователя с сервера
-    try {
-        const updatedUser = await api.getMe();
-        await offlineStorage.setCache('user_me', updatedUser);
-        return updatedUser;
-    } catch (error) {
-        console.warn('⚠️ Failed to fetch fresh user, using local merge as last resort');
-
-        // 🔥 ПОСЛЕДНИЙ ВАРИАНТ: локальное слияние (только если всё остальное не сработало)
-        const currentUser = await offlineStorage.getCache('user_me');
-        const updatedUser: User = {
-            ...(currentUser || {}),
-            id: userId,
-            ...profileData
-        } as User;
-
-        await offlineStorage.setCache('user_me', updatedUser);
-        return updatedUser;
-    }
-},
-
-    // === СМЕНА ПАРОЛЯ (отдельный безопасный эндпоинт) ===
     changePassword: async (currentPassword: string, newPassword: string): Promise<{ success: true }> => {
-        const res = await fetch(`${API_URL}/auth/change-password`, {
+        const res = await fetchWithAuth(`${API_URL}/auth/change-password`, {
             method: 'POST',
-            headers: getAuthHeader(),
             body: JSON.stringify({ currentPassword, newPassword })
         });
 
@@ -576,9 +597,8 @@ updateProfile: async (userId: string, profileData: { name?: string; phone?: stri
     // --- INTEGRATIONS ---
     createWhatsAppInstance: async (phoneNumber: string): Promise<{ idInstance: string, apiTokenInstance: string }> => {
         try {
-            const res = await fetch(`${API_URL}/integrations/whatsapp/create`, {
+            const res = await fetchWithAuth(`${API_URL}/integrations/whatsapp/create`, {
                 method: 'POST',
-                headers: getAuthHeader(),
                 body: JSON.stringify({ phoneNumber })
             });
 
@@ -599,17 +619,15 @@ updateProfile: async (userId: string, profileData: { name?: string; phone?: stri
     },
 
     // --- ADMIN METHODS ---
-
     adminGetUsers: async (): Promise<User[]> => {
-        const res = await fetch(`${API_URL}/admin/users`, { headers: getAuthHeader() });
+        const res = await fetchWithAuth(`${API_URL}/admin/users`);
         if (!res.ok) throw new Error('Failed to fetch users');
         return res.json();
     },
 
     adminSetSubscription: async (userId: string, plan: SubscriptionPlan, months: number): Promise<any> => {
-        const res = await fetch(`${API_URL}/admin/set-subscription`, {
+        const res = await fetchWithAuth(`${API_URL}/admin/set-subscription`, {
             method: 'POST',
-            headers: getAuthHeader(),
             body: JSON.stringify({ userId, plan, months })
         });
         const data = await res.json();
@@ -618,9 +636,8 @@ updateProfile: async (userId: string, profileData: { name?: string; phone?: stri
     },
 
     adminGenerateUserApiKey: async (userId: string): Promise<string> => {
-        const res = await fetch(`${API_URL}/admin/generate-user-api-key`, {
+        const res = await fetchWithAuth(`${API_URL}/admin/generate-user-api-key`, {
             method: 'POST',
-            headers: getAuthHeader(),
             body: JSON.stringify({ userId })
         });
         const data = await res.json();
@@ -628,30 +645,19 @@ updateProfile: async (userId: string, profileData: { name?: string; phone?: stri
         return data.apiKey;
     },
 
-
-     // === КАЛЬКУЛЯТОР — СОХРАНЕНИЕ/ЗАГРУЗКА КОНФИГОВ ===
-
-    /**
-     * Сохраняет настройки калькулятора на сервере
-     * @returns Короткий ID конфига (например: "a1b2c3")
-     */
+    // === КАЛЬКУЛЯТОР ===
     saveCalculatorConfig: async (config: { defaultRate: number; termRates: { months: number; rate: number }[] }): Promise<string> => {
-        const res = await fetch(`${API_URL}/calculator-configs`, {
+        const res = await fetchWithAuth(`${API_URL}/calculator-configs`, {
             method: 'POST',
-            headers: getAuthHeader(),
             body: JSON.stringify(config)
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.msg || data.error || 'Не удалось сохранить настройки калькулятора');
-        return data.configId; // Возвращаем короткий ID: "a1b2c3"
+        return data.configId;
     },
 
-    /**
-     * Загружает конфиг калькулятора по короткому ID
-     * ⚠️ ПУБЛИЧНЫЙ МЕТОД — не использует токен авторизации!
-     */
+    // 🔥 ПУБЛИЧНЫЙ — обычный fetch (без токена)
     getCalculatorConfig: async (configId: string): Promise<{ defaultRate: number; termRates: { months: number; rate: number }[]; sellerPhone?: string; }> => {
-        // 🔹 Публичный запрос — БЕЗ токена, чтобы клиент мог открыть ссылку без логина
         const res = await fetch(`${API_URL}/calculator-configs/${configId}`, {
             headers: { 'Content-Type': 'application/json' }
         });
@@ -660,202 +666,160 @@ updateProfile: async (userId: string, profileData: { name?: string; phone?: stri
         return data;
     },
 
+    // === УНИВЕРСАЛЬНЫЕ HTTP МЕТОДЫ (используют fetchWithAuth) ===
+    get: async <T>(url: string, params?: Record<string, any>): Promise<T> => {
+        const queryString = params ? '?' + new URLSearchParams(params).toString() : '';
+        const res = await fetchWithAuth(`${API_URL}${url}${queryString}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || data.error || `GET ${url} failed`);
+        return data;
+    },
 
-    // === УНИВЕРСАЛЬНЫЕ HTTP МЕТОДЫ (для техподдержки и других новых роутов) ===
+    post: async <T>(url: string, data?: any): Promise<T> => {
+        const res = await fetchWithAuth(`${API_URL}${url}`, {
+            method: 'POST',
+            body: data ? JSON.stringify(data) : undefined
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.msg || json.error || `POST ${url} failed`);
+        return json;
+    },
 
-get: async <T>(url: string, params?: Record<string, any>): Promise<T> => {
-    const queryString = params ? '?' + new URLSearchParams(params).toString() : '';
-    const res = await fetch(`${API_URL}${url}${queryString}`, {
-        headers: getAuthHeader()
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.msg || data.error || `GET ${url} failed`);
-    return data;
-},
+    patch: async <T>(url: string, data?: any): Promise<T> => {
+        const res = await fetchWithAuth(`${API_URL}${url}`, {
+            method: 'PATCH',
+            body: data ? JSON.stringify(data) : undefined
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.msg || json.error || `PATCH ${url} failed`);
+        return json;
+    },
 
-post: async <T>(url: string, data?: any): Promise<T> => {
-    const res = await fetch(`${API_URL}${url}`, {
+    delete: async <T>(url: string): Promise<T> => {
+        const res = await fetchWithAuth(`${API_URL}${url}`, {
+            method: 'DELETE'
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.msg || json.error || `DELETE ${url} failed`);
+        return json;
+    },
+
+    sendOverdueReminder: async (payload: {
+      phone: string;
+      customerName: string;
+      productName: string;
+      overdueAmount: number;
+      monthlyPayment?: number;
+      totalToPay?: number;
+      monthsOverdue: number;
+      template?: 'overdue';
+    }): Promise<{ success: boolean }> => {
+      const res = await fetchWithAuth(`${API_URL}/integrations/whatsapp/send-reminder`, {
         method: 'POST',
-        headers: getAuthHeader(),
-        body: data ? JSON.stringify(data) : undefined
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.msg || json.error || `POST ${url} failed`);
-    return json;
-},
+        body: JSON.stringify(payload)
+      });
 
-patch: async <T>(url: string, data?: any): Promise<T> => {
-    const res = await fetch(`${API_URL}${url}`, {
-        method: 'PATCH',
-        headers: getAuthHeader(),
-        body: data ? JSON.stringify(data) : undefined
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.msg || json.error || `PATCH ${url} failed`);
-    return json;
-},
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || data.msg || 'Не удалось отправить напоминание');
+      }
+      return data;
+    },
 
-delete: async <T>(url: string): Promise<T> => {
-    const res = await fetch(`${API_URL}${url}`, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.msg || json.error || `DELETE ${url} failed`);
-    return json;
-},
+    sendOverdueReminderAll: async (payload?: {
+      template?: 'overdue';
+    }): Promise<{
+      success: boolean;
+      results: {
+        total: number;
+        sent: number;
+        failed: number;
+        errors: Array<{ customer: string; error: string }>;
+      }
+    }> => {
+      const res = await fetchWithAuth(`${API_URL}/integrations/whatsapp/send-reminder-all`, {
+        method: 'POST',
+        body: JSON.stringify(payload || {})
+      });
 
-
-
-sendOverdueReminder: async (payload: {
-  phone: string;
-  customerName: string;
-  productName: string;
-  overdueAmount: number;
-  monthlyPayment?: number;  // ← добавьте этот параметр
-  totalToPay?: number;
-  monthsOverdue: number;
-  template?: 'overdue';
-}): Promise<{ success: boolean }> => {
-  const res = await fetch(`${API_URL}/integrations/whatsapp/send-reminder`, {
-    method: 'POST',
-    headers: getAuthHeader(), // ✅ Использует ваш x-auth-token из localStorage
-    body: JSON.stringify(payload)
-  });
-
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || data.msg || 'Не удалось отправить напоминание');
-  }
-  return data;
-},
-
-
-
-/**
- * Массовая отправка напоминаний всем просроченным клиентам
- */
-sendOverdueReminderAll: async (payload?: {
-  template?: 'overdue';
-}): Promise<{
-  success: boolean;
-  results: {
-    total: number;
-    sent: number;
-    failed: number;
-    errors: Array<{ customer: string; error: string }>;
-  }
-}> => {
-  const res = await fetch(`${API_URL}/integrations/whatsapp/send-reminder-all`, {
-    method: 'POST',
-    headers: getAuthHeader(),
-    body: JSON.stringify(payload || {})
-  });
-
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || data.msg || 'Не удалось отправить напоминания');
-  }
-  return data;
-},
-
-
-
-
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || data.msg || 'Не удалось отправить напоминания');
+      }
+      return data;
+    },
 
     adminGetStats: async (): Promise<{
-  totalUsers: number;
-  activeSubscriptions: number;
-  totalContracts: number;
-}> => {
-  const res = await fetch(`${API_URL}/admin/stats`, {
-    headers: getAuthHeader()
-  });
-  if (!res.ok) throw new Error('Failed to fetch stats');
-  return res.json();
-},
+      totalUsers: number;
+      activeSubscriptions: number;
+      totalContracts: number;
+    }> => {
+      const res = await fetchWithAuth(`${API_URL}/admin/stats`);
+      if (!res.ok) throw new Error('Failed to fetch stats');
+      return res.json();
+    },
 
-/**
- * Заблокировать/разблокировать пользователя
- */
-adminSetUserStatus: async (userId: string, status: { blocked: boolean }): Promise<void> => {
-  const res = await fetch(`${API_URL}/admin/users/${userId}/status`, {
-    method: 'PATCH',
-    headers: getAuthHeader(),
-    body: JSON.stringify(status)
-  });
-  if (!res.ok) throw new Error('Failed to update user status');
-},
+    adminSetUserStatus: async (userId: string, status: { blocked: boolean }): Promise<void> => {
+      const res = await fetchWithAuth(`${API_URL}/admin/users/${userId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify(status)
+      });
+      if (!res.ok) throw new Error('Failed to update user status');
+    },
 
-/**
- * Сбросить пароль пользователя
- */
-adminResetUserPassword: async (userId: string, newPassword: string): Promise<void> => {
-  const res = await fetch(`${API_URL}/admin/users/${userId}/reset-password`, {
-    method: 'POST',
-    headers: getAuthHeader(),
-    body: JSON.stringify({ newPassword })
-  });
-  if (!res.ok) throw new Error('Failed to reset password');
-},
-
-
-
+    adminResetUserPassword: async (userId: string, newPassword: string): Promise<void> => {
+      const res = await fetchWithAuth(`${API_URL}/admin/users/${userId}/reset-password`, {
+        method: 'POST',
+        body: JSON.stringify({ newPassword })
+      });
+      if (!res.ok) throw new Error('Failed to reset password');
+    },
 
     checkLocalContractLimit: async (sales: Sale[]): Promise<{
-  allowed: boolean;
-  reason?: string;
-  current: number;
-  limit: number;
-}> => {
-  try {
-    // Получаем пользователя из кэша
-    const userStr = localStorage.getItem('user');
-    if (!userStr) return { allowed: false, reason: 'Пользователь не авторизован', current: 0, limit: 0 };
+      allowed: boolean;
+      reason?: string;
+      current: number;
+      limit: number;
+    }> => {
+      try {
+        const userStr = localStorage.getItem('user');
+        if (!userStr) return { allowed: false, reason: 'Пользователь не авторизован', current: 0, limit: 0 };
 
-    const user = JSON.parse(userStr);
-    if (!user?.subscription) return { allowed: false, reason: 'Нет активной подписки', current: 0, limit: 0 };
+        const user = JSON.parse(userStr);
+        if (!user?.subscription) return { allowed: false, reason: 'Нет активной подписки', current: 0, limit: 0 };
 
-    const { plan } = user.subscription;
+        const { plan } = user.subscription;
+        const LIMITS: Record<string, { contracts: number }> = {
+          TRIAL: { contracts: 10 },
+          START: { contracts: 100 },
+          STANDARD: { contracts: 500 },
+          BUSINESS: { contracts: -1 }
+        };
 
-    // Лимиты тарифов (синхронизировано с бэкендом)
-    const LIMITS: Record<string, { contracts: number }> = {
-      TRIAL: { contracts: 10 },
-      START: { contracts: 100 },
-      STANDARD: { contracts: 500 },
-      BUSINESS: { contracts: -1 } // -1 = безлимит
-    };
+        const limit = LIMITS[plan]?.contracts ?? 0;
 
-    const limit = LIMITS[plan]?.contracts ?? 0;
+        if (user.role === 'admin' || limit === -1) {
+          return { allowed: true, current: 0, limit: -1 };
+        }
 
-    // Админы и безлимит — пропускаем
-    if (user.role === 'admin' || limit === -1) {
-      return { allowed: true, current: 0, limit: -1 };
-    }
+        const currentCount = sales.filter(s =>
+          s.status === 'ACTIVE' || s.status === 'DRAFT'
+        ).length;
 
-    // Считаем активные договоры в локальных данных
-    const currentCount = sales.filter(s =>
-      s.status === 'ACTIVE' || s.status === 'DRAFT'
-    ).length;
+        if (currentCount >= limit) {
+          return {
+            allowed: false,
+            reason: `Превышен лимит договоров для тарифа "${plan}". Максимум: ${limit}. У вас сейчас: ${currentCount}.`,
+            current: currentCount,
+            limit: limit
+          };
+        }
 
-    if (currentCount >= limit) {
-      return {
-        allowed: false,
-        reason: `Превышен лимит договоров для тарифа "${plan}". Максимум: ${limit}. У вас сейчас: ${currentCount}.`,
-        current: currentCount,
-        limit: limit
-      };
-    }
+        return { allowed: true, current: currentCount, limit: limit };
 
-    return { allowed: true, current: currentCount, limit: limit };
-
-  } catch (err) {
-    console.error('checkLocalContractLimit error:', err);
-    // Fail-open: разрешаем при ошибке, но логируем
-    return { allowed: true, current: 0, limit: -1, reason: 'Ошибка проверки лимита' };
-  }
-},
-
-
-
+      } catch (err) {
+        console.error('checkLocalContractLimit error:', err);
+        return { allowed: true, current: 0, limit: -1, reason: 'Ошибка проверки лимита' };
+      }
+    },
 };

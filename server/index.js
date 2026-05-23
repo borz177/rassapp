@@ -560,14 +560,21 @@ initDB();
 // --- MIDDLEWARE ---
 const auth = (req, res, next) => {
   const token = req.header('x-auth-token');
-  if (!token) return res.status(401).json({ msg: 'No token, authorization denied' });
+  if (!token) return res.status(401).json({ code: 'NO_TOKEN', msg: 'Нет токена' });
+
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
     next();
   } catch (e) {
-    console.error("Auth Token Error:", e.message);
-    res.status(400).json({ msg: 'Token is not valid' });
+    // В middleware auth на сервере:
+if (e.name === 'TokenExpiredError') {
+  return res.status(401).json({
+    msg: 'Сессия истекла',
+    code: 'TOKEN_EXPIRED' // 
+  });
+}
+    return res.status(401).json({ code: 'INVALID_TOKEN', msg: 'Невалидный токен' });
   }
 };
 
