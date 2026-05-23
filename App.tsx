@@ -108,7 +108,12 @@ const isLanding = path === "/"
   contracts: Array<{ id: string; productName: string }>;
 } | null>(null);
 
-
+const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
+const [sessionMessage, setSessionMessage] = useState('');
+const [sessionHandlers, setSessionHandlers] = useState<{
+  onConfirm: () => void;
+  onCancel: () => void;
+} | null>(null);
 
   const [myProfitPeriod, setMyProfitPeriod] = useState(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -211,7 +216,24 @@ useEffect(() => {
     };
 }, []); // ✅ Пустой массив — подписка создаётся только один раз
 
-  
+
+ useEffect(() => {
+  (window as any).__onSessionExpired = (
+    message: string,
+    onConfirm: () => void,
+    onCancel: () => void
+  ) => {
+    setSessionMessage(message);
+    setSessionHandlers({ onConfirm, onCancel });
+    setShowSessionExpiredModal(true);
+  };
+
+  return () => {
+    delete (window as any).__onSessionExpired;
+  };
+}, []);
+
+
 // 🔹 В App.tsx — исправленная часть handleSync
 const handleSync = async () => {
     if (!navigator.onLine) return;
@@ -2391,7 +2413,60 @@ if (!user && !showSplash) {
   </div>
 )}
 
+{showSessionExpiredModal && (
+  <div
+    className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"
+    onClick={() => sessionHandlers?.onCancel()}
+  >
+    <div
+      className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-5 animate-scale-in"
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Иконка */}
+      <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-full flex items-center justify-center mx-auto text-3xl">
+        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
 
+      {/* Заголовок */}
+      <div className="text-center space-y-2">
+        <h3 className="text-2xl font-bold text-slate-800 dark:text-white">
+          ⏳ Сессия истекла
+        </h3>
+        <p className="text-slate-600 dark:text-slate-300">
+          {sessionMessage}
+        </p>
+      </div>
+
+      {/* Информация */}
+      <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 space-y-2 text-sm">
+        <p className="text-slate-600 dark:text-slate-300">
+          Ваша сессия завершилась из-за бездействия или истечения срока действия токена.
+        </p>
+        <p className="text-slate-500 dark:text-slate-400 text-xs">
+          Для продолжения работы необходимо войти в систему заново.
+        </p>
+      </div>
+
+      {/* Кнопки */}
+      <div className="flex gap-3 pt-2">
+        <button
+          onClick={() => sessionHandlers?.onCancel()}
+          className="flex-1 py-3 px-4 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+        >
+          Отмена
+        </button>
+        <button
+          onClick={() => sessionHandlers?.onConfirm()}
+          className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30 transition-all hover:scale-105 active:scale-95"
+        >
+          Войти снова
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
 
            {/* === МОДАЛЬНОЕ ОКНО: НЕЛЬЗЯ УДАЛИТЬ (ЕСТЬ ДОГОВОРЫ) === */}

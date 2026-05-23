@@ -49,7 +49,7 @@ const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Re
     headers: mergedHeaders
   });
 
-  // Внутри блока обработки 401:
+// Внутри блока обработки 401:
 if (res.status === 401) {
   console.warn('🔒 Auth error detected:', res.status, res.url);
 
@@ -71,32 +71,57 @@ if (res.status === 401) {
       errorMessage || 'Войдите в систему снова',
       'warning'
     );
-  } else {
-    // 🔥 Используем confirm вместо alert — пользователь явно подтверждает переход
-    const confirmed = window.confirm(
-      `⏳ ${errorMessage || 'Сессия истекла'}\n\nПерейти на страницу входа?`
-    );
 
-    // 🔥 Редирект только после подтверждения + небольшая задержка
-    if (confirmed || !errorMessage) {
+    // Редиректим сразу после уведомления
+    if (!window.location.pathname.includes('/login')) {
       setTimeout(() => {
-        window.location.replace('/login?expired=1'); // replace вместо href — чище
-      }, 100);
+        window.location.replace('/login?expired=1');
+      }, 300);
     }
-    return res; // Возвращаем, чтобы не бросать ошибку лишний раз
+
+    throw new Error('TOKEN_EXPIRED');
   }
 
-  // 🔥 Если есть showNotification — редиректим сразу (не ждём ОК)
-  if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-    setTimeout(() => {
-      window.location.replace('/login?expired=1');
-    }, 300); // Небольшая задержка, чтобы уведомление успело показаться
+  // 🔥 ПОКАЗЫВАЕМ КРАСИВУЮ МОДАЛКУ ВМЕСТО confirm()
+  if (typeof window !== 'undefined') {
+    // Сохраняем сообщение в state (через window, так как fetchWithAuth вне компонента)
+    (window as any).__sessionExpiredData = {
+      message: errorMessage || 'Сессия истекла',
+      show: true
+    };
+
+    // 🔥 Создаём Promise, который резолвится после выбора пользователя
+    return new Promise((resolve, reject) => {
+      // Сохраняем колбэки в window для доступа из модалки
+      (window as any).__sessionExpiredHandlers = {
+        onConfirm: () => {
+          (window as any).__sessionExpiredData.show = false;
+          setTimeout(() => {
+            window.location.replace('/login?expired=1');
+          }, 200);
+          resolve(new Response(JSON.stringify({ redirected: true })));
+        },
+        onCancel: () => {
+          (window as any).__sessionExpiredData.show = false;
+          reject(new Error('Session expired - user cancelled'));
+        }
+      };
+
+      // 🔥 Триггерим обновление состояния в App.tsx
+      if ((window as any).__onSessionExpired) {
+        (window as any).__onSessionExpired(
+          errorMessage || 'Сессия истекла',
+          (window as any).__sessionExpiredHandlers.onConfirm,
+          (window as any).__sessionExpiredHandlers.onCancel
+        );
+      }
+    });
   }
 
   throw new Error('TOKEN_EXPIRED');
 }
 
-  return res;
+return res;
 };
 
 export const api = {

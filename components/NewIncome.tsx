@@ -572,7 +572,7 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
             <button
                 type="submit"
                 disabled={isSubmitting}
-                className={`w-full py-4 rounded-xl font-bold shadow-lg transition-transform active:scale-95 ${
+                className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95 ${
                     isSubmitting
                         ? 'bg-emerald-400 cursor-not-allowed'
                         : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
@@ -590,21 +590,21 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
             </button>
         </form>
         {showConfirmModal && (
-  <div
-    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-    onClick={handleCancel} // 🔥 Теперь сбрасывает isSubmitting
-  >
-    <div
-      className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
-      onClick={e => e.stopPropagation()} // 🔥 Клик внутри модалки не закрывает её
-    >
-      <h3 className="text-xl font-bold text-slate-800 text-center">Подтверждение прихода</h3>
+            <div
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+                onClick={handleCancel} // 🔥 Теперь сбрасывает isSubmitting
+            >
+                <div
+                    className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
+                    onClick={e => e.stopPropagation()} // 🔥 Клик внутри модалки не закрывает её
+                >
+                    <h3 className="text-xl font-bold text-slate-800 text-center">Подтверждение прихода</h3>
 
-      <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
-        {sourceType === 'CUSTOMER' && (
-          <>
-            <div className="flex justify-between">
-              <span className="text-slate-500">От кого:</span>
+                    <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
+                        {sourceType === 'CUSTOMER' && (
+                            <>
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500">От кого:</span>
               <span className="font-bold text-slate-800">{selectedCustomer?.name}</span>
             </div>
             <div className="flex justify-between">
