@@ -209,71 +209,90 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
       {/* Plans Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto px-2">
         {plans.map((plan) => {
-          const monthlyPrice = calculatePrice(plan.basePrice);
-          const totalPrice = monthlyPrice * duration;
+  const monthlyPrice = calculatePrice(plan.basePrice);
+  const totalPrice = monthlyPrice * duration;
 
-          const isCurrentPlan = user?.subscription?.plan === plan.key;
+  // 🔥 ПРОВЕРКА: план текущий И активный
+  const isCurrentPlan = !subStatus.expired && user?.subscription?.plan === plan.key;
+  // 🔥 ПРОВЕРКА: план совпадает, но истёк (можно продлить)
+  const isExpiredPlan = subStatus.expired && user?.subscription?.plan === plan.key;
 
-          return (
-            <div
-              key={plan.name}
-              className={`relative rounded-2xl p-6 shadow-xl transition-transform hover:scale-[1.02] flex flex-col ${plan.color} ${isCurrentPlan ? 'ring-4 ring-emerald-400 ring-offset-2' : ''}`}
-            >
-              {plan.badge && !isCurrentPlan && (
-                <div className="absolute top-0 right-0 bg-indigo-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl">
-                  {plan.badge}
-                </div>
-              )}
+  return (
+    <div
+      key={plan.name}
+      className={`relative rounded-2xl p-6 shadow-xl transition-transform hover:scale-[1.02] flex flex-col ${plan.color} ${
+        isCurrentPlan ? 'ring-4 ring-emerald-400 ring-offset-2' : 
+        isExpiredPlan ? 'ring-2 ring-amber-400 ring-offset-1' : ''
+      }`}
+    >
+      {plan.badge && !isCurrentPlan && !isExpiredPlan && (
+        <div className="absolute top-0 right-0 bg-indigo-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl">
+          {plan.badge}
+        </div>
+      )}
 
-              {isCurrentPlan && (
-                <div className="absolute top-0 right-0 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl flex items-center gap-1">
-                  {ICONS.Check} Ваш текущий план
-                </div>
-              )}
+      {isCurrentPlan && (
+        <div className="absolute top-0 right-0 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl flex items-center gap-1">
+          {ICONS.Check} Ваш текущий план
+        </div>
+      )}
 
-              <h3 className={`text-xl font-bold mb-2 ${plan.highlight ? 'text-indigo-900' : plan.textColor}`}>
-                {plan.name}
-              </h3>
+      {isExpiredPlan && (
+        <div className="absolute top-0 right-0 bg-amber-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl flex items-center gap-1">
+          ⏳ Истёк
+        </div>
+      )}
 
-              <div className="mb-6">
-                <span className={`text-4xl font-bold ${plan.highlight ? 'text-indigo-900' : plan.textColor}`}>
-                  {monthlyPrice} ₽
-                </span>
-                <span className={`text-sm opacity-70 ${plan.textColor}`}>/мес</span>
-                {duration > 1 && (
-                   <p className={`text-xs mt-1 opacity-60 ${plan.textColor}`}>
-                     Оплата сразу: {totalPrice} ₽
-                   </p>
-                )}
-              </div>
+      <h3 className={`text-xl font-bold mb-2 ${plan.highlight ? 'text-indigo-900' : plan.textColor}`}>
+        {plan.name}
+      </h3>
 
-              <ul className="space-y-3 mb-8 flex-1">
-                {plan.features.map((feature, idx) => (
-                  <li key={idx} className="flex items-start gap-2 text-sm">
-                    <span className={plan.name === 'Бизнес' ? 'text-emerald-400' : 'text-emerald-600'}>
-                      {ICONS.Check}
-                    </span>
-                    <span className={`${plan.name === 'Бизнес' ? 'text-slate-300' : 'text-slate-600'}`}>
-                      {feature}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+      <div className="mb-6">
+        <span className={`text-4xl font-bold ${plan.highlight ? 'text-indigo-900' : plan.textColor}`}>
+          {monthlyPrice} ₽
+        </span>
+        <span className={`text-sm opacity-70 ${plan.textColor}`}>/мес</span>
+        {duration > 1 && (
+           <p className={`text-xs mt-1 opacity-60 ${plan.textColor}`}>
+             Оплата сразу: {totalPrice} ₽
+           </p>
+        )}
+      </div>
 
-              <button
-                onClick={() => !isCurrentPlan && handleSelectPlan(plan.name, monthlyPrice, plan.basePrice)}
-                disabled={isCurrentPlan}
-                className={`w-full py-4 rounded-xl font-bold transition-opacity ${
-                    isCurrentPlan 
-                    ? 'bg-emerald-600 text-white cursor-default' 
-                    : `${plan.btnColor} hover:opacity-90`
-                }`}
-              >
-                {isCurrentPlan ? 'Активен' : 'Выбрать'}
-              </button>
-            </div>
-          );
-        })}
+      <ul className="space-y-3 mb-8 flex-1">
+        {plan.features.map((feature, idx) => (
+          <li key={idx} className="flex items-start gap-2 text-sm">
+            <span className={plan.name === 'Бизнес' ? 'text-emerald-400' : 'text-emerald-600'}>
+              {ICONS.Check}
+            </span>
+            <span className={`${plan.name === 'Бизнес' ? 'text-slate-300' : 'text-slate-600'}`}>
+              {feature}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <button
+        onClick={() => {
+          // 🔥 Разрешаем выбор, если план не активен (можно выбрать новый или продлить старый)
+          if (!isCurrentPlan) {
+            handleSelectPlan(plan.name, monthlyPrice, plan.basePrice);
+          }
+        }}
+        disabled={isCurrentPlan}
+        className={`w-full py-4 rounded-xl font-bold transition-opacity ${
+          isCurrentPlan 
+            ? 'bg-emerald-600 text-white cursor-default' 
+            : isExpiredPlan
+              ? `${plan.btnColor} hover:opacity-90 ring-2 ring-amber-400`
+              : `${plan.btnColor} hover:opacity-90`
+        }`}
+      >
+        {isCurrentPlan ? 'Активен' : isExpiredPlan ? '🔄 Продлить' : 'Выбрать'}
+      </button>
+    </div>
+  );
+})}
       </div>
 
       <div className="text-center text-xs text-slate-400 mt-8">
