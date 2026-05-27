@@ -547,15 +547,18 @@ const handleSendFullReport = () => {
     };
   }, [selectedSale, appSettings.showCents]);
 
-  const getInvestorInfo = (sale: Sale) => {
-      if (!accounts || !investors) return null;
-      const account = accounts.find(a => a.id === sale.accountId);
-      if (account && account.type === 'INVESTOR' && account.ownerId) {
-          const investor = investors.find(i => i.id === account.ownerId);
-          return investor ? investor.name : null;
-      }
-      return null;
-  };
+  // ✅ Исправленная версия
+const getInvestorInfo = (sale: Sale) => {
+    if (!accounts || !investors) return null;
+    const account = accounts.find(a => a.id === sale.accountId);
+
+    // Fix: проверяем ОБА типа счетов, которые могут иметь инвестора
+    if (account && (account.type === 'INVESTOR' || account.type === 'MAIN') && account.ownerId) {
+        const investor = investors.find(i => i.id === account.ownerId);
+        return investor ? investor.name : null;
+    }
+    return null;
+};
 
   if (selectedSale) {
       const paidAmount = selectedSale.totalAmount - selectedSale.remainingAmount;
