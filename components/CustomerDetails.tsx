@@ -547,13 +547,13 @@ const handleSendFullReport = () => {
     };
   }, [selectedSale, appSettings.showCents]);
 
-  // ✅ Исправленная версия
+
 const getInvestorInfo = (sale: Sale) => {
     if (!accounts || !investors) return null;
     const account = accounts.find(a => a.id === sale.accountId);
 
-    // Fix: проверяем ОБА типа счетов, которые могут иметь инвестора
-    if (account && (account.type === 'INVESTOR' || account.type === 'MAIN') && account.ownerId) {
+    // 🔑 Главное: есть ли у счёта привязанный инвестор? Тип не важен!
+    if (account?.ownerId) {
         const investor = investors.find(i => i.id === account.ownerId);
         return investor ? investor.name : null;
     }
