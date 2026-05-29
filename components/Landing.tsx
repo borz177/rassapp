@@ -213,18 +213,19 @@ export default function Landing() {
                         </a>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mt-20 pt-8 border-t border-slate-200">
-                        {[
-                            { value: "100+", label: "Активных пользователей", icon: "👥" },
-                            { value: "24/7", label: "Поддержка", icon: "🎧" }
-                        ].map((stat, idx) => (
-                            <div key={idx} className={`text-center fade-up delay-${idx + 3}`}>
-                                <div className="text-3xl mb-2">{stat.icon}</div>
-                                <div className="text-2xl md:text-3xl font-black text-slate-900">{stat.value}</div>
-                                <div className="text-sm text-slate-500 mt-1">{stat.label}</div>
-                            </div>
-                        ))}
-                    </div>
+                    {/* 🔹 Измени grid-cols-2 md:grid-cols-4 на grid-cols-2 max-w-2xl mx-auto */}
+<div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto mt-20 pt-8 border-t border-slate-200">
+    {[
+        { value: "100+", label: "Активных пользователей", icon: "👥" },
+        { value: "24/7", label: "Поддержка", icon: "🎧" }
+    ].map((stat, idx) => (
+        <div key={idx} className={`text-center fade-up delay-${idx + 3}`}>
+            <div className="text-3xl mb-2">{stat.icon}</div>
+            <div className="text-2xl md:text-3xl font-black text-slate-900">{stat.value}</div>
+            <div className="text-sm text-slate-500 mt-1">{stat.label}</div>
+        </div>
+    ))}
+</div>
                 </div>
             </section>
 
