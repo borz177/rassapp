@@ -374,185 +374,215 @@ const Integrations: React.FC<IntegrationsProps> = ({
         )}
 
         {/* 🔹 Если подключено: статус + настройки */}
-        {isConnected && (
-          <>
-            <div className="px-5 py-3 bg-emerald-50 border-t border-emerald-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-bold text-emerald-800">WhatsApp подключен</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setShowCredentials(true)} className="text-xs text-indigo-600 font-bold hover:underline">Изменить токены</button>
-                <button onClick={handleDisconnect} className="text-xs text-red-600 font-bold hover:underline flex items-center gap-1">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                  Отключить
-                </button>
-              </div>
-            </div>
-
-            {/* 🔹 Все настройки (теперь всегда видны при подключении) */}
-            <div className="p-5 space-y-6 border-t border-slate-100">
-              {/* Credentials для редактирования */}
-              <div className="space-y-4">
-                <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-700">
-                  <p>1. Зарегистрируйтесь на <a href="https://console.green-api.com" target="_blank" rel="noreferrer" className="underline font-bold">Green API Console</a>.</p>
-                  <p>2. Создайте инстанс (можно Developer — бесплатно).</p>
-                  <p>3. Скопируйте <b>idInstance</b> и <b>apiTokenInstance</b> сюда.</p>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">idInstance</label>
-                    <input type="text" className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm" value={idInstance} onChange={e => setIdInstance(e.target.value)} placeholder="1101000001" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">apiTokenInstance</label>
-                    <div className="relative">
-                      <input type={isTokenVisible ? "text" : "password"} className="w-full p-3 pr-10 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm" value={apiToken} onChange={e => setApiToken(e.target.value)} placeholder="••••••••" />
-                      <button type="button" onClick={() => setIsTokenVisible(!isTokenVisible)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                        {isTokenVisible ? '👁️' : '🔒'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Status */}
-              <div className="flex items-center justify-between gap-4 border-t border-slate-100 pt-4">
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-500' : connectionStatus === 'ERROR' ? 'bg-red-500' : 'bg-amber-500'}`}></div>
-                  <span className="text-sm font-bold text-slate-700">
-                    {connectionStatus === 'AUTHORIZED' ? 'Подключено' : connectionStatus === 'NOT_AUTHORIZED' ? 'Не авторизован' : 'Не проверено'}
-                  </span>
-                </div>
-                <button
-                  onClick={() => checkConnection(idInstance, apiToken).catch(console.error)}
-                  disabled={isTesting}
-                  className="text-sm text-indigo-600 font-bold hover:underline"
-                >
-                  {isTesting ? 'Проверка...' : 'Проверить связь'}
-                </button>
-              </div>
-
-              <hr className="border-slate-100" />
-
-              {/* Schedule */}
-              <div>
-                <h4 className="font-semibold text-slate-700 mb-3 text-sm flex items-center gap-2">
-                  {ICONS.Clock} Настройки рассылки
-                </h4>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Время отправки</label>
-                    <select value={reminderTime} onChange={e => setReminderTime(e.target.value)} className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-slate-50">
-                      {generateTimeOptions().map(time => (<option key={time} value={time}>{time}</option>))}
-                    </select>
-                  </div>
-                </div>
-                <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Когда напоминать?</label>
-                <div className="flex flex-wrap gap-2">
-                  <button onClick={() => toggleDay(0)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(0) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>В день оплаты</button>
-                  <button onClick={() => toggleDay(-1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(-1) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>За 1 день</button>
-                  <button onClick={() => toggleDay(1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(1) ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-600 border-slate-200'}`}>При просрочке</button>
-                </div>
-              </div>
-
-              {reminderDays.includes(1) && (
-                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                  <label className="text-xs font-bold text-amber-800 uppercase mb-2 block">⏱ Интервал напоминаний при просрочке</label>
-                  <select value={overdueInterval} onChange={e => setOverdueInterval(Number(e.target.value))} className="w-full p-2 border border-amber-300 rounded-lg text-sm bg-white text-amber-900 font-medium">
-                    <option value={1}>Каждый день</option>
-                    <option value={3}>Раз в 3 дня</option>
-                    <option value={7}>Раз в неделю</option>
-                    <option value={14}>Раз в 2 недели</option>
-                  </select>
-                  <p className="text-[10px] text-amber-700 mt-1">💡 Клиент получит повторное напоминание только через указанный интервал, если долг не погашен</p>
-                </div>
-              )}
-
-              <hr className="border-slate-100" />
-
-              {/* Templates */}
-              <div>
-                <h4 className="font-semibold text-slate-700 mb-3 text-sm flex items-center gap-2">{ICONS.File} Шаблоны сообщений</h4>
-                <div className="flex bg-slate-100 p-1 rounded-xl mb-3">
-                  <button onClick={() => setActiveTemplateTab('UPCOMING')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTemplateTab === 'UPCOMING' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Заранее</button>
-                  <button onClick={() => setActiveTemplateTab('TODAY')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTemplateTab === 'TODAY' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Сегодня</button>
-                  <button onClick={() => setActiveTemplateTab('OVERDUE')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTemplateTab === 'OVERDUE' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Просрочка</button>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <textarea className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-indigo-400 h-32 resize-none" value={getCurrentTemplate()} onChange={e => updateTemplate(e.target.value)} placeholder="Текст сообщения..." />
-                  <div className="mt-3 space-y-3">
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Переменные:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {['имя', 'товар', 'сумма', 'дата', 'долг', 'итого', 'месяцы', 'долг_блок'].map(v => (
-                          <button key={v} onClick={() => insertVariable(v)} className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors">{`{${v}}`}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                      <button type="button" onClick={previewTemplate} className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1" title="Посмотреть, как будет выглядеть сообщение">👁️ Предпросмотр</button>
-                      <div className="flex items-center gap-3">
-                        <button type="button" onClick={resetCurrentTemplate} className="text-[10px] text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1" title="Сбросить только этот шаблон">↩️ Этот шаблон</button>
-                        <button type="button" onClick={resetAllTemplates} className="text-[10px] text-red-600 hover:text-red-800 font-medium flex items-center gap-1" title="Сбросить все 3 шаблона">🗑️ Все по умолчанию</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <hr className="border-slate-100"/>
-
-              {/* ЧАТ-БОТ */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-slate-700 text-sm flex items-center gap-2">🤖 Чат-бот (Автоответчик)</h4>
-                  <div className="relative inline-flex items-center cursor-pointer" onClick={() => setBotEnabled(!botEnabled)}>
-                    <input type="checkbox" className="sr-only peer" checked={botEnabled} onChange={() => {}} />
-                    <div className={`w-11 h-6 rounded-full peer peer-checked:bg-indigo-600 peer-focus:outline-none transition-colors ${botEnabled ? 'bg-indigo-600' : 'bg-slate-200'}`}>
-                      <div className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform ${botEnabled ? 'translate-x-full' : ''}`}></div>
-                    </div>
-                  </div>
-                </div>
-
-                {botEnabled && (
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4 animate-fade-in">
-                    <div>
-                      <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Webhook URL</label>
-                      <div className="flex gap-2">
-                        <input readOnly className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white text-slate-600 font-mono select-all" value={`${window.location.origin}/api/integrations/whatsapp/webhook`} />
-                        <button onClick={() => copyToClipboard(`${window.location.origin}/api/integrations/whatsapp/webhook`)} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 whitespace-nowrap">Копировать</button>
-                      </div>
-                      <p className="text-[10px] text-slate-400 mt-1">Укажите этот URL в настройках инстанса Green API</p>
-                    </div>
-
-                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
-                      <h5 className="font-semibold text-indigo-900 text-sm">Активные команды:</h5>
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" checked={historyEnabled} onChange={e => setHistoryEnabled(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500" />
-                        <div><p className="text-sm font-medium text-indigo-900">📋 История / Долг</p><p className="text-xs text-indigo-600">Клиент пишет: *история*, *остаток*, *долг*</p></div>
-                      </label>
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" checked={conditionsEnabled} onChange={e => setConditionsEnabled(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500" />
-                        <div><p className="text-sm font-medium text-indigo-900">📝 Условия рассрочки</p><p className="text-xs text-indigo-600">Клиент пишет: *условия*</p></div>
-                      </label>
-                    </div>
-
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-                      <div className="flex gap-3"><div className="text-2xl">💬</div><div><p className="text-sm font-bold text-emerald-900 mb-1">Бот работает по текстовым командам</p><p className="text-xs text-emerald-700">Название компании для бота берётся из общих настроек: <b>{appSettings?.companyName || 'Наша Компания'}</b></p></div></div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <button onClick={handleSaveSettings} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">
-                Сохранить настройки
-              </button>
-            </div>
-          </>
-        )}
+       {/* 🔹 Если подключено: статус + настройки */}
+{isConnected && (
+  <>
+    {/* Статус-бар: всегда виден */}
+    <div className="px-5 py-3 bg-emerald-50 border-t border-emerald-100 flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
+        <span className="text-sm font-bold text-emerald-800">WhatsApp подключен</span>
       </div>
+      <div className="flex items-center gap-2">
+        {/* 🔹 Кнопка "Изменить токены" — теперь всегда показывает поля */}
+        <button
+          onClick={() => setShowCredentials(true)}
+          className="text-xs text-indigo-600 font-bold hover:underline flex items-center gap-1"
+        >
+          ✏️ Изменить токены
+        </button>
+        <button onClick={handleDisconnect} className="text-xs text-red-600 font-bold hover:underline flex items-center gap-1">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          Отключить
+        </button>
+      </div>
+    </div>
+
+    {/* 🔹 Блок с токенами — показывается ТОЛЬКО при showCredentials */}
+    {showCredentials && (
+      <div className="p-5 space-y-6 border-t border-slate-100 animate-fade-in">
+        {/* Credentials для редактирования */}
+        <div className="space-y-4">
+          <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-700">
+            <p>1. Зарегистрируйтесь на <a href="https://console.green-api.com" target="_blank" rel="noreferrer" className="underline font-bold">Green API Console</a>.</p>
+            <p>2. Создайте инстанс (можно Developer — бесплатно).</p>
+            <p>3. Скопируйте <b>idInstance</b> и <b>apiTokenInstance</b> сюда.</p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">idInstance</label>
+              <input type="text" className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm" value={idInstance} onChange={e => setIdInstance(e.target.value)} placeholder="1101000001" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">apiTokenInstance</label>
+              <div className="relative">
+                <input type={isTokenVisible ? "text" : "password"} className="w-full p-3 pr-10 border border-slate-200 rounded-xl bg-slate-50 font-mono text-sm" value={apiToken} onChange={e => setApiToken(e.target.value)} placeholder="••••••••" />
+                <button type="button" onClick={() => setIsTokenVisible(!isTokenVisible)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  {isTokenVisible ? '👁️' : '🔒'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Status check */}
+        <div className="flex items-center justify-between gap-4 border-t border-slate-100 pt-4">
+          <div className="flex items-center gap-2">
+            <div className={`w-3 h-3 rounded-full ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-500' : connectionStatus === 'ERROR' ? 'bg-red-500' : 'bg-amber-500'}`}></div>
+            <span className="text-sm font-bold text-slate-700">
+              {connectionStatus === 'AUTHORIZED' ? 'Подключено' : connectionStatus === 'NOT_AUTHORIZED' ? 'Не авторизован' : 'Не проверено'}
+            </span>
+          </div>
+          <button
+            onClick={() => checkConnection(idInstance, apiToken).catch(console.error)}
+            disabled={isTesting}
+            className="text-sm text-indigo-600 font-bold hover:underline"
+          >
+            {isTesting ? 'Проверка...' : 'Проверить связь'}
+          </button>
+        </div>
+
+        {/* Кнопки: Сохранить / Отмена */}
+        <div className="flex gap-3 pt-4">
+          <button
+            onClick={() => setShowCredentials(false)}
+            className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-all"
+          >
+            Скрыть
+          </button>
+          <button
+            onClick={handleSaveConnection}
+            disabled={isTesting}
+            className={`flex-1 py-3 font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${isTesting ? 'bg-slate-300 text-slate-500 cursor-wait' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-200'}`}
+          >
+            {isTesting ? <><span className="animate-spin">⏳</span> Проверка...</> : <><span>✅</span> Сохранить токены</>}
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* 🔹 Остальные настройки (рассылка, шаблоны, бот) — всегда видны при подключении */}
+    {!showCredentials && (
+      <div className="p-5 space-y-6 border-t border-slate-100">
+        {/* Schedule */}
+        <div>
+          <h4 className="font-semibold text-slate-700 mb-3 text-sm flex items-center gap-2">
+            {ICONS.Clock} Настройки рассылки
+          </h4>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Время отправки</label>
+              <select value={reminderTime} onChange={e => setReminderTime(e.target.value)} className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-slate-50">
+                {generateTimeOptions().map(time => (<option key={time} value={time}>{time}</option>))}
+              </select>
+            </div>
+          </div>
+          <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Когда напоминать?</label>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => toggleDay(0)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(0) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>В день оплаты</button>
+            <button onClick={() => toggleDay(-1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(-1) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>За 1 день</button>
+            <button onClick={() => toggleDay(1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays.includes(1) ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-600 border-slate-200'}`}>При просрочке</button>
+          </div>
+        </div>
+
+        {reminderDays.includes(1) && (
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <label className="text-xs font-bold text-amber-800 uppercase mb-2 block">⏱ Интервал напоминаний при просрочке</label>
+            <select value={overdueInterval} onChange={e => setOverdueInterval(Number(e.target.value))} className="w-full p-2 border border-amber-300 rounded-lg text-sm bg-white text-amber-900 font-medium">
+              <option value={1}>Каждый день</option>
+              <option value={3}>Раз в 3 дня</option>
+              <option value={7}>Раз в неделю</option>
+              <option value={14}>Раз в 2 недели</option>
+            </select>
+            <p className="text-[10px] text-amber-700 mt-1">💡 Клиент получит повторное напоминание только через указанный интервал, если долг не погашен</p>
+          </div>
+        )}
+
+        <hr className="border-slate-100" />
+
+        {/* Templates */}
+        <div>
+          <h4 className="font-semibold text-slate-700 mb-3 text-sm flex items-center gap-2">{ICONS.File} Шаблоны сообщений</h4>
+          <div className="flex bg-slate-100 p-1 rounded-xl mb-3">
+            <button onClick={() => setActiveTemplateTab('UPCOMING')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTemplateTab === 'UPCOMING' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Заранее</button>
+            <button onClick={() => setActiveTemplateTab('TODAY')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTemplateTab === 'TODAY' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Сегодня</button>
+            <button onClick={() => setActiveTemplateTab('OVERDUE')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTemplateTab === 'OVERDUE' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Просрочка</button>
+          </div>
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <textarea className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-indigo-400 h-32 resize-none" value={getCurrentTemplate()} onChange={e => updateTemplate(e.target.value)} placeholder="Текст сообщения..." />
+            <div className="mt-3 space-y-3">
+              <div>
+                <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Переменные:</p>
+                <div className="flex flex-wrap gap-2">
+                  {['имя', 'товар', 'сумма', 'дата', 'долг', 'итого', 'месяцы', 'долг_блок'].map(v => (
+                    <button key={v} onClick={() => insertVariable(v)} className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors">{`{${v}}`}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+                <button type="button" onClick={previewTemplate} className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1" title="Посмотреть, как будет выглядеть сообщение">👁️ Предпросмотр</button>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={resetCurrentTemplate} className="text-[10px] text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1" title="Сбросить только этот шаблон">↩️ Этот шаблон</button>
+                  <button type="button" onClick={resetAllTemplates} className="text-[10px] text-red-600 hover:text-red-800 font-medium flex items-center gap-1" title="Сбросить все 3 шаблона">🗑️ Все по умолчанию</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <hr className="border-slate-100"/>
+
+        {/* ЧАТ-БОТ */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-slate-700 text-sm flex items-center gap-2">🤖 Чат-бот (Автоответчик)</h4>
+            <div className="relative inline-flex items-center cursor-pointer" onClick={() => setBotEnabled(!botEnabled)}>
+              <input type="checkbox" className="sr-only peer" checked={botEnabled} onChange={() => {}} />
+              <div className={`w-11 h-6 rounded-full peer peer-checked:bg-indigo-600 peer-focus:outline-none transition-colors ${botEnabled ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                <div className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-transform ${botEnabled ? 'translate-x-full' : ''}`}></div>
+              </div>
+            </div>
+          </div>
+
+          {botEnabled && (
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4 animate-fade-in">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Webhook URL</label>
+                <div className="flex gap-2">
+                  <input readOnly className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white text-slate-600 font-mono select-all" value={`${window.location.origin}/api/integrations/whatsapp/webhook`} />
+                  <button onClick={() => copyToClipboard(`${window.location.origin}/api/integrations/whatsapp/webhook`)} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 whitespace-nowrap">Копировать</button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Укажите этот URL в настройках инстанса Green API</p>
+              </div>
+
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
+                <h5 className="font-semibold text-indigo-900 text-sm">Активные команды:</h5>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={historyEnabled} onChange={e => setHistoryEnabled(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500" />
+                  <div><p className="text-sm font-medium text-indigo-900">📋 История / Долг</p><p className="text-xs text-indigo-600">Клиент пишет: *история*, *остаток*, *долг*</p></div>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={conditionsEnabled} onChange={e => setConditionsEnabled(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500" />
+                  <div><p className="text-sm font-medium text-indigo-900">📝 Условия рассрочки</p><p className="text-xs text-indigo-600">Клиент пишет: *условия*</p></div>
+                </label>
+              </div>
+
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                <div className="flex gap-3"><div className="text-2xl">💬</div><div><p className="text-sm font-bold text-emerald-900 mb-1">Бот работает по текстовым командам</p><p className="text-xs text-emerald-700">Название компании для бота берётся из общих настроек: <b>{appSettings?.companyName || 'Наша Компания'}</b></p></div></div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <button onClick={handleSaveSettings} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">
+          Сохранить настройки
+        </button>
+      </div>
+    )}
+  </>
+)}
+        </div>
 
       {/* 🔹 МОДАЛЬНОЕ ОКНО ПРЕДПРОСМОТРА */}
       {showPreview && (
