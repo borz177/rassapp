@@ -348,17 +348,6 @@ const regeneratePaymentPlan = (
     }
   }, [roundingMode, calculatedValues.totalAmount, baseCalculatedPrice, mode, initialData.id, isPriceManual]);
 
-
-  // 🔹 Пересчёт графика при изменении цены (только если нет реальных платежей)
-useEffect(() => {
-  if (!formData.id || hasRealPayments || mode !== 'INSTALLMENT') return;
-
-  // Если цена изменилась вручную — пересчитываем remainingAmount и график
-  if (isPriceManual && calculatedValues.totalAmount !== Number(formData.price)) {
-
-  }
-}, [formData.price, isPriceManual, hasRealPayments, mode, formData.id, calculatedValues.totalAmount]);
-
   const handleProductChange = (val: string) => {
     setFormData(prev => ({ ...prev, productName: val, productId: '' }));
     if (val.length > 0) {
@@ -486,31 +475,28 @@ useEffect(() => {
         };
       }
 
- // 🔥 КЛЮЧЕВОЙ МОМЕНТ: Генерация/обновление paymentPlan
+      // 🔥 КЛЮЧЕВОЙ МОМЕНТ: Генерация/обновление paymentPlan
+     // 🔥 КЛЮЧЕВОЙ МОМЕНТ: Генерация/обновление paymentPlan
 let paymentPlan: Payment[] = [];
 
 if (initialData.id && initialData.paymentPlan) {
+  // 🔹 При редактировании: пересчитываем ТОЛЬКО если нет реальных платежей И изменилась дата
   const dateChanged = formData.paymentDate !== initialData.paymentDate;
-  const priceChanged = formData.price !== initialData.price;
 
-  // 🔹 Пересчитываем график, если:
-  // 1. НЕТ реальных платежей
-  // 2. ИЛИ изменилась дата первого платежа
-  // 3. ИЛИ изменилась цена договора
-  const shouldRegenerate = !hasRealPayments && (dateChanged || priceChanged);
+  // 🔹 hasRealPayments = есть фактически полученные деньги (isRealPayment === true)
+  // 🔹 hasPaidPayments = есть любые отмеченные как оплаченные (для обратной совместимости)
+  const shouldRegenerate = !hasRealPayments && !hasPaidPayments && dateChanged;
 
   if (shouldRegenerate) {
+    // Пересчитываем весь график с новой датой
     paymentPlan = regeneratePaymentPlan(
-      {
-        ...formData,
-        remainingAmount: calculatedValues.remainingAmount,
-        totalAmount: calculatedValues.totalAmount // 🔹 Передаём новую цену
-      },
+      { ...formData, remainingAmount: calculatedValues.remainingAmount },
       formData.paymentDate,
       initialData.paymentPlan
     );
   } else {
-    // Сохраняем оригинальный план (защита данных!)
+    // 🔥 Сохраняем оригинальный план (защита данных!)
+    // Клонируем, чтобы избежать мутаций исходного объекта
     paymentPlan = initialData.paymentPlan.map((p: Payment) => ({ ...p }));
   }
 } else {
@@ -984,36 +970,36 @@ if (initialData.id && initialData.paymentPlan) {
                      className={`w-full p-2 border rounded-lg outline-none bg-white text-slate-900 text-sm ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300 focus:border-indigo-500'}`}
                      value={formData.startDate}
                      onChange={e => setFormData({...formData, startDate: e.target.value})}
-                     disabled={!!formData.id}/>
+                     disabled={!!formData.id} />
             </div>
             {mode === 'INSTALLMENT' && (
                 <div className="w-40">
                   <label className="block text-sm font-medium text-slate-700 mb-1">
                     Первый платеж
                     {formData.id && hasPaidPayments && (
-                        <span className="ml-1 text-[10px] text-amber-600 font-normal">🔒 Заблокировано</span>
+                      <span className="ml-1 text-[10px] text-amber-600 font-normal">🔒 Заблокировано</span>
                     )}
                   </label>
                   <input type="date" required
                          className={`w-full p-2 border rounded-lg outline-none bg-white text-slate-900 text-sm ${
-                             formData.id && hasPaidPayments
-                                 ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
-                                 : 'border-slate-300 focus:border-indigo-500'
+                           formData.id && hasPaidPayments 
+                             ? 'border-slate-200 bg-slate-100 cursor-not-allowed' 
+                             : 'border-slate-300 focus:border-indigo-500'
                          }`}
                          value={formData.paymentDate}
                          onChange={handlePaymentDateChange}
-                         disabled={formData.id && hasPaidPayments}/>
+                         disabled={formData.id && hasPaidPayments} />
                   {/* 🔹 Подсказка */}
                   {formData.id && !hasPaidPayments && (
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        💡 Изменение даты пересчитает график будущих платежей
-                      </p>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      💡 Изменение даты пересчитает график будущих платежей
+                    </p>
                   )}
                   {formData.id && hasRealPayments && (
-                      <p className="text-[10px] text-amber-600 mt-1">
-                        ⚠️ График заблокирован: есть оплаченные платежи
-                      </p>
-                  )}
+  <p className="text-[10px] text-amber-600 mt-1">
+    ⚠️ График заблокирован: есть оплаченные платежи
+  </p>
+)}
                 </div>
             )}
           </div>
@@ -1023,7 +1009,7 @@ if (initialData.id && initialData.paymentPlan) {
           <label className="block text-sm font-medium text-slate-700 mb-1">Клиент</label>
           <div onClick={() => onSelectCustomer({...formData, mode})}
                className={`w-full p-3 border rounded-lg cursor-pointer flex justify-between items-center ${formData.customerId ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-dashed border-slate-300'} ${formData.id ? 'cursor-not-allowed opacity-60' : ''}`}
-               style={{pointerEvents: formData.id ? 'none' : 'auto'}}>
+               style={{ pointerEvents: formData.id ? 'none' : 'auto' }}>
             <div className="flex items-center gap-2">
               {formData.customerId && <div className="text-indigo-600">{ICONS.Customers}</div>}
               <span
@@ -1043,7 +1029,7 @@ if (initialData.id && initialData.paymentPlan) {
                  placeholder="Введите название товара..."
                  value={formData.productName}
                  onChange={(e) => handleProductChange(e.target.value)}
-                 disabled={!!formData.id}/>
+                 disabled={!!formData.id} />
           {showSuggestions && suggestions.length > 0 && (
               <div
                   className="absolute left-4 right-4 top-[72px] bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
@@ -1072,104 +1058,80 @@ if (initialData.id && initialData.paymentPlan) {
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
           {/* 🔹 Закуп и Наценка */}
-          {/* 🔹 Закуп и Наценка */}
-<div className="grid grid-cols-2 gap-4">
-  <div>
-    <label className="block text-sm font-medium text-slate-700 mb-1">Закуп (Себест.)</label>
-    <input
-      type="number"
-      min="0"
-      className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${
-        formData.id && hasRealPayments 
-          ? 'border-slate-200 bg-slate-100 cursor-not-allowed' 
-          : 'border-slate-300'
-      }`}
-      value={formData.buyPrice === 0 ? '' : formData.buyPrice}
-      onChange={e => {
-        if (!hasRealPayments) {
-          setFormData({...formData, buyPrice: e.target.value});
-          setIsPriceManual(false);
-        }
-      }}
-      placeholder="0"
-      disabled={formData.id && hasRealPayments}
-    />
-  </div>
-  {mode === 'INSTALLMENT' && (
-    <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1">Наценка (%)</label>
-      <input
-        type="number"
-        min="0"
-        className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${
-          formData.id && hasRealPayments 
-            ? 'border-slate-200 bg-slate-100 cursor-not-allowed' 
-            : 'border-slate-300'
-        }`}
-        value={formData.interestRate === 0 ? '' : formData.interestRate}
-        onChange={e => {
-          if (!hasRealPayments) {
-            setFormData({...formData, interestRate: e.target.value});
-            setIsPriceManual(false);
-          }
-        }}
-        placeholder="0"
-        disabled={formData.id && hasRealPayments}
-      />
-    </div>
-  )}
-</div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Закуп (Себест.)</label>
+              <input
+                  type="number"
+                  min="0"
+                  className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
+                  value={formData.buyPrice === 0 ? '' : formData.buyPrice}
+                  onChange={e => {
+                    setFormData({...formData, buyPrice: e.target.value});
+                    setIsPriceManual(false);
+                  }}
+                  placeholder="0"
+                  disabled={!!formData.id} />
+            </div>
+            {mode === 'INSTALLMENT' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Наценка (%)</label>
+                  <input
+                      type="number"
+                      min="0"
+                      className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
+                      value={formData.interestRate === 0 ? '' : formData.interestRate}
+                      onChange={e => {
+                        setFormData({...formData, interestRate: e.target.value});
+                        setIsPriceManual(false);
+                      }}
+                      placeholder="0"
+                      disabled={!!formData.id} />
+                </div>
+            )}
+          </div>
 
           {/* 🔹 Цена в рассрочку / Цена продажи */}
-          {/* 🔹 Цена в рассрочку / Цена продажи */}
-<div>
-  <label className="block text-sm font-medium text-slate-700 mb-1">
-    {mode === 'INSTALLMENT' ? 'Цена в рассрочку' : 'Цена продажи'}
-  </label>
-  <div className="relative">
-    <input
-      type="number"
-      min="0"
-      className={`w-full p-3 border rounded-lg outline-none font-bold text-slate-900 bg-white transition-all ${
-        isPriceManual && !formData.id && !hasRealPayments
-          ? 'border-indigo-400 ring-2 ring-indigo-100'
-          : formData.id && hasRealPayments 
-            ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
-            : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
-      }`}
-      value={formData.price === 0 ? '' : formData.price}
-      onChange={e => {
-        // 🔹 Разрешаем менять цену только если нет реальных платежей
-        if (!hasRealPayments) {
-          const val = e.target.value;
-          setFormData({
-            ...formData,
-            price: val === '' ? 0 : Number(val)
-          });
-          setIsPriceManual(true);
-        }
-      }}
-      placeholder="0"
-      disabled={formData.id && hasRealPayments}
-    />
-    {mode === 'INSTALLMENT' && !formData.id && !hasRealPayments && (
-      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase">
-        {isPriceManual ? (
-          <span className="text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">Вручную</span>
-        ) : (
-          <span className="text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full">Авто</span>
-        )}
-      </div>
-    )}
-  </div>
-
-  {/* 🔹 Подсказка */}
-  {formData.id && hasRealPayments && (
-    <p className="text-[10px] text-amber-600 mt-1">
-      ⚠️ Сумма заблокирована: есть оплаченные платежи
-    </p>
-  )}
-</div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {mode === 'INSTALLMENT' ? 'Цена в рассрочку' : 'Цена продажи'}
+            </label>
+            <div className="relative">
+              <input
+                  type="number"
+                  min="0"
+                  className={`w-full p-3 border rounded-lg outline-none font-bold text-slate-900 bg-white transition-all ${
+                      isPriceManual && !formData.id
+                          ? 'border-indigo-400 ring-2 ring-indigo-100'
+                          : formData.id 
+                            ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
+                            : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                  }`}
+                  value={formData.price === 0 ? '' : formData.price}
+                  onChange={e => {
+                    if (!formData.id) {
+                      const val = e.target.value;
+                      setFormData({
+                        ...formData,
+                        price: val === '' ? 0 : Number(val)
+                      });
+                      setIsPriceManual(true);
+                    }
+                  }}
+                  placeholder="0"
+                  disabled={!!formData.id}
+              />
+              {mode === 'INSTALLMENT' && !formData.id && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase">
+                    {isPriceManual ? (
+                        <span className="text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">Вручную</span>
+                    ) : (
+                        <span className="text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full">Авто</span>
+                    )}
+                  </div>
+              )}
+            </div>
+          </div>
 
           {/* 🔹 Срок и Первый взнос */}
           {mode === 'INSTALLMENT' && (
@@ -1185,7 +1147,7 @@ if (initialData.id && initialData.paymentPlan) {
                       value={formData.installments === 0 ? '' : formData.installments}
                       onChange={e => setFormData({...formData, installments: e.target.value})}
                       placeholder="0"
-                      disabled={!!formData.id}/>
+                      disabled={!!formData.id} />
                 </div>
 
                 {/* 🔹 Первый взнос + чекбокс в одну строку */}
@@ -1200,8 +1162,8 @@ if (initialData.id && initialData.paymentPlan) {
                             downPaymentFromMarkup && !formData.id
                                 ? 'border-emerald-300 bg-emerald-50/50 ring-2 ring-emerald-100'
                                 : formData.id
-                                    ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
-                                    : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                                  ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
+                                  : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
                         }`}
                         value={formData.downPayment === 0 ? '' : formData.downPayment}
                         onChange={e => {
@@ -1262,13 +1224,13 @@ if (initialData.id && initialData.paymentPlan) {
                 className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
                 value={formData.guarantorName}
                 onChange={e => setFormData({...formData, guarantorName: e.target.value})}
-                disabled={!!formData.id}/></div>
+                disabled={!!formData.id} /></div>
             <div><label className="block text-xs font-medium text-slate-500 mb-1">Телефон поручителя</label><input
                 type="text"
                 className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
                 value={formData.guarantorPhone}
                 onChange={e => setFormData({...formData, guarantorPhone: e.target.value})}
-                disabled={!!formData.id}/></div>
+                disabled={!!formData.id} /></div>
           </div>
         </div>
 
@@ -1310,9 +1272,9 @@ if (initialData.id && initialData.paymentPlan) {
 
         <button
             type="submit"
-            disabled={isSubmitting || (formData.id && hasRealPayments)}
+            disabled={isSubmitting}
             className={`w-full text-white py-4 rounded-xl font-bold transition-colors shadow-lg flex items-center justify-center gap-2 ${
-                isSubmitting || (formData.id && hasRealPayments)
+                isSubmitting
                     ? 'bg-slate-400 cursor-not-allowed'
                     : mode === 'INSTALLMENT'
                         ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
@@ -1327,14 +1289,6 @@ if (initialData.id && initialData.paymentPlan) {
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
                 </svg>
                 Сохранение...
-              </>
-          ) : formData.id && hasRealPayments ? (
-              <>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                </svg>
-                Редактирование заблокировано
               </>
           ) : (
               <>
