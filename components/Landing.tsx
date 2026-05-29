@@ -3,6 +3,9 @@ import React, { useEffect, useState } from "react"
 export default function Landing() {
     const [scrolled, setScrolled] = useState(false)
 
+    // 🔹 ДОБАВЛЕНО: состояние для переключения правовых документов
+    const [legalView, setLegalView] = useState<'PRIVACY' | 'AGREEMENT' | null>(null)
+
     useEffect(() => {
         const handleScroll = () => {
             setScrolled(window.scrollY > 20)
@@ -10,6 +13,57 @@ export default function Landing() {
         window.addEventListener('scroll', handleScroll)
         return () => window.removeEventListener('scroll', handleScroll)
     }, [])
+
+    // 🔹 Контент документов (можно расширить)
+    const getLegalContent = () => {
+        if (legalView === 'PRIVACY') {
+            return {
+                title: "Политика конфиденциальности",
+                content: (
+                    <div className="space-y-4 text-sm text-slate-600 leading-relaxed">
+                        <p><strong>1. Общие положения</strong></p>
+                        <p>Настоящая политика определяет порядок обработки и защиты информации о пользователях приложения FinUchet.</p>
+
+                        <p><strong>2. Сбор данных</strong></p>
+                        <p>Мы собираем только необходимые данные: имя, телефон, информацию о договорах и платежах. Эти данные используются исключительно для работы приложения.</p>
+
+                        <p><strong>3. Хранение и защита</strong></p>
+                        <p>Все данные шифруются и хранятся на защищённых серверах. Мы не передаём информацию третьим лицам без вашего согласия.</p>
+
+                        <p><strong>4. Ваши права</strong></p>
+                        <p>Вы можете в любой момент запросить копию своих данных или потребовать их удаления через настройки приложения.</p>
+
+                        <p className="text-xs text-slate-400 mt-4">Версия документа: 2.0 от 01.01.2026</p>
+                    </div>
+                )
+            }
+        }
+        if (legalView === 'AGREEMENT') {
+            return {
+                title: "Согласие на обработку данных",
+                content: (
+                    <div className="space-y-4 text-sm text-slate-600 leading-relaxed">
+                        <p>Нажимая кнопку «Начать работу», вы даёте согласие на обработку ваших персональных данных в соответствии с Федеральным законом № 152-ФЗ.</p>
+
+                        <p><strong>Вы соглашаетесь на:</strong></p>
+                        <ul className="list-disc list-inside space-y-1 ml-2">
+                            <li>Сбор и хранение данных о договорах и платежах</li>
+                            <li>Использование данных для формирования отчётов</li>
+                            <li>Отправку уведомлений о платежах (при включённой интеграции)</li>
+                        </ul>
+
+                        <p><strong>Вы можете отозвать согласие:</strong></p>
+                        <p>Через настройки приложения или написав на support@finuchet.ru. После отзыва ваши данные будут удалены в течение 30 дней.</p>
+
+                        <p className="text-xs text-slate-400 mt-4">Версия документа: 2.0 от 01.01.2026</p>
+                    </div>
+                )
+            }
+        }
+        return null
+    }
+
+    const legalContent = getLegalContent()
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 font-['Inter',sans-serif] text-slate-900">
@@ -28,21 +82,9 @@ export default function Landing() {
                     0%, 100% { opacity: 0.5; transform: scale(1); }
                     50% { opacity: 0.8; transform: scale(1.1); }
                 }
-                @keyframes slideInLeft {
-                    from { opacity: 0; transform: translateX(-30px); }
-                    to { opacity: 1; transform: translateX(0); }
-                }
-                @keyframes slideInRight {
-                    from { opacity: 0; transform: translateX(30px); }
-                    to { opacity: 1; transform: translateX(0); }
-                }
                 
-                .fade-up {
-                    animation: fadeUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-                }
-                .fade-up-slow {
-                    animation: fadeUp 1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-                }
+                .fade-up { animation: fadeUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+                .fade-up-slow { animation: fadeUp 1s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
                 @keyframes fadeUp {
                     0% { opacity: 0; transform: translateY(30px); filter: blur(10px); }
                     100% { opacity: 1; transform: translateY(0); filter: blur(0); }
@@ -81,19 +123,11 @@ export default function Landing() {
                     background: rgba(255,255,255,0.1);
                 }
                 
-                .floating-icon {
-                    animation: float 6s ease-in-out infinite;
-                }
-                .floating-icon-delayed {
-                    animation: float-delayed 6s ease-in-out 1s infinite;
-                }
+                .floating-icon { animation: float 6s ease-in-out infinite; }
+                .floating-icon-delayed { animation: float-delayed 6s ease-in-out 1s infinite; }
                 
-                .btn-glow {
-                    transition: all 0.3s ease;
-                }
-                .btn-glow:hover {
-                    box-shadow: 0 0 25px rgba(99, 102, 241, 0.5);
-                }
+                .btn-glow { transition: all 0.3s ease; }
+                .btn-glow:hover { box-shadow: 0 0 25px rgba(99, 102, 241, 0.5); }
                 
                 .gradient-border {
                     position: relative;
@@ -104,19 +138,14 @@ export default function Landing() {
                 .gradient-border::before {
                     content: '';
                     position: absolute;
-                    top: -2px;
-                    left: -2px;
-                    right: -2px;
-                    bottom: -2px;
+                    top: -2px; left: -2px; right: -2px; bottom: -2px;
                     background: linear-gradient(135deg, #6366f1, #0ea5e9, #8b5cf6);
                     border-radius: inherit;
                     opacity: 0;
                     transition: opacity 0.3s ease;
                     z-index: -1;
                 }
-                .gradient-border:hover::before {
-                    opacity: 1;
-                }
+                .gradient-border:hover::before { opacity: 1; }
             `}</style>
 
             {/* Animated Background */}
@@ -140,11 +169,7 @@ export default function Landing() {
                             Войти
                             <span className="absolute bottom-0 left-1/2 w-0 h-0.5 bg-indigo-600 group-hover:w-full group-hover:left-0 transition-all"></span>
                         </a>
-                        <a
-                            href="/downloads/finuchet.apk"
-                            download
-                            className="relative px-7 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-indigo-700 rounded-full shadow-lg shadow-indigo-200/50 hover:shadow-indigo-300/50 transition-all hover:-translate-y-0.5 active:translate-y-0 overflow-hidden group"
-                        >
+                        <a href="/downloads/finuchet.apk" download className="relative px-7 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-indigo-700 rounded-full shadow-lg shadow-indigo-200/50 hover:shadow-indigo-300/50 transition-all hover:-translate-y-0.5 active:translate-y-0 overflow-hidden group">
                             <span className="relative z-10">Скачать</span>
                             <div className="absolute inset-0 bg-gradient-to-r from-indigo-700 to-indigo-800 transform translate-y-full group-hover:translate-y-0 transition-transform"></div>
                         </a>
@@ -155,7 +180,6 @@ export default function Landing() {
             {/* HERO SECTION */}
             <section className="relative pt-32 pb-20 px-6 overflow-hidden">
                 <div className="max-w-6xl mx-auto text-center">
-                    {/* Badge */}
                     <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-full px-4 py-2 mb-8 fade-up">
                         <span className="w-2 h-2 bg-indigo-600 rounded-full animate-pulse"></span>
                         <span className="text-sm font-semibold text-indigo-700">✨ Новая версия 2.0</span>
@@ -178,31 +202,20 @@ export default function Landing() {
                     </p>
 
                     <div className="flex justify-center gap-4 mt-12 flex-wrap fade-up delay-2">
-                        <a
-                            href="/downloads/finuchet.apk"
-                            download
-                            className="btn-glow flex items-center gap-3 bg-gradient-to-r from-slate-900 to-slate-800 text-white px-8 py-4 rounded-2xl font-bold shadow-2xl hover:shadow-indigo-500/25 transition-all hover:scale-105 active:scale-95 group"
-                        >
+                        <a href="/downloads/finuchet.apk" download className="btn-glow flex items-center gap-3 bg-gradient-to-r from-slate-900 to-slate-800 text-white px-8 py-4 rounded-2xl font-bold shadow-2xl hover:shadow-indigo-500/25 transition-all hover:scale-105 active:scale-95 group">
                             <span className="text-2xl group-hover:animate-bounce">📱</span>
                             <span>Скачать для Android</span>
                             <span className="text-xs opacity-60">APK</span>
                         </a>
-                        <a
-                            href="/downloads/finuchet-setup.exe"
-                            download
-                            className="flex items-center gap-3 bg-white/80 backdrop-blur-sm text-slate-900 border-2 border-slate-200 px-8 py-4 rounded-2xl font-bold shadow-sm hover:border-indigo-400 hover:shadow-xl transition-all hover:scale-105 active:scale-95 group"
-                        >
+                        <a href="/downloads/finuchet-setup.exe" download className="flex items-center gap-3 bg-white/80 backdrop-blur-sm text-slate-900 border-2 border-slate-200 px-8 py-4 rounded-2xl font-bold shadow-sm hover:border-indigo-400 hover:shadow-xl transition-all hover:scale-105 active:scale-95 group">
                             <span className="text-2xl group-hover:rotate-12 transition-transform">🪟</span>
                             <span>Windows</span>
                         </a>
                     </div>
 
-                    {/* Stats */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mt-20 pt-8 border-t border-slate-200">
                         {[
                             { value: "100+", label: "Активных пользователей", icon: "👥" },
-                            { value: "₽50M+", label: "Учтено средств", icon: "💰" },
-                            { value: "99.9%", label: "Доступность", icon: "⚡" },
                             { value: "24/7", label: "Поддержка", icon: "🎧" }
                         ].map((stat, idx) => (
                             <div key={idx} className={`text-center fade-up delay-${idx + 3}`}>
@@ -331,18 +344,8 @@ export default function Landing() {
                             Присоединяйтесь к тысячам компаний, которые уже используют FinUchet
                         </p>
                         <div className="flex justify-center gap-4 flex-wrap">
-                            <a
-                                href="/downloads/finuchet.apk"
-                                download
-                                className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all hover:-translate-y-1"
-                            >
+                            <a href="/app" download className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all hover:-translate-y-1">
                                 Начать бесплатно
-                            </a>
-                            <a
-                                href="/demo"
-                                className="px-8 py-4 bg-white border-2 border-slate-200 text-slate-700 rounded-xl font-bold hover:border-indigo-400 transition-all"
-                            >
-                                Демо-версия
                             </a>
                         </div>
                     </div>
@@ -356,18 +359,25 @@ export default function Landing() {
                         <div className="text-2xl font-black bg-gradient-to-r from-indigo-600 to-teal-600 bg-clip-text text-transparent">
                             FinUchet
                         </div>
-                        <div className="flex gap-8">
-                            {["О нас", "Блог", "Поддержка", "Политика"].map(item => (
-                                <a key={item} href="#" className="text-slate-500 hover:text-indigo-600 transition-colors text-sm font-medium">
-                                    {item}
-                                </a>
-                            ))}
-                        </div>
-                        <div className="flex gap-4">
-                            {["🐦", "💼", "📘"].map((social, idx) => (
-                                <a key={idx} href="#" className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center hover:bg-indigo-100 hover:scale-110 transition-all">
-                                    <span className="text-lg">{social}</span>
-                                </a>
+
+                        {/* 🔹 Кнопки правовых документов */}
+                        <div className="space-y-2">
+                            {[
+                                {label: "Политика конфиденциальности", value: 'PRIVACY' as const},
+                                {label: "Согласие на обработку данных", value: 'AGREEMENT' as const}
+                            ].map(item => (
+                                <button
+                                    key={item.value}
+                                    onClick={() => setLegalView(item.value)}
+                                    className="w-full text-left p-3 rounded-xl hover:bg-slate-50 text-sm font-medium text-slate-700 flex justify-between items-center transition-colors"
+                                >
+                                    {item.label}
+                                    <span className="text-slate-400">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <polyline points="9 18 15 12 9 6"/>
+                                        </svg>
+                                    </span>
+                                </button>
                             ))}
                         </div>
                     </div>
@@ -378,6 +388,48 @@ export default function Landing() {
                     </div>
                 </div>
             </footer>
+
+            {/* 🔹 МОДАЛЬНОЕ ОКНО: Правовые документы */}
+            {legalView && legalContent && (
+                <div
+                    className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
+                    onClick={() => setLegalView(null)}
+                >
+                    <div
+                        className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-scale-in max-h-[85vh] flex flex-col"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Заголовок */}
+                        <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-slate-50">
+                            <h3 className="font-bold text-lg text-slate-800">{legalContent.title}</h3>
+                            <button
+                                onClick={() => setLegalView(null)}
+                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"/>
+                                    <line x1="6" y1="6" x2="18" y2="18"/>
+                                </svg>
+                            </button>
+                        </div>
+
+                        {/* Контент с прокруткой */}
+                        <div className="flex-1 overflow-y-auto p-6">
+                            {legalContent.content}
+                        </div>
+
+                        {/* Кнопка закрытия */}
+                        <div className="p-4 border-t border-slate-100 bg-slate-50">
+                            <button
+                                onClick={() => setLegalView(null)}
+                                className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all"
+                            >
+                                Закрыть
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
