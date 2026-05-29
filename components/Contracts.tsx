@@ -623,170 +623,154 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
   };
 
   const ActionMenu = () => {
-    if (!currentMenuSale) return null;
+  if (!currentMenuSale) return null;
 
-    const customer = customers.find(c => c.id === currentMenuSale.customerId);
-    const isMobile = window.innerWidth < 640;
+  const customer = customers.find(c => c.id === currentMenuSale.customerId);
+  const isMobile = window.innerWidth < 640;
 
-    return createPortal(
-      <>
-        <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9998] animate-fade-in"
-          onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-        />
+  return createPortal(
+    <>
+      <div
+        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9998] animate-fade-in"
+        onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+      />
 
-        {isMobile ? (
-          <div className="fixed left-0 right-0 bottom-0 z-[9999] animate-slide-up">
-            <div className="bg-white rounded-t-3xl shadow-2xl w-full mx-auto overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-                <span className="text-sm font-semibold text-slate-700">Действия</span>
-                <button
-                  onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                  className="p-1 text-slate-400 hover:text-slate-600"
-                >
-                  <X size={20} />
-                </button>
-              </div>
+      {isMobile ? (
+        <div className="fixed left-0 right-0 bottom-0 z-[9999] animate-slide-up">
+          <div className="bg-white rounded-t-3xl shadow-2xl w-full mx-auto overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <span className="text-sm font-semibold text-slate-700">Действия</span>
+              <button
+                onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+                className="p-1 text-slate-400 hover:text-slate-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
 
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
-                <p className="text-sm font-semibold text-slate-800 truncate">{customer?.name}</p>
-                <p className="text-xs text-slate-500 truncate">{currentMenuSale.productName}</p>
-              </div>
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+              <p className="text-sm font-semibold text-slate-800 truncate">{customer?.name}</p>
+              <p className="text-xs text-slate-500 truncate">{currentMenuSale.productName}</p>
+            </div>
 
-              <div className="py-2">
-                <button
-                  onClick={() => { setSelectedSaleForInfo(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                  className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
-                >
-                  <span className="text-blue-500"><FileText size={18} /></span>
-                  <span>Информация о договоре</span>
-                </button>
+            <div className="py-2">
+              <button
+                onClick={() => { setSelectedSaleForInfo(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
+              >
+                <span className="text-blue-500"><FileText size={18} /></span>
+                <span>Информация о договоре</span>
+              </button>
 
-                <button
-                  onClick={() => { onViewSchedule(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                  className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
-                >
-                  <span className="text-indigo-500"><Calendar size={18} /></span>
-                  <span>График платежей</span>
-                </button>
+              <button
+                onClick={() => { onViewSchedule(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
+              >
+                <span className="text-indigo-500"><Calendar size={18} /></span>
+                <span>График платежей</span>
+              </button>
 
-                <button
-                  onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                  className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-                >
-                  <span className="text-slate-500"><Printer size={18} /></span>
-                  <span>Печать договора</span>
-                </button>
-              </div>
+              {/* 🔹 ДОБАВЛЕНО: Кнопка редактирования в мобильном меню */}
+              <button
+                onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+              >
+                <span className="text-slate-500"><Edit3 size={18} /></span>
+                <span>Редактировать</span>
+              </button>
 
-              <div className="border-t border-slate-100 py-2">
-                <button
-                  onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                  className="w-full text-left px-4 py-3.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
-                >
-                  <span className="text-red-500"><Trash2 size={18} /></span>
-                  <span>Удалить договор</span>
-                </button>
-              </div>
+              <button
+                onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+              >
+                <span className="text-slate-500"><Printer size={18} /></span>
+                <span>Печать договора</span>
+              </button>
+            </div>
 
-              <div className="px-4 pb-4 pt-2">
-                <button
-                  onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                  className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition-colors"
-                >
-                  Отмена
-                </button>
-              </div>
+            <div className="border-t border-slate-100 py-2">
+              <button
+                onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+                className="w-full text-left px-4 py-3.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+              >
+                <span className="text-red-500"><Trash2 size={18} /></span>
+                <span>Удалить договор</span>
+              </button>
+            </div>
+
+            <div className="px-4 pb-4 pt-2">
+              <button
+                onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+                className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition-colors"
+              >
+                Отмена
+              </button>
             </div>
           </div>
-        ) : (
-            <div
-                className="fixed z-[9999] bg-white rounded-2xl shadow-2xl w-64 overflow-hidden animate-scale-in border border-slate-100 max-h-[85vh] overflow-y-auto"
-                style={{
-                  top: `${menuPosition?.top ?? 0}px`,
-                  left: `${menuPosition?.left ?? 0}px`
-                }}
-                onClick={e => e.stopPropagation()}
+        </div>
+      ) : (
+        <div
+          className="fixed z-[9999] bg-white rounded-2xl shadow-2xl w-64 overflow-hidden animate-scale-in border border-slate-100 max-h-[85vh] overflow-y-auto"
+          style={{
+            top: `${menuPosition?.top ?? 0}px`,
+            left: `${menuPosition?.left ?? 0}px`
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+            <p className="text-sm font-semibold text-slate-800 truncate">{customer?.name}</p>
+            <p className="text-xs text-slate-500 truncate">{currentMenuSale.productName}</p>
+          </div>
+
+          <div className="py-2">
+            <button
+              onClick={() => { setSelectedSaleForInfo(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+              className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
             >
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
-                <p className="text-sm font-semibold text-slate-800 truncate">{customer?.name}</p>
-                <p className="text-xs text-slate-500 truncate">{currentMenuSale.productName}</p>
-              </div>
+              <span className="text-blue-500"><FileText size={16}/></span>
+              <span>Информация</span>
+            </button>
 
-              <div className="py-2">
-                <button
-                    onClick={() => {
-                      setSelectedSaleForInfo(currentMenuSale);
-                      setActiveMenuId(null);
-                      setCurrentMenuSale(null);
-                      setMenuPosition(null);
-                    }}
-                    className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
-                >
-                  <span className="text-blue-500"><FileText size={16}/></span>
-                  <span>Информация</span>
-                </button>
+            <button
+              onClick={() => { onViewSchedule(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+              className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
+            >
+              <span className="text-indigo-500"><Calendar size={16}/></span>
+              <span>График</span>
+            </button>
 
-                <button
-                    onClick={() => {
-                      onViewSchedule(currentMenuSale);
-                      setActiveMenuId(null);
-                      setCurrentMenuSale(null);
-                      setMenuPosition(null);
-                    }}
-                    className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
-                >
-                  <span className="text-indigo-500"><Calendar size={16}/></span>
-                  <span>График</span>
-                </button>
+            <button
+              onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+              className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+            >
+              <span className="text-slate-500"><Edit3 size={16}/></span>
+              <span>Редактировать</span>
+            </button>
 
-                <button
-                    onClick={() => {
-                      onEditSale(currentMenuSale);
-                      setActiveMenuId(null);
-                      setCurrentMenuSale(null);
-                      setMenuPosition(null);
-                    }}
-                    className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-                >
-                  <span className="text-slate-500"><Edit3 size={16}/></span>
-                  <span>Редактировать</span>
-                </button>
+            <button
+              onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+              className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+            >
+              <span className="text-slate-500"><Printer size={16}/></span>
+              <span>Печать</span>
+            </button>
+          </div>
 
-                <button
-                    onClick={() => {
-                      printContract(currentMenuSale);
-                      setActiveMenuId(null);
-                      setCurrentMenuSale(null);
-                      setMenuPosition(null);
-                    }}
-                    className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-                >
-                  <span className="text-slate-500"><Printer size={16}/></span>
-                  <span>Печать</span>
-                </button>
-              </div>
-
-              <div className="border-t border-slate-100 py-2">
-                <button
-                    onClick={() => {
-                      setDeletingSale(currentMenuSale);
-                      setActiveMenuId(null);
-                      setCurrentMenuSale(null);
-                      setMenuPosition(null);
-                    }}
-                    className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
-                >
-                  <span className="text-red-500"><Trash2 size={16}/></span>
-                  <span>Удалить</span>
-                </button>
-              </div>
-            </div>
-        )}
-      </>,
-        document.body
-    );
-  };
+          <div className="border-t border-slate-100 py-2">
+            <button
+              onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+              className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+            >
+              <span className="text-red-500"><Trash2 size={16}/></span>
+              <span>Удалить</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </>,
+    document.body
+  );
+};
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {

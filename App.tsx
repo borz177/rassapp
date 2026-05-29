@@ -1988,7 +1988,7 @@ if (!user && !showSplash) {
                       setCurrentView('DASHBOARD');
                       setEditingSale(null);
                   }} onSelectCustomer={(data) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} onShowNotification={showNotificationModal}
-                           appSettings={appSettings}/>}
+                           appSettings={appSettings} />}
               {currentView === 'SELECT_CUSTOMER' && <SelectionList title="Выберите клиента" items={customers.map(c => ({
                   id: c.id,
                   title: c.name,

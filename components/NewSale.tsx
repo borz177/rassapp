@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Customer, Product, Account, AppSettings, Sale } from '../types';
+import React, {useState, useMemo, useEffect, useRef} from 'react';
+import { Customer, Product, Account, AppSettings, Sale, Payment } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
@@ -12,51 +12,48 @@ interface NewSaleProps {
   customers: Customer[];
   products: Product[];
   accounts: Account[];
-    sales: Sale[];
+  sales: Sale[];
   onClose: () => void;
   onSelectCustomer: (currentData: any) => void;
   onSubmit: (data: any) => Promise<any>;
-   onShowNotification?: (  // ← Опционально, для красивых уведомлений
+  onUpdateSale?: (sale: Sale) => Promise<void>; // 🔹 Новый пропс для редактирования
+  onShowNotification?: (
     title: string,
     message: string,
     type: 'success' | 'error' | 'warning',
     actionLabel?: string,
     onAction?: () => void
   ) => void;
+  user?: any;
 }
-
 
 // Форматирует любой российский номер в вид +7 (XXX) XXX-XX-XX
 const formatPhone = (raw: string | undefined): string => {
     if (!raw) return '+7 (___) ___-__-__';
-    const digits = raw.replace(/\D/g, ''); // Оставляем только цифры
+    const digits = raw.replace(/\D/g, '');
     if (digits.length === 11 && (digits[0] === '8' || digits[0] === '7')) {
         const clean = digits[0] === '8' ? '7' + digits.slice(1) : digits;
         return `+${clean[0]} (${clean.slice(1, 4)}) ${clean.slice(4, 7)}-${clean.slice(7, 9)}-${clean.slice(9)}`;
     }
-    return raw; // Если формат нестандартный, возвращаем как есть
+    return raw;
 };
 
 // 🔍 Проверка: есть ли уже похожий активный договор?
-// 🔍 Проверка: есть ли уже похожий активный договор?
 const checkDuplicateSale = (
-  sales: Sale[] | undefined,  // ← Разреши undefined
+  sales: Sale[] | undefined,
   customerId: string,
   productName: string,
   startDate: string,
   totalAmount: number,
   excludeId?: string
 ) => {
-  // 🛡️ Защита: если sales не массив — выходим
   if (!Array.isArray(sales) || sales.length === 0) return undefined;
-
-  // 🛡️ Защита: если totalAmount не число — выходим
   if (typeof totalAmount !== 'number' || isNaN(totalAmount)) return undefined;
 
   const saleDate = new Date(startDate).toDateString();
 
   return sales.find(sale => {
-    if (!sale) return false; // Защита от undefined в массиве
+    if (!sale) return false;
     if (excludeId && sale.id === excludeId) return false;
     if (sale.status === 'DELETED' || sale.status === 'COMPLETED') return false;
 
@@ -68,9 +65,10 @@ const checkDuplicateSale = (
     return sameCustomer && sameProduct && sameDate && sameAmount;
   });
 };
+
 const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales,
-  onClose, onSelectCustomer, onSubmit, onShowNotification, user,
+  onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user,
 }) => {
   const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(initialData.type || 'INSTALLMENT');
   const [roundingMode, setRoundingMode] = useState<'NONE' | 'DOWN' | 'UP'>(
@@ -85,12 +83,11 @@ const NewSale: React.FC<NewSaleProps> = ({
   const [createdSale, setCreatedSale] = useState<any>(null);
   const [isPriceManual, setIsPriceManual] = useState(false);
 
-
   const contractRef = useRef<HTMLDivElement>(null);
   const mainAccount = accounts.find(a => a.type === 'MAIN');
   const appSettings = getAppSettings();
 
-  // 🔥 Инициализация formData с восстановлением roundingMode
+  // 🔥 Инициализация formData
   const [formData, setFormData] = useState<any>(() => {
     const defaultData = {
       id: null,
@@ -115,7 +112,6 @@ const NewSale: React.FC<NewSaleProps> = ({
 
     return {
       ...merged,
-      // При редактировании берём сохранённую цену, иначе рассчитываем
       price: initialData.id
         ? (initialData.price || initialData.totalAmount || 0)
         : (initialData.totalAmount || initialData.price || 0),
@@ -126,7 +122,9 @@ const NewSale: React.FC<NewSaleProps> = ({
       startDate: initialData.startDate
         ? new Date(initialData.startDate).toISOString().split('T')[0]
         : new Date().toISOString().split('T')[0],
-      // 🔥 Восстанавливаем режим округления из сохранённых данных
+      paymentDate: initialData.paymentDate
+        ? new Date(initialData.paymentDate).toISOString().split('T')[0]
+        : '',
       roundingMode: initialData.roundingMode || 'NONE',
     };
   });
@@ -136,38 +134,84 @@ const NewSale: React.FC<NewSaleProps> = ({
   const [downPaymentFromMarkup, setDownPaymentFromMarkup] = useState(false);
 
   // 🔥 НОВЫЕ СТЕЙТЫ для защиты от дублей и двойных кликов
-const [isSubmitting, setIsSubmitting] = useState(false);
-const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+
+  // 🔹 Проверка: есть ли уже оплаченные платежи (для защиты при редактировании)
+  const hasPaidPayments = useMemo(() => {
+    return initialData.paymentPlan?.some((p: Payment) => p.isPaid) || false;
+  }, [initialData.paymentPlan]);
 
   const selectedCustomer = customers.find(c => c.id === formData.customerId);
   const selectedAccount = accounts.find(a => a.id === formData.accountId);
 
+  // 🔹 Функция пересчёта графика платежей при изменении даты первого платежа
+  const regeneratePaymentPlan = (
+    saleData: any,
+    newFirstPaymentDate: string,
+    existingPayments: Payment[] = []
+  ): Payment[] => {
+    // 1. Сохраняем уже оплаченные платежи без изменений
+    const paidPayments = existingPayments.filter(p => p.isPaid);
+
+    // 2. Считаем параметры для будущих платежей
+    const remainingInstallments = saleData.installments - paidPayments.length;
+    const remainingAmount = saleData.remainingAmount || (saleData.totalAmount - saleData.downPayment);
+    const monthlyAmount = remainingInstallments > 0
+      ? Number((remainingAmount / remainingInstallments).toFixed(2))
+      : 0;
+
+    // 3. Генерируем новые даты для будущих платежей
+    const firstDate = new Date(newFirstPaymentDate);
+
+    const futurePayments: Payment[] = Array.from({ length: remainingInstallments }).map((_, idx) => {
+      const pDate = new Date(firstDate);
+      pDate.setMonth(pDate.getMonth() + idx);
+
+      return {
+        id: paidPayments.length > 0
+          ? `pay_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 6)}`
+          : `pay_${saleData.id || Date.now()}_${idx}`,
+        saleId: saleData.id,
+        amount: monthlyAmount,
+        date: pDate.toISOString(),
+        isPaid: false,
+        isRealPayment: false
+      };
+    });
+
+    // 4. Объединяем: старые оплаченные + новые будущие
+    return [...paidPayments, ...futurePayments];
+  };
+
   // Авто-расчёт цены при вводе закупа (только для новых записей!)
-// 🔍 НАЙДИТЕ ЭТОТ БЛОК И ЗАМЕНИТЕ ЕГО:
-useEffect(() => {
-  if (mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0 && !initialData.id) {
+  useEffect(() => {
+    // 🔥 НЕ пересчитываем при редактировании — сохраняем оригинальные значения
+    if (initialData.id) return;
 
-    // ✅ НОВОЕ: Если цена введена вручную, не пересчитываем автоматически
-    if (isPriceManual) return;
+    if (mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0) {
+      if (isPriceManual) return;
 
-    const bp = Number(formData.buyPrice);
-    const rate = Number(formData.interestRate);
-    const calculatedPrice = Math.round(bp + (bp * (rate / 100)));
+      const bp = Number(formData.buyPrice);
+      const rate = Number(formData.interestRate);
+      const calculatedPrice = Math.round(bp + (bp * (rate / 100)));
 
-    // Обновляем цену, только если пользователь её не трогал
-    setFormData(prev => ({ ...prev, price: calculatedPrice }));
-  }
-}, [formData.buyPrice, formData.interestRate, mode, initialData.id, isPriceManual]); // Добавили isPriceManual в зависимости
+      setFormData(prev => ({ ...prev, price: calculatedPrice }));
+    }
+  }, [formData.buyPrice, formData.interestRate, mode, initialData.id, isPriceManual]);
 
   useEffect(() => {
-  if (mode === 'INSTALLMENT' && downPaymentFromMarkup && Number(formData.buyPrice) > 0) {
-    const markupAmount = Math.round(Number(formData.buyPrice) * Number(formData.interestRate) / 100);
-    setFormData(prev => ({ ...prev, downPayment: markupAmount }));
-  }
-}, [downPaymentFromMarkup, formData.buyPrice, formData.interestRate, mode]);
+    if (mode === 'INSTALLMENT' && downPaymentFromMarkup && Number(formData.buyPrice) > 0) {
+      const markupAmount = Math.round(Number(formData.buyPrice) * Number(formData.interestRate) / 100);
+      setFormData(prev => ({ ...prev, downPayment: markupAmount }));
+    }
+  }, [downPaymentFromMarkup, formData.buyPrice, formData.interestRate, mode]);
 
   // Авто-расчёт даты первого платежа
   useEffect(() => {
+    // 🔥 НЕ пересчитываем дату автоматически при редактировании, если пользователь уже менял
+    if (initialData.id && formData.paymentDate) return;
+
     if (!formData.paymentDate) {
       if (initialData.paymentDay && initialData.startDate) {
         const firstPayment = new Date(initialData.startDate);
@@ -190,93 +234,82 @@ useEffect(() => {
   }, [formData.buyPrice, formData.interestRate]);
 
   // 🔹 2. Расчёт итоговых значений с учётом округления
- // 🔹 2. Расчёт итоговых значений с учётом округления
-const calculatedValues = useMemo(() => {
-  const downPayment = Number(formData.downPayment) || 0;
-  const installments = Number(formData.installments) || 1;
+  const calculatedValues = useMemo(() => {
+    const downPayment = Number(formData.downPayment) || 0;
+    const installments = Number(formData.installments) || 1;
 
-  if (mode === 'CASH') {
-    return {
-      totalAmount: Number(formData.price) || 0,
-      remainingAmount: 0,
-      monthlyPayment: 0
-    };
-  }
+    if (mode === 'CASH') {
+      return {
+        totalAmount: Number(formData.price) || 0,
+        remainingAmount: 0,
+        monthlyPayment: 0
+      };
+    }
 
-  // 🔥 КЛЮЧЕВОЕ: При редактировании используем сохранённый totalAmount
-  let totalAmount: number;
-  if (initialData.id && initialData.totalAmount) {
-    totalAmount = initialData.totalAmount;
-  } else {
-    // ✅ Всегда берём цену из формы (ручную или авто-расчёт)
-    totalAmount = Number(formData.price) || baseCalculatedPrice;
-  }
+    // 🔥 КЛЮЧЕВОЕ: При редактировании используем сохранённый totalAmount
+    let totalAmount: number;
+    if (initialData.id && initialData.totalAmount) {
+      totalAmount = initialData.totalAmount;
+    } else {
+      totalAmount = Number(formData.price) || baseCalculatedPrice;
+    }
 
-  let remainingAmount = totalAmount - downPayment;
-  let monthlyPayment = installments > 0 ? remainingAmount / installments : 0;
+    let remainingAmount = totalAmount - downPayment;
+    let monthlyPayment = installments > 0 ? remainingAmount / installments : 0;
 
-  // 🔹 Применяем округление к ежемесячному платежу
-  if (!initialData.id && roundingMode !== 'NONE' && monthlyPayment > 0) {
-    const roundedMonthly = roundingMode === 'DOWN'
-      ? Math.floor(monthlyPayment / 100) * 100
-      : Math.ceil(monthlyPayment / 100) * 100;
+    // 🔹 Применяем округление к ежемесячному платежу
+    if (!initialData.id && roundingMode !== 'NONE' && monthlyPayment > 0) {
+      const roundedMonthly = roundingMode === 'DOWN'
+        ? Math.floor(monthlyPayment / 100) * 100
+        : Math.ceil(monthlyPayment / 100) * 100;
 
-    monthlyPayment = roundedMonthly;
-    remainingAmount = monthlyPayment * installments;
-    totalAmount = remainingAmount + downPayment; // 🔥 Пересчитываем итог!
-  }
+      monthlyPayment = roundedMonthly;
+      remainingAmount = monthlyPayment * installments;
+      totalAmount = remainingAmount + downPayment;
+    }
 
-  return { totalAmount, remainingAmount, monthlyPayment };
-}, [
-  formData.price,           // ✅ Добавили зависимость
-  formData.downPayment,
-  formData.installments,
-  roundingMode,
-  mode,
-  baseCalculatedPrice,
-  initialData.id,
-  initialData.totalAmount
-]);
+    return { totalAmount, remainingAmount, monthlyPayment };
+  }, [
+    formData.price,
+    formData.downPayment,
+    formData.installments,
+    roundingMode,
+    mode,
+    baseCalculatedPrice,
+    initialData.id,
+    initialData.totalAmount
+  ]);
 
+  useEffect(() => {
+    if (mode !== 'INSTALLMENT' || initialData.id) return;
+    if (!isPriceManual) return;
+    if (roundingMode === 'NONE') return;
 
-useEffect(() => {
-  if (mode !== 'INSTALLMENT' || initialData.id) return;
-  if (!isPriceManual) return; // Только если цена введена вручную
-  if (roundingMode === 'NONE') return; // Только если округление включено
-
-  // Если рассчитанный итог отличается от текущей цены — обновляем
-  if (calculatedValues.totalAmount !== Number(formData.price)) {
-    setFormData(prev => ({ ...prev, price: calculatedValues.totalAmount }));
-  }
-}, [roundingMode, calculatedValues.totalAmount, formData.price, mode, initialData.id, isPriceManual]);
-
-
-
-useEffect(() => {
-  if (roundingMode === 'NONE') {
-    setIsPriceManual(false);
-  }
-}, [roundingMode]);
-
-
-// 🔹 3. Синхронизация поля "Цена" с режимом округления (только для новых!)
-useEffect(() => {
-  // 🔥 НОВОЕ: Если цена введена вручную — НЕ трогаем её
-  if (mode !== 'INSTALLMENT' || initialData.id || isPriceManual) return;
-
-  if (roundingMode !== 'NONE') {
     if (calculatedValues.totalAmount !== Number(formData.price)) {
       setFormData(prev => ({ ...prev, price: calculatedValues.totalAmount }));
     }
-  } else {
-    if (baseCalculatedPrice > 0 && Number(formData.price) !== baseCalculatedPrice) {
-      setFormData(prev => ({ ...prev, price: baseCalculatedPrice }));
+  }, [roundingMode, calculatedValues.totalAmount, formData.price, mode, initialData.id, isPriceManual]);
+
+  useEffect(() => {
+    if (roundingMode === 'NONE') {
+      setIsPriceManual(false);
     }
-  }
-}, [roundingMode, calculatedValues.totalAmount, baseCalculatedPrice, mode, initialData.id, isPriceManual]);
+  }, [roundingMode]);
 
+  // 🔹 3. Синхронизация поля "Цена" с режимом округления (только для новых!)
+  useEffect(() => {
+    if (mode !== 'INSTALLMENT' || initialData.id || isPriceManual) return;
 
-
+    if (roundingMode !== 'NONE') {
+      if (calculatedValues.totalAmount !== Number(formData.price)) {
+        setFormData(prev => ({ ...prev, price: calculatedValues.totalAmount }));
+      }
+    } else {
+      if (baseCalculatedPrice > 0 && Number(formData.price) !== baseCalculatedPrice) {
+        setFormData(prev => ({ ...prev, price: baseCalculatedPrice }));
+      }
+    }
+  }, [roundingMode, calculatedValues.totalAmount, baseCalculatedPrice, mode, initialData.id, isPriceManual]);
 
   const handleProductChange = (val: string) => {
     setFormData(prev => ({ ...prev, productName: val, productId: '' }));
@@ -302,161 +335,169 @@ useEffect(() => {
 
   const handlePaymentDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const dateVal = e.target.value;
-    setFormData(prev => ({
-      ...prev,
-      paymentDate: dateVal,
-      paymentDay: dateVal ? new Date(dateVal).getDate().toString() : ''
-    }));
+
+    // 🔥 При изменении даты — пересчитываем график (только если нет оплаченных платежей)
+    if (!(initialData.id && hasPaidPayments)) {
+      setFormData(prev => ({
+        ...prev,
+        paymentDate: dateVal,
+        paymentDay: dateVal ? new Date(dateVal).getDate().toString() : ''
+      }));
+    }
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  // 🛡️ Защита от повторных отправок
-  if (isSubmitting) return;
+    if (isSubmitting) return;
 
-  if (!formData.customerId || !formData.productName || !formData.accountId) {
-    alert("Заполните все обязательные поля");
-    return;
-  }
+    if (!formData.customerId || !formData.productName || !formData.accountId) {
+      alert("Заполните все обязательные поля");
+      return;
+    }
 
-  // 🔍 ПРОВЕРКА НА ДУБЛИКАТ (только для новых договоров)
-  if (!formData.id && mode === 'INSTALLMENT') {
-    const duplicate = checkDuplicateSale(
-      sales, // ← передай sales через props, если нет
-      formData.customerId,
-      formData.productName,
-      formData.startDate,
-      calculatedValues.totalAmount
-    );
-
-    if (duplicate) {
-      setDuplicateWarning(
-        `⚠️ Похожий договор уже существует от ${new Date(duplicate.startDate).toLocaleDateString('ru-RU')}. ` +
-        `Проверьте, не создаёте ли вы дубликат.`
+    // 🔍 ПРОВЕРКА НА ДУБЛИКАТ (только для новых договоров)
+    if (!formData.id && mode === 'INSTALLMENT') {
+      const duplicate = checkDuplicateSale(
+        sales,
+        formData.customerId,
+        formData.productName,
+        formData.startDate,
+        calculatedValues.totalAmount,
+        formData.id // 🔥 Передаём ID текущего договора для исключения
       );
-      // Показываем предупреждение, но даём продолжить (пользователь может осознанно создать второй)
-      // Если хочешь жёсткую блокировку — раскомментируй:
-      // return;
-    } else {
-      setDuplicateWarning(null);
-    }
-  }
 
-  setShowConfirmModal(true);
-};
-
-
-const handleConfirm = async () => {
-  // 🔒 Защита от повторных нажатий — если уже отправляем, выходим
-  if (isSubmitting) return;
-
-  // Блокируем интерфейс и начинаем отправку
-  setIsSubmitting(true);
-
-  let fullSaleObject: any = null;
-
-  try {
-    const pDay = formData.paymentDate
-      ? new Date(formData.paymentDate).getDate()
-      : new Date(formData.startDate).getDate();
-
-    // 🔥 Генерируем более надёжный ID (не только timestamp)
-    const saleId = formData.id || `sale_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-
-    let finalStartDate = formData.startDate;
-    const now = new Date();
-    const selectedDate = new Date(formData.startDate);
-    const isToday = selectedDate.getDate() === now.getDate() &&
-                    selectedDate.getMonth() === now.getMonth() &&
-                    selectedDate.getFullYear() === now.getFullYear();
-
-    if (isToday) {
-      finalStartDate = now.toISOString();
+      if (duplicate) {
+        setDuplicateWarning(
+          `⚠️ Похожий договор уже существует от ${new Date(duplicate.startDate).toLocaleDateString('ru-RU')}. ` +
+          `Проверьте, не создаёте ли вы дубликат.`
+        );
+      } else {
+        setDuplicateWarning(null);
+      }
     }
 
-    const submissionData = {
-      ...formData,
-      id: saleId,
-      startDate: finalStartDate,
-      paymentDay: pDay,
-      buyPrice: Number(formData.buyPrice),
-      price: Number(formData.price),
-      downPayment: Number(formData.downPayment),
-      installments: Number(formData.installments),
-      interestRate: Number(formData.interestRate),
-      roundingMode,
-    };
+    setShowConfirmModal(true);
+  };
 
-    let finalSaleData;
-    if (mode === 'CASH') {
-      finalSaleData = {
-        ...submissionData,
-        type: 'CASH',
-        totalAmount: calculatedValues.totalAmount,
-        downPayment: calculatedValues.totalAmount,
-        remainingAmount: 0,
-        installments: 0,
-        interestRate: 0,
-        roundingMode: 'NONE' as const,
+  const handleConfirm = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
+    let fullSaleObject: any = null;
+
+    try {
+      const pDay = formData.paymentDate
+        ? new Date(formData.paymentDate).getDate()
+        : new Date(formData.startDate).getDate();
+
+      const saleId = formData.id || `sale_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+
+      let finalStartDate = formData.startDate;
+      const now = new Date();
+      const selectedDate = new Date(formData.startDate);
+      const isToday = selectedDate.getDate() === now.getDate() &&
+                      selectedDate.getMonth() === now.getMonth() &&
+                      selectedDate.getFullYear() === now.getFullYear();
+
+      if (isToday) {
+        finalStartDate = now.toISOString();
+      }
+
+      const submissionData = {
+        ...formData,
+        id: saleId,
+        startDate: finalStartDate,
+        paymentDay: pDay,
+        buyPrice: Number(formData.buyPrice),
+        price: Number(formData.price),
+        downPayment: Number(formData.downPayment),
+        installments: Number(formData.installments),
+        interestRate: Number(formData.interestRate),
+        roundingMode,
       };
-    } else {
-      finalSaleData = {
-        ...submissionData,
-        type: 'INSTALLMENT',
-        totalAmount: calculatedValues.totalAmount,
-        remainingAmount: calculatedValues.remainingAmount,
+
+      let finalSaleData;
+      if (mode === 'CASH') {
+        finalSaleData = {
+          ...submissionData,
+          type: 'CASH',
+          totalAmount: calculatedValues.totalAmount,
+          downPayment: calculatedValues.totalAmount,
+          remainingAmount: 0,
+          installments: 0,
+          interestRate: 0,
+          roundingMode: 'NONE' as const,
+        };
+      } else {
+        finalSaleData = {
+          ...submissionData,
+          type: 'INSTALLMENT',
+          totalAmount: calculatedValues.totalAmount,
+          remainingAmount: calculatedValues.remainingAmount,
+        };
+      }
+
+      // 🔥 КЛЮЧЕВОЙ МОМЕНТ: Генерация/обновление paymentPlan
+      let paymentPlan: Payment[] = [];
+
+      if (initialData.id && initialData.paymentPlan) {
+        // 🔹 При редактировании: пересчитываем ТОЛЬКО если нет оплаченных платежей И изменилась дата
+        const dateChanged = formData.paymentDate !== initialData.paymentDate;
+
+        if (!hasPaidPayments && dateChanged) {
+          // Пересчитываем весь график с новой датой
+          paymentPlan = regeneratePaymentPlan(
+            { ...formData, remainingAmount: calculatedValues.remainingAmount },
+            formData.paymentDate,
+            initialData.paymentPlan
+          );
+        } else {
+          // Сохраняем оригинальный план (защита данных!)
+          paymentPlan = initialData.paymentPlan.map((p: Payment) => ({ ...p }));
+        }
+      } else {
+        // Для новых договоров — полная генерация
+        paymentPlan = mode === 'CASH' ? [] : regeneratePaymentPlan(
+          { ...formData, remainingAmount: calculatedValues.remainingAmount },
+          formData.paymentDate
+        );
+      }
+
+      fullSaleObject = {
+        ...finalSaleData,
+        paymentPlan,
+        updatedAt: new Date().toISOString()
       };
+
+      // 🔥 ОТПРАВКА НА СЕРВЕР
+      await onSubmit(fullSaleObject);
+
+      setCreatedSale(fullSaleObject);
+      setShowConfirmModal(false);
+      setShowSuccessModal(true);
+
+    } catch (error: any) {
+      console.error('❌ Save error:', error);
+      setShowConfirmModal(false);
+
+      if (onShowNotification) {
+        onShowNotification(
+          'Ошибка сохранения',
+          error?.message || 'Не удалось сохранить договор. Проверьте соединение и попробуйте снова.',
+          'error',
+          'Повторить',
+          () => handleConfirm()
+        );
+      } else {
+        alert(`❌ Ошибка: ${error?.message || 'Не удалось сохранить договор'}`);
+      }
+
+    } finally {
+      setIsSubmitting(false);
     }
+  };
 
-    // 🔹 Генерация графика платежей
-    const paymentPlan = mode === 'CASH' ? [] : Array.from({ length: finalSaleData.installments }).map((_, idx) => {
-      const pDate = new Date(finalSaleData.paymentDate || finalSaleData.startDate);
-      pDate.setMonth(pDate.getMonth() + idx);
-      return {
-        id: `pay_${Date.now()}_${idx}`,
-        saleId,
-        amount: Number((finalSaleData.remainingAmount / finalSaleData.installments).toFixed(2)),
-        date: pDate.toISOString(),
-        isPaid: false
-      };
-    });
-
-    fullSaleObject = { ...finalSaleData, paymentPlan };
-
-    // 🔥 ОТПРАВКА НА СЕРВЕР — ждём ответ
-    await onSubmit(fullSaleObject);
-
-    // ✅ Только при успешном ответе — обновляем стейт и показываем модал
-    setCreatedSale(fullSaleObject);
-    setShowConfirmModal(false);
-    setShowSuccessModal(true);
-
-  } catch (error: any) {
-    console.error('❌ Save error:', error);
-
-    // Закрываем модал подтверждения (если ещё открыт)
-    setShowConfirmModal(false);
-
-    // 🔥 Показываем понятную ошибку пользователю
-    if (onShowNotification) {
-      onShowNotification(
-        'Ошибка сохранения',
-        error?.message || 'Не удалось сохранить договор. Проверьте соединение и попробуйте снова.',
-        'error',
-        'Повторить',
-        () => handleConfirm() // Опционально: кнопка повторной попытки
-      );
-    } else {
-      alert(`❌ Ошибка: ${error?.message || 'Не удалось сохранить договор'}`);
-    }
-
-  } finally {
-    // 🔓 ВСЕГДА разблокируем интерфейс, даже если была ошибка
-    // Это критически важно — иначе кнопка зависнет в состоянии "загрузки"
-    setIsSubmitting(false);
-  }
-};
   const updateMode = (newMode: 'INSTALLMENT' | 'CASH') => {
     setMode(newMode);
     setFormData(prev => ({ ...prev, mode: newMode }));
@@ -529,7 +570,6 @@ const handleConfirm = async () => {
             </div>
           </div>
 
-          {/* ТАБЛИЦА С ПУСТЫМИ СТРОКАМИ ПО СРОКУ */}
           <table style={styles.table}>
             <thead>
               <tr>
@@ -622,102 +662,84 @@ const handleConfirm = async () => {
     }
   };
 
-const handleSendContract = async () => {
-  // 🔥 Показываем модальное окно подтверждения
-  setShowWhatsAppConfirmModal(true);
-};
+  const handleSendContract = async () => {
+    setShowWhatsAppConfirmModal(true);
+  };
 
+  const handleConfirmSendWhatsApp = async () => {
+    if (isSendingWhatsApp) return;
 
-// 🔥 НОВАЯ ФУНКЦИЯ: Отправка после подтверждения (с загрузкой и защитой)
-const handleConfirmSendWhatsApp = async () => {
-  // 🛡️ Защита: если уже идёт отправка — выходим
-  if (isSendingWhatsApp) return;
+    if (!createdSale || !selectedCustomer || !appSettings.whatsapp?.enabled) {
+      setShowWhatsAppConfirmModal(false);
+      return;
+    }
 
-  if (!createdSale || !selectedCustomer || !appSettings.whatsapp?.enabled) {
+    setIsSendingWhatsApp(true);
     setShowWhatsAppConfirmModal(false);
-    return;
-  }
 
-  // 🔒 Блокируем интерфейс и закрываем модал
-  setIsSendingWhatsApp(true);
-  setShowWhatsAppConfirmModal(false);
+    try {
+      const blob = await generatePDFBlob();
+      const dateStr = new Date(createdSale.startDate || Date.now()).toISOString().split('T')[0].replace(/-/g, '');
+      const safeProductName = (createdSale.productName || 'Contract')
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .substring(0, 20);
+      const fileName = `${safeProductName}_${dateStr}.pdf`;
 
-  try {
-    // 🔹 Генерация PDF
-    const blob = await generatePDFBlob();
+      const cleanPhone = selectedCustomer.phone?.replace(/\D/g, '') || '';
+      const whatsappPhone = cleanPhone.startsWith('8')
+        ? '7' + cleanPhone.slice(1)
+        : cleanPhone.startsWith('7')
+          ? cleanPhone
+          : '7' + cleanPhone;
 
-    // 🔹 Имя файла: только латиница + дата (WhatsApp не любит кириллицу!)
-    const dateStr = new Date(createdSale.startDate || Date.now()).toISOString().split('T')[0].replace(/-/g, '');
-    const safeProductName = (createdSale.productName || 'Contract')
-      .replace(/[^a-zA-Z0-9]/g, '_')
-      .substring(0, 20);
-    const fileName = `${safeProductName}_${dateStr}.pdf`;
+      const success = await sendWhatsAppFile(
+        appSettings.whatsapp.idInstance,
+        appSettings.whatsapp.apiTokenInstance,
+        whatsappPhone,
+        blob,
+        fileName
+      );
 
-    // 🔹 Нормализация телефона для WhatsApp (убираем всё кроме цифр, добавляем 7)
-    const cleanPhone = selectedCustomer.phone?.replace(/\D/g, '') || '';
-    const whatsappPhone = cleanPhone.startsWith('8')
-      ? '7' + cleanPhone.slice(1)
-      : cleanPhone.startsWith('7')
-        ? cleanPhone
-        : '7' + cleanPhone;
-
-    // 🔹 Отправка через WhatsApp API
-    const success = await sendWhatsAppFile(
-      appSettings.whatsapp.idInstance,
-      appSettings.whatsapp.apiTokenInstance,
-      whatsappPhone,
-      blob,
-      fileName
-    );
-
-    if (success) {
-      // ✅ Успех
-      if (onShowNotification) {
-        onShowNotification(
-          '✅ Отправлено!',
-          `Договор "${createdSale.productName}" отправлен клиенту ${selectedCustomer.name}`,
-          'success'
-        );
+      if (success) {
+        if (onShowNotification) {
+          onShowNotification(
+            '✅ Отправлено!',
+            `Договор "${createdSale.productName}" отправлен клиенту ${selectedCustomer.name}`,
+            'success'
+          );
+        } else {
+          alert("✅ Договор успешно отправлен в WhatsApp!");
+        }
       } else {
-        alert("✅ Договор успешно отправлен в WhatsApp!");
+        throw new Error('Green API вернул ошибку отправки. Проверьте статус инстанса.');
       }
 
+    } catch (error: any) {
+      console.error("❌ WhatsApp send error:", {
+        message: error?.message,
+        stack: error?.stack,
+        customer: selectedCustomer?.name,
+        phone: selectedCustomer?.phone
+      });
 
+      const errorMessage = error?.message || 'Неизвестная ошибка';
 
-    } else {
-      // ❌ WhatsApp API вернул ошибку
-      throw new Error('Green API вернул ошибку отправки. Проверьте статус инстанса.');
+      if (onShowNotification) {
+        onShowNotification(
+          '❌ Ошибка отправки',
+          `Не удалось отправить договор: ${errorMessage}`,
+          'error',
+          'Повторить',
+          () => setShowWhatsAppConfirmModal(true)
+        );
+      } else {
+        alert(`❌ Ошибка: ${errorMessage}\n\nПроверьте:\n• Статус WhatsApp инстанса\n• Корректность номера телефона\n• Соединение с интернетом`);
+      }
+
+    } finally {
+      setIsSendingWhatsApp(false);
     }
-
-  } catch (error: any) {
-    // 🔴 Обработка ошибок
-    console.error("❌ WhatsApp send error:", {
-      message: error?.message,
-      stack: error?.stack,
-      customer: selectedCustomer?.name,
-      phone: selectedCustomer?.phone
-    });
-
-    const errorMessage = error?.message || 'Неизвестная ошибка';
-
-
-    if (onShowNotification) {
-      onShowNotification(
-        '❌ Ошибка отправки',
-        `Не удалось отправить договор: ${errorMessage}`,
-        'error',
-        'Повторить',
-        () => setShowWhatsAppConfirmModal(true) // Кнопка "Повторить" открывает модал снова
-      );
-    } else {
-      alert(`❌ Ошибка: ${errorMessage}\n\nПроверьте:\n• Статус WhatsApp инстанса\n• Корректность номера телефона\n• Соединение с интернетом`);
-    }
-
-  } finally {
-
-    setIsSendingWhatsApp(false);
-  }
-};
+  };
 
   const handlePrintContract = () => {
     if (!createdSale) return;
@@ -729,7 +751,6 @@ const handleConfirmSendWhatsApp = async () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }
 
-    // Генерация пустых строк по количеству месяцев
     const rows = Array.from({ length: sale.installments || 1 }).map((_, index) => `
       <tr>
         <td style="text-align: center;">${index + 1}</td>
@@ -871,8 +892,26 @@ const handleConfirmSendWhatsApp = async () => {
 
       <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
         <button onClick={onClose} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
-        <h2 className="text-xl font-bold text-slate-800">{formData.id ? 'Редактирование' : 'Новое оформление'}</h2>
+        <h2 className="text-xl font-bold text-slate-800">
+          {formData.id ? (
+            <span className="flex items-center gap-2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              Редактирование договора
+            </span>
+          ) : 'Новое оформление'}
+        </h2>
       </div>
+
+      {/* 🔹 Индикатор режима редактирования */}
+      {formData.id && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2">
+          <span>✏️</span>
+          Вы редактируете существующий договор. {hasPaidPayments ? 'Поля заблокированы, так как есть оплаченные платежи.' : 'Изменение даты первого платежа пересчитает график будущих платежей.'}
+        </div>
+      )}
 
       <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-100">
         <button onClick={() => updateMode('INSTALLMENT')} className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${mode === 'INSTALLMENT' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Рассрочка</button>
@@ -885,15 +924,39 @@ const handleConfirmSendWhatsApp = async () => {
             <div className="w-40">
               <label className="block text-sm font-medium text-slate-700 mb-1">Дата продажи</label>
               <input type="date" required
-                     className="w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-slate-900 text-sm"
-                     value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})}/>
+                     className={`w-full p-2 border rounded-lg outline-none bg-white text-slate-900 text-sm ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300 focus:border-indigo-500'}`}
+                     value={formData.startDate}
+                     onChange={e => setFormData({...formData, startDate: e.target.value})}
+                     disabled={!!formData.id} />
             </div>
             {mode === 'INSTALLMENT' && (
                 <div className="w-40">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Первый платеж</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Первый платеж
+                    {formData.id && hasPaidPayments && (
+                      <span className="ml-1 text-[10px] text-amber-600 font-normal">🔒 Заблокировано</span>
+                    )}
+                  </label>
                   <input type="date" required
-                         className="w-full p-2 border border-slate-300 rounded-lg outline-none bg-white text-slate-900 text-sm"
-                         value={formData.paymentDate} onChange={handlePaymentDateChange}/>
+                         className={`w-full p-2 border rounded-lg outline-none bg-white text-slate-900 text-sm ${
+                           formData.id && hasPaidPayments 
+                             ? 'border-slate-200 bg-slate-100 cursor-not-allowed' 
+                             : 'border-slate-300 focus:border-indigo-500'
+                         }`}
+                         value={formData.paymentDate}
+                         onChange={handlePaymentDateChange}
+                         disabled={formData.id && hasPaidPayments} />
+                  {/* 🔹 Подсказка */}
+                  {formData.id && !hasPaidPayments && (
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      💡 Изменение даты пересчитает график будущих платежей
+                    </p>
+                  )}
+                  {formData.id && hasPaidPayments && (
+                    <p className="text-[10px] text-amber-600 mt-1">
+                      ⚠️ График заблокирован: есть оплаченные платежи
+                    </p>
+                  )}
                 </div>
             )}
           </div>
@@ -902,7 +965,8 @@ const handleConfirmSendWhatsApp = async () => {
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <label className="block text-sm font-medium text-slate-700 mb-1">Клиент</label>
           <div onClick={() => onSelectCustomer({...formData, mode})}
-               className={`w-full p-3 border rounded-lg cursor-pointer flex justify-between items-center ${formData.customerId ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-dashed border-slate-300'}`}>
+               className={`w-full p-3 border rounded-lg cursor-pointer flex justify-between items-center ${formData.customerId ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-dashed border-slate-300'} ${formData.id ? 'cursor-not-allowed opacity-60' : ''}`}
+               style={{ pointerEvents: formData.id ? 'none' : 'auto' }}>
             <div className="flex items-center gap-2">
               {formData.customerId && <div className="text-indigo-600">{ICONS.Customers}</div>}
               <span
@@ -918,9 +982,11 @@ const handleConfirmSendWhatsApp = async () => {
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
           <label className="block text-sm font-medium text-slate-700 mb-1">Товар</label>
           <input type="text"
-                 className="w-full p-3 border border-slate-300 rounded-lg outline-none text-slate-900 placeholder:text-slate-400 bg-white"
-                 placeholder="Введите название товара..." value={formData.productName}
-                 onChange={(e) => handleProductChange(e.target.value)}/>
+                 className={`w-full p-3 border rounded-lg outline-none text-slate-900 placeholder:text-slate-400 bg-white ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
+                 placeholder="Введите название товара..."
+                 value={formData.productName}
+                 onChange={(e) => handleProductChange(e.target.value)}
+                 disabled={!!formData.id} />
           {showSuggestions && suggestions.length > 0 && (
               <div
                   className="absolute left-4 right-4 top-[72px] bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
@@ -939,8 +1005,10 @@ const handleConfirmSendWhatsApp = async () => {
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <label className="block text-sm font-medium text-slate-700 mb-1">Касса (Приход)</label>
           <select required
-                  className="w-full p-3 bg-white border border-slate-300 rounded-lg outline-none text-slate-900"
-                  value={formData.accountId} onChange={e => setFormData({...formData, accountId: e.target.value})}>
+                  className={`w-full p-3 bg-white border rounded-lg outline-none text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
+                  value={formData.accountId}
+                  onChange={e => setFormData({...formData, accountId: e.target.value})}
+                  disabled={!!formData.id}>
             {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
@@ -953,14 +1021,14 @@ const handleConfirmSendWhatsApp = async () => {
               <input
                   type="number"
                   min="0"
-                  className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900"
+                  className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
                   value={formData.buyPrice === 0 ? '' : formData.buyPrice}
                   onChange={e => {
                     setFormData({...formData, buyPrice: e.target.value});
-                    setIsPriceManual(false); // Сброс ручного режима
+                    setIsPriceManual(false);
                   }}
                   placeholder="0"
-              />
+                  disabled={!!formData.id} />
             </div>
             {mode === 'INSTALLMENT' && (
                 <div>
@@ -968,14 +1036,14 @@ const handleConfirmSendWhatsApp = async () => {
                   <input
                       type="number"
                       min="0"
-                      className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900"
+                      className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
                       value={formData.interestRate === 0 ? '' : formData.interestRate}
                       onChange={e => {
                         setFormData({...formData, interestRate: e.target.value});
-                        setIsPriceManual(false); // Сброс ручного режима
+                        setIsPriceManual(false);
                       }}
                       placeholder="0"
-                  />
+                      disabled={!!formData.id} />
                 </div>
             )}
           </div>
@@ -990,23 +1058,27 @@ const handleConfirmSendWhatsApp = async () => {
                   type="number"
                   min="0"
                   className={`w-full p-3 border rounded-lg outline-none font-bold text-slate-900 bg-white transition-all ${
-                      isPriceManual
+                      isPriceManual && !formData.id
                           ? 'border-indigo-400 ring-2 ring-indigo-100'
-                          : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                          : formData.id 
+                            ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
+                            : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
                   }`}
                   value={formData.price === 0 ? '' : formData.price}
                   onChange={e => {
-                    const val = e.target.value;
-
-                    setFormData({
-                      ...formData,
-                      price: val === '' ? 0 : Number(val)
-                    });
-                    setIsPriceManual(true);
+                    if (!formData.id) {
+                      const val = e.target.value;
+                      setFormData({
+                        ...formData,
+                        price: val === '' ? 0 : Number(val)
+                      });
+                      setIsPriceManual(true);
+                    }
                   }}
                   placeholder="0"
+                  disabled={!!formData.id}
               />
-              {mode === 'INSTALLMENT' && (
+              {mode === 'INSTALLMENT' && !formData.id && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase">
                     {isPriceManual ? (
                         <span className="text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">Вручную</span>
@@ -1016,7 +1088,6 @@ const handleConfirmSendWhatsApp = async () => {
                   </div>
               )}
             </div>
-
           </div>
 
           {/* 🔹 Срок и Первый взнос */}
@@ -1029,11 +1100,11 @@ const handleConfirmSendWhatsApp = async () => {
                       type="number"
                       min="1"
                       max="24"
-                      className="w-full p-3 border border-slate-300 rounded-lg outline-none text-slate-900 bg-white"
+                      className={`w-full p-3 border rounded-lg outline-none text-slate-900 bg-white ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
                       value={formData.installments === 0 ? '' : formData.installments}
                       onChange={e => setFormData({...formData, installments: e.target.value})}
                       placeholder="0"
-                  />
+                      disabled={!!formData.id} />
                 </div>
 
                 {/* 🔹 Первый взнос + чекбокс в одну строку */}
@@ -1045,19 +1116,23 @@ const handleConfirmSendWhatsApp = async () => {
                         min="0"
                         max={calculatedValues.totalAmount}
                         className={`w-full p-3 pr-12 border rounded-lg outline-none text-slate-900 bg-white transition-all ${
-                            downPaymentFromMarkup
+                            downPaymentFromMarkup && !formData.id
                                 ? 'border-emerald-300 bg-emerald-50/50 ring-2 ring-emerald-100'
-                                : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                                : formData.id
+                                  ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
+                                  : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
                         }`}
                         value={formData.downPayment === 0 ? '' : formData.downPayment}
                         onChange={e => {
-                          setFormData({...formData, downPayment: e.target.value});
-                          if (downPaymentFromMarkup) setDownPaymentFromMarkup(false);
+                          if (!formData.id) {
+                            setFormData({...formData, downPayment: e.target.value});
+                            if (downPaymentFromMarkup) setDownPaymentFromMarkup(false);
+                          }
                         }}
                         placeholder="0"
-                        disabled={downPaymentFromMarkup}
+                        disabled={downPaymentFromMarkup || !!formData.id}
                     />
-                    {downPaymentFromMarkup && (
+                    {downPaymentFromMarkup && !formData.id && (
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500">
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/>
@@ -1067,7 +1142,7 @@ const handleConfirmSendWhatsApp = async () => {
                   </div>
 
                   {/* ✅ Чекбокс в одну строку */}
-                  {Number(formData.buyPrice) > 0 && (
+                  {Number(formData.buyPrice) > 0 && !formData.id && (
                       <label
                           className="flex items-center gap-3 p-3 rounded-xl cursor-pointer group hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200">
                         <div className="relative flex-shrink-0">
@@ -1093,8 +1168,6 @@ const handleConfirmSendWhatsApp = async () => {
                         </div>
                       </label>
                   )}
-
-
                 </div>
               </div>
           )}
@@ -1105,14 +1178,16 @@ const handleConfirmSendWhatsApp = async () => {
           <div className="grid grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium text-slate-500 mb-1">ФИО Поручителя</label><input
                 type="text"
-                className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900"
+                className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
                 value={formData.guarantorName}
-                onChange={e => setFormData({...formData, guarantorName: e.target.value})}/></div>
+                onChange={e => setFormData({...formData, guarantorName: e.target.value})}
+                disabled={!!formData.id} /></div>
             <div><label className="block text-xs font-medium text-slate-500 mb-1">Телефон поручителя</label><input
                 type="text"
-                className="w-full p-3 border border-slate-300 rounded-lg outline-none bg-white text-slate-900"
+                className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
                 value={formData.guarantorPhone}
-                onChange={e => setFormData({...formData, guarantorPhone: e.target.value})}/></div>
+                onChange={e => setFormData({...formData, guarantorPhone: e.target.value})}
+                disabled={!!formData.id} /></div>
           </div>
         </div>
 
@@ -1131,13 +1206,16 @@ const handleConfirmSendWhatsApp = async () => {
                   <span className="text-slate-500 font-medium">Округление платежа (до 100 ₽)</span>
                   <div className="flex bg-slate-100 p-1 rounded-lg">
                     <button type="button" onClick={() => setRoundingMode('NONE')}
-                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'NONE' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Нет
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'NONE' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                            disabled={!!formData.id}>Нет
                     </button>
                     <button type="button" onClick={() => setRoundingMode('DOWN')}
-                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'DOWN' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Вниз
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'DOWN' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                            disabled={!!formData.id}>Вниз
                     </button>
                     <button type="button" onClick={() => setRoundingMode('UP')}
-                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'UP' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Вверх
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'UP' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                            disabled={!!formData.id}>Вверх
                     </button>
                   </div>
                 </div>
@@ -1242,93 +1320,83 @@ const handleConfirmSendWhatsApp = async () => {
           </div>
       )}
 
-
       {/* 🔔 МОДАЛЬНОЕ ОКНО ПОДТВЕРЖДЕНИЯ ОТПРАВКИ В WHATSAPP */}
-{showWhatsAppConfirmModal && (
-  <div
-    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-    onClick={() => setShowWhatsAppConfirmModal(false)}
-  >
-    <div
-      className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
-      onClick={e => e.stopPropagation()}
-    >
-      {/* Иконка WhatsApp */}
-      <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl">
-        {ICONS.Send}
-      </div>
-
-      {/* Заголовок */}
-      <h3 className="text-xl font-bold text-slate-800 text-center">
-        Отправить договор в WhatsApp?
-      </h3>
-
-      {/* Информация о получателе */}
-      <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
-        <div className="flex justify-between">
-          <span className="text-slate-500">Клиент:</span>
-          <span className="font-bold text-slate-800">{selectedCustomer?.name}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate-500">Телефон:</span>
-          <span className="font-medium text-slate-800">{formatPhone(selectedCustomer?.phone)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate-500">Договор:</span>
-          <span className="font-medium text-slate-800">{createdSale?.productName}</span>
-        </div>
-        <div className="flex justify-between pt-2 border-t border-slate-200">
-          <span className="text-slate-500">Сумма:</span>
-          <span className="font-bold text-indigo-600">{createdSale?.totalAmount.toLocaleString()} ₽</span>
-        </div>
-      </div>
-
-      {/* Предупреждение */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2 items-start">
-        <span className="text-amber-500 flex-shrink-0 mt-0.5">⚠️</span>
-        <p className="text-xs text-amber-800">
-          PDF-файл будет отправлен на номер {formatPhone(selectedCustomer?.phone)}.
-          Убедитесь, что номер корректен.
-        </p>
-      </div>
-
-      {/* Кнопки */}
-      <div className="flex gap-3 pt-2">
-        <button
-            onClick={() => setShowWhatsAppConfirmModal(false)}
-            className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+      {showWhatsAppConfirmModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+          onClick={() => setShowWhatsAppConfirmModal(false)}
         >
-          Отмена
-        </button>
-        <button
-            onClick={handleConfirmSendWhatsApp}
-            disabled={isSendingWhatsApp}
-            className={`flex-1 py-3 rounded-xl font-bold transition-colors shadow-lg flex items-center justify-center gap-2 ${
-                isSendingWhatsApp
-                    ? 'bg-slate-400 cursor-not-allowed'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200'
-            }`}
-        >
-          {isSendingWhatsApp ? (
-              <>
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"
-                          fill="none"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                </svg>
-                Отправка...
-              </>
-          ) : (
-              <>
-                {ICONS.Send}
-                Отправить
-              </>
-          )}
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+          <div
+            className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl">
+              {ICONS.Send}
+            </div>
+            <h3 className="text-xl font-bold text-slate-800 text-center">
+              Отправить договор в WhatsApp?
+            </h3>
+            <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Клиент:</span>
+                <span className="font-bold text-slate-800">{selectedCustomer?.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Телефон:</span>
+                <span className="font-medium text-slate-800">{formatPhone(selectedCustomer?.phone)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Договор:</span>
+                <span className="font-medium text-slate-800">{createdSale?.productName}</span>
+              </div>
+              <div className="flex justify-between pt-2 border-t border-slate-200">
+                <span className="text-slate-500">Сумма:</span>
+                <span className="font-bold text-indigo-600">{createdSale?.totalAmount.toLocaleString()} ₽</span>
+              </div>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2 items-start">
+              <span className="text-amber-500 flex-shrink-0 mt-0.5">⚠️</span>
+              <p className="text-xs text-amber-800">
+                PDF-файл будет отправлен на номер {formatPhone(selectedCustomer?.phone)}.
+                Убедитесь, что номер корректен.
+              </p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                  onClick={() => setShowWhatsAppConfirmModal(false)}
+                  className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                Отмена
+              </button>
+              <button
+                  onClick={handleConfirmSendWhatsApp}
+                  disabled={isSendingWhatsApp}
+                  className={`flex-1 py-3 rounded-xl font-bold transition-colors shadow-lg flex items-center justify-center gap-2 ${
+                      isSendingWhatsApp
+                          ? 'bg-slate-400 cursor-not-allowed'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200'
+                  }`}
+              >
+                {isSendingWhatsApp ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"
+                                fill="none"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                      </svg>
+                      Отправка...
+                    </>
+                ) : (
+                    <>
+                      {ICONS.Send}
+                      Отправить
+                    </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
