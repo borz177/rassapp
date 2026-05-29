@@ -99,7 +99,6 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
         "1 инвестор",
         "База клиентов (до 100)",
         "Учет расходов",
-        "Без напоминаний WhatsApp"
       ],
       color: "bg-slate-100",
       textColor: "text-slate-800",
@@ -113,7 +112,6 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
       features: [
         "Все функции Старт",
         "5 инвесторов",
-        "Авто-напоминания WhatsApp",
         "Печать договоров (PDF)",
         "База клиентов (до 1000)"
       ],
@@ -130,7 +128,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
       features: [
         "Все функции Стандарт",
         "Безлимит инвесторов",
-        "ИИ Аналитика рисков",
+        "Авто-напоминания WhatsApp",
         "Сотрудники и права доступа",
         "Приоритетная поддержка"
       ],
