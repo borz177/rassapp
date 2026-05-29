@@ -139,50 +139,87 @@ const NewSale: React.FC<NewSaleProps> = ({
 
   // 🔹 Проверка: есть ли уже оплаченные платежи (для защиты при редактировании)
   const hasPaidPayments = useMemo(() => {
-    return initialData.paymentPlan?.some((p: Payment) => p.isPaid) || false;
-  }, [initialData.paymentPlan]);
+  return initialData.paymentPlan?.some((p: Payment) => p.isPaid) || false;
+}, [initialData.paymentPlan]);
+
+// 🔹 Проверка: есть ли реальные платежи (новая логика защиты)
+const hasRealPayments = useMemo(() => {
+  return initialData.paymentPlan?.some((p: Payment) => p.isRealPayment === true) || false;
+}, [initialData.paymentPlan]);
 
   const selectedCustomer = customers.find(c => c.id === formData.customerId);
   const selectedAccount = accounts.find(a => a.id === formData.accountId);
 
   // 🔹 Функция пересчёта графика платежей при изменении даты первого платежа
-  const regeneratePaymentPlan = (
-    saleData: any,
-    newFirstPaymentDate: string,
-    existingPayments: Payment[] = []
-  ): Payment[] => {
-    // 1. Сохраняем уже оплаченные платежи без изменений
-    const paidPayments = existingPayments.filter(p => p.isPaid);
+  // 🔹 Функция пересчёта графика платежей с ЗАЩИТОЙ реальных платежей
+const regeneratePaymentPlan = (
+  saleData: any,
+  newFirstPaymentDate: string,
+  existingPayments: Payment[] = []
+): Payment[] => {
+  // 🔹 1. Сохраняем ВСЕ реальные платежи (историю поступлений)
+  // Это платежи с isRealPayment === true (фактически полученные деньги)
+  const realPayments = existingPayments.filter(p => p.isRealPayment === true);
 
-    // 2. Считаем параметры для будущих платежей
-    const remainingInstallments = saleData.installments - paidPayments.length;
-    const remainingAmount = saleData.remainingAmount || (saleData.totalAmount - saleData.downPayment);
-    const monthlyAmount = remainingInstallments > 0
-      ? Number((remainingAmount / remainingInstallments).toFixed(2))
-      : 0;
+  // 🔹 2. Также сохраняем оплаченные плановые платежи (для совместимости со старыми данными)
+  const legacyPaidPayments = existingPayments.filter(
+    p => p.isPaid && p.isRealPayment !== true && !realPayments.some(rp => rp.id === p.id)
+  );
 
-    // 3. Генерируем новые даты для будущих платежей
-    const firstDate = new Date(newFirstPaymentDate);
+  // 🔹 3. Объединяем сохранённые платежи
+  const preservedPayments = [...realPayments, ...legacyPaidPayments];
 
-    const futurePayments: Payment[] = Array.from({ length: remainingInstallments }).map((_, idx) => {
-      const pDate = new Date(firstDate);
-      pDate.setMonth(pDate.getMonth() + idx);
+  // 🔹 4. Считаем, сколько ещё нужно платежей и какую сумму распределять
+  const preservedAmount = preservedPayments.reduce((sum, p) => sum + p.amount, 0);
+  const remainingInstallments = saleData.installments - preservedPayments.length;
 
-      return {
-        id: paidPayments.length > 0
-          ? `pay_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 6)}`
-          : `pay_${saleData.id || Date.now()}_${idx}`,
+  // 🔹 5. Если все платежи уже сохранены — возвращаем их
+  if (remainingInstallments <= 0) {
+    return preservedPayments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }
+
+  // 🔹 6. Считаем сумму для будущих платежей
+  const remainingAmount = saleData.remainingAmount || (saleData.totalAmount - saleData.downPayment - preservedAmount);
+  const monthlyAmount = remainingInstallments > 0
+    ? Number((remainingAmount / remainingInstallments).toFixed(2))
+    : 0;
+
+  // 🔹 7. Генерируем новые даты для будущих платежей
+  const firstDate = new Date(newFirstPaymentDate);
+
+  // 🔹 8. Пропускаем месяцы, которые уже заняты сохранёнными платежами
+  const usedMonths = new Set(preservedPayments.map(p => new Date(p.date).toISOString().slice(0, 7)));
+
+  const futurePayments: Payment[] = [];
+  let monthOffset = 0;
+
+  while (futurePayments.length < remainingInstallments) {
+    const pDate = new Date(firstDate);
+    pDate.setMonth(pDate.getMonth() + monthOffset);
+
+    const monthKey = pDate.toISOString().slice(0, 7);
+
+    // 🔹 Пропускаем месяцы, которые уже заняты
+    if (!usedMonths.has(monthKey)) {
+      futurePayments.push({
+        id: `pay_${Date.now()}_${futurePayments.length}_${Math.random().toString(36).substr(2, 6)}`,
         saleId: saleData.id,
         amount: monthlyAmount,
         date: pDate.toISOString(),
         isPaid: false,
         isRealPayment: false
-      };
-    });
+      });
+      usedMonths.add(monthKey);
+    }
 
-    // 4. Объединяем: старые оплаченные + новые будущие
-    return [...paidPayments, ...futurePayments];
-  };
+    monthOffset++;
+  }
+
+  // 🔹 9. Объединяем и сортируем по дате
+  return [...preservedPayments, ...futurePayments].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+};
 
   // Авто-расчёт цены при вводе закупа (только для новых записей!)
   useEffect(() => {
@@ -439,30 +476,36 @@ const NewSale: React.FC<NewSaleProps> = ({
       }
 
       // 🔥 КЛЮЧЕВОЙ МОМЕНТ: Генерация/обновление paymentPlan
-      let paymentPlan: Payment[] = [];
+     // 🔥 КЛЮЧЕВОЙ МОМЕНТ: Генерация/обновление paymentPlan
+let paymentPlan: Payment[] = [];
 
-      if (initialData.id && initialData.paymentPlan) {
-        // 🔹 При редактировании: пересчитываем ТОЛЬКО если нет оплаченных платежей И изменилась дата
-        const dateChanged = formData.paymentDate !== initialData.paymentDate;
+if (initialData.id && initialData.paymentPlan) {
+  // 🔹 При редактировании: пересчитываем ТОЛЬКО если нет реальных платежей И изменилась дата
+  const dateChanged = formData.paymentDate !== initialData.paymentDate;
 
-        if (!hasPaidPayments && dateChanged) {
-          // Пересчитываем весь график с новой датой
-          paymentPlan = regeneratePaymentPlan(
-            { ...formData, remainingAmount: calculatedValues.remainingAmount },
-            formData.paymentDate,
-            initialData.paymentPlan
-          );
-        } else {
-          // Сохраняем оригинальный план (защита данных!)
-          paymentPlan = initialData.paymentPlan.map((p: Payment) => ({ ...p }));
-        }
-      } else {
-        // Для новых договоров — полная генерация
-        paymentPlan = mode === 'CASH' ? [] : regeneratePaymentPlan(
-          { ...formData, remainingAmount: calculatedValues.remainingAmount },
-          formData.paymentDate
-        );
-      }
+  // 🔹 hasRealPayments = есть фактически полученные деньги (isRealPayment === true)
+  // 🔹 hasPaidPayments = есть любые отмеченные как оплаченные (для обратной совместимости)
+  const shouldRegenerate = !hasRealPayments && !hasPaidPayments && dateChanged;
+
+  if (shouldRegenerate) {
+    // Пересчитываем весь график с новой датой
+    paymentPlan = regeneratePaymentPlan(
+      { ...formData, remainingAmount: calculatedValues.remainingAmount },
+      formData.paymentDate,
+      initialData.paymentPlan
+    );
+  } else {
+    // 🔥 Сохраняем оригинальный план (защита данных!)
+    // Клонируем, чтобы избежать мутаций исходного объекта
+    paymentPlan = initialData.paymentPlan.map((p: Payment) => ({ ...p }));
+  }
+} else {
+  // Для новых договоров — полная генерация
+  paymentPlan = mode === 'CASH' ? [] : regeneratePaymentPlan(
+    { ...formData, remainingAmount: calculatedValues.remainingAmount },
+    formData.paymentDate
+  );
+}
 
       fullSaleObject = {
         ...finalSaleData,
@@ -952,11 +995,11 @@ const NewSale: React.FC<NewSaleProps> = ({
                       💡 Изменение даты пересчитает график будущих платежей
                     </p>
                   )}
-                  {formData.id && hasPaidPayments && (
-                    <p className="text-[10px] text-amber-600 mt-1">
-                      ⚠️ График заблокирован: есть оплаченные платежи
-                    </p>
-                  )}
+                  {formData.id && hasRealPayments && (
+  <p className="text-[10px] text-amber-600 mt-1">
+    ⚠️ График заблокирован: есть оплаченные платежи
+  </p>
+)}
                 </div>
             )}
           </div>
