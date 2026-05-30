@@ -10,14 +10,14 @@ interface CustomersProps {
   sales: Sale[];
   appSettings: AppSettings;
   onAddCustomer: (data: {
-  name: string;
-  phone: string;
-  photo?: string;
-  address?: string;
-  passportSeries?: string;
-  passportNumber?: string;
-  passportIssuedBy?: string;
-}) => void;
+    name: string;
+    phone: string;
+    photo?: string;
+    address?: string;
+    passportSeries?: string;
+    passportNumber?: string;
+    passportIssuedBy?: string;
+  }) => Promise<Customer>;
   onSelectCustomer: (id: string) => void; 
   onInitiatePayment: (sale: Sale, payment: Payment) => void;
   onUndoPayment: (saleId: string, paymentId: string) => void;
@@ -93,30 +93,39 @@ const [newPassportIssuedBy, setNewPassportIssuedBy] = useState('');
     }
   };
 
-const handleSubmit = (e: React.FormEvent) => {
+const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   if (newName && newPhone) {
-    onAddCustomer({
-      name: newName.trim(),
-      phone: newPhone.trim(),
-      photo: newPhoto || undefined,
-      address: newAddress.trim() || undefined,
+    try {
+      // 🔹 Ждём завершения сохранения в базу
+      const newCustomer = await onAddCustomer({
+        name: newName.trim(),
+        phone: newPhone.trim(),
+        photo: newPhoto || undefined,
+        address: newAddress.trim() || undefined,
+        passportSeries: newPassportSeries.trim() || undefined,
+        passportNumber: newPassportNumber.trim() || undefined,
+        passportIssuedBy: newPassportIssuedBy.trim() || undefined,
+      });
 
-      // 🔹 Паспортные данные (только если заполнены)
-      passportSeries: newPassportSeries.trim() || undefined,
-      passportNumber: newPassportNumber.trim() || undefined,
-      passportIssuedBy: newPassportIssuedBy.trim() || undefined,
-    });
+      // Очищаем форму
+      setNewName('');
+      setNewPhone('');
+      setNewAddress('');
+      setNewPhoto('');
+      setNewPassportSeries('');
+      setNewPassportNumber('');
+      setNewPassportIssuedBy('');
+      setIsAdding(false);
 
-    // 🔹 Сброс ВСЕХ полей формы
-    setNewName('');
-    setNewPhone('');
-    setNewAddress('');
-    setNewPhoto('');
-    setNewPassportSeries('');
-    setNewPassportNumber('');
-    setNewPassportIssuedBy('');
-    setIsAdding(false);
+      // 🚀 Переходим на страницу созданного клиента
+      if (newCustomer?.id) {
+        onSelectCustomer(newCustomer.id);
+      }
+    } catch (error) {
+      console.error('Ошибка создания клиента:', error);
+      alert('❌ Не удалось сохранить клиента. Попробуйте ещё раз.');
+    }
   }
 };
 
@@ -199,7 +208,6 @@ const handleSubmit = (e: React.FormEvent) => {
           <label className="block text-xs text-slate-500 mb-1">Адрес</label>
           <input
             type="text"
-            placeholder="г. Москва, ул. Ленина, д. 1, кв. 10"
             className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
             value={newAddress}
             onChange={e => setNewAddress(e.target.value)}
@@ -241,7 +249,6 @@ const handleSubmit = (e: React.FormEvent) => {
             <label className="block text-xs text-slate-500 mb-1">Кем выдан</label>
             <input
               type="text"
-              placeholder="УФМС России по г. Москве"
               className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
               value={newPassportIssuedBy}
               onChange={e => setNewPassportIssuedBy(e.target.value)}
