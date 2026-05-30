@@ -424,6 +424,34 @@ const handleViewDocument = (e: React.MouseEvent, doc: CustomerDocument) => {
   const confirmDelete = () => { if (selectedSale && deletingPaymentId && onUndoPayment) { onUndoPayment(selectedSale.id, deletingPaymentId); setDeletingPaymentId(null); } }
 
 
+
+const formatPaymentHistory = (
+  payments: Array<{ date: string | Date; amount: number; isPaid?: boolean }>,
+  limit: number = 5
+): string => {
+  const paidPayments = payments
+    .filter(p => p.isPaid)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const uniquePayments = paidPayments.filter((p, i, arr) => {
+    const prev = arr[i - 1];
+    if (!prev) return true;
+    return new Date(p.date).toISOString() !== new Date(prev.date).toISOString()
+      || p.amount !== prev.amount;
+  }).slice(0, limit);
+
+  if (uniquePayments.length === 0) return '';
+
+  let history = `\n📜 *История платежей:*\n`;
+  uniquePayments.forEach(p => {
+    // 🔹 ИСПРАВЛЕНИЕ: преобразуем Date в string
+    const dateString = typeof p.date === 'string' ? p.date : p.date.toISOString();
+    history += `   • ${formatDate(dateString)} — *${formatCurrency(p.amount, appSettings.showCents)} ₽* ✅\n`;
+  });
+  return history;
+};
+
+
 const handleDeleteRequest = () => {
   // 🔒 ГЛАВНАЯ ПРОВЕРКА: нет привязанных договоров
   if (customerSales.length > 0) {
@@ -443,7 +471,7 @@ const confirmDeleteCustomer = () => {
 
 const normalizePhoneForWhatsApp = (
   phone: string,
-  defaultCountry?: CountryCode 
+  defaultCountry?: CountryCode
 ): string | null => {
   const phoneNumber = parsePhoneNumberFromString(phone, defaultCountry);
 
@@ -457,12 +485,15 @@ const normalizePhoneForWhatsApp = (
 
 // === ИСПРАВЛЕННАЯ handleSendSaleReminder ===
 const handleSendSaleReminder = () => {
-    if (!selectedSale) return; // ✅ Проверка на undefined
+    if (!selectedSale) return;
 
     const upcomingPayments = (selectedSale.paymentPlan || [])
         .filter(p => !p.isPaid)
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     const nextPayment = upcomingPayments[0];
+
+    // 📜 Добавляем историю оплаченных платежей
+    const paymentHistory = formatPaymentHistory(selectedSale.paymentPlan || [], 5);
 
     const message = `
 Здравствуйте, ${customer.name}!
@@ -474,32 +505,48 @@ const handleSendSaleReminder = () => {
 - *Уже оплачено:* ${formatCurrency(selectedSale.totalAmount - selectedSale.remainingAmount, appSettings.showCents)} ₽
 - *Остаток долга:* *${formatCurrency(selectedSale.remainingAmount, appSettings.showCents)} ₽*
 
-${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayment.amount, appSettings.showCents)} ₽ до ${formatDate(nextPayment.date)}` : ''}
+${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayment.amount, appSettings.showCents)} ₽ до ${formatDate(nextPayment.date)}` : ''}${paymentHistory}
     `.trim().replace(/^\s+/gm, '');
 
-    // ✅ ИСПРАВЛЕНИЕ: используем нормализацию и убираем пробелы в URL
     const phone = normalizePhoneForWhatsApp(customer.phone);
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
 };
 
-// === ИСПРАВЛЕННАЯ handleSendFullReport ===
+
 const handleSendFullReport = () => {
     let report = `${customer.name}!\n\nВаш полный отчет по всем рассрочкам!\n\n`;
+
     customerSales.forEach((sale, index) => {
         report += `*Рассрочка №${index + 1}: ${sale.productName}*\n`;
         report += ` - Статус: ${sale.remainingAmount === 0 ? '✅ Закрыто' : '⏳ Активно'}\n`;
         report += ` - Остаток долга: *${formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽*\n`;
-        report += ` - Всего выплачено: ${formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings.showCents)} ₽\n\n`;
+        report += ` - Всего выплачено: ${formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings.showCents)} ₽\n`;
+
+        // 📜 Добавляем историю платежей для каждой рассрочки
+        const paymentHistory = formatPaymentHistory(sale.paymentPlan || [], 3); // 3 последних платежа
+        if (paymentHistory) {
+            report += paymentHistory;
+        }
+
+        report += `\n`;
     });
 
+    // 🔥 Общий итог, если рассрочек больше одной
+    if (customerSales.length > 1) {
+        const totalDebt = customerSales.reduce((sum, s) => sum + s.remainingAmount, 0);
+        const totalPaid = customerSales.reduce((sum, s) => sum + (s.totalAmount - s.remainingAmount), 0);
 
-    // ✅ ИСПРАВЛЕНИЕ: используем нормализацию и убираем пробелы в URL
+        report += `━━━━━━━━━━━━━━━━━\n`;
+        report += `📊 *ОБЩИЙ ИТОГ:*\n`;
+        report += `• Всего выплачено: *${formatCurrency(totalPaid, appSettings.showCents)} ₽*\n`;
+        report += `• Общий долг: *${formatCurrency(totalDebt, appSettings.showCents)} ₽*\n`;
+    }
+
     const phone = normalizePhoneForWhatsApp(customer.phone);
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(report)}`;
     window.open(url, '_blank');
 };
-
   const { paidPayments, paymentSchedule } = useMemo(() => {
     if (!selectedSale || !selectedSale.paymentPlan) return { paidPayments: [], paymentSchedule: [] };
 
