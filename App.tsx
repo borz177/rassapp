@@ -1596,8 +1596,82 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
   const handleInitiateCustomerPayment = (sale: Sale, payment: Payment) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount: payment.amount }); setCurrentView('CREATE_INCOME'); };
   const openSelection = (view: ViewState, currentData: any) => { setDraftSaleData(currentData); setPreviousView(currentView); setCurrentView(view); };
   const handleSelection = (key: 'customerId', id: string) => { setDraftSaleData({ ...draftSaleData, [key]: id }); setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE'); };
-  const handleQuickAddCustomer = async (data: { name: string, phone: string, address: string }) => { if (!user) return; if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newCustomer: Customer = { id: crypto.randomUUID(), userId: ownerId, name: data.name, phone: data.phone, address: data.address, email: '', trustScore: 50, notes: '', photo: '' }; const saved = await api.saveItem('customers', newCustomer); updateList(setCustomers, saved); handleSelection('customerId', saved.id); };
-  const handleSelectAccountForOperations = (accountId: string) => { setOperationsAccountId(accountId); setCurrentView('OPERATIONS'); };
+const handleQuickAddCustomer = async (data: {
+  name: string;
+  phone: string;
+  address?: string;
+  passportSeries?: string;
+  passportNumber?: string;
+  passportIssuedBy?: string;
+}) => {
+  // 🔹 Проверка пользователя
+  if (!user) return;
+
+  // 🔹 Проверка доступа
+  if (!checkAccess('WRITE')) {
+    showUpgradeAlert("Срок подписки истек.");
+    return;
+  }
+
+  const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+
+  // 🔹 Создаём клиента с паспортными данными
+  const newCustomer: {
+      passportNumber: string;
+      notes: string;
+      address: string;
+      documents: any[];
+      photo: string;
+      userId: string;
+      passportSeries: string;
+      createdAt: string;
+      trustScore: number;
+      phone: string;
+      name: string;
+      id: `${string}-${string}-${string}-${string}-${string}`;
+      email: string;
+      passportIssuedBy: string;
+      allowWhatsappNotification: boolean
+  } = {
+    id: crypto.randomUUID(),
+    userId: ownerId,
+
+    // Обязательные поля
+    name: data.name.trim(),
+    phone: data.phone.trim(),
+
+    // Опциональные поля
+    email: '',
+    trustScore: 50,
+    notes: '',
+    photo: '',
+
+    // 🔹 Адрес (может быть пустым)
+    address: data.address?.trim() || undefined,
+
+    // 🔹 Паспортные данные (все необязательные)
+    passportSeries: data.passportSeries?.trim() || undefined,
+    passportNumber: data.passportNumber?.trim() || undefined,
+    passportIssuedBy: data.passportIssuedBy?.trim() || undefined,
+
+    // Поля по умолчанию
+    allowWhatsappNotification: true,
+    documents: [],
+    createdAt: new Date().toISOString(),
+  };
+
+  // 🔹 Сохраняем в базу
+  const saved = await api.saveItem('customers', newCustomer);
+
+  // 🔹 Обновляем список клиентов в стейте
+  updateList(setCustomers, saved);
+
+  // 🔹 Автоматически выбираем созданного клиента в форме
+  handleSelection('customerId', saved.id);
+
+  // 🔹 Возвращаем клиента (для цепочки вызовов)
+  return saved;
+};  const handleSelectAccountForOperations = (accountId: string) => { setOperationsAccountId(accountId); setCurrentView('OPERATIONS'); };
   const handleSelectCustomer = (id: string) => { setSelectedCustomerId(id); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
   const handleSelectInvestor = (investor: Investor) => { setSelectedInvestorId(investor.id); setCurrentView('INVESTOR_DETAILS'); };
   const handleAddPartnership = async (name: string, members: string[]) => { if (!user) return; const newAccountId = `acc_part_${Date.now()}`; const newAccount: Account = { id: newAccountId, userId: user.id, name: `Счет: ${name}`, type: 'CUSTOM' }; const newPartnership: Partnership = { id: `part_${Date.now()}`, userId: user.id, name, accountId: newAccountId, partnerIds: members, createdAt: new Date().toISOString() }; const savedAcc = await api.saveItem('accounts', newAccount); updateList(setAccounts, savedAcc); const savedPart = await api.saveItem('partnerships', newPartnership); updateList(setPartnerships, savedPart); };

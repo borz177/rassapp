@@ -12,7 +12,15 @@ interface SelectionListProps {
   items: SelectionItem[];
   onSelect: (id: string) => void;
   onCancel: () => void;
-  onAddNew: (customerData: { name: string, phone: string, address: string }) => void;
+  // 🔹 Обновляем тип: добавляем паспортные данные (все необязательные)
+  onAddNew: (customerData: {
+    name: string;
+    phone: string;
+    address?: string;
+    passportSeries?: string;
+    passportNumber?: string;
+    passportIssuedBy?: string;
+  }) => void;
 }
 
 const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, onCancel, onAddNew }) => {
@@ -24,6 +32,11 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
   const [newPhone, setNewPhone] = useState('');
   const [newAddress, setNewAddress] = useState('');
 
+  // 🔹 НОВЫЕ: паспортные данные
+  const [newPassportSeries, setNewPassportSeries] = useState('');
+  const [newPassportNumber, setNewPassportNumber] = useState('');
+  const [newPassportIssuedBy, setNewPassportIssuedBy] = useState('');
+
   const filteredItems = items.filter(item =>
     item.title.toLowerCase().includes(search.toLowerCase()) ||
     (item.subtitle && item.subtitle.toLowerCase().includes(search.toLowerCase()))
@@ -32,11 +45,23 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
   const handleCreateSubmit = (e: React.FormEvent) => {
       e.preventDefault();
       if (newName && newPhone) {
-          onAddNew({ name: newName, phone: newPhone, address: newAddress });
+          onAddNew({
+              name: newName.trim(),
+              phone: newPhone.trim(),
+              address: newAddress.trim() || undefined,
+              // 🔹 Передаём паспортные данные
+              passportSeries: newPassportSeries.trim() || undefined,
+              passportNumber: newPassportNumber.trim() || undefined,
+              passportIssuedBy: newPassportIssuedBy.trim() || undefined,
+          });
           setIsCreating(false);
+          // 🔹 Сбрасываем ВСЕ поля
           setNewName('');
           setNewPhone('');
           setNewAddress('');
+          setNewPassportSeries('');
+          setNewPassportNumber('');
+          setNewPassportIssuedBy('');
       }
   };
 
@@ -121,16 +146,81 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                           required
                       />
                   </div>
-                  <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Адрес</label>
-                      <textarea
+
+                  {/* 🔹 ОБЪЕДИНЕННЫЙ БЛОК: Адрес + Паспорт */}
+                  <details className="group" open>
+                    <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600">
+                      <span className="transition-transform group-open:rotate-90">▶</span>
+                      📍 Адрес и документы
+                    </summary>
+
+                    <div className="mt-3 space-y-4 p-4 bg-slate-50 rounded-xl">
+                      {/* Адрес */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Адрес</label>
+                        <textarea
                           className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 resize-none"
-                          placeholder="Город,Село"
+                          placeholder="Город, Село, Улица..."
                           rows={2}
                           value={newAddress}
                           onChange={e => setNewAddress(e.target.value)}
-                      />
-                  </div>
+                        />
+                      </div>
+
+                      {/* Разделитель */}
+                      <div className="border-t border-slate-200 pt-3">
+                        <p className="text-xs font-medium text-slate-500 mb-3">
+                          🪪 Паспортные данные <span className="font-normal text-slate-400">(необязательно)</span>
+                        </p>
+
+                        {/* Серия и Номер */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs text-slate-500 mb-1">Серия</label>
+                            <input
+                              type="text"
+                              placeholder="4501"
+                              className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono uppercase"
+                              value={newPassportSeries}
+                              onChange={e => setNewPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))}
+                              maxLength={4}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-slate-500 mb-1">Номер</label>
+                            <input
+                              type="text"
+                              placeholder="123456"
+                              className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono"
+                              value={newPassportNumber}
+                              onChange={e => setNewPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                              maxLength={6}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Кем выдан */}
+                        <div className="mt-3">
+                          <label className="block text-xs text-slate-500 mb-1">Кем выдан</label>
+                          <input
+                            type="text"
+                            placeholder="УФМС России по г. Москве"
+                            className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
+                            value={newPassportIssuedBy}
+                            onChange={e => setNewPassportIssuedBy(e.target.value)}
+                            maxLength={100}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Подсказка */}
+                      <p className="text-[10px] text-slate-400 flex items-start gap-1">
+                        <span>🔒</span>
+                        Данные хранятся локально
+                      </p>
+                    </div>
+                  </details>
+
                   <button type="submit" className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200">
                       Сохранить и выбрать
                   </button>
