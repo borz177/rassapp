@@ -137,6 +137,10 @@ export interface Customer {
   activeContracts?: number;
   overdueContracts?: number;
   documents?: CustomerDocument[];
+    passportSeries?: string;
+  passportNumber?: string;
+  passportIssuedBy?: string;
+
 }
 
 export interface Product {

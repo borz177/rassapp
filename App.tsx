@@ -1430,7 +1430,76 @@ const confirmDeleteCustomer = async () => {
   const handleAddProduct = async (name: string, price: number, stock: number) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } if (user) { const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newProd = { id: crypto.randomUUID(), userId: ownerId, name, price, category: 'Общее', stock }; const saved = await api.saveItem('products', newProd); updateList(setProducts, saved); } };
   const handleUpdateProduct = async (updated: Product) => { if (isEmployee && !user?.permissions?.canEdit) return; const saved = await api.saveItem('products', updated); updateList(setProducts, saved); };
   const handleDeleteProduct = async (id: string) => { if (isEmployee && !user?.permissions?.canDelete) return; await api.deleteItem('products', id); removeFromList(setProducts, id); };
-  const handleAddCustomer = async (name: string, phone: string, photo: string, address: string) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } if (!user) throw new Error("No user"); const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newCustomer: Customer = { id: crypto.randomUUID(), userId: ownerId, name, phone, email: '', trustScore: 50, notes: '', photo, address }; const saved = await api.saveItem('customers', newCustomer); updateList(setCustomers, saved); return saved; };
+const handleAddCustomer = async (data: {
+  name: string;
+  phone: string;
+  photo?: string;
+  address?: string;
+  passportSeries?: string;
+  passportNumber?: string;
+  passportIssuedBy?: string;
+}) => {
+  // 🔹 Проверка доступа
+  if (!checkAccess('WRITE')) {
+    showUpgradeAlert("Срок подписки истек.");
+    return;
+  }
+
+  if (!user) throw new Error("No user");
+
+  const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+
+  // 🔹 Создаём нового клиента с паспортными данными
+  const newCustomer: {
+      passportNumber: string;
+      address: string;
+      notes: string;
+      documents: any[];
+      photo: string;
+      userId: string;
+      passportSeries: string;
+      createdAt: string;
+      trustScore: number;
+      phone: string;
+      name: string;
+      id: `${string}-${string}-${string}-${string}-${string}`;
+      email: string;
+      passportIssuedBy: string;
+      allowWhatsappNotification: boolean
+  } = {
+    id: crypto.randomUUID(),
+    userId: ownerId,
+
+    // Обязательные поля
+    name: data.name.trim(),
+    phone: data.phone.trim(),
+
+    // Опциональные поля
+    email: '',
+    photo: data.photo?.trim() || undefined,
+    address: data.address?.trim() || undefined,
+    notes: '',
+
+    // 🔹 Паспортные данные (только если заполнены)
+    passportSeries: data.passportSeries?.trim() || undefined,
+    passportNumber: data.passportNumber?.trim() || undefined,
+    passportIssuedBy: data.passportIssuedBy?.trim() || undefined,
+
+    // Поля по умолчанию
+    trustScore: 50,
+    allowWhatsappNotification: true,
+    documents: [],
+    createdAt: new Date().toISOString(),
+  };
+
+  // 🔹 Сохраняем в базу
+  const saved = await api.saveItem('customers', newCustomer);
+
+  // 🔹 Обновляем список в стейте
+  updateList(setCustomers, saved);
+
+  return saved;
+};
 const handleUpdateCustomer = async (updated: Customer) => {
     try {
         // 🔹 1. Оптимистичное обновление локального стейта (сразу видим изменения)

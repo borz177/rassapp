@@ -382,6 +382,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showBlockedDeleteModal, setShowBlockedDeleteModal] = useState(false);
+  const [showActionsMenu, setShowActionsMenu] = useState(false);
 
 
 
@@ -414,6 +415,12 @@ const handleViewDocument = (e: React.MouseEvent, doc: CustomerDocument) => {
       setActiveTab('INSTALLMENTS');
     }
   }, [initialSaleId]);
+
+
+useEffect(() => {
+  setShowActionsMenu(false);
+}, [activeTab]);
+
 
   const customerSales = Array.isArray(sales) ? sales.filter(s => s.customerId === customer.id) : [];
   const selectedSale = customerSales.find(s => s.id === selectedSaleId);
@@ -720,31 +727,117 @@ const getInvestorInfo = (sale: Sale) => {
                           className="w-full h-full flex items-center justify-center text-slate-400 text-4xl font-bold">{customer.name.charAt(0)}</div>}</div>
               </div>
 
-              {/* Info Card with Edit Button */}
+                           {/* Info Card with Edit Button */}
               <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 space-y-4 relative">
-                  {onUpdateCustomer && (
-                      <button
-                          onClick={() => setShowEditModal(true)}
-                          className="absolute top-4 right-4 p-2 bg-slate-50 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
-                      >
-                          {ICONS.Edit}
-                      </button>
-                  )}
-                  <div><label className="text-xs text-slate-400 uppercase">Телефон</label><p
-                      className="text-lg font-medium text-slate-800">{customer.phone}</p></div>
+                  {(onUpdateCustomer || onDeleteCustomer) && (
+        <div className="absolute top-4 right-4 z-20">
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setShowActionsMenu(!showActionsMenu);
+                }}
+                className="p-2 bg-slate-50 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                title="Действия"
+            >
+                {/* Иконка три точки */}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="12" cy="6" r="2"/>
+                    <circle cx="12" cy="12" r="2"/>
+                    <circle cx="12" cy="18" r="2"/>
+                </svg>
+            </button>
+
+            {/* 🔹 Выпадающее меню */}
+            {showActionsMenu && (
+                <>
+                    {/* Затемнение фона для закрытия по клику вне */}
+                    <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setShowActionsMenu(false)}
+                    />
+
+                    {/* Само меню */}
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-20 animate-fade-in">
+
+                        {/* Кнопка "Редактировать" */}
+                        {onUpdateCustomer && (
+                            <button
+                                onClick={() => {
+                                    setShowActionsMenu(false);
+                                    setShowEditModal(true);
+                                }}
+                                className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                            >
+                                <span className="text-indigo-600">{ICONS.Edit}</span>
+                                Редактировать
+                            </button>
+                        )}
+
+                        {/* Разделитель (если есть обе кнопки) */}
+                        {onUpdateCustomer && onDeleteCustomer && (
+                            <div className="my-1 border-t border-slate-100" />
+                        )}
+
+                        {/* Кнопка "Удалить" */}
+                        {onDeleteCustomer && (
+                            <button
+                                onClick={() => {
+                                    setShowActionsMenu(false);
+                                    handleDeleteRequest(); // Ваша существующая функция
+                                }}
+                                className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                            >
+                                <span>{ICONS.Delete}</span>
+                                Удалить клиента
+                            </button>
+                        )}
+                    </div>
+                </>
+            )}
+        </div>
+    )}
+                  <div>
+                      <label className="text-xs text-slate-400 uppercase">Телефон</label>
+                      <p className="text-lg font-medium text-slate-800">{customer.phone}</p>
+                  </div>
+
                   {customer.address && (
-                      <div><label className="text-xs text-slate-400 uppercase">Адрес</label><p
-                          className="text-base font-medium text-slate-800">{customer.address}</p></div>
+                      <div>
+                          <label className="text-xs text-slate-400 uppercase">Адрес</label>
+                          <p className="text-base font-medium text-slate-800">{customer.address}</p>
+                      </div>
                   )}
-                  <div><label className="text-xs text-slate-400 uppercase">Рейтинг доверия</label>
+
+                  {/*  ПАСПОРТНЫЕ ДАННЫЕ */}
+                  {(customer.passportSeries || customer.passportNumber) && (
+                      <div>
+                          <label className="text-xs text-slate-400 uppercase flex items-center gap-1">
+                               Паспорт
+                          </label>
+                          <p className="text-base font-medium text-slate-800 font-mono tracking-wider">
+                              {customer.passportSeries} {customer.passportNumber}
+                          </p>
+                          {customer.passportIssuedBy && (
+                              <p className="text-xs text-slate-500 mt-0.5 leading-snug">
+                                  {customer.passportIssuedBy}
+                              </p>
+                          )}
+                      </div>
+                  )}
+
+                  <div>
+                      <label className="text-xs text-slate-400 uppercase">Рейтинг доверия</label>
                       <div className="flex items-center gap-2 mt-1">
                           <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
                               <div className="bg-emerald-500 h-full" style={{width: `${customer.trustScore}%`}}></div>
                           </div>
-                          <span className="text-sm font-bold">{customer.trustScore}%</span></div>
+                          <span className="text-sm font-bold">{customer.trustScore}%</span>
+                      </div>
                   </div>
-                  <div><label className="text-xs text-slate-400 uppercase">Заметки</label><p
-                      className="text-sm text-slate-600 mt-1">{customer.notes || 'Нет заметок'}</p></div>
+                  <div>
+                      <label className="text-xs text-slate-400 uppercase">Заметки</label>
+                      <p className="text-sm text-slate-600 mt-1">{customer.notes || 'Нет заметок'}</p>
+                  </div>
                   <div>
                       <label className="text-xs text-slate-400 uppercase">Напоминания WhatsApp</label>
                       <p className={`text-sm mt-1 font-bold ${customer.allowWhatsappNotification !== false ? 'text-emerald-600' : 'text-slate-400'}`}>
@@ -859,37 +952,8 @@ const getInvestorInfo = (sale: Sale) => {
 
               </div>
 <div className="pt-2">
-             {/* === КНОПКА УДАЛЕНИЯ КЛИЕНТА === */}
-{/* === КНОПКА УДАЛЕНИЯ КЛИЕНТА === */}
-{onDeleteCustomer && (
-  <button
-    onClick={(e) => {
-      e.stopPropagation();
 
-      // 🔹 1. Проверка: есть ли привязанные договоры?
-      const customerContracts = sales.filter(s => s.customerId === customer.id);
 
-      if (customerContracts.length > 0) {
-        // 🔹 Вместо alert — открываем локальную модалку
-        setShowBlockedDeleteModal(true);
-        return;
-      }
-
-      // 🔹 2. Если договоров нет — вызываем пропс для удаления
-      if (window.confirm(`Удалить клиента "${customer.name}"?\n\nЭто действие нельзя отменить.`)) {
-        onDeleteCustomer(customer.id);
-        onBack();
-      }
-    }}
-    className="w-full mt-2 bg-white border-2 border-red-100 text-red-500
-               hover:bg-red-50 hover:border-red-200 hover:text-red-600
-               py-3 rounded-xl font-semibold flex items-center justify-center gap-2
-               transition-all duration-200 group"
-  >
-    <span className="group-hover:scale-110 transition-transform">{ICONS.Delete}</span>
-    Удалить клиента
-  </button>
-)}
     </div>
           </div>
       )}

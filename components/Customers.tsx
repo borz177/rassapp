@@ -9,7 +9,15 @@ interface CustomersProps {
   investors: Investor[];
   sales: Sale[];
   appSettings: AppSettings;
-  onAddCustomer: (name: string, phone: string, photo: string, address: string) => void;
+  onAddCustomer: (data: {
+  name: string;
+  phone: string;
+  photo?: string;
+  address?: string;
+  passportSeries?: string;
+  passportNumber?: string;
+  passportIssuedBy?: string;
+}) => void;
   onSelectCustomer: (id: string) => void; 
   onInitiatePayment: (sale: Sale, payment: Payment) => void;
   onUndoPayment: (saleId: string, paymentId: string) => void;
@@ -39,6 +47,9 @@ const Customers: React.FC<CustomersProps> = ({
   const [newAddress, setNewAddress] = useState('');
   const [newPhoto, setNewPhoto] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [newPassportSeries, setNewPassportSeries] = useState('');
+const [newPassportNumber, setNewPassportNumber] = useState('');
+const [newPassportIssuedBy, setNewPassportIssuedBy] = useState('');
 
   // === ЛОГИКА ФИЛЬТРАЦИИ И СОРТИРОВКИ ОТ А ДО Я ===
   const sortedFilteredCustomers = useMemo(() => {
@@ -82,17 +93,32 @@ const Customers: React.FC<CustomersProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newName && newPhone) {
-      onAddCustomer(newName, newPhone, newPhoto, newAddress);
-      setNewName('');
-      setNewPhone('');
-      setNewAddress('');
-      setNewPhoto('');
-      setIsAdding(false);
-    }
-  };
+const handleSubmit = (e: React.FormEvent) => {
+  e.preventDefault();
+  if (newName && newPhone) {
+    onAddCustomer({
+      name: newName.trim(),
+      phone: newPhone.trim(),
+      photo: newPhoto || undefined,
+      address: newAddress.trim() || undefined,
+
+      // 🔹 Паспортные данные (только если заполнены)
+      passportSeries: newPassportSeries.trim() || undefined,
+      passportNumber: newPassportNumber.trim() || undefined,
+      passportIssuedBy: newPassportIssuedBy.trim() || undefined,
+    });
+
+    // 🔹 Сброс ВСЕХ полей формы
+    setNewName('');
+    setNewPhone('');
+    setNewAddress('');
+    setNewPhoto('');
+    setNewPassportSeries('');
+    setNewPassportNumber('');
+    setNewPassportIssuedBy('');
+    setIsAdding(false);
+  }
+};
 
   return (
     <div className="space-y-4 pb-20 animate-fade-in">
@@ -161,6 +187,71 @@ const Customers: React.FC<CustomersProps> = ({
             value={newAddress}
             onChange={e => setNewAddress(e.target.value)}
           />
+
+ {/* 🔹 === НОВАЯ СЕКЦИЯ: ПАСПОРТНЫЕ ДАННЫЕ === */}
+    <details className="group">
+      <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600">
+        <span className="transition-transform group-open:rotate-90">▶</span>
+        🪪 Паспортные данные
+      </summary>
+
+      <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">
+        {/* Серия и номер в одну строку */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Серия</label>
+            <input
+              type="text"
+              placeholder="4501"
+              className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono uppercase"
+              value={newPassportSeries}
+              onChange={e => {
+                // Только цифры и латиница, максимум 4 символа
+                const val = e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4);
+                setNewPassportSeries(val);
+              }}
+              maxLength={4}
+              inputMode="text"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Номер</label>
+            <input
+              type="text"
+              placeholder="123456"
+              className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono"
+              value={newPassportNumber}
+              onChange={e => {
+                // Только цифры, максимум 6 символов
+                const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
+                setNewPassportNumber(val);
+              }}
+              maxLength={6}
+              inputMode="numeric"
+            />
+          </div>
+        </div>
+
+        {/* Кем выдан */}
+        <div>
+          <label className="block text-xs text-slate-500 mb-1">Кем выдан (необязательно)</label>
+          <input
+            type="text"
+            placeholder="УФМС России по г. Москве"
+            className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
+            value={newPassportIssuedBy}
+            onChange={e => setNewPassportIssuedBy(e.target.value)}
+            maxLength={100}
+          />
+        </div>
+
+        {/* Подсказка о безопасности */}
+        <p className="text-[10px] text-slate-400 flex items-start gap-1">
+          <span>🔒</span>
+          Данные хранятся локально и не передаются третьим лицам
+        </p>
+      </div>
+    </details>
           <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold">
             Сохранить клиента
           </button>
