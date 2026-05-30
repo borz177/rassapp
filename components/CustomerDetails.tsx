@@ -427,6 +427,7 @@ const handleViewDocument = (e: React.MouseEvent, doc: CustomerDocument) => {
 
 const formatPaymentHistory = (
   payments: Array<{
+    id?: string;
     date: string | Date;
     amount: number;
     isPaid?: boolean;
@@ -435,21 +436,14 @@ const formatPaymentHistory = (
   limit: number = 5
 ): string => {
   const paidPayments = payments
-    // 🔹 ТОЛЬКО реальные платежи (isRealPayment === true)
     .filter(p => p.isPaid && p.isRealPayment === true)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, limit); // 🔹 Просто берем первые N платежей
 
-  const uniquePayments = paidPayments.filter((p, i, arr) => {
-    const prev = arr[i - 1];
-    if (!prev) return true;
-    return new Date(p.date).toISOString() !== new Date(prev.date).toISOString()
-      || p.amount !== prev.amount;
-  }).slice(0, limit);
-
-  if (uniquePayments.length === 0) return '';
+  if (paidPayments.length === 0) return '';
 
   let history = `\n📜 *История платежей:*\n`;
-  uniquePayments.forEach(p => {
+  paidPayments.forEach(p => {
     const dateString = typeof p.date === 'string' ? p.date : p.date.toISOString();
     history += `   • ${formatDate(dateString)} — *${formatCurrency(p.amount, appSettings.showCents)} ₽* ✅\n`;
   });
