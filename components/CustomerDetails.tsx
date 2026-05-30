@@ -4,6 +4,7 @@ import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocumen
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate } from '../src/utils';
 import { offlineStorage } from '../services/offlineStorage';
+import { parsePhoneNumberFromString, CountryCode } from 'libphonenumber-js';
 interface CustomerDetailsProps {
   customer: Customer;
   sales: Sale[];
@@ -440,22 +441,18 @@ const confirmDeleteCustomer = () => {
 };
 
 
-const normalizePhoneForWhatsApp = (phone: string): string => {
-  // Удаляем все нецифровые символы
-  let cleaned = phone.replace(/[^0-9]/g, '');
+const normalizePhoneForWhatsApp = (
+  phone: string,
+  defaultCountry?: CountryCode 
+): string | null => {
+  const phoneNumber = parsePhoneNumberFromString(phone, defaultCountry);
 
-  // Если номер начинается с 8 (российский формат), заменяем на 7
-  if (cleaned.startsWith('8') && cleaned.length === 11) {
-    cleaned = '7' + cleaned.slice(1);
+  if (!phoneNumber?.isValid()) {
+    return null; // или выбросить ошибку
   }
 
-  // Если номер начинается с +7 (уже с плюсом, но мы удалили его), убеждаемся что первая цифра 7
-  if (cleaned.startsWith('7') && cleaned.length === 11) {
-    return cleaned;
-  }
-
-  // Если номер короче или длиннее 11 цифр — возвращаем как есть (возможно, международный)
-  return cleaned;
+  // Возвращаем номер в формате E.164 без знака +
+  return phoneNumber.number.replace('+', '');
 };
 
 // === ИСПРАВЛЕННАЯ handleSendSaleReminder ===
