@@ -426,13 +426,20 @@ const handleViewDocument = (e: React.MouseEvent, doc: CustomerDocument) => {
 
 
 const formatPaymentHistory = (
-  payments: Array<{ date: string | Date; amount: number; isPaid?: boolean }>,
+  payments: Array<{
+    date: string | Date;
+    amount: number;
+    isPaid?: boolean;
+    isRealPayment?: boolean;  // 🔹 Добавили в тип
+  }>,
   limit: number = 5
 ): string => {
   const paidPayments = payments
-    .filter(p => p.isPaid)
+    // 🔹 ФИЛЬТР: только реально оплаченные (как в useMemo)
+    .filter(p => p.isPaid && p.isRealPayment !== false)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+  // Убираем дубликаты по дате + сумме
   const uniquePayments = paidPayments.filter((p, i, arr) => {
     const prev = arr[i - 1];
     if (!prev) return true;
@@ -444,7 +451,7 @@ const formatPaymentHistory = (
 
   let history = `\n📜 *История платежей:*\n`;
   uniquePayments.forEach(p => {
-    // 🔹 ИСПРАВЛЕНИЕ: преобразуем Date в string
+    // 🔹 Безопасное преобразование даты
     const dateString = typeof p.date === 'string' ? p.date : p.date.toISOString();
     history += `   • ${formatDate(dateString)} — *${formatCurrency(p.amount, appSettings.showCents)} ₽* ✅\n`;
   });
