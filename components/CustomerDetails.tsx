@@ -62,6 +62,10 @@ const EditCustomerModal = ({
     const [notes, setNotes] = useState(customer.notes || '');
     const [allowWhatsapp, setAllowWhatsapp] = useState(customer.allowWhatsappNotification !== false);
 
+     const [passportSeries, setPassportSeries] = useState(customer.passportSeries || '');
+    const [passportNumber, setPassportNumber] = useState(customer.passportNumber || '');
+    const [passportIssuedBy, setPassportIssuedBy] = useState(customer.passportIssuedBy || '');
+
     // 🔹 Состояние для загрузки файла
     const [isUploading, setIsUploading] = useState(false);
 
@@ -73,7 +77,10 @@ const EditCustomerModal = ({
             phone,
             address,
             notes,
-            allowWhatsappNotification: allowWhatsapp
+            allowWhatsappNotification: allowWhatsapp,
+            passportSeries: passportSeries.trim() || undefined,
+            passportNumber: passportNumber.trim() || undefined,
+            passportIssuedBy: passportIssuedBy.trim() || undefined,
         });
         onClose();
     };
@@ -178,28 +185,100 @@ const handleAddDocument = async () => {
                 className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5 max-h-[90vh] overflow-y-auto my-4"
                 onClick={e => e.stopPropagation()}
             >
-                <h3 className="text-lg font-bold text-slate-800 mb-4 sticky top-0 bg-white pb-2 z-10">Редактировать клиента</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-4 sticky top-0 bg-white pb-2 z-10">Редактировать
+                    клиента</h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    {/* ... поля ФИО, телефон, адрес, заметки ... */}
+                    {/* ФИО */}
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">ФИО</label>
-                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} required />
+                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={name}
+                               onChange={e => setName(e.target.value)} required/>
                     </div>
+
+                    {/* Телефон */}
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Телефон</label>
-                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={phone} onChange={e => setPhone(e.target.value)} required />
+                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={phone}
+                               onChange={e => setPhone(e.target.value)} required/>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Адрес</label>
-                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={address} onChange={e => setAddress(e.target.value)} />
-                    </div>
+
+                    {/*  ОБЪЕДИНЕННЫЙ БЛОК: АДРЕС + ПАСПОРТ */}
+                    <details className="group" open>
+                        <summary
+                            className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600">
+                            <span className="transition-transform group-open:rotate-90">▶</span>
+                            📍 Адрес и документы
+                        </summary>
+
+                        <div className="mt-3 space-y-4 p-4 bg-slate-50 rounded-xl">
+                            {/* Адрес */}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Адрес</label>
+                                <input
+                                    className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                                    placeholder="г. Москва, ул. Ленина, д. 1"
+                                    value={address}
+                                    onChange={e => setAddress(e.target.value)}
+                                />
+                            </div>
+
+                            {/* Визуальный разделитель */}
+                            <div className="border-t border-slate-200 pt-3">
+                                <p className="text-xs font-medium text-slate-500 mb-3">🪪 Паспортные данные <span
+                                    className="font-normal text-slate-400">(необязательно)</span></p>
+
+                                {/* Серия и Номер */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs text-slate-500 mb-1">Серия</label>
+                                        <input
+                                            type="text"
+                                            placeholder="4501"
+                                            className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono uppercase"
+                                            value={passportSeries}
+                                            onChange={e => setPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))}
+                                            maxLength={4}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-slate-500 mb-1">Номер</label>
+                                        <input
+                                            type="text"
+                                            placeholder="123456"
+                                            className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono"
+                                            value={passportNumber}
+                                            onChange={e => setPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                                            maxLength={6}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Кем выдан */}
+                                <div className="mt-3">
+                                    <label className="block text-xs text-slate-500 mb-1">Кем выдан</label>
+                                    <input
+                                        type="text"
+                                        placeholder="УФМС России по г. Москве"
+                                        className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
+                                        value={passportIssuedBy}
+                                        onChange={e => setPassportIssuedBy(e.target.value)}
+                                        maxLength={100}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+
+                    {/* Заметки */}
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Заметки</label>
-                        <textarea className="w-full p-3 border border-slate-200 rounded-xl outline-none resize-none" rows={3} value={notes} onChange={e => setNotes(e.target.value)} />
+                        <textarea className="w-full p-3 border border-slate-200 rounded-xl outline-none resize-none"
+                                  rows={3} value={notes} onChange={e => setNotes(e.target.value)}/>
                     </div>
 
                     {/* WhatsApp Setting */}
-                    <div className="flex items-center justify-between bg-emerald-50 p-3 rounded-xl border border-emerald-100">
+                    <div
+                        className="flex items-center justify-between bg-emerald-50 p-3 rounded-xl border border-emerald-100">
                         <div className="flex items-center gap-2">
                             <span className="text-emerald-600">{ICONS.Send}</span>
                             <div>
@@ -208,301 +287,343 @@ const handleAddDocument = async () => {
                             </div>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" checked={allowWhatsapp} onChange={() => setAllowWhatsapp(!allowWhatsapp)} className="sr-only peer" />
-                            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                            <input type="checkbox" checked={allowWhatsapp}
+                                   onChange={() => setAllowWhatsapp(!allowWhatsapp)} className="sr-only peer"/>
+                            <div
+                                className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
                         </label>
                     </div>
 
-                    {/* === СЕКЦИЯ ДОКУМЕНТОВ === */}
-                    <div className="border-t border-slate-100 pt-4">
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Документы клиента</label>
+                    {/* Кнопки */}
+                    <div className="flex gap-3 pt-2">
+                        <button type="button" onClick={onClose}
+                                className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена
+                        </button>
+                        <button type="submit"
+                                className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить
+                        </button>
+                    </div>
 
-                        {/* 🔹 Бейдж офлайн-режима */}
-                        {!isOnline && (
-                            <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
-                                <span className="text-amber-600 mt-0.5">⚠️</span>
-                                <p className="text-xs text-amber-800">
-                                    <strong>Офлайн-режим:</strong> Загрузка новых документов недоступна.
-                                    Вы можете просматривать и удалять уже добавленные файлы.
-                                </p>
-                            </div>
-                        )}
 
-                        {/* Список текущих документов */}
-                        {customer.documents?.length > 0 && (
-  <div className="space-y-2 mb-3">
-    {customer.documents.map(doc => (
-      <div
-        key={doc.id}
-        className="flex items-center justify-between bg-slate-50 p-3 rounded-xl"
-      >
-        {/* 🔹 Левая часть: иконка + информация */}
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          {/* Иконка типа файла */}
-          <div
-            className={`p-2 rounded-lg flex-shrink-0 ${
-              doc.fileType === 'pdf'
-                ? 'bg-red-100 text-red-600'
-                : 'bg-emerald-100 text-emerald-600'
-            }`}
-          >
-            {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
-          </div>
+                {/* === СЕКЦИЯ ДОКУМЕНТОВ === */}
+                <div className="border-t border-slate-100 pt-4">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Документы клиента</label>
 
-          {/* Информация о документе */}
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-slate-800 truncate">
-              {doc.name}
-            </p>
-            <p className="text-xs text-slate-500">
-              {doc.category === 'passport' && '🪪 Паспорт'}
-              {doc.category === 'guarantor' && '🤝 Поручительство'}
-              {doc.category === 'contract' && '📄 Договор'}
-              {doc.category === 'photo' && '📷 Фото'}
-              {doc.category === 'other' && '📎 Другое'}
-            </p>
+                    {/* 🔹 Бейдж офлайн-режима */}
+                    {!isOnline && (
+                        <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
+                            <span className="text-amber-600 mt-0.5">⚠️</span>
+                            <p className="text-xs text-amber-800">
+                                <strong>Офлайн-режим:</strong> Загрузка новых документов недоступна.
+                                Вы можете просматривать и удалять уже добавленные файлы.
+                            </p>
+                        </div>
+                    )}
 
-            {/* 🔹 Статус ИЛИ размер файла (взаимоисключающие) */}
-            {doc._isTemp || doc.fileUrl?.startsWith('temp_doc_') ? (
-              <span className="text-[10px] text-amber-600 bg-amber-100 px-2 py-0.5 rounded mt-1 inline-block">
+                    {/* Список текущих документов */}
+                    {customer.documents?.length > 0 && (
+                        <div className="space-y-2 mb-3">
+                            {customer.documents.map(doc => (
+                                <div
+                                    key={doc.id}
+                                    className="flex items-center justify-between bg-slate-50 p-3 rounded-xl"
+                                >
+                                    {/* 🔹 Левая часть: иконка + информация */}
+                                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                                        {/* Иконка типа файла */}
+                                        <div
+                                            className={`p-2 rounded-lg flex-shrink-0 ${
+                                                doc.fileType === 'pdf'
+                                                    ? 'bg-red-100 text-red-600'
+                                                    : 'bg-emerald-100 text-emerald-600'
+                                            }`}
+                                        >
+                                            {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
+                                        </div>
+
+                                        {/* Информация о документе */}
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-medium text-slate-800 truncate">
+                                                {doc.name}
+                                            </p>
+                                            <p className="text-xs text-slate-500">
+                                                {doc.category === 'passport' && '🪪 Паспорт'}
+                                                {doc.category === 'guarantor' && '🤝 Поручительство'}
+                                                {doc.category === 'contract' && '📄 Договор'}
+                                                {doc.category === 'photo' && '📷 Фото'}
+                                                {doc.category === 'other' && '📎 Другое'}
+                                            </p>
+
+                                            {/* 🔹 Статус ИЛИ размер файла (взаимоисключающие) */}
+                                            {doc._isTemp || doc.fileUrl?.startsWith('temp_doc_') ? (
+                                                <span
+                                                    className="text-[10px] text-amber-600 bg-amber-100 px-2 py-0.5 rounded mt-1 inline-block">
                 ⏳ Ожидает загрузки
               </span>
-            ) : doc.fileSize ? (
-              <p className="text-[10px] text-slate-400 mt-1">
-                {(doc.fileSize / 1024).toFixed(1)} КБ
-              </p>
-            ) : null}
-          </div>
-        </div>
+                                            ) : doc.fileSize ? (
+                                                <p className="text-[10px] text-slate-400 mt-1">
+                                                    {(doc.fileSize / 1024).toFixed(1)} КБ
+                                                </p>
+                                            ) : null}
+                                        </div>
+                                    </div>
 
-        {/* 🔹 Правая часть: кнопка удаления */}
-        <button
-          type="button"
-          onClick={() => {
-            const updatedDocs =
-              customer.documents?.filter(d => d.id !== doc.id) || [];
-            onUpdate({ ...customer, documents: updatedDocs });
-          }}
-          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded flex-shrink-0 ml-2"
-          // 🔹 Можно удалять и офлайн (локально)
-          disabled={!isOnline && !(doc._isTemp || doc.fileUrl?.startsWith('temp_doc_'))}
-          title={
-            !isOnline && !(doc._isTemp || doc.fileUrl?.startsWith('temp_doc_'))
-              ? 'Удаление доступно только онлайн'
-              : 'Удалить документ'
-          }
-        >
-          {ICONS.Delete}
-        </button>
-      </div>
-    ))}
-  </div>
-)}
+                                    {/* 🔹 Правая часть: кнопка удаления */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const updatedDocs =
+                                                customer.documents?.filter(d => d.id !== doc.id) || [];
+                                            onUpdate({...customer, documents: updatedDocs});
+                                        }}
+                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded flex-shrink-0 ml-2"
+                                        // 🔹 Можно удалять и офлайн (локально)
+                                        disabled={!isOnline && !(doc._isTemp || doc.fileUrl?.startsWith('temp_doc_'))}
+                                        title={
+                                            !isOnline && !(doc._isTemp || doc.fileUrl?.startsWith('temp_doc_'))
+                                                ? 'Удаление доступно только онлайн'
+                                                : 'Удалить документ'
+                                        }
+                                    >
+                                        {ICONS.Delete}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
 
-                        {/* Форма добавления документа */}
-                        <details className="group">
-                            <summary
-                                className={`flex items-center gap-2 text-sm font-medium cursor-pointer list-none ${!isOnline ? 'text-slate-400' : 'text-indigo-600'}`}>
+                    {/* Форма добавления документа */}
+                    <details className="group">
+                        <summary
+                            className={`flex items-center gap-2 text-sm font-medium cursor-pointer list-none ${!isOnline ? 'text-slate-400' : 'text-indigo-600'}`}>
                                 <span
                                     className={`transition-transform ${!isOnline ? '' : 'group-open:rotate-90'}`}>▶</span>
-                                Добавить документ
-                            </summary>
-                            <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">
-                                <input
-                                    type="text"
-                                    placeholder="Название документа"
-                                    className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
-                                    id="doc-name"
-                                    disabled={!isOnline} // 🔹 Блокируем ввод офлайн
-                                />
-                                <select
-                                    className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
-                                    id="doc-category"
-                                    disabled={!isOnline}
-                                >
-                                    <option value="passport">🪪 Паспорт</option>
-                                    <option value="guarantor">🤝 Поручительство</option>
-                                    <option value="contract">📄 Договор</option>
-                                    <option value="photo">📷 Фото клиента</option>
-                                    <option value="other">📎 Другое</option>
-                                </select>
-                                <input
-                                    type="file"
-                                    accept="image/*,.pdf"
-                                    className={`w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 disabled:file:bg-slate-100 disabled:file:text-slate-400 disabled:file:cursor-not-allowed`}
-                                    id="doc-file"
-                                    disabled={!isOnline} // 🔹 Блокируем выбор файла
-                                />
-                                <button
-                                    type="button"
-                                    onClick={handleAddDocument}
-                                    disabled={!isOnline || isUploading} // 🔹 Блокируем кнопку офлайн или при загрузке
-                                    className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
-                                        !isOnline 
-                                            ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
-                                            : isUploading 
-                                                ? 'bg-indigo-400 text-white cursor-wait' 
-                                                : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                                    }`}
-                                >
-                                    {isUploading ? (
-                                        <>
-                                            <span className="animate-spin">⏳</span> Загрузка...
-                                        </>
-                                    ) : !isOnline ? (
-                                        '📴 Недоступно офлайн'
-                                    ) : (
-                                        'Прикрепить документ'
-                                    )}
-                                </button>
-                            </div>
-                        </details>
-                    </div>
+                            Добавить документ
+                        </summary>
+                        <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">
+                            <input
+                                type="text"
+                                placeholder="Название документа"
+                                className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
+                                id="doc-name"
+                                disabled={!isOnline} // 🔹 Блокируем ввод офлайн
+                            />
+                            <select
+                                className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                                id="doc-category"
+                                disabled={!isOnline}
+                            >
+                                <option value="passport">🪪 Паспорт</option>
+                                <option value="guarantor">🤝 Поручительство</option>
+                                <option value="contract">📄 Договор</option>
+                                <option value="photo">📷 Фото клиента</option>
+                                <option value="other">📎 Другое</option>
+                            </select>
+                            <input
+                                type="file"
+                                accept="image/*,.pdf"
+                                className={`w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 disabled:file:bg-slate-100 disabled:file:text-slate-400 disabled:file:cursor-not-allowed`}
+                                id="doc-file"
+                                disabled={!isOnline} // 🔹 Блокируем выбор файла
+                            />
+                            <button
+                                type="button"
+                                onClick={handleAddDocument}
+                                disabled={!isOnline || isUploading} // 🔹 Блокируем кнопку офлайн или при загрузке
+                                className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
+                                    !isOnline
+                                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                        : isUploading
+                                            ? 'bg-indigo-400 text-white cursor-wait'
+                                            : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                }`}
+                            >
+                                {isUploading ? (
+                                    <>
+                                        <span className="animate-spin">⏳</span> Загрузка...
+                                    </>
+                                ) : !isOnline ? (
+                                    '📴 Недоступно офлайн'
+                                ) : (
+                                    'Прикрепить документ'
+                                )}
+                            </button>
+                        </div>
+                    </details>
+                </div>
 
-                    {/* Кнопки */}
-                    <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 sticky bottom-0 bg-white">
-                        <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
-                        <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
-                    </div>
-                </form>
-            </div>
+                {/* Кнопки */}
+                <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 sticky bottom-0 bg-white">
+                    <button type="button" onClick={onClose}
+                            className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена
+                    </button>
+                    <button type="submit"
+                            className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить
+                    </button>
+                </div>
+            </form>
         </div>
-    );
+</div>
+)
+    ;
 };
 const CustomerDetails: React.FC<CustomerDetailsProps> = ({
-    customer, sales, accounts, investors, appSettings, onBack, onInitiatePayment, onUndoPayment, onEditPayment, onUpdateCustomer, initialSaleId,
-    onDeleteCustomer,
-}) => {
-  const [activeTab, setActiveTab] = useState<'INFO' | 'INSTALLMENTS'>('INFO');
-  const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
-  const [showEditModal, setShowEditModal] = useState(false);
+                                                             customer,
+                                                             sales,
+                                                             accounts,
+                                                             investors,
+                                                             appSettings,
+                                                             onBack,
+                                                             onInitiatePayment,
+                                                             onUndoPayment,
+                                                             onEditPayment,
+                                                             onUpdateCustomer,
+                                                             initialSaleId,
+                                                             onDeleteCustomer,
+                                                         }) => {
+    const [activeTab, setActiveTab] = useState<'INFO' | 'INSTALLMENTS'>('INFO');
+    const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
+    const [showEditModal, setShowEditModal] = useState(false);
 
-  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
-  const [editDate, setEditDate] = useState('');
-  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [showBlockedDeleteModal, setShowBlockedDeleteModal] = useState(false);
-  const [showActionsMenu, setShowActionsMenu] = useState(false);
+    const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+    const [editDate, setEditDate] = useState('');
+    const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [showBlockedDeleteModal, setShowBlockedDeleteModal] = useState(false);
+    const [showActionsMenu, setShowActionsMenu] = useState(false);
 
 
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Б';
-    const k = 1024;
-    const sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-};
+    const formatFileSize = (bytes: number): string => {
+        if (bytes === 0) return '0 Б';
+        const k = 1024;
+        const sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    };
 
 // 🔹 Функция просмотра документа
-const handleViewDocument = (e: React.MouseEvent, doc: CustomerDocument) => {
-    e.stopPropagation(); // 🔹 Останавливаем всплытие
+    const handleViewDocument = (e: React.MouseEvent, doc: CustomerDocument) => {
+        e.stopPropagation(); // 🔹 Останавливаем всплытие
 
-    if (!doc.fileUrl) return;
+        if (!doc.fileUrl) return;
 
-    // 🖼️ Изображения — открываем в модальном окне
-    if (doc.fileType === 'image') {
-        setSelectedDocument(doc);
+        // 🖼️ Изображения — открываем в модальном окне
+        if (doc.fileType === 'image') {
+            setSelectedDocument(doc);
+        }
+
+    };
+
+    const [selectedDocument, setSelectedDocument] = useState<CustomerDocument | null>(null);
+
+    useEffect(() => {
+        if (initialSaleId) {
+            setSelectedSaleId(initialSaleId);
+            setActiveTab('INSTALLMENTS');
+        }
+    }, [initialSaleId]);
+
+
+    useEffect(() => {
+        setShowActionsMenu(false);
+    }, [activeTab]);
+
+
+    const customerSales = Array.isArray(sales) ? sales.filter(s => s.customerId === customer.id) : [];
+    const selectedSale = customerSales.find(s => s.id === selectedSaleId);
+
+    const handleEditClick = (payment: Payment) => {
+        setEditingPayment(payment);
+        setEditDate(payment.date ? new Date(payment.date).toISOString().split('T')[0] : '');
+    };
+    const saveEdit = () => {
+        if (selectedSale && editingPayment && editDate && onEditPayment) {
+            onEditPayment(selectedSale.id, editingPayment.id, editDate);
+            setEditingPayment(null);
+        }
+    };
+    const handleDeleteClick = (paymentId: string) => {
+        setDeletingPaymentId(paymentId);
+    }
+    const confirmDelete = () => {
+        if (selectedSale && deletingPaymentId && onUndoPayment) {
+            onUndoPayment(selectedSale.id, deletingPaymentId);
+            setDeletingPaymentId(null);
+        }
     }
 
-};
 
-  const [selectedDocument, setSelectedDocument] = useState<CustomerDocument | null>(null);
+    const formatPaymentHistory = (
+        payments: Array<{
+            id?: string;
+            date: string | Date;
+            amount: number;
+            isPaid?: boolean;
+            isRealPayment?: boolean;
+        }>,
+        limit: number = 5
+    ): string => {
+        const paidPayments = payments
+            // 🔹 ТОТ ЖЕ ФИЛЬТР, что и в useMemo выше в компоненте
+            .filter(p => p.isPaid && p.isRealPayment !== false)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        // .slice(0, limit);
 
-  useEffect(() => {
-    if (initialSaleId) {
-      setSelectedSaleId(initialSaleId);
-      setActiveTab('INSTALLMENTS');
-    }
-  }, [initialSaleId]);
+        if (paidPayments.length === 0) return '';
 
-
-useEffect(() => {
-  setShowActionsMenu(false);
-}, [activeTab]);
-
-
-  const customerSales = Array.isArray(sales) ? sales.filter(s => s.customerId === customer.id) : [];
-  const selectedSale = customerSales.find(s => s.id === selectedSaleId);
-
-  const handleEditClick = (payment: Payment) => { setEditingPayment(payment); setEditDate(payment.date ? new Date(payment.date).toISOString().split('T')[0] : ''); };
-  const saveEdit = () => { if (selectedSale && editingPayment && editDate && onEditPayment) { onEditPayment(selectedSale.id, editingPayment.id, editDate); setEditingPayment(null); } };
-  const handleDeleteClick = (paymentId: string) => { setDeletingPaymentId(paymentId); }
-  const confirmDelete = () => { if (selectedSale && deletingPaymentId && onUndoPayment) { onUndoPayment(selectedSale.id, deletingPaymentId); setDeletingPaymentId(null); } }
-
-
-
-const formatPaymentHistory = (
-  payments: Array<{
-    id?: string;
-    date: string | Date;
-    amount: number;
-    isPaid?: boolean;
-    isRealPayment?: boolean;
-  }>,
-  limit: number = 5
-): string => {
-  const paidPayments = payments
-    // 🔹 ТОТ ЖЕ ФИЛЬТР, что и в useMemo выше в компоненте
-    .filter(p => p.isPaid && p.isRealPayment !== false)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    // .slice(0, limit);
-
-  if (paidPayments.length === 0) return '';
-
-  let history = `\n📜 *История платежей:*\n`;
-  paidPayments.forEach(p => {
-    const dateString = typeof p.date === 'string' ? p.date : p.date.toISOString();
-    history += `   • ${formatDate(dateString)} — *${formatCurrency(p.amount, appSettings.showCents)} ₽* ✅\n`;
-  });
-  return history;
-};
+        let history = `\n📜 *История платежей:*\n`;
+        paidPayments.forEach(p => {
+            const dateString = typeof p.date === 'string' ? p.date : p.date.toISOString();
+            history += `   • ${formatDate(dateString)} — *${formatCurrency(p.amount, appSettings.showCents)} ₽* ✅\n`;
+        });
+        return history;
+    };
 
 
-const handleDeleteRequest = () => {
-  // 🔒 ГЛАВНАЯ ПРОВЕРКА: нет привязанных договоров
-  if (customerSales.length > 0) {
-    alert('⛔ Невозможно удалить клиента! У него есть привязанные договоры. Сначала удалите или закройте их.');
-    return;
-  }
-  setShowDeleteModal(true);
-};
+    const handleDeleteRequest = () => {
+        // 🔒 ГЛАВНАЯ ПРОВЕРКА: нет привязанных договоров
+        if (customerSales.length > 0) {
+            alert('⛔ Невозможно удалить клиента! У него есть привязанные договоры. Сначала удалите или закройте их.');
+            return;
+        }
+        setShowDeleteModal(true);
+    };
 
-const confirmDeleteCustomer = () => {
-  if (onDeleteCustomer) {
-    onDeleteCustomer(customer.id);
-    onBack(); // Возвращаем пользователя к списку клиентов
-  }
-};
+    const confirmDeleteCustomer = () => {
+        if (onDeleteCustomer) {
+            onDeleteCustomer(customer.id);
+            onBack(); // Возвращаем пользователя к списку клиентов
+        }
+    };
 
 
-const normalizePhoneForWhatsApp = (
-  phone: string,
-  defaultCountry?: CountryCode
-): string | null => {
-  const phoneNumber = parsePhoneNumberFromString(phone, defaultCountry);
+    const normalizePhoneForWhatsApp = (
+        phone: string,
+        defaultCountry?: CountryCode
+    ): string | null => {
+        const phoneNumber = parsePhoneNumberFromString(phone, defaultCountry);
 
-  if (!phoneNumber?.isValid()) {
-    return null; // или выбросить ошибку
-  }
+        if (!phoneNumber?.isValid()) {
+            return null; // или выбросить ошибку
+        }
 
-  // Возвращаем номер в формате E.164 без знака +
-  return phoneNumber.number.replace('+', '');
-};
+        // Возвращаем номер в формате E.164 без знака +
+        return phoneNumber.number.replace('+', '');
+    };
 
 // === ИСПРАВЛЕННАЯ handleSendSaleReminder ===
-const handleSendSaleReminder = () => {
-    if (!selectedSale) return;
+    const handleSendSaleReminder = () => {
+        if (!selectedSale) return;
 
-    const upcomingPayments = (selectedSale.paymentPlan || [])
-        .filter(p => !p.isPaid)
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    const nextPayment = upcomingPayments[0];
+        const upcomingPayments = (selectedSale.paymentPlan || [])
+            .filter(p => !p.isPaid)
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const nextPayment = upcomingPayments[0];
 
-    // 📜 Добавляем историю оплаченных платежей
-    const paymentHistory = formatPaymentHistory(selectedSale.paymentPlan || [], 5);
+        // 📜 Добавляем историю оплаченных платежей
+        const paymentHistory = formatPaymentHistory(selectedSale.paymentPlan || [], 5);
 
-    const message = `
+        const message = `
 Здравствуйте, ${customer.name}!
 
 Информация по договору на "${selectedSale.productName}".
@@ -515,13 +636,13 @@ const handleSendSaleReminder = () => {
 ${nextPayment ? `- *Ближайший платеж:* ${formatCurrency(nextPayment.amount, appSettings.showCents)} ₽ до ${formatDate(nextPayment.date)}` : ''}${paymentHistory}
     `.trim().replace(/^\s+/gm, '');
 
-    const phone = normalizePhoneForWhatsApp(customer.phone);
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
-};
+        const phone = normalizePhoneForWhatsApp(customer.phone);
+        const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+        window.open(url, '_blank');
+    };
 
 
-const handleSendFullReport = () => {
+    const handleSendFullReport = () => {
     let report = `${customer.name}!\n\nВаш полный отчет по всем рассрочкам!\n\n`;
 
     customerSales.forEach((sale, index) => {
@@ -788,7 +909,7 @@ const getInvestorInfo = (sale: Sale) => {
                                 className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                             >
                                 <span>{ICONS.Delete}</span>
-                                Удалить клиента
+                                Удалить
                             </button>
                         )}
                     </div>

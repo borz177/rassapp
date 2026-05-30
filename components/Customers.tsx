@@ -154,95 +154,100 @@ const handleSubmit = (e: React.FormEvent) => {
       )}
 
       {isAdding && (
-        <form onSubmit={handleSubmit} className="bg-white p-5 rounded-2xl shadow-md border border-slate-100 space-y-4 animate-fade-in">
-          <div className="flex items-center gap-4">
-            <label className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center cursor-pointer border-2 border-dashed border-slate-300 hover:border-indigo-400 overflow-hidden">
-                {newPhoto ? (
-                    <img src={newPhoto} alt="Preview" className="w-full h-full object-cover" />
-                ) : (
-                    <span className="text-slate-400 text-xs text-center">Фото</span>
-                )}
-                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-            </label>
-            <div className="flex-1 space-y-2">
-                <input
-                    placeholder="ФИО Клиента"
-                    className="w-full p-3 border border-slate-200 rounded-xl outline-none"
-                    value={newName}
-                    onChange={e => setNewName(e.target.value)}
-                    required
-                />
-            </div>
-          </div>
+  <form onSubmit={handleSubmit} className="bg-white p-5 rounded-2xl shadow-md border border-slate-100 space-y-4 animate-fade-in">
+
+    {/* === БЛОК 1: Фото + ФИО + Телефон === */}
+    <div className="flex items-center gap-4">
+      <label className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center cursor-pointer border-2 border-dashed border-slate-300 hover:border-indigo-400 overflow-hidden">
+          {newPhoto ? (
+              <img src={newPhoto} alt="Preview" className="w-full h-full object-cover" />
+          ) : (
+              <span className="text-slate-400 text-xs text-center">Фото</span>
+          )}
+          <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+      </label>
+      <div className="flex-1 space-y-2">
           <input
-            placeholder="Номер телефона"
-            className="w-full p-3 border border-slate-200 rounded-xl outline-none"
-            value={newPhone}
-            onChange={e => setNewPhone(e.target.value)}
-            required
+              placeholder="ФИО Клиента"
+              className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              required
           />
+      </div>
+    </div>
+
+    <input
+      placeholder="Номер телефона"
+      className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+      value={newPhone}
+      onChange={e => setNewPhone(e.target.value)}
+      required
+    />
+
+    {/* === БЛОК 2: Адрес + Паспорт (в одном раскрывающемся) === */}
+    <details className="group" open> {/* 🔹 open — чтобы блок был раскрыт по умолчанию */}
+      <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600">
+        <span className="transition-transform group-open:rotate-90">▶</span>
+        📍 Адрес и документы
+      </summary>
+
+      <div className="mt-3 space-y-4 p-4 bg-slate-50 rounded-xl">
+
+        {/* 🔹 Адрес (перенесён сюда) */}
+        <div>
+          <label className="block text-xs text-slate-500 mb-1">Адрес</label>
           <input
-            placeholder="Адрес (необязательно)"
-            className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+            type="text"
+            placeholder="г. Москва, ул. Ленина, д. 1, кв. 10"
+            className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
             value={newAddress}
             onChange={e => setNewAddress(e.target.value)}
           />
-
- {/* 🔹 === НОВАЯ СЕКЦИЯ: ПАСПОРТНЫЕ ДАННЫЕ === */}
-    <details className="group">
-      <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600">
-        <span className="transition-transform group-open:rotate-90">▶</span>
-        🪪 Паспортные данные
-      </summary>
-
-      <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">
-        {/* Серия и номер в одну строку */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">Серия</label>
-            <input
-              type="text"
-              placeholder="4501"
-              className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono uppercase"
-              value={newPassportSeries}
-              onChange={e => {
-                // Только цифры и латиница, максимум 4 символа
-                const val = e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4);
-                setNewPassportSeries(val);
-              }}
-              maxLength={4}
-              inputMode="text"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">Номер</label>
-            <input
-              type="text"
-              placeholder="123456"
-              className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono"
-              value={newPassportNumber}
-              onChange={e => {
-                // Только цифры, максимум 6 символов
-                const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
-                setNewPassportNumber(val);
-              }}
-              maxLength={6}
-              inputMode="numeric"
-            />
-          </div>
         </div>
 
-        {/* Кем выдан */}
-        <div>
-          <label className="block text-xs text-slate-500 mb-1">Кем выдан (необязательно)</label>
-          <input
-            type="text"
-            placeholder="УФМС России по г. Москве"
-            className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
-            value={newPassportIssuedBy}
-            onChange={e => setNewPassportIssuedBy(e.target.value)}
-            maxLength={100}
-          />
+        {/* 🔹 Разделитель */}
+        <div className="border-t border-slate-200 pt-3">
+          <p className="text-xs font-medium text-slate-500 mb-3">🪪 Паспортные данные <span className="font-normal text-slate-400">(необязательно)</span></p>
+
+          {/* Серия и номер */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Серия</label>
+              <input
+                type="text"
+                placeholder="4501"
+                className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono uppercase"
+                value={newPassportSeries}
+                onChange={e => setNewPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))}
+                maxLength={4}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Номер</label>
+              <input
+                type="text"
+                placeholder="123456"
+                className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono"
+                value={newPassportNumber}
+                onChange={e => setNewPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                maxLength={6}
+              />
+            </div>
+          </div>
+
+          {/* Кем выдан */}
+          <div className="mt-3">
+            <label className="block text-xs text-slate-500 mb-1">Кем выдан</label>
+            <input
+              type="text"
+              placeholder="УФМС России по г. Москве"
+              className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
+              value={newPassportIssuedBy}
+              onChange={e => setNewPassportIssuedBy(e.target.value)}
+              maxLength={100}
+            />
+          </div>
         </div>
 
         {/* Подсказка о безопасности */}
@@ -252,11 +257,12 @@ const handleSubmit = (e: React.FormEvent) => {
         </p>
       </div>
     </details>
-          <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold">
-            Сохранить клиента
-          </button>
-        </form>
-      )}
+
+    <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold">
+      Сохранить клиента
+    </button>
+  </form>
+)}
 
       <div className="grid gap-3">
         {sortedFilteredCustomers.length === 0 && !isAdding && (
