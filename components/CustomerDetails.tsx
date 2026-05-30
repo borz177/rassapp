@@ -436,9 +436,10 @@ const formatPaymentHistory = (
   limit: number = 5
 ): string => {
   const paidPayments = payments
-    .filter(p => p.isPaid && p.isRealPayment === true)
+    // 🔹 ТОТ ЖЕ ФИЛЬТР, что и в useMemo выше в компоненте
+    .filter(p => p.isPaid && p.isRealPayment !== false)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, limit); // 🔹 Просто берем первые N платежей
+    // .slice(0, limit);
 
   if (paidPayments.length === 0) return '';
 
