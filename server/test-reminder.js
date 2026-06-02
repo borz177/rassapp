@@ -1,4 +1,5 @@
-// test-reminder.js — Скрипт для тестирования ОДНОГО пользователя
+
+// test-reminder.js — ИСПРАВЛЕННАЯ версия (поддерживает старые и новые переменные)
 require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 
 const { Pool } = require('pg');
@@ -92,6 +93,13 @@ function buildConsolidatedMessage(template, customer, items, totalToPay) {
   });
 
   let productsBlock = '';
+  const productEntries = Object.entries(products);
+
+  // Берем данные первого товара для совместимости со старыми переменными
+  const firstProduct = productEntries.length > 0
+    ? { name: productEntries[0][0], ...productEntries[0][1] }
+    : { name: 'Товар', currentDue: totalToPay, overdueDebt: 0, months: 0, originalAmount: totalToPay };
+
   for (const [name, data] of Object.entries(products)) {
     let months = 1;
     if (data.firstOverdueDate) {
@@ -110,12 +118,29 @@ function buildConsolidatedMessage(template, customer, items, totalToPay) {
   const targetItem = items.find(i => i.diffDays === 1 || i.diffDays === 0) || items[0];
   const dateStr = new Date(targetItem.dateObj).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  const templateData = { 'имя': customer.name, 'дата': dateStr, 'товары_блок': productsBlock.trim(), 'итого_блок': totalBlock, 'сумма': totalToPay.toLocaleString('ru-RU'), 'итого': totalToPay.toLocaleString('ru-RU') };
+  // 🔹 ТЕПЕРЬ ЗАПОЛНЯЕМ И СТАРЫЕ, И НОВЫЕ ПЕРЕМЕННЫЕ
+  const templateData = {
+    // Новые переменные (рекомендуемые)
+    'товары_блок': productsBlock.trim(),
+    'итого_блок': totalBlock,
+
+    // Старые переменные (для совместимости, берут данные первого/основного товара)
+    'имя': customer.name,
+    'дата': dateStr,
+    'товар': firstProduct.name,
+    'сумма': (firstProduct.currentDue > 0 ? firstProduct.currentDue : totalToPay).toLocaleString('ru-RU'),
+    'долг': firstProduct.overdueDebt.toLocaleString('ru-RU'),
+    'месяцы': firstProduct.months.toString(),
+    'итого': totalToPay.toLocaleString('ru-RU'),
+    'долг_блок': firstProduct.overdueDebt > 0 ? `   • Задолженность: *${firstProduct.overdueDebt.toLocaleString('ru-RU')} ₽* (${firstProduct.months} мес.)\n` : '',
+    'платеж_блок': firstProduct.currentDue > 0 ? `   • Платёж по плану: *${(firstProduct.originalAmount || firstProduct.currentDue).toLocaleString('ru-RU')} ₽*\n` : ''
+  };
 
   let result = template;
   Object.entries(templateData).forEach(([key, value]) => {
     result = result.replace(new RegExp(`{${key}}`, 'g'), value || '');
   });
+
   return result.replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -169,7 +194,7 @@ async function runTest() {
       else if (diffDays === 0 && settings.reminderDays.includes(0)) isTrigger = true;
       else if (diffDays < 0 && settings.reminderDays.includes(1)) isTrigger = true;
 
-      if (!isTrigger && diffDays >= 0) continue; // Для теста игнорируем будущие платежи без триггера
+      if (!isTrigger && diffDays >= 0) continue;
 
       if (!customerReminders[customer.id]) {
         customerReminders[customer.id] = { customer, items: [], totalDueToday: 0, totalOverdue: 0, paymentsToUpdate: [], hasTrigger: false };

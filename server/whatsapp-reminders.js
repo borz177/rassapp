@@ -92,6 +92,7 @@ function buildProductBlock(productName, productData, isOverdueOnly) {
 }
 
 // 🔹 НОВОЕ: формирует ОДНО объединённое сообщение на клиента
+// 🔹 Функция: формирует ОДНО объединённое сообщение на клиента
 function buildConsolidatedMessage(template, customer, items, totalToPay) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -122,6 +123,17 @@ function buildConsolidatedMessage(template, customer, items, totalToPay) {
 
   // 🔹 Формируем блок товаров
   let productsBlock = '';
+  const productEntries = Object.entries(products);
+
+  // 🔹 Данные первого товара — для совместимости со старыми переменными
+  let firstProductData = {
+    name: 'Товар',
+    currentDue: 0,
+    overdueDebt: 0,
+    months: 0,
+    originalAmount: totalToPay
+  };
+
   for (const [name, data] of Object.entries(products)) {
     let months = 1;
     if (data.firstOverdueDate) {
@@ -131,6 +143,12 @@ function buildConsolidatedMessage(template, customer, items, totalToPay) {
         (today.getDate() >= data.firstOverdueDate.getDate() ? 1 : 0)
       );
     }
+
+    // Сохраняем данные первого товара
+    if (name === productEntries[0][0]) {
+      firstProductData = { name, ...data, months };
+    }
+
     productsBlock += buildProductBlock(name, { ...data, months }, isOverdueOnly) + '\n';
   }
 
@@ -147,14 +165,30 @@ function buildConsolidatedMessage(template, customer, items, totalToPay) {
   const targetDate = new Date(targetItem.dateObj);
   const dateStr = targetDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  // 🔹 Подставляем переменные в шаблон
+  // 🔹 Блок долга для старого шаблона
+  let debtBlock = '';
+  if (firstProductData.overdueDebt > 0) {
+    debtBlock = `   • Задолженность: *${firstProductData.overdueDebt.toLocaleString('ru-RU')} ₽* (${firstProductData.months} мес.)\n`;
+  }
+
+  // 🔹 Подставляем ВСЕ переменные (новые + старые для совместимости)
   const templateData = {
+    // Новые переменные
     'имя': customer.name,
     'дата': dateStr,
     'товары_блок': productsBlock.trim(),
     'итого_блок': totalBlock,
-    'сумма': totalToPay.toLocaleString('ru-RU'),
-    'итого': totalToPay.toLocaleString('ru-RU')
+
+    // Старые переменные (берут данные первого товара)
+    'товар': firstProductData.name,
+    'сумма': (firstProductData.currentDue > 0 ? firstProductData.currentDue : totalToPay).toLocaleString('ru-RU'),
+    'долг': firstProductData.overdueDebt.toLocaleString('ru-RU'),
+    'месяцы': firstProductData.months.toString(),
+    'итого': totalToPay.toLocaleString('ru-RU'),
+    'долг_блок': debtBlock,
+    'платеж_блок': firstProductData.currentDue > 0
+      ? `   • Платёж по плану: *${(firstProductData.originalAmount || firstProductData.currentDue).toLocaleString('ru-RU')} ₽*\n`
+      : ''
   };
 
   let result = template;
@@ -212,15 +246,18 @@ async function processRemindersForUser(user) {
 
     const paymentStates = calculateSalePaymentStates(sale);
 
-    for (const p of paymentStates) {
+      for (const p of paymentStates) {
       const pDate = new Date(p.date);
       pDate.setHours(0, 0, 0, 0);
       const diffDays = Math.ceil((pDate - today) / (1000 * 60 * 60 * 24));
 
+      // 🔹 ИСПРАВЛЕНО: защита от undefined reminderDays
+      const reminderDays = settings.reminderDays || [];
+
       let isTrigger = false;
-      if (diffDays === 1 && settings.reminderDays.includes(-1)) isTrigger = true;
-      else if (diffDays === 0 && settings.reminderDays.includes(0)) isTrigger = true;
-      else if (diffDays < 0 && settings.reminderDays.includes(1)) isTrigger = true;
+      if (diffDays === 1 && reminderDays.includes(-1)) isTrigger = true;
+      else if (diffDays === 0 && reminderDays.includes(0)) isTrigger = true;
+      else if (diffDays < 0 && reminderDays.includes(1)) isTrigger = true;
 
       const isOverdue = diffDays < 0;
       const isUpcomingOrToday = diffDays === 0 || diffDays === 1;
@@ -228,11 +265,13 @@ async function processRemindersForUser(user) {
       if (!isOverdue && !isUpcomingOrToday) continue;
       if (!isTrigger && !isOverdue) continue;
 
-      if (isOverdue && settings.overdueReminderInterval > 1) {
+      // 🔹 ИСПРАВЛЕНО: защита от undefined overdueReminderInterval
+      const overdueInterval = settings.overdueReminderInterval || 1;
+      if (isOverdue && overdueInterval > 1) {
         const lastNotif = p.lastNotificationDate ? new Date(p.lastNotificationDate) : null;
         if (lastNotif) {
           const daysSinceLast = Math.floor((today - lastNotif) / (1000 * 60 * 60 * 24));
-          if (daysSinceLast < settings.overdueReminderInterval) continue;
+          if (daysSinceLast < overdueInterval) continue;
         }
       }
 
