@@ -7,7 +7,7 @@ const axios = require('axios');
 const GREEN_API_BASE_URL = 'https://api.green-api.com';
 
 // 🔹 ВСТАВЬТЕ СЮДА ID ПОЛЬЗОВАТЕЛЯ ДЛЯ ТЕСТА
-const TEST_USER_ID = 'u_1771049601214'; // Замените на реальный ID из вашей БД
+const TEST_USER_ID = 'u_1771237064957'; // Замените на реальный ID из вашей БД
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
