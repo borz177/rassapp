@@ -99,6 +99,7 @@ const isLanding = path === "/"
   const [showSupportChat, setShowSupportChat] = useState(false);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [showTemplateUpdateModal, setShowTemplateUpdateModal] = useState(false);
 
 
   const [showSplash, setShowSplash] = useState(true);
@@ -353,6 +354,26 @@ useEffect(() => {
 
   initApp();
 }, []);
+
+
+
+//для модалки сообщения
+useEffect(() => {
+  if (!user || isPublicMode || isLanding) return;
+
+  const STORAGE_KEY = 'template_update_notice_last_shown_v1';
+  const TWO_HOURS = 2 * 60 * 60 * 1000;
+
+  const lastShown = localStorage.getItem(STORAGE_KEY);
+  const now = Date.now();
+
+  if (!lastShown || now - Number(lastShown) >= TWO_HOURS) {
+    setShowTemplateUpdateModal(true);
+    localStorage.setItem(STORAGE_KEY, String(now));
+  }
+}, [user, isPublicMode, isLanding]);
+
+
 
 
 const subStatus = useMemo(() => {
@@ -2697,6 +2718,73 @@ if (!user && !showSplash) {
     onAction={notificationData.onAction}
   />
 )}
+
+
+           {showTemplateUpdateModal && (
+  <div
+    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
+    onClick={() => setShowTemplateUpdateModal(false)}
+  >
+    <div
+      className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="p-5 bg-gradient-to-r from-indigo-600 to-emerald-600 text-white">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-2xl">
+            🔔
+          </div>
+          <div>
+            <h3 className="font-bold text-lg">Обновление WhatsApp-шаблонов</h3>
+            <p className="text-white/80 text-xs">
+              Важно для корректной отправки сообщений
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-5 space-y-4">
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+          <p className="text-sm text-amber-900 font-bold mb-2">
+            ⚠️ Обновите шаблоны сообщений
+          </p>
+
+          <p className="text-sm text-amber-800 leading-relaxed">
+            Перейдите в <b>Интеграции → WhatsApp → Шаблоны сообщений</b> и нажмите:
+          </p>
+
+          <div className="mt-3 px-3 py-2 rounded-xl bg-white border border-amber-200 text-center">
+            <span className="font-bold text-amber-900">🗑️ Все по умолчанию</span>
+          </div>
+        </div>
+
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+          <p className="text-sm text-slate-700 leading-relaxed">
+            После этого можете снова изменить текст под себя.
+            Главное — оставьте переменные:
+          </p>
+
+          <div className="flex flex-wrap gap-2 mt-3">
+            <span className="font-mono text-xs bg-white border border-slate-200 px-2 py-1 rounded-lg">
+              {'{товары_блок}'}
+            </span>
+            <span className="font-mono text-xs bg-white border border-slate-200 px-2 py-1 rounded-lg">
+              {'{итого_блок}'}
+            </span>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setShowTemplateUpdateModal(false)}
+          className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
+        >
+          Понятно
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
 
   </Layout>
