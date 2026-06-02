@@ -153,7 +153,6 @@ const Integrations: React.FC<IntegrationsProps> = ({
   };
 
   // 🔹 Обновлённое сохранение настроек
-    // 🔹 Обновлённое и исправленное сохранение настроек
   const handleSaveSettings = async () => {
     let calculatorConfigId: string | null = null;
 
@@ -171,41 +170,27 @@ const Integrations: React.FC<IntegrationsProps> = ({
       }
     }
 
-    // 🔹 ИСПРАВЛЕНИЕ: Сначала берем ВСЕ существующие поля whatsapp,
-    // а затем перезаписываем только те, что изменились.
-    // Это предотвращает потерю скрытых полей (id, userId и т.д.) при сохранении.
-    const updatedWhatsappSettings: WhatsAppSettings = {
-      ...appSettings.whatsapp, // <--- КРИТИЧЕСКИ ВАЖНО: сохраняем старые поля
-
-      enabled: isConnected,
+    const waSettings: WhatsAppSettings = {
+      enabled: isConnected, // 🔹 Используем isConnected вместо waEnabled
       idInstance,
       apiTokenInstance: apiToken,
       reminderTime,
       reminderDays,
-      botEnabled,
-      historyEnabled,
-      conditionsEnabled,
-      overdueReminderInterval: overdueInterval,
-      companyName: appSettings?.companyName || 'Наша Компания',
-      calculator: appSettings?.calculator,
-      calculatorConfigId: calculatorConfigId || appSettings?.whatsapp?.calculatorConfigId,
-
-      // 🔹 Явно прописываем обновленные шаблоны из локального стейта
       templates: {
         upcoming: templates.upcoming,
         today: templates.today,
         overdue: templates.overdue
-      }
+      },
+      botEnabled,
+      historyEnabled,
+      conditionsEnabled,
+      companyName: appSettings?.companyName || 'Наша Компания',
+      calculator: appSettings?.calculator,
+      calculatorConfigId: calculatorConfigId || appSettings?.whatsapp?.calculatorConfigId,
+      overdueReminderInterval: overdueInterval
     };
 
-    // 🔹 Отладочный лог: проверьте вкладку Console (F12), чтобы убедиться, что текст шаблонов здесь правильный
-    console.log("💾 Отправляем на сохранение шаблоны:", updatedWhatsappSettings.templates);
-
-    // Вызываем обновление в родительском компоненте
-    onUpdateSettings({
-      ...appSettings,
-      whatsapp: updatedWhatsappSettings
-    });
+    onUpdateSettings({ ...appSettings, whatsapp: { ...waSettings } });
 
     if (onSettingsChanged) {
       onSettingsChanged();
@@ -214,9 +199,10 @@ const Integrations: React.FC<IntegrationsProps> = ({
     if (isConnected) {
       await checkConnection(idInstance, apiToken).catch(console.error);
       setIsTokenVisible(false);
+      alert("✅ Настройки сохранены!");
+    } else {
+      alert("Интеграция WhatsApp отключена.");
     }
-
-    alert("✅ Настройки и шаблоны успешно сохранены!");
   };
 
   // 🔹 ИСПРАВЛЕНО: защита от undefined

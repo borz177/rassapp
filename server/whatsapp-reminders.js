@@ -76,7 +76,8 @@ function calculateSalePaymentStates(sale) {
 
 // 🔹 Формирует объединённое сообщение для клиента
 // 🔹 Формирует объединённое сообщение для клиента
-function buildConsolidatedMessage(customerData, totalToPay) {
+// 🔹 Формирует сообщение на основе СОХРАНЁННЫХ шаблонов
+function buildConsolidatedMessage(customerData, totalToPay, templates) {
   const { customer, items } = customerData;
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
@@ -89,10 +90,10 @@ function buildConsolidatedMessage(customerData, totalToPay) {
   items.forEach(item => {
     if (!products[item.productName]) {
       products[item.productName] = {
-        currentDue: 0,           // Сумма на сегодня/завтра
-        overdueDebt: 0,          // Сумма просрочки
-        firstOverdueDate: null,  // Дата первой просрочки для расчёта месяцев
-        originalAmount: item.originalAmount // Фиксированный платёж из графика
+        currentDue: 0,
+        overdueDebt: 0,
+        firstOverdueDate: null,
+        originalAmount: item.originalAmount
       };
     }
     if (item.diffDays >= 0) {
@@ -105,62 +106,101 @@ function buildConsolidatedMessage(customerData, totalToPay) {
     }
   });
 
-  // 🔹 Заголовок
-  let message = `🔔 *Напоминание ${isOverdueOnly ? 'о просрочке' : 'об оплате'}*\n\n*${customer.name}!*\n\n`;
+  // 🔹 Выбираем правильный шаблон
+  let template;
+  if (isOverdueOnly) {
+    template = templates.overdue;
+  } else {
+    const targetItem = items.find(i => i.diffDays === 1 || i.diffDays === 0);
+    template = targetItem?.diffDays === 1 ? templates.upcoming : templates.today;
+  }
 
-  // 🔹 Блок даты (только если есть Сегодня/Завтра)
-  if (hasUpcoming) {
+  // 🔹 Заполняем переменные в шаблоне
+  let message = template;
+
+  // Базовые переменные
+  message = message.replace(/{имя}/g, customer.name);
+
+  // Если один товар - показываем его название, иначе "Несколько товаров"
+  const productNames = Object.keys(products);
+  const productNameStr = productNames.length === 1
+    ? productNames[0]
+    : `${productNames.length} товаров`;
+  message = message.replace(/{товар}/g, productNameStr);
+
+  // Переменные для даты
+  if (!isOverdueOnly) {
     const targetItem = items.find(i => i.diffDays === 1 || i.diffDays === 0);
     const targetDate = new Date(targetItem.dateObj);
     const dateStr = targetDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
     const dayWord = targetItem.diffDays === 0 ? 'Сегодня' : 'Завтра';
-    message += `📅 *${dayWord}*, *${dateStr}* — день оплаты!\n\n`;
+
+    message = message.replace(/{дата}/g, dateStr);
+    message = message.replace(/{день}/g, dayWord);
+  } else {
+    // Для просрочки оставляем переменные пустыми
+    message = message.replace(/{дата}/g, '');
+    message = message.replace(/{день}/g, '');
   }
 
-  // 🔹 Блок предупреждения для режима "только просрочка"
-  if (isOverdueOnly) {
-    message += `⚠️ Оплата по договору просрочена!\n\n`;
-  }
+  // Переменные для сумм (берём первый товар для простого шаблона)
+  const firstProduct = Object.values(products)[0];
+  const sumStr = firstProduct?.currentDue > 0
+    ? firstProduct.currentDue.toLocaleString('ru-RU')
+    : firstProduct?.originalAmount?.toLocaleString('ru-RU') || '0';
+  message = message.replace(/{сумма}/g, sumStr);
 
-  // 🔹 Блоки товаров
+  const debtStr = firstProduct?.overdueDebt > 0
+    ? firstProduct.overdueDebt.toLocaleString('ru-RU')
+    : '0';
+  message = message.replace(/{долг}/g, debtStr);
+  message = message.replace(/{итого}/g, totalToPay.toLocaleString('ru-RU'));
+
+  // Переменные для месяцев просрочки
+  let months = 1;
+  if (firstProduct?.firstOverdueDate) {
+    months = Math.max(1,
+      (today.getFullYear() - firstProduct.firstOverdueDate.getFullYear()) * 12 +
+      (today.getMonth() - firstProduct.firstOverdueDate.getMonth()) +
+      (today.getDate() >= firstProduct.firstOverdueDate.getDate() ? 1 : 0)
+    );
+  }
+  message = message.replace(/{месяцы}/g, months.toString());
+
+  // 🔹 Формируем блок задолженности (для всех товаров)
+  let debtBlock = '';
   for (const [name, data] of Object.entries(products)) {
-    message += `🔸 *${name}*\n`;
-
-    if (data.currentDue > 0) {
-      message += `   • К оплате: *${data.currentDue.toLocaleString('ru-RU')} ₽*\n\n`;
-    }
-
     if (data.overdueDebt > 0) {
-      let months = 1;
+      let itemMonths = 1;
       if (data.firstOverdueDate) {
-        months = Math.max(1,
+        itemMonths = Math.max(1,
           (today.getFullYear() - data.firstOverdueDate.getFullYear()) * 12 +
           (today.getMonth() - data.firstOverdueDate.getMonth()) +
           (today.getDate() >= data.firstOverdueDate.getDate() ? 1 : 0)
         );
       }
-
-      // В режиме "ТОЛЬКО просрочка" показываем фиксированный платёж
-      if (isOverdueOnly) {
-        message += `   • Ежемесячный платёж: *${data.originalAmount.toLocaleString('ru-RU')} ₽*\n`;
-      }
-
-      message += `   • Задолженность: *${data.overdueDebt.toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
+      debtBlock += `   • ${name}: *${data.overdueDebt.toLocaleString('ru-RU')} ₽* (${itemMonths} мес.)\n`;
     }
-    message += `\n`;
   }
+  message = message.replace(/{долг_блок}/g, debtBlock || '');
 
-  // 🔹 ИТОГО: показываем ТОЛЬКО если:
-  // 1. Есть задолженность по любому товару ИЛИ
-  // 2. Более 1 товара с оплатой на сегодня/завтра
+  // 🔹 Формируем блок итого (если нужно)
   const productsWithDue = Object.values(products).filter(p => p.currentDue > 0).length;
   const hasAnyOverdue = Object.values(products).some(p => p.overdueDebt > 0);
 
+  let totalBlock = '';
   if (totalToPay > 0 && (hasAnyOverdue || productsWithDue > 1)) {
-    message += `💰 *ИТОГО К ОПЛАТЕ: ${totalToPay.toLocaleString('ru-RU')} ₽*\n\n`;
+    totalBlock = `\n💰 *ИТОГО К ОПЛАТЕ: ${totalToPay.toLocaleString('ru-RU')} ₽*`;
   }
+  message = message.replace(/{итого_блок}/g, totalBlock);
 
-  message += `\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``;
+  // 🔹 Формируем блок платежа (если нужно)
+  let paymentBlock = '';
+  if (!isOverdueOnly && firstProduct?.currentDue > 0) {
+    paymentBlock = `   • Платёж по плану: *${firstProduct.originalAmount.toLocaleString('ru-RU')} ₽*\n   • Остаток за этот месяц: *${firstProduct.currentDue.toLocaleString('ru-RU')} ₽*\n`;
+  }
+  message = message.replace(/{платеж_блок}/g, paymentBlock);
+
   return message;
 }
 
@@ -280,7 +320,14 @@ async function processRemindersForUser(user) {
     if (!data.hasTrigger) continue;
 
     const totalToPay = data.totalDueToday + data.totalOverdue;
-    const message = buildConsolidatedMessage(data, totalToPay);
+    // Получаем шаблоны из настроек или используем дефолтные
+const templates = settings.templates || {
+  upcoming: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Завтра*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
+  today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Сегодня*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
+  overdue: `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``
+};
+
+const message = buildConsolidatedMessage(data, totalToPay, templates);
 
     const success = await sendWhatsAppMessage(
       settings.idInstance,
