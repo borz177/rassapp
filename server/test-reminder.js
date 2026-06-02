@@ -1,5 +1,4 @@
-
-// test-reminder.js — ИСПРАВЛЕННАЯ версия (поддерживает старые и новые переменные)
+// test-reminder.js — ТЕСТОВАЯ версия с поддержкой пользовательских шаблонов
 require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 
 const { Pool } = require('pg');
@@ -14,10 +13,11 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
+// 🔹 Шаблоны по умолчанию (синхронизированы с whatsapp-reminders.js)
 const DEFAULT_TEMPLATES = {
-  upcoming: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Завтра*, *{дата}* — день оплаты!\n\n{товары_блок}\n\n{итого_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
-  today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Сегодня*, *{дата}* — день оплаты!\n\n{товары_блок}\n\n{итого_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
-  overdue: `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n{товары_блок}\n\n{итого_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``
+  upcoming: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Завтра*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
+  today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Сегодня*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
+  overdue: `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``
 };
 
 async function sendWhatsAppMessage(idInstance, apiTokenInstance, phone, message) {
@@ -63,28 +63,25 @@ function calculateSalePaymentStates(sale) {
   return scheduled.filter(p => p.remaining > 0.01);
 }
 
-function buildProductBlock(productName, productData, isOverdueOnly) {
-  let block = `🔸 *${productName}*\n`;
-  if (productData.currentDue > 0) block += `   • К оплате: *${productData.currentDue.toLocaleString('ru-RU')} ₽*\n`;
-  if (productData.overdueDebt > 0) {
-    if (isOverdueOnly) block += `   • Ежемесячный платёж: *${productData.originalAmount.toLocaleString('ru-RU')} ₽*\n`;
-    block += `   • Задолженность: *${productData.overdueDebt.toLocaleString('ru-RU')} ₽* (${productData.months} мес.)\n`;
-  }
-  return block;
-}
-
-function buildConsolidatedMessage(template, customer, items, totalToPay) {
+// 🔹 Формирует сообщение на основе шаблона (синхронизировано с whatsapp-reminders.js)
+function buildConsolidatedMessage(customerData, totalToPay, templates, templateType) {
+  const { customer, items } = customerData;
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const hasUpcoming = items.some(i => i.diffDays === 0 || i.diffDays === 1);
-  const isOverdueOnly = !hasUpcoming;
 
+  // Группируем по товарам
   const products = {};
   items.forEach(item => {
     if (!products[item.productName]) {
-      products[item.productName] = { currentDue: 0, overdueDebt: 0, firstOverdueDate: null, originalAmount: item.originalAmount };
+      products[item.productName] = {
+        currentDue: 0,
+        overdueDebt: 0,
+        firstOverdueDate: null,
+        originalAmount: item.originalAmount
+      };
     }
-    if (item.diffDays >= 0) products[item.productName].currentDue += item.remaining;
-    else {
+    if (item.diffDays >= 0) {
+      products[item.productName].currentDue += item.remaining;
+    } else {
       products[item.productName].overdueDebt += item.remaining;
       if (!products[item.productName].firstOverdueDate || item.dateObj < products[item.productName].firstOverdueDate) {
         products[item.productName].firstOverdueDate = item.dateObj;
@@ -92,56 +89,104 @@ function buildConsolidatedMessage(template, customer, items, totalToPay) {
     }
   });
 
-  let productsBlock = '';
-  const productEntries = Object.entries(products);
+  // Выбираем шаблон
+  const template = templates[templateType] || DEFAULT_TEMPLATES[templateType] || templates.today || DEFAULT_TEMPLATES.today;
 
-  // Берем данные первого товара для совместимости со старыми переменными
-  const firstProduct = productEntries.length > 0
-    ? { name: productEntries[0][0], ...productEntries[0][1] }
-    : { name: 'Товар', currentDue: totalToPay, overdueDebt: 0, months: 0, originalAmount: totalToPay };
+  // Определяем переменные
+  const hasUpcoming = items.some(i => i.diffDays === 0 || i.diffDays === 1);
+  const hasAnyOverdue = Object.values(products).some(p => p.overdueDebt > 0);
+  const productsWithDue = Object.values(products).filter(p => p.currentDue > 0).length;
 
+  // Формируем {товар}
+  let productLines = '';
   for (const [name, data] of Object.entries(products)) {
-    let months = 1;
-    if (data.firstOverdueDate) {
-      months = Math.max(1, (today.getFullYear() - data.firstOverdueDate.getFullYear()) * 12 + (today.getMonth() - data.firstOverdueDate.getMonth()) + (today.getDate() >= data.firstOverdueDate.getDate() ? 1 : 0));
+    productLines += `🔸 *${name}*\n`;
+    if (data.currentDue > 0) {
+      productLines += `   • К оплате: *${data.currentDue.toLocaleString('ru-RU')} ₽*\n`;
     }
-    productsBlock += buildProductBlock(name, { ...data, months }, isOverdueOnly) + '\n';
+    if (data.overdueDebt > 0) {
+      let months = 1;
+      if (data.firstOverdueDate) {
+        months = Math.max(1,
+          (today.getFullYear() - data.firstOverdueDate.getFullYear()) * 12 +
+          (today.getMonth() - data.firstOverdueDate.getMonth()) +
+          (today.getDate() >= data.firstOverdueDate.getDate() ? 1 : 0)
+        );
+      }
+      if (templateType === 'overdue') {
+        productLines += `   • Ежемесячный платёж: *${data.originalAmount.toLocaleString('ru-RU')} ₽*\n`;
+      }
+      productLines += `   • Задолженность: *${data.overdueDebt.toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
+    }
+    productLines += '\n';
+  }
+  productLines = productLines.trim();
+
+  // Формируем {долг_блок}
+  let debtBlock = '';
+  if (hasAnyOverdue) {
+    for (const [name, data] of Object.entries(products)) {
+      if (data.overdueDebt > 0) {
+        let months = 1;
+        if (data.firstOverdueDate) {
+          months = Math.max(1,
+            (today.getFullYear() - data.firstOverdueDate.getFullYear()) * 12 +
+            (today.getMonth() - data.firstOverdueDate.getMonth()) +
+            (today.getDate() >= data.firstOverdueDate.getDate() ? 1 : 0)
+          );
+        }
+        debtBlock += `   • Задолженность по ${name}: *${data.overdueDebt.toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
+      }
+    }
+    debtBlock = debtBlock.trim();
   }
 
-  const productsWithDue = Object.values(products).filter(p => p.currentDue > 0).length;
-  const hasAnyOverdue = Object.values(products).some(p => p.overdueDebt > 0);
+  // Формируем {дата}
+  let targetDateStr = '';
+  if (hasUpcoming) {
+    const targetItem = items.find(i => i.diffDays === 1 || i.diffDays === 0);
+    if (targetItem) {
+      const targetDate = new Date(targetItem.dateObj);
+      targetDateStr = targetDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+  }
+
+  // Формируем {долг}
+  const totalDebt = Object.values(products).reduce((sum, p) => sum + p.overdueDebt, 0);
+
+  // Формируем {месяцы}
+  let maxMonths = 0;
+  for (const data of Object.values(products)) {
+    if (data.overdueDebt > 0 && data.firstOverdueDate) {
+      const months = Math.max(1,
+        (today.getFullYear() - data.firstOverdueDate.getFullYear()) * 12 +
+        (today.getMonth() - data.firstOverdueDate.getMonth()) +
+        (today.getDate() >= data.firstOverdueDate.getDate() ? 1 : 0)
+      );
+      if (months > maxMonths) maxMonths = months;
+    }
+  }
+
+  // Формируем {итого_блок}
   let totalBlock = '';
   if (totalToPay > 0 && (hasAnyOverdue || productsWithDue > 1)) {
-    totalBlock = `💰 *ИТОГО К ОПЛАТЕ: ${totalToPay.toLocaleString('ru-RU')} ₽*`;
+    totalBlock = `\n💰 *ИТОГО К ОПЛАТЕ: ${totalToPay.toLocaleString('ru-RU')} ₽*`;
   }
 
-  const targetItem = items.find(i => i.diffDays === 1 || i.diffDays === 0) || items[0];
-  const dateStr = new Date(targetItem.dateObj).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  // Подставляем переменные в шаблон
+  let message = template
+    .replace(/{имя}/g, customer.name || 'Клиент')
+    .replace(/{товар}/g, productLines)
+    .replace(/{сумма}/g, totalToPay.toLocaleString('ru-RU'))
+    .replace(/{дата}/g, targetDateStr)
+    .replace(/{долг}/g, totalDebt.toLocaleString('ru-RU'))
+    .replace(/{месяцы}/g, maxMonths.toString())
+    .replace(/{итого}/g, totalToPay.toLocaleString('ru-RU'))
+    .replace(/{долг_блок}/g, debtBlock)
+    .replace(/{платеж_блок}/g, productLines)
+    .replace(/{итого_блок}/g, totalBlock);
 
-  // 🔹 ТЕПЕРЬ ЗАПОЛНЯЕМ И СТАРЫЕ, И НОВЫЕ ПЕРЕМЕННЫЕ
-  const templateData = {
-    // Новые переменные (рекомендуемые)
-    'товары_блок': productsBlock.trim(),
-    'итого_блок': totalBlock,
-
-    // Старые переменные (для совместимости, берут данные первого/основного товара)
-    'имя': customer.name,
-    'дата': dateStr,
-    'товар': firstProduct.name,
-    'сумма': (firstProduct.currentDue > 0 ? firstProduct.currentDue : totalToPay).toLocaleString('ru-RU'),
-    'долг': firstProduct.overdueDebt.toLocaleString('ru-RU'),
-    'месяцы': firstProduct.months.toString(),
-    'итого': totalToPay.toLocaleString('ru-RU'),
-    'долг_блок': firstProduct.overdueDebt > 0 ? `   • Задолженность: *${firstProduct.overdueDebt.toLocaleString('ru-RU')} ₽* (${firstProduct.months} мес.)\n` : '',
-    'платеж_блок': firstProduct.currentDue > 0 ? `   • Платёж по плану: *${(firstProduct.originalAmount || firstProduct.currentDue).toLocaleString('ru-RU')} ₽*\n` : ''
-  };
-
-  let result = template;
-  Object.entries(templateData).forEach(([key, value]) => {
-    result = result.replace(new RegExp(`{${key}}`, 'g'), value || '');
-  });
-
-  return result.replace(/\n{3,}/g, '\n\n').trim();
+  return message;
 }
 
 async function runTest() {
@@ -156,11 +201,9 @@ async function runTest() {
   console.log('✅ Пользователь найден. WhatsApp включен:', user.whatsapp_settings?.enabled);
 
   const settings = user.whatsapp_settings;
-  const templates = {
-    upcoming: settings.templates?.upcoming || DEFAULT_TEMPLATES.upcoming,
-    today: settings.templates?.today || DEFAULT_TEMPLATES.today,
-    overdue: settings.templates?.overdue || DEFAULT_TEMPLATES.overdue
-  };
+
+  // 🔹 Используем шаблоны из настроек или дефолтные
+  const templates = settings.templates || DEFAULT_TEMPLATES;
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().split('T')[0];
@@ -194,14 +237,33 @@ async function runTest() {
       else if (diffDays === 0 && settings.reminderDays.includes(0)) isTrigger = true;
       else if (diffDays < 0 && settings.reminderDays.includes(1)) isTrigger = true;
 
-      if (!isTrigger && diffDays >= 0) continue;
+      const isOverdue = diffDays < 0;
+      const isUpcomingOrToday = diffDays === 0 || diffDays === 1;
+
+      if (!isOverdue && !isUpcomingOrToday) continue;
+      if (!isTrigger && !isOverdue) continue;
 
       if (!customerReminders[customer.id]) {
-        customerReminders[customer.id] = { customer, items: [], totalDueToday: 0, totalOverdue: 0, paymentsToUpdate: [], hasTrigger: false };
+        customerReminders[customer.id] = {
+          customer,
+          items: [],
+          totalDueToday: 0,
+          totalOverdue: 0,
+          paymentsToUpdate: [],
+          hasTrigger: false
+        };
       }
 
       if (isTrigger) customerReminders[customer.id].hasTrigger = true;
-      customerReminders[customer.id].items.push({ productName: sale.productName, date: p.date, remaining: p.remaining, originalAmount: p.originalAmount, dateObj: p.dateObj, diffDays });
+
+      customerReminders[customer.id].items.push({
+        productName: sale.productName,
+        date: p.date,
+        remaining: p.remaining,
+        originalAmount: p.originalAmount,
+        dateObj: p.dateObj,
+        diffDays
+      });
 
       if (diffDays < 0) customerReminders[customer.id].totalOverdue += p.remaining;
       else if (diffDays === 0) customerReminders[customer.id].totalDueToday += p.remaining;
@@ -213,19 +275,32 @@ async function runTest() {
   let sentCount = 0;
   for (const custId of Object.keys(customerReminders)) {
     const data = customerReminders[custId];
+
     if (!data.hasTrigger) {
       console.log(`\n⏭️ Клиент ${data.customer.name}: нет активных триггеров для отправки.`);
       continue;
     }
 
-    const totalToPay = data.totalDueToday + data.totalOverdue;
-    const firstTrigger = data.items.find(i => i.diffDays === 1) ? 'upcoming' : data.items.find(i => i.diffDays === 0) ? 'today' : 'overdue';
+    // 🔹 Определяем тип шаблона (синхронизировано с whatsapp-reminders.js)
+    let templateType = 'today';
+    const hasToday = data.items.some(i => i.diffDays === 0);
+    const hasUpcoming = data.items.some(i => i.diffDays === 1);
+    const hasOverdue = data.items.some(i => i.diffDays < 0);
 
-    const template = templates[firstTrigger];
-    const message = buildConsolidatedMessage(template, data.customer, data.items, totalToPay);
+    if (hasOverdue && !hasToday && !hasUpcoming) {
+      templateType = 'overdue';
+    } else if (hasToday) {
+      templateType = 'today';
+    } else if (hasUpcoming) {
+      templateType = 'upcoming';
+    }
+
+    const totalToPay = data.totalDueToday + data.totalOverdue;
+    const message = buildConsolidatedMessage(data, totalToPay, templates, templateType);
 
     console.log(`\n==================================================`);
     console.log(`📝 СГЕНЕРИРОВАННОЕ СООБЩЕНИЕ для: ${data.customer.name} (${data.customer.phone})`);
+    console.log(`Тип шаблона: ${templateType}`);
     console.log(`==================================================\n`);
     console.log(message);
     console.log(`\n==================================================`);

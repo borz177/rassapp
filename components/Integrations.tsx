@@ -13,9 +13,9 @@ interface IntegrationsProps {
 }
 
 const DEFAULT_TEMPLATES = {
-  upcoming: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Завтра*, *{дата}* — день оплаты!\n\n{товары_блок}\n\n{итого_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
-  today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Сегодня*, *{дата}* — день оплаты!\n\n{товары_блок}\n\n{итого_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
-  overdue: `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n{товары_блок}\n\n{итого_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``
+  upcoming: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Завтра*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
+  today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Сегодня*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
+  overdue: `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``
 };
 
 const Integrations: React.FC<IntegrationsProps> = ({
@@ -248,32 +248,22 @@ const Integrations: React.FC<IntegrationsProps> = ({
     setCurrentTemplates(DEFAULT_TEMPLATES);
   };
 
- const previewTemplate = () => {
-  const template = getCurrentTemplate();
-
-  // Пример блока товаров (2 товара)
-  const productsBlock = `🔸 *iPhone 15 Pro*\n   • К оплате: *20 000 ₽*\n\n🔸 *MacBook Air*\n   • Задолженность: *45 000 ₽* (2 мес.)\n`;
-
-  const sampleData = {
-    'имя': 'FinUchet',
-    'дата': '20 апреля 2026 г.',
-    'товары_блок': productsBlock,
-    'итого_блок': '💰 *ИТОГО К ОПЛАТЕ: 65 000 ₽*',
-    'сумма': '65 000',
-    'итого': '65 000'
+  const previewTemplate = () => {
+    const template = getCurrentTemplate();
+    const sampleData = {
+      имя: 'ФИО', товар: 'iPhone 15 Pro', сумма: '20 000', дата: '20 апреля 2026 г.',
+      долг: '45 000', итого: '65 000', месяцы: '3',
+      платеж_блок: '   • Платёж по плану: *20 000 ₽*\n   • Остаток за этот месяц: *20 000 ₽*\n',
+      долг_блок: '   • Задолженность: *45 000 ₽* (3 мес.)\n',
+      итого_блок: '\n💰 *ИТОГО К ОПЛАТЕ: 65 000 ₽*',
+    };
+    let preview = template;
+    Object.entries(sampleData).forEach(([key, value]) => {
+      preview = preview.replace(new RegExp(`{${key}}`, 'g'), value);
+    });
+    setPreviewContent(preview);
+    setShowPreview(true);
   };
-
-  let preview = template;
-  Object.entries(sampleData).forEach(([key, value]) => {
-    preview = preview.replace(new RegExp(`{${key}}`, 'g'), value);
-  });
-
-  // Убираем лишние пустые строки
-  preview = preview.replace(/\n{3,}/g, '\n\n').trim();
-
-  setPreviewContent(preview);
-  setShowPreview(true);
-};
 
   const getCurrentTemplate = () => {
     if (activeTemplateTab === 'UPCOMING') return templates.upcoming;
@@ -531,9 +521,9 @@ const Integrations: React.FC<IntegrationsProps> = ({
                       <div>
                         <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Переменные:</p>
                         <div className="flex flex-wrap gap-2">
-                          {['имя', 'дата', 'товары_блок', 'итого_блок'].map(v => (
-  <button key={v} onClick={() => insertVariable(v)} className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors">{`{${v}}`}</button>
-))}
+                          {['имя', 'товар', 'сумма', 'дата', 'долг', 'итого', 'месяцы', 'долг_блок'].map(v => (
+                            <button key={v} onClick={() => insertVariable(v)} className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors">{`{${v}}`}</button>
+                          ))}
                         </div>
                       </div>
                       <div className="flex items-center justify-between pt-2 border-t border-slate-200">
