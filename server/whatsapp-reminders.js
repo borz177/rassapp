@@ -80,6 +80,7 @@ function calculateSalePaymentStates(sale) {
 }
 
 // 🔹 Формирует сообщение на основе шаблона
+// 🔹 Формирует сообщение на основе шаблона
 function buildConsolidatedMessage(customerData, totalToPay, templates, templateType) {
   const { customer, items } = customerData;
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -113,12 +114,18 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
   const hasAnyOverdue = Object.values(products).some(p => p.overdueDebt > 0);
   const productsWithDue = Object.values(products).filter(p => p.currentDue > 0).length;
 
-  // Формируем {товар}
-  let productLines = '';
+  // 🔹 Формируем {товар} — ТОЛЬКО названия через запятую (без форматирования!)
+  const productNames = Object.keys(products).join(', ');
+
+  // 🔹 Формируем {сумма} — общая сумма (без ₽ и звёздочек!)
+  const totalAmount = totalToPay.toLocaleString('ru-RU');
+
+  // 🔹 Формируем {товары_блок} — полный блок со всеми товарами (С форматированием!)
+  let productsBlock = '';
   for (const [name, data] of Object.entries(products)) {
-    productLines += `🔸 *${name}*\n`;
+    productsBlock += `🔸 *${name}*\n`;
     if (data.currentDue > 0) {
-      productLines += `   • К оплате: *${data.currentDue.toLocaleString('ru-RU')} ₽*\n`;
+      productsBlock += `   • К оплате: *${data.currentDue.toLocaleString('ru-RU')} ₽*\n`;
     }
     if (data.overdueDebt > 0) {
       let months = 1;
@@ -130,15 +137,15 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
         );
       }
       if (templateType === 'overdue') {
-        productLines += `   • Ежемесячный платёж: *${data.originalAmount.toLocaleString('ru-RU')} ₽*\n`;
+        productsBlock += `   • Ежемесячный платёж: *${data.originalAmount.toLocaleString('ru-RU')} ₽*\n`;
       }
-      productLines += `   • Задолженность: *${data.overdueDebt.toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
+      productsBlock += `   • Задолженность: *${data.overdueDebt.toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
     }
-    productLines += '\n';
+    productsBlock += '\n';
   }
-  productLines = productLines.trim();
+  productsBlock = productsBlock.trim();
 
-  // Формируем {долг_блок}
+  // 🔹 Формируем {долг_блок} — блок с задолженностью (С форматированием!)
   let debtBlock = '';
   if (hasAnyOverdue) {
     for (const [name, data] of Object.entries(products)) {
@@ -157,7 +164,7 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
     debtBlock = debtBlock.trim();
   }
 
-  // Формируем {дата}
+  // 🔹 Формируем {дата}
   let targetDateStr = '';
   if (hasUpcoming) {
     const targetItem = items.find(i => i.diffDays === 1 || i.diffDays === 0);
@@ -167,10 +174,10 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
     }
   }
 
-  // Формируем {долг}
+  // 🔹 Формируем {долг} — общая сумма долга (без ₽!)
   const totalDebt = Object.values(products).reduce((sum, p) => sum + p.overdueDebt, 0);
 
-  // Формируем {месяцы}
+  // 🔹 Формируем {месяцы}
   let maxMonths = 0;
   for (const data of Object.values(products)) {
     if (data.overdueDebt > 0 && data.firstOverdueDate) {
@@ -183,23 +190,23 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
     }
   }
 
-  // Формируем {итого_блок}
+  // 🔹 Формируем {итого_блок}
   let totalBlock = '';
   if (totalToPay > 0 && (hasAnyOverdue || productsWithDue > 1)) {
-    totalBlock = `\n💰 *ИТОГО К ОПЛАТЕ: ${totalToPay.toLocaleString('ru-RU')} ₽*`;
+    totalBlock = `💰 *ИТОГО К ОПЛАТЕ: ${totalToPay.toLocaleString('ru-RU')} ₽*`;
   }
 
-  // Подставляем переменные в шаблон
+  // 🔹 Подставляем переменные в шаблон
   let message = template
     .replace(/{имя}/g, customer.name || 'Клиент')
-    .replace(/{товар}/g, productLines)
-    .replace(/{сумма}/g, totalToPay.toLocaleString('ru-RU'))
+    .replace(/{товар}/g, productNames)  // 🔹 Только названия!
+    .replace(/{сумма}/g, totalAmount)    // 🔹 Только число!
     .replace(/{дата}/g, targetDateStr)
     .replace(/{долг}/g, totalDebt.toLocaleString('ru-RU'))
     .replace(/{месяцы}/g, maxMonths.toString())
     .replace(/{итого}/g, totalToPay.toLocaleString('ru-RU'))
-    .replace(/{долг_блок}/g, debtBlock)
-    .replace(/{платеж_блок}/g, productLines)
+    .replace(/{товары_блок}/g, productsBlock)  // 🔹 Полный блок с форматированием
+    .replace(/{долг_блок}/g, debtBlock)         // 🔹 Блок долга с форматированием
     .replace(/{итого_блок}/g, totalBlock);
 
   return message;
