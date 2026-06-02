@@ -265,14 +265,14 @@ const getContractUsage = (user: User): {
                     <div className="text-sm text-slate-500">Всего пользователей</div>
                     <div className="text-2xl font-bold text-slate-800">{systemStats.totalUsers}</div>
                 </div>
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+               {/* <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                     <div className="text-sm text-slate-500">Активные подписки</div>
                     <div className="text-2xl font-bold text-emerald-600">{systemStats.activeSubscriptions}</div>
                 </div>
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                     <div className="text-sm text-slate-500">Всего договоров</div>
                     <div className="text-2xl font-bold text-indigo-600">{systemStats.totalContracts}</div>
-                </div>
+                </div>*/}
             </div>
 
             {/* Search */}
