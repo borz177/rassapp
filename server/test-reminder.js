@@ -15,9 +15,9 @@ const pool = new Pool({
 
 // 🔹 Шаблоны по умолчанию (синхронизированы с whatsapp-reminders.js)
 const DEFAULT_TEMPLATES = {
-  upcoming: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Завтра*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
-  today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Сегодня*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
-  overdue: `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``
+  upcoming: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Завтра*, *{дата}* — день оплаты!\n\n{товары_блок}\n\n{долг_блок}\n\n{итого_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
+  today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Сегодня*, *{дата}* — день оплаты!\n\n{товары_блок}\n\n{долг_блок}\n\n{итого_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
+  overdue: `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n{товары_блок}\n\n{долг_блок}\n\n{итого_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``
 };
 
 async function sendWhatsAppMessage(idInstance, apiTokenInstance, phone, message) {
@@ -63,8 +63,6 @@ function calculateSalePaymentStates(sale) {
   return scheduled.filter(p => p.remaining > 0.01);
 }
 
-// 🔹 Формирует сообщение на основе шаблона (синхронизировано с whatsapp-reminders.js)
-// 🔹 Формирует сообщение на основе шаблона
 function buildConsolidatedMessage(customerData, totalToPay, templates, templateType) {
   const { customer, items } = customerData;
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -98,18 +96,13 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
   const hasAnyOverdue = Object.values(products).some(p => p.overdueDebt > 0);
   const productsWithDue = Object.values(products).filter(p => p.currentDue > 0).length;
 
-  // 🔹 Формируем {товар} — ТОЛЬКО названия через запятую (без форматирования!)
-  const productNames = Object.keys(products).join(', ');
-
-  // 🔹 Формируем {сумма} — общая сумма (без ₽ и звёздочек!)
-  const totalAmount = totalToPay.toLocaleString('ru-RU');
-
-  // 🔹 Формируем {товары_блок} — полный блок со всеми товарами (С форматированием!)
+  // 🔹 Формируем {товары_блок} — ПОЛНЫЙ блок со ВСЕМИ товарами
   let productsBlock = '';
   for (const [name, data] of Object.entries(products)) {
     productsBlock += `🔸 *${name}*\n`;
     if (data.currentDue > 0) {
-      productsBlock += `   • К оплате: *${data.currentDue.toLocaleString('ru-RU')} ₽*\n`;
+      // 🔹 Math.round() делает число целым
+      productsBlock += `   • К оплате: *${Math.round(data.currentDue).toLocaleString('ru-RU')} ₽*\n`;
     }
     if (data.overdueDebt > 0) {
       let months = 1;
@@ -121,17 +114,21 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
         );
       }
       if (templateType === 'overdue') {
-        productsBlock += `   • Ежемесячный платёж: *${data.originalAmount.toLocaleString('ru-RU')} ₽*\n`;
+        productsBlock += `   • Ежемесячный платёж: *${Math.round(data.originalAmount).toLocaleString('ru-RU')} ₽*\n`;
       }
-      productsBlock += `   • Задолженность: *${data.overdueDebt.toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
+      productsBlock += `   • Задолженность: *${Math.round(data.overdueDebt).toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
     }
     productsBlock += '\n';
   }
   productsBlock = productsBlock.trim();
 
-  // 🔹 Формируем {долг_блок} — блок с задолженностью (С форматированием!)
+  // 🔹 Формируем {товар} — список всех названий через запятую
+  const productNames = Object.keys(products).join(', ');
+
+  // 🔹 Формируем {долг_блок} — блок с задолженностью по всем товарам
   let debtBlock = '';
   if (hasAnyOverdue) {
+    debtBlock = '💳 *Задолженность:*\n';
     for (const [name, data] of Object.entries(products)) {
       if (data.overdueDebt > 0) {
         let months = 1;
@@ -142,7 +139,7 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
             (today.getDate() >= data.firstOverdueDate.getDate() ? 1 : 0)
           );
         }
-        debtBlock += `   • Задолженность по ${name}: *${data.overdueDebt.toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
+        debtBlock += `   • ${name}: *${Math.round(data.overdueDebt).toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
       }
     }
     debtBlock = debtBlock.trim();
@@ -158,10 +155,10 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
     }
   }
 
-  // 🔹 Формируем {долг} — общая сумма долга (без ₽!)
+  // 🔹 Формируем {долг} — общая сумма долга (целое число)
   const totalDebt = Object.values(products).reduce((sum, p) => sum + p.overdueDebt, 0);
 
-  // 🔹 Формируем {месяцы}
+  // 🔹 Формируем {месяцы} — максимальное количество месяцев просрочки
   let maxMonths = 0;
   for (const data of Object.values(products)) {
     if (data.overdueDebt > 0 && data.firstOverdueDate) {
@@ -177,25 +174,30 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
   // 🔹 Формируем {итого_блок}
   let totalBlock = '';
   if (totalToPay > 0 && (hasAnyOverdue || productsWithDue > 1)) {
-    totalBlock = `💰 *ИТОГО К ОПЛАТЕ: ${totalToPay.toLocaleString('ru-RU')} ₽*`;
+    totalBlock = `💰 *ИТОГО К ОПЛАТЕ: ${Math.round(totalToPay).toLocaleString('ru-RU')} ₽*`;
   }
+
+  // 🔹 Формируем {сумма} — общая сумма (целое число)
+  const totalAmount = Math.round(totalToPay).toLocaleString('ru-RU');
 
   // 🔹 Подставляем переменные в шаблон
   let message = template
     .replace(/{имя}/g, customer.name || 'Клиент')
-    .replace(/{товар}/g, productNames)  // 🔹 Только названия!
-    .replace(/{сумма}/g, totalAmount)    // 🔹 Только число!
+    .replace(/{товар}/g, productNames)
+    .replace(/{сумма}/g, totalAmount)
     .replace(/{дата}/g, targetDateStr)
-    .replace(/{долг}/g, totalDebt.toLocaleString('ru-RU'))
+    .replace(/{долг}/g, Math.round(totalDebt).toLocaleString('ru-RU'))
     .replace(/{месяцы}/g, maxMonths.toString())
-    .replace(/{итого}/g, totalToPay.toLocaleString('ru-RU'))
-    .replace(/{товары_блок}/g, productsBlock)  // 🔹 Полный блок с форматированием
-    .replace(/{долг_блок}/g, debtBlock)         // 🔹 Блок долга с форматированием
+    .replace(/{итого}/g, Math.round(totalToPay).toLocaleString('ru-RU'))
+    .replace(/{товары_блок}/g, productsBlock)
+    .replace(/{долг_блок}/g, debtBlock)
     .replace(/{итого_блок}/g, totalBlock);
+
+  // Убираем лишние пустые строки (более 2-х подряд)
+  message = message.replace(/\n{3,}/g, '\n\n').trim();
 
   return message;
 }
-
 async function runTest() {
   console.log(`\n🚀 Начало тестирования для пользователя: ${TEST_USER_ID}`);
 
