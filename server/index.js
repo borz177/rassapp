@@ -800,41 +800,68 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, asyn
     }
 
     // 🔹 3. Формируем сообщение
-    const defaultOverdueTemplate = `🔔 *Напоминание о просрочке*\n\n*{имя}!*\n\n⚠️ Оплата по договору просрочена!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``;
+    // 🔹 3. Формируем сообщение
+const defaultOverdueTemplate =
+  `🔔 *Напоминание о просрочке*\n\n` +
+  `*{имя}!*\n\n` +
+  `⚠️ Оплата по договору просрочена!\n\n` +
+  `{товары_блок}\n\n` +
+  `{итого_блок}\n\n` +
+  `\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``;
 
-    const rawTemplate = settings.templates?.[template] || defaultOverdueTemplate;
+const rawTemplate = settings.templates?.[template] || defaultOverdueTemplate;
 
-    // 🔹 4. Заменяем переменные (ОБНОВЛЕНО: ИТОГО = только долг)
-    const message = rawTemplate
-      .replace(/{имя}/g, customerName)
-      .replace(/{товар}/g, productName || '')
-      // {сумма} = фиксированный платёж из графика (с фолбэком на overdueAmount)
-      .replace(/{сумма}/g, (monthlyPayment !== undefined ? monthlyPayment : overdueAmount).toLocaleString('ru-RU'))
-      // {долг} = реальный долг после частичных оплат
-      .replace(/{долг}/g, (overdueAmount).toLocaleString('ru-RU'))
-      // 🔹 {итого} = ТОЛЬКО долг (без добавления monthlyPayment!)
-      .replace(/{итого}/g, (overdueAmount).toLocaleString('ru-RU'))
-      .replace(/{месяцы}/g, String(monthsOverdue || 0))
-      .replace(/{дата}/g, new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }))
-      // 🔹 Блоки с правильными значениями
-      .replace(/{платеж_блок}/g, `   • Ежемесячный платёж: *${(monthlyPayment !== undefined ? monthlyPayment : overdueAmount).toLocaleString('ru-RU')} ₽*\n`)
-      .replace(/{долг_блок}/g, `   • Задолженность: *${(overdueAmount).toLocaleString('ru-RU')} ₽* (${monthsOverdue || 0} мес.)\n`)
-      .replace(/{итого_блок}/g, `\n💰 *ИТОГО К ОПЛАТЕ: ${(overdueAmount).toLocaleString('ru-RU')} ₽*`);
+// 🔹 4. Заменяем переменные
+const monthlyPaymentValue = monthlyPayment !== undefined ? monthlyPayment : overdueAmount;
 
-    // 🔹 5. Отправка через Green API
-    const sent = await sendGreenApiMessage(
-      settings.idInstance,
-      settings.apiTokenInstance,
-      phone,
-      message
-    );
+const monthlyPaymentText = monthlyPaymentValue.toLocaleString('ru-RU');
+const overdueAmountText = overdueAmount.toLocaleString('ru-RU');
+const monthsText = String(monthsOverdue || 0);
 
-    if (sent) {
-      console.log(`✅ Reminder sent to ${customerName} (${phone}) by user ${userId}`);
-      return res.json({ success: true, message: 'Reminder sent successfully' });
-    } else {
-      return res.status(502).json({ error: 'Failed to send via Green API' });
-    }
+const productsBlock =
+  `🔸 *${productName || ''}*\n` +
+  `   • Ежемесячный платёж: *${monthlyPaymentText} ₽*\n` +
+  `   • Задолженность: *${overdueAmountText} ₽* (${monthsText} мес.)`;
+
+const totalBlock =
+  `💰 *ИТОГО К ОПЛАТЕ: ${overdueAmountText} ₽*`;
+
+const message = rawTemplate
+  .replace(/{имя}/g, customerName)
+  .replace(/{товар}/g, productName || '')
+  .replace(/{сумма}/g, monthlyPaymentText)
+  .replace(/{долг}/g, overdueAmountText)
+  .replace(/{итого}/g, overdueAmountText)
+  .replace(/{месяцы}/g, monthsText)
+  .replace(
+    /{дата}/g,
+    new Date().toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    })
+  )
+  .replace(/{товары_блок}/g, productsBlock)
+  .replace(/{платеж_блок}/g, `   • Ежемесячный платёж: *${monthlyPaymentText} ₽*\n`)
+  .replace(/{долг_блок}/g, '')
+  .replace(/{итого_блок}/g, totalBlock)
+  .replace(/\n{3,}/g, '\n\n')
+  .trim();
+
+// 🔹 5. Отправка через Green API
+const sent = await sendGreenApiMessage(
+  settings.idInstance,
+  settings.apiTokenInstance,
+  phone,
+  message
+);
+
+if (sent) {
+  console.log(`✅ Reminder sent to ${customerName} (${phone}) by user ${userId}`);
+  return res.json({ success: true, message: 'Reminder sent successfully' });
+} else {
+  return res.status(502).json({ error: 'Failed to send via Green API' });
+}
 
   } catch (err) {
     console.error('💥 /send-reminder error:', err);
@@ -932,49 +959,71 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
     const rawTemplate = settings.templates?.[template] || defaultOverdueTemplate;
 
     for (const item of overdueSales) {
-      try {
-        // 🔹 КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ в подстановке переменных:
-        const message = rawTemplate
-          .replace(/{имя}/g, item.customer.name)
-          .replace(/{товар}/g, item.sale.productName || '')
-          // {сумма} = фиксированный платёж из графика (НЕ меняется от частичных оплат)
-          .replace(/{сумма}/g, item.monthlyPayment.toLocaleString('ru-RU'))
-          // {долг} = реальный долг (после учёта частичных оплат)
-          .replace(/{долг}/g, item.overdueAmount.toLocaleString('ru-RU'))
-          // {итого} = ТОЛЬКО долг (без добавления ежемесячного платежа!)
-          .replace(/{итого}/g, item.overdueAmount.toLocaleString('ru-RU'))
-          .replace(/{месяцы}/g, String(item.monthsOverdue))
-          .replace(/{дата}/g, new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }))
-          .replace(/{платеж_блок}/g, `   • Ежемесячный платёж: *${item.monthlyPayment.toLocaleString('ru-RU')} ₽*\n`)
-          .replace(/{долг_блок}/g, `   • Задолженность: *${item.overdueAmount.toLocaleString('ru-RU')} ₽* (${item.monthsOverdue} мес.)\n`)
-          .replace(/{итого_блок}/g, `\n💰 *ИТОГО К ОПЛАТЕ: ${item.overdueAmount.toLocaleString('ru-RU')} ₽*`);
+  try {
+    const monthlyPaymentText = item.monthlyPayment.toLocaleString('ru-RU');
+    const overdueAmountText = item.overdueAmount.toLocaleString('ru-RU');
+    const monthsText = String(item.monthsOverdue || 0);
 
-        const sent = await sendGreenApiMessage(
-          settings.idInstance,
-          settings.apiTokenInstance,
-          item.customer.phone,
-          message
-        );
+    const productsBlock =
+      `🔸 *${item.sale.productName || ''}*\n` +
+      `   • Ежемесячный платёж: *${monthlyPaymentText} ₽*\n` +
+      `   • Задолженность: *${overdueAmountText} ₽* (${monthsText} мес.)`;
 
-        if (sent) {
-          results.sent++;
-          console.log(`✅ Sent to ${item.customer.name} (${item.customer.phone})`);
-        } else {
-          results.failed++;
-          results.errors.push({ customer: item.customer.name, error: 'Green API failed' });
-        }
+    const totalBlock =
+      `💰 *ИТОГО К ОПЛАТЕ: ${overdueAmountText} ₽*`;
 
-        // Пауза 300ms между сообщениями
-        await new Promise(resolve => setTimeout(resolve, 300));
+    const message = rawTemplate
+      .replace(/{имя}/g, item.customer.name)
+      .replace(/{товар}/g, item.sale.productName || '')
+      .replace(/{сумма}/g, monthlyPaymentText)
+      .replace(/{долг}/g, overdueAmountText)
+      .replace(/{итого}/g, overdueAmountText)
+      .replace(/{месяцы}/g, monthsText)
+      .replace(
+        /{дата}/g,
+        new Date().toLocaleDateString('ru-RU', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        })
+      )
+      .replace(/{товары_блок}/g, productsBlock)
+      .replace(/{платеж_блок}/g, `   • Ежемесячный платёж: *${monthlyPaymentText} ₽*\n`)
+      .replace(/{долг_блок}/g, '')
+      .replace(/{итого_блок}/g, totalBlock)
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
 
-      } catch (err) {
-        results.failed++;
-        results.errors.push({ customer: item.customer.name, error: err.message });
-        console.error(`❌ Failed to send to ${item.customer.name}:`, err.message);
-      }
+    const sent = await sendGreenApiMessage(
+      settings.idInstance,
+      settings.apiTokenInstance,
+      item.customer.phone,
+      message
+    );
+
+    if (sent) {
+      results.sent++;
+    } else {
+      results.failed++;
+      results.errors.push({
+        customer: item.customer.name,
+        error: 'Green API failed'
+      });
     }
 
-    console.log(`📊 Mass reminder complete: ${results.sent}/${results.total} sent`);
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+  } catch (err) {
+    results.failed++;
+    results.errors.push({
+      customer: item.customer.name,
+      error: err.message
+    });
+    console.error(`❌ Failed to send to ${item.customer.name}:`, err.message);
+  }
+}
+
+
     return res.json({ success: true, results });
 
   } catch (err) {
