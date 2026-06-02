@@ -125,25 +125,6 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
   // 🔹 Формируем {товар} — список всех названий через запятую
   const productNames = Object.keys(products).join(', ');
 
-  // 🔹 Формируем {долг_блок} — блок с задолженностью по всем товарам
-  let debtBlock = '';
-  if (hasAnyOverdue) {
-    debtBlock = '💳 *Задолженность:*\n';
-    for (const [name, data] of Object.entries(products)) {
-      if (data.overdueDebt > 0) {
-        let months = 1;
-        if (data.firstOverdueDate) {
-          months = Math.max(1,
-            (today.getFullYear() - data.firstOverdueDate.getFullYear()) * 12 +
-            (today.getMonth() - data.firstOverdueDate.getMonth()) +
-            (today.getDate() >= data.firstOverdueDate.getDate() ? 1 : 0)
-          );
-        }
-        debtBlock += `   • ${name}: *${Math.round(data.overdueDebt).toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
-      }
-    }
-    debtBlock = debtBlock.trim();
-  }
 
   // 🔹 Формируем {дата}
   let targetDateStr = '';
@@ -181,17 +162,17 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
   const totalAmount = Math.round(totalToPay).toLocaleString('ru-RU');
 
   // 🔹 Подставляем переменные в шаблон
-  let message = template
-    .replace(/{имя}/g, customer.name || 'Клиент')
-    .replace(/{товар}/g, productNames)
-    .replace(/{сумма}/g, totalAmount)
-    .replace(/{дата}/g, targetDateStr)
-    .replace(/{долг}/g, Math.round(totalDebt).toLocaleString('ru-RU'))
-    .replace(/{месяцы}/g, maxMonths.toString())
-    .replace(/{итого}/g, Math.round(totalToPay).toLocaleString('ru-RU'))
-    .replace(/{товары_блок}/g, productsBlock)
-    .replace(/{долг_блок}/g, debtBlock)
-    .replace(/{итого_блок}/g, totalBlock);
+ let message = template
+  .replace(/{имя}/g, customer.name || 'Клиент')
+  .replace(/{товар}/g, productNames)
+  .replace(/{сумма}/g, totalAmount)
+  .replace(/{дата}/g, targetDateStr)
+  .replace(/{долг}/g, Math.round(totalDebt).toLocaleString('ru-RU'))
+  .replace(/{месяцы}/g, maxMonths.toString())
+  .replace(/{итого}/g, Math.round(totalToPay).toLocaleString('ru-RU'))
+  .replace(/{товары_блок}/g, productsBlock)
+  .replace(/{долг_блок}/g, '')
+  .replace(/{итого_блок}/g, totalBlock);
 
   // Убираем лишние пустые строки (более 2-х подряд)
   message = message.replace(/\n{3,}/g, '\n\n').trim();
