@@ -359,7 +359,7 @@ useEffect(() => {
 
 //для модалки сообщения
 useEffect(() => {
-  if (!user || isPublicMode || isLanding) return;
+  if (!user || isPublicMode) return;
 
   const STORAGE_KEY = 'template_update_notice_last_shown_v1';
   const TWO_HOURS = 2 * 60 * 60 * 1000;
@@ -371,7 +371,7 @@ useEffect(() => {
     setShowTemplateUpdateModal(true);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
-}, [user, isPublicMode, isLanding]);
+}, [user, isPublicMode]);
 
 
 
