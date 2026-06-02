@@ -77,9 +77,20 @@ function calculateSalePaymentStates(sale) {
 // 🔹 Формирует объединённое сообщение для клиента
 // 🔹 Формирует объединённое сообщение для клиента
 // 🔹 Формирует сообщение на основе СОХРАНЁННЫХ шаблонов
+// 🔹 Формирует сообщение на основе СОХРАНЁННЫХ шаблонов
 function buildConsolidatedMessage(customerData, totalToPay, templates) {
   const { customer, items } = customerData;
   const today = new Date(); today.setHours(0, 0, 0, 0);
+
+  // 🔹 ВАЖНО: обрабатываем экранированные переносы строк из textarea
+  // При сохранении из React textarea "\n" превращается в literal "\\n"
+  const normalizeTemplate = (tpl) => {
+    if (!tpl) return '';
+    return tpl
+      .replace(/\\n/g, '\n')      // \n → реальный перенос
+      .replace(/\\t/g, '\t')      // \t → табуляция
+      .replace(/\\\\/g, '\\');    // \\ → одиночный backslash
+  };
 
   // Определяем режим сообщения
   const hasUpcoming = items.some(i => i.diffDays === 0 || i.diffDays === 1);
@@ -115,8 +126,14 @@ function buildConsolidatedMessage(customerData, totalToPay, templates) {
     template = targetItem?.diffDays === 1 ? templates.upcoming : templates.today;
   }
 
-  // 🔹 Заполняем переменные в шаблоне
-  let message = template;
+  // 🔹 Нормализуем шаблон (заменяем \n на реальные переносы)
+  let message = normalizeTemplate(template);
+
+  // 🔹 Защита: если шаблон пустой — используем дефолтный
+  if (!message) {
+    console.warn(`${LOG_PREFIX} ⚠️ Шаблон пустой, используем дефолтный`);
+    message = `Здравствуйте, *{имя}*! Напоминаем об оплате: *{сумма} ₽* по договору "{товар}".`;
+  }
 
   // Базовые переменные
   message = message.replace(/{имя}/g, customer.name);
@@ -138,7 +155,6 @@ function buildConsolidatedMessage(customerData, totalToPay, templates) {
     message = message.replace(/{дата}/g, dateStr);
     message = message.replace(/{день}/g, dayWord);
   } else {
-    // Для просрочки оставляем переменные пустыми
     message = message.replace(/{дата}/g, '');
     message = message.replace(/{день}/g, '');
   }
