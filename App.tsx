@@ -362,12 +362,12 @@ useEffect(() => {
   if (!user || isPublicMode) return;
 
   const STORAGE_KEY = 'template_update_notice_last_shown_v1';
-  const TWO_HOURS = 2 * 60 * 60 * 1000;
+  const FIVE_HOURS = 5 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
   const now = Date.now();
 
-  if (!lastShown || now - Number(lastShown) >= TWO_HOURS) {
+  if (!lastShown || now - Number(lastShown) >= FIVE_HOURS) {
     setShowTemplateUpdateModal(true);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
