@@ -461,70 +461,66 @@ export const api = {
         console.log(`✅ Saved ${type}: ${item.id}`);
         return savedItem;
 
-      } catch (error: any) {
-        // 🔥 Если токен истёк — пробрасываем, fetchWithAuth уже сделал редирект
-        if (error.message === 'TOKEN_EXPIRED') {
-          throw error;
-        }
+        } catch (error: any) {
+    // 🔥 Если токен истёк — пробрасываем
+    if (error.message === 'TOKEN_EXPIRED') {
+      throw error;
+    }
 
-        console.warn("⚠️ Save error:", error);
+    console.warn("⚠️ Save error:", error);
 
-        const isLimitError = error.isLimitError === true;
-        const isNetworkError =
-          error.message?.includes('Failed to fetch') ||
-          !navigator.onLine ||
-          (error.name === 'TypeError' && error.message?.includes('fetch'));
+    const isLimitError = error.isLimitError === true;
 
-        if (isNetworkError && type === 'sales' && item.status !== 'DELETED') {
-          try {
-            const userStr = localStorage.getItem('user');
-            if (userStr) {
-              const user = JSON.parse(userStr);
-              const LIMITS: Record<string, { contracts: number }> = {
-                TRIAL: { contracts: 10 },
-                START: { contracts: 100 },
-                STANDARD: { contracts: 500 },
-                BUSINESS: { contracts: -1 }
-              };
+    // 🔹 ИСПРАВЛЕННАЯ ПРОВЕРКА: теперь ловит таймауты, отмены и сетевые сбои
+    const isNetworkError =
+      error.message?.includes('Failed to fetch') ||
+      error.message?.includes('TIMEOUT') ||      // 🔑 Ловим таймауты
+      error.name === 'AbortError' ||             // 🔑 Ловим отмену запроса
+      error.name === 'NetworkError' ||
+      !navigator.onLine ||
+      (error.name === 'TypeError' && error.message?.includes('fetch'));
 
-              const limit = LIMITS[user.subscription?.plan]?.contracts ?? 0;
-
-              if (user.role !== 'admin' && limit !== -1) {
-                const salesData = options?.sales ||
-                  (await offlineStorage.getCache('all_data'))?.sales || [];
-
-                const currentCount = salesData.filter((s: any) =>
-                  s.status === 'ACTIVE' || s.status === 'DRAFT'
-                ).length;
-
-                if (currentCount >= limit) {
-                  const limitError: any = new Error('LIMIT_EXCEEDED_OFFLINE');
-                  limitError.isLimitError = true;
-                  limitError.message = `Превышен лимит договоров для тарифа "${user.subscription?.plan}". Максимум: ${limit}. У вас сейчас: ${currentCount}.`;
-                  limitError.details = { current: currentCount, limit };
-                  limitError.hint = 'В офлайн-режиме тоже действует лимит!';
-                  throw limitError;
-                }
-              }
+    if (isNetworkError && type === 'sales' && item.status !== 'DELETED') {
+      // ... (твоя проверка лимита офлайн остаётся без изменений) ...
+      try {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          const LIMITS: Record<string, { contracts: number }> = {
+            TRIAL: { contracts: 10 }, START: { contracts: 100 },
+            STANDARD: { contracts: 500 }, BUSINESS: { contracts: -1 }
+          };
+          const limit = LIMITS[user.subscription?.plan]?.contracts ?? 0;
+          if (user.role !== 'admin' && limit !== -1) {
+            const salesData = options?.sales || (await offlineStorage.getCache('all_data'))?.sales || [];
+            const currentCount = salesData.filter((s: any) => s.status === 'ACTIVE' || s.status === 'DRAFT').length;
+            if (currentCount >= limit) {
+              const limitError: any = new Error('LIMIT_EXCEEDED_OFFLINE');
+              limitError.isLimitError = true;
+              limitError.message = `Превышен лимит договоров для тарифа "${user.subscription?.plan}".`;
+              throw limitError;
             }
-          } catch (limitErr) {
-            console.warn('⚠️ Limit check in offline mode failed:', limitErr);
           }
         }
-
-        if (isNetworkError && !isLimitError) {
-          console.log("📦 Queuing for offline sync (network error)");
-          await offlineStorage.addToQueue({
-            type: 'saveItem',
-            collection: type,
-            payload: item
-          });
-          return item;
-        }
-
-        console.error("❌ Validation/limit error (not queued):", error.message || error);
-        throw error;
+      } catch (limitErr) {
+        console.warn('⚠️ Limit check in offline mode failed:', limitErr);
       }
+    }
+
+    // 🔹 ДОБАВЛЯЕМ В ОЧЕРЕДЬ, ЕСЛИ ЭТО СЕТЬ/ТАЙМАУТ
+    if (isNetworkError && !isLimitError) {
+      console.log("📦 Queuing for offline sync (network error/timeout)");
+      await offlineStorage.addToQueue({
+        type: 'saveItem',
+        collection: type,
+        payload: item
+      });
+      return item; // Возвращаем, чтобы фронт не показывал ошибку
+    }
+
+    console.error("❌ Validation/limit error (not queued):", error.message || error);
+    throw error;
+  }
     },
 
     deleteItem: async (type: string, id: string) => {

@@ -191,16 +191,6 @@ const mergeServerData = <T extends { id: string }>(
 
 
 
-const createBackup = async () => {
-  try {
-    await offlineStorage.setCache('last_backup', {
-      timestamp: new Date().toISOString(),
-      customers, sales, expenses, accounts, investors, products, partnerships
-    });
-  } catch (e) {
-    console.error('❌ Failed to create backup:', e);
-  }
-};
 
 
 
@@ -301,52 +291,32 @@ const handleSync = async () => {
   setIsSyncing(true);
 
   try {
-    await createBackup();
-    const syncResult = await api.sync();
+    // 🔹 УДАЛИЛИ createBackup() отсюда. Она тормозила систему.
+    // Очередь offlineStorage и так надежно хранит все изменения локально!
 
+    const syncResult = await api.sync();
     if (syncResult.success) {
       console.log(`🔄 Synced collections: ${[...syncResult.syncedCollections].join(', ') || 'none'}`);
     }
 
-    // 🔹 Пытаемся получить свежие данные
+    // 🔹 ВСЕГДА пытаемся получить свежие данные
     try {
       const freshData = await api.fetchAllData();
+      if (freshData) {
+        if (freshData.customers) setCustomers(prev => mergeServerData(prev, freshData.customers, 'customers'));
+        if (freshData.sales) setSales(prev => mergeServerData(prev, freshData.sales, 'sales'));
+        if (freshData.expenses) setExpenses(prev => mergeServerData(prev, freshData.expenses, 'expenses'));
+        if (freshData.accounts) setAccounts(prev => mergeServerData(prev, freshData.accounts, 'accounts'));
+        if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors'));
+        if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
+        if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
 
-      // 🔹 ЗАЩИТА: проверяем, что данные не пустые
-      if (!freshData) {
-        console.warn('⚠️ handleSync: received empty data, keeping current state');
-        return;
+        if (freshData.settings) {
+          setAppSettings(freshData.settings);
+          saveAppSettings(freshData.settings);
+        }
+        console.log('✅ Fresh data loaded and merged safely');
       }
-
-      // 🔹 Мёржим только если есть данные
-      if (freshData.customers?.length > 0 || customers.length === 0) {
-        setCustomers(prev => mergeServerData(prev, freshData.customers || [], 'customers'));
-      }
-      if (freshData.sales?.length > 0 || sales.length === 0) {
-        setSales(prev => mergeServerData(prev, freshData.sales || [], 'sales'));
-      }
-      if (freshData.expenses?.length > 0 || expenses.length === 0) {
-        setExpenses(prev => mergeServerData(prev, freshData.expenses || [], 'expenses'));
-      }
-      if (freshData.accounts?.length > 0 || accounts.length === 0) {
-        setAccounts(prev => mergeServerData(prev, freshData.accounts || [], 'accounts'));
-      }
-      if (freshData.investors?.length > 0 || investors.length === 0) {
-        setInvestors(prev => mergeServerData(prev, freshData.investors || [], 'investors'));
-      }
-      if (freshData.products?.length > 0 || products.length === 0) {
-        setProducts(prev => mergeServerData(prev, freshData.products || [], 'products'));
-      }
-      if (freshData.partnerships?.length > 0 || partnerships.length === 0) {
-        setPartnerships(prev => mergeServerData(prev, freshData.partnerships || [], 'partnerships'));
-      }
-
-      if (freshData.settings) {
-        setAppSettings(freshData.settings);
-        saveAppSettings(freshData.settings);
-      }
-
-      console.log('✅ Fresh data loaded and merged safely');
     } catch (fetchErr: any) {
       console.warn('⚠️ Failed to fetch fresh data:', fetchErr.message);
     }
@@ -1097,95 +1067,85 @@ const handleSaveSale = async (data: any): Promise<any> => {
 };
 const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
 const handleDeleteSale = async (saleId: string) => {
-    if (!window.confirm("Вы уверены, что хотите удалить этот договор?")) {
-        return;
-    }
+  if (!window.confirm("Вы уверены, что хотите удалить этот договор?")) return;
 
-    const sale = sales.find(s => s.id === saleId);
-    if (!sale) {
-        alert("Договор не найден");
-        return;
-    }
+  const sale = sales.find(s => s.id === saleId);
+  if (!sale) { alert("Договор не найден"); return; }
 
-    // 🔹 1. Проверка: есть ли оплаченные платежи по графику?
-    const installmentPayments = sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false);
-    const installmentAmount = installmentPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const installmentPayments = sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false);
+  const installmentAmount = installmentPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
-    if (installmentAmount > 0) {
-        alert(
-            `❌ Нельзя удалить договор с платежами по графику.\n\n` +
-            `Оплачено по графику: ${formatCurrency(installmentAmount, appSettings?.showCents)} ₽\n\n` +
-            `Сначала отмените все платежи в карточке клиента.`
-        );
-        return;
-    }
+  if (installmentAmount > 0) {
+    alert(`❌ Нельзя удалить договор с платежами по графику.\nОплачено по графику: ${formatCurrency(installmentAmount, appSettings?.showCents)} ₽`);
+    return;
+  }
 
+  try {
+    // 🔹 1. ВОЗВРАТ ПЕРВОГО ВЗНОСА (изолированно)
     try {
-        // 🔹 2. ВОЗВРАТ ПЕРВОГО ВЗНОСА (если был)
-        if (sale.downPayment > 0 && sale.accountId) {
-            const refundExpense: Expense = {
-                id: `refund_${saleId}_${Date.now()}`,
-                userId: sale.userId,
-                accountId: sale.accountId,
-                title: `Возврат: ${sale.productName}`,
-                amount: sale.downPayment,
-                category: 'Возврат клиента',
-                date: new Date().toISOString(),
-                isRefund: true,  // 🔥 Ключевой флаг!
-                payoutType: undefined,
-                investorId: undefined
-            };
-            await api.saveItem('expenses', refundExpense);
-            updateList(setExpenses, refundExpense);
-        }
-
-        // 🔹 3. 🎯 УДАЛЕНИЕ РАСХОДА ЗАКУПА (надёжный поиск)
-        if (sale.buyPrice > 0 && sale.accountId) {
-            // Ищем расход закупа по нескольким критериям
-            const buyExpense = expenses.find(e =>
-                e.accountId === sale.accountId &&
-                e.category === 'Себестоимость' &&
-                e.title?.includes(sale.productName) &&
-                Math.abs(e.amount - sale.buyPrice) < 0.01 // Сравнение с допуском
-            );
-
-            if (buyExpense) {
-                // Удаляем с сервера
-                await api.deleteItem('expenses', buyExpense.id).catch(() => {
-                    // Игнорируем, если не найдено на сервере
-                });
-                // Удаляем из локального стейта
-                removeFromList(setExpenses, buyExpense.id);
-                console.log(`✅ Удалён расход закупа: ${buyExpense.id}`);
-            } else {
-                console.warn(`⚠️ Расход закупа не найден для договора ${saleId}`);
-            }
-        }
-
-        // 🔹 4. Удаляем сам договор
-        await api.deleteItem('sales', saleId);
-        removeFromList(setSales, saleId);
-
-        // 🔹 5. Возвращаем товар на склад
-        if (sale.productId) {
-            const prod = products.find(p => p.id === sale.productId);
-            if (prod) {
-                const updatedProd = {
-                    ...prod,
-                    stock: (prod.stock || 0) + 1,
-                    updatedAt: new Date().toISOString()
-                };
-                const savedProd = await api.saveItem('products', updatedProd);
-                updateList(setProducts, savedProd);
-            }
-        }
-
-        alert('✅ Договор удалён');
-
-    } catch (error) {
-        console.error('❌ Ошибка удаления договора:', error);
-        alert('Не удалось удалить договор.');
+      if (sale.downPayment > 0 && sale.accountId) {
+        const refundExpense: Expense = {
+          id: `refund_${saleId}_${Date.now()}`,
+          userId: sale.userId,
+          accountId: sale.accountId,
+          title: `Возврат: ${sale.productName}`,
+          amount: sale.downPayment,
+          category: 'Возврат клиента',
+          date: new Date().toISOString(),
+          isRefund: true
+        };
+        await api.saveItem('expenses', refundExpense);
+        updateList(setExpenses, refundExpense);
+      }
+    } catch (e) {
+      console.warn('⚠️ Refund expense save failed (queued or server error):', e);
     }
+
+    // 🔹 2. УДАЛЕНИЕ РАСХОДА ЗАКУПА (изолированно)
+    try {
+      if (sale.buyPrice > 0 && sale.accountId) {
+        const buyExpense = expenses.find(e =>
+          e.accountId === sale.accountId &&
+          e.category === 'Себестоимость' &&
+          e.title?.includes(sale.productName) &&
+          Math.abs(e.amount - sale.buyPrice) < 0.01
+        );
+        if (buyExpense) {
+          await api.deleteItem('expenses', buyExpense.id);
+          removeFromList(setExpenses, buyExpense.id);
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ Buy expense delete failed (queued):', e);
+    }
+
+    // 🔹 3. УДАЛЕНИЕ САМОГО ДОГОВОРА (изолированно)
+    try {
+      await api.deleteItem('sales', saleId);
+      removeFromList(setSales, saleId);
+    } catch (e) {
+      console.warn('⚠️ Sale delete failed (queued):', e);
+    }
+
+    // 🔹 4. ВОЗВРАТ ТОВАРА НА СКЛАД (изолированно)
+    try {
+      if (sale.productId) {
+        const prod = products.find(p => p.id === sale.productId);
+        if (prod) {
+          const updatedProd = { ...prod, stock: (prod.stock || 0) + 1, updatedAt: new Date().toISOString() };
+          const savedProd = await api.saveItem('products', updatedProd);
+          updateList(setProducts, savedProd);
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ Product stock restore failed (queued):', e);
+    }
+
+    alert('✅ Договор удалён');
+  } catch (error) {
+    console.error('❌ Ошибка удаления договора:', error);
+    alert('Не удалось удалить договор.');
+  }
 };
 const handleViewSaleSchedule = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView('CONTRACTS'); setCurrentView('CUSTOMER_DETAILS'); };
 const handleIncomeSubmit = async (data: any) => {
