@@ -344,6 +344,7 @@ useEffect(() => {
     ) {
       setIsPublicMode(true);
       setIsLoading(false);
+      setShowSplash(false);
       return;
     }
 
@@ -356,9 +357,7 @@ useEffect(() => {
     if (localUserStr) {
       try {
         localUser = JSON.parse(localUserStr);
-        if (localUser) {
-          setUser(localUser);
-        }
+        if (localUser) setUser(localUser);
       } catch (e) {
         console.error("❌ Failed to parse local user", e);
         localStorage.removeItem('user');
@@ -368,16 +367,11 @@ useEffect(() => {
 
     const hasLocalData = !!localUser;
 
-    // 🔹 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: СРАЗУ загружаем данные из IndexedDB кэша!
-    // Работает и онлайн, и офлайн — не зависит от navigator.onLine
-    if (hasLocalData && localUser) {
+    // 4. 🔹 ВСЕГДА сначала загружаем из кэша (мгновенный отклик)
+    if (hasLocalData) {
       try {
         const cachedData = await offlineStorage.getCache('all_data');
-
         if (cachedData) {
-          console.log('💾 Loading data from IndexedDB cache');
-
-          // 🔹 Загружаем данные из кэша в стейт
           if (cachedData.customers) setCustomers(cachedData.customers);
           if (cachedData.products) setProducts(cachedData.products);
           if (cachedData.sales) setSales(cachedData.sales);
@@ -387,33 +381,26 @@ useEffect(() => {
           if (cachedData.partnerships) setPartnerships(cachedData.partnerships);
           if (cachedData.employees) setEmployees(cachedData.employees);
           if (cachedData.settings) setAppSettings(cachedData.settings);
-        } else {
-          console.log('⚠️ No cached data found in IndexedDB');
         }
       } catch (e) {
-        console.warn('⚠️ Failed to load from IndexedDB cache:', e);
+        console.warn('⚠️ Failed to load from cache:', e);
       }
     }
 
-    // 4. Если онлайн и есть токен — пробуем обновить с сервера
+    // 5. Если онлайн — пробуем получить свежие данные
     if (token && navigator.onLine) {
       try {
-        // 🔹 Быстрая проверка (3 сек)
         const isServerReachable = await api.healthCheck();
-
         if (isServerReachable) {
           try {
-            // 🔹 Таймаут 5 сек на авторизацию
             const freshUser = await withTimeout(api.getMe(), 5000, 'api.getMe()');
             setUser(freshUser);
             localStorage.setItem('user', JSON.stringify(freshUser));
 
-            // 🔹 Таймаут 8 сек на загрузку данных
-            // skipLoading = true, чтобы не показывать спиннер (данные уже из кэша)
+            // Загружаем данные. Передаем true, чтобы loadData НЕ трогала setIsLoading
             await withTimeout(loadData(freshUser, true), 8000, 'loadData()');
           } catch (err: any) {
             console.warn('⚠️ Server data load failed/timed out:', err.message);
-            // 🔹 НЕ страшно — данные уже загружены из кэша!
             if (!localUser) {
               localStorage.removeItem('token');
               localStorage.removeItem('user');
@@ -421,7 +408,7 @@ useEffect(() => {
             }
           }
         } else {
-          console.log('📴 Server unreachable — using cached data from IndexedDB');
+          console.log('📴 Server unreachable — using cached data');
           if (!localUser) {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
@@ -429,24 +416,24 @@ useEffect(() => {
           }
         }
       } catch (err) {
-        console.error('❌ Init error:', err);
+        console.error('❌ Init network error:', err);
       }
     }
 
-    // 5. Если нет ни токена, ни локального пользователя
+    // 6. Если нет ни токена, ни локального пользователя
     if (!token && !localUser) {
       setUser(null);
     }
 
-    // 6. Загружаем настройки
+    // 7. Загружаем настройки
     setAppSettings(getAppSettings());
 
-    // 7. Выключаем загрузку
-    setIsLoading(false);
-
+    // 8. 🔹 ФИНАЛЬНЫЙ АККОРД: Стабильный таймаут для плавного исчезновения сплеш-скрина
+    // 800 мс достаточно, чтобы показать логотип и избежать "мерцания" при быстром интернете
     setTimeout(() => {
+      setIsLoading(false);
       setShowSplash(false);
-    }, hasLocalData ? 300 : 700);
+    }, 800);
   };
 
   initApp();
@@ -512,64 +499,42 @@ useEffect(() => {
   return () => clearInterval(interval);
 }, [user]);
 
- const loadData = async (currentUser?: User, skipLoading = false) => {
-  if (!skipLoading && customers.length === 0 && sales.length === 0) {
-    setIsLoading(true);
-  }
+ const loadData = async (currentUser?: User, skipLoadingState = false) => {
+  
+  // Теперь initApp полностью контролирует состояние загрузки при старте
+
   try {
     const data = await api.fetchAllData();
 
-    // 🔹 ЗАЩИТА: не перезаписываем пустыми данными
     if (!data) {
       console.warn('⚠️ loadData: received empty data, keeping current state');
       return;
     }
 
-    // 🔹 ЗАЩИТА: устанавливаем только если массивы не пустые ИЛИ у нас нет данных
-    if (data.customers?.length > 0 || customers.length === 0) {
-      setCustomers(data.customers || []);
-    }
-    if (data.products?.length > 0 || products.length === 0) {
-      setProducts(data.products || []);
-    }
-    if (data.sales?.length > 0 || sales.length === 0) {
-      setSales(data.sales || []);
-    }
-    if (data.expenses?.length > 0 || expenses.length === 0) {
-      setExpenses(data.expenses || []);
-    }
-    if (data.accounts?.length > 0 || accounts.length === 0) {
-      setAccounts(data.accounts || []);
-    }
-    if (data.investors?.length > 0 || investors.length === 0) {
-      setInvestors(data.investors || []);
-    }
-    if (data.partnerships?.length > 0 || partnerships.length === 0) {
-      setPartnerships(data.partnerships || []);
-    }
-    if (data.employees?.length > 0 || employees.length === 0) {
-      setEmployees(data.employees || []);
-    }
+    // Обновляем стейт только если пришли реальные данные
+    if (data.customers?.length > 0 || customers.length === 0) setCustomers(data.customers || []);
+    if (data.products?.length > 0 || products.length === 0) setProducts(data.products || []);
+    if (data.sales?.length > 0 || sales.length === 0) setSales(data.sales || []);
+    if (data.expenses?.length > 0 || expenses.length === 0) setExpenses(data.expenses || []);
+    if (data.accounts?.length > 0 || accounts.length === 0) setAccounts(data.accounts || []);
+    if (data.investors?.length > 0 || investors.length === 0) setInvestors(data.investors || []);
+    if (data.partnerships?.length > 0 || partnerships.length === 0) setPartnerships(data.partnerships || []);
+    if (data.employees?.length > 0 || employees.length === 0) setEmployees(data.employees || []);
 
     let loadedSettings = data.settings || getAppSettings();
-
     const activeUser = currentUser || user;
+
     if (activeUser?.whatsapp_settings) {
-      loadedSettings = {
-        ...loadedSettings,
-        whatsapp: activeUser.whatsapp_settings
-      };
+      loadedSettings = { ...loadedSettings, whatsapp: activeUser.whatsapp_settings };
     }
 
     setAppSettings(loadedSettings);
     saveAppSettings(loadedSettings);
   } catch (error) {
     console.error("Failed to load data", error);
-    // 🔹 ВАЖНО: не сбрасываем данные при ошибке!
-    // Оставляем текущее состояние (из кэша IndexedDB)
-  } finally {
-    setIsLoading(false);
+    // Не сбрасываем данные при ошибке, оставляем то, что загрузили из кэша
   }
+
 };
 
   const isManager = user?.role === 'manager' || user?.role === 'admin';
