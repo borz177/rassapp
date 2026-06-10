@@ -301,33 +301,54 @@ const handleSync = async () => {
   setIsSyncing(true);
 
   try {
-    await createBackup(); // 🔹 Резервная копия перед синхронизацией
+    await createBackup();
     const syncResult = await api.sync();
 
     if (syncResult.success) {
       console.log(`🔄 Synced collections: ${[...syncResult.syncedCollections].join(', ') || 'none'}`);
     }
 
-    // 🔹 ВСЕГДА пытаемся получить свежие данные, даже если очередь пуста
+    // 🔹 Пытаемся получить свежие данные
     try {
       const freshData = await api.fetchAllData();
-      if (freshData) {
-        if (freshData.customers) setCustomers(prev => mergeServerData(prev, freshData.customers, 'customers'));
-        if (freshData.sales) setSales(prev => mergeServerData(prev, freshData.sales, 'sales'));
-        if (freshData.expenses) setExpenses(prev => mergeServerData(prev, freshData.expenses, 'expenses'));
-        if (freshData.accounts) setAccounts(prev => mergeServerData(prev, freshData.accounts, 'accounts'));
-        if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors'));
-        if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
-        if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
 
-        if (freshData.settings) {
-          setAppSettings(freshData.settings);
-          saveAppSettings(freshData.settings);
-        }
-        console.log('✅ Fresh data loaded and merged safely');
+      // 🔹 ЗАЩИТА: проверяем, что данные не пустые
+      if (!freshData) {
+        console.warn('⚠️ handleSync: received empty data, keeping current state');
+        return;
       }
+
+      // 🔹 Мёржим только если есть данные
+      if (freshData.customers?.length > 0 || customers.length === 0) {
+        setCustomers(prev => mergeServerData(prev, freshData.customers || [], 'customers'));
+      }
+      if (freshData.sales?.length > 0 || sales.length === 0) {
+        setSales(prev => mergeServerData(prev, freshData.sales || [], 'sales'));
+      }
+      if (freshData.expenses?.length > 0 || expenses.length === 0) {
+        setExpenses(prev => mergeServerData(prev, freshData.expenses || [], 'expenses'));
+      }
+      if (freshData.accounts?.length > 0 || accounts.length === 0) {
+        setAccounts(prev => mergeServerData(prev, freshData.accounts || [], 'accounts'));
+      }
+      if (freshData.investors?.length > 0 || investors.length === 0) {
+        setInvestors(prev => mergeServerData(prev, freshData.investors || [], 'investors'));
+      }
+      if (freshData.products?.length > 0 || products.length === 0) {
+        setProducts(prev => mergeServerData(prev, freshData.products || [], 'products'));
+      }
+      if (freshData.partnerships?.length > 0 || partnerships.length === 0) {
+        setPartnerships(prev => mergeServerData(prev, freshData.partnerships || [], 'partnerships'));
+      }
+
+      if (freshData.settings) {
+        setAppSettings(freshData.settings);
+        saveAppSettings(freshData.settings);
+      }
+
+      console.log('✅ Fresh data loaded and merged safely');
     } catch (fetchErr: any) {
-      console.warn('⚠️ Failed to fetch fresh data (working with local/queued data):', fetchErr.message);
+      console.warn('⚠️ Failed to fetch fresh data:', fetchErr.message);
     }
   } catch (e) {
     console.error("❌ Sync failed", e);
@@ -342,23 +363,32 @@ useEffect(() => {
   enablePersistentStorage();
 
   const initApp = async () => {
+    // 1. Проверка на публичный режим
     const searchParams = new URLSearchParams(window.location.search);
     const pathName = window.location.pathname;
 
-    if (searchParams.get('view') === 'public_calc' || searchParams.get('v') === 'calc' || decodeURIComponent(pathName).startsWith('/calc')) {
+    if (
+      searchParams.get('view') === 'public_calc' ||
+      searchParams.get('v') === 'calc' ||
+      decodeURIComponent(pathName).startsWith('/calc')
+    ) {
       setIsPublicMode(true);
       setIsLoading(false);
       return;
     }
 
+    // 2. Читаем токены
     const token = localStorage.getItem('token');
     const localUserStr = localStorage.getItem('user');
     let localUser: User | null = null;
 
+    // 3. Восстанавливаем локального пользователя
     if (localUserStr) {
       try {
         localUser = JSON.parse(localUserStr);
-        if (localUser) setUser(localUser); // 🔹 Мгновенно показываем локального пользователя
+        if (localUser) {
+          setUser(localUser);
+        }
       } catch (e) {
         console.error("❌ Failed to parse local user", e);
         localStorage.removeItem('user');
@@ -368,9 +398,38 @@ useEffect(() => {
 
     const hasLocalData = !!localUser;
 
+    // 🔹 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: всегда пытаемся загрузить данные из кэша
+    // независимо от состояния сети!
+    if (hasLocalData && localUser) {
+      try {
+        // 🔹 Пробуем взять данные из IndexedDB кэша
+        const cachedData = await offlineStorage.getCache('all_data');
+
+        if (cachedData) {
+          console.log('💾 Loading data from IndexedDB cache (offline mode)');
+          // 🔹 Загружаем данные из кэша
+          setCustomers(cachedData.customers || []);
+          setProducts(cachedData.products || []);
+          setSales(cachedData.sales || []);
+          setExpenses(cachedData.expenses || []);
+          setAccounts(cachedData.accounts || []);
+          setInvestors(cachedData.investors || []);
+          setPartnerships(cachedData.partnerships || []);
+          setEmployees(cachedData.employees || []);
+
+          if (cachedData.settings) {
+            setAppSettings(cachedData.settings);
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️ Failed to load from cache:', e);
+      }
+    }
+
+    // 4. Если онлайн и есть токен — пробуем обновить с сервера
     if (token && navigator.onLine) {
       try {
-        // 🔹 Быстрая проверка (3 сек). Если не отвечает — сразу уходим в офлайн-режим
+        // 🔹 Быстрая проверка (3 сек)
         const isServerReachable = await api.healthCheck();
 
         if (isServerReachable) {
@@ -403,20 +462,20 @@ useEffect(() => {
       }
     }
 
-    if (!token && !localUser) setUser(null);
-    setAppSettings(getAppSettings());
-
-    // 🔹 Если есть локальный пользователь, но данные не загружены — тянем в фоне
-    if (hasLocalData && localUser && navigator.onLine) {
-      const cachedData = await offlineStorage.getCache('all_data');
-      if (!cachedData) {
-        loadData(localUser, true).catch(e => console.warn("⚠️ Background data load failed:", e));
-      }
+    // 5. Если нет ни токена, ни локального пользователя
+    if (!token && !localUser) {
+      setUser(null);
     }
 
+    // 6. Загружаем настройки
+    setAppSettings(getAppSettings());
+
+    // 7. Выключаем загрузку
     setIsLoading(false);
-    // 🔹 Показываем приложение быстрее, если есть локальные данные
-    setTimeout(() => setShowSplash(false), hasLocalData ? 300 : 700);
+
+    setTimeout(() => {
+      setShowSplash(false);
+    }, hasLocalData ? 300 : 700);
   };
 
   initApp();
@@ -482,40 +541,49 @@ useEffect(() => {
   return () => clearInterval(interval);
 }, [user]);
 
-  const loadData = async (currentUser?: User, skipLoading = false) => {
-      if (!skipLoading && customers.length === 0 && sales.length === 0) {
-          setIsLoading(true);
-      }
-      try {
-          const data = await api.fetchAllData();
-          setCustomers(data.customers);
-          setProducts(data.products);
-          setSales(data.sales);
-          setExpenses(data.expenses);
-          setAccounts(data.accounts);
-          setInvestors(data.investors);
-          setPartnerships(data.partnerships);
-          setEmployees(data.employees);
+ const loadData = async (currentUser?: User, skipLoading = false) => {
+  if (!skipLoading && customers.length === 0 && sales.length === 0) {
+    setIsLoading(true);
+  }
+  try {
+    const data = await api.fetchAllData();
 
-          let loadedSettings = data.settings || getAppSettings();
+    // 🔹 ЗАЩИТА: проверяем, что данные не пустые
+    if (!data) {
+      console.warn('⚠️ loadData: received empty data, keeping current state');
+      return;
+    }
 
-          // Merge WhatsApp settings from User Profile if available
-          const activeUser = currentUser || user;
-          if (activeUser?.whatsapp_settings) {
-              loadedSettings = {
-                  ...loadedSettings,
-                  whatsapp: activeUser.whatsapp_settings
-              };
-          }
+    // 🔹 ЗАЩИТА: устанавливаем только если массивы определены
+    if (data.customers) setCustomers(data.customers);
+    if (data.products) setProducts(data.products);
+    if (data.sales) setSales(data.sales);
+    if (data.expenses) setExpenses(data.expenses);
+    if (data.accounts) setAccounts(data.accounts);
+    if (data.investors) setInvestors(data.investors);
+    if (data.partnerships) setPartnerships(data.partnerships);
+    if (data.employees) setEmployees(data.employees);
 
-          setAppSettings(loadedSettings);
-          saveAppSettings(loadedSettings); // Sync server data to local storage
-      } catch (error) {
-          console.error("Failed to load data", error);
-      } finally {
-          setIsLoading(false);
-      }
-  };
+    let loadedSettings = data.settings || getAppSettings();
+
+    const activeUser = currentUser || user;
+    if (activeUser?.whatsapp_settings) {
+      loadedSettings = {
+        ...loadedSettings,
+        whatsapp: activeUser.whatsapp_settings
+      };
+    }
+
+    setAppSettings(loadedSettings);
+    saveAppSettings(loadedSettings);
+  } catch (error) {
+    console.error("Failed to load data", error);
+    // 🔹 ВАЖНО: не сбрасываем данные при ошибке!
+    // Оставляем текущее состояние (из кэша или локальных данных)
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const isManager = user?.role === 'manager' || user?.role === 'admin';
   const isEmployee = user?.role === 'employee';
