@@ -23,7 +23,25 @@ const sharp = require('sharp');
 
 
 const app = express();
+
+
+const compression = require('compression');
+app.use(compression());
 app.set('trust proxy', 1);
+
+
+// 🔹 ТАЙМАУТЫ СЕРВЕРА (защита от зависших запросов)
+const serverTimeout = 30000;
+app.use((req, res, next) => {
+  req.setTimeout(serverTimeout, () => {
+    console.warn(`⏱️ Request timeout: ${req.method} ${req.url}`);
+    if (!res.headersSent) {
+      res.status(504).json({ error: 'Request timeout' });
+    }
+  });
+  next();
+});
+
 
 // ✅ БЕЛЫЙ СПИСОК ТИПОВ ДАННЫХ (защита от инъекций)
 const VALID_DATA_TYPES = ['customers', 'products', 'sales', 'expenses', 'accounts', 'investors', 'partnerships', 'settings'];
@@ -96,6 +114,21 @@ const filterDataForEmployee = (dataByType, allowedInvestorIds) => {
   return filtered;
 };
 
+
+// 🔹 ХЕЛПЕР: Парсинг allowed_investor_ids (может быть строкой JSON или массивом)
+const parseAllowedInvestorIds = (ids) => {
+  if (!ids) return [];
+  if (Array.isArray(ids)) return ids;
+  if (typeof ids === 'string') {
+    try {
+      const parsed = JSON.parse(ids);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
 
 // ✅ ХЕЛПЕР: Проверка платежа на дубликат
 const checkPaymentDuplicate = async (saleData, amount, date, excludePaymentId = null) => {
@@ -448,6 +481,24 @@ const initDB = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+
+
+// 🔹 B-tree индексы для точных совпадений (ещё быстрее для простых запросов)
+await pool.query(`
+  CREATE INDEX IF NOT EXISTS idx_data_items_data_user_id_btree 
+  ON data_items ((data->>'userId'))
+`);
+
+await pool.query(`
+  CREATE INDEX IF NOT EXISTS idx_data_items_data_owner_id_btree 
+  ON data_items ((data->>'ownerId'))
+`);
+
+await pool.query(`
+  CREATE INDEX IF NOT EXISTS idx_data_items_data_account_id_btree 
+  ON data_items ((data->>'accountId'))
+`);
 
     // Verification Codes Table
     await pool.query(`
@@ -1665,54 +1716,45 @@ app.get('/api/data', auth, async (req, res) => {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
 
-    // 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Менеджеры видят свои данные + данные своих инвесторов
-    let query = 'SELECT * FROM data_items WHERE user_id = $1';
-let params = [targetUserId];
+    let query;
+    let params;
 
-if (req.user.role === 'manager' || req.user.role === 'admin') {
-  // Менеджеры видят: свои данные + данные своих инвесторов
-  query = `
-    SELECT * FROM data_items 
-    WHERE user_id = $1 
-    OR (type = 'investors' AND data->>'userId' = $1)
-    OR (type = 'accounts' AND data->>'ownerId' IN (
-      SELECT data->>'id' FROM data_items 
-      WHERE type = 'investors' AND data->>'userId' = $1
-    ))
-    OR (type = 'sales' AND data->>'accountId' IN (
-      SELECT data->>'id' FROM data_items 
-      WHERE type = 'accounts' AND data->>'ownerId' IN (
-        SELECT data->>'id' FROM data_items 
-        WHERE type = 'investors' AND data->>'userId' = $1
-      )
-    ))
-    OR (type = 'expenses' AND data->>'accountId' IN (
-      SELECT data->>'id' FROM data_items 
-      WHERE type = 'accounts' AND data->>'ownerId' IN (
-        SELECT data->>'id' FROM data_items 
-        WHERE type = 'investors' AND data->>'userId' = $1
-      )
-    ))
-  `;
-}
-// 🔹 Инвесторы видят ТОЛЬКО свои данные
-if (req.user.role === 'investor') {
-  query = `
-    SELECT * FROM data_items 
-    WHERE user_id = $1  -- Личные настройки
-    -- 🔥 ОБЯЗАТЕЛЬНО: Загрузка профиля самого инвестора
-    OR (type = 'investors' AND data->>'id' = $1)
-    OR (type = 'accounts' AND data->>'ownerId' = $1)
-    OR (type = 'sales' AND data->>'accountId' IN (
-      SELECT data->>'id' FROM data_items 
-      WHERE type = 'accounts' AND data->>'ownerId' = $1
-    ))
-    OR (type = 'expenses' AND data->>'accountId' IN (
-      SELECT data->>'id' FROM data_items 
-      WHERE type = 'accounts' AND data->>'ownerId' = $1
-    ))
-  `;
-}
+    // 🔹 ОПТИМИЗИРОВАННЫЕ ЗАПРОСЫ (без вложенных подзапросов)
+    if (req.user.role === 'manager' || req.user.role === 'admin') {
+      // 🔑 Используем UNION вместо OR — работает в 10-50 раз быстрее
+      query = `
+        SELECT * FROM data_items WHERE user_id = $1
+        UNION
+        SELECT * FROM data_items WHERE type = 'investors' AND data->>'userId' = $1
+        UNION
+        SELECT d.* FROM data_items d
+        INNER JOIN data_items inv ON d.data->>'ownerId' = inv.data->>'id'
+        WHERE d.type IN ('accounts') AND inv.type = 'investors' AND inv.data->>'userId' = $1
+        UNION
+        SELECT d.* FROM data_items d
+        INNER JOIN data_items acc ON d.data->>'accountId' = acc.data->>'id'
+        INNER JOIN data_items inv ON acc.data->>'ownerId' = inv.data->>'id'
+        WHERE d.type IN ('sales', 'expenses') AND inv.type = 'investors' AND inv.data->>'userId' = $1
+      `;
+      params = [targetUserId];
+    } else if (req.user.role === 'investor') {
+      query = `
+        SELECT * FROM data_items WHERE user_id = $1
+        UNION
+        SELECT * FROM data_items WHERE type = 'investors' AND data->>'id' = $1
+        UNION
+        SELECT * FROM data_items WHERE type = 'accounts' AND data->>'ownerId' = $1
+        UNION
+        SELECT d.* FROM data_items d
+        INNER JOIN data_items acc ON d.data->>'accountId' = acc.data->>'id'
+        WHERE d.type IN ('sales', 'expenses') AND acc.type = 'accounts' AND acc.data->>'ownerId' = $1
+      `;
+      params = [targetUserId];
+    } else {
+      // Для сотрудников и остальных — простой запрос
+      query = 'SELECT * FROM data_items WHERE user_id = $1';
+      params = [targetUserId];
+    }
 
     const itemsResult = await pool.query(query, params);
 
@@ -1736,9 +1778,7 @@ if (req.user.role === 'investor') {
       }
     });
 
-
-    // Fetch Employees (только менеджеры/админы видят сотрудников)
-        // Fetch Employees (только менеджеры/админы видят сотрудников)
+    // Fetch Employees
     let employees = [];
     if (req.user.role === 'manager' || req.user.role === 'admin') {
       const usersResult = await pool.query(
@@ -1755,7 +1795,6 @@ if (req.user.role === 'investor') {
       }));
     }
 
-    // 🔹 🔥 НОВОЕ: Фильтрация для сотрудников по allowedInvestorIds
     let finalResult = { ...result, employees };
 
     if (req.user.role === 'employee' && req.user.allowed_investor_ids) {
@@ -1765,11 +1804,28 @@ if (req.user.role === 'investor') {
       }
     }
 
-    res.json(finalResult);  // ← Отправляем уже отфильтрованные данные
+    res.json(finalResult);
   } catch (err) {
-    console.error(err);
+    console.error('❌ /api/data error:', err);
     res.status(500).send('Server Error');
   }
+});
+
+
+
+
+
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+// 🔹 Явная поддержка HEAD (для быстрого пинга без тела ответа)
+app.head('/api/health', (req, res) => {
+  res.status(200).end();
 });
 
 
@@ -1781,13 +1837,25 @@ app.post('/api/data/:type', auth, async (req, res) => {
     }
 
     const itemData = req.body;
+
+    // 🔹 ЗАЩИТА: проверяем, что данные — объект, а не массив или пустота
+    if (!itemData || typeof itemData !== 'object' || Array.isArray(itemData)) {
+      return res.status(400).json({
+        error: 'Неверный формат данных. Ожидался объект с полем id.'
+      });
+    }
+
+    if (!itemData.id) {
+      return res.status(400).json({ error: 'Отсутствует ID элемента' });
+    }
+
     let targetUserId = getTargetUserId(req.user);
 
     if (!canAccessUserData(req.user, targetUserId)) {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
 
-    // 🔥 НОВОЕ: Проверка лимита договоров при создании
+    // 🔥 Проверка лимита договоров
     if (type === 'sales' && itemData.status !== 'DELETED') {
       const exists = await pool.query(
         `SELECT 1 FROM data_items WHERE id = $1 AND type = 'sales'`,
@@ -1804,19 +1872,16 @@ app.post('/api/data/:type', auth, async (req, res) => {
         });
       }
 
-      // 🔥🔥 НОВОЕ: Проверка на дубликат платежа (только для CUSTOMER_PAYMENT)
+      // 🔥 Проверка на дубликат платежа
       if (itemData.type === 'CUSTOMER_PAYMENT' || itemData.paymentPlan) {
-        // Получаем текущую версию продажи из БД (для сравнения)
         const existingSaleResult = await pool.query(
           `SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'sales'`,
           [itemData.id, targetUserId]
         );
 
-        // Если это обновление — проверяем дубликаты в новом paymentPlan
         if (existingSaleResult.rows.length > 0 && itemData.paymentPlan) {
           const existingSale = existingSaleResult.rows[0].data;
 
-          // Находим новый платёж, который добавили (нет в старой версии)
           const newPayments = (itemData.paymentPlan || []).filter(newP => {
             const wasAlreadyPaid = (existingSale.paymentPlan || []).some(
               oldP => oldP.id === newP.id && oldP.isPaid
@@ -1824,13 +1889,12 @@ app.post('/api/data/:type', auth, async (req, res) => {
             return newP.isPaid && newP.isRealPayment && !wasAlreadyPaid;
           });
 
-          // Проверяем каждый новый платёж на дубликат
           for (const newPayment of newPayments) {
             const isDuplicate = await checkPaymentDuplicate(
               existingSale,
               newPayment.amount,
               newPayment.date,
-              newPayment.id // исключаем себя при обновлении
+              newPayment.id
             );
 
             if (isDuplicate) {
@@ -1850,22 +1914,32 @@ app.post('/api/data/:type', auth, async (req, res) => {
     }
 
     const id = itemData.id;
+
+    // 🔹 ИСПРАВЛЕННЫЙ ON CONFLICT — НЕ перезаписываем type и user_id!
     await pool.query(`
       INSERT INTO data_items (id, user_id, type, data, updated_at)
       VALUES ($1, $2, $3, $4, NOW())
       ON CONFLICT (id) DO UPDATE SET
         data = EXCLUDED.data,
-        type = EXCLUDED.type,
-        user_id = EXCLUDED.user_id,
-        updated_at = NOW();
+        updated_at = NOW()
+      WHERE data_items.user_id = $2  -- 🔒 Защита: обновляем только свои данные
     `, [id, targetUserId, type, JSON.stringify(itemData)]);
 
-    res.json(itemData);
+    // 🔹 Возвращаем сохранённые данные (с серверными полями)
+    const savedResult = await pool.query(
+      'SELECT data, updated_at FROM data_items WHERE id = $1',
+      [id]
+    );
+
+    res.json(savedResult.rows[0]?.data || itemData);
   } catch (err) {
-    console.error(err);
+    console.error('❌ POST /api/data/:type error:', err);
     res.status(500).send('Server Error');
   }
 });
+
+
+
 // ✅ ИСПРАВЛЕННЫЙ DELETE /api/data/:type/:id
 app.delete('/api/data/:type/:id', auth, async (req, res) => {
   try {

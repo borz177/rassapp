@@ -39,8 +39,8 @@ import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
 import { NotificationModal } from './components/NotificationModal';
-
-
+import { withTimeout } from './src/timeout';
+import { offlineStorage } from "./services/offlineStorage";
 async function enablePersistentStorage() {
   if (navigator.storage && navigator.storage.persist) {
 
@@ -162,21 +162,44 @@ const showNotificationModal = (
 
 
  // 🔹 Вспомогательная функция для "умного" слияния данных (исправленная версия)
+// 🔹 Улучшенная версия с защитой от потери данных
 const mergeServerData = <T extends { id: string }>(
   current: T[],
-  fresh: T[]
+  fresh: T[],
+  collectionName: string = 'unknown'
 ): T[] => {
-  const freshMap = new Map<string, T>(fresh.map(item => [item.id, item]));
+  // 🔹 ЗАЩИТА 1: Если сервер вернул пустой массив, а у нас есть данные — НЕ перезаписываем!
+  if (fresh.length === 0 && current.length > 0) {
+    console.warn(`⚠️ Server returned empty array for "${collectionName}", keeping local data to prevent loss.`);
+    return current;
+  }
 
-  const updated = current.map(item => {
-    if (freshMap.has(item.id)) {
-      return freshMap.get(item.id)!;
-    }
-    return item;
-  });
+  // 🔹 ЗАЩИТА 2: Подозрительно мало данных
+  if (current.length > 0 && fresh.length < current.length * 0.5) {
+    console.warn(`⚠️ Suspicious data for "${collectionName}": server returned ${fresh.length}, local has ${current.length}. Merging cautiously.`);
+  }
+
+  const freshMap = new Map<string, T>(fresh.map(item => [item.id, item]));
+  const updated = current.map(item => freshMap.has(item.id) ? freshMap.get(item.id)! : item);
 
   updated.forEach(item => freshMap.delete(item.id));
-  return [...updated, ...Array.from(freshMap.values())];
+  const newItems = Array.from(freshMap.values());
+
+  if (newItems.length > 0) console.log(`✅ Added ${newItems.length} new items to "${collectionName}"`);
+  return [...updated, ...newItems];
+};
+
+
+
+const createBackup = async () => {
+  try {
+    await offlineStorage.setCache('last_backup', {
+      timestamp: new Date().toISOString(),
+      customers, sales, expenses, accounts, investors, products, partnerships
+    });
+  } catch (e) {
+    console.error('❌ Failed to create backup:', e);
+  }
 };
 
 
@@ -187,35 +210,72 @@ const mergeServerData = <T extends { id: string }>(
       setReportFilters(prev => ({...prev, period: myProfitPeriod}));
   }, [myProfitPeriod]);
 
+
+  // 🔹 Фоновая синхронизация каждые 5 минут, если приложение открыто
+const backgroundSyncInterval = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+
   // Network Status & Sync
-  // 🔹 Network Status & Sync — ОБНОВЛЁННЫЙ
 useEffect(() => {
-    const handleOnline = async () => {
-        setIsOnline(true);
+  const handleOnline = async () => {
+    console.log('🌐 Network online detected');
+    setIsOnline(true);
 
-        // 🔹 Небольшая задержка для стабилизации сети (чтобы запросы не отваливались)
-        await new Promise(resolve => setTimeout(resolve, 800));
+    // 🔹 Ждём стабилизации сети (VPN/модем)
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // 🔹 Тихая фоновая синхронизация
-        await handleSync();
-    };
-
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // 🔹 Initial Sync check — оставляем, чтобы проверить соединение при старте
-    if (navigator.onLine) {
-        // Запускаем синхронизацию с небольшой задержкой, чтобы не блокировать загрузку
-        setTimeout(() => handleSync(), 1000);
+    // 🔹 Проверяем, реально ли сервер доступен
+    try {
+      const isReachable = await api.healthCheck();
+      if (!isReachable) {
+        console.warn('⚠️ Network online but server unreachable');
+        return;
+      }
+    } catch {
+      console.warn('⚠️ Health check failed');
+      return;
     }
 
-    return () => {
-        window.removeEventListener('online', handleOnline);
-        window.removeEventListener('offline', handleOffline);
-    };
-}, []); // ✅ Пустой массив — подписка создаётся только один раз
+    await handleSync();
+  };
+
+  const handleOffline = () => {
+    console.log('📴 Network offline');
+    setIsOnline(false);
+  };
+
+  window.addEventListener('online', handleOnline);
+  window.addEventListener('offline', handleOffline);
+
+  if (navigator.onLine) {
+    setTimeout(() => handleSync(), 1000);
+  }
+
+  return () => {
+    window.removeEventListener('online', handleOnline);
+    window.removeEventListener('offline', handleOffline);
+    clearInterval(backgroundSyncInterval.current); // Очистка интервала (см. ниже)
+  };
+}, []);
+
+
+
+
+
+useEffect(() => {
+  if (!user) return;
+
+  backgroundSyncInterval.current = setInterval(() => {
+    if (navigator.onLine && !isSyncing) {
+      console.log('🔄 Background sync triggered');
+      handleSync();
+    }
+  }, 5 * 60 * 1000); // 5 минут
+
+  return () => {
+    if (backgroundSyncInterval.current) clearInterval(backgroundSyncInterval.current);
+  };
+}, [user, isSyncing]);
 
 
  useEffect(() => {
@@ -237,79 +297,68 @@ useEffect(() => {
 
 // 🔹 В App.tsx — исправленная часть handleSync
 const handleSync = async () => {
-    if (!navigator.onLine) return;
-    setIsSyncing(true);
+  if (!navigator.onLine) return;
+  setIsSyncing(true);
 
-    try {
-        const result = await api.sync();
+  try {
+    await createBackup(); // 🔹 Резервная копия перед синхронизацией
+    const syncResult = await api.sync();
 
-        if (result.success && result.syncedCollections.size > 0) {
-            console.log(`🔄 Synced: ${[...result.syncedCollections].join(', ')}`);
-
-            const updates: Record<string, any[]> = {};
-
-            for (const collection of result.syncedCollections) {
-                try {
-                    // ✅ ИСПОЛЬЗУЕМ api.get() — он уже содержит URL и заголовки
-                    const data = await api.get<any[]>(`/data/${collection}`);
-                    updates[collection] = data;
-                } catch (e) {
-                    console.warn(`⚠️ Failed to fetch ${collection} for merge:`, e);
-                }
-            }
-
-            // "Умно" мёржим данные
-            if (updates.customers) setCustomers(prev => mergeServerData(prev, updates.customers));
-            if (updates.sales) setSales(prev => mergeServerData(prev, updates.sales));
-            if (updates.expenses) setExpenses(prev => mergeServerData(prev, updates.expenses));
-            if (updates.accounts) setAccounts(prev => mergeServerData(prev, updates.accounts));
-            if (updates.investors) setInvestors(prev => mergeServerData(prev, updates.investors));
-            if (updates.products) setProducts(prev => mergeServerData(prev, updates.products));
-            if (updates.partnerships) setPartnerships(prev => mergeServerData(prev, updates.partnerships));
-        }
-    } catch (e) {
-        console.error("❌ Sync failed", e);
-    } finally {
-        setIsSyncing(false);
+    if (syncResult.success) {
+      console.log(`🔄 Synced collections: ${[...syncResult.syncedCollections].join(', ') || 'none'}`);
     }
+
+    // 🔹 ВСЕГДА пытаемся получить свежие данные, даже если очередь пуста
+    try {
+      const freshData = await api.fetchAllData();
+      if (freshData) {
+        if (freshData.customers) setCustomers(prev => mergeServerData(prev, freshData.customers, 'customers'));
+        if (freshData.sales) setSales(prev => mergeServerData(prev, freshData.sales, 'sales'));
+        if (freshData.expenses) setExpenses(prev => mergeServerData(prev, freshData.expenses, 'expenses'));
+        if (freshData.accounts) setAccounts(prev => mergeServerData(prev, freshData.accounts, 'accounts'));
+        if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors'));
+        if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
+        if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
+
+        if (freshData.settings) {
+          setAppSettings(freshData.settings);
+          saveAppSettings(freshData.settings);
+        }
+        console.log('✅ Fresh data loaded and merged safely');
+      }
+    } catch (fetchErr: any) {
+      console.warn('⚠️ Failed to fetch fresh data (working with local/queued data):', fetchErr.message);
+    }
+  } catch (e) {
+    console.error("❌ Sync failed", e);
+  } finally {
+    setIsSyncing(false);
+  }
 };
 
 
 useEffect(() => {
-
   setShowSplash(true);
   enablePersistentStorage();
 
   const initApp = async () => {
-    // 1. Проверка на публичный режим
     const searchParams = new URLSearchParams(window.location.search);
     const pathName = window.location.pathname;
 
-    if (
-      searchParams.get('view') === 'public_calc' ||
-      searchParams.get('v') === 'calc' ||
-      decodeURIComponent(pathName).startsWith('/calc')
-    ) {
+    if (searchParams.get('view') === 'public_calc' || searchParams.get('v') === 'calc' || decodeURIComponent(pathName).startsWith('/calc')) {
       setIsPublicMode(true);
       setIsLoading(false);
       return;
     }
 
-    // 2. Читаем токены
     const token = localStorage.getItem('token');
     const localUserStr = localStorage.getItem('user');
     let localUser: User | null = null;
 
-    // 3. Восстанавливаем локального пользователя
     if (localUserStr) {
       try {
         localUser = JSON.parse(localUserStr);
-        if (localUser) {
-
-          setUser(localUser);
-          // НЕ выключаем isLoading — попробуем обновить с сервера
-          await loadData(localUser).catch(e => console.warn("⚠️ Local data warning:", e));
-        }
+        if (localUser) setUser(localUser); // 🔹 Мгновенно показываем локального пользователя
       } catch (e) {
         console.error("❌ Failed to parse local user", e);
         localStorage.removeItem('user');
@@ -317,39 +366,57 @@ useEffect(() => {
       }
     }
 
-    // 4. Если онлайн и есть токен — обновляем с сервера
+    const hasLocalData = !!localUser;
+
     if (token && navigator.onLine) {
       try {
-        const freshUser = await api.getMe();
-        setUser(freshUser);
-        localStorage.setItem('user', JSON.stringify(freshUser));
-        await loadData(freshUser, !!localUser);
-      } catch (err) {
-        console.error('❌ Auth refresh failed', err);
-        // Если сервер отверг токен — очищаем всё
-        if (!localUser) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          setUser(null);
+        // 🔹 Быстрая проверка (3 сек). Если не отвечает — сразу уходим в офлайн-режим
+        const isServerReachable = await api.healthCheck();
+
+        if (isServerReachable) {
+          try {
+            // 🔹 Таймаут 5 сек на авторизацию
+            const freshUser = await withTimeout(api.getMe(), 5000, 'api.getMe()');
+            setUser(freshUser);
+            localStorage.setItem('user', JSON.stringify(freshUser));
+
+            // 🔹 Таймаут 8 сек на загрузку данных
+            await withTimeout(loadData(freshUser, hasLocalData), 8000, 'loadData()');
+          } catch (err: any) {
+            console.warn('⚠️ Server data load failed/timed out:', err.message);
+            if (!localUser) {
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
+              setUser(null);
+            }
+          }
+        } else {
+          console.log('📴 Server unreachable — working in offline mode');
+          if (!localUser) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            setUser(null);
+          }
         }
-        // Иначе остаёмся на локальных данных (оффлайн)
+      } catch (err) {
+        console.error('❌ Init error:', err);
       }
     }
 
-    // 5. Если нет ни токена, ни локального пользователя
-    if (!token && !localUser) {
-      setUser(null);
-    }
-
-    // 6. Загружаем настройки
+    if (!token && !localUser) setUser(null);
     setAppSettings(getAppSettings());
 
-    // 7. Выключаем загрузку
-    setIsLoading(false);
+    // 🔹 Если есть локальный пользователь, но данные не загружены — тянем в фоне
+    if (hasLocalData && localUser && navigator.onLine) {
+      const cachedData = await offlineStorage.getCache('all_data');
+      if (!cachedData) {
+        loadData(localUser, true).catch(e => console.warn("⚠️ Background data load failed:", e));
+      }
+    }
 
-    setTimeout(() => {
-      setShowSplash(false);
-    }, 700);
+    setIsLoading(false);
+    // 🔹 Показываем приложение быстрее, если есть локальные данные
+    setTimeout(() => setShowSplash(false), hasLocalData ? 300 : 700);
   };
 
   initApp();

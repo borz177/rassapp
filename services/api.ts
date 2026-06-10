@@ -1,6 +1,6 @@
 import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings } from "../types";
 import { offlineStorage } from "./offlineStorage";
-
+import { withTimeout } from '../src/timeout';
 // Helper to determine the API URL dynamically
 const getBaseUrl = () => {
     const { hostname, protocol } = window.location;
@@ -23,105 +23,117 @@ const getAuthHeader = () => {
 
 let isSyncing = false;
 
+const DEFAULT_TIMEOUT_MS = 15000;
+const fetchWithAuth = async (
+  url: string,
+  options: RequestInit & { timeout?: number } = {}
+): Promise<Response> => {
+  const { timeout = DEFAULT_TIMEOUT_MS, ...fetchOptions } = options;
 
-const fetchWithAuth = async (url: string, options: RequestInit = {}): Promise<Response> => {
-  const baseHeaders = getAuthHeader();
-  const optionHeaders = options.headers;
+  // 🔹 Создаём AbortController для принудительного обрыва запроса
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-  let mergedHeaders: Record<string, string> = { ...baseHeaders };
-
-  if (optionHeaders) {
-    if (optionHeaders instanceof Headers) {
-      optionHeaders.forEach((value, key) => {
-        mergedHeaders[key] = value;
-      });
-    } else if (Array.isArray(optionHeaders)) {
-      optionHeaders.forEach(([key, value]) => {
-        mergedHeaders[key] = value;
-      });
-    } else if (typeof optionHeaders === 'object') {
-      mergedHeaders = { ...mergedHeaders, ...optionHeaders as Record<string, string> };
-    }
+  if (fetchOptions.signal) {
+    fetchOptions.signal.addEventListener('abort', () => controller.abort());
   }
 
-  const res = await fetch(url, {
-    ...options,
-    headers: mergedHeaders
-  });
-
-// Внутри блока обработки 401:
-if (res.status === 401) {
-  console.warn('🔒 Auth error detected:', res.status, res.url);
-
-  let errorMessage = '';
   try {
-    const errorData = await res.clone().json();
-    errorMessage = errorData?.msg || errorData?.message || '';
-  } catch (e) {}
+    const baseHeaders = getAuthHeader();
+    const optionHeaders = fetchOptions.headers;
+    let mergedHeaders: Record<string, string> = { ...baseHeaders };
 
-  // 🔥 Чистим токены СРАЗУ
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  localStorage.removeItem('refreshToken');
-
-  // 🔥 Показываем уведомление
-  if (typeof window !== 'undefined' && (window as any).showNotification) {
-    (window as any).showNotification(
-      '⏳ Сессия истекла',
-      errorMessage || 'Войдите в систему снова',
-      'warning'
-    );
-
-    // Редиректим сразу после уведомления
-    if (!window.location.pathname.includes('/login')) {
-      setTimeout(() => {
-        window.location.replace('/login?expired=1');
-      }, 300);
+    if (optionHeaders) {
+      if (optionHeaders instanceof Headers) {
+        optionHeaders.forEach((value, key) => { mergedHeaders[key] = value; });
+      } else if (Array.isArray(optionHeaders)) {
+        optionHeaders.forEach(([key, value]) => { mergedHeaders[key] = value; });
+      } else if (typeof optionHeaders === 'object') {
+        mergedHeaders = { ...mergedHeaders, ...optionHeaders as Record<string, string> };
+      }
     }
 
-    throw new Error('TOKEN_EXPIRED');
-  }
-
-  // 🔥 ПОКАЗЫВАЕМ КРАСИВУЮ МОДАЛКУ ВМЕСТО confirm()
-  if (typeof window !== 'undefined') {
-    // Сохраняем сообщение в state (через window, так как fetchWithAuth вне компонента)
-    (window as any).__sessionExpiredData = {
-      message: errorMessage || 'Сессия истекла',
-      show: true
-    };
-
-    // 🔥 Создаём Promise, который резолвится после выбора пользователя
-    return new Promise((resolve, reject) => {
-      // Сохраняем колбэки в window для доступа из модалки
-      (window as any).__sessionExpiredHandlers = {
-        onConfirm: () => {
-          (window as any).__sessionExpiredData.show = false;
-          setTimeout(() => {
-            window.location.replace('/login?expired=1');
-          }, 200);
-          resolve(new Response(JSON.stringify({ redirected: true })));
-        },
-
-      };
-
-      // 🔥 Триггерим обновление состояния в App.tsx
-      if ((window as any).__onSessionExpired) {
-        (window as any).__onSessionExpired(
-          errorMessage || 'Сессия истекла',
-          (window as any).__sessionExpiredHandlers.onConfirm,
-          (window as any).__sessionExpiredHandlers.onCancel
-        );
-      }
+    const res = await fetch(url, {
+      ...fetchOptions,
+      headers: mergedHeaders,
+      signal: controller.signal // 🔑 Подключаем таймаут
     });
+
+    clearTimeout(timeoutId);
+
+    // --- ТВОЙ СУЩЕСТВУЮЩИЙ КОД ДЛЯ 401 (оставлен без изменений для совместимости) ---
+    if (res.status === 401) {
+      console.warn('🔒 Auth error detected:', res.status, res.url);
+      let errorMessage = '';
+      try {
+        const errorData = await res.clone().json();
+        errorMessage = errorData?.msg || errorData?.message || '';
+      } catch (e) {}
+
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('refreshToken');
+
+      if (typeof window !== 'undefined' && (window as any).showNotification) {
+        (window as any).showNotification('⏳ Сессия истекла', errorMessage || 'Войдите в систему снова', 'warning');
+        if (!window.location.pathname.includes('/login')) {
+          setTimeout(() => { window.location.replace('/login?expired=1'); }, 300);
+        }
+        throw new Error('TOKEN_EXPIRED');
+      }
+
+      if (typeof window !== 'undefined') {
+        (window as any).__sessionExpiredData = { message: errorMessage || 'Сессия истекла', show: true };
+        return new Promise((resolve) => {
+          (window as any).__sessionExpiredHandlers = {
+            onConfirm: () => {
+              (window as any).__sessionExpiredData.show = false;
+              setTimeout(() => { window.location.replace('/login?expired=1'); }, 200);
+              resolve(new Response(JSON.stringify({ redirected: true })));
+            }
+          };
+          if ((window as any).__onSessionExpired) {
+            (window as any).__onSessionExpired(
+              errorMessage || 'Сессия истекла',
+              (window as any).__sessionExpiredHandlers.onConfirm,
+              () => {}
+            );
+          }
+        });
+      }
+      throw new Error('TOKEN_EXPIRED');
+    }
+    // ---------------------------------------------------------------------------------
+
+    return res;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      console.warn(`⏱️ Request timeout (${timeout}ms):`, url);
+      throw new Error(`TIMEOUT: Request to ${url} took more than ${timeout}ms`);
+    }
+    throw error;
   }
-
-  throw new Error('TOKEN_EXPIRED');
-}
-
-return res;
 };
 
 export const api = {
+
+
+      healthCheck: async (): Promise<boolean> => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`${API_URL}/health`, {
+        method: 'HEAD',
+        signal: controller.signal,
+        cache: 'no-store'
+      });
+      clearTimeout(timeoutId);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
     // Sync Logic
     sync: async (): Promise<{ success: boolean; syncedCollections: Set<string> }> => {
         if (!navigator.onLine || isSyncing) return { success: false, syncedCollections: new Set() };
@@ -353,78 +365,71 @@ export const api = {
     },
 
     // Data Sync
-    fetchAllData: async (): Promise<{
-        customers: Customer[], products: Product[], sales: Sale[],
-        expenses: Expense[], accounts: Account[], investors: Investor[],
-        partnerships: Partnership[], employees: User[], settings?: AppSettings
-    }> => {
-        let data: any = null;
-        try {
-            // 🔥 fetchWithAuth сам обработает 401 — ручная проверка удалена
-            const res = await fetchWithAuth(`${API_URL}/data`);
-            if (!res.ok) throw new Error('Failed to fetch data');
-            
-            data = await res.json();
-            await offlineStorage.setCache('all_data', data);
-        } catch (error: any) {
-            // Если токен истёк — fetchWithAuth уже сделал редирект
-            if (error.message === 'TOKEN_EXPIRED') {
-                const cachedData = await offlineStorage.getCache('all_data');
-                if (cachedData) return cachedData;
-                throw error;
-            }
-            
-            console.error("Fetch Data Error:", error);
-            const cachedData = await offlineStorage.getCache('all_data');
-            if (cachedData) {
-                data = cachedData;
+    fetchAllData: async (): Promise<any> => {
+    let data: any = null;
+    try {
+      const res = await fetchWithAuth(`${API_URL}/data`);
+      if (!res.ok) throw new Error('Failed to fetch data');
+
+      data = await res.json();
+
+      // 🔹 ЗАЩИТА: проверяем, что массивы действительно массивы
+      const requiredArrays = ['customers', 'products', 'sales', 'expenses', 'accounts', 'investors'];
+      for (const key of requiredArrays) {
+        if (data[key] !== undefined && !Array.isArray(data[key])) {
+          console.warn(`⚠️ Server returned non-array for "${key}". Fixing to empty array.`);
+          data[key] = [];
+        }
+      }
+
+      await offlineStorage.setCache('all_data', data);
+    } catch (error: any) {
+      if (error.message === 'TOKEN_EXPIRED') {
+        const cachedData = await offlineStorage.getCache('all_data');
+        if (cachedData) return cachedData;
+        throw error;
+      }
+
+      console.error("Fetch Data Error:", error);
+      const cachedData = await offlineStorage.getCache('all_data');
+      if (cachedData) {
+        data = cachedData;
+      } else {
+        throw error;
+      }
+    }
+
+    // Твой существующий код применения офлайн-очереди (оставь как есть)
+    if (data) {
+      try {
+        const queue = await offlineStorage.getQueue();
+        for (const item of queue) {
+          if (!item.collection || !data[item.collection]) continue;
+          if (item.type === 'saveItem') {
+            if (Array.isArray(data[item.collection])) {
+              const list = data[item.collection] as any[];
+              let idx = list.findIndex(i => i.id === item.payload.id);
+              if (idx === -1 && item.collection === 'investors' && item.payload.email) {
+                idx = list.findIndex(i => i.email === item.payload.email);
+                if (idx >= 0) { list[idx] = { ...list[idx], ...item.payload, id: item.payload.id }; continue; }
+              }
+              if (idx >= 0) { list[idx] = item.payload; }
+              else {
+                const isDuplicate = item.collection === 'investors' && item.payload.email && list.some(i => i.email === item.payload.email);
+                if (!isDuplicate) list.unshift(item.payload);
+              }
             } else {
-                throw error;
+              data[item.collection] = { ...data[item.collection], ...item.payload };
             }
+            // (Для deleteItem логика уже есть в твоем коде, оставь её)
+          }
         }
-
-        // Apply pending offline changes to the data
-        if (data) {
-            try {
-                const queue = await offlineStorage.getQueue();
-                for (const item of queue) {
-                    if (!item.collection || !data[item.collection]) continue;
-
-                    if (item.type === 'saveItem') {
-                        if (Array.isArray(data[item.collection])) {
-                            const list = data[item.collection] as any[];
-                            let idx = list.findIndex(i => i.id === item.payload.id);
-
-                            if (idx === -1 && item.collection === 'investors' && item.payload.email) {
-                                idx = list.findIndex(i => i.email === item.payload.email);
-                                if (idx >= 0) {
-                                    list[idx] = { ...list[idx], ...item.payload, id: item.payload.id };
-                                    continue;
-                                }
-                            }
-
-                            if (idx >= 0) {
-                                list[idx] = item.payload;
-                            } else {
-                                const isDuplicate = item.collection === 'investors' &&
-                                    item.payload.email &&
-                                    list.some(i => i.email === item.payload.email);
-                                if (!isDuplicate) {
-                                    list.unshift(item.payload);
-                                }
-                            }
-                        } else {
-                            data[item.collection] = { ...data[item.collection], ...item.payload };
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error("Error applying offline queue to data", e);
-            }
-        }
-
-        return data;
-    },
+      } catch (e) {
+        console.error("Error applying offline queue to data", e);
+      }
+    }
+    return data;
+  },
 
     // CRUD
     saveItem: async (type: string, item: any, options?: { skipLimitCheck?: boolean; sales?: Sale[] }): Promise<any> => {
