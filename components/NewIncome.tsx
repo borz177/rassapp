@@ -45,8 +45,8 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const contractRef = useRef<HTMLDivElement>(null);
 
-  // 🔹 Проверка истечения подписки
-  const isSubscriptionExpired = useMemo(() => {
+
+    const isSubscriptionExpired = useMemo(() => {
     if (!user?.subscription) return false;
     const { expiresAt } = user.subscription;
     return new Date() > new Date(expiresAt);
@@ -178,8 +178,8 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
   e.preventDefault();
 
-  // 🔒 БЛОКИРОВКА ПРИ ИСТЁКШЕЙ ПОДПИСКЕ
-  if (isSubscriptionExpired) {
+
+   if (isSubscriptionExpired) {
     alert("⛔ Срок подписки истёк. Оформите подписку для совершения операций.");
     return;
   }
@@ -384,7 +384,7 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
                           <span style={{
                               fontWeight: 'bold',
                               color: '#ef8228',
-                              fontSize: '12pt'
+                              fontSize: '12pt'  // Как у остальных полей, или 13pt если хотите чуть крупнее
                           }}>
     Остаток: {formatNum(remainingDebt)} ₽
 </span>
@@ -582,26 +582,6 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
                            value={date} onChange={e => setDate(e.target.value)}/>
                 </div>
             </div>
-
-            {/* 🔒 БАННЕР ОБ ИСТЁКШЕЙ ПОДПИСКЕ */}
-            {isSubscriptionExpired && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
-                <div className="text-red-500 flex-shrink-0 mt-0.5">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="12" y1="8" x2="12" y2="12"/>
-                    <line x1="12" y1="16" x2="12.01" y2="16"/>
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-red-800">Срок подписки истёк</p>
-                  <p className="text-xs text-red-600 mt-1">
-                    Для совершения операций необходимо оформить или продлить подписку.
-                  </p>
-                </div>
-              </div>
-            )}
-
             <button
                 type="submit"
                 disabled={isSubmitting || isSubscriptionExpired}
@@ -620,7 +600,8 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
                 ) : isSubmitting ? (
                     <span className="flex items-center justify-center gap-2">
                       <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"
+                                fill="none"/>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
                       </svg>
                       Обработка...
@@ -631,11 +612,11 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
         {showConfirmModal && (
             <div
                 className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-                onClick={handleCancel}
+                onClick={handleCancel} // 🔥 Теперь сбрасывает isSubmitting
             >
                 <div
                     className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
-                    onClick={e => e.stopPropagation()}
+                    onClick={e => e.stopPropagation()} // 🔥 Клик внутри модалки не закрывает её
                 >
                     <h3 className="text-xl font-bold text-slate-800 text-center">Подтверждение прихода</h3>
 
@@ -644,16 +625,16 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
                             <>
                                 <div className="flex justify-between">
                                     <span className="text-slate-500">От кого:</span>
-              <span className="font-bold text-slate-800">{selectedCustomer?.name}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">За что:</span>
-              <span className="font-medium text-slate-800">{selectedSale?.productName}</span>
-            </div>
-          </>
-        )}
-        {sourceType === 'INVESTOR' && (
-          <div className="flex justify-between">
+                                    <span className="font-bold text-slate-800">{selectedCustomer?.name}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500">За что:</span>
+                                    <span className="font-medium text-slate-800">{selectedSale?.productName}</span>
+                                </div>
+                            </>
+                        )}
+                        {sourceType === 'INVESTOR' && (
+                            <div className="flex justify-between">
             <span className="text-slate-500">Инвестор:</span>
             <span className="font-bold text-slate-800">{selectedInvestor?.name}</span>
           </div>
@@ -679,7 +660,7 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
 
       <div className="flex gap-3 pt-2">
         <button
-          onClick={handleCancel}
+          onClick={handleCancel} // 🔥 Используем handleCancel для сброса isSubmitting
           className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200"
         >
           Отмена

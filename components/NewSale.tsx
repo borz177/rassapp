@@ -87,6 +87,12 @@ const NewSale: React.FC<NewSaleProps> = ({
   const mainAccount = accounts.find(a => a.type === 'MAIN');
   const appSettings = getAppSettings();
 
+  const isSubscriptionExpired = useMemo(() => {
+    if (!user?.subscription) return false;
+    const { expiresAt } = user.subscription;
+    return new Date() > new Date(expiresAt);
+  }, [user?.subscription]);
+
   // 🔥 Инициализация formData
   const [formData, setFormData] = useState<any>(() => {
     const defaultData = {
@@ -385,6 +391,28 @@ const regeneratePaymentPlan = (
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isSubscriptionExpired) {
+      if (onShowNotification) {
+        onShowNotification(
+          '⛔ Подписка истекла',
+          'Срок подписки истёк. Оформите или продлите подписку для создания и редактирования договоров.',
+          'error',
+          'Перейти к тарифам',
+          () => { /* можно добавить переход к тарифам */ }
+        );
+      } else {
+        alert("⛔ Срок подписки истёк. Оформите подписку для совершения операций.");
+      }
+      return;
+    }
+
+    if (isSubmitting) return;
+
+    if (!formData.customerId || !formData.productName || !formData.accountId) {
+      alert("Заполните все обязательные поля");
+      return;
+    }
 
     if (isSubmitting) return;
 
@@ -970,36 +998,36 @@ if (initialData.id && initialData.paymentPlan) {
                      className={`w-full p-2 border rounded-lg outline-none bg-white text-slate-900 text-sm ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300 focus:border-indigo-500'}`}
                      value={formData.startDate}
                      onChange={e => setFormData({...formData, startDate: e.target.value})}
-                     disabled={!!formData.id} />
+                     disabled={!!formData.id}/>
             </div>
             {mode === 'INSTALLMENT' && (
                 <div className="w-40">
                   <label className="block text-sm font-medium text-slate-700 mb-1">
                     Первый платеж
                     {formData.id && hasPaidPayments && (
-                      <span className="ml-1 text-[10px] text-amber-600 font-normal">🔒 Заблокировано</span>
+                        <span className="ml-1 text-[10px] text-amber-600 font-normal">🔒 Заблокировано</span>
                     )}
                   </label>
                   <input type="date" required
                          className={`w-full p-2 border rounded-lg outline-none bg-white text-slate-900 text-sm ${
-                           formData.id && hasPaidPayments 
-                             ? 'border-slate-200 bg-slate-100 cursor-not-allowed' 
-                             : 'border-slate-300 focus:border-indigo-500'
+                             formData.id && hasPaidPayments
+                                 ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
+                                 : 'border-slate-300 focus:border-indigo-500'
                          }`}
                          value={formData.paymentDate}
                          onChange={handlePaymentDateChange}
-                         disabled={formData.id && hasPaidPayments} />
+                         disabled={formData.id && hasPaidPayments}/>
                   {/* 🔹 Подсказка */}
                   {formData.id && !hasPaidPayments && (
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      💡 Изменение даты пересчитает график будущих платежей
-                    </p>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        💡 Изменение даты пересчитает график будущих платежей
+                      </p>
                   )}
                   {formData.id && hasRealPayments && (
-  <p className="text-[10px] text-amber-600 mt-1">
-    ⚠️ График заблокирован: есть оплаченные платежи
-  </p>
-)}
+                      <p className="text-[10px] text-amber-600 mt-1">
+                        ⚠️ График заблокирован: есть оплаченные платежи
+                      </p>
+                  )}
                 </div>
             )}
           </div>
@@ -1009,7 +1037,7 @@ if (initialData.id && initialData.paymentPlan) {
           <label className="block text-sm font-medium text-slate-700 mb-1">Клиент</label>
           <div onClick={() => onSelectCustomer({...formData, mode})}
                className={`w-full p-3 border rounded-lg cursor-pointer flex justify-between items-center ${formData.customerId ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-dashed border-slate-300'} ${formData.id ? 'cursor-not-allowed opacity-60' : ''}`}
-               style={{ pointerEvents: formData.id ? 'none' : 'auto' }}>
+               style={{pointerEvents: formData.id ? 'none' : 'auto'}}>
             <div className="flex items-center gap-2">
               {formData.customerId && <div className="text-indigo-600">{ICONS.Customers}</div>}
               <span
@@ -1029,7 +1057,7 @@ if (initialData.id && initialData.paymentPlan) {
                  placeholder="Введите название товара..."
                  value={formData.productName}
                  onChange={(e) => handleProductChange(e.target.value)}
-                 disabled={!!formData.id} />
+                 disabled={!!formData.id}/>
           {showSuggestions && suggestions.length > 0 && (
               <div
                   className="absolute left-4 right-4 top-[72px] bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
@@ -1071,7 +1099,7 @@ if (initialData.id && initialData.paymentPlan) {
                     setIsPriceManual(false);
                   }}
                   placeholder="0"
-                  disabled={!!formData.id} />
+                  disabled={!!formData.id}/>
             </div>
             {mode === 'INSTALLMENT' && (
                 <div>
@@ -1086,7 +1114,7 @@ if (initialData.id && initialData.paymentPlan) {
                         setIsPriceManual(false);
                       }}
                       placeholder="0"
-                      disabled={!!formData.id} />
+                      disabled={!!formData.id}/>
                 </div>
             )}
           </div>
@@ -1103,9 +1131,9 @@ if (initialData.id && initialData.paymentPlan) {
                   className={`w-full p-3 border rounded-lg outline-none font-bold text-slate-900 bg-white transition-all ${
                       isPriceManual && !formData.id
                           ? 'border-indigo-400 ring-2 ring-indigo-100'
-                          : formData.id 
-                            ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
-                            : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                          : formData.id
+                              ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
+                              : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
                   }`}
                   value={formData.price === 0 ? '' : formData.price}
                   onChange={e => {
@@ -1147,7 +1175,7 @@ if (initialData.id && initialData.paymentPlan) {
                       value={formData.installments === 0 ? '' : formData.installments}
                       onChange={e => setFormData({...formData, installments: e.target.value})}
                       placeholder="0"
-                      disabled={!!formData.id} />
+                      disabled={!!formData.id}/>
                 </div>
 
                 {/* 🔹 Первый взнос + чекбокс в одну строку */}
@@ -1162,8 +1190,8 @@ if (initialData.id && initialData.paymentPlan) {
                             downPaymentFromMarkup && !formData.id
                                 ? 'border-emerald-300 bg-emerald-50/50 ring-2 ring-emerald-100'
                                 : formData.id
-                                  ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
-                                  : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                                    ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
+                                    : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
                         }`}
                         value={formData.downPayment === 0 ? '' : formData.downPayment}
                         onChange={e => {
@@ -1224,13 +1252,13 @@ if (initialData.id && initialData.paymentPlan) {
                 className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
                 value={formData.guarantorName}
                 onChange={e => setFormData({...formData, guarantorName: e.target.value})}
-                disabled={!!formData.id} /></div>
+                disabled={!!formData.id}/></div>
             <div><label className="block text-xs font-medium text-slate-500 mb-1">Телефон поручителя</label><input
                 type="text"
                 className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
                 value={formData.guarantorPhone}
                 onChange={e => setFormData({...formData, guarantorPhone: e.target.value})}
-                disabled={!!formData.id} /></div>
+                disabled={!!formData.id}/></div>
           </div>
         </div>
 
@@ -1272,16 +1300,22 @@ if (initialData.id && initialData.paymentPlan) {
 
         <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isSubscriptionExpired}
             className={`w-full text-white py-4 rounded-xl font-bold transition-colors shadow-lg flex items-center justify-center gap-2 ${
-                isSubmitting
-                    ? 'bg-slate-400 cursor-not-allowed'
-                    : mode === 'INSTALLMENT'
-                        ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
-                        : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+                isSubscriptionExpired
+                    ? 'bg-slate-400 cursor-not-allowed shadow-none'
+                    : isSubmitting
+                        ? 'bg-slate-400 cursor-not-allowed'
+                        : mode === 'INSTALLMENT'
+                            ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+                            : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
             }`}
         >
-          {isSubmitting ? (
+          {isSubscriptionExpired ? (
+              <span className="flex items-center justify-center gap-2">
+                🔒 Подписка истекла — оформите для продолжения
+              </span>
+          ) : isSubmitting ? (
               <>
                 <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"
