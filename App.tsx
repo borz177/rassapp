@@ -500,7 +500,7 @@ useEffect(() => {
 }, [user]);
 
  const loadData = async (currentUser?: User, skipLoadingState = false) => {
-  
+
   // Теперь initApp полностью контролирует состояние загрузки при старте
 
   try {
@@ -2797,7 +2797,7 @@ if (!user && !showSplash) {
 )}
 
 
-           {showTemplateUpdateModal && (
+        {showTemplateUpdateModal && (
   <div
     className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
     onClick={() => setShowTemplateUpdateModal(false)}
@@ -2806,54 +2806,43 @@ if (!user && !showSplash) {
       className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
-      <div className="p-5 bg-gradient-to-r from-indigo-600 to-emerald-600 text-white">
+      {/* Шапка с градиентом (синий/индиго для системных уведомлений) */}
+      <div className="p-5 bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-2xl">
-            🔔
+            🛠️
           </div>
           <div>
-            <h3 className="font-bold text-lg">Обновление WhatsApp-шаблонов</h3>
+            <h3 className="font-bold text-lg">Технические работы</h3>
             <p className="text-white/80 text-xs">
-              Важно для корректной отправки сообщений
+              Мы обновляем систему для улучшения стабильности
             </p>
           </div>
         </div>
       </div>
 
       <div className="p-5 space-y-4">
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-          <p className="text-sm text-amber-900 font-bold mb-2">
-            ⚠️ Обновите шаблоны сообщений
+        {/* Основной блок информации */}
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+          
+          <p className="text-sm text-blue-800 leading-relaxed">
+            В данный момент проводятся плановые технические работы. Некоторые функции могут быть недоступны или отвечать с небольшой задержкой.
           </p>
-
-          <p className="text-sm text-amber-800 leading-relaxed">
-            Перейдите в <b>Интеграции → WhatsApp → Шаблоны сообщений</b> и нажмите:
-          </p>
-
-          <div className="mt-3 px-3 py-2 rounded-xl bg-white border border-amber-200 text-center">
-            <span className="font-bold text-amber-900">🗑️ Все по умолчанию</span>
-          </div>
         </div>
 
+        {/* Блок с рекомендацией */}
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
           <p className="text-sm text-slate-700 leading-relaxed">
-            После этого можете снова изменить текст под себя.
-            Главное — оставьте переменные:
+            Мы стараемся завершить все процессы как можно скорее.
           </p>
-
-          <div className="flex flex-wrap gap-2 mt-3">
-            <span className="font-mono text-xs bg-white border border-slate-200 px-2 py-1 rounded-lg">
-              {'{товары_блок}'}
-            </span>
-            <span className="font-mono text-xs bg-white border border-slate-200 px-2 py-1 rounded-lg">
-              {'{итого_блок}'}
-            </span>
-          </div>
+          <p className="text-sm text-slate-700 leading-relaxed mt-2 font-medium">
+            Спасибо за ваше терпение! 🙏
+          </p>
         </div>
 
         <button
           onClick={() => setShowTemplateUpdateModal(false)}
-          className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
+          className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
         >
           Понятно
         </button>
