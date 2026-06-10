@@ -398,31 +398,30 @@ useEffect(() => {
 
     const hasLocalData = !!localUser;
 
-    // 🔹 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: всегда пытаемся загрузить данные из кэша
-    // независимо от состояния сети!
+    // 🔹 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: СРАЗУ загружаем данные из IndexedDB кэша!
+    // Работает и онлайн, и офлайн — не зависит от navigator.onLine
     if (hasLocalData && localUser) {
       try {
-        // 🔹 Пробуем взять данные из IndexedDB кэша
         const cachedData = await offlineStorage.getCache('all_data');
 
         if (cachedData) {
-          console.log('💾 Loading data from IndexedDB cache (offline mode)');
-          // 🔹 Загружаем данные из кэша
-          setCustomers(cachedData.customers || []);
-          setProducts(cachedData.products || []);
-          setSales(cachedData.sales || []);
-          setExpenses(cachedData.expenses || []);
-          setAccounts(cachedData.accounts || []);
-          setInvestors(cachedData.investors || []);
-          setPartnerships(cachedData.partnerships || []);
-          setEmployees(cachedData.employees || []);
+          console.log('💾 Loading data from IndexedDB cache');
 
-          if (cachedData.settings) {
-            setAppSettings(cachedData.settings);
-          }
+          // 🔹 Загружаем данные из кэша в стейт
+          if (cachedData.customers) setCustomers(cachedData.customers);
+          if (cachedData.products) setProducts(cachedData.products);
+          if (cachedData.sales) setSales(cachedData.sales);
+          if (cachedData.expenses) setExpenses(cachedData.expenses);
+          if (cachedData.accounts) setAccounts(cachedData.accounts);
+          if (cachedData.investors) setInvestors(cachedData.investors);
+          if (cachedData.partnerships) setPartnerships(cachedData.partnerships);
+          if (cachedData.employees) setEmployees(cachedData.employees);
+          if (cachedData.settings) setAppSettings(cachedData.settings);
+        } else {
+          console.log('⚠️ No cached data found in IndexedDB');
         }
       } catch (e) {
-        console.warn('⚠️ Failed to load from cache:', e);
+        console.warn('⚠️ Failed to load from IndexedDB cache:', e);
       }
     }
 
@@ -440,9 +439,11 @@ useEffect(() => {
             localStorage.setItem('user', JSON.stringify(freshUser));
 
             // 🔹 Таймаут 8 сек на загрузку данных
-            await withTimeout(loadData(freshUser, hasLocalData), 8000, 'loadData()');
+            // skipLoading = true, чтобы не показывать спиннер (данные уже из кэша)
+            await withTimeout(loadData(freshUser, true), 8000, 'loadData()');
           } catch (err: any) {
             console.warn('⚠️ Server data load failed/timed out:', err.message);
+            // 🔹 НЕ страшно — данные уже загружены из кэша!
             if (!localUser) {
               localStorage.removeItem('token');
               localStorage.removeItem('user');
@@ -450,7 +451,7 @@ useEffect(() => {
             }
           }
         } else {
-          console.log('📴 Server unreachable — working in offline mode');
+          console.log('📴 Server unreachable — using cached data from IndexedDB');
           if (!localUser) {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
@@ -548,21 +549,37 @@ useEffect(() => {
   try {
     const data = await api.fetchAllData();
 
-    // 🔹 ЗАЩИТА: проверяем, что данные не пустые
+    // 🔹 ЗАЩИТА: не перезаписываем пустыми данными
     if (!data) {
       console.warn('⚠️ loadData: received empty data, keeping current state');
       return;
     }
 
-    // 🔹 ЗАЩИТА: устанавливаем только если массивы определены
-    if (data.customers) setCustomers(data.customers);
-    if (data.products) setProducts(data.products);
-    if (data.sales) setSales(data.sales);
-    if (data.expenses) setExpenses(data.expenses);
-    if (data.accounts) setAccounts(data.accounts);
-    if (data.investors) setInvestors(data.investors);
-    if (data.partnerships) setPartnerships(data.partnerships);
-    if (data.employees) setEmployees(data.employees);
+    // 🔹 ЗАЩИТА: устанавливаем только если массивы не пустые ИЛИ у нас нет данных
+    if (data.customers?.length > 0 || customers.length === 0) {
+      setCustomers(data.customers || []);
+    }
+    if (data.products?.length > 0 || products.length === 0) {
+      setProducts(data.products || []);
+    }
+    if (data.sales?.length > 0 || sales.length === 0) {
+      setSales(data.sales || []);
+    }
+    if (data.expenses?.length > 0 || expenses.length === 0) {
+      setExpenses(data.expenses || []);
+    }
+    if (data.accounts?.length > 0 || accounts.length === 0) {
+      setAccounts(data.accounts || []);
+    }
+    if (data.investors?.length > 0 || investors.length === 0) {
+      setInvestors(data.investors || []);
+    }
+    if (data.partnerships?.length > 0 || partnerships.length === 0) {
+      setPartnerships(data.partnerships || []);
+    }
+    if (data.employees?.length > 0 || employees.length === 0) {
+      setEmployees(data.employees || []);
+    }
 
     let loadedSettings = data.settings || getAppSettings();
 
@@ -579,7 +596,7 @@ useEffect(() => {
   } catch (error) {
     console.error("Failed to load data", error);
     // 🔹 ВАЖНО: не сбрасываем данные при ошибке!
-    // Оставляем текущее состояние (из кэша или локальных данных)
+    // Оставляем текущее состояние (из кэша IndexedDB)
   } finally {
     setIsLoading(false);
   }
