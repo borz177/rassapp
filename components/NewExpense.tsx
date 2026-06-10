@@ -163,7 +163,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
             investorId: selectedInvestorId,
             accountId: sourceAccountId,
             title: payoutType === 'INVESTMENT' ? "Возврат инвестиций" : "Выплата прибыли",
-            category: "Investment Return",
+            category: "Выплата инвестора",
             payoutType: payoutType
         };
     } else {

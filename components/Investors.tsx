@@ -55,34 +55,7 @@ const Investors: React.FC<InvestorsProps> = ({
       setActiveMenuId(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
 
-    if(formName.trim() && formEmail.trim()) {
-        if (editingId && onUpdateInvestor) {
-            const inv = investors.find(i => i.id === editingId);
-            if (inv) {
-                onUpdateInvestor({
-                    ...inv,
-                    name: formName,
-                    phone: formPhone,
-                    email: formEmail,
-                    initialAmount: Number(formAmount) || inv.initialAmount, // 🔹 Фоллбэк на старое значение
-                    profitPercentage: Number(formProfitPercentage),
-                    permissions: formPermissions
-                }, formPassword);
-            }
-        }  else {
-    if (!formPassword) {
-        alert("Пароль обязателен для нового инвестора");
-        return;
-    }
-    // 🔹 Сумма теперь необязательна, по умолчанию 0
-    onAddInvestor(formName, formPhone, formEmail, formPassword, Number(formAmount) || 0, Number(formProfitPercentage), formPermissions);
-}
-        resetForm();
-    }
-};
 
   const handleDelete = (id: string) => {
       if(window.confirm("Удалить инвестора?")) {
