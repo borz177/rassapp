@@ -452,7 +452,7 @@ useEffect(() => {
   const now = Date.now();
 
   if (!lastShown || now - Number(lastShown) >= FIVE_HOURS) {
-    setShowTemplateUpdateModal(false);
+    setShowTemplateUpdateModal(true);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
@@ -2824,7 +2824,7 @@ if (!user && !showSplash) {
       <div className="p-5 space-y-4">
         {/* Основной блок информации */}
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
-          
+
           <p className="text-sm text-blue-800 leading-relaxed">
             В данный момент проводятся плановые технические работы. Некоторые функции могут быть недоступны или отвечать с небольшой задержкой.
           </p>
