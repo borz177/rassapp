@@ -2836,7 +2836,7 @@ if (!user && !showSplash) {
             Мы стараемся завершить все процессы как можно скорее.
           </p>
           <p className="text-sm text-slate-700 leading-relaxed mt-2 font-medium">
-            Спасибо за ваше терпение! 🙏
+            Спасибо за ваше терпение! 
           </p>
         </div>
 
