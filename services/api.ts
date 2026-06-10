@@ -23,6 +23,8 @@ const getAuthHeader = () => {
 
 let isSyncing = false;
 
+let lastSyncAttempt = 0;
+
 const DEFAULT_TIMEOUT_MS = 15000;
 const fetchWithAuth = async (
   url: string,
@@ -135,106 +137,121 @@ export const api = {
     }
   },
     // Sync Logic
-    sync: async (): Promise<{ success: boolean; syncedCollections: Set<string> }> => {
-        if (!navigator.onLine || isSyncing) return { success: false, syncedCollections: new Set() };
-        isSyncing = true;
-        const syncedCollections = new Set<string>();
+   sync: async (): Promise<{ success: boolean; syncedCollections: Set<string> }> => {
+  const now = Date.now(); // ← ОБЯЗАТЕЛЬНО определить now!
 
-        try {
-            const queue = await offlineStorage.getQueue();
-            if (queue.length === 0) return { success: true, syncedCollections };
+  // 🔹 ПРАВИЛЬНЫЙ ПОРЯДОК ПРОВЕРОК:
 
-            // 🔹 Встроенная логика обработки одного элемента
-            const processItem = async (item: any): Promise<boolean> => {
-              try {
-                let res: Response;
-                if (item.type === 'saveItem') {
-                  // 🔥 ИСПОЛЬЗУЕМ fetchWithAuth
-                  res = await fetchWithAuth(`${API_URL}/data/${item.collection}`, {
-                    method: 'POST',
-                    body: JSON.stringify(item.payload)
-                  });
-                } else if (item.type === 'deleteItem') {
-                  // 🔥 ИСПОЛЬЗУЕМ fetchWithAuth
-                  res = await fetchWithAuth(`${API_URL}/data/${item.collection}/${item.itemId}`, {
-                    method: 'DELETE'
-                  });
-                } else {
-                  return false;
-                }
+  // 1️⃣ СНАЧАЛА проверяем, не залипла ли синхронизация (>30 сек)
+  if (isSyncing && (now - lastSyncAttempt) > 30000) {
+    console.warn('⚠️ Sync stuck >30s, force reset');
+    isSyncing = false;
+  }
 
-                if (res.ok) {
-                  await offlineStorage.removeFromQueue(item.id);
-                  if (item.collection) syncedCollections.add(item.collection);
-                  return true;
-                } else {
-                  const errorText = await res.text().catch(() => '');
-                  console.error(`❌ Sync failed for ${item.collection}/${item.payload?.id || item.itemId}:`,
-                    res.status, errorText);
+  // 2️⃣ ПОТОМ проверяем, не запущена ли она прямо сейчас
+  if (isSyncing) {
+    console.log('⏳ Sync already in progress, skipping');
+    return { success: false, syncedCollections: new Set() };
+  }
 
-                  item.retryCount = (item.retryCount || 0) + 1;
-                  if (item.retryCount > 5) {
-                    console.error(`❌ Dropping item ${item.id} after ${item.retryCount} retries`);
-                    await offlineStorage.removeFromQueue(item.id);
-                  } else {
-                    await offlineStorage.updateQueueItem(item);
-                  }
-                  return false;
-                }
-              } catch (error) {
-                // Если ошибка "токен истёк" — пробрасываем, чтобы сработал редирект
-                if (error instanceof Error && error.message === 'TOKEN_EXPIRED') {
-                  throw error;
-                }
-                console.error(`Failed to sync item ${item.id}`, error);
-                item.retryCount = (item.retryCount || 0) + 1;
-                if (item.retryCount <= 5) {
-                  await offlineStorage.updateQueueItem(item);
-                } else {
-                  await offlineStorage.removeFromQueue(item.id);
-                }
-                return false;
-              }
-            };
+  // 3️⃣ И ТОЛЬКО ПОТОМ проверяем онлайн-статус
+  if (!navigator.onLine) {
+    return { success: false, syncedCollections: new Set() };
+  }
 
-            // 🔹 Двухпроходная синхронизация
-            const baseCollections = ['customers', 'accounts', 'investors', 'products'];
+  // 🔹 Всё хорошо — запускаем синхронизацию
+  isSyncing = true;
+  lastSyncAttempt = now;
+  const syncedCollections = new Set<string>();
 
-            // 1. Базовые сущности (SAVE)
-            for (const item of queue) {
-                if (item.type === 'saveItem' && baseCollections.includes(item.collection!)) {
-                    await processItem(item);
-                }
-            }
-            // 1. Базовые сущности (DELETE)
-            for (const item of queue) {
-                if (item.type === 'deleteItem' && baseCollections.includes(item.collection!)) {
-                    await processItem(item);
-                }
-            }
+  try {
+    const queue = await offlineStorage.getQueue();
+    if (queue.length === 0) return { success: true, syncedCollections };
 
-            // 2. Зависимые сущности (SAVE)
-            for (const item of queue) {
-                if (item.type === 'saveItem' && !baseCollections.includes(item.collection!)) {
-                    await processItem(item);
-                }
-            }
-            // 2. Зависимые сущности (DELETE)
-            for (const item of queue) {
-                if (item.type === 'deleteItem' && !baseCollections.includes(item.collection!)) {
-                    await processItem(item);
-                }
-            }
-
-            return { success: true, syncedCollections };
-
-        } catch (error) {
-            console.error('Sync error:', error);
-            return { success: false, syncedCollections };
-        } finally {
-            isSyncing = false;
+    const processItem = async (item: any): Promise<boolean> => {
+      try {
+        let res: Response;
+        if (item.type === 'saveItem') {
+          res = await fetchWithAuth(`${API_URL}/data/${item.collection}`, {
+            method: 'POST',
+            body: JSON.stringify(item.payload)
+          });
+        } else if (item.type === 'deleteItem') {
+          res = await fetchWithAuth(`${API_URL}/data/${item.collection}/${item.itemId}`, {
+            method: 'DELETE'
+          });
+        } else {
+          return false;
         }
-    },
+
+        if (res.ok) {
+          await offlineStorage.removeFromQueue(item.id);
+          if (item.collection) syncedCollections.add(item.collection);
+          return true;
+        } else {
+          const errorText = await res.text().catch(() => '');
+          console.error(`❌ Sync failed for ${item.collection}/${item.payload?.id || item.itemId}:`,
+            res.status, errorText);
+
+          item.retryCount = (item.retryCount || 0) + 1;
+          if (item.retryCount > 5) {
+            console.error(`❌ Dropping item ${item.id} after ${item.retryCount} retries`);
+            await offlineStorage.removeFromQueue(item.id);
+          } else {
+            await offlineStorage.updateQueueItem(item);
+          }
+          return false;
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message === 'TOKEN_EXPIRED') {
+          throw error;
+        }
+        console.error(`Failed to sync item ${item.id}`, error);
+        item.retryCount = (item.retryCount || 0) + 1;
+        if (item.retryCount <= 5) {
+          await offlineStorage.updateQueueItem(item);
+        } else {
+          await offlineStorage.removeFromQueue(item.id);
+        }
+        return false;
+      }
+    };
+
+    const baseCollections = ['customers', 'accounts', 'investors', 'products'];
+
+    // 1. Базовые сущности (SAVE)
+    for (const item of queue) {
+      if (item.type === 'saveItem' && baseCollections.includes(item.collection!)) {
+        await processItem(item);
+      }
+    }
+    // 2. Базовые сущности (DELETE)
+    for (const item of queue) {
+      if (item.type === 'deleteItem' && baseCollections.includes(item.collection!)) {
+        await processItem(item);
+      }
+    }
+    // 3. Зависимые сущности (SAVE)
+    for (const item of queue) {
+      if (item.type === 'saveItem' && !baseCollections.includes(item.collection!)) {
+        await processItem(item);
+      }
+    }
+    // 4. Зависимые сущности (DELETE)
+    for (const item of queue) {
+      if (item.type === 'deleteItem' && !baseCollections.includes(item.collection!)) {
+        await processItem(item);
+      }
+    }
+
+    return { success: true, syncedCollections };
+  } catch (error) {
+    console.error('Sync error:', error);
+    return { success: false, syncedCollections };
+  } finally {
+    isSyncing = false; // 🔹 Гарантированный сброс в любом случае
+  }
+},
 
     // Auth (ПУБЛИЧНЫЕ — обычный fetch)
     sendCode: async (email: string, type: 'REGISTER' | 'RESET'): Promise<void> => {
@@ -421,7 +438,13 @@ export const api = {
             } else {
               data[item.collection] = { ...data[item.collection], ...item.payload };
             }
-            // (Для deleteItem логика уже есть в твоем коде, оставь её)
+            if (item.type === 'deleteItem') {
+  if (Array.isArray(data[item.collection])) {
+    data[item.collection] = data[item.collection].filter(
+      (i: any) => i.id !== item.itemId
+    );
+  }
+}
           }
         }
       } catch (e) {
@@ -473,12 +496,11 @@ export const api = {
 
     // 🔹 ИСПРАВЛЕННАЯ ПРОВЕРКА: теперь ловит таймауты, отмены и сетевые сбои
     const isNetworkError =
-      error.message?.includes('Failed to fetch') ||
-      error.message?.includes('TIMEOUT') ||      // 🔑 Ловим таймауты
-      error.name === 'AbortError' ||             // 🔑 Ловим отмену запроса
-      error.name === 'NetworkError' ||
-      !navigator.onLine ||
-      (error.name === 'TypeError' && error.message?.includes('fetch'));
+  error.message?.includes('Failed to fetch') ||
+  error.message?.includes('TIMEOUT') ||       // 🔑 Ловим таймауты от fetchWithAuth
+  error.name === 'AbortError' ||              // 🔑 Ловим отмену запроса
+  !navigator.onLine ||
+  (error.name === 'TypeError' && error.message?.includes('fetch'));
 
     if (isNetworkError && type === 'sales' && item.status !== 'DELETED') {
       // ... (твоя проверка лимита офлайн остаётся без изменений) ...
