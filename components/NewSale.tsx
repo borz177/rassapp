@@ -1326,7 +1326,7 @@ if (initialData.id && initialData.paymentPlan) {
               </>
           ) : (
               <>
-                {formData.id ? 'Сохранить изменения' : (mode === 'INSTALLMENT' ? 'Оформить рассрочку' : 'Провести продажу')}
+                {formData.id ? 'Сохранить изменения' : (mode === 'INSTALLMENT' ? 'Оформить' : 'Провести продажу')}
               </>
           )}
         </button>
