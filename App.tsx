@@ -348,12 +348,11 @@ useEffect(() => {
       return;
     }
 
-    // 2. Читаем токены
+    // 2. Читаем локального пользователя
     const token = localStorage.getItem('token');
     const localUserStr = localStorage.getItem('user');
     let localUser: User | null = null;
 
-    // 3. Восстанавливаем локального пользователя
     if (localUserStr) {
       try {
         localUser = JSON.parse(localUserStr);
@@ -367,11 +366,12 @@ useEffect(() => {
 
     const hasLocalData = !!localUser;
 
-    // 4. 🔹 ВСЕГДА сначала загружаем из кэша (мгновенный отклик)
+    // 3. 🔥 ВСЕГДА загружаем данные из кэша IndexedDB мгновенно
     if (hasLocalData) {
       try {
         const cachedData = await offlineStorage.getCache('all_data');
         if (cachedData) {
+          console.log('💾 Мгновенная загрузка из локального кэша');
           if (cachedData.customers) setCustomers(cachedData.customers);
           if (cachedData.products) setProducts(cachedData.products);
           if (cachedData.sales) setSales(cachedData.sales);
@@ -383,57 +383,61 @@ useEffect(() => {
           if (cachedData.settings) setAppSettings(cachedData.settings);
         }
       } catch (e) {
-        console.warn('⚠️ Failed to load from cache:', e);
+        console.warn('⚠️ Не удалось загрузить кэш:', e);
       }
     }
 
-    // 5. Если онлайн — пробуем получить свежие данные
-    if (token && navigator.onLine) {
-      try {
-        const isServerReachable = await api.healthCheck();
-        if (isServerReachable) {
-          try {
-            const freshUser = await withTimeout(api.getMe(), 5000, 'api.getMe()');
+    // 4. 🔥 МГНОВЕННО показываем приложение пользователю (не ждем сервер!)
+    setIsLoading(false);
+    setTimeout(() => setShowSplash(false), 400); // Плавное исчезновение за 0.4 сек
+
+    // 5. 🔥 ФОНОВАЯ СИНХРОНИЗАЦИЯ (запускается, но НЕ блокирует интерфейс)
+    if (token && navigator.onLine && localUser) {
+      // Мы не используем await здесь, чтобы не останавливать выполнение кода
+      (async () => {
+        try {
+          console.log('🌐 Запуск фоновой синхронизации с сервером...');
+          const isReachable = await api.healthCheck();
+
+          if (isReachable) {
+            // Обновляем данные пользователя (например, если изменилась подписка)
+            const freshUser = await api.getMe();
             setUser(freshUser);
             localStorage.setItem('user', JSON.stringify(freshUser));
 
-            // Загружаем данные. Передаем true, чтобы loadData НЕ трогала setIsLoading
-            await withTimeout(loadData(freshUser, true), 8000, 'loadData()');
-          } catch (err: any) {
-            console.warn('⚠️ Server data load failed/timed out:', err.message);
-            if (!localUser) {
-              localStorage.removeItem('token');
-              localStorage.removeItem('user');
-              setUser(null);
+            // Получаем свежие данные и умно мёржим их с локальными
+            const freshData = await api.fetchAllData();
+            if (freshData) {
+              if (freshData.customers) setCustomers(prev => mergeServerData(prev, freshData.customers, 'customers'));
+              if (freshData.sales) setSales(prev => mergeServerData(prev, freshData.sales, 'sales'));
+              if (freshData.expenses) setExpenses(prev => mergeServerData(prev, freshData.expenses, 'expenses'));
+              if (freshData.accounts) setAccounts(prev => mergeServerData(prev, freshData.accounts, 'accounts'));
+              if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors'));
+              if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
+              if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
+
+              if (freshData.settings) {
+                setAppSettings(freshData.settings);
+                saveAppSettings(freshData.settings);
+              }
+              console.log('✅ Фоновая синхронизация успешно завершена');
             }
           }
-        } else {
-          console.log('📴 Server unreachable — using cached data');
-          if (!localUser) {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            setUser(null);
-          }
+        } catch (err: any) {
+          console.log('📴 Фоновая синхронизация пропущена (нет сети или таймаут), работаем с локальными данными');
         }
-      } catch (err) {
-        console.error('❌ Init network error:', err);
-      }
+      })();
     }
 
-    // 6. Если нет ни токена, ни локального пользователя
+    // 6. Если нет ни токена, ни пользователя
     if (!token && !localUser) {
       setUser(null);
-    }
-
-    // 7. Загружаем настройки
-    setAppSettings(getAppSettings());
-
-    // 8. 🔹 ФИНАЛЬНЫЙ АККОРД: Стабильный таймаут для плавного исчезновения сплеш-скрина
-    // 800 мс достаточно, чтобы показать логотип и избежать "мерцания" при быстром интернете
-    setTimeout(() => {
       setIsLoading(false);
       setShowSplash(false);
-    }, 800);
+    }
+
+    // 7. Настройки (на всякий случай, если кэш пуст)
+    setAppSettings(getAppSettings());
   };
 
   initApp();
@@ -499,15 +503,13 @@ useEffect(() => {
   return () => clearInterval(interval);
 }, [user]);
 
- const loadData = async (currentUser?: User, skipLoadingState = false) => {
-
-  // Теперь initApp полностью контролирует состояние загрузки при старте
-
+const loadData = async (currentUser?: User, skipLoadingState = true) => {
+  // 🔥 Мы больше НЕ трогаем setIsLoading здесь, чтобы не мерцал экран
   try {
     const data = await api.fetchAllData();
 
     if (!data) {
-      console.warn('⚠️ loadData: received empty data, keeping current state');
+      console.warn('⚠️ loadData: получены пустые данные, сохраняем текущее состояние');
       return;
     }
 
@@ -531,10 +533,9 @@ useEffect(() => {
     setAppSettings(loadedSettings);
     saveAppSettings(loadedSettings);
   } catch (error) {
-    console.error("Failed to load data", error);
-    // Не сбрасываем данные при ошибке, оставляем то, что загрузили из кэша
+    console.error("Failed to load data in background", error);
+    // При ошибке просто молча оставляем те данные, что уже есть на экране
   }
-
 };
 
   const isManager = user?.role === 'manager' || user?.role === 'admin';
