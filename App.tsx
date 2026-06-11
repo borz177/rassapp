@@ -503,15 +503,13 @@ useEffect(() => {
   return () => clearInterval(interval);
 }, [user]);
 
- const loadData = async (currentUser?: User, skipLoadingState = false) => {
-
-  // Теперь initApp полностью контролирует состояние загрузки при старте
-
+const loadData = async (currentUser?: User, skipLoadingState = true) => {
+  // 🔥 Мы больше НЕ трогаем setIsLoading здесь, чтобы не мерцал экран
   try {
     const data = await api.fetchAllData();
 
     if (!data) {
-      console.warn('⚠️ loadData: received empty data, keeping current state');
+      console.warn('⚠️ loadData: получены пустые данные, сохраняем текущее состояние');
       return;
     }
 
@@ -535,10 +533,9 @@ useEffect(() => {
     setAppSettings(loadedSettings);
     saveAppSettings(loadedSettings);
   } catch (error) {
-    console.error("Failed to load data", error);
-    // Не сбрасываем данные при ошибке, оставляем то, что загрузили из кэша
+    console.error("Failed to load data in background", error);
+    // При ошибке просто молча оставляем те данные, что уже есть на экране
   }
-
 };
 
   const isManager = user?.role === 'manager' || user?.role === 'admin';
