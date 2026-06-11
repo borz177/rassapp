@@ -529,17 +529,16 @@ export const api = {
       }
     }
 
-   if (isNetworkError && !isLimitError) {
-  console.log("📦 Queuing for offline sync (network error)");
-  await offlineStorage.addToQueue({
-    type: 'saveItem',
-    collection: type,
-    payload: item
-  });
-
-  // 🔑 ВОЗВРАЩАЕМ объект с флагом _isOffline (НЕ бросаем ошибку!)
-  return { ...item, _isOffline: true };
-}
+    // 🔹 ДОБАВЛЯЕМ В ОЧЕРЕДЬ, ЕСЛИ ЭТО СЕТЬ/ТАЙМАУТ
+    if (isNetworkError && !isLimitError) {
+      console.log("📦 Queuing for offline sync (network error/timeout)");
+      await offlineStorage.addToQueue({
+        type: 'saveItem',
+        collection: type,
+        payload: item
+      });
+      return item; // Возвращаем, чтобы фронт не показывал ошибку
+    }
 
     console.error("❌ Validation/limit error (not queued):", error.message || error);
     throw error;
