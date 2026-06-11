@@ -495,10 +495,10 @@ export const api = {
     const isLimitError = error.isLimitError === true;
 
     // 🔹 ИСПРАВЛЕННАЯ ПРОВЕРКА: теперь ловит таймауты, отмены и сетевые сбои
-   const isNetworkError =
+    const isNetworkError =
   error.message?.includes('Failed to fetch') ||
-  error.message?.includes('TIMEOUT') ||        // 🔑 Ловим таймауты от fetchWithAuth
-  error.name === 'AbortError' ||               // 🔑 Ловим отмену запроса
+  error.message?.includes('TIMEOUT') ||       // 🔑 Ловим таймауты от fetchWithAuth
+  error.name === 'AbortError' ||              // 🔑 Ловим отмену запроса
   !navigator.onLine ||
   (error.name === 'TypeError' && error.message?.includes('fetch'));
 
@@ -529,7 +529,7 @@ export const api = {
       }
     }
 
-    if (isNetworkError && !isLimitError) {
+   if (isNetworkError && !isLimitError) {
   console.log("📦 Queuing for offline sync (network error)");
   await offlineStorage.addToQueue({
     type: 'saveItem',
@@ -537,12 +537,8 @@ export const api = {
     payload: item
   });
 
-  // 🔑 БРОСАЕМ СПЕЦИАЛЬНУЮ ОШИБКУ — handleSaveSale её поймает и добавит в UI
-  const offlineError: any = new Error('OFFLINE_QUEUED');
-  offlineError.isOfflineQueued = true;
-  offlineError.queuedItem = item;
-  offlineError.collection = type;
-  throw offlineError;
+  // 🔑 ВОЗВРАЩАЕМ объект с флагом _isOffline (НЕ бросаем ошибку!)
+  return { ...item, _isOffline: true };
 }
 
     console.error("❌ Validation/limit error (not queued):", error.message || error);

@@ -941,10 +941,35 @@ const handleSaveSale = async (data: any): Promise<any> => {
       : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
 
     // 🔹 3. Сохранение на сервер
-    const savedSale = await api.saveItem('sales', saleToSave);
+    // 🔹 3. Сохранение на сервер
+const savedSale = await api.saveItem('sales', saleToSave);
 
-    // 🔹 4. Обновление стейта только после успешного сохранения
-    updateList(setSales, savedSale);
+// 🔹 🔑 НОВОЕ: Проверяем, было ли сохранение в офлайн-режиме
+if (savedSale._isOffline) {
+  // 🔥 Повторная проверка лимита
+  const offlineLimitCheck = await api.checkLocalContractLimit(sales);
+  if (!offlineLimitCheck.allowed) {
+    showNotificationModal(
+      '🚫 Лимит превышен',
+      `${offlineLimitCheck.reason}\n\n💡 В офлайн-режиме тоже действует лимит!`,
+      'error'
+    );
+    throw new Error('LIMIT_EXCEEDED');
+  }
+
+  showNotificationModal(
+    '⚠️ Офлайн-режим',
+    'Нет соединения с сервером.\n\nДоговор сохранён локально и будет синхронизирован при подключении.',
+    'warning'
+  );
+
+  updateList(setSales, savedSale);
+  setEditingSale(null);
+  return savedSale;
+}
+
+// 🔹 4. Обновление стейта после успешного сохранения на сервере
+updateList(setSales, savedSale);;
 
     // 🔹 5. Создаём расход закупа (если есть)
     if (existingSaleIndex < 0 && Number(data.buyPrice) > 0) {
@@ -991,41 +1016,11 @@ const handleSaveSale = async (data: any): Promise<any> => {
     throw error;
   }
 
-  // 🔹 🔑 НОВОЕ: Обработка ошибки "добавлено в офлайн-очередь"
-  if (error.isOfflineQueued === true) {
-    // 🔥 ПОВТОРНАЯ ПРОВЕРКА ЛИМИТА (уже сделана в saveItem, но для надёжности)
-    const offlineLimitCheck = await api.checkLocalContractLimit(sales);
-    if (!offlineLimitCheck.allowed) {
-      showNotificationModal(
-        '🚫 Лимит превышен',
-        `${offlineLimitCheck.reason}\n\n💡 В офлайн-режиме тоже действует лимит!`,
-        'error'
-      );
-      throw error;
-    }
-
-    // Показываем офлайн-уведомление
-    showNotificationModal(
-      '⚠️ Офлайн-режим',
-      'Нет соединения с сервером.\n\nДоговор сохранён локально и будет синхронизирован при подключении.',
-      'warning'
-    );
-
-    // 🔑 Добавляем в локальный стейт С ФЛАГОМ _isOffline
-    const tempSale = {
-      ...error.queuedItem,
-      _isOffline: true
-    };
-    updateList(setSales, tempSale);
-    setEditingSale(null);
-    return tempSale;
-  }
-
-  // 🔹 Обработка остальных сетевых ошибок (если saveItem не успел обработать)
+  // 🔹 Обработка сетевых ошибок (фолбэк, если saveItem не успел обработать)
   const isNetworkError =
     error.message?.includes('Failed to fetch') ||
-    error.message?.includes('TIMEOUT') ||        // 🔑 Ловим таймауты
-    error.name === 'AbortError' ||               // 🔑 Ловим отмену запроса
+    error.message?.includes('TIMEOUT') ||
+    error.name === 'AbortError' ||
     !navigator.onLine;
 
   if (isNetworkError) {
