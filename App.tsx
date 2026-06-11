@@ -940,11 +940,36 @@ const handleSaveSale = async (data: any): Promise<any> => {
       ? { ...sales[existingSaleIndex], ...saleData }
       : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
 
-    // 🔹 3. Сохранение на сервер
-    const savedSale = await api.saveItem('sales', saleToSave);
 
-    // 🔹 4. Обновление стейта только после успешного сохранения
-    updateList(setSales, savedSale);
+    // 🔹 3. Сохранение на сервер
+const savedSale = await api.saveItem('sales', saleToSave);
+
+// 🔹 🔑 НОВОЕ: Проверяем, было ли сохранение в офлайн-режиме
+if (savedSale._isOffline) {
+  // 🔥 Повторная проверка лимита
+  const offlineLimitCheck = await api.checkLocalContractLimit(sales);
+  if (!offlineLimitCheck.allowed) {
+    showNotificationModal(
+      '🚫 Лимит превышен',
+      `${offlineLimitCheck.reason}\n\n💡 В офлайн-режиме тоже действует лимит!`,
+      'error'
+    );
+    throw new Error('LIMIT_EXCEEDED');
+  }
+
+  showNotificationModal(
+    '⚠️ Офлайн-режим',
+    'Нет соединения с сервером.\n\nДоговор сохранён локально и будет синхронизирован при подключении.',
+    'warning'
+  );
+
+  updateList(setSales, savedSale);
+  setEditingSale(null);
+  return savedSale;
+}
+
+// 🔹 4. Обновление стейта после успешного сохранения на сервере
+updateList(setSales, savedSale);
 
     // 🔹 5. Создаём расход закупа (если есть)
     if (existingSaleIndex < 0 && Number(data.buyPrice) > 0) {
@@ -977,59 +1002,58 @@ const handleSaveSale = async (data: any): Promise<any> => {
     return savedSale;
 
   } catch (error: any) {
-    console.error('❌ Save sale error:', error);
+  console.error('❌ Save sale error:', error);
 
-    // 🔹 Обработка ошибки лимита
-    if (error.isLimitError === true) {
-      // Показываем уведомление через глобальную функцию
-      showNotificationModal(
-        '🚫 Лимит превышен',
-        `${error.message}\n\n${error.hint || ''}`.trim(),
-        'error',
-        'Перейти к тарифам',
-        () => setCurrentView('TARIFFS')
-      );
-      // 🔥 ВАЖНО: пробрасываем ошибку, чтобы handleConfirm в NewSale.tsx НЕ показал успех!
-      throw error;
-    }
-
-    // 🔹 Обработка сетевых ошибок (офлайн-режим)
-    if (error.message?.includes('Failed to fetch') || !navigator.onLine) {
-      // 🔥 ПОВТОРНАЯ ПРОВЕРКА ЛИМИТА перед добавлением в офлайн-очередь!
-      const offlineLimitCheck = await api.checkLocalContractLimit(sales);
-      if (!offlineLimitCheck.allowed) {
-        showNotificationModal(
-          '🚫 Лимит превышен',
-          `${offlineLimitCheck.reason}\n\n💡 В офлайн-режиме тоже действует лимит!`,
-          'error'
-        );
-        return; // 🔥 НЕ добавляем в очередь!
-      }
-
-      // Если лимит не превышен — показываем офлайн-уведомление
-      showNotificationModal(
-        '⚠️ Офлайн-режим',
-        'Нет соединения с сервером.\n\nДоговор сохранён локально и будет синхронизирован при подключении.',
-        'warning'
-      );
-
-      // Оптимистичное обновление: добавляем в локальный стейт
-      const tempSale = { ...data, id: `temp_${Date.now()}`, _isOffline: true };
-      updateList(setSales, tempSale);
-      setEditingSale(null);
-      return tempSale;
-    }
-
-    // 🔹 Другие ошибки сервера
+  // 🔹 Обработка ошибки лимита
+  if (error.isLimitError === true) {
     showNotificationModal(
-      '❌ Ошибка сохранения',
-      error.message || 'Не удалось сохранить договор. Попробуйте ещё раз.',
-      'error'
+      '🚫 Лимит превышен',
+      `${error.message}\n\n${error.hint || ''}`.trim(),
+      'error',
+      'Перейти к тарифам',
+      () => setCurrentView('TARIFFS')
     );
-
-    // 🔥 Пробрасываем ошибку, чтобы handleConfirm не показал успех
     throw error;
   }
+
+  // 🔹 Обработка сетевых ошибок (фолбэк, если saveItem не успел обработать)
+  const isNetworkError =
+    error.message?.includes('Failed to fetch') ||
+    error.message?.includes('TIMEOUT') ||
+    error.name === 'AbortError' ||
+    !navigator.onLine;
+
+  if (isNetworkError) {
+    const offlineLimitCheck = await api.checkLocalContractLimit(sales);
+    if (!offlineLimitCheck.allowed) {
+      showNotificationModal(
+        '🚫 Лимит превышен',
+        `${offlineLimitCheck.reason}\n\n💡 В офлайн-режиме тоже действует лимит!`,
+        'error'
+      );
+      return;
+    }
+
+    showNotificationModal(
+      '⚠️ Офлайн-режим',
+      'Нет соединения с сервером.\n\nДоговор сохранён локально и будет синхронизирован при подключении.',
+      'warning'
+    );
+
+    const tempSale = { ...data, id: `temp_${Date.now()}`, _isOffline: true };
+    updateList(setSales, tempSale);
+    setEditingSale(null);
+    return tempSale;
+  }
+
+  // 🔹 Другие ошибки сервера
+  showNotificationModal(
+    '❌ Ошибка сохранения',
+    error.message || 'Не удалось сохранить договор. Попробуйте ещё раз.',
+    'error'
+  );
+  throw error;
+}
 };
 const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
 const handleDeleteSale = async (saleId: string) => {
