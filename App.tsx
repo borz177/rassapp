@@ -333,6 +333,12 @@ useEffect(() => {
   enablePersistentStorage();
 
   const initApp = async () => {
+
+      const staticSplash = document.getElementById('static-splash');
+    if (staticSplash) {
+      staticSplash.classList.add('hidden');
+      setTimeout(() => staticSplash.remove(), 400);
+    }
     // 1. Проверка на публичный режим
     const searchParams = new URLSearchParams(window.location.search);
     const pathName = window.location.pathname;

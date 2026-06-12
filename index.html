@@ -1,33 +1,91 @@
-
-
-
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#1e3a8a" />
     <meta name="description" content="Manage installments with AI" />
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-     <link rel="manifest" href="/manifest.json">
-   <link rel="apple-touch-icon" href="/icon-192.png">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
 
-<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
-<link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
     <!-- Prevent Caching -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
 
-
     <title>FinUchet</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
+    <!-- 🔹 СТАТИЧЕСКИЙ СПЛЕШ-СКРИН (показывается мгновенно при открытии) -->
+    <style>
+      #static-splash {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: #1e3a8a;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 99999;
+        transition: opacity 0.4s ease-out;
+      }
+      
+      #static-splash.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      
+      .static-logo {
+        width: 220px;
+        height: 220px;
+        border-radius: 55%;
+        object-fit: cover;
+        box-shadow:
+          0 10px 40px rgba(0, 0, 0, 0.3),
+          0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+        animation:
+          floatIn 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+          floating 3s ease-in-out infinite 1.2s;
+      }
+      
+      @keyframes floatIn {
+        0% {
+          opacity: 0;
+          transform: scale(0.5) translateY(-30px);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+        }
+      }
+      
+      @keyframes floating {
+        0%, 100% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-10px);
+        }
+      }
+    </style>
   </head>
+  
   <body>
+    <!-- 🔹 СТАТИЧЕСКИЙ СПЛЕШ-СКРИН (виден сразу при открытии) -->
+    <div id="static-splash">
+      <img src="/splash.png" alt="FinUchet" class="static-logo" />
+    </div>
+
     <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>
