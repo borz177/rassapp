@@ -1123,7 +1123,16 @@ async function sendMessage(idInstance, apiTokenInstance, chatId, message) {
 
 app.post(
   '/api/integrations/whatsapp/webhook',
-  express.json({ limit: '15mb' }),
+  (req, res, next) => {
+
+    express.json({ limit: '15mb' })(req, res, (err) => {
+      if (err) {
+        console.warn('⚠️ Webhook получил не-JSON данные. Игнорируем.');
+        return res.status(200).send('OK');
+      }
+      next();
+    });
+  },
   async (req, res) => {
     try {
       const body = req.body;
@@ -1379,7 +1388,8 @@ app.post(
       }
 
     } catch (error) {
-      // Тихая ошибка
+      console.error('❌ Ошибка в вебхуке WhatsApp:', error.message);
+
     }
   }
 );
