@@ -34,24 +34,17 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
         }
     };
 
-    // 🔧 НОВАЯ ФУНКЦИЯ: Автоматический расчёт ширины колонок
     const calculateColumnWidths = (data: any[]): { wch: number }[] => {
         if (!data || data.length === 0) return [];
-
         const colWidths: Map<string, number> = new Map();
-
-        // Проходим по всем строкам и считаем максимальную длину для каждой колонки
         for (const row of data) {
             for (const [key, value] of Object.entries(row)) {
                 const cellValue = value === null || value === undefined ? '' : String(value);
-                // Берём максимум из текущей ширины и длины значения
-                const currentMax = colWidths.get(key) || key.length; // Учитываем и длину заголовка
+                const currentMax = colWidths.get(key) || key.length;
                 const newLen = Math.max(currentMax, cellValue.length);
                 colWidths.set(key, newLen);
             }
         }
-
-        // Преобразуем в массив с небольшим отступом (+2 символа)
         return Array.from(colWidths.values()).map(width => ({ wch: Math.min(width + 2, 50) }));
     };
 
@@ -81,12 +74,9 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
             const paymentsData: any[] = [];
             let filteredSalesCount = 0;
 
-            // 🔧 НОВОЕ: Счётчики для сводки
-            let totalSalesAmount = 0;
-            let totalBuyPrice = 0;
-            let totalDownPayment = 0;
+            // 🔧 Оставляем только нужные счётчики для сводки
             let totalPeriodPayments = 0;
-            let totalDebt = 0;
+            let totalClientDebt = 0; // НОВЫЙ счётчик
 
             for (const sale of sales) {
                 if (onlyActive && sale.status === 'COMPLETED') continue;
@@ -98,7 +88,6 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                 const customer = customers.find(c => c.id === sale.customerId);
                 const account = accounts.find(a => a.id === sale.accountId);
 
-                // Универсальный поиск инвестора через ownerId
                 let investor: Investor | undefined;
                 if (account?.ownerId) {
                     investor = investors.find(i => i.id === account.ownerId);
@@ -106,12 +95,17 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
 
                 const statusStr = sale.status === 'COMPLETED' ? 'Завершен' : (sale.status === 'DRAFT' ? 'Оформлен' : 'Активен');
 
-                // 🔧 Считаем суммы для сводки
-                totalSalesAmount += sale.totalAmount || 0;
-                totalBuyPrice += sale.buyPrice || 0;
-                totalDownPayment += sale.downPayment || 0;
+                // 🔧 ИСПРАВЛЕНИЕ: Точный расчёт реального долга на основе платежного плана
+                const totalRealPaid = sale.paymentPlan
+                    .filter((p: Payment) => p.isRealPayment && p.isPaid)
+                    .reduce((sum, p) => sum + (p.amount || 0), 0);
 
-                // === ЛИСТ 1: Обзор клиентов (БЕЗ email/телефона/процента инвестора) ===
+                const currentDebt = Math.max(0, (sale.totalAmount || 0) - (sale.downPayment || 0) - totalRealPaid);
+
+                // Добавляем долг этого клиента в общую копилку
+                totalClientDebt += currentDebt;
+
+                // === ЛИСТ 1: Обзор клиентов ===
                 overviewData.push({
                     'Клиент': customer?.name || 'Неизвестный клиент',
                     'Товар': sale.productName || '',
@@ -120,10 +114,9 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                     'Адрес': customer?.address || '',
                     'Поручитель': sale.guarantorName || '',
                     'Телефон поручителя': sale.guarantorPhone || '',
-                    'Цена закупа': sale.buyPrice || 0,
                     'Цена рассрочки': sale.totalAmount || 0,
                     'Взнос': sale.downPayment || 0,
-                    'Остаток долга': Math.max(0, (sale.totalAmount || 0) - (sale.downPayment || 0) - (sale.remainingAmount || 0)),
+                    'Остаток долга': currentDebt, // 🔧 Теперь показывает правильную цифру!
                     'Срок (мес)': sale.installments || 0,
                     'Дата оформления': new Date(sale.startDate).toLocaleDateString('ru-RU'),
                     'Дата первого платежа': sale.paymentPlan && sale.paymentPlan.length > 0
@@ -132,9 +125,8 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                     'Статус': statusStr
                 });
 
-                // === ЛИСТ 2: История платежей (БЕЗ статуса платежа) ===
+                // === ЛИСТ 2: История платежей ===
                 let paymentsToExport = sale.paymentPlan?.filter((p: Payment) => p.isRealPayment) || [];
-
                 if (includePlanned) {
                     paymentsToExport = sale.paymentPlan || [];
                 }
@@ -155,7 +147,6 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                     });
                 } else {
                     for (const payment of paymentsToExport) {
-                        // 🔧 Считаем сумму платежей за период
                         if (payment.isRealPayment && payment.isPaid) {
                             totalPeriodPayments += payment.amount || 0;
                         }
@@ -179,7 +170,6 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                 return;
             }
 
-            // 🔧 НОВОЕ: Итоговая строка в истории платежей
             paymentsData.push({}); // Пустая строка-разделитель
             paymentsData.push({
                 'Клиент': 'ИТОГО ЗА ПЕРИОД:',
@@ -190,55 +180,45 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                 'Платёж': ''
             });
 
-            // 🔧 НОВОЕ: Лист "Сводка"
+            // 🔧 ОБНОВЛЁННАЯ СВОДКА (только самое важное)
             const summaryData = [
                 { 'Параметр': '📅 Период выгрузки', 'Значение': `${new Date(filterStart).toLocaleDateString('ru-RU')} — ${new Date(filterEnd).toLocaleDateString('ru-RU')}` },
                 { 'Параметр': '', 'Значение': '' },
-                { 'Параметр': '📦 Всего продаж', 'Значение': filteredSalesCount },
-                { 'Параметр': '💰 Общая сумма рассрочки', 'Значение': `${totalSalesAmount.toLocaleString('ru-RU')} ₽` },
-                { 'Параметр': '🏷️ Общая сумма закупок', 'Значение': `${totalBuyPrice.toLocaleString('ru-RU')} ₽` },
-                { 'Параметр': '💵 Сумма первоначальных взносов', 'Значение': `${totalDownPayment.toLocaleString('ru-RU')} ₽` },
                 { 'Параметр': '💳 Получено платежей за период', 'Значение': `${totalPeriodPayments.toLocaleString('ru-RU')} ₽` },
+                { 'Параметр': '📉 Общий долг клиентов (по этим продажам)', 'Значение': `${totalClientDebt.toLocaleString('ru-RU')} ₽` },
                 { 'Параметр': '', 'Значение': '' },
-                { 'Параметр': '📊 Средний чек продажи', 'Значение': `${filteredSalesCount > 0 ? (totalSalesAmount / filteredSalesCount).toLocaleString('ru-RU') : 0} ₽` },
-                { 'Параметр': '📈 Средний платёж', 'Значение': `${totalPeriodPayments.toLocaleString('ru-RU')} ₽` },
-                { 'Параметр': '', 'Значение': '' },
-                { 'Параметр': '🕐 Дата формирования', 'Значение': new Date().toLocaleString('ru-RU') },
-                { 'Параметр': '⚙️ Режим', 'Значение': `${onlyActive ? 'Только активные' : 'Все продажи'}${includePlanned ? ' + плановые платежи' : ''}` }
+                { 'Параметр': '🕐 Дата формирования отчёта', 'Значение': new Date().toLocaleString('ru-RU') }
             ];
 
             addLog(`📝 Формирование листов Excel...`);
             addLog(`   - "Обзор клиентов": ${overviewData.length} записей`);
             addLog(`   - "История платежей": ${paymentsData.length} записей`);
-            addLog(`   - "Сводка": ${summaryData.length} строк`);
+            addLog(`   - "Сводка": сформирована`);
 
             const wb = XLSX_LIB.utils.book_new();
 
-            // === ЛИСТ 1: Обзор клиентов ===
             const ws1 = XLSX_LIB.utils.json_to_sheet(overviewData);
             ws1['!cols'] = calculateColumnWidths(overviewData);
-            ws1['!views'] = [{ state: 'frozen', ySplit: 1 }]; // Закрепляем шапку
+            ws1['!views'] = [{ state: 'frozen', ySplit: 1 }];
             ws1['!autofilter'] = { ref: `A1:${XLSX_LIB.utils.encode_col(overviewData[0] ? Object.keys(overviewData[0]).length - 1 : 0)}1` };
             XLSX_LIB.utils.book_append_sheet(wb, ws1, "Обзор клиентов");
 
-            // === ЛИСТ 2: История платежей ===
             const ws2 = XLSX_LIB.utils.json_to_sheet(paymentsData);
             ws2['!cols'] = calculateColumnWidths(paymentsData);
             ws2['!views'] = [{ state: 'frozen', ySplit: 1 }];
             ws2['!autofilter'] = { ref: `A1:${XLSX_LIB.utils.encode_col(paymentsData[0] ? Object.keys(paymentsData[0]).length - 1 : 0)}1` };
             XLSX_LIB.utils.book_append_sheet(wb, ws2, "История платежей");
 
-            // === ЛИСТ 3: Сводка ===
             const ws3 = XLSX_LIB.utils.json_to_sheet(summaryData);
-            ws3['!cols'] = [{ wch: 35 }, { wch: 40 }];
+            ws3['!cols'] = [{ wch: 45 }, { wch: 40 }];
             XLSX_LIB.utils.book_append_sheet(wb, ws3, "Сводка");
 
             const fileName = `Export_${startDate}_to_${endDate}.xlsx`;
             XLSX_LIB.writeFile(wb, fileName);
 
             addLog(`✅ Файл "${fileName}" успешно скачан!`);
-            addLog(`📈 Итого: ${filteredSalesCount} продаж на ${totalSalesAmount.toLocaleString('ru-RU')} ₽`);
-            addLog(`💳 Получено платежей за период: ${totalPeriodPayments.toLocaleString('ru-RU')} ₽`);
+            addLog(`💳 Получено: ${totalPeriodPayments.toLocaleString('ru-RU')} ₽`);
+            addLog(`📉 Общий долг: ${totalClientDebt.toLocaleString('ru-RU')} ₽`);
 
         } catch (error: any) {
             console.error("Export error:", error);
@@ -291,24 +271,16 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                                 />
                                 <span className="text-sm text-slate-700">Только активные продажи</span>
                             </label>
-                            <label className="flex items-center space-x-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={includePlanned}
-                                    onChange={(e) => setIncludePlanned(e.target.checked)}
-                                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
-                                />
-                                <span className="text-sm text-slate-700">Включить плановые платежи <span className="text-xs text-slate-400">(для бэкапа)</span></span>
-                            </label>
+                         
                         </div>
                     </div>
 
                     <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-xs text-emerald-800">
                         <p className="font-bold mb-1">📋 Файл будет содержать 3 листа:</p>
                         <ul className="list-disc list-inside space-y-0.5">
-                            <li><b>Обзор клиентов</b> — все продажи с контактами</li>
+                            <li><b>Обзор клиентов</b> — продажи с точным остатком долга</li>
                             <li><b>История платежей</b> — оплаты за период + итого</li>
-                            <li><b>Сводка</b> — общая статистика</li>
+                            <li><b>Сводка</b> — поступления и общий долг</li>
                         </ul>
                     </div>
 
