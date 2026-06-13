@@ -296,7 +296,7 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                                 />
                                 <span className="text-sm text-slate-700">Только активные продажи</span>
                             </label>
-                           
+
                         </div>
                     </div>
 
