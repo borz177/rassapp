@@ -34,6 +34,27 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
         }
     };
 
+    // 🔧 НОВАЯ ФУНКЦИЯ: Автоматический расчёт ширины колонок
+    const calculateColumnWidths = (data: any[]): { wch: number }[] => {
+        if (!data || data.length === 0) return [];
+
+        const colWidths: Map<string, number> = new Map();
+
+        // Проходим по всем строкам и считаем максимальную длину для каждой колонки
+        for (const row of data) {
+            for (const [key, value] of Object.entries(row)) {
+                const cellValue = value === null || value === undefined ? '' : String(value);
+                // Берём максимум из текущей ширины и длины значения
+                const currentMax = colWidths.get(key) || key.length; // Учитываем и длину заголовка
+                const newLen = Math.max(currentMax, cellValue.length);
+                colWidths.set(key, newLen);
+            }
+        }
+
+        // Преобразуем в массив с небольшим отступом (+2 символа)
+        return Array.from(colWidths.values()).map(width => ({ wch: Math.min(width + 2, 50) }));
+    };
+
     const processExport = async () => {
         setIsProcessing(true);
         setLogs([]);
@@ -60,24 +81,24 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
             const paymentsData: any[] = [];
             let filteredSalesCount = 0;
 
+            // 🔧 НОВОЕ: Счётчики для сводки
+            let totalSalesAmount = 0;
+            let totalBuyPrice = 0;
+            let totalDownPayment = 0;
+            let totalPeriodPayments = 0;
+            let totalDebt = 0;
+
             for (const sale of sales) {
-                // 1. Фильтр: Только активные
-                if (onlyActive && sale.status === 'COMPLETED') {
-                    continue;
-                }
+                if (onlyActive && sale.status === 'COMPLETED') continue;
 
                 const saleDate = new Date(sale.startDate).getTime();
-
-                // 🔧 ИСПРАВЛЕНИЕ: Вариант C - показываем продажу, если она ОФОРМЛЕНА в периоде
-                if (saleDate < filterStart || saleDate > filterEnd) {
-                    continue; // Пропускаем продажу, если она не из этого периода
-                }
+                if (saleDate < filterStart || saleDate > filterEnd) continue;
 
                 filteredSalesCount++;
                 const customer = customers.find(c => c.id === sale.customerId);
                 const account = accounts.find(a => a.id === sale.accountId);
 
-                // 🔧 ИСПРАВЛЕНИЕ: Универсальный поиск инвестора через ownerId
+                // Универсальный поиск инвестора через ownerId
                 let investor: Investor | undefined;
                 if (account?.ownerId) {
                     investor = investors.find(i => i.id === account.ownerId);
@@ -85,7 +106,12 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
 
                 const statusStr = sale.status === 'COMPLETED' ? 'Завершен' : (sale.status === 'DRAFT' ? 'Оформлен' : 'Активен');
 
-                // === ЛИСТ 1: Обзор клиентов ===
+                // 🔧 Считаем суммы для сводки
+                totalSalesAmount += sale.totalAmount || 0;
+                totalBuyPrice += sale.buyPrice || 0;
+                totalDownPayment += sale.downPayment || 0;
+
+                // === ЛИСТ 1: Обзор клиентов (БЕЗ email/телефона/процента инвестора) ===
                 overviewData.push({
                     'Клиент': customer?.name || 'Неизвестный клиент',
                     'Товар': sale.productName || '',
@@ -94,12 +120,10 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                     'Адрес': customer?.address || '',
                     'Поручитель': sale.guarantorName || '',
                     'Телефон поручителя': sale.guarantorPhone || '',
-                    'Email инвестора': investor?.email || '',
-                    'Телефон инвестора': investor?.phone || '',
-                    '% прибыли инвестора': investor?.profitPercentage || 0,
                     'Цена закупа': sale.buyPrice || 0,
                     'Цена рассрочки': sale.totalAmount || 0,
                     'Взнос': sale.downPayment || 0,
+                    'Остаток долга': Math.max(0, (sale.totalAmount || 0) - (sale.downPayment || 0) - (sale.remainingAmount || 0)),
                     'Срок (мес)': sale.installments || 0,
                     'Дата оформления': new Date(sale.startDate).toLocaleDateString('ru-RU'),
                     'Дата первого платежа': sale.paymentPlan && sale.paymentPlan.length > 0
@@ -108,14 +132,13 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                     'Статус': statusStr
                 });
 
-                // === ЛИСТ 2: История платежей ===
+                // === ЛИСТ 2: История платежей (БЕЗ статуса платежа) ===
                 let paymentsToExport = sale.paymentPlan?.filter((p: Payment) => p.isRealPayment) || [];
 
                 if (includePlanned) {
                     paymentsToExport = sale.paymentPlan || [];
                 }
 
-                // 🔧 ИСПРАВЛЕНИЕ: Фильтруем платежи ТОЛЬКО из выбранного периода
                 paymentsToExport = paymentsToExport.filter((p: Payment) => {
                     const pDate = new Date(p.date).getTime();
                     return pDate >= filterStart && pDate <= filterEnd;
@@ -125,22 +148,25 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                     paymentsData.push({
                         'Клиент': customer?.name || 'Неизвестный клиент',
                         'Товар': sale.productName || '',
-                        'Статус платежа': 'Нет платежей в периоде',
                         'Статус товара': statusStr,
                         'Сумма': 0,
                         'Дата платежа': '',
-                        'Платёж': ''
+                        'Платёж': 'Нет платежей в периоде'
                     });
                 } else {
                     for (const payment of paymentsToExport) {
+                        // 🔧 Считаем сумму платежей за период
+                        if (payment.isRealPayment && payment.isPaid) {
+                            totalPeriodPayments += payment.amount || 0;
+                        }
+
                         paymentsData.push({
                             'Клиент': customer?.name || 'Неизвестный клиент',
                             'Товар': sale.productName || '',
-                            'Статус платежа': payment.isRealPayment ? (payment.isPaid ? 'Оплачен' : 'Просрочен/Ожидается') : 'Плановый',
                             'Статус товара': statusStr,
                             'Сумма': payment.amount || 0,
                             'Дата платежа': new Date(payment.date).toLocaleDateString('ru-RU'),
-                            'Платёж': payment.note || (payment.isRealPayment ? 'Импорт/Вручную' : 'План')
+                            'Платёж': payment.note || (payment.isRealPayment ? 'Оплата' : 'План')
                         });
                     }
                 }
@@ -153,23 +179,66 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                 return;
             }
 
+            // 🔧 НОВОЕ: Итоговая строка в истории платежей
+            paymentsData.push({}); // Пустая строка-разделитель
+            paymentsData.push({
+                'Клиент': 'ИТОГО ЗА ПЕРИОД:',
+                'Товар': `Продаж: ${filteredSalesCount}`,
+                'Статус товара': '',
+                'Сумма': totalPeriodPayments,
+                'Дата платежа': '',
+                'Платёж': ''
+            });
+
+            // 🔧 НОВОЕ: Лист "Сводка"
+            const summaryData = [
+                { 'Параметр': '📅 Период выгрузки', 'Значение': `${new Date(filterStart).toLocaleDateString('ru-RU')} — ${new Date(filterEnd).toLocaleDateString('ru-RU')}` },
+                { 'Параметр': '', 'Значение': '' },
+                { 'Параметр': '📦 Всего продаж', 'Значение': filteredSalesCount },
+                { 'Параметр': '💰 Общая сумма рассрочки', 'Значение': `${totalSalesAmount.toLocaleString('ru-RU')} ₽` },
+                { 'Параметр': '🏷️ Общая сумма закупок', 'Значение': `${totalBuyPrice.toLocaleString('ru-RU')} ₽` },
+                { 'Параметр': '💵 Сумма первоначальных взносов', 'Значение': `${totalDownPayment.toLocaleString('ru-RU')} ₽` },
+                { 'Параметр': '💳 Получено платежей за период', 'Значение': `${totalPeriodPayments.toLocaleString('ru-RU')} ₽` },
+                { 'Параметр': '', 'Значение': '' },
+                { 'Параметр': '📊 Средний чек продажи', 'Значение': `${filteredSalesCount > 0 ? (totalSalesAmount / filteredSalesCount).toLocaleString('ru-RU') : 0} ₽` },
+                { 'Параметр': '📈 Средний платёж', 'Значение': `${totalPeriodPayments.toLocaleString('ru-RU')} ₽` },
+                { 'Параметр': '', 'Значение': '' },
+                { 'Параметр': '🕐 Дата формирования', 'Значение': new Date().toLocaleString('ru-RU') },
+                { 'Параметр': '⚙️ Режим', 'Значение': `${onlyActive ? 'Только активные' : 'Все продажи'}${includePlanned ? ' + плановые платежи' : ''}` }
+            ];
+
             addLog(`📝 Формирование листов Excel...`);
             addLog(`   - "Обзор клиентов": ${overviewData.length} записей`);
             addLog(`   - "История платежей": ${paymentsData.length} записей`);
+            addLog(`   - "Сводка": ${summaryData.length} строк`);
 
             const wb = XLSX_LIB.utils.book_new();
 
+            // === ЛИСТ 1: Обзор клиентов ===
             const ws1 = XLSX_LIB.utils.json_to_sheet(overviewData);
+            ws1['!cols'] = calculateColumnWidths(overviewData);
+            ws1['!views'] = [{ state: 'frozen', ySplit: 1 }]; // Закрепляем шапку
+            ws1['!autofilter'] = { ref: `A1:${XLSX_LIB.utils.encode_col(overviewData[0] ? Object.keys(overviewData[0]).length - 1 : 0)}1` };
             XLSX_LIB.utils.book_append_sheet(wb, ws1, "Обзор клиентов");
 
+            // === ЛИСТ 2: История платежей ===
             const ws2 = XLSX_LIB.utils.json_to_sheet(paymentsData);
+            ws2['!cols'] = calculateColumnWidths(paymentsData);
+            ws2['!views'] = [{ state: 'frozen', ySplit: 1 }];
+            ws2['!autofilter'] = { ref: `A1:${XLSX_LIB.utils.encode_col(paymentsData[0] ? Object.keys(paymentsData[0]).length - 1 : 0)}1` };
             XLSX_LIB.utils.book_append_sheet(wb, ws2, "История платежей");
+
+            // === ЛИСТ 3: Сводка ===
+            const ws3 = XLSX_LIB.utils.json_to_sheet(summaryData);
+            ws3['!cols'] = [{ wch: 35 }, { wch: 40 }];
+            XLSX_LIB.utils.book_append_sheet(wb, ws3, "Сводка");
 
             const fileName = `Export_${startDate}_to_${endDate}.xlsx`;
             XLSX_LIB.writeFile(wb, fileName);
 
             addLog(`✅ Файл "${fileName}" успешно скачан!`);
-            addLog(`📈 Экспорт завершен.`);
+            addLog(`📈 Итого: ${filteredSalesCount} продаж на ${totalSalesAmount.toLocaleString('ru-RU')} ₽`);
+            addLog(`💳 Получено платежей за период: ${totalPeriodPayments.toLocaleString('ru-RU')} ₽`);
 
         } catch (error: any) {
             console.error("Export error:", error);
@@ -232,6 +301,15 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                                 <span className="text-sm text-slate-700">Включить плановые платежи <span className="text-xs text-slate-400">(для бэкапа)</span></span>
                             </label>
                         </div>
+                    </div>
+
+                    <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-xs text-emerald-800">
+                        <p className="font-bold mb-1">📋 Файл будет содержать 3 листа:</p>
+                        <ul className="list-disc list-inside space-y-0.5">
+                            <li><b>Обзор клиентов</b> — все продажи с контактами</li>
+                            <li><b>История платежей</b> — оплаты за период + итого</li>
+                            <li><b>Сводка</b> — общая статистика</li>
+                        </ul>
                     </div>
 
                     {logs.length > 0 && (
