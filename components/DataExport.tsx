@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { api } from '@/services/api';
 import { Customer, Sale, Account, Investor, Payment } from '../types';
 
@@ -12,14 +12,13 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
 
-    // === НОВЫЕ НАСТРОЙКИ ЭКСПОРТА ===
     const today = new Date().toISOString().split('T')[0];
     const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
     const [startDate, setStartDate] = useState<string>(firstDayOfMonth);
     const [endDate, setEndDate] = useState<string>(today);
-    const [onlyActive, setOnlyActive] = useState<boolean>(false); // По умолчанию выгружаем всё
-    const [includePlanned, setIncludePlanned] = useState<boolean>(false); // По умолчанию только реальные (для импорта)
+    const [onlyActive, setOnlyActive] = useState<boolean>(false);
+    const [includePlanned, setIncludePlanned] = useState<boolean>(false);
 
     const addLog = (msg: string) => setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
 
@@ -37,7 +36,7 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
 
     const processExport = async () => {
         setIsProcessing(true);
-        setLogs([]); // Очистка логов
+        setLogs([]);
         addLog("🚀 Начало подготовки данных...");
 
         let XLSX_LIB: any;
@@ -54,7 +53,6 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
             const { customers, sales, investors, accounts } = await api.fetchAllData();
             addLog(`📊 Загружено из базы: Клиентов=${customers.length}, Продаж=${sales.length}`);
 
-            // Парсим даты фильтров в начало и конец дня
             const filterStart = startDate ? new Date(startDate + 'T00:00:00').getTime() : 0;
             const filterEnd = endDate ? new Date(endDate + 'T23:59:59').getTime() : Infinity;
 
@@ -70,27 +68,18 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
 
                 const saleDate = new Date(sale.startDate).getTime();
 
-                // 2. Умный фильтр по датам:
-                // Продажа попадает в отчет, если ДАТА ОФОРМЛЕНИЯ в периоде
-                // ИЛИ если хоть один платеж попадает в период
-                let saleMatchesDateRange = (saleDate >= filterStart && saleDate <= filterEnd);
-
-                if (!saleMatchesDateRange) {
-                    const hasPaymentInRange = sale.paymentPlan?.some((p: Payment) => {
-                        const pDate = new Date(p.date).getTime();
-                        return pDate >= filterStart && pDate <= filterEnd;
-                    });
-                    if (!hasPaymentInRange) {
-                        continue; // Продажа и ее платежи не попадают в выбранный период
-                    }
+                // 🔧 ИСПРАВЛЕНИЕ: Вариант C - показываем продажу, если она ОФОРМЛЕНА в периоде
+                if (saleDate < filterStart || saleDate > filterEnd) {
+                    continue; // Пропускаем продажу, если она не из этого периода
                 }
 
                 filteredSalesCount++;
                 const customer = customers.find(c => c.id === sale.customerId);
                 const account = accounts.find(a => a.id === sale.accountId);
 
+                // 🔧 ИСПРАВЛЕНИЕ: Универсальный поиск инвестора через ownerId
                 let investor: Investor | undefined;
-                if (account && account.type === 'INVESTOR' && account.ownerId) {
+                if (account?.ownerId) {
                     investor = investors.find(i => i.id === account.ownerId);
                 }
 
@@ -123,11 +112,10 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                 let paymentsToExport = sale.paymentPlan?.filter((p: Payment) => p.isRealPayment) || [];
 
                 if (includePlanned) {
-                    // Если включена опция, добавляем и плановые (для полного бэкапа)
                     paymentsToExport = sale.paymentPlan || [];
                 }
 
-                // Фильтруем платежи по выбранному периоду
+                // 🔧 ИСПРАВЛЕНИЕ: Фильтруем платежи ТОЛЬКО из выбранного периода
                 paymentsToExport = paymentsToExport.filter((p: Payment) => {
                     const pDate = new Date(p.date).getTime();
                     return pDate >= filterStart && pDate <= filterEnd;
@@ -159,7 +147,7 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
             }
 
             if (filteredSalesCount === 0) {
-                addLog("⚠️ Внимание: За выбранный период и с учетом фильтров данных не найдено.");
+                addLog("⚠️ Внимание: За выбранный период данных не найдено.");
                 addLog("💡 Попробуйте расширить диапазон дат или снять галочку 'Только активные'.");
                 setIsProcessing(false);
                 return;
@@ -177,12 +165,11 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
             const ws2 = XLSX_LIB.utils.json_to_sheet(paymentsData);
             XLSX_LIB.utils.book_append_sheet(wb, ws2, "История платежей");
 
-            // Умное имя файла с датами
             const fileName = `Export_${startDate}_to_${endDate}.xlsx`;
             XLSX_LIB.writeFile(wb, fileName);
 
             addLog(`✅ Файл "${fileName}" успешно скачан!`);
-            addLog(`📈 Экспорт завершен. Этот файл полностью совместим с функцией "Импорт".`);
+            addLog(`📈 Экспорт завершен.`);
 
         } catch (error: any) {
             console.error("Export error:", error);
@@ -201,7 +188,6 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                 </div>
 
                 <div className="space-y-4">
-                    {/* Настройки фильтра */}
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                         <h4 className="font-bold text-slate-700 text-sm">⚙️ Настройки выгрузки</h4>
 
@@ -234,7 +220,7 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                                     onChange={(e) => setOnlyActive(e.target.checked)}
                                     className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
                                 />
-                                <span className="text-sm text-slate-700">Только активные продажи (игнорировать "Завершенные")</span>
+                                <span className="text-sm text-slate-700">Только активные продажи</span>
                             </label>
                             <label className="flex items-center space-x-2 cursor-pointer">
                                 <input
@@ -243,7 +229,7 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                                     onChange={(e) => setIncludePlanned(e.target.checked)}
                                     className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
                                 />
-                                <span className="text-sm text-slate-700">Включить плановые (будущие) платежи <span className="text-xs text-slate-400">(для бэкапа)</span></span>
+                                <span className="text-sm text-slate-700">Включить плановые платежи <span className="text-xs text-slate-400">(для бэкапа)</span></span>
                             </label>
                         </div>
                     </div>

@@ -276,16 +276,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
               </button>
           </div>
 
-          {/* Подсказка под кнопками */}
-          <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-xl">
-              <p className="text-xs text-amber-800 flex items-start gap-2">
-                  <span className="text-base leading-none">💡</span>
-                  <span>
-                      <b>Совет:</b> Сначала сделайте экспорт — получите файл с актуальными данными.
-                      Его можно использовать как шаблон для импорта на другом устройстве.
-                  </span>
-              </p>
-          </div>
+
       </div>
 
       {/* Legal Information Section */}
