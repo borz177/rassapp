@@ -4,6 +4,7 @@ import { ICONS, APP_VERSION, THEMES } from '../constants';
 import { PrivacyPolicy, DataProcessingAgreement } from './LegalDocs';
 import { api } from '../services/api';
 import DataImport from './DataImport';
+import DataExport from './DataExport'; // 👈 Добавили импорт компонента экспорта
 
 interface SettingsProps {
   appSettings: AppSettings;
@@ -19,8 +20,11 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
   // Clear Data Modal State
   const [showClearModal, setShowClearModal] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
-  const [confirmCooldown, setConfirmCooldown] = useState(0); // ⏱ Кулдаун для кнопки подтверждения
+  const [confirmCooldown, setConfirmCooldown] = useState(0);
+
+  // 👇 ДОБАВИЛИ: состояния для модалок импорта и экспорта
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Legal Docs View State
   const [legalView, setLegalView] = useState<'NONE' | 'PRIVACY' | 'AGREEMENT'>('NONE');
@@ -29,11 +33,10 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
     setCompanyName(appSettings.companyName);
   }, [appSettings]);
 
-  // 🔁 Эффект: при открытии модального окна запускаем 10-секундный кулдаун
   useEffect(() => {
     if (showClearModal) {
       setConfirmCooldown(10);
-      
+
       const timer = setInterval(() => {
         setConfirmCooldown(prev => {
           if (prev <= 1) {
@@ -65,15 +68,12 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
   };
 
   const handleClearData = async () => {
-    // Защита: не даём нажать, если кулдаун ещё не прошёл
     if (confirmCooldown > 0 || isClearing) return;
-    
+
     setIsClearing(true);
     try {
-        // 1. Сначала очищаем данные на сервере
         await api.resetAccountData();
 
-        // 2. Unregister Service Worker (чтобы остановить Workbox)
         if ('serviceWorker' in navigator) {
             const registrations = await navigator.serviceWorker.getRegistrations();
             for (const registration of registrations) {
@@ -81,7 +81,6 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
             }
         }
 
-        // 3. Очищаем IndexedDB базы
         if ('indexedDB' in window) {
             const dbNames = await window.indexedDB.databases?.().then(dbs => dbs.map(db => db.name)) || [];
             dbNames.forEach(dbName => {
@@ -92,18 +91,15 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
             });
         }
 
-        // 4. Очищаем localStorage и sessionStorage
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         sessionStorage.clear();
 
-        // 5. Очищаем кэш Cache Storage
         if ('caches' in window) {
             const cacheNames = await caches.keys();
             await Promise.all(cacheNames.map(name => caches.delete(name)));
         }
 
-        // 6. Перенаправляем на корень (не reload!)
         window.location.href = '/';
 
     } catch (error) {
@@ -117,7 +113,6 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       window.location.reload();
   };
 
-  // Закрытие модалки сбрасывает кулдаун
   const handleCloseClearModal = () => {
       setShowClearModal(false);
       setConfirmCooldown(0);
@@ -242,17 +237,55 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
           </button>
       </div>
 
-      {/* Data Import Section */}
+      {/* 👇 ОБЪЕДИНЁННЫЙ БЛОК: Работа с данными (Экспорт + Импорт) */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-semibold text-slate-800 mb-1">Импорт данных</h3>
-          <p className="text-sm text-slate-500 mb-4">Загрузите данные из Excel файла (клиенты, продажи, история).</p>
-          <button
-              onClick={() => setShowImportModal(true)}
-              className="w-full py-3 bg-indigo-50 text-indigo-600 font-bold rounded-xl hover:bg-indigo-100 border border-indigo-100 flex items-center justify-center gap-2 transition-colors"
-          >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Импортировать Excel
-          </button>
+          <h3 className="text-lg font-semibold text-slate-800 mb-1">Работа с данными</h3>
+          <p className="text-sm text-slate-500 mb-4">Выгружайте данные в Excel или загружайте из файла.</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Кнопка ЭКСПОРТА */}
+              <button
+                  onClick={() => setShowExportModal(true)}
+                  className="py-4 bg-emerald-50 text-emerald-700 font-bold rounded-xl hover:bg-emerald-100 border border-emerald-100 flex flex-col items-center justify-center gap-2 transition-colors group"
+              >
+                  <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                          <polyline points="7 10 12 15 17 10"/>
+                          <line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                  </div>
+                  <span className="text-sm">Экспорт в Excel</span>
+                  <span className="text-[10px] font-normal text-emerald-600/70">С фильтром по датам</span>
+              </button>
+
+              {/* Кнопка ИМПОРТА */}
+              <button
+                  onClick={() => setShowImportModal(true)}
+                  className="py-4 bg-indigo-50 text-indigo-700 font-bold rounded-xl hover:bg-indigo-100 border border-indigo-100 flex flex-col items-center justify-center gap-2 transition-colors group"
+              >
+                  <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                          <polyline points="17 8 12 3 7 8"/>
+                          <line x1="12" y1="3" x2="12" y2="15"/>
+                      </svg>
+                  </div>
+                  <span className="text-sm">Импорт из Excel</span>
+                  <span className="text-[10px] font-normal text-indigo-600/70">Клиенты, продажи, платежи</span>
+              </button>
+          </div>
+
+          {/* Подсказка под кнопками */}
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-100 rounded-xl">
+              <p className="text-xs text-amber-800 flex items-start gap-2">
+                  <span className="text-base leading-none">💡</span>
+                  <span>
+                      <b>Совет:</b> Сначала сделайте экспорт — получите файл с актуальными данными.
+                      Его можно использовать как шаблон для импорта на другом устройстве.
+                  </span>
+              </p>
+          </div>
       </div>
 
       {/* Legal Information Section */}
@@ -295,8 +328,8 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
 
       {/* Clear Data Modal */}
       {showClearModal && (
-          <div 
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" 
+          <div
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
               onClick={handleCloseClearModal}
           >
               <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-4" onClick={e => e.stopPropagation()}>
@@ -309,8 +342,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                           Это действие удалит ВСЕ данные (клиентов, продажи, настройки) с этого устройства. Восстановить их будет невозможно.
                       </p>
                   </div>
-                  
-                  {/* ⏱ Индикатор времени на раздумье */}
+
                   {confirmCooldown > 0 && (
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                           <p className="text-amber-800 text-sm font-medium">
@@ -318,17 +350,17 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                           </p>
                       </div>
                   )}
-                  
+
                   <div className="flex gap-3 pt-2">
-                      <button 
-                          onClick={handleCloseClearModal} 
+                      <button
+                          onClick={handleCloseClearModal}
                           className="flex-1 py-3 bg-slate-100 font-bold text-slate-600 rounded-xl hover:bg-slate-200 transition-colors"
                       >
                           Отмена
                       </button>
-                      <button 
-                          onClick={handleClearData} 
-                          disabled={confirmCooldown > 0 || isClearing} 
+                      <button
+                          onClick={handleClearData}
+                          disabled={confirmCooldown > 0 || isClearing}
                           className={`flex-1 py-3 font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
                               confirmCooldown > 0 || isClearing
                                   ? 'bg-red-300 text-red-100 cursor-not-allowed' 
@@ -350,11 +382,10 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                           )}
                       </button>
                   </div>
-                  
-                  {/* Прогресс-бар кулдауна */}
+
                   {confirmCooldown > 0 && (
                       <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                          <div 
+                          <div
                               className="bg-amber-400 h-full transition-all duration-1000 ease-linear"
                               style={{ width: `${(confirmCooldown / 10) * 100}%` }}
                           />
@@ -364,13 +395,16 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
           </div>
       )}
 
-      {/* Import Modal */}
+      {/* 👇 МОДАЛКА ЭКСПОРТА */}
+      {showExportModal && (
+        <DataExport onClose={() => setShowExportModal(false)} />
+      )}
+
+      {/* МОДАЛКА ИМПОРТА */}
       {showImportModal && (
         <DataImport
             onClose={() => setShowImportModal(false)}
             onImportSuccess={() => {
-                // Логи с дубликатами уже видны в окне импорта.
-                // Ждём 5 секунд, потом закрываем, показываем alert и перезагружаем.
                 setTimeout(() => {
                     setShowImportModal(false);
                     alert("✅ Данные успешно импортированы! Страница будет перезагружена.");
