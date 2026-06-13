@@ -456,13 +456,13 @@ useEffect(() => {
   if (!user || isPublicMode) return;
 
   const STORAGE_KEY = 'template_update_notice_last_shown_v2';
-  const FIVE_HOURS = 5 * 60 * 60 * 1000;
+  const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
   const now = Date.now();
 
   if (!lastShown || now - Number(lastShown) >= FIVE_HOURS) {
-    setShowTemplateUpdateModal(false);
+    setShowTemplateUpdateModal(true);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
@@ -2828,7 +2828,7 @@ if (!user && !showSplash) {
 )}
 
 
-        {showTemplateUpdateModal && (
+    {showTemplateUpdateModal && (
   <div
     className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
     onClick={() => setShowTemplateUpdateModal(false)}
@@ -2837,45 +2837,46 @@ if (!user && !showSplash) {
       className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
-      {/* Шапка с градиентом (синий/индиго для системных уведомлений) */}
-      <div className="p-5 bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
+      {/* Шапка с градиентом (Индиго + Изумрудный для позитивного обновления) */}
+      <div className="p-5 bg-gradient-to-r from-indigo-600 to-emerald-500 text-white">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-2xl">
-            🛠️
+          <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-2xl backdrop-blur-md">
+            📊
           </div>
           <div>
-            <h3 className="font-bold text-lg">Технические работы</h3>
-            <p className="text-white/80 text-xs">
-              Мы обновляем систему для улучшения стабильности
+            <h3 className="font-bold text-lg">Новое: Экспорт в Excel!</h3>
+            <p className="text-white/90 text-xs font-medium">
+              Профессиональные отчеты в один клик
             </p>
           </div>
         </div>
       </div>
 
       <div className="p-5 space-y-4">
-        {/* Основной блок информации */}
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+        {/* Основной блок с новыми функциями */}
+        <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 space-y-2">
+          <p className="text-sm font-semibold text-emerald-800 mb-2">Что нового:</p>
+          <ul className="space-y-2">
+            <li className="flex items-start gap-2 text-sm text-emerald-900">
+              <span className="text-emerald-600 mt-0.5">✅</span>
+              <span><b>Гибкие фильтры:</b> выгружайте данные за любой период.</span>
+            </li>
+            <li className="flex items-start gap-2 text-sm text-emerald-900">
+              <span className="text-emerald-600 mt-0.5">✅</span>
+              <span><b>3 умных листа:</b> «Обзор клиентов», «История платежей» и новая «Сводка» с итогами.</span>
+            </li>
 
-          <p className="text-sm text-blue-800 leading-relaxed">
-            В данный момент проводятся плановые технические работы. Некоторые функции могут быть недоступны или отвечать с небольшой задержкой.
-          </p>
+          </ul>
         </div>
 
-        {/* Блок с рекомендацией */}
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-          <p className="text-sm text-slate-700 leading-relaxed">
-            Мы стараемся завершить все процессы как можно скорее.
-          </p>
-          <p className="text-sm text-slate-700 leading-relaxed mt-2 font-medium">
-            Спасибо за ваше терпение!
-          </p>
-        </div>
+        {/* Блок с полезным советом (связь Экспорта и Импорта) */}
+
 
         <button
           onClick={() => setShowTemplateUpdateModal(false)}
-          className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
+          className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]"
         >
-          Понятно
+          Отлично! 🚀
         </button>
       </div>
     </div>

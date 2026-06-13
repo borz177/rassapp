@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '@/services/api';
 import { Customer, Sale, Account, Investor, Payment } from '../types';
 
@@ -12,13 +12,27 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
 
-    const today = new Date().toISOString().split('T')[0];
-    const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    // 🔧 НОВОЕ: Состояние для выбора "Весь период"
+    const [allTime, setAllTime] = useState<boolean>(true); // По умолчанию включено
 
-    const [startDate, setStartDate] = useState<string>(firstDayOfMonth);
-    const [endDate, setEndDate] = useState<string>(today);
+    const [startDate, setStartDate] = useState<string>("");
+    const [endDate, setEndDate] = useState<string>("");
+
     const [onlyActive, setOnlyActive] = useState<boolean>(false);
     const [includePlanned, setIncludePlanned] = useState<boolean>(false);
+
+    // 🔧 Эффект: при переключении "Весь период" очищаем или восстанавливаем даты
+    useEffect(() => {
+        if (allTime) {
+            setStartDate("");
+            setEndDate("");
+        } else {
+            const today = new Date().toISOString().split('T')[0];
+            const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+            setStartDate(firstDay);
+            setEndDate(today);
+        }
+    }, [allTime]);
 
     const addLog = (msg: string) => setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
 
@@ -67,6 +81,7 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
             const { customers, sales, investors, accounts } = await api.fetchAllData();
             addLog(`📊 Загружено из базы: Клиентов=${customers.length}, Продаж=${sales.length}`);
 
+            // 🔧 МАГИЯ: Если даты пустые, берем 0 и Infinity (то есть весь период)
             const filterStart = startDate ? new Date(startDate + 'T00:00:00').getTime() : 0;
             const filterEnd = endDate ? new Date(endDate + 'T23:59:59').getTime() : Infinity;
 
@@ -74,14 +89,15 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
             const paymentsData: any[] = [];
             let filteredSalesCount = 0;
 
-            // 🔧 Оставляем только нужные счётчики для сводки
             let totalPeriodPayments = 0;
-            let totalClientDebt = 0; // НОВЫЙ счётчик
+            let totalClientDebt = 0;
 
             for (const sale of sales) {
                 if (onlyActive && sale.status === 'COMPLETED') continue;
 
                 const saleDate = new Date(sale.startDate).getTime();
+
+                // Если saleDate попадает в диапазон (при allTime это всегда true, т.к. 0 <= saleDate <= Infinity)
                 if (saleDate < filterStart || saleDate > filterEnd) continue;
 
                 filteredSalesCount++;
@@ -95,17 +111,13 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
 
                 const statusStr = sale.status === 'COMPLETED' ? 'Завершен' : (sale.status === 'DRAFT' ? 'Оформлен' : 'Активен');
 
-                // 🔧 ИСПРАВЛЕНИЕ: Точный расчёт реального долга на основе платежного плана
                 const totalRealPaid = sale.paymentPlan
                     .filter((p: Payment) => p.isRealPayment && p.isPaid)
                     .reduce((sum, p) => sum + (p.amount || 0), 0);
 
                 const currentDebt = Math.max(0, (sale.totalAmount || 0) - (sale.downPayment || 0) - totalRealPaid);
-
-                // Добавляем долг этого клиента в общую копилку
                 totalClientDebt += currentDebt;
 
-                // === ЛИСТ 1: Обзор клиентов ===
                 overviewData.push({
                     'Клиент': customer?.name || 'Неизвестный клиент',
                     'Товар': sale.productName || '',
@@ -116,7 +128,7 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                     'Телефон поручителя': sale.guarantorPhone || '',
                     'Цена рассрочки': sale.totalAmount || 0,
                     'Взнос': sale.downPayment || 0,
-                    'Остаток долга': currentDebt, // 🔧 Теперь показывает правильную цифру!
+                    'Остаток долга': currentDebt,
                     'Срок (мес)': sale.installments || 0,
                     'Дата оформления': new Date(sale.startDate).toLocaleDateString('ru-RU'),
                     'Дата первого платежа': sale.paymentPlan && sale.paymentPlan.length > 0
@@ -125,7 +137,6 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                     'Статус': statusStr
                 });
 
-                // === ЛИСТ 2: История платежей ===
                 let paymentsToExport = sale.paymentPlan?.filter((p: Payment) => p.isRealPayment) || [];
                 if (includePlanned) {
                     paymentsToExport = sale.paymentPlan || [];
@@ -165,14 +176,13 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
 
             if (filteredSalesCount === 0) {
                 addLog("⚠️ Внимание: За выбранный период данных не найдено.");
-                addLog("💡 Попробуйте расширить диапазон дат или снять галочку 'Только активные'.");
                 setIsProcessing(false);
                 return;
             }
 
-            paymentsData.push({}); // Пустая строка-разделитель
+            paymentsData.push({});
             paymentsData.push({
-                'Клиент': 'ИТОГО ЗА ПЕРИОД:',
+                'Клиент': 'ИТОГО:',
                 'Товар': `Продаж: ${filteredSalesCount}`,
                 'Статус товара': '',
                 'Сумма': totalPeriodPayments,
@@ -180,20 +190,22 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                 'Платёж': ''
             });
 
-            // 🔧 ОБНОВЛЁННАЯ СВОДКА (только самое важное)
+            // 🔧 Адаптивный текст для сводки
+            const periodText = allTime
+                ? 'Весь период (с начала работы)'
+                : `${new Date(filterStart).toLocaleDateString('ru-RU')} — ${new Date(filterEnd).toLocaleDateString('ru-RU')}`;
+
             const summaryData = [
-                { 'Параметр': '📅 Период выгрузки', 'Значение': `${new Date(filterStart).toLocaleDateString('ru-RU')} — ${new Date(filterEnd).toLocaleDateString('ru-RU')}` },
+                { 'Параметр': '📅 Период выгрузки', 'Значение': periodText },
                 { 'Параметр': '', 'Значение': '' },
-                { 'Параметр': '💳 Получено платежей за период', 'Значение': `${totalPeriodPayments.toLocaleString('ru-RU')} ₽` },
-                { 'Параметр': '📉 Общий долг клиентов (по этим продажам)', 'Значение': `${totalClientDebt.toLocaleString('ru-RU')} ₽` },
+                { 'Параметр': '💳 Получено платежей', 'Значение': `${totalPeriodPayments.toLocaleString('ru-RU')} ₽` },
+                { 'Параметр': '📉 Общий долг клиентов', 'Значение': `${totalClientDebt.toLocaleString('ru-RU')} ₽` },
                 { 'Параметр': '', 'Значение': '' },
-                { 'Параметр': '🕐 Дата формирования отчёта', 'Значение': new Date().toLocaleString('ru-RU') }
+                { 'Параметр': '🕐 Дата формирования', 'Значение': new Date().toLocaleString('ru-RU') }
             ];
 
             addLog(`📝 Формирование листов Excel...`);
-            addLog(`   - "Обзор клиентов": ${overviewData.length} записей`);
-            addLog(`   - "История платежей": ${paymentsData.length} записей`);
-            addLog(`   - "Сводка": сформирована`);
+            addLog(`   - Найдено продаж: ${filteredSalesCount}`);
 
             const wb = XLSX_LIB.utils.book_new();
 
@@ -213,12 +225,13 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
             ws3['!cols'] = [{ wch: 45 }, { wch: 40 }];
             XLSX_LIB.utils.book_append_sheet(wb, ws3, "Сводка");
 
-            const fileName = `Export_${startDate}_to_${endDate}.xlsx`;
+            const fileName = allTime
+                ? `Export_All_Time_${new Date().toISOString().slice(0, 10)}.xlsx`
+                : `Export_${startDate}_to_${endDate}.xlsx`;
+
             XLSX_LIB.writeFile(wb, fileName);
 
             addLog(`✅ Файл "${fileName}" успешно скачан!`);
-            addLog(`💳 Получено: ${totalPeriodPayments.toLocaleString('ru-RU')} ₽`);
-            addLog(`📉 Общий долг: ${totalClientDebt.toLocaleString('ru-RU')} ₽`);
 
         } catch (error: any) {
             console.error("Export error:", error);
@@ -240,7 +253,19 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                         <h4 className="font-bold text-slate-700 text-sm">⚙️ Настройки выгрузки</h4>
 
-                        <div className="grid grid-cols-2 gap-3">
+                        {/* 🔧 НОВОЕ: Переключатель "Весь период" */}
+                        <label className="flex items-center space-x-2 cursor-pointer bg-white p-3 rounded-lg border border-slate-200 hover:border-indigo-300 transition-colors">
+                            <input
+                                type="checkbox"
+                                checked={allTime}
+                                onChange={(e) => setAllTime(e.target.checked)}
+                                className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                            />
+                            <span className="text-sm font-medium text-slate-800">Выгрузить за весь период</span>
+                        </label>
+
+                        {/* Блок дат: блокируется, если выбран "Весь период" */}
+                        <div className={`grid grid-cols-2 gap-3 transition-all duration-300 ${allTime ? 'opacity-40 pointer-events-none grayscale' : ''}`}>
                             <div>
                                 <label className="block text-xs font-medium text-slate-500 mb-1">Дата с</label>
                                 <input
@@ -271,7 +296,7 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                                 />
                                 <span className="text-sm text-slate-700">Только активные продажи</span>
                             </label>
-                         
+                           
                         </div>
                     </div>
 
@@ -279,7 +304,7 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                         <p className="font-bold mb-1">📋 Файл будет содержать 3 листа:</p>
                         <ul className="list-disc list-inside space-y-0.5">
                             <li><b>Обзор клиентов</b> — продажи с точным остатком долга</li>
-                            <li><b>История платежей</b> — оплаты за период + итого</li>
+                            <li><b>История платежей</b> — оплаты + итого</li>
                             <li><b>Сводка</b> — поступления и общий долг</li>
                         </ul>
                     </div>
