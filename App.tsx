@@ -451,6 +451,28 @@ useEffect(() => {
 
 
 
+
+
+
+
+// 🔥 Мгновенная фильтрация стейта при изменении пользователя или его прав
+useEffect(() => {
+    if (user?.role === 'employee' && user.allowedInvestorIds) {
+        const allowedIds = user.allowedInvestorIds;
+        if (allowedIds.length > 0) {
+            const filteredAccounts = accounts.filter(acc => acc.ownerId && allowedIds.includes(acc.ownerId));
+            const allowedAccountIds = new Set(filteredAccounts.map(acc => acc.id));
+            
+            setInvestors(prev => prev.filter(inv => allowedIds.includes(inv.id)));
+            setAccounts(filteredAccounts);
+            setSales(prev => prev.filter(s => s.accountId && allowedAccountIds.has(s.accountId)));
+            setExpenses(prev => prev.filter(e => e.accountId && allowedAccountIds.has(e.accountId)));
+        }
+    }
+}, [user]); 
+
+
+
 //для модалки сообщения
 useEffect(() => {
   if (!user || isPublicMode) return;
@@ -568,22 +590,24 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 
   // ... (Access checks and calculation logic remain the same)
   const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES'): boolean => {
-      if (!user) return false;
-      if (isEmployee || isInvestor || user.role === 'admin') return true;
-      const sub = user.subscription || { plan: 'TRIAL', expiresAt: new Date(0).toISOString() };
-      const isExpired = new Date() > new Date(sub.expiresAt);
-      if (isExpired && feature === 'WRITE') return false;
-      const plan = sub.plan;
-      switch(feature) {
-          case 'WRITE': return !isExpired;
-          case 'INVESTORS': return (plan === 'START' && investors.length < 1) || (plan === 'STANDARD' && investors.length < 5) || true;
-          case 'AI': return plan === 'BUSINESS' || plan === 'TRIAL';
-          case 'WHATSAPP': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'TRIAL';
-          case 'EMPLOYEES': return plan === 'BUSINESS' || plan === 'TRIAL';
-          default: return true;
-      }
-  };
-
+    if (!user) return false;
+    if (isEmployee || isInvestor || user.role === 'admin') return true;
+    
+    const sub = user.subscription || { plan: 'TRIAL', expiresAt: new Date(0).toISOString() };
+    const isExpired = new Date() > new Date(sub.expiresAt);
+    if (isExpired && feature === 'WRITE') return false;
+    
+    const plan = sub.plan;
+    switch(feature) {
+        case 'WRITE': return !isExpired;
+        case 'INVESTORS': return (plan === 'START' && investors.length < 1) || (plan === 'STANDARD' && investors.length < 5) || true;
+        case 'AI': return plan === 'BUSINESS' || plan === 'TRIAL';
+        case 'WHATSAPP': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'TRIAL';
+        // 🔥 ИСПРАВЛЕНО: TRIAL имеет лимит 0, поэтому разрешаем только STANDARD и BUSINESS
+        case 'EMPLOYEES': return plan === 'BUSINESS' || plan === 'STANDARD'; 
+        default: return true;
+    }
+};
   const showUpgradeAlert = (reason: string) => { if(window.confirm(`${reason} Оформите подписку для доступа.`)) { setCurrentView('TARIFFS'); } };
 
   // ... (Stats calculations omitted for brevity as they are unchanged) ...
@@ -869,26 +893,23 @@ const updateList = <T extends { id: string }>(
 const removeFromList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, id: string) => { setter(prev => prev.filter(i => i.id !== id)); };
 
 // 🔹 Фильтрация данных для сотрудника по разрешённым инвесторам
-const filterDataForEmployee = <T extends { accountId?: string; ownerId?: string }>(
-  items: T[],
-  allowedInvestorIds: string[] | undefined,
-  accounts: Account[]
-): T[] => {
-  // Если нет ограничений — возвращаем всё
-  if (!allowedInvestorIds || allowedInvestorIds.length === 0) return items;
-
-  return items.filter(item => {
-    // Если у элемента есть accountId — проверяем, принадлежит ли он разрешённому инвестору
-    if (item.accountId) {
-      const account = accounts.find(a => a.id === item.accountId);
-      return account?.ownerId && allowedInvestorIds.includes(account.ownerId);
-    }
-    // Если у элемента есть ownerId (например, сам инвестор)
-    if (item.ownerId) {
-      return allowedInvestorIds.includes(item.ownerId);
-    }
-    return false;
-  });
+const filterDataForEmployeeClient = (data: any, allowedIds: string[]) => {
+    if (!allowedIds || allowedIds.length === 0) return data;
+    
+    const filteredInvestors = (data.investors || []).filter((inv: Investor) => allowedIds.includes(inv.id));
+    const filteredAccounts = (data.accounts || []).filter((acc: Account) => acc.ownerId && allowedIds.includes(acc.ownerId));
+    const allowedAccountIds = new Set(filteredAccounts.map((acc: Account) => acc.id));
+    
+    const filteredSales = (data.sales || []).filter((s: Sale) => s.accountId && allowedAccountIds.has(s.accountId));
+    const filteredExpenses = (data.expenses || []).filter((e: Expense) => e.accountId && allowedAccountIds.has(e.accountId));
+    
+    return {
+        ...data,
+        investors: filteredInvestors,
+        accounts: filteredAccounts,
+        sales: filteredSales,
+        expenses: filteredExpenses
+    };
 };
 
 // ✅ ОБНОВЛЁННЫЙ handleSaveSale — проверка лимита + правильная обработка ошибок

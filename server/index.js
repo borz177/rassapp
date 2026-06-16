@@ -68,50 +68,39 @@ const PLAN_LIMITS = {
 
 // 🔹 Фильтрация данных для сотрудника по allowed_investor_ids
 const filterDataForEmployee = (dataByType, allowedInvestorIds) => {
-  // Если нет ограничений — возвращаем всё
-  if (!allowedInvestorIds || allowedInvestorIds.length === 0) return dataByType;
+    // Если массив пустой, возвращаем всё (или можно возвращать пустые массивы, если логика "пусто = ничего не видно")
+    if (!allowedInvestorIds || allowedInvestorIds.length === 0) return dataByType;
 
-  const filtered = { ...dataByType };
+    const filtered = { ...dataByType };
 
-  // 1. Фильтруем инвесторов
-  filtered.investors = (filtered.investors || []).filter(inv =>
-    allowedInvestorIds.includes(inv.id)
-  );
-
-  // 2. Создаём сет разрешённых account.ownerId для быстрой проверки
-  const allowedAccountOwnerIds = new Set(
-    filtered.investors.map(inv => inv.id)
-  );
-
-  // 3. Фильтруем счета (только те, что принадлежат разрешённым инвесторам)
-  filtered.accounts = (filtered.accounts || []).filter(acc =>
-    !acc.ownerId || allowedAccountOwnerIds.has(acc.ownerId)
-  );
-
-  // 4. Создаём сет разрешённых accountId
-  const allowedAccountIds = new Set(
-    filtered.accounts.map(acc => acc.id)
-  );
-
-  // 5. Фильтруем продажи и расходы по accountId
-  filtered.sales = (filtered.sales || []).filter(sale =>
-    !sale.accountId || allowedAccountIds.has(sale.accountId)
-  );
-
-  filtered.expenses = (filtered.expenses || []).filter(expense =>
-    !expense.accountId || allowedAccountIds.has(expense.accountId)
-  );
-
-  // 6. Партнёрства (если есть связь с инвесторами)
-  if (filtered.partnerships) {
-    filtered.partnerships = filtered.partnerships.filter(p =>
-      !p.partnerIds || p.partnerIds.some(pid => allowedInvestorIds.includes(pid))
+    // 1. Инвесторы: только разрешенные
+    filtered.investors = (filtered.investors || []).filter(inv => 
+        allowedInvestorIds.includes(inv.id)
     );
-  }
 
-  // 7. Клиентов НЕ фильтруем (они общие), но на фронте можно скрыть их сделки
+    // 2. Счета: ТОЛЬКО те, что принадлежат разрешенным инвесторам (убрали !acc.ownerId)
+    const allowedAccountOwnerIds = new Set(filtered.investors.map(inv => inv.id));
+    filtered.accounts = (filtered.accounts || []).filter(acc => 
+        acc.ownerId && allowedAccountOwnerIds.has(acc.ownerId)
+    );
 
-  return filtered;
+    // 3. Продажи и расходы: только те, что привязаны к разрешенным счетам (убрали !sale.accountId)
+    const allowedAccountIds = new Set(filtered.accounts.map(acc => acc.id));
+    filtered.sales = (filtered.sales || []).filter(sale => 
+        sale.accountId && allowedAccountIds.has(sale.accountId)
+    );
+    filtered.expenses = (filtered.expenses || []).filter(expense => 
+        expense.accountId && allowedAccountIds.has(expense.accountId)
+    );
+
+    // 4. Партнерства
+    if (filtered.partnerships) {
+        filtered.partnerships = filtered.partnerships.filter(p => 
+            p.partnerIds && p.partnerIds.some(pid => allowedInvestorIds.includes(pid))
+        );
+    }
+
+    return filtered;
 };
 
 
@@ -1618,6 +1607,14 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     if (!isMatch) return res.status(400).json({ msg: 'Неверные учетные данные' });
     
     const token = jwt.sign({ id: user.id, role: user.role, managerId: user.manager_id }, JWT_SECRET, { expiresIn: '90d' });
+
+    let subscription = user.subscription;
+if (user.role === 'employee' && user.manager_id) {
+    const managerRes = await pool.query('SELECT subscription FROM users WHERE id = $1', [user.manager_id]);
+    if (managerRes.rows.length > 0 && managerRes.rows[0].subscription) {
+        subscription = managerRes.rows[0].subscription;
+    }
+}
     
     res.json({
       token,
@@ -1629,7 +1626,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
         managerId: user.manager_id,
         permissions: user.permissions,
         allowedInvestorIds: user.allowed_investor_ids,
-        subscription: user.subscription,
+        subscription: subscription,
         whatsapp_settings: user.whatsapp_settings
       }
     });
@@ -1654,6 +1651,14 @@ app.get('/api/auth/me', auth, async (req, res) => {
 
     const user = result.rows[0];
 
+    let subscription = user.subscription;
+if (user.role === 'employee' && user.manager_id) {
+    const managerRes = await pool.query('SELECT subscription FROM users WHERE id = $1', [user.manager_id]);
+    if (managerRes.rows.length > 0 && managerRes.rows[0].subscription) {
+        subscription = managerRes.rows[0].subscription;
+    }
+}
+
     // 🔥 ДОБАВИЛИ phone в ответ
     res.json({
       id: user.id,
@@ -1662,7 +1667,7 @@ app.get('/api/auth/me', auth, async (req, res) => {
       phone: user.phone,  // ← 🔥 ЭТОГО НЕ ХВАТАЛО!
       role: user.role,
       managerId: user.manager_id,
-      subscription: user.subscription,
+      subscription: subscription,
       whatsapp_settings: user.whatsapp_settings,
       apiKey: user.role === 'admin' ? user.api_key : undefined
     });
@@ -2089,6 +2094,28 @@ app.post('/api/users/manage', auth, async (req, res) => {
     // ========================================
     if (action === 'create') {
       const { name, email, password, role, permissions, allowedInvestorIds, phone } = userData;
+
+
+      if (role === 'employee') {
+        const managerSubRes = await pool.query('SELECT subscription FROM users WHERE id = $1', [req.user.id]);
+        const managerSubRaw = managerSubRes.rows[0]?.subscription;
+        const managerSub = typeof managerSubRaw === 'string' ? JSON.parse(managerSubRaw) : managerSubRaw;
+        const plan = managerSub?.plan || 'TRIAL';
+        const limits = PLAN_LIMITS[plan];
+        
+        if (limits && limits.employees !== -1) {
+            const empCountRes = await pool.query(
+                "SELECT COUNT(*) FROM users WHERE manager_id = $1 AND role = 'employee'",
+                [req.user.id]
+            );
+            const currentCount = parseInt(empCountRes.rows[0].count, 10);
+            if (currentCount >= limits.employees) {
+                return res.status(403).json({ 
+                    msg: `Превышен лимит сотрудников для тарифа "${plan}". Максимум: ${limits.employees}.` 
+                });
+            }
+        }
+    }
 
       // 🔹 Проверка email (регистронезависимая)
       const userCheck = await pool.query(
