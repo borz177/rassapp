@@ -68,41 +68,47 @@ const PLAN_LIMITS = {
 
 // 🔹 Фильтрация данных для сотрудника по allowed_investor_ids
 const filterDataForEmployee = (dataByType, allowedInvestorIds) => {
-    // Если массив пустой, возвращаем всё (или можно возвращать пустые массивы, если логика "пусто = ничего не видно")
-    if (!allowedInvestorIds || allowedInvestorIds.length === 0) return dataByType;
+    // 🔥 ИСПРАВЛЕНИЕ: Если массив пустой, возвращаем пустые данные, а не всё подряд!
+    if (!allowedInvestorIds || allowedInvestorIds.length === 0) {
+        return { 
+            ...dataByType, 
+            investors: [], 
+            accounts: [], 
+            sales: [], 
+            expenses: [], 
+            partnerships: [] 
+        };
+    }
 
     const filtered = { ...dataByType };
+    const hasMainAccess = allowedInvestorIds.includes('MAIN_ACCOUNT');
+    const investorIds = allowedInvestorIds.filter(id => id !== 'MAIN_ACCOUNT');
 
     // 1. Инвесторы: только разрешенные
-    filtered.investors = (filtered.investors || []).filter(inv => 
-        allowedInvestorIds.includes(inv.id)
-    );
+    filtered.investors = (filtered.investors || []).filter(inv => investorIds.includes(inv.id));
 
-    // 2. Счета: ТОЛЬКО те, что принадлежат разрешенным инвесторам (убрали !acc.ownerId)
-    const allowedAccountOwnerIds = new Set(filtered.investors.map(inv => inv.id));
-    filtered.accounts = (filtered.accounts || []).filter(acc => 
-        acc.ownerId && allowedAccountOwnerIds.has(acc.ownerId)
-    );
+    // 2. Счета: разрешенные инвесторы ИЛИ основной счет (если есть доступ)
+    filtered.accounts = (filtered.accounts || []).filter(acc => {
+        const isMainAccount = !acc.ownerId || acc.type === 'MAIN';
+        if (isMainAccount && hasMainAccess) return true;
+        if (acc.ownerId && investorIds.includes(acc.ownerId)) return true;
+        return false;
+    });
 
-    // 3. Продажи и расходы: только те, что привязаны к разрешенным счетам (убрали !sale.accountId)
+    // 3. Продажи и расходы: только те, что привязаны к разрешенным счетам
     const allowedAccountIds = new Set(filtered.accounts.map(acc => acc.id));
-    filtered.sales = (filtered.sales || []).filter(sale => 
-        sale.accountId && allowedAccountIds.has(sale.accountId)
-    );
-    filtered.expenses = (filtered.expenses || []).filter(expense => 
-        expense.accountId && allowedAccountIds.has(expense.accountId)
-    );
+    filtered.sales = (filtered.sales || []).filter(sale => sale.accountId && allowedAccountIds.has(sale.accountId));
+    filtered.expenses = (filtered.expenses || []).filter(expense => expense.accountId && allowedAccountIds.has(expense.accountId));
 
     // 4. Партнерства
     if (filtered.partnerships) {
         filtered.partnerships = filtered.partnerships.filter(p => 
-            p.partnerIds && p.partnerIds.some(pid => allowedInvestorIds.includes(pid))
+            p.partnerIds && p.partnerIds.some(pid => investorIds.includes(pid))
         );
     }
 
     return filtered;
 };
-
 
 // 🔹 ХЕЛПЕР: Парсинг allowed_investor_ids (может быть строкой JSON или массивом)
 const parseAllowedInvestorIds = (ids) => {

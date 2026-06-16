@@ -455,22 +455,38 @@ useEffect(() => {
 
 
 
-// 🔥 Мгновенная фильтрация стейта при изменении пользователя или его прав
+// 🔥 Мгновенная фильтрация стейта при изменении пользователя, его прав или списка счетов
 useEffect(() => {
-    if (user?.role === 'employee' && user.allowedInvestorIds) {
-        const allowedIds = user.allowedInvestorIds;
-        if (allowedIds.length > 0) {
-            const filteredAccounts = accounts.filter(acc => acc.ownerId && allowedIds.includes(acc.ownerId));
-            const allowedAccountIds = new Set(filteredAccounts.map(acc => acc.id));
-            
-            setInvestors(prev => prev.filter(inv => allowedIds.includes(inv.id)));
-            setAccounts(filteredAccounts);
-            setSales(prev => prev.filter(s => s.accountId && allowedAccountIds.has(s.accountId)));
-            setExpenses(prev => prev.filter(e => e.accountId && allowedAccountIds.has(e.accountId)));
-        }
-    }
-}, [user]); 
+    if (user?.role === 'employee') {
+        const allowedIds = user.allowedInvestorIds || [];
+        const hasMainAccess = allowedIds.includes('MAIN_ACCOUNT');
+        const investorIds = allowedIds.filter(id => id !== 'MAIN_ACCOUNT');
 
+        // 1. Инвесторы: только те, что явно разрешены
+        setInvestors(prev => prev.filter(inv => investorIds.includes(inv.id)));
+
+        // 2. Счета: разрешенные инвесторы ИЛИ основной счет (если есть доступ)
+        const filteredAccounts = accounts.filter(acc => {
+            const isMainAccount = !acc.ownerId || acc.type === 'MAIN';
+            if (isMainAccount && hasMainAccess) return true;
+            if (acc.ownerId && investorIds.includes(acc.ownerId)) return true;
+            return false;
+        });
+        setAccounts(filteredAccounts);
+
+        // 3. Создаем Set разрешенных ID счетов для мгновенной проверки (O(1))
+        const allowedAccountIds = new Set(filteredAccounts.map(acc => acc.id));
+
+        // 4. Продажи и расходы: только те, что привязаны к разрешенным счетам
+        setSales(prev => prev.filter(s => s.accountId && allowedAccountIds.has(s.accountId)));
+        setExpenses(prev => prev.filter(e => e.accountId && allowedAccountIds.has(e.accountId)));
+        
+        // 5. Партнерства (если используете): только те, где есть разрешенные инвесторы
+        setPartnerships(prev => prev.filter(p => 
+            p.partnerIds && p.partnerIds.some(pid => investorIds.includes(pid))
+        ));
+    }
+}, [user, accounts]); // 🔥 Важно: добавили accounts в зависимости для реактивности
 
 
 //для модалки сообщения
@@ -894,15 +910,31 @@ const removeFromList = <T extends { id: string }>(setter: React.Dispatch<React.S
 
 // 🔹 Фильтрация данных для сотрудника по разрешённым инвесторам
 const filterDataForEmployeeClient = (data: any, allowedIds: string[]) => {
-    if (!allowedIds || allowedIds.length === 0) return data;
-    
-    const filteredInvestors = (data.investors || []).filter((inv: Investor) => allowedIds.includes(inv.id));
-    const filteredAccounts = (data.accounts || []).filter((acc: Account) => acc.ownerId && allowedIds.includes(acc.ownerId));
+    // Если массив пустой, сотрудник не видит ничего (кроме своих настроек)
+    if (!allowedIds || allowedIds.length === 0) {
+        return { ...data, investors: [], accounts: [], sales: [], expenses: [] };
+    }
+
+    const hasMainAccess = allowedIds.includes('MAIN_ACCOUNT');
+    const investorIds = allowedIds.filter((id: string) => id !== 'MAIN_ACCOUNT');
+
+    // 1. Инвесторы
+    const filteredInvestors = (data.investors || []).filter((inv: Investor) => investorIds.includes(inv.id));
+
+    // 2. Счета: разрешенные инвесторы ИЛИ основной счет
+    const filteredAccounts = (data.accounts || []).filter((acc: Account) => {
+        const isMainAccount = !acc.ownerId || acc.type === 'MAIN';
+        if (isMainAccount && hasMainAccess) return true; // Разрешаем основной счет
+        if (acc.ownerId && investorIds.includes(acc.ownerId)) return true; // Разрешаем счет инвестора
+        return false;
+    });
+
     const allowedAccountIds = new Set(filteredAccounts.map((acc: Account) => acc.id));
-    
+
+    // 3. Продажи и расходы только по разрешенным счетам
     const filteredSales = (data.sales || []).filter((s: Sale) => s.accountId && allowedAccountIds.has(s.accountId));
     const filteredExpenses = (data.expenses || []).filter((e: Expense) => e.accountId && allowedAccountIds.has(e.accountId));
-    
+
     return {
         ...data,
         investors: filteredInvestors,

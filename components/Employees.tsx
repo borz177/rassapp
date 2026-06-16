@@ -21,6 +21,9 @@ const Employees: React.FC<EmployeesProps> = ({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+const [allowMainAccount, setAllowMainAccount] = useState(false);
+
   const [permissions, setPermissions] = useState({
       canCreate: true,
       canEdit: false,
@@ -29,24 +32,29 @@ const Employees: React.FC<EmployeesProps> = ({
   const [allowedInvestorIds, setAllowedInvestorIds] = useState<string[]>([]);
 
   const resetForm = () => {
-      setName('');
-      setEmail('');
-      setPassword('');
-      setPermissions({ canCreate: true, canEdit: false, canDelete: false });
-      setAllowedInvestorIds([]);
-      setEditingId(null);
-      setIsAdding(false);
-  };
+    setName('');
+    setEmail('');
+    setPassword('');
+    setPermissions({ canCreate: true, canEdit: false, canDelete: false });
+    setAllowedInvestorIds([]);
+    setAllowMainAccount(false); // <-- СБРОС
+    setEditingId(null);
+    setIsAdding(false);
+};
 
   const handleStartEdit = (emp: User) => {
-      setName(emp.name);
-      setEmail(emp.email);
-      setPassword(''); // Keep empty unless changing
-      setPermissions(emp.permissions || { canCreate: false, canEdit: false, canDelete: false });
-      setAllowedInvestorIds(emp.allowedInvestorIds || []);
-      setEditingId(emp.id);
-      setIsAdding(true);
-  };
+    setName(emp.name);
+    setEmail(emp.email);
+    setPassword(''); 
+    setPermissions(emp.permissions || { canCreate: false, canEdit: false, canDelete: false });
+    
+    const ids = emp.allowedInvestorIds || [];
+    setAllowedInvestorIds(ids.filter((id: string) => id !== 'MAIN_ACCOUNT'));
+    setAllowMainAccount(ids.includes('MAIN_ACCOUNT')); // <-- ЧТЕНИЕ
+    
+    setEditingId(emp.id);
+    setIsAdding(true);
+};
 
   const handleInvestorToggle = (id: string) => {
       setAllowedInvestorIds(prev => 
@@ -54,42 +62,44 @@ const Employees: React.FC<EmployeesProps> = ({
       );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!name || !email) {
-          alert("Заполните имя и email");
-          return;
-      }
+const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !email) {
+        alert("Заполните имя и email");
+        return;
+    }
 
-      const employeeData = {
-          name,
-          email,
-          permissions,
-          allowedInvestorIds
-      };
+    // Формируем итоговый массив: инвесторы + 'MAIN_ACCOUNT' если нужно
+    const finalAllowedIds = allowMainAccount 
+        ? [...new Set([...allowedInvestorIds, 'MAIN_ACCOUNT'])] 
+        : allowedInvestorIds.filter((id: string) => id !== 'MAIN_ACCOUNT');
 
-      if (editingId) {
-          // Update
-          const original = employees.find(e => e.id === editingId);
-          if (original) {
-              const updated = {
-                  ...original,
-                  ...employeeData,
-                  // Only update password if provided
-                  password: password ? password : original.password 
-              };
-              onUpdateEmployee(updated);
-          }
-      } else {
-          // Create
-          if (!password) {
-              alert("Для нового сотрудника нужен пароль");
-              return;
-          }
-          onAddEmployee({ ...employeeData, password });
-      }
-      resetForm();
-  };
+    const employeeData = {
+        name,
+        email,
+        permissions,
+        allowedInvestorIds: finalAllowedIds // <-- ИСПОЛЬЗУЕМ ИТОГОВЫЙ МАССИВ
+    };
+
+    if (editingId) {
+        const original = employees.find(e => e.id === editingId);
+        if (original) {
+            const updated = {
+                ...original,
+                ...employeeData,
+                password: password ? password : original.password
+            };
+            onUpdateEmployee(updated);
+        }
+    } else {
+        if (!password) {
+            alert("Для нового сотрудника нужен пароль");
+            return;
+        }
+        onAddEmployee({ ...employeeData, password });
+    }
+    resetForm();
+};
 
   const handleDelete = (id: string) => {
       if (window.confirm("Удалить сотрудника?")) {
@@ -180,28 +190,47 @@ const Employees: React.FC<EmployeesProps> = ({
               </div>
 
               {/* Investor Access */}
-              <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-                  <h4 className="text-sm font-bold text-slate-600">Доступ к инвесторам</h4>
-                  <p className="text-xs text-slate-500 mb-2">Отметьте инвесторов, данные которых будет видеть этот сотрудник.</p>
-                  
-                  <div className="max-h-40 overflow-y-auto space-y-2 border border-slate-200 rounded-lg p-2 bg-white">
-                      {investors.length === 0 && <p className="text-xs text-slate-400 p-2">Нет инвесторов</p>}
-                      {investors.map(inv => (
-                          <label key={inv.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer">
-                              <input 
-                                type="checkbox"
-                                className="w-5 h-5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
-                                checked={allowedInvestorIds.includes(inv.id)}
-                                onChange={() => handleInvestorToggle(inv.id)}
-                              />
-                              <div className="text-sm">
-                                  <span className="font-semibold text-slate-800 block">{inv.name}</span>
-                                  <span className="text-slate-500 text-xs">{inv.email}</span>
-                              </div>
-                          </label>
-                      ))}
-                  </div>
-              </div>
+              {/* Доступ к счетам */}
+<div className="bg-slate-50 p-4 rounded-xl space-y-3">
+    <h4 className="text-sm font-bold text-slate-600">Доступ к счетам</h4>
+    
+    {/* ГАЛОЧКА ДЛЯ ОСНОВНОГО СЧЕТА */}
+    <label className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
+        <input
+            type="checkbox"
+            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            checked={allowMainAccount}
+            onChange={e => setAllowMainAccount(e.target.checked)}
+        />
+        <div className="text-sm">
+            <span className="font-semibold text-slate-800 block">Основной счет компании</span>
+            <span className="text-slate-500 text-xs">Сотрудник сможет видеть и создавать операции на главном счете, даже если нет инвесторов.</span>
+        </div>
+    </label>
+
+    <p className="text-xs text-slate-500 mt-4 mb-2">Или выберите конкретных инвесторов:</p>
+    <div className="max-h-40 overflow-y-auto space-y-2 border border-slate-200 rounded-lg p-2 bg-white">
+        {investors.length === 0 && <p className="text-xs text-slate-400 p-2">Нет инвесторов</p>}
+        {investors.map(inv => (
+            <label key={inv.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer">
+                <input
+                    type="checkbox"
+                    className="w-5 h-5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                    checked={allowedInvestorIds.includes(inv.id)}
+                    onChange={() => {
+                        setAllowedInvestorIds(prev =>
+                            prev.includes(inv.id) ? prev.filter(pid => pid !== inv.id) : [...prev, inv.id]
+                        );
+                    }}
+                />
+                <div className="text-sm">
+                    <span className="font-semibold text-slate-800 block">{inv.name}</span>
+                    <span className="text-slate-500 text-xs">{inv.email}</span>
+                </div>
+            </label>
+        ))}
+    </div>
+</div>
 
               <div className="flex gap-3">
                   <button type="button" onClick={resetForm} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Отмена</button>
