@@ -438,7 +438,7 @@ export const api = {
             } else {
               data[item.collection] = { ...data[item.collection], ...item.payload };
             }
-            if (item.type === 'deleteItem') {
+           if (item.type === 'deleteItem') {
   if (Array.isArray(data[item.collection])) {
     data[item.collection] = data[item.collection].filter(
       (i: any) => i.id !== item.itemId
@@ -546,25 +546,28 @@ export const api = {
   }
     },
 
-    deleteItem: async (type: string, id: string) => {
-        try {
-            // 🔥 fetchWithAuth
-            await fetchWithAuth(`${API_URL}/data/${type}/${id}`, {
-                method: 'DELETE'
-            });
-        } catch (error: any) {
-            // Если токен истёк — не кешируем удаление
-            if (error.message === 'TOKEN_EXPIRED') {
-                throw error;
-            }
-            console.warn("Offline mode: queuing delete", error);
-            await offlineStorage.addToQueue({
-                type: 'deleteItem',
-                collection: type,
-                itemId: id
-            });
-        }
-    },
+    deleteItem: async (type: string, id: string): Promise<{ success: boolean; isOffline?: boolean }> => {
+  try {
+    await fetchWithAuth(`${API_URL}/data/${type}/${id}`, {
+      method: 'DELETE'
+    });
+    return { success: true };
+  } catch (error: any) {
+    if (error.message === 'TOKEN_EXPIRED') {
+      throw error;
+    }
+    
+    console.warn("Offline mode: queuing delete", error);
+    await offlineStorage.addToQueue({
+      type: 'deleteItem',
+      collection: type,
+      itemId: id
+    });
+    
+    // 🔑 Возвращаем статус, что удаление в офлайн-режиме
+    return { success: true, isOffline: true };
+  }
+},
 
     resetAccountData: async () => {
         const res = await fetchWithAuth(`${API_URL}/user/data`, {

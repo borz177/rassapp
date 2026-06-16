@@ -1125,17 +1125,22 @@ const handleStartEditSale = (sale: Sale) => {
         return;
     }
   setEditingSale(sale); setCurrentView('CREATE_SALE'); };
-const handleDeleteSale = async (saleId: string) => {
 
-if (isEmployee && !user?.permissions?.canDelete) {
-        alert("⛔ У вас нет прав на удаление договоров.");
-        return;
-    }
+
+
+const handleDeleteSale = async (saleId: string) => {
+  if (isEmployee && !user?.permissions?.canDelete) {
+    alert("⛔ У вас нет прав на удаление договоров.");
+    return;
+  }
 
   if (!window.confirm("Вы уверены, что хотите удалить этот договор?")) return;
 
   const sale = sales.find(s => s.id === saleId);
-  if (!sale) { alert("Договор не найден"); return; }
+  if (!sale) {
+    alert("Договор не найден");
+    return;
+  }
 
   const installmentPayments = sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false);
   const installmentAmount = installmentPayments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -1144,6 +1149,9 @@ if (isEmployee && !user?.permissions?.canDelete) {
     alert(`❌ Нельзя удалить договор с платежами по графику.\nОплачено по графику: ${formatCurrency(installmentAmount, appSettings?.showCents)} ₽`);
     return;
   }
+
+  // 🔹 🔑 ОПТИМИСТИЧНОЕ УДАЛЕНИЕ: сначала удаляем из UI
+  removeFromList(setSales, saleId);
 
   try {
     // 🔹 1. ВОЗВРАТ ПЕРВОГО ВЗНОСА (изолированно)
@@ -1163,7 +1171,7 @@ if (isEmployee && !user?.permissions?.canDelete) {
         updateList(setExpenses, refundExpense);
       }
     } catch (e) {
-      console.warn('⚠️ Refund expense save failed (queued or server error):', e);
+      console.warn('⚠️ Refund expense save failed:', e);
     }
 
     // 🔹 2. УДАЛЕНИЕ РАСХОДА ЗАКУПА (изолированно)
@@ -1176,20 +1184,31 @@ if (isEmployee && !user?.permissions?.canDelete) {
           Math.abs(e.amount - sale.buyPrice) < 0.01
         );
         if (buyExpense) {
-          await api.deleteItem('expenses', buyExpense.id);
+          const result = await api.deleteItem('expenses', buyExpense.id);
           removeFromList(setExpenses, buyExpense.id);
+          if (result.isOffline) {
+            console.log('📦 Расход закупа удалён локально');
+          }
         }
       }
     } catch (e) {
-      console.warn('⚠️ Buy expense delete failed (queued):', e);
+      console.warn('⚠️ Buy expense delete failed:', e);
     }
 
     // 🔹 3. УДАЛЕНИЕ САМОГО ДОГОВОРА (изолированно)
     try {
-      await api.deleteItem('sales', saleId);
-      removeFromList(setSales, saleId);
+      const result = await api.deleteItem('sales', saleId);
+      if (result.isOffline) {
+        showNotificationModal(
+          '⚠️ Офлайн-режим',
+          'Договор удалён локально и будет синхронизирован при подключении.',
+          'warning'
+        );
+      } else {
+        alert('✅ Договор удалён');
+      }
     } catch (e) {
-      console.warn('⚠️ Sale delete failed (queued):', e);
+      console.warn('⚠️ Sale delete failed:', e);
     }
 
     // 🔹 4. ВОЗВРАТ ТОВАРА НА СКЛАД (изолированно)
@@ -1203,13 +1222,11 @@ if (isEmployee && !user?.permissions?.canDelete) {
         }
       }
     } catch (e) {
-      console.warn('⚠️ Product stock restore failed (queued):', e);
+      console.warn('⚠️ Product stock restore failed:', e);
     }
-
-    alert('✅ Договор удалён');
   } catch (error) {
     console.error('❌ Ошибка удаления договора:', error);
-    alert('Не удалось удалить договор.');
+    // 🔹 НЕ откатываем удаление из UI — оно уже произошло
   }
 };
 const handleViewSaleSchedule = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView('CONTRACTS'); setCurrentView('CUSTOMER_DETAILS'); };
@@ -1598,31 +1615,33 @@ const confirmDeleteCustomer = async () => {
   const customerId = showDeleteConfirm;
   if (!customerId) return;
 
+  // 🔹 🔑 ОПТИМИСТИЧНОЕ УДАЛЕНИЕ: сначала удаляем из UI
+  removeFromList(setCustomers, customerId);
+
+  if (selectedCustomerId === customerId) {
+    setSelectedCustomerId(null);
+    setCurrentView(previousView === 'CUSTOMER_DETAILS' ? 'CUSTOMERS' : previousView);
+  }
+
   try {
-    // 🔹 3. Удаляем с сервера (и в очередь офлайн-режима)
-    await api.deleteItem('customers', customerId);
-
-    // 🔹 4. Обновляем локальный стейт
-    removeFromList(setCustomers, customerId);
-
-    // 🔹 5. Если открыта детальная страница — закрываем её
-    if (selectedCustomerId === customerId) {
-      setSelectedCustomerId(null);
-      setCurrentView(previousView === 'CUSTOMER_DETAILS' ? 'CUSTOMERS' : previousView);
+    const result = await api.deleteItem('customers', customerId);
+    
+    if (result.isOffline) {
+      showNotificationModal(
+        '⚠️ Офлайн-режим',
+        'Клиент удалён локально и будет синхронизирован при подключении.',
+        'warning'
+      );
+    } else {
+      alert('✅ Клиент успешно удален');
     }
-
-    // 🔹 6. Уведомление об успехе
-    alert('✅ Клиент успешно удален');
-
   } catch (error) {
     console.error('❌ Ошибка удаления клиента:', error);
-    alert('Не удалось удалить клиента. Проверьте подключение к интернету.');
+    // 🔹 НЕ откатываем — данные в очереди
   } finally {
-    // 🔹 Закрываем модалку в любом случае
     setShowDeleteConfirm(null);
   }
 };
-
 
 
   const handleAddProduct = async (name: string, price: number, stock: number) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } if (user) { const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newProd = { id: crypto.randomUUID(), userId: ownerId, name, price, category: 'Общее', stock }; const saved = await api.saveItem('products', newProd); updateList(setProducts, saved); } };
