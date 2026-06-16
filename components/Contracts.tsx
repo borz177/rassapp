@@ -747,16 +747,7 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
               <span>График</span>
             </button>
 
-   <button
-    onClick={() => { onViewSchedule(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-    className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
->
-    <span className="text-indigo-500"><Calendar size={16}/></span>
-    <span>График</span>
-</button>
-
-{/* 🔥 Редактировать - скрываем если нет прав canEdit */}
-{(!isEmployee || user?.permissions?.canEdit) && (
+   {(!isEmployee || user?.permissions?.canEdit) && (
     <button
         onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
         className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"

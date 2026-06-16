@@ -2338,7 +2338,7 @@ if (!user && !showSplash) {
               {currentView === 'TARIFFS' && <Tariffs user={user}/>}
 
               {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings}
-                                                       onNavigate={setCurrentView} onImportData={handleImportData} currentUserId={user.id}/>}
+                                                       onNavigate={setCurrentView} onImportData={handleImportData} currentUserId={user.id} user={user}/>}
 
               {currentView === 'INTEGRATIONS' &&
                   <Integrations appSettings={appSettings} onUpdateSettings={handleUpdateSettings}

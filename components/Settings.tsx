@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AppSettings, ViewState } from '../types';
+import { AppSettings, ViewState, User } from '../types';
 import { ICONS, APP_VERSION, THEMES } from '../constants';
 import { PrivacyPolicy, DataProcessingAgreement } from './LegalDocs';
 import { api } from '../services/api';
@@ -12,9 +12,11 @@ interface SettingsProps {
   onNavigate: (view: ViewState) => void;
   onSettingsChanged?: () => void;
   currentUserId?: string;
+  user?: User | null;
 }
 
-const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNavigate, onSettingsChanged, currentUserId }) => {
+const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNavigate, onSettingsChanged, currentUserId, user }) => {
+  const isEmployee = user?.role === 'employee';   
   const [companyName, setCompanyName] = useState(appSettings.companyName);
 
   // Clear Data Modal State
@@ -210,18 +212,21 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
 
       {/* Tools & Integrations */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <button
-            onClick={() => onNavigate('INTEGRATIONS')}
-            className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition-all group text-left"
-          >
-              <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-              </div>
-              <div>
-                  <h3 className="font-bold text-slate-800 text-lg">Интеграции</h3>
-                  <p className="text-sm text-slate-500">WhatsApp, SMS и другое</p>
-              </div>
-          </button>
+          {!isEmployee && (
+              <button
+                onClick={() => onNavigate('INTEGRATIONS')}
+                className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition-all group text-left"
+              >
+                  <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                  </div>
+                  <div>
+                      <h3 className="font-bold text-slate-800 text-lg">Интеграции</h3>
+                      <p className="text-sm text-slate-500">WhatsApp, SMS и другое</p>
+                  </div>
+              </button>
+          )}
+
 
           <button
             onClick={() => onNavigate('CALCULATOR')}
@@ -238,6 +243,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       </div>
 
       {/* 👇 ОБЪЕДИНЁННЫЙ БЛОК: Работа с данными (Экспорт + Импорт) */}
+       {!isEmployee && (
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 mb-1">Работа с данными</h3>
           <p className="text-sm text-slate-500 mb-4">Выгружайте данные в Excel или загружайте из файла.</p>
@@ -278,6 +284,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
 
 
       </div>
+       )}
 
       {/* Legal Information Section */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
@@ -305,17 +312,19 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
           </div>
       </div>
 
-      {/* Clear Data Section */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-semibold text-slate-800 mb-1">Управление данными</h3>
-          <p className="text-sm text-slate-500 mb-4">Сброс всех данных приложения. Используйте с осторожностью.</p>
-          <button
-              onClick={() => setShowClearModal(true)}
-              className="w-full py-3 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 border border-red-100 flex items-center justify-center gap-2 transition-colors"
-          >
-              {ICONS.Delete} Сбросить все данные
-          </button>
-      </div>
+            {/* 🔥 СКРЫВАЕМ УПРАВЛЕНИЕ ДАННЫМИ ОТ СОТРУДНИКОВ */}
+      {!isEmployee && (
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+              <h3 className="text-lg font-semibold text-slate-800 mb-1">Управление данными</h3>
+              <p className="text-sm text-slate-500 mb-4">Сброс всех данных приложения. Используйте с осторожностью.</p>
+              <button
+                  onClick={() => setShowClearModal(true)}
+                  className="w-full py-3 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 border border-red-100 flex items-center justify-center gap-2 transition-colors"
+              >
+                  {ICONS.Delete} Сбросить все данные
+              </button>
+          </div>
+      )}
 
       {/* Clear Data Modal */}
       {showClearModal && (
