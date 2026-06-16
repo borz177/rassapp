@@ -1591,93 +1591,88 @@ app.post('/api/auth/reset-password', sensitiveLimiter, async (req, res) => {
 
 // ✅ ИСПРАВЛЕННЫЙ ЛОГИН С RATE LIMITING
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
-  const { email, password } = req.body;
-  
-  // ✅ Простая валидация входных данных
-  if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
-    return res.status(400).json({ msg: 'Email и пароль обязательны' });
-  }
-  const normalizedEmail = email.toLowerCase().trim();
-
-
-  try {
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [normalizedEmail]);
-
-    if (result.rows.length === 0) return res.status(400).json({ msg: 'Неверные учетные данные' });
-    
-    const user = result.rows[0];
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ msg: 'Неверные учетные данные' });
-    
-    const token = jwt.sign({ id: user.id, role: user.role, managerId: user.manager_id }, JWT_SECRET, { expiresIn: '90d' });
-
-    let subscription = user.subscription;
-if (user.role === 'employee' && user.manager_id) {
-    const managerRes = await pool.query('SELECT subscription FROM users WHERE id = $1', [user.manager_id]);
-    if (managerRes.rows.length > 0 && managerRes.rows[0].subscription) {
-        subscription = managerRes.rows[0].subscription;
+    const { email, password } = req.body;
+    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
+        return res.status(400).json({ msg: 'Email и пароль обязательны' });
     }
-}
-    
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        managerId: user.manager_id,
-        permissions: user.permissions,
-        allowedInvestorIds: user.allowed_investor_ids,
-        subscription: subscription,
-        whatsapp_settings: user.whatsapp_settings
-      }
-    });
-  } catch (err) {
-    console.error('Login Error:', err);
-    res.status(500).send('Server error');
-  }
+    const normalizedEmail = email.toLowerCase().trim();
+
+    try {
+        const result = await pool.query('SELECT * FROM users WHERE email = $1', [normalizedEmail]);
+        if (result.rows.length === 0) return res.status(400).json({ msg: 'Неверные учетные данные' });
+        
+        const user = result.rows[0];
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) return res.status(400).json({ msg: 'Неверные учетные данные' });
+
+        // 🔥 Подставляем подписку владельца для сотрудника
+        let subscription = user.subscription;
+        if (user.role === 'employee' && user.manager_id) {
+            const managerRes = await pool.query('SELECT subscription FROM users WHERE id = $1', [user.manager_id]);
+            if (managerRes.rows.length > 0 && managerRes.rows[0].subscription) {
+                subscription = managerRes.rows[0].subscription;
+            }
+        }
+
+        const token = jwt.sign({ id: user.id, role: user.role, managerId: user.manager_id }, JWT_SECRET, { expiresIn: '90d' });
+        
+        res.json({
+            token,
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                managerId: user.manager_id,
+                permissions: user.permissions,
+                allowedInvestorIds: user.allowed_investor_ids,
+                subscription: subscription, // <- Передаем подписку владельца!
+                whatsapp_settings: user.whatsapp_settings
+            }
+        });
+    } catch (err) {
+        console.error('Login Error:', err);
+        res.status(500).send('Server error');
+    }
 });
 
 // Get current user
 app.get('/api/auth/me', auth, async (req, res) => {
-  try {
-    // 🔥 ДОБАВИЛИ phone в SELECT
-    const result = await pool.query(
-      'SELECT id, name, email, phone, role, manager_id, subscription, whatsapp_settings, api_key FROM users WHERE id = $1',
-      [req.user.id]
-    );
+    try {
+        // 🔥 ДОБАВИЛИ permissions и allowed_investor_ids в SELECT
+        const result = await pool.query(
+            'SELECT id, name, email, phone, role, manager_id, subscription, whatsapp_settings, api_key, permissions, allowed_investor_ids FROM users WHERE id = $1',
+            [req.user.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ msg: 'User not found' });
+        const user = result.rows[0];
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ msg: 'User not found' });
+        // 🔥 НАСЛЕДОВАНИЕ ТАРИФА: Если это сотрудник, подставляем подписку менеджера
+        let subscription = user.subscription;
+        if (user.role === 'employee' && user.manager_id) {
+            const managerRes = await pool.query('SELECT subscription FROM users WHERE id = $1', [user.manager_id]);
+            if (managerRes.rows.length > 0 && managerRes.rows[0].subscription) {
+                subscription = managerRes.rows[0].subscription;
+            }
+        }
+
+        res.json({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            role: user.role,
+            managerId: user.manager_id,
+            subscription: subscription, // <- Подписка владельца
+            whatsapp_settings: user.whatsapp_settings,
+            permissions: user.permissions, // 🔥 ВОЗВРАЩАЕМ ПРАВА (canEdit, canDelete)
+            allowedInvestorIds: user.allowed_investor_ids, // 🔥 ВОЗВРАЩАЕМ СПИСОК ИНВЕСТОРОВ
+            apiKey: user.role === 'admin' ? user.api_key : undefined
+        });
+    } catch (err) {
+        console.error('Me Error:', err);
+        res.status(500).send('Server error');
     }
-
-    const user = result.rows[0];
-
-    let subscription = user.subscription;
-if (user.role === 'employee' && user.manager_id) {
-    const managerRes = await pool.query('SELECT subscription FROM users WHERE id = $1', [user.manager_id]);
-    if (managerRes.rows.length > 0 && managerRes.rows[0].subscription) {
-        subscription = managerRes.rows[0].subscription;
-    }
-}
-
-    // 🔥 ДОБАВИЛИ phone в ответ
-    res.json({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,  // ← 🔥 ЭТОГО НЕ ХВАТАЛО!
-      role: user.role,
-      managerId: user.manager_id,
-      subscription: subscription,
-      whatsapp_settings: user.whatsapp_settings,
-      apiKey: user.role === 'admin' ? user.api_key : undefined
-    });
-  } catch (err) {
-    console.error('Me Error:', err);
-    res.status(500).send('Server error');
-  }
 });
 
 // Update WhatsApp Settings

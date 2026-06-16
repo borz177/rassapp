@@ -255,11 +255,7 @@ const handleSubmit = (e: React.FormEvent) => {
                       <div>
                           <h3 className="font-bold text-slate-800">{emp.name}</h3>
                           <p className="text-xs text-slate-500">{emp.email}</p>
-                          <div className="flex gap-2 mt-1">
-                              {emp.permissions?.canCreate && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded">Create</span>}
-                              {emp.permissions?.canEdit && <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">Edit</span>}
-                              {emp.permissions?.canDelete && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Delete</span>}
-                          </div>
+                          
                       </div>
                   </div>
                   

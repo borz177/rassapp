@@ -408,8 +408,14 @@ useEffect(() => {
           if (isReachable) {
             // Обновляем данные пользователя (например, если изменилась подписка)
             const freshUser = await api.getMe();
-            setUser(freshUser);
-            localStorage.setItem('user', JSON.stringify(freshUser));
+            const mergedUser = {
+              ...freshUser,
+              permissions: freshUser.permissions || localUser.permissions,
+              allowedInvestorIds: freshUser.allowedInvestorIds || localUser.allowedInvestorIds
+            };
+
+            setUser(mergedUser);
+            localStorage.setItem('user', JSON.stringify(mergedUser));
 
             // Получаем свежие данные и умно мёржим их с локальными
             const freshData = await api.fetchAllData();
