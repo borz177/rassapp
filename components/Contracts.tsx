@@ -18,6 +18,7 @@ interface ContractsProps {
   readOnly?: boolean;
   user?: User | null;
   appSettings?: AppSettings;
+  
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -299,6 +300,7 @@ const Contracts: React.FC<ContractsProps> = ({
   onViewSchedule, onEditSale, onDeleteSale, readOnly = false,
   user, appSettings
 }) => {
+  const isEmployee = user?.role === 'employee';
   const [searchTerm, setSearchTerm] = useState('');
   const [filterAccountId, setFilterAccountId] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -671,32 +673,38 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
               </button>
 
               {/* 🔹 ДОБАВЛЕНО: Кнопка редактирования в мобильном меню */}
-              <button
-                onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-              >
-                <span className="text-slate-500"><Edit3 size={18} /></span>
-                <span>Редактировать</span>
-              </button>
+             {/* 🔥 Кнопка редактирования - скрываем если нет прав canEdit */}
+{(!isEmployee || user?.permissions?.canEdit) && (
+    <button
+        onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+        className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+    >
+        <span className="text-slate-500"><Edit3 size={18} /></span>
+        <span>Редактировать</span>
+    </button>
+)}
 
-              <button
-                onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-              >
-                <span className="text-slate-500"><Printer size={18} /></span>
-                <span>Печать договора</span>
-              </button>
-            </div>
+<button
+    onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+    className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+>
+    <span className="text-slate-500"><Printer size={18} /></span>
+    <span>Печать договора</span>
+</button>
+</div>
 
-            <div className="border-t border-slate-100 py-2">
-              <button
-                onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                className="w-full text-left px-4 py-3.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
-              >
-                <span className="text-red-500"><Trash2 size={18} /></span>
-                <span>Удалить договор</span>
-              </button>
-            </div>
+<div className="border-t border-slate-100 py-2">
+    {/* 🔥 Кнопка удаления - скрываем если нет прав canDelete */}
+    {(!isEmployee || user?.permissions?.canDelete) && (
+        <button
+            onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+            className="w-full text-left px-4 py-3.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+        >
+            <span className="text-red-500"><Trash2 size={18} /></span>
+            <span>Удалить договор</span>
+        </button>
+    )}
+</div>
 
             <div className="px-4 pb-4 pt-2">
               <button
@@ -739,32 +747,46 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
               <span>График</span>
             </button>
 
-            <button
-              onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-              className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-            >
-              <span className="text-slate-500"><Edit3 size={16}/></span>
-              <span>Редактировать</span>
-            </button>
+   <button
+    onClick={() => { onViewSchedule(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+    className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
+>
+    <span className="text-indigo-500"><Calendar size={16}/></span>
+    <span>График</span>
+</button>
 
-            <button
-              onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-              className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-            >
-              <span className="text-slate-500"><Printer size={16}/></span>
-              <span>Печать</span>
-            </button>
-          </div>
+{/* 🔥 Редактировать - скрываем если нет прав canEdit */}
+{(!isEmployee || user?.permissions?.canEdit) && (
+    <button
+        onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+        className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+    >
+        <span className="text-slate-500"><Edit3 size={16}/></span>
+        <span>Редактировать</span>
+    </button>
+)}
 
-          <div className="border-t border-slate-100 py-2">
-            <button
-              onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-              className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
-            >
-              <span className="text-red-500"><Trash2 size={16}/></span>
-              <span>Удалить</span>
-            </button>
-          </div>
+<button
+    onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+    className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+>
+    <span className="text-slate-500"><Printer size={16}/></span>
+    <span>Печать</span>
+</button>
+</div>
+
+<div className="border-t border-slate-100 py-2">
+    {/* 🔥 Удалить - скрываем если нет прав canDelete */}
+    {(!isEmployee || user?.permissions?.canDelete) && (
+        <button
+            onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+            className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+        >
+            <span className="text-red-500"><Trash2 size={16}/></span>
+            <span>Удалить</span>
+        </button>
+    )}
+</div>
         </div>
       )}
     </>,

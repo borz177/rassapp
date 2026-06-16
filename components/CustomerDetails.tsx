@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument} from '../types';
+import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User} from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate } from '../src/utils';
 import { offlineStorage } from '../services/offlineStorage';
@@ -18,6 +18,7 @@ interface CustomerDetailsProps {
   onUpdateCustomer?: (customer: Customer) => void;
   initialSaleId?: string | null;
   onDeleteCustomer?: (customerId: string) => void;
+  user?: User | null;
 }
 const compressImage = (file: File, maxWidth = 1920): Promise<Blob> => {
   return new Promise((resolve) => {
@@ -480,7 +481,9 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
                                                              onUpdateCustomer,
                                                              initialSaleId,
                                                              onDeleteCustomer,
+                                                             user
                                                          }) => {
+    const isEmployee = user?.role === 'employee';                                                         
     const [activeTab, setActiveTab] = useState<'INFO' | 'INSTALLMENTS'>('INFO');
     const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -795,7 +798,28 @@ const getInvestorInfo = (sale: Sale) => {
                   {paidPayments.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Нет поступлений</div> : (
                       <table className="w-full text-sm text-left">
                           <thead className="text-xs text-slate-500 uppercase bg-slate-50"><tr><th className="px-4 py-3">Дата</th><th className="px-4 py-3">Сумма</th><th className="px-4 py-3 text-right">Действия</th></tr></thead>
-                          <tbody>{paidPayments.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className="px-4 py-3 text-slate-700">{formatDate(payment.date)}</td><td className="px-4 py-3 font-bold text-emerald-600">+{formatCurrency(payment.amount, appSettings.showCents)} ₽</td><td className="px-4 py-3 text-right"><div className="flex justify-end gap-2"><button onClick={() => handleEditClick(payment)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded">{ICONS.Edit}</button><button onClick={() => handleDeleteClick(payment.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded">{ICONS.Delete}</button></div></td></tr>))}</tbody>
+                          <tbody>{paidPayments.map((payment) => (<tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50"><td className="px-4 py-3 text-slate-700">{formatDate(payment.date)}</td><td className="px-4 py-3 font-bold text-emerald-600">+{formatCurrency(payment.amount, appSettings.showCents)} ₽</td><td className="px-4 py-3 text-right">
+    <div className="flex justify-end gap-2">
+        {/* 🔥 Редактировать платеж: скрываем, если нет прав canEdit */}
+        {(!isEmployee || user?.permissions?.canEdit) && (
+            <button 
+                onClick={() => handleEditClick(payment)} 
+                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded"
+            >
+                {ICONS.Edit}
+            </button>
+        )}
+        {/* 🔥 Удалять платеж: скрываем, если нет прав canDelete */}
+        {(!isEmployee || user?.permissions?.canDelete) && (
+            <button 
+                onClick={() => handleDeleteClick(payment.id)} 
+                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded"
+            >
+                {ICONS.Delete}
+            </button>
+        )}
+    </div>
+</td></tr>))}</tbody>
                       </table>
                   )}
               </div>
@@ -881,37 +905,37 @@ const getInvestorInfo = (sale: Sale) => {
                     <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-20 animate-fade-in">
 
                         {/* Кнопка "Редактировать" */}
-                        {onUpdateCustomer && (
-                            <button
-                                onClick={() => {
-                                    setShowActionsMenu(false);
-                                    setShowEditModal(true);
-                                }}
-                                className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                            >
-                                <span className="text-indigo-600">{ICONS.Edit}</span>
-                                Редактировать
-                            </button>
-                        )}
+                        {onUpdateCustomer && (!isEmployee || user?.permissions?.canEdit) && (
+    <button
+        onClick={() => {
+            setShowActionsMenu(false);
+            setShowEditModal(true);
+        }}
+        className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+    >
+        <span className="text-indigo-600">{ICONS.Edit}</span>
+        Редактировать
+    </button>
+)}
 
                         {/* Разделитель (если есть обе кнопки) */}
-                        {onUpdateCustomer && onDeleteCustomer && (
-                            <div className="my-1 border-t border-slate-100" />
-                        )}
+                       {onUpdateCustomer && onDeleteCustomer && (!isEmployee || (user?.permissions?.canEdit && user?.permissions?.canDelete)) && (
+    <div className="my-1 border-t border-slate-100" />
+)}
 
                         {/* Кнопка "Удалить" */}
-                        {onDeleteCustomer && (
-                            <button
-                                onClick={() => {
-                                    setShowActionsMenu(false);
-                                    handleDeleteRequest(); // Ваша существующая функция
-                                }}
-                                className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                            >
-                                <span>{ICONS.Delete}</span>
-                                Удалить
-                            </button>
-                        )}
+                        {onDeleteCustomer && (!isEmployee || user?.permissions?.canDelete) && (
+    <button
+        onClick={() => {
+            setShowActionsMenu(false);
+            handleDeleteRequest();
+        }}
+        className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+    >
+        <span>{ICONS.Delete}</span>
+        Удалить
+    </button>
+)}
                     </div>
                 </>
             )}

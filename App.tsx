@@ -1113,8 +1113,19 @@ updateList(setSales, savedSale);
   throw error;
 }
 };
-const handleStartEditSale = (sale: Sale) => { setEditingSale(sale); setCurrentView('CREATE_SALE'); };
+const handleStartEditSale = (sale: Sale) => { 
+  if (isEmployee && !user?.permissions?.canEdit) {
+        alert("⛔ У вас нет прав на редактирование договоров.");
+        return;
+    }
+  setEditingSale(sale); setCurrentView('CREATE_SALE'); };
 const handleDeleteSale = async (saleId: string) => {
+
+if (isEmployee && !user?.permissions?.canDelete) {
+        alert("⛔ У вас нет прав на удаление договоров.");
+        return;
+    }
+
   if (!window.confirm("Вы уверены, что хотите удалить этот договор?")) return;
 
   const sale = sales.find(s => s.id === saleId);
@@ -2279,7 +2290,7 @@ if (!user && !showSplash) {
                                    accounts={accounts} investors={investors} onBack={() => setCurrentView(previousView)}
                                    onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment}
                                    onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer}
-                                   initialSaleId={initialSaleIdForDetails} appSettings={appSettings}/>}
+                                   initialSaleId={initialSaleIdForDetails} appSettings={appSettings} user={user}/>}
               {currentView === 'MANAGE_PRODUCTS' &&
                   <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct}
                             onDeleteProduct={handleDeleteProduct} appSettings={appSettings}/>}
