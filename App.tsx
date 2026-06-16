@@ -164,29 +164,29 @@ const showNotificationModal = (
  // 🔹 Вспомогательная функция для "умного" слияния данных (исправленная версия)
 // 🔹 Улучшенная версия с защитой от потери данных
 const mergeServerData = <T extends { id: string }>(
-  current: T[],
-  fresh: T[],
-  collectionName: string = 'unknown'
+    current: T[],
+    fresh: T[],
+    collectionName: string = 'unknown'
 ): T[] => {
-  // 🔹 ЗАЩИТА 1: Если сервер вернул пустой массив, а у нас есть данные — НЕ перезаписываем!
-  if (fresh.length === 0 && current.length > 0) {
-    console.warn(`⚠️ Server returned empty array for "${collectionName}", keeping local data to prevent loss.`);
-    return current;
-  }
+    // 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ДЛЯ СОТРУДНИКОВ:
+    // Если вошел сотрудник, и сервер вернул пустой массив (нет доступа), мы ОБЯЗАНЫ очистить кэш.
+    if (user?.role === 'employee' && fresh.length === 0 && current.length > 0) {
+        console.log(`🧹 Очищаем локальный кэш "${collectionName}" для сотрудника (нет доступа).`);
+        return [];
+    }
 
-  // 🔹 ЗАЩИТА 2: Подозрительно мало данных
-  if (current.length > 0 && fresh.length < current.length * 0.5) {
-    console.warn(`⚠️ Suspicious data for "${collectionName}": server returned ${fresh.length}, local has ${current.length}. Merging cautiously.`);
-  }
+    // 🔹 ЗАЩИТА 1: Если сервер вернул пустой массив — НЕ перезаписываем (ТОЛЬКО для менеджеров/админов)
+    if (fresh.length === 0 && current.length > 0 && user?.role !== 'employee') {
+        console.warn(`⚠️ Server returned empty array for "${collectionName}", keeping local data.`);
+        return current;
+    }
 
-  const freshMap = new Map<string, T>(fresh.map(item => [item.id, item]));
-  const updated = current.map(item => freshMap.has(item.id) ? freshMap.get(item.id)! : item);
-
-  updated.forEach(item => freshMap.delete(item.id));
-  const newItems = Array.from(freshMap.values());
-
-  if (newItems.length > 0) console.log(`✅ Added ${newItems.length} new items to "${collectionName}"`);
-  return [...updated, ...newItems];
+    const freshMap = new Map<string, T>(fresh.map(item => [item.id, item]));
+    const updated = current.map(item => freshMap.has(item.id) ? freshMap.get(item.id)! : item);
+    updated.forEach(item => freshMap.delete(item.id));
+    const newItems = Array.from(freshMap.values());
+    
+    return [...updated, ...newItems];
 };
 
 
@@ -455,17 +455,17 @@ useEffect(() => {
 
 
 
-// 🔥 Мгновенная фильтрация стейта при изменении пользователя, его прав или списка счетов
+// 🔥 Мгновенная и полная фильтрация стейта для сотрудника
 useEffect(() => {
     if (user?.role === 'employee') {
         const allowedIds = user.allowedInvestorIds || [];
         const hasMainAccess = allowedIds.includes('MAIN_ACCOUNT');
         const investorIds = allowedIds.filter(id => id !== 'MAIN_ACCOUNT');
 
-        // 1. Инвесторы: только те, что явно разрешены
+        // 1. Инвесторы
         setInvestors(prev => prev.filter(inv => investorIds.includes(inv.id)));
 
-        // 2. Счета: разрешенные инвесторы ИЛИ основной счет (если есть доступ)
+        // 2. Счета
         const filteredAccounts = accounts.filter(acc => {
             const isMainAccount = !acc.ownerId || acc.type === 'MAIN';
             if (isMainAccount && hasMainAccess) return true;
@@ -474,19 +474,18 @@ useEffect(() => {
         });
         setAccounts(filteredAccounts);
 
-        // 3. Создаем Set разрешенных ID счетов для мгновенной проверки (O(1))
         const allowedAccountIds = new Set(filteredAccounts.map(acc => acc.id));
 
-        // 4. Продажи и расходы: только те, что привязаны к разрешенным счетам
-        setSales(prev => prev.filter(s => s.accountId && allowedAccountIds.has(s.accountId)));
+        // 3. Продажи и расходы
+        const filteredSales = sales.filter(s => s.accountId && allowedAccountIds.has(s.accountId));
+        setSales(filteredSales);
         setExpenses(prev => prev.filter(e => e.accountId && allowedAccountIds.has(e.accountId)));
-        
-        // 5. Партнерства (если используете): только те, где есть разрешенные инвесторы
-        setPartnerships(prev => prev.filter(p => 
-            p.partnerIds && p.partnerIds.some(pid => investorIds.includes(pid))
-        ));
+
+        // 4. 🔥 КЛИЕНТЫ: Оставляем только тех, кто есть в отфильтрованных продажах
+        const allowedCustomerIds = new Set(filteredSales.map(s => s.customerId));
+        setCustomers(prev => prev.filter(c => allowedCustomerIds.has(c.id)));
     }
-}, [user, accounts]); // 🔥 Важно: добавили accounts в зависимости для реактивности
+}, [user, accounts, sales]); // 🔥 Важно: accounts и sales в зависимостях!
 
 
 //для модалки сообщения
