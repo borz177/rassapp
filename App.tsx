@@ -2828,61 +2828,36 @@ if (!user && !showSplash) {
 )}
 
 
-    {showTemplateUpdateModal && (
+  {showTemplateUpdateModal && (
   <div
-    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
+    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
     onClick={() => setShowTemplateUpdateModal(false)}
   >
     <div
-      className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
+      className="bg-white w-full max-w-xs rounded-2xl shadow-xl p-6 text-center animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
-      {/* Шапка с градиентом (Индиго + Изумрудный для позитивного обновления) */}
-      <div className="p-5 bg-gradient-to-r from-indigo-600 to-emerald-500 text-white">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-2xl backdrop-blur-md">
-            📊
-          </div>
-          <div>
-            <h3 className="font-bold text-lg">Новое: Экспорт в Excel!</h3>
-            <p className="text-white/90 text-xs font-medium">
-              Профессиональные отчеты в один клик
-            </p>
-          </div>
-        </div>
+      <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center text-2xl">
+        ⚙️
       </div>
 
-      <div className="p-5 space-y-4">
-        {/* Основной блок с новыми функциями */}
-        <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 space-y-2">
-          <p className="text-sm font-semibold text-emerald-800 mb-2">Что нового:</p>
-          <ul className="space-y-2">
-            <li className="flex items-start gap-2 text-sm text-emerald-900">
-              <span className="text-emerald-600 mt-0.5">✅</span>
-              <span><b>Гибкие фильтры:</b> выгружайте данные за любой период.</span>
-            </li>
-            <li className="flex items-start gap-2 text-sm text-emerald-900">
-              <span className="text-emerald-600 mt-0.5">✅</span>
-              <span><b>3 умных листа:</b> «Обзор клиентов», «История платежей» и новая «Сводка» с итогами.</span>
-            </li>
+      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        Ведутся технические работы
+      </h3>
+      
+      <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+        Возможны кратковременные сбои.
+      </p>
 
-          </ul>
-        </div>
-
-        {/* Блок с полезным советом (связь Экспорта и Импорта) */}
-
-
-        <button
-          onClick={() => setShowTemplateUpdateModal(false)}
-          className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]"
-        >
-          Отлично! 🚀
-        </button>
-      </div>
+      <button
+        onClick={() => setShowTemplateUpdateModal(false)}
+        className="w-full py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 active:scale-[0.98] transition-all"
+      >
+        Хорошо
+      </button>
     </div>
   </div>
 )}
-
 
 
   </Layout>
