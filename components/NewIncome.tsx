@@ -173,11 +173,11 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   useEffect(() => {
   // Если сумма стала меньше долга — сбрасываем скидку
-  if (Number(amount) < fullDebt) {
+  if (Number(amount) < fullDebt && discountAmount === 0 && fullDebt > 0) {
     setDiscountValue('');
     setDiscountType('percent');
   }
-}, [amount, fullDebt]);
+}, [amount, fullDebt, discountAmount]);
   
 
 
@@ -628,7 +628,7 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
                      value={amount} onChange={e => setAmount(e.target.value)}/>
             </div>
 
-            {sourceType === 'CUSTOMER' && selectedSale && Number(amount) >= fullDebt && fullDebt > 0 && (
+            {sourceType === 'CUSTOMER' && selectedSale && fullDebt > 0 && (Number(amount) >= fullDebt || discountAmount > 0) && (
               <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                 <label className="block text-sm font-semibold text-amber-900 mb-2">
                   🎁 Скидка при полном погашении (опционально)
