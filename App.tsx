@@ -1234,28 +1234,53 @@ const handleIncomeSubmit = async (data: any) => {
     if (!user) return;
 
     if (data.type === 'CUSTOMER_PAYMENT') {
-        const { saleId, amount } = data;
+        // 🆕 Деструктурируем с дефолтными значениями (для обратной совместимости)
+        const { saleId, amount, discountAmount = 0, discountPercent = 0 } = data;
         const sale = sales.find(s => s.id === saleId);
 
         if (sale) {
             const updatedSale = { ...sale };
-            updatedSale.remainingAmount = Math.max(0, updatedSale.remainingAmount - amount);
-            updatedSale.paymentPlan.push({
-                id: `paid_${Date.now()}`,
-                saleId: sale.id,
-                amount: amount,
-                date: data.date,
-                isPaid: true,
-                isRealPayment: true
-            });
 
-            if (updatedSale.remainingAmount === 0) updatedSale.status = 'COMPLETED';
+            // 🆕 ЛОГИКА СО СКИДКОЙ: полное погашение с дисконтом
+            if (discountAmount > 0) {
+                // Обнуляем остаток долга ПОЛНОСТЬЮ (независимо от фактической суммы)
+                updatedSale.remainingAmount = 0;
+                updatedSale.status = 'COMPLETED';
+
+                updatedSale.paymentPlan.push({
+                    id: `paid_${Date.now()}`,
+                    saleId: sale.id,
+                    amount: amount, // Фактически полученная сумма (с учётом скидки)
+                    date: data.date,
+                    isPaid: true,
+                    isRealPayment: true,
+                    // 🆕 Метаданные скидки — для истории и отчётов
+                    discountAmount: discountAmount,
+                    discountPercent: discountPercent,
+                    note: `Полное погашение со скидкой ${discountPercent.toFixed(1)}% (−${discountAmount} ₽)`
+                });
+            } 
+            // 🟢 ОБЫЧНАЯ ЛОГИКА: стандартное погашение без скидки
+            else {
+                updatedSale.remainingAmount = Math.max(0, updatedSale.remainingAmount - amount);
+                updatedSale.paymentPlan.push({
+                    id: `paid_${Date.now()}`,
+                    saleId: sale.id,
+                    amount: amount,
+                    date: data.date,
+                    isPaid: true,
+                    isRealPayment: true
+                });
+
+                if (updatedSale.remainingAmount === 0) {
+                    updatedSale.status = 'COMPLETED';
+                }
+            }
 
             const savedSale = await api.saveItem('sales', updatedSale);
             updateList(setSales, savedSale);
 
             // 👇 ПОСЛЕ УСПЕШНОГО СОХРАНЕНИЯ ПЕРЕХОДИМ К ДЕТАЛЯМ ДОГОВОРА
-            // Сохраняем ID для перехода
             setSelectedCustomerId(sale.customerId);
             setInitialSaleIdForDetails(saleId);
             setPreviousView(currentView);

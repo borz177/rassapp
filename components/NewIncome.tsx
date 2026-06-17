@@ -43,6 +43,10 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [sendHistory, setSendHistory] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+
+  const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
+const [discountValue, setDiscountValue] = useState('');
   const contractRef = useRef<HTMLDivElement>(null);
 
 
@@ -96,12 +100,20 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     }
   }, [selectedSale, showCents]);
 
+
+  useEffect(() => {
+  if (selectedSale && discountAmount > 0) {
+    setAmount(showCents ? finalPaymentAmount.toFixed(2) : Math.round(finalPaymentAmount).toString());
+  }
+}, [discountAmount, finalPaymentAmount, selectedSale, showCents]);
+
   useEffect(() => {
     if (selectedInvestor) {
       const invAccount = accounts.find(a => a.ownerId === selectedInvestor.id);
       if (invAccount) setTargetAccountId(invAccount.id);
     }
   }, [selectedInvestor, accounts]);
+  
 
   useEffect(() => {
     if (sourceType === 'OTHER' && accounts.length > 0 && !targetAccountId) {
@@ -141,6 +153,23 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     const profit = numAmount * margin;
     return showCents ? profit : Math.round(profit);
   }, [selectedSale, amount, showCents]);
+
+
+
+  const fullDebt = selectedSale?.remainingAmount || 0;
+const discountNum = parseFloat(discountValue) || 0;
+
+const discountAmount = useMemo(() => {
+  if (!selectedSale || discountNum <= 0) return 0;
+  if (discountType === 'percent') {
+    return Math.min(fullDebt, (fullDebt * discountNum) / 100);
+  } else {
+    return Math.min(fullDebt, discountNum);
+  }
+}, [discountType, discountValue, fullDebt, selectedSale]);
+
+const finalPaymentAmount = Math.max(0, fullDebt - discountAmount);
+const discountPercentDisplay = fullDebt > 0 ? (discountAmount / fullDebt) * 100 : 0;
 
   const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
@@ -223,7 +252,14 @@ const handleConfirm = async () => {
       selectedDate.getFullYear() === now.getFullYear();
     if (isToday) { finalDate = now.toISOString(); }
 
-    const commonData = { amount: numAmount, date: finalDate };
+    const commonData = { 
+      amount: numAmount, 
+      date: finalDate,
+      // Добавляем данные о скидке
+      discountAmount: discountAmount,
+      discountPercent: discountPercentDisplay,
+      isFullRepaymentWithDiscount: discountAmount > 0
+    };
 
     if (sourceType === 'CUSTOMER') {
       onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
@@ -549,6 +585,65 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
                                className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
                                value={amount} onChange={e => setAmount(e.target.value)}/>
                     </div>
+
+
+                   {sourceType === 'CUSTOMER' && selectedSale && (
+  <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+    <label className="block text-sm font-semibold text-amber-900 mb-2">
+      🎁 Скидка при полном погашении (опционально)
+    </label>
+    
+    <div className="flex gap-2 mb-3">
+      <select
+        value={discountType}
+        onChange={(e) => setDiscountType(e.target.value as 'percent' | 'amount')}
+        className="px-3 py-2 border border-amber-300 rounded-lg bg-white text-sm font-medium text-amber-900"
+      >
+        <option value="percent">%</option>
+        <option value="amount">₽</option>
+      </select>
+      
+      <input
+        type="number"
+        step={discountType === 'percent' ? '0.01' : showCents ? '0.01' : '1'}
+        placeholder={discountType === 'percent' ? 'Например: 5' : 'Например: 1000'}
+        value={discountValue}
+        onChange={(e) => setDiscountValue(e.target.value)}
+        className="flex-1 px-3 py-2 border border-amber-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
+        min="0"
+        max={discountType === 'percent' ? '100' : fullDebt}
+      />
+    </div>
+    
+    {/* Карточка с расчетом */}
+    {discountAmount > 0 && (
+      <div className="bg-white p-3 rounded-lg border border-amber-200 space-y-2">
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-600">Остаток долга:</span>
+          <span className="font-semibold">{formatNum(fullDebt)} ₽</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-red-600">
+            Скидка ({discountType === 'percent' ? `${discountNum}%` : `${formatNum(discountNum)} ₽`}):
+          </span>
+          <span className="font-semibold text-red-600">−{formatNum(discountAmount)} ₽</span>
+        </div>
+        <div className="border-t border-amber-200 pt-2 flex justify-between">
+          <span className="font-bold text-amber-900">К оплате:</span>
+          <span className="font-bold text-xl text-amber-700">{formatNum(finalPaymentAmount)} ₽</span>
+        </div>
+      </div>
+    )}
+    
+    {discountAmount > 0 && (
+      <p className="text-xs text-amber-700 mt-2">
+        💡 Договор будет закрыт полностью. Скидка: {discountPercentDisplay.toFixed(1)}%
+      </p>
+    )}
+  </div>
+)}
+
+
                     {sourceType === 'CUSTOMER' && selectedSale && (
                         <div className="flex justify-between items-start mt-2">
                             <p className="text-xs text-slate-400 mt-1">Рек: {formatNum(recommendedAmount)} ₽</p>
