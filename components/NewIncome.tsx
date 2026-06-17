@@ -44,9 +44,9 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-
-  const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
+const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
 const [discountValue, setDiscountValue] = useState('');
+
   const contractRef = useRef<HTMLDivElement>(null);
 
 
@@ -114,6 +114,12 @@ const [discountValue, setDiscountValue] = useState('');
     }
   }, [selectedInvestor, accounts]);
   
+
+useEffect(() => {
+  setDiscountValue('');
+  setDiscountType('percent');
+}, [selectedSaleId, selectedCustomerId]);
+
 
   useEffect(() => {
     if (sourceType === 'OTHER' && accounts.length > 0 && !targetAccountId) {

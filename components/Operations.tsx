@@ -28,10 +28,7 @@ const Operations: React.FC<OperationsProps> = ({
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Системная операция';
   const getAccountInitialBalance = (id: string) => accounts.find(a => a.id === id)?.initialBalance || 0;
 
-
-
-
-    // 🔥 Красивые названия категорий
+  // 🔥 Красивые названия категорий
   const getCategoryLabel = (cat: string) => {
       const labels: Record<string, string> = {
           'General': 'Общее',
@@ -102,6 +99,8 @@ const Operations: React.FC<OperationsProps> = ({
             // 2. Paid installments
             s.paymentPlan.forEach(p => {
                 if (p.isPaid && p.isRealPayment !== false) {
+                    // 🆕 Приводим к any, чтобы TS не ругался на новые поля скидки
+                    const paymentAny = p as any; 
                     incomeOps.push({
                         id: p.id,
                         date: p.date,
@@ -111,7 +110,11 @@ const Operations: React.FC<OperationsProps> = ({
                         accountId: s.accountId,
                         type: 'INCOME',
                         category: 'Платеж',
-                        raw: s
+                        raw: s,
+                        // 🆕 Передаем данные о скидке из платежа
+                        discountAmount: paymentAny.discountAmount || 0,
+                        discountPercent: paymentAny.discountPercent || 0,
+                        note: paymentAny.note || ''
                     });
                 }
             });
@@ -133,12 +136,9 @@ const Operations: React.FC<OperationsProps> = ({
     let all = [...incomeOps, ...expenseOps];
 
     // 🔹 ШАГ 1: Рассчитываем скользящий баланс для каждого счёта
-    // Сортируем по дате (от старых к новым) для корректного расчёта
     const sortedForCalc = [...all].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
     const accountBalances: Record<string, number> = {};
 
-    // Инициализируем балансы счетов их начальными значениями
     accounts.forEach(acc => {
         accountBalances[acc.id] = acc.initialBalance || 0;
     });
@@ -149,8 +149,8 @@ const Operations: React.FC<OperationsProps> = ({
             ? currentBalance + op.amount
             : currentBalance - op.amount;
 
-        op.balanceAfter = newBalance; // 🔹 Сохраняем баланс ПОСЛЕ этой операции
-        op.balanceBefore = currentBalance; // 🔹 Сохраняем баланс ДО этой операции (опционально)
+        op.balanceAfter = newBalance;
+        op.balanceBefore = currentBalance;
         accountBalances[op.accountId] = newBalance;
     });
 
@@ -161,7 +161,6 @@ const Operations: React.FC<OperationsProps> = ({
     if (filterAccountId) {
         all = all.filter(op => op.accountId === filterAccountId);
     }
-
     if (filterCategory !== 'ALL') {
         all = all.filter(op => op.category === filterCategory);
     }
@@ -226,7 +225,7 @@ const Operations: React.FC<OperationsProps> = ({
           <p className="text-slate-500 text-sm">Финансовый поток</p>
       </header>
 
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
           <div>
               <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Счет</label>
               <select className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm text-slate-700" value={filterAccountId} onChange={e => setFilterAccountId(e.target.value)}>
@@ -235,7 +234,6 @@ const Operations: React.FC<OperationsProps> = ({
               </select>
           </div>
           
-          {/* 🔥 НОВЫЙ БЛОК: Фильтр по категории */}
           <div>
               <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Категория</label>
               <select 
@@ -256,7 +254,6 @@ const Operations: React.FC<OperationsProps> = ({
               <button onClick={() => setFilterType('EXPENSE')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'EXPENSE' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500'}`}>Расход</button>
           </div>
           
-          {/* 🔥 Индикатор активных фильтров */}
           {(filterAccountId || filterCategory !== 'ALL' || filterType !== 'ALL') && (
               <button
                   onClick={() => {
@@ -282,7 +279,6 @@ const Operations: React.FC<OperationsProps> = ({
     <div 
         key={op.id} 
         onClick={() => setSelectedOp(op)} 
-        // 🔥 ДОБАВЛЕНО: border-l-4 и умная логика выбора цвета обводки
         className={`bg-white p-4 rounded-xl shadow-sm flex items-center justify-between cursor-pointer hover:bg-slate-50 active:scale-[0.99] transition-transform border-l-4 ${
             op.category === 'Salary' 
                 ? 'border-l-blue-500' 
@@ -292,7 +288,6 @@ const Operations: React.FC<OperationsProps> = ({
         }`}
     >
         <div className="flex items-center gap-3">
-            {/* Иконка уже имеет правильную логику цветов, она идеально сочетается с обводкой! */}
             <div className={`p-2.5 rounded-full ${
                 op.type === 'EXPENSE' 
                     ? op.category === 'Salary' 
@@ -309,7 +304,6 @@ const Operations: React.FC<OperationsProps> = ({
             <div>
                 <p className="font-bold text-slate-800 text-sm">
                     {op.title}
-                    {/* Подсказка для зарплаты */}
                     {op.category === 'Salary' && op.raw?.employeeId && (
                         <span className="ml-1 text-xs text-blue-600 font-normal">
                             → {getEmployeeName(op.raw.employeeId)}
@@ -326,7 +320,13 @@ const Operations: React.FC<OperationsProps> = ({
                 {op.type === 'EXPENSE' ? '-' : '+'}{op.amount.toLocaleString()} ₽
             </span>
 
-            {/* Баланс после операции */}
+            {/* 🆕 Бейдж скидки, если она была применена */}
+            {op.discountAmount > 0 && (
+                <span className="inline-block mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                    🎁 −{op.discountAmount.toLocaleString()} ₽
+                </span>
+            )}
+
             <div className="mt-1 flex flex-col items-end gap-1">
                 <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
                     {getAccountName(op.accountId)}
@@ -373,7 +373,6 @@ const Operations: React.FC<OperationsProps> = ({
                     <span className="font-semibold text-slate-800">{getAccountName(selectedOp.accountId)}</span>
                 </div>
 
-                {/* 🔹 Балансы в модалке */}
                 <div className="flex justify-between border-b border-slate-100 pb-2">
                     <span className="text-slate-500 text-sm">Баланс до операции</span>
                     <span className="font-semibold text-slate-700">{selectedOp.balanceBefore?.toLocaleString('ru-RU')} ₽</span>
@@ -388,7 +387,6 @@ const Operations: React.FC<OperationsProps> = ({
                     <span className="font-semibold text-slate-800">{getCategoryLabel(selectedOp.category)}</span>
                 </div>
                 
-                {/* 🔥 НОВОЕ: Показываем сотрудника для зарплаты */}
                 {selectedOp.category === 'Salary' && selectedOp.raw?.employeeId && (
                     <div className="flex justify-between border-b border-slate-100 pb-2 bg-blue-50 -mx-6 px-6 py-3">
                         <span className="text-slate-500 text-sm flex items-center gap-1">
@@ -402,6 +400,28 @@ const Operations: React.FC<OperationsProps> = ({
                 
                 {selectedOp.type === 'INCOME' && (
                     <>
+                        {/* 🆕 Красивый блок со скидкой (появляется только если она была) */}
+                        {selectedOp.discountAmount > 0 && (
+                            <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl space-y-2 mb-3">
+                                <div className="flex items-center gap-2 text-amber-800 font-bold text-sm">
+                                    🎁 Скидка при полном погашении
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-600">Сумма скидки:</span>
+                                    <span className="font-bold text-red-600">−{selectedOp.discountAmount.toLocaleString()} ₽</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-600">Процент скидки:</span>
+                                    <span className="font-bold text-red-600">{selectedOp.discountPercent.toFixed(1)}%</span>
+                                </div>
+                                {selectedOp.note && (
+                                    <div className="text-xs text-amber-700 italic pt-1 border-t border-amber-200">
+                                        {selectedOp.note}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <div className="flex justify-between border-b border-slate-100 pb-2">
                             <span className="text-slate-500 text-sm">Клиент / Источник</span>
                             <span className="font-semibold text-slate-800">{getCustomerName(selectedOp.raw.customerId)}</span>
