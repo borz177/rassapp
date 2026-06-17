@@ -114,6 +114,15 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     setDiscountType('percent');
   }, [selectedSaleId, selectedCustomerId]);
 
+
+  useEffect(() => {
+  // Если сумма стала меньше долга — сбрасываем скидку
+  if (Number(amount) < fullDebt) {
+    setDiscountValue('');
+    setDiscountType('percent');
+  }
+}, [amount, fullDebt]);
+
   useEffect(() => {
     if (sourceType === 'OTHER' && accounts.length > 0 && !targetAccountId) {
       setTargetAccountId(accounts[0].id);
@@ -254,15 +263,21 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
       // 🔒 ЗАЩИТА: Применяем скидку только если сумма совпадает с рассчитанной
       // Если менеджер изменил сумму вручную — скидка игнорируется
-      const isDiscountApplied = discountAmount > 0 && Math.abs(numAmount - finalPaymentAmount) < 0.01;
+      const isDiscountApplied = discountAmount > 0 
+  && Math.abs(numAmount - finalPaymentAmount) < 0.01
+  && numAmount >= fullDebt;
 
-      const commonData = { 
-        amount: numAmount, 
-        date: finalDate,
-        discountAmount: isDiscountApplied ? discountAmount : 0,
-        discountPercent: isDiscountApplied ? discountPercentDisplay : 0,
-        isFullRepaymentWithDiscount: isDiscountApplied
-      };
+// 🆕 Проверяем переплату (сумма > долга, но без скидки)
+const isOverpayment = numAmount > fullDebt && discountAmount === 0;
+
+const commonData = { 
+  amount: isOverpayment ? fullDebt : numAmount, // 🔥 При переплате записываем только сумму долга
+  date: finalDate,
+  discountAmount: isDiscountApplied ? discountAmount : 0,
+  discountPercent: isDiscountApplied ? discountPercentDisplay : 0,
+  isFullRepaymentWithDiscount: isDiscountApplied,
+  overpaymentAmount: isOverpayment ? numAmount - fullDebt : 0 // 🆕 Сохраняем переплату
+};
 
       if (sourceType === 'CUSTOMER') {
         onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
@@ -308,23 +323,51 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     const hasGuarantor = !!selectedSale.guarantorName;
     const sellerPhone = formatPhone(user?.phone || appSettings?.sellerPhone);
 
-    const existingPayments = (selectedSale.paymentPlan || [])
-      .filter(p => p.isRealPayment && p.isPaid)
-      .map(p => ({ date: new Date(p.date), amount: p.amount }))
-      .sort((a, b) => a.date.getTime() - b.date.getTime());
 
-    const currentPaymentAlreadyExists = existingPayments.some(
-      p => Math.abs(p.amount - Number(amount)) < 0.01 &&
-        new Date(p.date).getTime() === new Date(date).getTime()
-    );
 
-    if (!currentPaymentAlreadyExists) {
-      existingPayments.push({ date: new Date(date), amount: Number(amount) });
-      existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
-    }
+ 
+  useEffect(() => {
+  // Если сумма стала меньше долга — сбрасываем скидку
+  if (Number(amount) < fullDebt) {
+    setDiscountValue('');
+    setDiscountType('percent');
+  }
+}, [amount, fullDebt]);   
 
-    const totalPaid = existingPayments.reduce((sum, p) => sum + p.amount, 0);
-    const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPayment - totalPaid);
+   // Берём только РЕАЛЬНЫЕ оплаченные платежи из истории
+const existingPayments = (selectedSale.paymentPlan || [])
+    .filter(p => p.isRealPayment && p.isPaid)
+    .map(p => ({ 
+        date: new Date(p.date), 
+        amount: p.amount,
+        discountAmount: (p as any).discountAmount || 0  // 🆕 Добавляем скидку
+    }))
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+// Добавляем ТЕКУЩИЙ платёж (он ещё не сохранён в sale, поэтому добавляем вручную)
+const currentPaymentAlreadyExists = existingPayments.some(
+    p => Math.abs(p.amount - Number(amount)) < 0.01 &&
+         new Date(p.date).getTime() === new Date(date).getTime()
+);
+
+if (!currentPaymentAlreadyExists) {
+    existingPayments.push({ 
+        date: new Date(date), 
+        amount: Number(amount),
+        discountAmount: 0  // Текущий платёж пока без скидки
+    });
+    existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+// 🔹 РАСЧЁТ С УЧЁТОМ СКИДОК
+const totalPaid = existingPayments.reduce((sum, p) => sum + p.amount, 0);
+const totalDiscounts = existingPayments.reduce((sum, p) => sum + (p.discountAmount || 0), 0);
+
+// 🔥 ВАЖНО: Если договор закрыт (status === 'COMPLETED'), остаток = 0
+// Иначе считаем: общая сумма - первый взнос - оплачено - скидки
+const remainingDebt = selectedSale.status === 'COMPLETED' 
+    ? 0 
+    : Math.max(0, selectedSale.totalAmount - selectedSale.downPayment - totalPaid - totalDiscounts);
 
     const styles = {
       page: {
@@ -429,7 +472,20 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                   <tr key={index}>
                     <td style={styles.td}>{index + 1}</td>
                     <td style={styles.td}>{p.date.toLocaleDateString()}</td>
-                    <td style={styles.td}>{formatNum(p.amount)} ₽</td>
+                    <td style={styles.td}>
+    <div>{formatNum(p.amount)} ₽</div>
+    {/* 🆕 Показываем скидку, если она была */}
+    {p.discountAmount > 0 && (
+        <div style={{ 
+            fontSize: '9pt', 
+            color: '#d97706', 
+            fontStyle: 'italic',
+            marginTop: '2px'
+        }}>
+             Скидка: {formatNum(p.discountAmount)} ₽
+        </div>
+    )}
+</td>
                     <td style={styles.td}>{formatNum(displayDebt)} ₽</td>
                   </tr>
                 );
@@ -576,7 +632,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                      value={amount} onChange={e => setAmount(e.target.value)}/>
             </div>
 
-            {sourceType === 'CUSTOMER' && selectedSale && (
+            {sourceType === 'CUSTOMER' && selectedSale && Number(amount) >= fullDebt && fullDebt > 0 && (
               <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                 <label className="block text-sm font-semibold text-amber-900 mb-2">
                   🎁 Скидка при полном погашении (опционально)
@@ -630,6 +686,21 @@ const NewIncome: React.FC<NewIncomeProps> = ({
                 )}
               </div>
             )}
+
+
+            {/* 🆕 Предупреждение о переплате */}
+{sourceType === 'CUSTOMER' && selectedSale && Number(amount) > fullDebt && discountAmount === 0 && (
+  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 flex items-start gap-2">
+    <span className="text-lg">💡</span>
+    <div>
+      <p className="font-medium">Сумма больше остатка долга</p>
+      <p className="text-xs text-blue-600 mt-1">
+        Вы ввели {formatNum(Number(amount))} ₽, а остаток долга — {formatNum(fullDebt)} ₽. 
+        Договор будет закрыт, а переплата ({formatNum(Number(amount) - fullDebt)} ₽) останется на счету клиента.
+      </p>
+    </div>
+  </div>
+)}
 
             {sourceType === 'CUSTOMER' && selectedSale && (
               <div className="flex justify-between items-start mt-2">
