@@ -2390,6 +2390,7 @@ if (!user && !showSplash) {
                       customers={customers}
                       initialAccountId={operationsAccountId}
                       onDelete={handleDeleteOperation}
+                      employees={employees}
                       appSettings={appSettings}
                   />
               )}
@@ -2404,7 +2405,7 @@ if (!user && !showSplash) {
                              appSettings={appSettings} user={user}/>}
               {currentView === 'CREATE_EXPENSE' &&
                   <NewExpense investors={investors} accounts={accounts} expenses={expenses}  onClose={() => setCurrentView('DASHBOARD')}
-                              onSubmit={handleExpenseSubmit} appSettings={appSettings}/>}
+                              onSubmit={handleExpenseSubmit} appSettings={appSettings} employees={employees} />}
               {currentView === 'CREATE_SALE' &&
                   <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products}
                            accounts={accounts} onClose={() => {

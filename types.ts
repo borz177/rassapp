@@ -190,6 +190,7 @@ export interface Expense {
 
   // 🔹 Для совместных счетов
   investorId?: string;
+  employeeId?: string;
 
 }
 

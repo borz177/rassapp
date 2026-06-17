@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Account, Investor, Expense } from '../types';
+import { Account, Investor, Expense, User } from '../types';
 import { ICONS } from '../constants';
 
 interface NewExpenseProps {
@@ -38,7 +38,7 @@ const checkDuplicateExpense = (
 };
 
 const NewExpense: React.FC<NewExpenseProps> = ({ 
-  investors, accounts, expenses, onClose, onSubmit 
+  investors, accounts, expenses, employees, onClose, onSubmit 
 }) => {
   const [sourceType, setSourceType] = useState<'INVESTOR' | 'OTHER'>('OTHER');
   
@@ -57,6 +57,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [pendingExpenseData, setPendingExpenseData] = useState<any>(null);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');  
 
   const selectedInvestor = investors.find(i => i.id === selectedInvestorId);
   const selectedAccount = accounts.find(a => a.id === sourceAccountId);
@@ -87,9 +88,13 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   }, [sourceType]);
 
   // Reset manager payout source if category changes
-  useEffect(() => {
+    useEffect(() => {
       if (category !== 'Моя выплата') {
           setManagerPayoutSource(null);
+      }
+      // 🔥 Сбрасываем сотрудника, если категория не "Зарплата"
+      if (category !== 'Salary') {
+          setSelectedEmployeeId('');
       }
   }, [category]);
 
@@ -166,18 +171,37 @@ const NewExpense: React.FC<NewExpenseProps> = ({
             category: "Выплата инвестора",
             payoutType: payoutType
         };
-    } else {
-        if (!title && category !== 'Моя выплата' || !sourceAccountId) {
+        } else {
+        if (!title && category !== 'Моя выплата' && category !== 'Salary' || !sourceAccountId) {
             alert("Заполните название и выберите счет");
             return;
         }
+        
+        // 🔥 НОВОЕ: Проверка сотрудника для зарплаты
+        if (category === 'Salary' && !selectedEmployeeId) {
+            alert("Выберите сотрудника для выплаты зарплаты");
+            return;
+        }
+
+        const selectedEmployee = employees.find(e => e.id === selectedEmployeeId);
+        
         expenseData = {
             ...commonData,
             type: 'OTHER_EXPENSE',
             accountId: sourceAccountId,
-            title: category === 'Моя выплата' ? 'Выплата менеджеру' : title,
+            title: category === 'Моя выплата' 
+                ? 'Выплата менеджеру' 
+                : category === 'Salary' 
+                    ? `Зарплата: ${selectedEmployee?.name || 'Сотрудник'}`
+                    : title,
             category: category,
         };
+        
+        // 🔥 Сохраняем ID сотрудника в расходе
+        if (category === 'Salary' && selectedEmployeeId) {
+            expenseData.employeeId = selectedEmployeeId;
+        }
+        
         if (category === 'Моя выплата') {
             if (!managerPayoutSource) {
                 alert("Выберите источник списания для выплаты.");
@@ -330,6 +354,34 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                          <option value="Equipment">Оборудование</option>
                      </select>
                  </div>
+
+
+                {category === 'Salary' && (
+                     <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 animate-fade-in">
+                         <label className="block text-sm font-bold text-blue-800 mb-2 flex items-center gap-2">
+                             👤 Кому выплачиваем зарплату
+                         </label>
+                         {employees.length === 0 ? (
+                             <p className="text-sm text-blue-600 bg-white p-3 rounded-lg border border-blue-100">
+                                 ⚠️ Нет активных сотрудников. Создайте их в разделе «Сотрудники».
+                             </p>
+                         ) : (
+                             <select
+                                className="w-full p-3 border border-blue-200 rounded-xl bg-white outline-none text-slate-900 focus:ring-2 focus:ring-blue-300"
+                                value={selectedEmployeeId}
+                                onChange={e => setSelectedEmployeeId(e.target.value)}
+                             >
+                                 <option value="">-- Выберите сотрудника --</option>
+                                 {employees.map(emp => (
+                                     <option key={emp.id} value={emp.id}>
+                                         {emp.name} ({emp.email})
+                                     </option>
+                                 ))}
+                             </select>
+                         )}
+                     </div>
+                 )}
+
                  <div>
                      <label className="block text-sm font-medium text-slate-700 mb-1">Списать со счета</label>
                      <select
@@ -458,6 +510,15 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                   <span className="text-slate-500">Инвестор:</span>
                   <span className="font-medium text-slate-800">
                     {investors.find(i => i.id === pendingExpenseData.investorId)?.name}
+                  </span>
+                </div>
+              )}
+
+              {pendingExpenseData.employeeId && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Сотрудник:</span>
+                  <span className="font-medium text-blue-600">
+                    👤 {employees.find(e => e.id === pendingExpenseData.employeeId)?.name}
                   </span>
                 </div>
               )}
