@@ -452,12 +452,14 @@ export const api = {
     }
 
     // Твой существующий код применения офлайн-очереди
+        // 🔥 ИСПРАВЛЕННЫЙ блок применения офлайн-очереди к полученным данным
     if (data) {
       try {
         const queue = await offlineStorage.getQueue();
         for (const item of queue) {
           if (!item.collection || !data[item.collection]) continue;
           
+          // 🔥 ИСПРАВЛЕНО: saveItem и deleteItem теперь на одном уровне!
           if (item.type === 'saveItem') {
             if (Array.isArray(data[item.collection])) {
               const list = data[item.collection] as any[];
@@ -476,7 +478,7 @@ export const api = {
               data[item.collection] = { ...data[item.collection], ...item.payload };
             }
           } 
-          // 🔥 3. ИСПРАВЛЕН БАГ: теперь deleteItem работает корректно (был внутри saveItem)
+          // 🔥 КРИТИЧНО: вынесли deleteItem из saveItem (было внутри!)
           else if (item.type === 'deleteItem') {
             if (Array.isArray(data[item.collection])) {
               data[item.collection] = data[item.collection].filter(
