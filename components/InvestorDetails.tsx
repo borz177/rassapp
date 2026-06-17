@@ -44,12 +44,19 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, account, sa
       }));
 
     const withdrawalOps = expenses
-      .filter(e => e.accountId === account.id && e.category === 'Investment Return')
-      .map(e => ({
-        id: e.id, date: e.date, amount: e.amount,
+    .filter(e => e.accountId === account.id && (
+        e.category === 'Выплата инвестору' || 
+        e.category === 'Investment Return'  // ← Поддержка старых данных
+    ))
+    .map(e => ({
+        id: e.id, 
+        date: e.date, 
+        amount: e.amount,
         title: e.payoutType === 'INVESTMENT' ? 'Возврат инвестиций' : 'Выплата прибыли',
-        description: `Выплата для ${investor.name}`, type: 'EXPENSE', details: e
-      }));
+        description: `Выплата для ${investor.name}`, 
+        type: 'EXPENSE', 
+        details: e
+    }));
 
     return [...depositOps, ...withdrawalOps].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [sales, expenses, account, investor]);
