@@ -164,57 +164,53 @@
 
 
 
+/* ============================================
+   NATIVE APP SUPPORT — Safe Area & UX
+   ============================================ */
+
 /* 1. Безопасная зона для НИЖНЕГО меню */
+/* 🔥 ИСПРАВЛЕНО: используем max(), чтобы не было двойного отступа */
 .safe-area-pb {
-  /* 0.5rem - это ваш стандартный отступ (py-2), env() добавляет высоту системной панели */
-  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
 }
 
-/* 2. Отступ для основного контента (чтобы контент не прятался за нижнее меню) */
+/* 2. Безопасная зона для ВЕРХНЕГО хедера (нотч, камера) */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px) !important;
+  height: calc(4rem + env(safe-area-inset-top, 0px)) !important;
+}
+
+/* 3. Отступ для основного контента */
 @media (max-width: 767px) {
   .mobile-main-offset {
-    margin-bottom: calc(5rem + env(safe-area-inset-bottom, 0px)) !important;
+    /* 🔥 ИСПРАВЛЕНО: высота меню = 4rem (h-16) + safe-area, а не 5.5rem */
+    margin-bottom: calc(4rem + env(safe-area-inset-bottom, 0px)) !important;
   }
 }
 
-/* 3. Безопасная зона для ВЕРХНЕГО хедера (на случай нотча или камеры) */
-.safe-area-top {
-  padding-top: env(safe-area-inset-top, 0px);
-  height: calc(4rem + env(safe-area-inset-top, 0px)); /* h-16 = 4rem */
-}
-
-
-
-
-/* 1. Запрет pull-to-refresh (свайп вниз для обновления страницы) и bounce-эффекта */
+/* 4. Отключаем "веб-поведение" браузера */
 html, body {
   overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* 2. Убираем серую/синюю подсветку при нажатии на кнопки (стандартное поведение Android) */
 * {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* 3. Запрет случайного выделения текста и вызова контекстного меню при долгом тапе */
 body {
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
 }
-/* Разрешаем выделение текста только в полях ввода */
 input, textarea, [contenteditable] {
   -webkit-user-select: auto;
   user-select: auto;
 }
 
-/* 4. Скрываем веб-скроллбары (в нативных приложениях их обычно не видно) */
-::-webkit-scrollbar {
-  display: none;
-}
+::-webkit-scrollbar { display: none; }
 * {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-
 }
