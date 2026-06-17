@@ -61,7 +61,7 @@ const getTargetUserId = (user) => {
 const PLAN_LIMITS = {
   TRIAL:    { contracts: 10,  investors: 0, employees: 0, whatsapp: false, ai: true  },
   START:    { contracts: 100, investors: 1, employees: 0, whatsapp: false, ai: false },
-  STANDARD: { contracts: 500, investors: 5, employees: 2, whatsapp: true,  ai: false },
+  STANDARD: { contracts: 500, investors: 5, employees: 0, whatsapp: true,  ai: false },
   BUSINESS: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true  },
 };
 
@@ -2094,26 +2094,69 @@ app.post('/api/users/manage', auth, async (req, res) => {
       const { name, email, password, role, permissions, allowedInvestorIds, phone } = userData;
 
 
-      if (role === 'employee') {
-        const managerSubRes = await pool.query('SELECT subscription FROM users WHERE id = $1', [req.user.id]);
-        const managerSubRaw = managerSubRes.rows[0]?.subscription;
-        const managerSub = typeof managerSubRaw === 'string' ? JSON.parse(managerSubRaw) : managerSubRaw;
+       if (role === 'employee' || role === 'investor') {
+    try {
+      // Получаем подписку менеджера
+      const managerSubRes = await pool.query(
+        'SELECT subscription FROM users WHERE id = $1',
+        [req.user.id]
+      );
+
+      if (managerSubRes.rows.length > 0) {
+        const managerSubRaw = managerSubRes.rows[0].subscription;
+        const managerSub = typeof managerSubRaw === 'string'
+          ? JSON.parse(managerSubRaw)
+          : managerSubRaw;
+
         const plan = managerSub?.plan || 'TRIAL';
         const limits = PLAN_LIMITS[plan];
-        
-        if (limits && limits.employees !== -1) {
-            const empCountRes = await pool.query(
-                "SELECT COUNT(*) FROM users WHERE manager_id = $1 AND role = 'employee'",
-                [req.user.id]
+
+        if (limits) {
+          // 🔹 Определяем тип лимита по роли
+          const limitType = role === 'employee' ? 'employees' : 'investors';
+          const limitValue = limits[limitType];
+
+          // 🔹 -1 = безлимит, пропускаем проверку
+          if (limitValue !== -1) {
+            // Считаем текущее количество
+            const countRes = await pool.query(
+              `SELECT COUNT(*) as count FROM users 
+               WHERE manager_id = $1 AND role = $2`,
+              [req.user.id, role]
             );
-            const currentCount = parseInt(empCountRes.rows[0].count, 10);
-            if (currentCount >= limits.employees) {
-                return res.status(403).json({ 
-                    msg: `Превышен лимит сотрудников для тарифа "${plan}". Максимум: ${limits.employees}.` 
-                });
+            const currentCount = parseInt(countRes.rows[0].count, 10);
+
+            if (currentCount >= limitValue) {
+              // 🔹 Логируем попытку превышения
+              console.log(`🚫 LIMIT_HIT: manager=${req.user.id}, type=${limitType}, plan=${plan}, current=${currentCount}, limit=${limitValue}`);
+
+              const roleNames = {
+                'employee': 'сотрудников',
+                'investor': 'инвесторов'
+              };
+
+              return res.status(403).json({
+                msg: `Превышен лимит ${roleNames[role]} для тарифа "${plan}". Максимум: ${limitValue}. У вас сейчас: ${currentCount}.`,
+                details: { 
+                  current: currentCount, 
+                  limit: limitValue,
+                  type: limitType,
+                  plan: plan
+                },
+                hint: role === 'employee' 
+                  ? 'Оформите подписку Бизнес для неограниченного количества сотрудников.'
+                  : 'Оформите подписку выше для увеличения лимита инвесторов.'
+              });
             }
+          }
         }
+      }
+    } catch (err) {
+      // 🔹 При ошибке проверки — НЕ блокируем пользователя (fail-safe)
+      console.error('❌ Limit check error:', err.message);
+      // Продолжаем создание, но логируем
     }
+  }
 
       // 🔹 Проверка email (регистронезависимая)
       const userCheck = await pool.query(

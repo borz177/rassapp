@@ -625,7 +625,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         case 'AI': return plan === 'BUSINESS' || plan === 'TRIAL';
         case 'WHATSAPP': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'TRIAL';
         // 🔥 ИСПРАВЛЕНО: TRIAL имеет лимит 0, поэтому разрешаем только STANDARD и BUSINESS
-        case 'EMPLOYEES': return plan === 'BUSINESS' || plan === 'STANDARD'; 
+        case 'EMPLOYEES': return plan === 'BUSINESS'; 
         default: return true;
     }
 };
@@ -1297,7 +1297,56 @@ const handleIncomeSubmit = async (data: any) => {
         setCurrentView('OPERATIONS'); // Для инвестора и прочего оставляем как было
     }
 };  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: crypto.randomUUID(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
-  const handleAddEmployee = async (data: any) => { if (user && isManager) { if (!checkAccess('EMPLOYEES')) { showUpgradeAlert("Сотрудники доступны в тарифе Бизнес."); return; } try { const newEmp = await api.createSubUser({ ...data, role: 'employee' }); setEmployees(prev => [...prev, newEmp]); } catch(e) { alert("Ошибка создания сотрудника"); console.error(e); } } };
+ const handleAddEmployee = async (data: any) => {
+  if (!user || !isManager) return;
+
+  // 1️⃣ Проверка доступа (теперь работает только для BUSINESS)
+  if (!checkAccess('EMPLOYEES')) {
+    showUpgradeAlert("Сотрудники доступны только в тарифе Бизнес.");
+    return;
+  }
+
+  try {
+    // 2️⃣ Отправка на сервер
+    const newEmp = await api.createSubUser({ ...data, role: 'employee' });
+
+    // 3️⃣ Безопасное добавление в стейт
+    if (newEmp && newEmp.id) {
+      setEmployees(prev => [...prev, newEmp]);
+      showNotificationModal(
+        '✅ Сотрудник создан', 
+        `${newEmp.name} успешно добавлен в систему.`, 
+        'success'
+      );
+    } else {
+      throw new Error('Некорректный ответ сервера');
+    }
+
+  } catch (e: any) {
+    console.error("❌ Ошибка создания сотрудника:", e);
+
+    // 4️⃣ Умная обработка ошибок (как во всём приложении)
+    if (e.message?.includes('Email уже занят') || e.message?.includes('already exists')) {
+      showNotificationModal('⚠️ Email уже занят', 'Пользователь с таким email уже существует.', 'warning');
+    } 
+    else if (e.message?.includes('лимит') || e.message?.includes('Превышен')) {
+      showNotificationModal(
+        '🚫 Лимит сотрудников превышен', 
+        e.message, 
+        'error', 
+        'Перейти к тарифам',
+        () => setCurrentView('TARIFFS')
+      );
+    } 
+    else {
+      showNotificationModal(
+        '❌ Ошибка', 
+        e.message || 'Не удалось создать сотрудника. Проверьте подключение.', 
+        'error'
+      );
+    }
+  }
+};
   const handleUpdateEmployee = async (updatedData: User) => { if (isManager) { await api.updateUser(updatedData); updateList(setEmployees, updatedData); } };
   const handleDeleteEmployee = async (id: string) => { if (isManager) { await api.deleteUser(id); removeFromList(setEmployees, id); } };
 const handleAddInvestor = async (
@@ -1646,7 +1695,21 @@ const confirmDeleteCustomer = async () => {
 
   const handleAddProduct = async (name: string, price: number, stock: number) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } if (user) { const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newProd = { id: crypto.randomUUID(), userId: ownerId, name, price, category: 'Общее', stock }; const saved = await api.saveItem('products', newProd); updateList(setProducts, saved); } };
   const handleUpdateProduct = async (updated: Product) => { if (isEmployee && !user?.permissions?.canEdit) return; const saved = await api.saveItem('products', updated); updateList(setProducts, saved); };
-  const handleDeleteProduct = async (id: string) => { if (isEmployee && !user?.permissions?.canDelete) return; await api.deleteItem('products', id); removeFromList(setProducts, id); };
+ const handleDeleteProduct = async (id: string) => {
+  if (isEmployee && !user?.permissions?.canDelete) return;
+  
+  // 🔹 🔑 ОПТИМИСТИЧНОЕ УДАЛЕНИЕ
+  removeFromList(setProducts, id);
+  
+  try {
+    const result = await api.deleteItem('products', id);
+    if (result.isOffline) {
+      console.log('📦 Товар удалён локально');
+    }
+  } catch (e) {
+    console.warn('⚠️ Product delete failed:', e);
+  }
+};
 const handleAddCustomer = async (data: {
   name: string;
   phone: string;
