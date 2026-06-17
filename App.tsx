@@ -498,7 +498,7 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v5';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v6';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -3091,6 +3091,22 @@ if (!user && !showSplash) {
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
               Добавлена возможность предоставить скидку при полном погашении долга — в процентах или фиксированной сумме. Договор закрывается корректно.
+            </p>
+          </div>
+        </div>
+
+        {/* Обновление 3: Обновление приложения */}
+        <div className="flex gap-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center text-lg shadow-sm">
+            🔄
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <h4 className="font-bold text-slate-800 text-sm">Обновление приложения</h4>
+              <span className="text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full font-bold">НОВОЕ</span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              В настройках можете «Обновить приложение».
             </p>
           </div>
         </div>
