@@ -44,13 +44,12 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
-const [discountValue, setDiscountValue] = useState('');
+  const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
+  const [discountValue, setDiscountValue] = useState('');
 
   const contractRef = useRef<HTMLDivElement>(null);
 
-
-    const isSubscriptionExpired = useMemo(() => {
+  const isSubscriptionExpired = useMemo(() => {
     if (!user?.subscription) return false;
     const { expiresAt } = user.subscription;
     return new Date() > new Date(expiresAt);
@@ -100,12 +99,11 @@ const [discountValue, setDiscountValue] = useState('');
     }
   }, [selectedSale, showCents]);
 
-
   useEffect(() => {
-  if (selectedSale && discountAmount > 0) {
-    setAmount(showCents ? finalPaymentAmount.toFixed(2) : Math.round(finalPaymentAmount).toString());
-  }
-}, [discountAmount, finalPaymentAmount, selectedSale, showCents]);
+    if (selectedSale && discountAmount > 0) {
+      setAmount(showCents ? finalPaymentAmount.toFixed(2) : Math.round(finalPaymentAmount).toString());
+    }
+  }, [discountAmount, finalPaymentAmount, selectedSale, showCents]);
 
   useEffect(() => {
     if (selectedInvestor) {
@@ -113,13 +111,11 @@ const [discountValue, setDiscountValue] = useState('');
       if (invAccount) setTargetAccountId(invAccount.id);
     }
   }, [selectedInvestor, accounts]);
-  
 
-useEffect(() => {
-  setDiscountValue('');
-  setDiscountType('percent');
-}, [selectedSaleId, selectedCustomerId]);
-
+  useEffect(() => {
+    setDiscountValue('');
+    setDiscountType('percent');
+  }, [selectedSaleId, selectedCustomerId]);
 
   useEffect(() => {
     if (sourceType === 'OTHER' && accounts.length > 0 && !targetAccountId) {
@@ -160,22 +156,20 @@ useEffect(() => {
     return showCents ? profit : Math.round(profit);
   }, [selectedSale, amount, showCents]);
 
-
-
   const fullDebt = selectedSale?.remainingAmount || 0;
-const discountNum = parseFloat(discountValue) || 0;
+  const discountNum = parseFloat(discountValue) || 0;
 
-const discountAmount = useMemo(() => {
-  if (!selectedSale || discountNum <= 0) return 0;
-  if (discountType === 'percent') {
-    return Math.min(fullDebt, (fullDebt * discountNum) / 100);
-  } else {
-    return Math.min(fullDebt, discountNum);
-  }
-}, [discountType, discountValue, fullDebt, selectedSale]);
+  const discountAmount = useMemo(() => {
+    if (!selectedSale || discountNum <= 0) return 0;
+    if (discountType === 'percent') {
+      return Math.min(fullDebt, (fullDebt * discountNum) / 100);
+    } else {
+      return Math.min(fullDebt, discountNum);
+    }
+  }, [discountType, discountValue, fullDebt, selectedSale]);
 
-const finalPaymentAmount = Math.max(0, fullDebt - discountAmount);
-const discountPercentDisplay = fullDebt > 0 ? (discountAmount / fullDebt) * 100 : 0;
+  const finalPaymentAmount = Math.max(0, fullDebt - discountAmount);
+  const discountPercentDisplay = fullDebt > 0 ? (discountAmount / fullDebt) * 100 : 0;
 
   const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
@@ -211,278 +205,258 @@ const discountPercentDisplay = fullDebt > 0 ? (discountAmount / fullDebt) * 100 
   };
 
   const handleSubmit = (e: React.FormEvent) => {
-  e.preventDefault();
+    e.preventDefault();
 
-
-   if (isSubscriptionExpired) {
-    alert("⛔ Срок подписки истёк. Оформите подписку для совершения операций.");
-    return;
-  }
-
-  // 🛡️ Защита от повторных нажатий
-  if (isSubmitting) return;
-
-  const numAmount = Number(amount);
-  if (numAmount <= 0) { alert("Введите сумму больше нуля"); return; }
-  if (sourceType === 'CUSTOMER' && !selectedSaleId) { alert("Выберите договор"); return; }
-  if (sourceType === 'INVESTOR' && (!selectedInvestorId || !targetAccountId)) { alert("Ошибка выбора инвестора или счета"); return; }
-  if (sourceType === 'OTHER' && !targetAccountId) { alert("Выберите счет"); return; }
-
-  // 🔒 Проверка на дубликат
-  if (sourceType === 'CUSTOMER' && selectedSale) {
-    const isDuplicate = selectedSale.paymentPlan.some(p =>
-      p.isPaid && p.isRealPayment &&
-      Math.abs(p.amount - numAmount) < 0.01 &&
-      new Date(p.date).toDateString() === new Date(date).toDateString()
-    );
-    if (isDuplicate) {
-      alert("⚠️ Платёж с такой суммой и датой уже зачислен!");
+    if (isSubscriptionExpired) {
+      alert("⛔ Срок подписки истёк. Оформите подписку для совершения операций.");
       return;
     }
-  }
 
-  // ✅ Всё ок — блокируем и показываем модалку
-  setIsSubmitting(true);
-  setShowConfirmModal(true);
-};
+    if (isSubmitting) return;
 
-// 3. Обнови handleConfirm — разблокируем после отправки
-const handleConfirm = async () => {
-  try {
     const numAmount = Number(amount);
-    let finalDate = date;
-    const now = new Date();
-    const selectedDate = new Date(date);
-    const isToday = selectedDate.getDate() === now.getDate() &&
-      selectedDate.getMonth() === now.getMonth() &&
-      selectedDate.getFullYear() === now.getFullYear();
-    if (isToday) { finalDate = now.toISOString(); }
+    if (numAmount <= 0) { alert("Введите сумму больше нуля"); return; }
+    if (sourceType === 'CUSTOMER' && !selectedSaleId) { alert("Выберите договор"); return; }
+    if (sourceType === 'INVESTOR' && (!selectedInvestorId || !targetAccountId)) { alert("Ошибка выбора инвестора или счета"); return; }
+    if (sourceType === 'OTHER' && !targetAccountId) { alert("Выберите счет"); return; }
 
-    const commonData = { 
-      amount: numAmount, 
-      date: finalDate,
-      // Добавляем данные о скидке
-      discountAmount: discountAmount,
-      discountPercent: discountPercentDisplay,
-      isFullRepaymentWithDiscount: discountAmount > 0
-    };
-
-    if (sourceType === 'CUSTOMER') {
-      onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
-
-      if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
-        try {
-          const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
-          const dateStr = date.replace(/-/g, '');
-          const fileName = `Payment_${dateStr}.pdf`;
-          const success = await sendWhatsAppFile(
-            appSettings.whatsapp.idInstance,
-            appSettings.whatsapp.apiTokenInstance,
-            selectedCustomer.phone,
-            pdfBlob,
-            fileName
-          );
-          if (success) alert("Договор (PDF) отправлен клиенту в WhatsApp");
-          else alert("Ошибка отправки PDF в WhatsApp");
-        } catch (error: any) {
-          console.error("PDF generation error:", error);
-          alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
-        }
-      }
-    } else if (sourceType === 'INVESTOR') {
-      onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
-    } else {
-      onSubmit({ ...commonData, type: 'OTHER_INCOME', accountId: targetAccountId, note: note || "Прочий приход" });
-    }
-  } finally {
-
-    setShowConfirmModal(false);
-    setIsSubmitting(false);
-  }
-};
-
-
-const handleCancel = () => {
-  setShowConfirmModal(false);
-  setIsSubmitting(false);
-};
-
-  const renderContractContent = () => {
-      if (!selectedSale || !selectedCustomer) return null;
-      const companyName = appSettings?.companyName || "Компания";
-      const hasGuarantor = !!selectedSale.guarantorName;
-      const sellerPhone = formatPhone(user?.phone || appSettings?.sellerPhone);
-
-
-
-// Берём только РЕАЛЬНЫЕ оплаченные платежи из истории
-const existingPayments = (selectedSale.paymentPlan || [])
-    .filter(p => p.isRealPayment && p.isPaid)
-    .map(p => ({ date: new Date(p.date), amount: p.amount }))
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
-
-// Добавляем ТЕКУЩИЙ платёж (он ещё не сохранён в sale, поэтому добавляем вручную)
-
-const currentPaymentAlreadyExists = existingPayments.some(
-    p => Math.abs(p.amount - Number(amount)) < 0.01 &&
-         new Date(p.date).getTime() === new Date(date).getTime()
-);
-
-if (!currentPaymentAlreadyExists) {
-    existingPayments.push({ date: new Date(date), amount: Number(amount) });
-    existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
-}
-
-
-const totalPaid = existingPayments.reduce((sum, p) => sum + p.amount, 0);
-const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPayment - totalPaid);
-
-      const styles = {
-          page: {
-              width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
-              fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '12pt', lineHeight: '1.5',
-              display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
-              position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
-          },
-          contentWrapper: { flex: 1 },
-          h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
-          headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
-          fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
-          fieldLabel: { fontWeight: 'bold' as const },
-          phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
-          section: { margin: '0 0 20px 0' },
-          sectionItem: { marginBottom: '12px' },
-          table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
-          th: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
-          td: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
-          footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
-          footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
-          signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
-          signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
-          signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
-      };
-
-      let currentDebt = selectedSale.totalAmount - selectedSale.downPayment;
-
-      return (
-          <div ref={contractRef} style={styles.page}>
-              <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
-              <div style={styles.headerInfo}>Дата: {new Date(selectedSale.startDate).toLocaleDateString()}</div>
-              <div style={styles.contentWrapper}>
-                  <div style={styles.section}>
-                      <div style={styles.fieldRow}>
-                          <span><span style={styles.fieldLabel}>Продавец:</span> {companyName}</span>
-                          <span style={styles.phoneField}>Тел: {formatPhone(sellerPhone)}</span>
-                      </div>
-                      <div style={styles.fieldRow}>
-                          <span><span style={styles.fieldLabel}>Покупатель:</span> {selectedCustomer.name}</span>
-                          <span style={styles.phoneField}>Тел: {formatPhone(selectedCustomer.phone)}</span>
-                      </div>
-                      {hasGuarantor && (
-                          <div style={styles.fieldRow}>
-                              <span><span
-                                  style={styles.fieldLabel}>Поручитель:</span> {selectedSale.guarantorName}</span>
-                              <span style={styles.phoneField}>Тел: {formatPhone(selectedSale.guarantorPhone)} </span>
-                          </div>
-                      )}
-                  </div>
-                  <div style={styles.section}>
-                      {/* Строка 1: Товар + Стоимость */}
-                      <div style={{
-                          ...styles.sectionItem,
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginBottom: '15px'
-                      }}>
-                          <span><span style={styles.fieldLabel}>Товар:</span> {selectedSale.productName}</span>
-                          <span><span
-                              style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
-                      </div>
-
-                      {/* Строка 2: Срок + Первый взнос */}
-                      <div style={{
-                          ...styles.sectionItem,
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          marginTop: '10px'
-                      }}>
-                          <span><span style={styles.fieldLabel}>Срок рассрочки:</span> {selectedSale.installments} мес.</span>
-                          <span><span
-                              style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
-                      </div>
-
-                      {/* Строка 3: Платёж + Остаток (Остаток теперь внизу!) */}
-                      <div style={{
-                          ...styles.sectionItem,
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          marginTop: '10px'
-                      }}>
-                          <span><span
-                              style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
-
-                          {/* Остаток с акцентом */}
-                          <span style={{
-                              fontWeight: 'bold',
-                              color: '#ef8228',
-                              fontSize: '12pt'  // Как у остальных полей, или 13pt если хотите чуть крупнее
-                          }}>
-    Остаток: {formatNum(remainingDebt)} ₽
-</span>
-                      </div>
-                  </div>
-                  <table style={styles.table}>
-                      <thead>
-                      <tr>
-                          <th style={{...styles.th, width: '10%'}}>№</th>
-                          <th style={{...styles.th, width: '30%'}}>Дата</th>
-                          <th style={{...styles.th, width: '25%'}}>Сумма</th>
-                          <th style={{...styles.th, width: '35%'}}>Остаток долга</th>
-                      </tr>
-                      </thead>
-                      <tbody>
-                      {existingPayments.map((p, index) => {
-                          currentDebt -= p.amount;
-                          const displayDebt = Math.max(0, currentDebt);
-                          return (
-                              <tr key={index}>
-                                  <td style={styles.td}>{index + 1}</td>
-                                  <td style={styles.td}>{p.date.toLocaleDateString()}</td>
-                                  <td style={styles.td}>{formatNum(p.amount)} ₽</td>
-                                  <td style={styles.td}>{formatNum(displayDebt)} ₽</td>
-                              </tr>
-                          );
-                      })}
-                      </tbody>
-                  </table>
-                  <div style={{margin: '25px 0', fontSize: '11pt', lineHeight: 1.4}}>
-                      Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в
-                      рассрочку на указанных выше условиях.
-                  </div>
-              </div>
-              <div style={styles.footerContainer}>
-                  <div style={styles.footer}>
-                      <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
-                          <div style={styles.signatureLine}></div>
-                          <div style={styles.signatureLabel}>Продавец</div>
-                      </div>
-                      {hasGuarantor && (
-                          <div style={styles.signatureBlock('30%')}>
-                              <div style={styles.signatureLine}></div>
-                              <div style={styles.signatureLabel}>Поручитель</div>
-                          </div>
-                      )}
-                      <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
-                          <div style={styles.signatureLine}></div>
-                          <div style={styles.signatureLabel}>Покупатель</div>
-                      </div>
-                  </div>
-              </div>
-          </div>
+    if (sourceType === 'CUSTOMER' && selectedSale) {
+      const isDuplicate = selectedSale.paymentPlan.some(p =>
+        p.isPaid && p.isRealPayment &&
+        Math.abs(p.amount - numAmount) < 0.01 &&
+        new Date(p.date).toDateString() === new Date(date).toDateString()
       );
+      if (isDuplicate) {
+        alert("⚠️ Платёж с такой суммой и датой уже зачислен!");
+        return;
+      }
+    }
+
+    setIsSubmitting(true);
+    setShowConfirmModal(true);
   };
 
+  const handleConfirm = async () => {
+    try {
+      const numAmount = Number(amount);
+      let finalDate = date;
+      const now = new Date();
+      const selectedDate = new Date(date);
+      const isToday = selectedDate.getDate() === now.getDate() &&
+        selectedDate.getMonth() === now.getMonth() &&
+        selectedDate.getFullYear() === now.getFullYear();
+      if (isToday) { finalDate = now.toISOString(); }
+
+      // 🔒 ЗАЩИТА: Применяем скидку только если сумма совпадает с рассчитанной
+      // Если менеджер изменил сумму вручную — скидка игнорируется
+      const isDiscountApplied = discountAmount > 0 && Math.abs(numAmount - finalPaymentAmount) < 0.01;
+
+      const commonData = { 
+        amount: numAmount, 
+        date: finalDate,
+        discountAmount: isDiscountApplied ? discountAmount : 0,
+        discountPercent: isDiscountApplied ? discountPercentDisplay : 0,
+        isFullRepaymentWithDiscount: isDiscountApplied
+      };
+
+      if (sourceType === 'CUSTOMER') {
+        onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
+
+        if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
+          try {
+            const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
+            const dateStr = date.replace(/-/g, '');
+            const fileName = `Payment_${dateStr}.pdf`;
+            const success = await sendWhatsAppFile(
+              appSettings.whatsapp.idInstance,
+              appSettings.whatsapp.apiTokenInstance,
+              selectedCustomer.phone,
+              pdfBlob,
+              fileName
+            );
+            if (success) alert("Договор (PDF) отправлен клиенту в WhatsApp");
+            else alert("Ошибка отправки PDF в WhatsApp");
+          } catch (error: any) {
+            console.error("PDF generation error:", error);
+            alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
+          }
+        }
+      } else if (sourceType === 'INVESTOR') {
+        onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
+      } else {
+        onSubmit({ ...commonData, type: 'OTHER_INCOME', accountId: targetAccountId, note: note || "Прочий приход" });
+      }
+    } finally {
+      setShowConfirmModal(false);
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setShowConfirmModal(false);
+    setIsSubmitting(false);
+  };
+
+  const renderContractContent = () => {
+    if (!selectedSale || !selectedCustomer) return null;
+    const companyName = appSettings?.companyName || "Компания";
+    const hasGuarantor = !!selectedSale.guarantorName;
+    const sellerPhone = formatPhone(user?.phone || appSettings?.sellerPhone);
+
+    const existingPayments = (selectedSale.paymentPlan || [])
+      .filter(p => p.isRealPayment && p.isPaid)
+      .map(p => ({ date: new Date(p.date), amount: p.amount }))
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    const currentPaymentAlreadyExists = existingPayments.some(
+      p => Math.abs(p.amount - Number(amount)) < 0.01 &&
+        new Date(p.date).getTime() === new Date(date).getTime()
+    );
+
+    if (!currentPaymentAlreadyExists) {
+      existingPayments.push({ date: new Date(date), amount: Number(amount) });
+      existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
+    }
+
+    const totalPaid = existingPayments.reduce((sum, p) => sum + p.amount, 0);
+    const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPayment - totalPaid);
+
+    const styles = {
+      page: {
+        width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
+        fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '12pt', lineHeight: '1.5',
+        display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
+        position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
+      },
+      contentWrapper: { flex: 1 },
+      h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
+      headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
+      fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
+      fieldLabel: { fontWeight: 'bold' as const },
+      phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
+      section: { margin: '0 0 20px 0' },
+      sectionItem: { marginBottom: '12px' },
+      table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
+      th: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
+      td: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
+      footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
+      footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
+      signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
+      signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
+      signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
+    };
+
+    let currentDebt = selectedSale.totalAmount - selectedSale.downPayment;
+
+    return (
+      <div ref={contractRef} style={styles.page}>
+        <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
+        <div style={styles.headerInfo}>Дата: {new Date(selectedSale.startDate).toLocaleDateString()}</div>
+        <div style={styles.contentWrapper}>
+          <div style={styles.section}>
+            <div style={styles.fieldRow}>
+              <span><span style={styles.fieldLabel}>Продавец:</span> {companyName}</span>
+              <span style={styles.phoneField}>Тел: {formatPhone(sellerPhone)}</span>
+            </div>
+            <div style={styles.fieldRow}>
+              <span><span style={styles.fieldLabel}>Покупатель:</span> {selectedCustomer.name}</span>
+              <span style={styles.phoneField}>Тел: {formatPhone(selectedCustomer.phone)}</span>
+            </div>
+            {hasGuarantor && (
+              <div style={styles.fieldRow}>
+                <span><span style={styles.fieldLabel}>Поручитель:</span> {selectedSale.guarantorName}</span>
+                <span style={styles.phoneField}>Тел: {formatPhone(selectedSale.guarantorPhone)} </span>
+              </div>
+            )}
+          </div>
+          <div style={styles.section}>
+            <div style={{
+              ...styles.sectionItem,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '15px'
+            }}>
+              <span><span style={styles.fieldLabel}>Товар:</span> {selectedSale.productName}</span>
+              <span><span style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
+            </div>
+
+            <div style={{
+              ...styles.sectionItem,
+              display: 'flex',
+              justifyContent: 'space-between',
+              marginTop: '10px'
+            }}>
+              <span><span style={styles.fieldLabel}>Срок рассрочки:</span> {selectedSale.installments} мес.</span>
+              <span><span style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
+            </div>
+
+            <div style={{
+              ...styles.sectionItem,
+              display: 'flex',
+              justifyContent: 'space-between',
+              marginTop: '10px'
+            }}>
+              <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
+              <span style={{
+                fontWeight: 'bold',
+                color: '#ef8228',
+                fontSize: '12pt'
+              }}>
+                Остаток: {formatNum(remainingDebt)} ₽
+              </span>
+            </div>
+          </div>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={{...styles.th, width: '10%'}}>№</th>
+                <th style={{...styles.th, width: '30%'}}>Дата</th>
+                <th style={{...styles.th, width: '25%'}}>Сумма</th>
+                <th style={{...styles.th, width: '35%'}}>Остаток долга</th>
+              </tr>
+            </thead>
+            <tbody>
+              {existingPayments.map((p, index) => {
+                currentDebt -= p.amount;
+                const displayDebt = Math.max(0, currentDebt);
+                return (
+                  <tr key={index}>
+                    <td style={styles.td}>{index + 1}</td>
+                    <td style={styles.td}>{p.date.toLocaleDateString()}</td>
+                    <td style={styles.td}>{formatNum(p.amount)} ₽</td>
+                    <td style={styles.td}>{formatNum(displayDebt)} ₽</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div style={{margin: '25px 0', fontSize: '11pt', lineHeight: 1.4}}>
+            Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в
+            рассрочку на указанных выше условиях.
+          </div>
+        </div>
+        <div style={styles.footerContainer}>
+          <div style={styles.footer}>
+            <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
+              <div style={styles.signatureLine}></div>
+              <div style={styles.signatureLabel}>Продавец</div>
+            </div>
+            {hasGuarantor && (
+              <div style={styles.signatureBlock('30%')}>
+                <div style={styles.signatureLine}></div>
+                <div style={styles.signatureLabel}>Поручитель</div>
+              </div>
+            )}
+            <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
+              <div style={styles.signatureLine}></div>
+              <div style={styles.signatureLabel}>Покупатель</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Неизвестный счет';
 
@@ -515,267 +489,276 @@ const remainingDebt = Math.max(0, selectedSale.totalAmount - selectedSale.downPa
           }`}
         >Прочее</button>
       </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-            {sourceType === 'CUSTOMER' && (
-                <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Клиент</label>
-                        <div onClick={onSelectCustomer}
-                             className={`w-full p-3 border rounded-xl cursor-pointer flex justify-between items-center ${selectedCustomerId ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-dashed border-slate-300'}`}>
-                            <div className="flex items-center gap-2">
-                                {selectedCustomerId && <div className="text-indigo-600">{ICONS.Customers}</div>}
-                                <span
-                                    className={selectedCustomerId ? 'text-slate-800 font-bold' : 'text-slate-400'}>{selectedCustomer ? selectedCustomer.name : 'Нажмите для выбора...'}</span>
-                            </div>
-                            <span className="text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                                                                  stroke="currentColor" strokeWidth="2"
-                                                                  strokeLinecap="round" strokeLinejoin="round"><polyline
-                                points="9 18 15 12 9 6"/></svg></span>
-                        </div>
-                    </div>
-                    {selectedCustomerId && (
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Активный договор</label>
-                            {activeCustomerSales.length > 0 ? (
-                                <select
-                                    className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
-                                    value={selectedSaleId} onChange={e => setSelectedSaleId(e.target.value)}>
-                                    <option value="">-- Выберите товар/рассрочку --</option>
-                                    {activeCustomerSales.map(s => <option key={s.id}
-                                                                          value={s.id}>{s.productName} (Долг: {formatNum(s.remainingAmount)} ₽)</option>)}
-                                </select>
-                            ) : <p className="text-slate-500 italic p-2">Нет активных долгов</p>}
-                        </div>
-                    )}
-                    {selectedSale && <div
-                        className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm flex gap-2 items-center">
-                        <span className="text-slate-500">Зачисление на счет:</span><span
-                        className="font-bold text-slate-800">{getAccountName(selectedSale.accountId)}</span></div>}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {sourceType === 'CUSTOMER' && (
+          <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Клиент</label>
+              <div onClick={onSelectCustomer}
+                   className={`w-full p-3 border rounded-xl cursor-pointer flex justify-between items-center ${selectedCustomerId ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-dashed border-slate-300'}`}>
+                <div className="flex items-center gap-2">
+                  {selectedCustomerId && <div className="text-indigo-600">{ICONS.Customers}</div>}
+                  <span className={selectedCustomerId ? 'text-slate-800 font-bold' : 'text-slate-400'}>{selectedCustomer ? selectedCustomer.name : 'Нажмите для выбора...'}</span>
                 </div>
-            )}
-            {sourceType === 'INVESTOR' && (
-                <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Выберите инвестора</label>
-                        <select
-                            className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
-                            value={selectedInvestorId} onChange={e => setSelectedInvestorId(e.target.value)}>
-                            <option value="">-- Список инвесторов --</option>
-                            {investors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
-                        </select>
-                    </div>
-                    {targetAccountId && <div
-                        className="bg-purple-50 p-3 rounded-lg border border-purple-100 text-sm flex gap-2 items-center">
-                        <span className="text-purple-600 font-medium">Счет зачисления:</span><span
-                        className="font-bold text-purple-800">{getAccountName(targetAccountId)}</span></div>}
-                </div>
-            )}
-            {sourceType === 'OTHER' && (
-                <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
-                    <div><label className="block text-sm font-medium text-slate-700 mb-1">Назначение /
-                        Описание</label><input placeholder="Например: Внесение личных средств"
-                                               className="w-full p-3 border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
-                                               value={note} onChange={e => setNote(e.target.value)}/></div>
-                    <div><label className="block text-sm font-medium text-slate-700 mb-1">Счет зачисления</label><select
-                        className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
-                        value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>{accounts.map(a =>
-                        <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-                </div>
-            )}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Сумма прихода</label>
-                    <div className="relative">
-                        <span className="absolute left-4 top-3.5 text-slate-400 text-lg">₽</span>
-                        <input type="number" step={showCents ? "0.01" : "1"} placeholder="0"
-                               className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
-                               value={amount} onChange={e => setAmount(e.target.value)}/>
-                    </div>
-
-
-                   {sourceType === 'CUSTOMER' && selectedSale && (
-  <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-    <label className="block text-sm font-semibold text-amber-900 mb-2">
-      🎁 Скидка при полном погашении (опционально)
-    </label>
-    
-    <div className="flex gap-2 mb-3">
-      <select
-        value={discountType}
-        onChange={(e) => setDiscountType(e.target.value as 'percent' | 'amount')}
-        className="px-3 py-2 border border-amber-300 rounded-lg bg-white text-sm font-medium text-amber-900"
-      >
-        <option value="percent">%</option>
-        <option value="amount">₽</option>
-      </select>
-      
-      <input
-        type="number"
-        step={discountType === 'percent' ? '0.01' : showCents ? '0.01' : '1'}
-        placeholder={discountType === 'percent' ? 'Например: 5' : 'Например: 1000'}
-        value={discountValue}
-        onChange={(e) => setDiscountValue(e.target.value)}
-        className="flex-1 px-3 py-2 border border-amber-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
-        min="0"
-        max={discountType === 'percent' ? '100' : fullDebt}
-      />
-    </div>
-    
-    {/* Карточка с расчетом */}
-    {discountAmount > 0 && (
-      <div className="bg-white p-3 rounded-lg border border-amber-200 space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-600">Остаток долга:</span>
-          <span className="font-semibold">{formatNum(fullDebt)} ₽</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-red-600">
-            Скидка ({discountType === 'percent' ? `${discountNum}%` : `${formatNum(discountNum)} ₽`}):
-          </span>
-          <span className="font-semibold text-red-600">−{formatNum(discountAmount)} ₽</span>
-        </div>
-        <div className="border-t border-amber-200 pt-2 flex justify-between">
-          <span className="font-bold text-amber-900">К оплате:</span>
-          <span className="font-bold text-xl text-amber-700">{formatNum(finalPaymentAmount)} ₽</span>
-        </div>
-      </div>
-    )}
-    
-    {discountAmount > 0 && (
-      <p className="text-xs text-amber-700 mt-2">
-        💡 Договор будет закрыт полностью. Скидка: {discountPercentDisplay.toFixed(1)}%
-      </p>
-    )}
-  </div>
-)}
-
-
-                    {sourceType === 'CUSTOMER' && selectedSale && (
-                        <div className="flex justify-between items-start mt-2">
-                            <p className="text-xs text-slate-400 mt-1">Рек: {formatNum(recommendedAmount)} ₽</p>
-                            {currentPaymentProfit > 0 && (
-                                <div className="bg-emerald-50 px-2 py-1 rounded text-right">
-                                    <p className="text-xs text-emerald-600 font-medium">Прибыль с платежа</p>
-                                    <p className="text-sm font-bold text-emerald-700">+{formatNum(currentPaymentProfit)} ₽</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-                {sourceType === 'CUSTOMER' && appSettings.whatsapp?.enabled && (
-                    <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                        <div className="flex items-center gap-2">
-                            <span className="text-emerald-500">{ICONS.Send}</span>
-                            <span className="text-sm font-medium text-slate-700">Отправить чек в WhatsApp</span>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" checked={sendHistory} onChange={() => setSendHistory(!sendHistory)}
-                                   className="sr-only peer"/>
-                            <div
-                                className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-                        </label>
-                    </div>
-                )}
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
-                    <input type="date"
-                           className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
-                           value={date} onChange={e => setDate(e.target.value)}/>
-                </div>
+                <span className="text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                                      stroke="currentColor" strokeWidth="2"
+                                                      strokeLinecap="round" strokeLinejoin="round"><polyline
+                  points="9 18 15 12 9 6"/></svg></span>
+              </div>
             </div>
-            <button
-                type="submit"
-                disabled={isSubmitting || isSubscriptionExpired}
-                className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95 ${
-                    isSubmitting || isSubscriptionExpired
-                        ? isSubscriptionExpired
-                            ? 'bg-slate-400 cursor-not-allowed shadow-none'
-                            : 'bg-emerald-400 cursor-not-allowed'
-                        : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
-                }`}
-            >
-                {isSubscriptionExpired ? (
-                    <span className="flex items-center justify-center gap-2">
-                      🔒 Подписка истекла — оформите для продолжения
-                    </span>
-                ) : isSubmitting ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"
-                                fill="none"/>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                      </svg>
-                      Обработка...
-                    </span>
-                ) : 'Подтвердить приход'}
-            </button>
-        </form>
-        {showConfirmModal && (
-            <div
-                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-                onClick={handleCancel} // 🔥 Теперь сбрасывает isSubmitting
-            >
-                <div
-                    className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
-                    onClick={e => e.stopPropagation()} // 🔥 Клик внутри модалки не закрывает её
-                >
-                    <h3 className="text-xl font-bold text-slate-800 text-center">Подтверждение прихода</h3>
-
-                    <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
-                        {sourceType === 'CUSTOMER' && (
-                            <>
-                                <div className="flex justify-between">
-                                    <span className="text-slate-500">От кого:</span>
-                                    <span className="font-bold text-slate-800">{selectedCustomer?.name}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-slate-500">За что:</span>
-                                    <span className="font-medium text-slate-800">{selectedSale?.productName}</span>
-                                </div>
-                            </>
-                        )}
-                        {sourceType === 'INVESTOR' && (
-                            <div className="flex justify-between">
-            <span className="text-slate-500">Инвестор:</span>
-            <span className="font-bold text-slate-800">{selectedInvestor?.name}</span>
+            {selectedCustomerId && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Активный договор</label>
+                {activeCustomerSales.length > 0 ? (
+                  <select
+                    className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
+                    value={selectedSaleId} onChange={e => setSelectedSaleId(e.target.value)}>
+                    <option value="">-- Выберите товар/рассрочку --</option>
+                    {activeCustomerSales.map(s => <option key={s.id}
+                                                          value={s.id}>{s.productName} (Долг: {formatNum(s.remainingAmount)} ₽)</option>)}
+                  </select>
+                ) : <p className="text-slate-500 italic p-2">Нет активных долгов</p>}
+              </div>
+            )}
+            {selectedSale && <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm flex gap-2 items-center">
+              <span className="text-slate-500">Зачисление на счет:</span>
+              <span className="font-bold text-slate-800">{getAccountName(selectedSale.accountId)}</span>
+            </div>}
+          </div>
+        )}
+        {sourceType === 'INVESTOR' && (
+          <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Выберите инвестора</label>
+              <select
+                className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
+                value={selectedInvestorId} onChange={e => setSelectedInvestorId(e.target.value)}>
+                <option value="">-- Список инвесторов --</option>
+                {investors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
+              </select>
+            </div>
+            {targetAccountId && <div className="bg-purple-50 p-3 rounded-lg border border-purple-100 text-sm flex gap-2 items-center">
+              <span className="text-purple-600 font-medium">Счет зачисления:</span>
+              <span className="font-bold text-purple-800">{getAccountName(targetAccountId)}</span>
+            </div>}
           </div>
         )}
         {sourceType === 'OTHER' && (
-          <div className="flex justify-between">
-            <span className="text-slate-500">Назначение:</span>
-            <span className="font-medium text-slate-800">{note}</span>
+          <div className="space-y-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Назначение / Описание</label>
+              <input placeholder="Например: Внесение личных средств"
+                     className="w-full p-3 border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                     value={note} onChange={e => setNote(e.target.value)}/>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Счет зачисления</label>
+              <select
+                className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none text-slate-900"
+                value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
           </div>
         )}
-        <div className="my-2 border-t border-slate-200"></div>
-        <div className="flex justify-between items-center">
-          <span className="text-slate-500">Сумма:</span>
-          <span className="text-xl font-bold text-emerald-600">+{formatNum(Number(amount))} ₽</span>
-        </div>
-        <div className="flex justify-between items-center pt-1">
-          <span className="text-slate-500">Счет:</span>
-          <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-xs font-bold">
-            {getAccountName(targetAccountId)}
-          </span>
-        </div>
-      </div>
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Сумма прихода</label>
+            <div className="relative">
+              <span className="absolute left-4 top-3.5 text-slate-400 text-lg">₽</span>
+              <input type="number" step={showCents ? "0.01" : "1"} placeholder="0"
+                     className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                     value={amount} onChange={e => setAmount(e.target.value)}/>
+            </div>
 
-      <div className="flex gap-3 pt-2">
+            {sourceType === 'CUSTOMER' && selectedSale && (
+              <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                <label className="block text-sm font-semibold text-amber-900 mb-2">
+                  🎁 Скидка при полном погашении (опционально)
+                </label>
+                
+                <div className="flex gap-2 mb-3">
+                  <select
+                    value={discountType}
+                    onChange={(e) => setDiscountType(e.target.value as 'percent' | 'amount')}
+                    className="px-3 py-2 border border-amber-300 rounded-lg bg-white text-sm font-medium text-amber-900"
+                  >
+                    <option value="percent">%</option>
+                    <option value="amount">₽</option>
+                  </select>
+                  
+                  <input
+                    type="number"
+                    step={discountType === 'percent' ? '0.01' : showCents ? '0.01' : '1'}
+                    placeholder={discountType === 'percent' ? 'Например: 5' : 'Например: 1000'}
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-amber-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
+                    min="0"
+                    max={discountType === 'percent' ? '100' : fullDebt}
+                  />
+                </div>
+                
+                {discountAmount > 0 && (
+                  <div className="bg-white p-3 rounded-lg border border-amber-200 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">Остаток долга:</span>
+                      <span className="font-semibold">{formatNum(fullDebt)} ₽</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-red-600">
+                        Скидка ({discountType === 'percent' ? `${discountNum}%` : `${formatNum(discountNum)} ₽`}):
+                      </span>
+                      <span className="font-semibold text-red-600">−{formatNum(discountAmount)} ₽</span>
+                    </div>
+                    <div className="border-t border-amber-200 pt-2 flex justify-between">
+                      <span className="font-bold text-amber-900">К оплате:</span>
+                      <span className="font-bold text-xl text-amber-700">{formatNum(finalPaymentAmount)} ₽</span>
+                    </div>
+                  </div>
+                )}
+                
+                {discountAmount > 0 && (
+                  <p className="text-xs text-amber-700 mt-2">
+                    💡 Договор будет закрыт полностью. Скидка: {discountPercentDisplay.toFixed(1)}%
+                  </p>
+                )}
+              </div>
+            )}
+
+            {sourceType === 'CUSTOMER' && selectedSale && (
+              <div className="flex justify-between items-start mt-2">
+                <p className="text-xs text-slate-400 mt-1">Рек: {formatNum(recommendedAmount)} ₽</p>
+                {currentPaymentProfit > 0 && (
+                  <div className="bg-emerald-50 px-2 py-1 rounded text-right">
+                    <p className="text-xs text-emerald-600 font-medium">Прибыль с платежа</p>
+                    <p className="text-sm font-bold text-emerald-700">+{formatNum(currentPaymentProfit)} ₽</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          {sourceType === 'CUSTOMER' && appSettings.whatsapp?.enabled && (
+            <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+              <div className="flex items-center gap-2">
+                <span className="text-emerald-500">{ICONS.Send}</span>
+                <span className="text-sm font-medium text-slate-700">Отправить чек в WhatsApp</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" checked={sendHistory} onChange={() => setSendHistory(!sendHistory)}
+                       className="sr-only peer"/>
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+              </label>
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Дата</label>
+            <input type="date"
+                   className="w-full p-3 text-lg border border-slate-200 rounded-xl outline-none bg-white text-slate-900"
+                   value={date} onChange={e => setDate(e.target.value)}/>
+          </div>
+        </div>
         <button
-          onClick={handleCancel} // 🔥 Используем handleCancel для сброса isSubmitting
-          className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200"
+          type="submit"
+          disabled={isSubmitting || isSubscriptionExpired}
+          className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95 ${
+            isSubmitting || isSubscriptionExpired
+              ? isSubscriptionExpired
+                ? 'bg-slate-400 cursor-not-allowed shadow-none'
+                : 'bg-emerald-400 cursor-not-allowed'
+              : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+          }`}
         >
-          Отмена
+          {isSubscriptionExpired ? (
+            <span className="flex items-center justify-center gap-2">
+              🔒 Подписка истекла — оформите для продолжения
+            </span>
+          ) : isSubmitting ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+              </svg>
+              Обработка...
+            </span>
+          ) : 'Подтвердить приход'}
         </button>
-        <button
-          onClick={handleConfirm}
-          className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200"
+      </form>
+      {showConfirmModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+          onClick={handleCancel}
         >
-          Зачислить
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+          <div
+            className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold text-slate-800 text-center">Подтверждение прихода</h3>
+
+            <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
+              {sourceType === 'CUSTOMER' && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">От кого:</span>
+                    <span className="font-bold text-slate-800">{selectedCustomer?.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">За что:</span>
+                    <span className="font-medium text-slate-800">{selectedSale?.productName}</span>
+                  </div>
+                </>
+              )}
+              {sourceType === 'INVESTOR' && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Инвестор:</span>
+                  <span className="font-bold text-slate-800">{selectedInvestor?.name}</span>
+                </div>
+              )}
+              {sourceType === 'OTHER' && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Назначение:</span>
+                  <span className="font-medium text-slate-800">{note}</span>
+                </div>
+              )}
+              <div className="my-2 border-t border-slate-200"></div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Сумма:</span>
+                <span className="text-xl font-bold text-emerald-600">+{formatNum(Number(amount))} ₽</span>
+              </div>
+              
+              {/* 🎁 ПОКАЗЫВАЕМ СКИДКУ В МОДАЛКЕ, ЕСЛИ ОНА ПРИМЕНЯЕТСЯ */}
+              {discountAmount > 0 && Math.abs(Number(amount) - finalPaymentAmount) < 0.01 && (
+                <div className="flex justify-between items-center text-sm bg-amber-50 px-3 py-2 rounded-lg border border-amber-100">
+                  <span className="text-amber-800 font-medium">🎁 Скидка:</span>
+                  <span className="font-bold text-red-600">−{formatNum(discountAmount)} ₽ ({discountPercentDisplay.toFixed(1)}%)</span>
+                </div>
+              )}
+              
+              <div className="flex justify-between items-center pt-1">
+                <span className="text-slate-500">Счет:</span>
+                <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-xs font-bold">
+                  {getAccountName(targetAccountId)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={handleCancel}
+                className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleConfirm}
+                className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200"
+              >
+                Зачислить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
