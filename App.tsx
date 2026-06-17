@@ -1234,33 +1234,33 @@ const handleIncomeSubmit = async (data: any) => {
     if (!user) return;
 
     if (data.type === 'CUSTOMER_PAYMENT') {
-        // 🆕 Деструктурируем с дефолтными значениями (для обратной совместимости)
+        // 🆕 Извлекаем данные о скидке
         const { saleId, amount, discountAmount = 0, discountPercent = 0 } = data;
         const sale = sales.find(s => s.id === saleId);
 
         if (sale) {
             const updatedSale = { ...sale };
 
-            // 🆕 ЛОГИКА СО СКИДКОЙ: полное погашение с дисконтом
+            // 🆕 ЛОГИКА СО СКИДКОЙ
             if (discountAmount > 0) {
-                // Обнуляем остаток долга ПОЛНОСТЬЮ (независимо от фактической суммы)
+                // При скидке — обнуляем долг ПОЛНОСТЬЮ
                 updatedSale.remainingAmount = 0;
                 updatedSale.status = 'COMPLETED';
 
                 updatedSale.paymentPlan.push({
                     id: `paid_${Date.now()}`,
                     saleId: sale.id,
-                    amount: amount, // Фактически полученная сумма (с учётом скидки)
+                    amount: amount, // Фактическая сумма (с учётом скидки)
                     date: data.date,
                     isPaid: true,
                     isRealPayment: true,
-                    // 🆕 Метаданные скидки — для истории и отчётов
+                    // 🆕 Метаданные скидки
                     discountAmount: discountAmount,
                     discountPercent: discountPercent,
                     note: `Полное погашение со скидкой ${discountPercent.toFixed(1)}% (−${discountAmount} ₽)`
                 });
             } 
-            // 🟢 ОБЫЧНАЯ ЛОГИКА: стандартное погашение без скидки
+            // 🟢 ОБЫЧНАЯ ЛОГИКА: без скидки
             else {
                 updatedSale.remainingAmount = Math.max(0, updatedSale.remainingAmount - amount);
                 updatedSale.paymentPlan.push({
@@ -1280,15 +1280,16 @@ const handleIncomeSubmit = async (data: any) => {
             const savedSale = await api.saveItem('sales', updatedSale);
             updateList(setSales, savedSale);
 
-            // 👇 ПОСЛЕ УСПЕШНОГО СОХРАНЕНИЯ ПЕРЕХОДИМ К ДЕТАЛЯМ ДОГОВОРА
+            // Переход к деталям договора
             setSelectedCustomerId(sale.customerId);
             setInitialSaleIdForDetails(saleId);
             setPreviousView(currentView);
             setCurrentView('CUSTOMER_DETAILS');
 
-            return; // Выходим, чтобы не попасть в другой код
+            return;
         }
     } else {
+        // Остальной код для инвестора и прочего (без изменений)
         const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
         const newTransaction: Sale = {
             id: `inc_${Date.now()}`,
@@ -1319,7 +1320,7 @@ const handleIncomeSubmit = async (data: any) => {
             }
         }
 
-        setCurrentView('OPERATIONS'); // Для инвестора и прочего оставляем как было
+        setCurrentView('OPERATIONS');
     }
 };  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: crypto.randomUUID(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
  const handleAddEmployee = async (data: any) => {
