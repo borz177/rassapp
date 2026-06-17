@@ -586,9 +586,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
                     <div className="flex items-center gap-3">
                         <button onClick={() => setSelectedSaleId(null)} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
                         <h2 className="text-xl font-bold text-slate-800 truncate">{selectedSale.productName}</h2>
-                        {isClosed && (
-                            <span className="bg-emerald-100 text-emerald-700 text-xs px-2 py-1 rounded-full font-bold">✅ Закрыт</span>
-                        )}
+                        
                     </div>
                     <button onClick={handleSendSaleReminder} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
                         {ICONS.Send} WhatsApp

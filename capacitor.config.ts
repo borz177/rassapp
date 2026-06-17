@@ -13,9 +13,9 @@ const config: CapacitorConfig = {
   // 🔥 Настройки плагинов для нативного вида
   plugins: {
     StatusBar: {
-      overlaysWebView: true, // Контент залезает под статус-бар
-      style: 'LIGHT', // Светлые иконки (для тёмного статус-бара)
-      backgroundColor: '#ffffff', // Цвет фона статус-бара
+      overlaysWebView: false, // 🔥 ИЗМЕНЯЕМ НА false (контент НЕ залезает под статус-бар)
+      style: 'DARK',          // 🔥 ИЗМЕНЯЕМ НА 'DARK' (темные иконки для светлого фона)
+      backgroundColor: '#ffffff', // Цвет самого статус-бара
     },
     SplashScreen: {
       launchShowDuration: 0, // Отключаем нативный сплеш (у вас свой есть)

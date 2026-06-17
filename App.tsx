@@ -357,8 +357,12 @@ useEffect(() => {
 
     try {
       if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-        await StatusBar.setOverlaysWebView({ overlay: true });
-        await StatusBar.setStyle({ style: 'LIGHT' }); // DARK — если хедер тёмный
+        // 🔥 ИЗМЕНЯЕМ НА false
+        await StatusBar.setOverlaysWebView({ overlay: false }); 
+        
+        // 🔥 ИЗМЕНЯЕМ НА 'DARK' (темные иконки)
+        await StatusBar.setStyle({ style: 'DARK' }); 
+        
         await StatusBar.setBackgroundColor({ color: '#ffffff' });
       }
     } catch (e) {
