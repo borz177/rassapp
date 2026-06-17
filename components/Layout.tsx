@@ -277,7 +277,7 @@ const counts = useMemo(() => {
       {/* Mobile Top Navbar */}
  {/* Mobile Top Navbar */}
 <header
-  className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-40"
+  className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-40 safe-area-top"
 
 >
   <div className="h-16 flex items-center px-4">
@@ -324,7 +324,7 @@ const counts = useMemo(() => {
       </aside>
 
       {/* Main Content Area - Updated margins and centering */}
-      <main className="flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50">
+      <main className="flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50 mobile-main-offset">
         <div className="w-full max-w-7xl mx-auto h-full">
             {children}
         </div>

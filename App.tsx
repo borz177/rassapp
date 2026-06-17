@@ -41,16 +41,36 @@ import Landing from './components/Landing.tsx';
 import { NotificationModal } from './components/NotificationModal';
 import { withTimeout } from './src/timeout';
 import { offlineStorage } from "./services/offlineStorage";
+import { StatusBar, Style } from '@capacitor/status-bar';
+import { Capacitor } from '@capacitor/core';
+
 async function enablePersistentStorage() {
   if (navigator.storage && navigator.storage.persist) {
-
     const isPersisted = await navigator.storage.persisted();
-
     if (!isPersisted) {
       const granted = await navigator.storage.persist();
-
     }
+  }
+}
 
+// 🔹 НАСТРОЙКА NATIVE-ОБОЛОЧКИ (работает только в APK)
+async function setupNativeApp() {
+  // Проверяем, что мы реально в нативном окружении Capacitor
+  if (Capacitor.isNativePlatform()) {
+    try {
+      // 1. Делаем статус-бар прозрачным, чтобы веб-контент залезал под него
+      await StatusBar.setOverlaysWebView({ overlay: true });
+      
+      // 2. Устанавливаем стиль иконок (тёмные на светлом фоне)
+      await StatusBar.setStyle({ style: Style.Dark });
+      
+      // 3. Делаем статус-бар полностью прозрачным
+      await StatusBar.setBackgroundColor({ color: '#00000000' });
+      
+      console.log('✅ Native app configured: StatusBar overlay enabled');
+    } catch (e) {
+      console.warn('⚠️ StatusBar setup failed:', e);
+    }
   }
 }
 
@@ -331,6 +351,7 @@ const handleSync = async () => {
 useEffect(() => {
   setShowSplash(true);
   enablePersistentStorage();
+  setupNativeApp();
 
   const initApp = async () => {
 
@@ -1054,7 +1075,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
     if (isOfflineMode) {
       showNotificationModal(
         '⚠️ Офлайн-режим',
-        'Нет соединения с сервером.\n\nДоговор, закуп и остатки сохранены локально и будут синхронизированы при подключении.',
+        'Нет соединения с сервером.\n\nДоговор сохранен локально и будут синхронизирован при подключении.',
         'warning'
       );
     }
