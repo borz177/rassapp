@@ -395,10 +395,18 @@ export const api = {
     },
 
     // Data Sync
-    fetchAllData: async (): Promise<any> => {
+     fetchAllData: async (): Promise<any> => {
     let data: any = null;
     try {
       const res = await fetchWithAuth(`${API_URL}/data`);
+      
+      // 🔥 1. ЗАЩИТА ОТ CAPTIVE PORTAL (Wi-Fi в кафе/поездах)
+      // Если роутер перехватил запрос и отдал HTML-страницу авторизации, мы это поймем и не упадем.
+      const contentType = res.headers.get("content-type");
+      if (contentType && !contentType.includes("application/json")) {
+        throw new Error('Captive Portal detected (HTML instead of JSON)');
+      }
+
       if (!res.ok) throw new Error('Failed to fetch data');
 
       data = await res.json();
@@ -414,13 +422,27 @@ export const api = {
 
       await offlineStorage.setCache('all_data', data);
     } catch (error: any) {
+      // 🔥 2. УМНАЯ ОБРАБОТКА ОШИБОК (не пугаем пользователя и консоль)
+      const isNetworkError = 
+          error.message === 'TOKEN_EXPIRED' ||
+          error.message.includes('Captive Portal') ||
+          error.message.includes('Failed to fetch') ||
+          error.message.includes('TIMEOUT') ||
+          error.name === 'AbortError';
+
       if (error.message === 'TOKEN_EXPIRED') {
         const cachedData = await offlineStorage.getCache('all_data');
         if (cachedData) return cachedData;
         throw error;
       }
 
-      console.error("Fetch Data Error:", error);
+      if (isNetworkError) {
+        // Если это просто обрыв связи, логируем как предупреждение, а не как критическую ошибку
+        console.warn("📴 Нет сети или Captive Portal. Загружаем данные из локального кэша.");
+      } else {
+        console.error("❌ Fetch Data Error:", error);
+      }
+
       const cachedData = await offlineStorage.getCache('all_data');
       if (cachedData) {
         data = cachedData;
@@ -429,12 +451,13 @@ export const api = {
       }
     }
 
-    // Твой существующий код применения офлайн-очереди (оставь как есть)
+    // Твой существующий код применения офлайн-очереди
     if (data) {
       try {
         const queue = await offlineStorage.getQueue();
         for (const item of queue) {
           if (!item.collection || !data[item.collection]) continue;
+          
           if (item.type === 'saveItem') {
             if (Array.isArray(data[item.collection])) {
               const list = data[item.collection] as any[];
@@ -443,21 +466,23 @@ export const api = {
                 idx = list.findIndex(i => i.email === item.payload.email);
                 if (idx >= 0) { list[idx] = { ...list[idx], ...item.payload, id: item.payload.id }; continue; }
               }
-              if (idx >= 0) { list[idx] = item.payload; }
-              else {
+              if (idx >= 0) { 
+                list[idx] = item.payload; 
+              } else {
                 const isDuplicate = item.collection === 'investors' && item.payload.email && list.some(i => i.email === item.payload.email);
                 if (!isDuplicate) list.unshift(item.payload);
               }
             } else {
               data[item.collection] = { ...data[item.collection], ...item.payload };
             }
-           if (item.type === 'deleteItem') {
-  if (Array.isArray(data[item.collection])) {
-    data[item.collection] = data[item.collection].filter(
-      (i: any) => i.id !== item.itemId
-    );
-  }
-}
+          } 
+          // 🔥 3. ИСПРАВЛЕН БАГ: теперь deleteItem работает корректно (был внутри saveItem)
+          else if (item.type === 'deleteItem') {
+            if (Array.isArray(data[item.collection])) {
+              data[item.collection] = data[item.collection].filter(
+                (i: any) => i.id !== item.itemId
+              );
+            }
           }
         }
       } catch (e) {

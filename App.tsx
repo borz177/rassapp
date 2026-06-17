@@ -77,7 +77,8 @@ async function setupNativeApp() {
 
 
 // 🔹 Хелпер для создания таймаутов (чтобы код не зависал навсегда)
-const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
+// 🔥 ИСПРАВЛЕНО: добавлена запятая после <T,>, чтобы TSX не путал с HTML-тегом
+const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
     return Promise.race([
         promise,
         new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Timeout ${ms}ms`)), ms))
