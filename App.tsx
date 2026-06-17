@@ -498,7 +498,7 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v4';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v5';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -3038,33 +3038,73 @@ if (!user && !showSplash) {
 )}
 
 
-  {showTemplateUpdateModal && (
+{showTemplateUpdateModal && (
   <div
-    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
     onClick={() => setShowTemplateUpdateModal(false)}
   >
     <div
-      className="bg-white w-full max-w-xs rounded-2xl shadow-xl p-6 text-center animate-scale-in"
+      className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
-      <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center text-2xl">
-        ⚙️
+      {/* Шапка с градиентом */}
+      <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-6 text-white relative">
+        <div className="absolute top-3 right-3 bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full text-[10px] font-bold">
+          v2.1
+        </div>
+        <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-3xl shadow-lg">
+          🚀
+        </div>
+        <h3 className="text-xl font-bold text-center mb-1">
+          Что нового?
+        </h3>
+        
       </div>
 
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">
-        Ведутся технические работы
-      </h3>
-      
-      <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-        Возможны кратковременные сбои.
-      </p>
+      {/* Список обновлений */}
+      <div className="p-5 space-y-3">
+        {/* Обновление 1: Сотрудники */}
+        <div className="flex gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
+          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-blue-500 text-white flex items-center justify-center text-lg shadow-sm">
+            👥
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <h4 className="font-bold text-slate-800 text-sm">Сотрудники</h4>
+              <span className="text-[9px] bg-blue-500 text-white px-1.5 py-0.5 rounded-full font-bold">ИСПРАВЛЕНО</span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Исправлена фильтрация данных для сотрудников. Теперь корректно отображаются только разрешённые клиенты, договоры и счета.
+            </p>
+          </div>
+        </div>
 
-      <button
-        onClick={() => setShowTemplateUpdateModal(false)}
-        className="w-full py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 active:scale-[0.98] transition-all"
-      >
-        Хорошо
-      </button>
+        {/* Обновление 2: Скидки */}
+        <div className="flex gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
+          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center text-lg shadow-sm">
+            
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <h4 className="font-bold text-slate-800 text-sm">Скидки при погашении</h4>
+              <span className="text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full font-bold">НОВОЕ</span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Добавлена возможность предоставить скидку при полном погашении долга — в процентах или фиксированной сумме. Договор закрывается корректно.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Кнопка */}
+      <div className="px-5 pb-5">
+        <button
+          onClick={() => setShowTemplateUpdateModal(false)}
+          className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200"
+        >
+          Отлично, понятно! ✨
+        </button>
+      </div>
     </div>
   </div>
 )}

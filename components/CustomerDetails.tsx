@@ -586,6 +586,9 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
                     <div className="flex items-center gap-3">
                         <button onClick={() => setSelectedSaleId(null)} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
                         <h2 className="text-xl font-bold text-slate-800 truncate">{selectedSale.productName}</h2>
+                        {isClosed && (
+                            <span className="bg-emerald-100 text-emerald-700 text-xs px-2 py-1 rounded-full font-bold">✅ Закрыт</span>
+                        )}
                     </div>
                     <button onClick={handleSendSaleReminder} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
                         {ICONS.Send} WhatsApp
@@ -691,7 +694,12 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
                                     return (
                                         <tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50">
                                             <td className="px-4 py-3 text-slate-700">{formatDate(payment.date)}</td>
-                                           
+                                            <td className="px-4 py-3">
+                                                <div className="font-bold text-emerald-600">
+                                                    +{formatCurrency(payment.amount, appSettings.showCents)} ₽
+                                                </div>
+                                                
+                                            </td>
                                             <td className="px-4 py-3 text-right">
                                                 <div className="flex justify-end gap-2">
                                                     {(!isEmployee || user?.permissions?.canEdit) && (
