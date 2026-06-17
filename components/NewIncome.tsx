@@ -100,11 +100,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
     }
   }, [selectedSale, showCents]);
 
-  useEffect(() => {
-    if (selectedSale && discountAmount > 0) {
-      setAmount(showCents ? finalPaymentAmount.toFixed(2) : Math.round(finalPaymentAmount).toString());
-    }
-  }, [discountAmount, finalPaymentAmount, selectedSale, showCents]);
+
 
   useEffect(() => {
     if (selectedInvestor) {
@@ -171,6 +167,14 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   const finalPaymentAmount = Math.max(0, fullDebt - discountAmount);
   const discountPercentDisplay = fullDebt > 0 ? (discountAmount / fullDebt) * 100 : 0;
+  
+
+
+    useEffect(() => {
+    if (selectedSale && discountAmount > 0) {
+      setAmount(showCents ? finalPaymentAmount.toFixed(2) : Math.round(finalPaymentAmount).toString());
+    }
+  }, [discountAmount, finalPaymentAmount, selectedSale, showCents]);
 
   const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
