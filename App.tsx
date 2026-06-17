@@ -1163,7 +1163,7 @@ const handleDeleteSale = async (saleId: string) => {
           accountId: sale.accountId,
           title: `Возврат: ${sale.productName}`,
           amount: sale.downPayment,
-          category: 'Возврат клиента',
+          category: 'Возврат клиенту',
           date: new Date().toISOString(),
           isRefund: true
         };
