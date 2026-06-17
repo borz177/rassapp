@@ -115,13 +115,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   }, [selectedSaleId, selectedCustomerId]);
 
 
-  useEffect(() => {
-  // Если сумма стала меньше долга — сбрасываем скидку
-  if (Number(amount) < fullDebt) {
-    setDiscountValue('');
-    setDiscountType('percent');
-  }
-}, [amount, fullDebt]);
+
 
   useEffect(() => {
     if (sourceType === 'OTHER' && accounts.length > 0 && !targetAccountId) {
@@ -176,6 +170,14 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   const finalPaymentAmount = Math.max(0, fullDebt - discountAmount);
   const discountPercentDisplay = fullDebt > 0 ? (discountAmount / fullDebt) * 100 : 0;
+
+  useEffect(() => {
+  // Если сумма стала меньше долга — сбрасываем скидку
+  if (Number(amount) < fullDebt) {
+    setDiscountValue('');
+    setDiscountType('percent');
+  }
+}, [amount, fullDebt]);
   
 
 
@@ -326,13 +328,7 @@ const commonData = {
 
 
  
-  useEffect(() => {
-  // Если сумма стала меньше долга — сбрасываем скидку
-  if (Number(amount) < fullDebt) {
-    setDiscountValue('');
-    setDiscountType('percent');
-  }
-}, [amount, fullDebt]);   
+ 
 
    // Берём только РЕАЛЬНЫЕ оплаченные платежи из истории
 const existingPayments = (selectedSale.paymentPlan || [])
