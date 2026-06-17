@@ -61,7 +61,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const selectedSale = useMemo(() => sales.find(s => s.id === selectedSaleId), [sales, selectedSaleId]);
   const selectedInvestor = useMemo(() => investors.find(i => i.id === selectedInvestorId), [investors, selectedInvestorId]);
 
-  const appSettings = getAppSettings();
+  
   const showCents = appSettings?.showCents || false;
 
   const formatNum = (val: number) => {
