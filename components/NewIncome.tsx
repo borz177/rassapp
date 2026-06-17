@@ -16,6 +16,7 @@ interface NewIncomeProps {
   onSubmit: ( any) => void;
   onSelectCustomer: () => void;
   user?: User;
+  appSettings?: AppSettings; 
 }
 
 // Форматирует любой российский номер в вид +7 (XXX) XXX-XX-XX
@@ -30,7 +31,7 @@ const formatPhone = (raw: string | undefined): string => {
 };
 
 const NewIncome: React.FC<NewIncomeProps> = ({
-  initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer, user
+  initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer, user, appSettings
 }) => {
   const [sourceType, setSourceType] = useState<'CUSTOMER' | 'INVESTOR' | 'OTHER'>('CUSTOMER');
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId || '');
