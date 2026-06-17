@@ -4,7 +4,7 @@ import { ICONS, APP_VERSION, THEMES } from '../constants';
 import { PrivacyPolicy, DataProcessingAgreement } from './LegalDocs';
 import { api } from '../services/api';
 import DataImport from './DataImport';
-import DataExport from './DataExport'; // 👈 Добавили импорт компонента экспорта
+import DataExport from './DataExport';
 
 interface SettingsProps {
   appSettings: AppSettings;
@@ -27,6 +27,10 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
   // 👇 ДОБАВИЛИ: состояния для модалок импорта и экспорта
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+
+  // 🆕 СОСТОЯНИЕ ДЛЯ ОБНОВЛЕНИЯ ПРИЛОЖЕНИЯ
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState(0);
 
   // Legal Docs View State
   const [legalView, setLegalView] = useState<'NONE' | 'PRIVACY' | 'AGREEMENT'>('NONE');
@@ -52,6 +56,27 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       return () => clearInterval(timer);
     }
   }, [showClearModal]);
+
+  // 🆕 ЭФФЕКТ ДЛЯ АНИМАЦИИ ПРОГРЕССА ОБНОВЛЕНИЯ
+  useEffect(() => {
+    if (isUpdating) {
+      const interval = setInterval(() => {
+        setUpdateProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            // После завершения анимации — перезагружаем страницу
+            setTimeout(() => {
+              window.location.reload();
+            }, 500);
+            return 100;
+          }
+          return prev + 5; // Увеличиваем на 5% каждые 100мс = 2 секунды до 100%
+        });
+      }, 100);
+
+      return () => clearInterval(interval);
+    }
+  }, [isUpdating]);
 
   const handleSave = () => {
     onUpdateSettings({
@@ -111,8 +136,10 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
     }
   };
 
+  // 🆕 ОБНОВЛЁННАЯ ФУНКЦИЯ ОБНОВЛЕНИЯ ПРИЛОЖЕНИЯ
   const handleForceUpdate = () => {
-      window.location.reload();
+      setUpdateProgress(0);
+      setIsUpdating(true);
   };
 
   const handleCloseClearModal = () => {
@@ -135,8 +162,27 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
             <h2 className="text-2xl font-bold text-slate-800">Настройки</h2>
             <p className="text-slate-500 text-sm">Версия: {APP_VERSION}</p>
         </div>
-        <button onClick={handleForceUpdate} className="text-xs bg-slate-100 text-slate-600 px-3 py-2 rounded-lg font-medium hover:bg-slate-200">
-            Обновить приложение
+        <button 
+            onClick={handleForceUpdate} 
+            disabled={isUpdating}
+            className="text-xs bg-slate-100 text-slate-600 px-3 py-2 rounded-lg font-medium hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+            {isUpdating ? (
+                <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    Обновление...
+                </>
+            ) : (
+                <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                    </svg>
+                    Обновить приложение
+                </>
+            )}
         </button>
       </header>
 
@@ -413,6 +459,66 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
             }}
             currentUserId={currentUserId}
         />
+      )}
+
+      {/* 🆕 МОДАЛКА ОБНОВЛЕНИЯ ПРИЛОЖЕНИЯ */}
+      {isUpdating && (
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
+              <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center animate-scale-in">
+                  {/* Анимированная иконка */}
+                  <div className="relative w-24 h-24 mx-auto mb-6">
+                      {/* Внешнее кольцо */}
+                      <div className="absolute inset-0 rounded-full border-4 border-indigo-100"></div>
+                      {/* Вращающееся кольцо */}
+                      <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-indigo-600 border-r-indigo-600 animate-spin"></div>
+                      {/* Центральная иконка */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
+                              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                              </svg>
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* Заголовок */}
+                  <h3 className="text-2xl font-bold text-slate-800 mb-2">
+                      Обновление приложения
+                  </h3>
+                  <p className="text-slate-500 text-sm mb-6">
+                      Загружаем новую версию...
+                  </p>
+
+                  {/* Прогресс-бар */}
+                  <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden mb-3">
+                      <div
+                          className="bg-gradient-to-r from-indigo-500 to-purple-600 h-full transition-all duration-100 ease-linear rounded-full"
+                          style={{ width: `${updateProgress}%` }}
+                      />
+                  </div>
+
+                  {/* Процент */}
+                  <p className="text-sm font-bold text-indigo-600">
+                      {updateProgress}%
+                  </p>
+
+                  {/* Статус */}
+                  <div className="mt-6 space-y-1">
+                      {updateProgress < 30 && (
+                          <p className="text-xs text-slate-400 animate-pulse">🔍 Проверка обновлений...</p>
+                      )}
+                      {updateProgress >= 30 && updateProgress < 60 && (
+                          <p className="text-xs text-slate-400 animate-pulse">📦 Загрузка файлов...</p>
+                      )}
+                      {updateProgress >= 60 && updateProgress < 90 && (
+                          <p className="text-xs text-slate-400 animate-pulse">⚙️ Применение изменений...</p>
+                      )}
+                      {updateProgress >= 90 && (
+                          <p className="text-xs text-emerald-600 font-medium">✅ Почти готово!</p>
+                      )}
+                  </div>
+              </div>
+          </div>
       )}
 
     </div>
