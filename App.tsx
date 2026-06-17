@@ -74,6 +74,16 @@ async function setupNativeApp() {
   }
 }
 
+
+
+// 🔹 Хелпер для создания таймаутов (чтобы код не зависал навсегда)
+const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
+    return Promise.race([
+        promise,
+        new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Timeout ${ms}ms`)), ms))
+    ]);
+};
+
 const App: React.FC = () => {
     const path = window.location.pathname
 const isLanding = path === "/"
@@ -305,6 +315,10 @@ useEffect(() => {
 }, []);
 
 
+
+
+
+
 // 🔹 В App.tsx — исправленная часть handleSync
 const handleSync = async () => {
   if (!navigator.onLine) return;
@@ -354,83 +368,92 @@ useEffect(() => {
   setupNativeApp();
 
   const initApp = async () => {
+    // 🔥 1. КРИТИЧЕСКАЯ СТРАХОВКА (WATCHDOG)
+    // Если что-то зависнет (StatusBar, IndexedDB, сеть), мы всё равно покажем приложение через 5 секунд
+    const initTimeout = setTimeout(() => {
+        console.error('⚠️ initApp завис! Принудительно показываем интерфейс.');
+        setIsLoading(false);
+        setShowSplash(false);
+    }, 5000); 
 
     try {
-      if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-        // 🔥 ИЗМЕНЯЕМ НА false
-        await StatusBar.setOverlaysWebView({ overlay: false }); 
-        
-        // 🔥 ИЗМЕНЯЕМ НА 'DARK' (темные иконки)
-        await StatusBar.setStyle({ style: 'DARK' }); 
-        
-        await StatusBar.setBackgroundColor({ color: '#ffffff' });
-      }
+        if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+            // 🔥 2. ОБЕРТЫВАЕМ StatusBar В ТАЙМАУТЫ (2 секунды)
+            // Если плагин зависнет, мы просто пропустим этот шаг и пойдем дальше
+            await withTimeout(StatusBar.setOverlaysWebView({ overlay: false }), 2000).catch(() => {});
+            await withTimeout(StatusBar.setStyle({ style: 'DARK' }), 2000).catch(() => {});
+            await withTimeout(StatusBar.setBackgroundColor({ color: '#ffffff' }), 2000).catch(() => {});
+        }
     } catch (e) {
-      console.warn('StatusBar init skipped (web)');
+        console.warn('StatusBar init skipped (web/timeout)');
     }
 
-      const staticSplash = document.getElementById('static-splash');
+    const staticSplash = document.getElementById('static-splash');
     if (staticSplash) {
-      staticSplash.classList.add('hidden');
-      setTimeout(() => staticSplash.remove(), 400);
+        staticSplash.classList.add('hidden');
+        setTimeout(() => staticSplash.remove(), 400);
     }
+
     // 1. Проверка на публичный режим
     const searchParams = new URLSearchParams(window.location.search);
     const pathName = window.location.pathname;
-
     if (
-      searchParams.get('view') === 'public_calc' ||
-      searchParams.get('v') === 'calc' ||
-      decodeURIComponent(pathName).startsWith('/calc')
+        searchParams.get('view') === 'public_calc' ||
+        searchParams.get('v') === 'calc' ||
+        decodeURIComponent(pathName).startsWith('/calc')
     ) {
-      setIsPublicMode(true);
-      setIsLoading(false);
-      setShowSplash(false);
-      return;
+        clearTimeout(initTimeout); // Снимаем страховку
+        setIsPublicMode(true);
+        setIsLoading(false);
+        setShowSplash(false);
+        return;
     }
 
     // 2. Читаем локального пользователя
     const token = localStorage.getItem('token');
     const localUserStr = localStorage.getItem('user');
     let localUser: User | null = null;
-
     if (localUserStr) {
-      try {
-        localUser = JSON.parse(localUserStr);
-        if (localUser) setUser(localUser);
-      } catch (e) {
-        console.error("❌ Failed to parse local user", e);
-        localStorage.removeItem('user');
-        localStorage.removeItem('token');
-      }
+        try {
+            localUser = JSON.parse(localUserStr);
+            if (localUser) setUser(localUser);
+        } catch (e) {
+            console.error("❌ Failed to parse local user", e);
+            localStorage.removeItem('user');
+            localStorage.removeItem('token');
+        }
     }
 
     const hasLocalData = !!localUser;
 
     // 3. 🔥 ВСЕГДА загружаем данные из кэша IndexedDB мгновенно
     if (hasLocalData) {
-      try {
-        const cachedData = await offlineStorage.getCache('all_data');
-        if (cachedData) {
-          console.log('💾 Мгновенная загрузка из локального кэша');
-          if (cachedData.customers) setCustomers(cachedData.customers);
-          if (cachedData.products) setProducts(cachedData.products);
-          if (cachedData.sales) setSales(cachedData.sales);
-          if (cachedData.expenses) setExpenses(cachedData.expenses);
-          if (cachedData.accounts) setAccounts(cachedData.accounts);
-          if (cachedData.investors) setInvestors(cachedData.investors);
-          if (cachedData.partnerships) setPartnerships(cachedData.partnerships);
-          if (cachedData.employees) setEmployees(cachedData.employees);
-          if (cachedData.settings) setAppSettings(cachedData.settings);
+        try {
+            // 🔥 3. ОБЕРТЫВАЕМ IndexedDB В ТАЙМАУТ (3 секунды)
+            // IndexedDB может зависнуть при блокировке БД на слабом устройстве
+            const cachedData = await withTimeout(offlineStorage.getCache('all_data'), 3000);
+            if (cachedData) {
+                console.log('💾 Мгновенная загрузка из локального кэша');
+                if (cachedData.customers) setCustomers(cachedData.customers);
+                if (cachedData.products) setProducts(cachedData.products);
+                if (cachedData.sales) setSales(cachedData.sales);
+                if (cachedData.expenses) setExpenses(cachedData.expenses);
+                if (cachedData.accounts) setAccounts(cachedData.accounts);
+                if (cachedData.investors) setInvestors(cachedData.investors);
+                if (cachedData.partnerships) setPartnerships(cachedData.partnerships);
+                if (cachedData.employees) setEmployees(cachedData.employees);
+                if (cachedData.settings) setAppSettings(cachedData.settings);
+            }
+        } catch (e) {
+            console.warn('⚠️ Не удалось загрузить кэш (таймаут или ошибка):', e);
         }
-      } catch (e) {
-        console.warn('⚠️ Не удалось загрузить кэш:', e);
-      }
     }
 
     // 4. 🔥 МГНОВЕННО показываем приложение пользователю (не ждем сервер!)
+    clearTimeout(initTimeout); // 🔥 Снимаем страховку, так как мы успешно дошли до конца
     setIsLoading(false);
-    setTimeout(() => setShowSplash(false), 400); // Плавное исчезновение за 0.4 сек
+    setTimeout(() => setShowSplash(false), 400); // Плавное появление
+
 
     // 5. 🔥 ФОНОВАЯ СИНХРОНИЗАЦИЯ (запускается, но НЕ блокирует интерфейс)
     if (token && navigator.onLine && localUser) {

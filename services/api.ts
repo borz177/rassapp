@@ -323,26 +323,39 @@ export const api = {
     },
 
     // 🔥 ЗАЩИЩЁННЫЕ МЕТОДЫ (используют fetchWithAuth)
-    getMe: async (): Promise<User> => {
+       getMe: async (): Promise<User> => {
         try {
-            // 🔥 fetchWithAuth сам добавит токен и обработает 401
             const res = await fetchWithAuth(`${API_URL}/auth/me`);
+            
+            // 🔥 НОВОЕ: Защита от HTML-страниц (Captive Portal)
+            const contentType = res.headers.get("content-type");
+            if (contentType && !contentType.includes("application/json")) {
+                throw new Error('Captive Portal detected (HTML instead of JSON)');
+            }
+
             if (!res.ok) throw new Error('Failed to fetch user');
             const user = await res.json();
             await offlineStorage.setCache('user_me', user);
             return user;
         } catch (error: any) {
-            // Если токен истёк — fetchWithAuth уже сделал редирект, просто пробуем кэш
-            if (error.message === 'TOKEN_EXPIRED') {
+            // 🔥 ЛОВИМ ЛЮБЫЕ СЕТЕВЫЕ ОШИБКИ И ОТДАЕМ КЭШ
+            const isNetworkError = 
+                error.message === 'TOKEN_EXPIRED' ||
+                error.message.includes('Captive Portal') ||
+                error.message.includes('Failed to fetch') ||
+                error.message.includes('TIMEOUT');
+
+            if (isNetworkError) {
                 const cachedUser = await offlineStorage.getCache('user_me');
                 if (cachedUser) return cachedUser;
             }
+            
             const cachedUser = await offlineStorage.getCache('user_me');
             if (cachedUser) return cachedUser;
+            
             throw error;
         }
     },
-
     createSubUser: async (userData: any): Promise<any> => {
         const res = await fetchWithAuth(`${API_URL}/users/manage`, {
             method: 'POST',
