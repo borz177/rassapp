@@ -44,7 +44,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, account, sa
       }));
 
     const withdrawalOps = expenses
-      .filter(e => e.accountId === account.id && e.category === 'Investment Return')
+      .filter(e => e.accountId === account.id && e.category === 'Выплата инвестору')
       .map(e => ({
         id: e.id, date: e.date, amount: e.amount,
         title: e.payoutType === 'INVESTMENT' ? 'Возврат инвестиций' : 'Выплата прибыли',
