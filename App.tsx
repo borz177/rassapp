@@ -428,13 +428,59 @@ useEffect(() => {
     const hasLocalData = !!localUser;
 
     // 3. 🔥 ВСЕГДА загружаем данные из кэша IndexedDB мгновенно
+        
     if (hasLocalData) {
         try {
-            // 🔥 3. ОБЕРТЫВАЕМ IndexedDB В ТАЙМАУТ (3 секунды)
-            // IndexedDB может зависнуть при блокировке БД на слабом устройстве
+            // 🔥 ОБЕРТЫВАЕМ IndexedDB В ТАЙМАУТ (3 секунды)
             const cachedData = await withTimeout(offlineStorage.getCache('all_data'), 3000);
             if (cachedData) {
                 console.log('💾 Мгновенная загрузка из локального кэша');
+
+                // 🔥 НОВОЕ: Применяем офлайн-очередь к кэшу ПЕРЕД показом!
+                // Теперь при перезагрузке офлайн-данные не потеряются
+                try {
+                    const queue = await offlineStorage.getQueue();
+                    if (queue.length > 0) {
+                        console.log(`📦 Применяем ${queue.length} элементов из офлайн-очереди при старте...`);
+                        for (const item of queue) {
+                            if (!item.collection || !cachedData[item.collection]) continue;
+                            
+                            if (item.type === 'saveItem') {
+                                if (Array.isArray(cachedData[item.collection])) {
+                                    const list = cachedData[item.collection] as any[];
+                                    let idx = list.findIndex(i => i.id === item.payload.id);
+                                    
+                                    // Специальная логика для инвесторов (по email)
+                                    if (idx === -1 && item.collection === 'investors' && item.payload.email) {
+                                        idx = list.findIndex(i => i.email === item.payload.email);
+                                        if (idx >= 0) { list[idx] = { ...list[idx], ...item.payload, id: item.payload.id }; continue; }
+                                    }
+                                    
+                                    if (idx >= 0) { 
+                                        list[idx] = item.payload; 
+                                    } else {
+                                        const isDuplicate = item.collection === 'investors' && item.payload.email && list.some(i => i.email === item.payload.email);
+                                        if (!isDuplicate) list.unshift(item.payload);
+                                    }
+                                } else {
+                                    cachedData[item.collection] = { ...cachedData[item.collection], ...item.payload };
+                                }
+                            } 
+                            // 🔥 Корректная обработка удалений в офлайн-очереди
+                            else if (item.type === 'deleteItem') {
+                                if (Array.isArray(cachedData[item.collection])) {
+                                    cachedData[item.collection] = cachedData[item.collection].filter(
+                                        (i: any) => i.id !== item.itemId
+                                    );
+                                }
+                            }
+                        }
+                    }
+                } catch (qErr) {
+                    console.warn('⚠️ Не удалось применить офлайн-очередь при старте:', qErr);
+                }
+
+                // 🔥 Теперь устанавливаем стейт уже с примененной очередью!
                 if (cachedData.customers) setCustomers(cachedData.customers);
                 if (cachedData.products) setProducts(cachedData.products);
                 if (cachedData.sales) setSales(cachedData.sales);
