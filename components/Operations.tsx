@@ -43,7 +43,7 @@ const Operations: React.FC<OperationsProps> = ({
           'Equipment': '🔧 Оборудование',
           'Выплата инвестора': '📈 Выплата инвестора',
           'Investment Return': '📈 Выплата инвестора',
-          'Себестоимость': '🏷 Себестоимость',
+          'Себестоимость': '🏷 Закуп',
           'Возврат клиенту': '↩️ Возврат клиенту',
           'Продажа': 'Приход',
           'Платеж': '💳 Платеж'
@@ -279,59 +279,65 @@ const Operations: React.FC<OperationsProps> = ({
         <h3 className="text-sm font-bold text-slate-400 px-2 uppercase tracking-wider">{group.title}</h3>
         <div className="space-y-2">
             {group.items.map(op => (
-                <div 
-                    key={op.id} 
-                    onClick={() => setSelectedOp(op)} 
-                    className={`bg-white p-4 rounded-xl shadow-sm flex items-center justify-between cursor-pointer hover:bg-slate-50 active:scale-[0.99] transition-transform ${
-                        op.category === 'Salary' ? 'border-l-4 border-l-blue-500' : ''
-                    }`}
-                >
-                    <div className="flex items-center gap-3">
-                        <div className={`p-2.5 rounded-full ${
-                            op.type === 'EXPENSE' 
-                                ? op.category === 'Salary' 
-                                    ? 'bg-blue-50 text-blue-600' 
-                                    : 'bg-red-50 text-red-600'
-                                : 'bg-emerald-50 text-emerald-600'
-                        }`}>
-                            {op.type === 'EXPENSE' 
-                                ? op.category === 'Salary' 
-                                    ? <span className="text-lg">💼</span>
-                                    : ICONS.Expense 
-                                : ICONS.Income}
-                        </div>
-                        <div>
-                            <p className="font-bold text-slate-800 text-sm">
-                                {op.title}
-                                {/* 🔥 Подсказка для зарплаты */}
-                                {op.category === 'Salary' && op.raw?.employeeId && (
-                                    <span className="ml-1 text-xs text-blue-600 font-normal">
-                                        → {getEmployeeName(op.raw.employeeId)}
-                                    </span>
-                                )}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                                {getTimeMsk(op.date)} • {getCategoryLabel(op.description)}
-                            </p>
-                        </div>
-                    </div>
-                    <div className="text-right">
-                        <span className={`font-bold block ${op.type === 'EXPENSE' ? 'text-slate-800' : 'text-emerald-600'}`}>
-                            {op.type === 'EXPENSE' ? '-' : '+'}{op.amount.toLocaleString()} ₽
+    <div 
+        key={op.id} 
+        onClick={() => setSelectedOp(op)} 
+        // 🔥 ДОБАВЛЕНО: border-l-4 и умная логика выбора цвета обводки
+        className={`bg-white p-4 rounded-xl shadow-sm flex items-center justify-between cursor-pointer hover:bg-slate-50 active:scale-[0.99] transition-transform border-l-4 ${
+            op.category === 'Salary' 
+                ? 'border-l-blue-500' 
+                : op.type === 'INCOME' 
+                ? 'border-l-emerald-500' 
+                : 'border-l-red-500'
+        }`}
+    >
+        <div className="flex items-center gap-3">
+            {/* Иконка уже имеет правильную логику цветов, она идеально сочетается с обводкой! */}
+            <div className={`p-2.5 rounded-full ${
+                op.type === 'EXPENSE' 
+                    ? op.category === 'Salary' 
+                        ? 'bg-blue-50 text-blue-600' 
+                        : 'bg-red-50 text-red-600'
+                    : 'bg-emerald-50 text-emerald-600'
+            }`}>
+                {op.type === 'EXPENSE' 
+                    ? op.category === 'Salary' 
+                        ? <span className="text-lg">💼</span>
+                        : ICONS.Expense 
+                    : ICONS.Income}
+            </div>
+            <div>
+                <p className="font-bold text-slate-800 text-sm">
+                    {op.title}
+                    {/* Подсказка для зарплаты */}
+                    {op.category === 'Salary' && op.raw?.employeeId && (
+                        <span className="ml-1 text-xs text-blue-600 font-normal">
+                            → {getEmployeeName(op.raw.employeeId)}
                         </span>
+                    )}
+                </p>
+                <p className="text-xs text-slate-500">
+                    {getTimeMsk(op.date)} • {getCategoryLabel(op.description)}
+                </p>
+            </div>
+        </div>
+        <div className="text-right">
+            <span className={`font-bold block ${op.type === 'EXPENSE' ? 'text-slate-800' : 'text-emerald-600'}`}>
+                {op.type === 'EXPENSE' ? '-' : '+'}{op.amount.toLocaleString()} ₽
+            </span>
 
-                        {/* 🔹 Баланс после операции */}
-                        <div className="mt-1 flex flex-col items-end gap-1">
-                            <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                                {getAccountName(op.accountId)}
-                            </span>
-                            <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
-                                Баланс: {op.balanceAfter?.toLocaleString('ru-RU')} ₽
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            ))}
+            {/* Баланс после операции */}
+            <div className="mt-1 flex flex-col items-end gap-1">
+                <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                    {getAccountName(op.accountId)}
+                </span>
+                <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                    Баланс: {op.balanceAfter?.toLocaleString('ru-RU')} ₽
+                </span>
+            </div>
+        </div>
+    </div>
+))}
         </div>
     </div>
 ))}
@@ -350,7 +356,7 @@ const Operations: React.FC<OperationsProps> = ({
                 <p className="text-white/80 text-sm font-medium mb-1">
                     {selectedOp.type === 'EXPENSE' 
                         ? selectedOp.category === 'Salary' 
-                            ? '💼 Выплата зарплаты' 
+                            ? 'Выплата зарплаты' 
                             : 'Расходная операция' 
                         : 'Приходная операция'}
                 </p>
