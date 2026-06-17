@@ -266,8 +266,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       // 🔒 ЗАЩИТА: Применяем скидку только если сумма совпадает с рассчитанной
       // Если менеджер изменил сумму вручную — скидка игнорируется
       const isDiscountApplied = discountAmount > 0 
-  && Math.abs(numAmount - finalPaymentAmount) < 0.01
-  && numAmount >= fullDebt;
+  && Math.abs(numAmount - finalPaymentAmount) < 0.01;
 
 // 🆕 Проверяем переплату (сумма > долга, но без скидки)
 const isOverpayment = numAmount > fullDebt && discountAmount === 0;

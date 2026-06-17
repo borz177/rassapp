@@ -1241,26 +1241,26 @@ const handleIncomeSubmit = async (data: any) => {
         if (sale) {
             const updatedSale = { ...sale };
 
-            // 🆕 ЛОГИКА СО СКИДКОЙ
+            // 🆕 ЛОГИКА СО СКИДКОЙ: полное погашение с дисконтом
             if (discountAmount > 0) {
-                // При скидке — обнуляем долг ПОЛНОСТЬЮ
+                // Обнуляем остаток долга ПОЛНОСТЬЮ
                 updatedSale.remainingAmount = 0;
                 updatedSale.status = 'COMPLETED';
 
                 updatedSale.paymentPlan.push({
                     id: `paid_${Date.now()}`,
                     saleId: sale.id,
-                    amount: amount, // Фактическая сумма (с учётом скидки)
+                    amount: amount, // Фактически полученная сумма (с учётом скидки)
                     date: data.date,
                     isPaid: true,
                     isRealPayment: true,
-                    // 🆕 Метаданные скидки
+                    // 🆕 Метаданные скидки — для истории и отчётов
                     discountAmount: discountAmount,
                     discountPercent: discountPercent,
                     note: `Полное погашение со скидкой ${discountPercent.toFixed(1)}% (−${discountAmount} ₽)`
                 });
             } 
-            // 🟢 ОБЫЧНАЯ ЛОГИКА: без скидки
+            // 🟢 ОБЫЧНАЯ ЛОГИКА: стандартное погашение без скидки
             else {
                 updatedSale.remainingAmount = Math.max(0, updatedSale.remainingAmount - amount);
                 updatedSale.paymentPlan.push({
@@ -1280,13 +1280,13 @@ const handleIncomeSubmit = async (data: any) => {
             const savedSale = await api.saveItem('sales', updatedSale);
             updateList(setSales, savedSale);
 
-            // Переход к деталям договора
+            // 👇 ПОСЛЕ УСПЕШНОГО СОХРАНЕНИЯ ПЕРЕХОДИМ К ДЕТАЛЯМ ДОГОВОРА
             setSelectedCustomerId(sale.customerId);
             setInitialSaleIdForDetails(saleId);
             setPreviousView(currentView);
             setCurrentView('CUSTOMER_DETAILS');
 
-            return;
+            return; // Выходим, чтобы не попасть в другой код
         }
     } else {
         // Остальной код для инвестора и прочего (без изменений)
