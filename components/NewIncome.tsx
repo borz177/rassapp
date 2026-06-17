@@ -683,19 +683,7 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
             )}
 
 
-            {/* 🆕 Предупреждение о переплате */}
-{sourceType === 'CUSTOMER' && selectedSale && Number(amount) > fullDebt && discountAmount === 0 && (
-  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 flex items-start gap-2">
-    <span className="text-lg">💡</span>
-    <div>
-      <p className="font-medium">Сумма больше остатка долга</p>
-      <p className="text-xs text-blue-600 mt-1">
-        Вы ввели {formatNum(Number(amount))} ₽, а остаток долга — {formatNum(fullDebt)} ₽. 
-        Договор будет закрыт, а переплата ({formatNum(Number(amount) - fullDebt)} ₽) останется на счету клиента.
-      </p>
-    </div>
-  </div>
-)}
+          
 
             {sourceType === 'CUSTOMER' && selectedSale && (
               <div className="flex justify-between items-start mt-2">

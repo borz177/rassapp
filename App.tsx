@@ -1896,7 +1896,39 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
       }
   };
   const handleUpdateAccount = async (updatedAccount: Account) => { if (user && isManager) { const saved = await api.saveItem('accounts', updatedAccount); updateList(setAccounts, saved); } };
-  const handleUndoPayment = async (saleId: string, paymentId: string) => { if (isEmployee && !user?.permissions?.canDelete) { alert("Нет прав на удаление"); return; } const sale = sales.find(s => s.id === saleId); if(sale) { const payment = sale.paymentPlan.find(p => p.id === paymentId); if (payment) { const updatedSale = { ...sale, remainingAmount: sale.remainingAmount + payment.amount, paymentPlan: sale.paymentPlan.filter(p => p.id !== paymentId), status: 'ACTIVE' as const }; const saved = await api.saveItem('sales', updatedSale); updateList(setSales, saved); } } };
+  const handleUndoPayment = async (saleId: string, paymentId: string) => { 
+    if (isEmployee && !user?.permissions?.canDelete) { 
+        alert("Нет прав на удаление"); 
+        return; 
+    } 
+    
+    const sale = sales.find(s => s.id === saleId); 
+    if(sale) { 
+        const payment = sale.paymentPlan.find(p => p.id === paymentId); 
+        if (payment) {
+            // 🆕 Получаем сумму скидки (если была)
+            const discountAmount = (payment as any).discountAmount || 0;
+            
+            // 🔥 ВАЖНО: Восстанавливаем долг = сумма платежа + сумма скидки
+            const amountToRestore = payment.amount + discountAmount;
+            
+            const updatedSale = { 
+                ...sale, 
+                remainingAmount: sale.remainingAmount + amountToRestore,
+                paymentPlan: sale.paymentPlan.filter(p => p.id !== paymentId), 
+                status: 'ACTIVE' as const 
+            }; 
+            
+            const saved = await api.saveItem('sales', updatedSale); 
+            updateList(setSales, saved);
+            
+            //  Показываем уведомление о восстановленной сумме
+            if (discountAmount > 0) {
+                alert(`✅ Платёж отменён!\nВосстановлено: ${payment.amount} ₽ + скидка ${discountAmount} ₽ = ${amountToRestore} ₽`);
+            }
+        } 
+    } 
+};
   const handleEditPayment = async (saleId: string, paymentId: string, newDate: string) => { if (isEmployee && !user?.permissions?.canEdit) { alert("Нет прав на редактирование"); return; } const sale = sales.find(s => s.id === saleId); if (sale) { const updatedSale = { ...sale, paymentPlan: sale.paymentPlan.map(p => p.id === paymentId ? { ...p, date: newDate } : p) }; const saved = await api.saveItem('sales', updatedSale); updateList(setSales, saved); } };
   const handleInitiateDashboardPayment = (sale: Sale, amount: number) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount }); setCurrentView('CREATE_INCOME'); };
   const handleInitiateCustomerPayment = (sale: Sale, payment: Payment) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount: payment.amount }); setCurrentView('CREATE_INCOME'); };
