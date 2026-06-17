@@ -355,6 +355,16 @@ useEffect(() => {
 
   const initApp = async () => {
 
+    try {
+      if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+        await StatusBar.setOverlaysWebView({ overlay: true });
+        await StatusBar.setStyle({ style: 'LIGHT' }); // DARK — если хедер тёмный
+        await StatusBar.setBackgroundColor({ color: '#ffffff' });
+      }
+    } catch (e) {
+      console.warn('StatusBar init skipped (web)');
+    }
+
       const staticSplash = document.getElementById('static-splash');
     if (staticSplash) {
       staticSplash.classList.add('hidden');
