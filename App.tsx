@@ -434,7 +434,7 @@ useEffect(() => {
             // 🔥 ОБЕРТЫВАЕМ IndexedDB В ТАЙМАУТ (3 секунды)
             const cachedData = await withTimeout(offlineStorage.getCache('all_data'), 3000);
             if (cachedData) {
-                console.log('💾 Мгновенная загрузка из локального кэша');
+                
 
                 // 🔥 НОВОЕ: Применяем офлайн-очередь к кэшу ПЕРЕД показом!
                 // Теперь при перезагрузке офлайн-данные не потеряются
@@ -507,7 +507,7 @@ useEffect(() => {
       // Мы не используем await здесь, чтобы не останавливать выполнение кода
       (async () => {
         try {
-          console.log('🌐 Запуск фоновой синхронизации с сервером...');
+          
           const isReachable = await api.healthCheck();
 
           if (isReachable) {
