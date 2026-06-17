@@ -269,7 +269,10 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   && Math.abs(numAmount - finalPaymentAmount) < 0.01;
 
 // 🆕 Проверяем переплату (сумма > долга, но без скидки)
-const isOverpayment = numAmount > fullDebt && discountAmount === 0;
+const isOverpayment = sourceType === 'CUSTOMER' 
+    && selectedSale 
+    && numAmount > fullDebt 
+    && discountAmount === 0;
 
 const commonData = { 
   amount: isOverpayment ? fullDebt : numAmount, // 🔥 При переплате записываем только сумму долга

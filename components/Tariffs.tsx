@@ -349,7 +349,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
                                   Переход к оплате...
                               </>
                           ) : (
-                              'Оплатить через ЮKassa'
+                              'Оплатить'
                           )}
                       </button>
 
