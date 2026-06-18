@@ -702,48 +702,6 @@ const receivedPaymentsThisMonth = useMemo(() => {
 
 
 
-
-// 💰 Ожидаемая прибыль в этом месяце (от плановых платежей)
-const expectedProfitThisMonth = useMemo(() => {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    monthStart.setHours(0, 0, 0, 0);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-
-    const filteredSales = selectedAccountId
-        ? sales.filter(s => s.accountId === selectedAccountId)
-        : sales;
-
-    let expectedProfit = 0;
-
-    filteredSales.forEach(sale => {
-        if (sale.customerId.startsWith('system_')) return;
-        if (investors.some(i => i.id === sale.customerId)) return;
-        if (!sale.buyPrice || sale.buyPrice <= 0) return;
-        if (sale.totalAmount <= 0) return;
-
-        // Маржа прибыли от этой продажи
-        const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
-        if (profitMargin <= 0) return;
-
-        // 🔹 Считаем прибыль только от плановых НЕоплаченных платежей этого месяца
-        sale.paymentPlan.forEach(payment => {
-            if (payment.isRealPayment !== true && !payment.isPaid) {
-                const paymentDate = new Date(payment.date);
-                paymentDate.setHours(0, 0, 0, 0);
-
-                if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-                    expectedProfit += payment.amount * profitMargin;
-                }
-            }
-        });
-    });
-
-    return Math.round(expectedProfit * 100) / 100;
-}, [sales, investors, selectedAccountId]);
-
-
-// 💰 Полученная прибыль в этом месяце (от фактических поступлений)
 const receivedProfitThisMonth = useMemo(() => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -762,24 +720,84 @@ const receivedProfitThisMonth = useMemo(() => {
         if (!sale.buyPrice || sale.buyPrice <= 0) return;
         if (sale.totalAmount <= 0) return;
 
-        // Маржа прибыли
         const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
         if (profitMargin <= 0) return;
 
-        // 🔹 Считаем прибыль от оплаченных платежей этого месяца
+        // 1. Прибыль от оплаченных платежей из графика
         sale.paymentPlan.forEach(payment => {
             if (payment.isPaid && payment.isRealPayment !== false) {
                 const paymentDate = new Date(payment.date);
                 paymentDate.setHours(0, 0, 0, 0);
-
                 if (paymentDate >= monthStart && paymentDate <= monthEnd) {
                     receivedProfit += payment.amount * profitMargin;
                 }
             }
         });
+
+        // 2. Прибыль от первого взноса (если продажа в этом месяце и взнос оплачен)
+        if (sale.downPayment > 0) {
+            const saleStart = new Date(sale.startDate);
+            saleStart.setHours(0, 0, 0, 0);
+            
+            if (saleStart >= monthStart && saleStart <= monthEnd) {
+                // Проверяем, что взнос оплачен
+                const totalPaid = sale.totalAmount - sale.remainingAmount;
+                if (totalPaid >= sale.downPayment) {
+                    receivedProfit += sale.downPayment * profitMargin;
+                }
+            }
+        }
     });
 
     return Math.round(receivedProfit * 100) / 100;
+}, [sales, investors, selectedAccountId]);
+
+
+// 📊 Ожидаемая прибыль в этом месяце
+const expectedProfitThisMonth = useMemo(() => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    monthStart.setHours(0, 0, 0, 0);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const filteredSales = selectedAccountId
+        ? sales.filter(s => s.accountId === selectedAccountId)
+        : sales;
+
+    let expectedProfit = 0;
+
+    filteredSales.forEach(sale => {
+        if (sale.customerId.startsWith('system_')) return;
+        if (investors.some(i => i.id === sale.customerId)) return;
+        if (!sale.buyPrice || sale.buyPrice <= 0) return;
+        if (sale.totalAmount <= 0) return;
+
+        const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
+        if (profitMargin <= 0) return;
+
+        // 1. Прибыль от неоплаченных платежей из графика
+        sale.paymentPlan.forEach(payment => {
+            if (payment.isRealPayment !== true && !payment.isPaid) {
+                const paymentDate = new Date(payment.date);
+                paymentDate.setHours(0, 0, 0, 0);
+                if (paymentDate >= monthStart && paymentDate <= monthEnd) {
+                    expectedProfit += payment.amount * profitMargin;
+                }
+            }
+        });
+
+        // 2. Прибыль от неоплаченного первого взноса
+        if (sale.downPayment > 0) {
+            const totalPaid = sale.totalAmount - sale.remainingAmount;
+            if (totalPaid < sale.downPayment) {
+                // Взнос ещё не оплачен полностью
+                const unpaidDownPayment = sale.downPayment - totalPaid;
+                expectedProfit += unpaidDownPayment * profitMargin;
+            }
+        }
+    });
+
+    return Math.round(expectedProfit * 100) / 100;
 }, [sales, investors, selectedAccountId]);
 
 
@@ -1104,6 +1122,8 @@ useEffect(() => {
                                 {formatCurrency(profitStats.receivedProfit, appSettings.showCents)}
                                 <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
                             </p>
+
+                            <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Общая</p>
                         </div>
                     </div>
 
@@ -1161,7 +1181,7 @@ useEffect(() => {
 
 
 
-    
+
 </div>
 
 
