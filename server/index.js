@@ -2539,6 +2539,9 @@ app.post('/api/payment/create', auth, async (req, res) => {
         type: 'redirect',
         return_url: returnUrl
       },
+      payment_method_data: {
+        type: 'bank_transfer' // ← Это и есть СБП в YooKassa
+      },
       description: description,
       metadata: {
         userId: req.user.id,

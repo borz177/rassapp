@@ -326,8 +326,7 @@ const handleSync = async () => {
   setIsSyncing(true);
 
   try {
-    // 🔹 УДАЛИЛИ createBackup() отсюда. Она тормозила систему.
-    // Очередь offlineStorage и так надежно хранит все изменения локально!
+
 
     const syncResult = await api.sync();
     if (syncResult.success) {
