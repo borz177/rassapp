@@ -1036,7 +1036,7 @@ useEffect(() => {
 {/* ═══════════════════════════════════════════════════════════════ */}
 <div className="relative">
     {/* Декоративная линия */}
-    <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300 to-transparent"></div>
+     <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300 to-transparent"></div>
     
     
 
