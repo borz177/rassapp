@@ -494,13 +494,11 @@ const [calendarMonth, setCalendarMonth] = useState(new Date());
         if (!sale.buyPrice || sale.buyPrice <= 0) return;
 
         const totalSaleProfit = sale.totalAmount - sale.buyPrice;
-        if (totalSaleProfit <= 0) return;
+        const profitMargin = totalSaleProfit / sale.totalAmount;
 
-        // 🔹 Безопасный поиск счёта
         const account = accounts?.find(a => a?.id === sale.accountId);
         let managerShare = 1;
 
-        // 🔹 Безопасная проверка инвестора
         if (account?.ownerId && investors?.length) {
             const investor = investors.find(i => i?.id === account.ownerId);
             if (investor) {
@@ -508,24 +506,25 @@ const [calendarMonth, setCalendarMonth] = useState(new Date());
             }
         }
 
-        const profitMargin = totalSaleProfit / sale.totalAmount;
-
+        // 🔧 Считаем ФАКТИЧЕСКИ оплачено
         const collectedPayments = sale.downPayment + sale.paymentPlan
             .filter(p => p.isPaid && p.isRealPayment !== false)
             .reduce((sum, p) => sum + p.amount, 0);
 
         receivedProfit += collectedPayments * profitMargin;
 
+        // 🔧 Ожидаемая = ВСЁ, что ещё не оплачено (включая downPayment)
         if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
-    expectedProfit += sale.remainingAmount * profitMargin;
-}
+            const expectedRemaining = sale.totalAmount - collectedPayments;
+            expectedProfit += expectedRemaining * profitMargin;
+        }
     });
 
     return {
         receivedProfit: Math.round(receivedProfit * 100) / 100,
         expectedProfit: Math.round(expectedProfit * 100) / 100
     };
-},  [sales, selectedAccountId]);
+}, [sales, selectedAccountId, accounts, investors]);
 
   const currentWorkingCapital = useMemo(() => {
       if (selectedAccountId) {
@@ -787,12 +786,18 @@ const expectedProfitThisMonth = useMemo(() => {
         });
 
         // 2. Прибыль от неоплаченного первого взноса
+        // 🔧 ДОБАВЛЕНА ПРОВЕРКА ДАТЫ ПРОДАЖИ!
         if (sale.downPayment > 0) {
             const totalPaid = sale.totalAmount - sale.remainingAmount;
             if (totalPaid < sale.downPayment) {
-                // Взнос ещё не оплачен полностью
-                const unpaidDownPayment = sale.downPayment - totalPaid;
-                expectedProfit += unpaidDownPayment * profitMargin;
+                const saleStart = new Date(sale.startDate);
+                saleStart.setHours(0, 0, 0, 0);
+                
+                // 🔧 Только если продажа создана в этом месяце
+                if (saleStart >= monthStart && saleStart <= monthEnd) {
+                    const unpaidDownPayment = sale.downPayment - totalPaid;
+                    expectedProfit += unpaidDownPayment * profitMargin;
+                }
             }
         }
     });
@@ -1033,18 +1038,7 @@ useEffect(() => {
     {/* Декоративная линия */}
     <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300 to-transparent"></div>
     
-    {/* Заголовок секции */}
-    <div className="flex items-center gap-3 mb-4 pt-6">
-        <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-200">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
-            </svg>
-        </div>
-        <div>
-            <h3 className="text-lg font-bold text-slate-800">Прибыль</h3>
-            <p className="text-xs text-slate-500">Финансовый результат за месяц</p>
-        </div>
-    </div>
+    
 
     {/* Карточки прибыли */}
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -1058,12 +1052,12 @@ useEffect(() => {
                 </svg>
             </div>
             <div className="z-10 relative mt-auto">
-                <p className="text-[10px] sm:text-xs font-bold text-blue-600 uppercase tracking-wide mb-1 leading-tight">Ожидаемая прибыль</p>
+                <p className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 leading-tight">Ожидаемая прибыль</p>
                 <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
                     {formatCurrency(expectedProfitThisMonth, appSettings.showCents)}
                     <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
                 </p>
-                <p className="text-[10px] sm:text-xs text-blue-500 mt-1">От платежей в этом месяце</p>
+                <p className="text-[10px] sm:text-xs text-slate-400 mt-1">От платежей в этом месяце</p>
             </div>
         </div>
 
