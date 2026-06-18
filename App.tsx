@@ -1406,16 +1406,21 @@ const handleIncomeSubmit = async (data: any) => {
                 }
             }
 
-            const savedSale = await api.saveItem('sales', updatedSale);
-            updateList(setSales, savedSale);
-
-            // 👇 ПОСЛЕ УСПЕШНОГО СОХРАНЕНИЯ ПЕРЕХОДИМ К ДЕТАЛЯМ ДОГОВОРА
+             updateList(setSales, updatedSale);
+            
+            // ✅ МГНОВЕННЫЙ ПЕРЕХОД к деталям договора
             setSelectedCustomerId(sale.customerId);
             setInitialSaleIdForDetails(saleId);
             setPreviousView(currentView);
             setCurrentView('CUSTOMER_DETAILS');
 
-            return; // Выходим, чтобы не попасть в другой код
+            // 🔥 Сохранение на сервер делаем В ФОНЕ (не блокируем UI)
+            api.saveItem('sales', updatedSale).catch(err => {
+                console.error('❌ Ошибка сохранения платежа:', err);
+                // В случае ошибки — можно показать уведомление
+            });
+
+            return;
         }
     } else {
         // Остальной код для инвестора и прочего (без изменений)
@@ -1437,19 +1442,23 @@ const handleIncomeSubmit = async (data: any) => {
             status: 'COMPLETED',
             paymentPlan: []
         };
-        const savedTx = await api.saveItem('sales', newTransaction);
-        updateList(setSales, savedTx);
+        updateList(setSales, newTransaction);
+        setCurrentView('OPERATIONS');
+        
+        api.saveItem('sales', newTransaction).catch(err => {
+            console.error('❌ Ошибка сохранения транзакции:', err);
+        });
 
         if (data.type === 'INVESTOR_DEPOSIT') {
             const inv = investors.find(i => i.id === data.investorId);
             if (inv) {
                 const updatedInv = { ...inv, initialAmount: (inv.initialAmount || 0) + Number(data.amount) };
-                const savedInv = await api.saveItem('investors', updatedInv);
-                updateList(setInvestors, savedInv);
+                updateList(setInvestors, updatedInv);
+                api.saveItem('investors', updatedInv).catch(err => {
+                    console.error('❌ Ошибка обновления инвестора:', err);
+                });
             }
         }
-
-        setCurrentView('OPERATIONS');
     }
 };  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: crypto.randomUUID(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
  const handleAddEmployee = async (data: any) => {
