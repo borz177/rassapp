@@ -915,222 +915,211 @@ useEffect(() => {
                 )}
 
                 {/* Карточки статистики: 2 в ряд на мобилках, 4 на больших экранах */}
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
 
-                    {/* 1. Собрано средств */}
-                    <div
-                        className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default">
-                        {/* Декоративный круг на фоне */}
-                        <div
-                            className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    {/* 1. Собрано средств */}
+    <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default">
+        <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+            <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor">
+                <text x="5" y="18" fontSize="16" fontWeight="bold">₽</text>
+            </svg>
+        </div>
+        <div className="z-10 relative mt-auto">
+            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Собрано</p>
+            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)}
+                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+            </p>
+        </div>
+    </div>
 
-                        <div
-                            className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor">
-                                <text x="5" y="18" fontSize="16" fontWeight="bold">₽</text>
-                            </svg>
-                        </div>
-                        <div className="z-10 relative mt-auto">
-                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                                Собрано
-                            </p>
-                            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                                {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)}
-                                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-                            </p>
-                        </div>
-                    </div>
+    {/* 2. Долг клиентов */}
+    <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 flex flex-col relative overflow-hidden cursor-default">
+        <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-4 z-10 relative group-hover:bg-amber-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+            </svg>
+        </div>
+        <div className="z-10 relative mt-auto">
+            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Долг клиентов</p>
+            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)}
+                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+            </p>
+        </div>
+    </div>
 
-                    {/* 2. Долг клиентов */}
-                    <div
-                        className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 flex flex-col relative overflow-hidden cursor-default">
-                        <div
-                            className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    {/* 3. Оборотные средства */}
+    <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
+        <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600 mb-4 z-10 relative group-hover:bg-blue-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+            </svg>
+        </div>
+        <div className="z-10 relative mt-auto">
+            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">В обороте</p>
+            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                {formatCurrency(currentWorkingCapital, appSettings.showCents)}
+                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+            </p>
+        </div>
+    </div>
 
-                        <div
-                            className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-4 z-10 relative group-hover:bg-amber-500 group-hover:text-white transition-colors duration-300 shadow-sm">
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor"
-                                 viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
-                                      d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
-                            </svg>
-                        </div>
-                        <div className="z-10 relative mt-auto">
-                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                                Долг клиентов
-                            </p>
-                            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                                {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)}
-                                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-                            </p>
-                        </div>
-                    </div>
+    {/* 4. Продажи в рассрочку */}
+    <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 flex flex-col relative overflow-hidden cursor-default">
+        <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 mb-4 z-10 relative group-hover:bg-indigo-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+            </svg>
+        </div>
+        <div className="z-10 relative mt-auto">
+            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Продажи</p>
+            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)}
+                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+            </p>
+        </div>
+    </div>
 
-                    {/* 3. Оборотные средства */}
-                    <div
-                        className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
-                        <div
-                            className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    {/* 7. Ожидаемые платежи в этом месяце */}
+    <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col relative overflow-hidden cursor-default">
+        <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 rounded-full opacity-50 pointer-events-none"></div>
+        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-4 z-10 relative shadow-sm">
+            <CalendarIcon size={20}/>
+        </div>
+        <div className="z-10 relative mt-auto">
+            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Ожидаемые платежи</p>
+            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                {formatCurrency(expectedPaymentsThisMonth, appSettings.showCents)}
+                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+            </p>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-1">От клиентов в этом месяце</p>
+        </div>
+    </div>
 
-                        <div
-                            className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600 mb-4 z-10 relative group-hover:bg-blue-500 group-hover:text-white transition-colors duration-300 shadow-sm">
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor"
-                                 viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
-                                      d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
-                            </svg>
-                        </div>
-                        <div className="z-10 relative mt-auto">
-                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                                В обороте
-                            </p>
-                            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                                {formatCurrency(currentWorkingCapital, appSettings.showCents)}
-                                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-                            </p>
+    {/* 8. Полученные платежи за этот месяц */}
+    <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default"
+        onClick={() => setSelectedPaymentType('received')}>
+        <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+            <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor">
+                <text x="5" y="18" fontSize="16" fontWeight="bold">✓</text>
+            </svg>
+        </div>
+        <div className="z-10 relative mt-auto">
+            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Получено в этом месяце</p>
+            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                {formatCurrency(receivedPaymentsThisMonth, appSettings.showCents)}
+                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+            </p>
+            <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
+        </div>
+        <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+            <svg className="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="9 18 15 12 9 6"/>
+            </svg>
+        </div>
+    </div>
+</div>
 
-                        </div>
-                    </div>
+{/* ═══════════════════════════════════════════════════════════════ */}
+{/* 📊 СЕКЦИЯ ПРИБЫЛИ */}
+{/* ═══════════════════════════════════════════════════════════════ */}
+<div className="relative">
+    {/* Декоративная линия */}
+    <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300 to-transparent"></div>
+    
+    {/* Заголовок секции */}
+    <div className="flex items-center gap-3 mb-4 pt-6">
+        <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-200">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+            </svg>
+        </div>
+        <div>
+            <h3 className="text-lg font-bold text-slate-800">Прибыль</h3>
+            <p className="text-xs text-slate-500">Финансовый результат за месяц</p>
+        </div>
+    </div>
 
-                    {/* 4. Продажи в рассрочку */}
-                    <div
-                        className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 flex flex-col relative overflow-hidden cursor-default">
-                        <div
-                            className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    {/* Карточки прибыли */}
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        
+        {/* Ожидаемая прибыль в этом месяце */}
+        <div className="group bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(59,130,246,0.15)] hover:shadow-xl transition-all duration-300 border border-blue-100 hover:border-blue-300 flex flex-col relative overflow-hidden cursor-default">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-100 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-500 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-blue-200">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <div className="z-10 relative mt-auto">
+                <p className="text-[10px] sm:text-xs font-bold text-blue-600 uppercase tracking-wide mb-1 leading-tight">Ожидаемая прибыль</p>
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                    {formatCurrency(expectedProfitThisMonth, appSettings.showCents)}
+                    <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
+                </p>
+                <p className="text-[10px] sm:text-xs text-blue-500 mt-1">От платежей в этом месяце</p>
+            </div>
+        </div>
 
-                        <div
-                            className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 mb-4 z-10 relative group-hover:bg-indigo-500 group-hover:text-white transition-colors duration-300 shadow-sm">
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor"
-                                 viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
-                                      d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                            </svg>
-                        </div>
-                        <div className="z-10 relative mt-auto">
-                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                                Продажи
-                            </p>
-                            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                                {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)}
-                                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-                            </p>
-                        </div>
-                    </div>
+        {/* Полученная прибыль в этом месяце */}
+        <div className="group bg-gradient-to-br from-emerald-50 to-teal-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(16,185,129,0.15)] hover:shadow-xl transition-all duration-300 border border-emerald-100 hover:border-emerald-300 flex flex-col relative overflow-hidden cursor-default">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-100 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-500 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-emerald-200">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                </svg>
+            </div>
+            <div className="z-10 relative mt-auto">
+                <p className="text-[10px] sm:text-xs font-bold text-emerald-600 uppercase tracking-wide mb-1 leading-tight">Получено прибыли</p>
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                    {formatCurrency(receivedProfitThisMonth, appSettings.showCents)}
+                    <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
+                </p>
+                <p className="text-[10px] sm:text-xs text-emerald-500 mt-1">За этот месяц</p>
+            </div>
+        </div>
 
+        {/* Общая ожидаемая прибыль */}
+        <div className="group bg-gradient-to-br from-slate-50 to-blue-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(100,116,139,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-200 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-600 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-slate-200">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+            </div>
+            <div className="z-10 relative mt-auto">
+                <p className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 leading-tight">Всего ожидается</p>
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                    {formatCurrency(profitStats.expectedProfit, appSettings.showCents)}
+                    <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
+                </p>
+            </div>
+        </div>
 
-
-                     {/* 7. Ожидаемые платежи в этом месяце — СТАТИЧНАЯ КАРТОЧКА */}
-                    <div
-                        className="bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col relative overflow-hidden cursor-default"
-                        // 🔥 УБРАЛИ: onClick, hover-эффекты, cursor-pointer
-                    >
-                        <div
-                            className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 rounded-full opacity-50 pointer-events-none"></div>
-                        <div
-                            className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-4 z-10 relative shadow-sm">
-                            <CalendarIcon size={20}/>
-                        </div>
-                        <div className="z-10 relative mt-auto">
-                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                                Ожидаемые платежи
-                            </p>
-                            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                                {formatCurrency(expectedPaymentsThisMonth, appSettings.showCents)}
-                                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-                            </p>
-                            <p className="text-[10px] sm:text-xs text-slate-400 mt-1">От клиентов в этом месяце</p>
-                        </div>
-
-                    </div>
-
-                    {/* 8. Полученные платежи за этот месяц */}
-                    <div
-                        className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default"
-                        onClick={() => setSelectedPaymentType('received')}>
-                        <div
-                            className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-                        <div
-                            className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor">
-                                <text x="5" y="18" fontSize="16" fontWeight="bold">✓</text>
-                            </svg>
-                        </div>
-                        <div className="z-10 relative mt-auto">
-                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                                Получено в этом месяце
-                            </p>
-                            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                                {formatCurrency(receivedPaymentsThisMonth, appSettings.showCents)}
-                                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-                            </p>
-                            <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
-                        </div>
-                        <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <svg className="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" strokeWidth="2">
-                                <polyline points="9 18 15 12 9 6"/>
-                            </svg>
-                        </div>
-                    </div>
-
-
-                       {/* 6. Ожидаемая прибыль */}
-
-                    <div
-                        className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
-                        <div
-                            className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-                        <div
-                            className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600 mb-4 z-10 relative group-hover:bg-blue-500 group-hover:text-white transition-colors duration-300 shadow-sm">
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor"
-                                 viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
-                                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                        </div>
-                        <div className="z-10 relative mt-auto">
-                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                                Ожидается прибыли
-                            </p>
-                            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                                {formatCurrency(profitStats.expectedProfit, appSettings.showCents)}
-                                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-                            </p>
-
-                        </div>
-                    </div>
-
-
-                    {/* 5. Полученная прибыль */}
-                    <div
-                        className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default">
-                        <div
-                            className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-                        <div
-                            className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor"
-                                 viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
-                                      d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
-                            </svg>
-                        </div>
-                        <div className="z-10 relative mt-auto">
-                            <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">
-                                Получено прибыли
-                            </p>
-                            <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                                {formatCurrency(profitStats.receivedProfit, appSettings.showCents)}
-                                <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
-                            </p>
-
-                            <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Общая</p>
-                        </div>
-                    </div>
-
-
-
-
-                  <div
+        {/* Общая полученная прибыль */}
+        <div className="group bg-gradient-to-br from-emerald-50 to-green-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(16,185,129,0.15)] hover:shadow-xl transition-all duration-300 border border-emerald-100 hover:border-emerald-300 flex flex-col relative overflow-hidden cursor-default">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-100 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-emerald-600 to-green-500 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-emerald-200">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <div className="z-10 relative mt-auto">
+                <p className="text-[10px] sm:text-xs font-bold text-emerald-600 uppercase tracking-wide mb-1 leading-tight">Всего получено</p>
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                    {formatCurrency(profitStats.receivedProfit, appSettings.showCents)}
+                    <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
     className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
     <div
         className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
