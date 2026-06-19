@@ -426,6 +426,7 @@ const ProfitDetailsModal = ({
   investors,
   selectedAccountId,
   onClose,
+  onSelectCustomer, 
   appSettings
 }: {
   type: 'expected' | 'received';
@@ -434,6 +435,7 @@ const ProfitDetailsModal = ({
   investors: Investor[];
   selectedAccountId?: string | null;
   onClose: () => void;
+  onSelectCustomer: (customerId: string) => void; 
   appSettings: AppSettings;
 }) => {
   const now = new Date();
@@ -445,6 +447,7 @@ const ProfitDetailsModal = ({
     const result: Array<{
       sale: Sale;
       customerName: string;
+      customerId: string;
       paymentAmount: number;
       profitAmount: number;
       date: string;
@@ -480,6 +483,7 @@ const ProfitDetailsModal = ({
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
+                customerId: sale.customerId,
                 paymentAmount: payment.amount, // 🔹 Вся сумма, как в карточке
                 profitAmount: payment.amount * profitMargin, // 🔹 Прибыль от всей суммы
                 date: payment.date,
@@ -503,6 +507,7 @@ const ProfitDetailsModal = ({
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
+                customerId: sale.customerId,
                 paymentAmount: unpaidDownPayment,
                 profitAmount: unpaidDownPayment * profitMargin,
                 date: sale.startDate,
@@ -524,6 +529,7 @@ const ProfitDetailsModal = ({
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
+                customerId: sale.customerId,
                 paymentAmount: payment.amount,
                 profitAmount: payment.amount * profitMargin,
                 date: payment.date,
@@ -546,6 +552,7 @@ const ProfitDetailsModal = ({
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
+                customerId: sale.customerId,
                 paymentAmount: sale.downPayment,
                 profitAmount: sale.downPayment * profitMargin,
                 date: sale.startDate,
@@ -659,6 +666,10 @@ const ProfitDetailsModal = ({
             return (
               <div
                 key={`${item.sale.id}-${item.date}-${idx}`}
+                onClick={() => {
+                  onSelectCustomer(item.customerId); // 🔹 Переход на детали клиента
+                  onClose(); // 🔹 Закрываем модалку
+                }}
                 className={`bg-white p-3 rounded-xl border transition-all ${
                   item.isPaid || item.paymentPercent > 0
                     ? 'border-emerald-100' 
@@ -672,6 +683,11 @@ const ProfitDetailsModal = ({
                         <span className="text-emerald-500 flex-shrink-0 font-bold">✓</span>
                       )}
                       <p className="font-semibold text-slate-800 text-sm truncate">{item.customerName}</p>
+
+                      <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" 
+                           viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
                     </div>
                     <p className="text-xs text-slate-500 truncate mt-0.5">
                       {item.sale.productName}
@@ -1843,6 +1859,10 @@ useEffect(() => {
         investors={investors}
         selectedAccountId={selectedAccountId}
         onClose={() => setSelectedProfitType(null)}
+        onSelectCustomer={(customerId) => {
+            setSelectedProfitType(null);
+            onSelectCustomer(customerId); 
+        }}
         appSettings={appSettings}
     />
 )}
