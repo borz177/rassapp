@@ -426,7 +426,7 @@ const ProfitDetailsModal = ({
   investors,
   selectedAccountId,
   onClose,
-  onSelectCustomer, 
+  onViewSaleDetails,
   appSettings
 }: {
   type: 'expected' | 'received';
@@ -435,7 +435,7 @@ const ProfitDetailsModal = ({
   investors: Investor[];
   selectedAccountId?: string | null;
   onClose: () => void;
-  onSelectCustomer: (customerId: string) => void; 
+  onViewSaleDetails: (saleId: string, customerId: string) => void; 
   appSettings: AppSettings;
 }) => {
   const now = new Date();
@@ -667,8 +667,8 @@ const ProfitDetailsModal = ({
               <div
                 key={`${item.sale.id}-${item.date}-${idx}`}
                 onClick={() => {
-                  onSelectCustomer(item.customerId); // 🔹 Переход на детали клиента
-                  onClose(); // 🔹 Закрываем модалку
+                  onViewSaleDetails(item.sale.id, item.customerId); // 🔹 ИЗМЕНЕНО
+                  onClose();
                 }}
                 className={`bg-white p-3 rounded-xl border transition-all ${
                   item.isPaid || item.paymentPercent > 0
@@ -1859,9 +1859,12 @@ useEffect(() => {
         investors={investors}
         selectedAccountId={selectedAccountId}
         onClose={() => setSelectedProfitType(null)}
-        onSelectCustomer={(customerId) => {
-            setSelectedProfitType(null);
-            onSelectCustomer(customerId); 
+        onViewSaleDetails={(saleId, customerId) => {
+            setSelectedProfitType(null); // Закрываем модалку
+            setSelectedCustomerId(customerId); // Устанавливаем клиента
+            setInitialSaleIdForDetails(saleId); // 🔹 Устанавливаем ID договора
+            setPreviousView(currentView);
+            setCurrentView('CUSTOMER_DETAILS'); 
         }}
         appSettings={appSettings}
     />
