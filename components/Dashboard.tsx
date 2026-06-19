@@ -1427,7 +1427,7 @@ useEffect(() => {
             {formatCurrency(receivedProfitThisMonth, appSettings.showCents)}
             <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
         </p>
-        <p className="text-[10px] sm:text-xs text-slate-400 mt-1">{currentMonthName}</p>
+        <p className="text-xs sm:text-sm font-semibold text-slate-600 mt-1">{currentMonthName}</p>
         <p className="text-[10px] sm:text-xs text-emerald-500 mt-1">Нажмите для деталей</p>
     </div>
     <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">

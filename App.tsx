@@ -602,7 +602,7 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v6';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v7';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -3187,78 +3187,72 @@ if (!user && !showSplash) {
       className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
-      {/* Шапка с градиентом */}
-      <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-6 text-white relative">
-        <div className="absolute top-3 right-3 bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full text-[10px] font-bold">
-          v2.1
-        </div>
-        <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-3xl shadow-lg">
-          🚀
-        </div>
-        <h3 className="text-xl font-bold text-center mb-1">
-          Что нового?
-        </h3>
+      {/* Шапка */}
+      <div className="relative bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 p-8 text-white overflow-hidden">
+        {/* Декоративные круги */}
+        <div className="absolute -top-10 -right-10 w-40 h-40 bg-indigo-500/20 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-emerald-500/20 rounded-full blur-3xl"></div>
         
+        <div className="relative z-10">
+          <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-4xl shadow-2xl shadow-emerald-500/50">
+            💰
+          </div>
+          <h3 className="text-2xl font-bold text-center mb-2">
+            Прибыль за месяц
+          </h3>
+         
+        </div>
       </div>
 
-      {/* Список обновлений */}
-      <div className="p-5 space-y-3">
-        {/* Обновление 1: Сотрудники */}
-        <div className="flex gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
-          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-blue-500 text-white flex items-center justify-center text-lg shadow-sm">
-            👥
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <h4 className="font-bold text-slate-800 text-sm">Сотрудники</h4>
-              <span className="text-[9px] bg-blue-500 text-white px-1.5 py-0.5 rounded-full font-bold">ИСПРАВЛЕНО</span>
+      {/* Контент */}
+      <div className="p-6 space-y-4">
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center text-sm font-bold">
+              ✓
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Исправлена фильтрация данных для сотрудников. Теперь корректно отображаются только разрешённые клиенты, договоры и счета.
-            </p>
+            <div>
+              <p className="font-semibold text-slate-800 text-sm">Ожидаемая прибыль</p>
+              <p className="text-xs text-slate-500 mt-0.5">Сколько вы заработаете от платежей этого месяца</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">
+              ✓
+            </div>
+            <div>
+              <p className="font-semibold text-slate-800 text-sm">Полученная прибыль</p>
+              <p className="text-xs text-slate-500 mt-0.5">Реальный доход от оплат в этом месяце</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-bold">
+              ✓
+            </div>
+            <div>
+              <p className="font-semibold text-slate-800 text-sm">Детализация по клиентам</p>
+              <p className="text-xs text-slate-500 mt-0.5">Нажмите на карточку — увидите кто платил, а кто нет</p>
+            </div>
           </div>
         </div>
 
-        {/* Обновление 2: Скидки */}
-        <div className="flex gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
-          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center text-lg shadow-sm">
-            
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <h4 className="font-bold text-slate-800 text-sm">Скидки при погашении</h4>
-              <span className="text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full font-bold">НОВОЕ</span>
-            </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Добавлена возможность предоставить скидку при полном погашении долга — в процентах или фиксированной сумме. Договор закрывается корректно.
-            </p>
-          </div>
-        </div>
-
-        {/* Обновление 3: Обновление приложения */}
-        <div className="flex gap-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
-          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center text-lg shadow-sm">
-            🔄
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <h4 className="font-bold text-slate-800 text-sm">Обновление приложения</h4>
-              <span className="text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full font-bold">НОВОЕ</span>
-            </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              В настройках можете «Обновить приложение».
-            </p>
-          </div>
+        {/* Подсказка */}
+        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-3 border border-indigo-100">
+          <p className="text-xs text-indigo-700 text-center font-medium">
+            💡 Нажмите на карточку прибыли, чтобы увидеть детали по каждому договору
+          </p>
         </div>
       </div>
 
       {/* Кнопка */}
-      <div className="px-5 pb-5">
+      <div className="px-6 pb-6">
         <button
           onClick={() => setShowTemplateUpdateModal(false)}
-          className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 active:scale-[0.98] transition-all shadow-lg shadow-indigo-200"
+          className="w-full py-3.5 bg-gradient-to-r from-slate-900 to-indigo-900 text-white text-sm font-bold rounded-xl hover:from-slate-800 hover:to-indigo-800 active:scale-[0.98] transition-all shadow-lg shadow-slate-300"
         >
-          Отлично, понятно! ✨
+          Понятно, начать использовать 🚀
         </button>
       </div>
     </div>
