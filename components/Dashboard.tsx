@@ -665,17 +665,17 @@ const ProfitDetailsModal = ({
             
             return (
               <div
-                key={`${item.sale.id}-${item.date}-${idx}`}
-                onClick={() => {
-                  onViewSaleDetails(item.sale.id, item.customerId); // 🔹 ИЗМЕНЕНО
-                  onClose();
-                }}
-                className={`bg-white p-3 rounded-xl border transition-all ${
-                  item.isPaid || item.paymentPercent > 0
-                    ? 'border-emerald-100' 
-                    : 'border-slate-100'
-                }`}
-              >
+    key={`${item.sale.id}-${item.date}-${idx}`}
+    onClick={() => {
+        onViewSaleDetails(item.sale.id, item.customerId);
+        onClose();
+    }}
+    className={`group bg-white p-3 rounded-xl border transition-all cursor-pointer hover:shadow-md hover:border-indigo-300 ${
+        item.isPaid || item.paymentPercent > 0
+            ? 'border-emerald-100' 
+            : 'border-slate-100'
+    }`}
+>
                 <div className="flex justify-between items-start mb-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -1860,16 +1860,20 @@ useEffect(() => {
         selectedAccountId={selectedAccountId}
         onClose={() => setSelectedProfitType(null)}
         onViewSaleDetails={(saleId, customerId) => {
-            setSelectedProfitType(null); // Закрываем модалку
-            setSelectedCustomerId(customerId); // Устанавливаем клиента
-            setInitialSaleIdForDetails(saleId); // 🔹 Устанавливаем ID договора
+            // 🔹 СНАЧАЛА устанавливаем ID договора
+            setInitialSaleIdForDetails(saleId);
+            // Потом устанавливаем клиента
+            setSelectedCustomerId(customerId);
+            // Закрываем модалку
+            setSelectedProfitType(null);
+            // Сохраняем предыдущий вид
             setPreviousView(currentView);
-            setCurrentView('CUSTOMER_DETAILS'); 
+            // Переключаемся на детали клиента
+            setCurrentView('CUSTOMER_DETAILS');
         }}
         appSettings={appSettings}
     />
 )}
-
 
       </div>
     </div>
