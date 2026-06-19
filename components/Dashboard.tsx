@@ -1046,45 +1046,50 @@ const receivedProfitThisMonth = useMemo(() => {
         if (!sale.buyPrice || sale.buyPrice <= 0) return;
         if (sale.totalAmount <= 0) return;
 
-        const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
-        if (profitMargin <= 0) return;
+        const totalItemProfit = sale.totalAmount - sale.buyPrice;
+        if (totalItemProfit <= 0) return;
 
-        // 1. Прибыль от оплаченных платежей из графика
+        // 🔹 Собираем ВСЕ платежи, созданные в этом месяце (по дате создания/оплаты)
+        let totalPaidThisMonth = 0;
+
+        // Реальные платежи из paymentPlan (по дате оплаты)
         sale.paymentPlan.forEach(payment => {
             if (payment.isPaid && payment.isRealPayment !== false) {
+                // 🔹 Используем payment.date как дату фактической оплаты
+                // (если у тебя есть отдельное поле payment.paidAt — используй его)
                 const paymentDate = new Date(payment.date);
                 paymentDate.setHours(0, 0, 0, 0);
                 if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-                    receivedProfit += payment.amount * profitMargin;
+                    totalPaidThisMonth += payment.amount;
                 }
             }
         });
 
-        // 2. Прибыль от первого взноса (если продажа в этом месяце и взнос оплачен)
+        // 🔹 Первый взнос, если продажа создана в этом месяце
         if (sale.downPayment > 0) {
             const saleStart = new Date(sale.startDate);
             saleStart.setHours(0, 0, 0, 0);
-            
             if (saleStart >= monthStart && saleStart <= monthEnd) {
-                // Проверяем, что взнос оплачен
-                const totalPaid = sale.totalAmount - sale.remainingAmount;
-                if (totalPaid >= sale.downPayment) {
-                    receivedProfit += sale.downPayment * profitMargin;
-                }
+                totalPaidThisMonth += sale.downPayment;
             }
         }
+
+        if (totalPaidThisMonth <= 0) return;
+
+        // 🔹 Как в бэкенде: БЕЗ min(..., 1.0)
+        const profitRatio = totalPaidThisMonth / sale.totalAmount;
+        receivedProfit += totalItemProfit * profitRatio;
     });
 
     return Math.round(receivedProfit * 100) / 100;
 }, [sales, investors, selectedAccountId]);
 
 
-// 📊 Ожидаемая прибыль в этом месяце
+// 📊 Ожидаемая прибыль в этом месяце (как в бэкенде - forecast)
 const expectedProfitThisMonth = useMemo(() => {
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    monthStart.setHours(0, 0, 0, 0);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const currentMonthY = now.getFullYear();
+    const currentMonthM = now.getMonth(); // 0-indexed
 
     const filteredSales = selectedAccountId
         ? sales.filter(s => s.accountId === selectedAccountId)
@@ -1095,36 +1100,42 @@ const expectedProfitThisMonth = useMemo(() => {
     filteredSales.forEach(sale => {
         if (sale.customerId.startsWith('system_')) return;
         if (investors.some(i => i.id === sale.customerId)) return;
+        if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
         if (!sale.buyPrice || sale.buyPrice <= 0) return;
         if (sale.totalAmount <= 0) return;
+        if (!sale.installments || sale.installments <= 0) return;
 
-        const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
-        if (profitMargin <= 0) return;
+        const itemTotalProfit = sale.totalAmount - sale.buyPrice;
+        if (itemTotalProfit <= 0) return;
 
-        // 1. Прибыль от неоплаченных платежей из графика
-        sale.paymentPlan.forEach(payment => {
-            if (payment.isRealPayment !== true && !payment.isPaid) {
-                const paymentDate = new Date(payment.date);
-                paymentDate.setHours(0, 0, 0, 0);
-                if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-                    expectedProfit += payment.amount * profitMargin;
-                }
-            }
-        });
+        const profitMargin = itemTotalProfit / sale.totalAmount;
 
-        // 2. Прибыль от неоплаченного первого взноса
-        // 🔧 ДОБАВЛЕНА ПРОВЕРКА ДАТЫ ПРОДАЖИ!
-        if (sale.downPayment > 0) {
-            const totalPaid = sale.totalAmount - sale.remainingAmount;
-            if (totalPaid < sale.downPayment) {
-                const saleStart = new Date(sale.startDate);
-                saleStart.setHours(0, 0, 0, 0);
+        // 🔹 Сумма ежемесячного платежа (как в бэкенде)
+        const downPayment = sale.downPayment || 0;
+        const remainingAmount = Math.max(sale.totalAmount - downPayment, 0);
+        const monthlyPayment = remainingAmount / sale.installments;
+        const monthlyProfit = monthlyPayment * profitMargin;
+
+        // 🔹 Генерируем график платежей (как в бэкенде)
+        const startDate = new Date(sale.startDate);
+        // Первый платёж через месяц после продажи
+        const firstPaymentDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, startDate.getDate());
+
+        for (let i = 0; i < sale.installments; i++) {
+            const paymentDate = new Date(firstPaymentDate.getFullYear(), firstPaymentDate.getMonth() + i, firstPaymentDate.getDate());
+            
+            // 🔹 Проверяем, попадает ли платёж в текущий месяц
+            if (paymentDate.getFullYear() === currentMonthY && paymentDate.getMonth() === currentMonthM) {
+                // 🔹 Проверяем, не оплачен ли уже этот платёж
+                const isPaid = sale.paymentPlan.some(p => 
+                    p.isPaid && p.isRealPayment !== false && 
+                    Math.abs(new Date(p.date).getTime() - paymentDate.getTime()) < 86400000 * 3 // в пределах 3 дней
+                );
                 
-                // 🔧 Только если продажа создана в этом месяце
-                if (saleStart >= monthStart && saleStart <= monthEnd) {
-                    const unpaidDownPayment = sale.downPayment - totalPaid;
-                    expectedProfit += unpaidDownPayment * profitMargin;
+                if (!isPaid) {
+                    expectedProfit += monthlyProfit;
                 }
+                break; // только один платёж в месяц
             }
         }
     });
