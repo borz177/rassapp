@@ -419,7 +419,6 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
 
 
 
-
 const ProfitDetailsModal = ({
   type,
   sales,
@@ -446,12 +445,12 @@ const ProfitDetailsModal = ({
     const result: Array<{
       sale: Sale;
       customerName: string;
-      totalAmount: number;
-      paidAmount: number;
-      remainingAmount: number;
+      paymentAmount: number;
       profitAmount: number;
       date: string;
+      isPaid: boolean;
       isDownPayment: boolean;
+      paidAmount: number;
       paymentPercent: number;
     }> = [];
 
@@ -471,105 +470,73 @@ const ProfitDetailsModal = ({
 
       const customer = customers.find(c => c.id === sale.customerId);
 
-      // Собираем все реальные платежи в pool
-      const realPayments = [
-        { amount: Number(sale.downPayment), date: sale.startDate },
-        ...sale.paymentPlan
-          .filter(p => p.isPaid && p.isRealPayment !== false)
-          .map(p => ({ amount: Number(p.amount), date: p.date }))
-      ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-      // Сортируем плановые платежи по дате
-      const planPayments = sale.paymentPlan
-        .filter(p => p.isRealPayment === false || p.isRealPayment === undefined)
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-      // Распределяем реальные платежи по плановым
-      let paymentPool = realPayments.reduce((sum, p) => sum + p.amount, 0);
-      const coverageMap = new Map<string, number>();
-
-      planPayments.forEach(p => {
-        const amountDue = Number(p.amount);
-        const covered = Math.min(amountDue, paymentPool);
-        paymentPool -= covered;
-        coverageMap.set(p.date, covered);
-      });
-
       if (type === 'expected') {
-        // 🔹 ВСЕ платежи этого месяца (и оплаченные, и нет)
-        planPayments.forEach(payment => {
-          const paymentDate = new Date(payment.date);
-          paymentDate.setHours(0, 0, 0, 0);
-          if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-            const amountDue = Number(payment.amount);
-            const paidAmount = coverageMap.get(payment.date) || 0;
-            const remaining = amountDue - paidAmount;
-            const paymentPercent = amountDue > 0 ? (paidAmount / amountDue) * 100 : 0;
-
-            result.push({
-              sale,
-              customerName: customer?.name || 'Неизвестно',
-              totalAmount: amountDue,
-              paidAmount,
-              remainingAmount: remaining,
-              profitAmount: remaining * profitMargin, // Прибыль только от остатка
-              date: payment.date,
-              isDownPayment: false,
-              paymentPercent
-            });
-          }
-        });
-
-        // DownPayment
-        if (sale.downPayment > 0) {
-          const saleStart = new Date(sale.startDate);
-          saleStart.setHours(0, 0, 0, 0);
-          if (saleStart >= monthStart && saleStart <= monthEnd) {
-            const totalPaid = sale.totalAmount - sale.remainingAmount;
-            const paidAmount = Math.min(totalPaid, sale.downPayment);
-            const remaining = sale.downPayment - paidAmount;
-            const paymentPercent = (paidAmount / sale.downPayment) * 100;
-
-            if (remaining > 0 || paidAmount > 0) {
+        // 🔹 Неоплаченные платежи из графика (та же логика, что в карточке)
+        sale.paymentPlan.forEach(payment => {
+          if (payment.isRealPayment !== true && !payment.isPaid) {
+            const paymentDate = new Date(payment.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate >= monthStart && paymentDate <= monthEnd) {
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
-                totalAmount: sale.downPayment,
-                paidAmount,
-                remainingAmount: remaining,
-                profitAmount: remaining * profitMargin,
+                paymentAmount: payment.amount, // 🔹 Вся сумма, как в карточке
+                profitAmount: payment.amount * profitMargin, // 🔹 Прибыль от всей суммы
+                date: payment.date,
+                isPaid: false,
+                isDownPayment: false,
+                paidAmount: 0,
+                paymentPercent: 0
+              });
+            }
+          }
+        });
+
+        // 🔹 Неоплаченный downPayment (та же логика)
+        if (sale.downPayment > 0) {
+          const totalPaid = sale.totalAmount - sale.remainingAmount;
+          if (totalPaid < sale.downPayment) {
+            const saleStart = new Date(sale.startDate);
+            saleStart.setHours(0, 0, 0, 0);
+            if (saleStart >= monthStart && saleStart <= monthEnd) {
+              const unpaidDownPayment = sale.downPayment - totalPaid;
+              result.push({
+                sale,
+                customerName: customer?.name || 'Неизвестно',
+                paymentAmount: unpaidDownPayment,
+                profitAmount: unpaidDownPayment * profitMargin,
                 date: sale.startDate,
+                isPaid: false,
                 isDownPayment: true,
-                paymentPercent
+                paidAmount: totalPaid,
+                paymentPercent: (totalPaid / sale.downPayment) * 100
               });
             }
           }
         }
       } else {
-        // Для 'received' - только оплаченные
-        planPayments.forEach(payment => {
-          const paymentDate = new Date(payment.date);
-          paymentDate.setHours(0, 0, 0, 0);
-          if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-            const amountDue = Number(payment.amount);
-            const paidAmount = coverageMap.get(payment.date) || 0;
-            
-            if (paidAmount > 0.01) {
+        // 🔹 Оплаченные платежи из графика (та же логика, что в карточке)
+        sale.paymentPlan.forEach(payment => {
+          if (payment.isPaid && payment.isRealPayment !== false) {
+            const paymentDate = new Date(payment.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate >= monthStart && paymentDate <= monthEnd) {
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
-                totalAmount: paidAmount,
-                paidAmount,
-                remainingAmount: 0,
-                profitAmount: paidAmount * profitMargin,
+                paymentAmount: payment.amount,
+                profitAmount: payment.amount * profitMargin,
                 date: payment.date,
+                isPaid: true,
                 isDownPayment: false,
+                paidAmount: payment.amount,
                 paymentPercent: 100
               });
             }
           }
         });
 
+        // 🔹 Оплаченный downPayment (та же логика)
         if (sale.downPayment > 0) {
           const saleStart = new Date(sale.startDate);
           saleStart.setHours(0, 0, 0, 0);
@@ -579,12 +546,12 @@ const ProfitDetailsModal = ({
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
-                totalAmount: sale.downPayment,
-                paidAmount: sale.downPayment,
-                remainingAmount: 0,
+                paymentAmount: sale.downPayment,
                 profitAmount: sale.downPayment * profitMargin,
                 date: sale.startDate,
+                isPaid: true,
                 isDownPayment: true,
+                paidAmount: sale.downPayment,
                 paymentPercent: 100
               });
             }
@@ -594,8 +561,8 @@ const ProfitDetailsModal = ({
     });
 
     return result.sort((a, b) => {
-      if (a.paymentPercent === 100 && b.paymentPercent < 100) return -1;
-      if (a.paymentPercent < 100 && b.paymentPercent === 100) return 1;
+      if (a.isPaid && !b.isPaid) return -1;
+      if (!a.isPaid && b.isPaid) return 1;
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
   }, [sales, customers, investors, type, monthStart, monthEnd, selectedAccountId]);
@@ -606,8 +573,8 @@ const ProfitDetailsModal = ({
     ? 'Нет ожидаемой прибыли в этом месяце'
     : 'Нет полученной прибыли в этом месяце';
 
-  const getStatusInfo = (percent: number) => {
-    if (percent >= 100) {
+  const getStatusInfo = (percent: number, isPaid: boolean) => {
+    if (isPaid || percent >= 100) {
       return {
         label: 'Получено',
         bg: 'bg-emerald-100',
@@ -673,7 +640,7 @@ const ProfitDetailsModal = ({
 
         {/* Итого */}
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-          <span className="text-sm text-slate-500">Итого прибыль (от остатка)</span>
+          <span className="text-sm text-slate-500">Итого прибыль</span>
           <span className="text-lg font-bold text-slate-800">
             {formatCurrency(totalProfit, appSettings.showCents)} ₽
           </span>
@@ -687,25 +654,22 @@ const ProfitDetailsModal = ({
               <p className="text-sm">{emptyText}</p>
             </div>
           ) : items.map((item, idx) => {
-            const statusInfo = getStatusInfo(item.paymentPercent);
-            const isFullyPaid = item.paymentPercent >= 100;
-            const isPartiallyPaid = item.paymentPercent > 0 && item.paymentPercent < 100;
+            const statusInfo = getStatusInfo(item.paymentPercent, item.isPaid);
             
             return (
               <div
                 key={`${item.sale.id}-${item.date}-${idx}`}
                 className={`bg-white p-3 rounded-xl border transition-all ${
-                  isFullyPaid ? 'border-emerald-200 bg-emerald-50/30' :
-                  isPartiallyPaid ? 'border-amber-200' :
-                  'border-slate-100'
+                  item.isPaid || item.paymentPercent > 0
+                    ? 'border-emerald-100' 
+                    : 'border-slate-100'
                 }`}
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      {/* Галочка для полностью оплаченных */}
-                      {isFullyPaid && (
-                        <span className="text-emerald-500 flex-shrink-0 text-lg font-bold">✓</span>
+                      {(item.isPaid || item.paymentPercent > 0) && (
+                        <span className="text-emerald-500 flex-shrink-0 font-bold">✓</span>
                       )}
                       <p className="font-semibold text-slate-800 text-sm truncate">{item.customerName}</p>
                     </div>
@@ -723,17 +687,16 @@ const ProfitDetailsModal = ({
                       +{formatCurrency(item.profitAmount, appSettings.showCents)} ₽
                     </p>
                     <p className="text-[10px] text-slate-400">
-                      от {formatCurrency(item.remainingAmount, appSettings.showCents)} ₽
+                      от {formatCurrency(item.paymentAmount, appSettings.showCents)} ₽
                     </p>
                   </div>
                 </div>
 
-                {/* Прогресс-бар для частично оплаченных */}
-                {isPartiallyPaid && (
+                {item.paymentPercent > 0 && item.paymentPercent < 100 && (
                   <div className="mb-2">
                     <div className="flex items-center justify-between text-[10px] mb-1">
                       <span className="text-slate-500">
-                        Оплачено {formatCurrency(item.paidAmount, appSettings.showCents)} из {formatCurrency(item.totalAmount, appSettings.showCents)} ₽
+                        Оплачено {formatCurrency(item.paidAmount, appSettings.showCents)} из {formatCurrency(item.paymentAmount + item.paidAmount, appSettings.showCents)} ₽
                       </span>
                       <span className="font-bold text-amber-600">
                         {Math.round(item.paymentPercent)}%
@@ -745,13 +708,6 @@ const ProfitDetailsModal = ({
                         style={{ width: `${item.paymentPercent}%` }}
                       />
                     </div>
-                  </div>
-                )}
-
-                {/* Для полностью оплаченных показываем сумму */}
-                {isFullyPaid && (
-                  <div className="mb-2 text-[10px] text-emerald-600 font-medium">
-                    Оплачено: {formatCurrency(item.totalAmount, appSettings.showCents)} ₽
                   </div>
                 )}
 
@@ -777,7 +733,6 @@ const ProfitDetailsModal = ({
     document.body
   );
 };
-
 
 const Dashboard: React.FC<DashboardProps> = ({
     sales,
