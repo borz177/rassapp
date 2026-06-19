@@ -1381,6 +1381,7 @@ const handleIncomeSubmit = async (data: any) => {
                     saleId: sale.id,
                     amount: amount, // Фактически полученная сумма (с учётом скидки)
                     date: data.date,
+                    actualDate: data.actualDate,
                     isPaid: true,
                     isRealPayment: true,
                     // 🆕 Метаданные скидки — для истории и отчётов
@@ -1397,6 +1398,7 @@ const handleIncomeSubmit = async (data: any) => {
                     saleId: sale.id,
                     amount: amount,
                     date: data.date,
+                    actualDate: data.actualDate,
                     isPaid: true,
                     isRealPayment: true
                 });
