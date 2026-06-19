@@ -420,7 +420,6 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
 
 
 
-
 const ProfitDetailsModal = ({
   type,
   sales,
@@ -447,12 +446,12 @@ const ProfitDetailsModal = ({
     const result: Array<{
       sale: Sale;
       customerName: string;
-      paymentAmount: number;
+      totalAmount: number;
+      paidAmount: number;
+      remainingAmount: number;
       profitAmount: number;
       date: string;
-      isPaid: boolean;
       isDownPayment: boolean;
-      paidAmount: number;
       paymentPercent: number;
     }> = [];
 
@@ -472,73 +471,105 @@ const ProfitDetailsModal = ({
 
       const customer = customers.find(c => c.id === sale.customerId);
 
+      // Собираем все реальные платежи в pool
+      const realPayments = [
+        { amount: Number(sale.downPayment), date: sale.startDate },
+        ...sale.paymentPlan
+          .filter(p => p.isPaid && p.isRealPayment !== false)
+          .map(p => ({ amount: Number(p.amount), date: p.date }))
+      ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // Сортируем плановые платежи по дате
+      const planPayments = sale.paymentPlan
+        .filter(p => p.isRealPayment === false || p.isRealPayment === undefined)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // Распределяем реальные платежи по плановым
+      let paymentPool = realPayments.reduce((sum, p) => sum + p.amount, 0);
+      const coverageMap = new Map<string, number>();
+
+      planPayments.forEach(p => {
+        const amountDue = Number(p.amount);
+        const covered = Math.min(amountDue, paymentPool);
+        paymentPool -= covered;
+        coverageMap.set(p.date, covered);
+      });
+
       if (type === 'expected') {
-        // 🔹 Неоплаченные платежи из графика (та же логика, что в карточке)
-        sale.paymentPlan.forEach(payment => {
-          if (payment.isRealPayment !== true && !payment.isPaid) {
-            const paymentDate = new Date(payment.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-              result.push({
-                sale,
-                customerName: customer?.name || 'Неизвестно',
-                paymentAmount: payment.amount, // 🔹 Вся сумма, как в карточке
-                profitAmount: payment.amount * profitMargin, // 🔹 Прибыль от всей суммы
-                date: payment.date,
-                isPaid: false,
-                isDownPayment: false,
-                paidAmount: 0,
-                paymentPercent: 0
-              });
-            }
+        // 🔹 ВСЕ платежи этого месяца (и оплаченные, и нет)
+        planPayments.forEach(payment => {
+          const paymentDate = new Date(payment.date);
+          paymentDate.setHours(0, 0, 0, 0);
+          if (paymentDate >= monthStart && paymentDate <= monthEnd) {
+            const amountDue = Number(payment.amount);
+            const paidAmount = coverageMap.get(payment.date) || 0;
+            const remaining = amountDue - paidAmount;
+            const paymentPercent = amountDue > 0 ? (paidAmount / amountDue) * 100 : 0;
+
+            result.push({
+              sale,
+              customerName: customer?.name || 'Неизвестно',
+              totalAmount: amountDue,
+              paidAmount,
+              remainingAmount: remaining,
+              profitAmount: remaining * profitMargin, // Прибыль только от остатка
+              date: payment.date,
+              isDownPayment: false,
+              paymentPercent
+            });
           }
         });
 
-        // 🔹 Неоплаченный downPayment (та же логика)
+        // DownPayment
         if (sale.downPayment > 0) {
-          const totalPaid = sale.totalAmount - sale.remainingAmount;
-          if (totalPaid < sale.downPayment) {
-            const saleStart = new Date(sale.startDate);
-            saleStart.setHours(0, 0, 0, 0);
-            if (saleStart >= monthStart && saleStart <= monthEnd) {
-              const unpaidDownPayment = sale.downPayment - totalPaid;
+          const saleStart = new Date(sale.startDate);
+          saleStart.setHours(0, 0, 0, 0);
+          if (saleStart >= monthStart && saleStart <= monthEnd) {
+            const totalPaid = sale.totalAmount - sale.remainingAmount;
+            const paidAmount = Math.min(totalPaid, sale.downPayment);
+            const remaining = sale.downPayment - paidAmount;
+            const paymentPercent = (paidAmount / sale.downPayment) * 100;
+
+            if (remaining > 0 || paidAmount > 0) {
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
-                paymentAmount: unpaidDownPayment,
-                profitAmount: unpaidDownPayment * profitMargin,
+                totalAmount: sale.downPayment,
+                paidAmount,
+                remainingAmount: remaining,
+                profitAmount: remaining * profitMargin,
                 date: sale.startDate,
-                isPaid: false,
                 isDownPayment: true,
-                paidAmount: totalPaid,
-                paymentPercent: (totalPaid / sale.downPayment) * 100
+                paymentPercent
               });
             }
           }
         }
       } else {
-        // 🔹 Оплаченные платежи из графика (та же логика, что в карточке)
-        sale.paymentPlan.forEach(payment => {
-          if (payment.isPaid && payment.isRealPayment !== false) {
-            const paymentDate = new Date(payment.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            if (paymentDate >= monthStart && paymentDate <= monthEnd) {
+        // Для 'received' - только оплаченные
+        planPayments.forEach(payment => {
+          const paymentDate = new Date(payment.date);
+          paymentDate.setHours(0, 0, 0, 0);
+          if (paymentDate >= monthStart && paymentDate <= monthEnd) {
+            const amountDue = Number(payment.amount);
+            const paidAmount = coverageMap.get(payment.date) || 0;
+            
+            if (paidAmount > 0.01) {
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
-                paymentAmount: payment.amount,
-                profitAmount: payment.amount * profitMargin,
+                totalAmount: paidAmount,
+                paidAmount,
+                remainingAmount: 0,
+                profitAmount: paidAmount * profitMargin,
                 date: payment.date,
-                isPaid: true,
                 isDownPayment: false,
-                paidAmount: payment.amount,
                 paymentPercent: 100
               });
             }
           }
         });
 
-        // 🔹 Оплаченный downPayment (та же логика)
         if (sale.downPayment > 0) {
           const saleStart = new Date(sale.startDate);
           saleStart.setHours(0, 0, 0, 0);
@@ -548,12 +579,12 @@ const ProfitDetailsModal = ({
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
-                paymentAmount: sale.downPayment,
+                totalAmount: sale.downPayment,
+                paidAmount: sale.downPayment,
+                remainingAmount: 0,
                 profitAmount: sale.downPayment * profitMargin,
                 date: sale.startDate,
-                isPaid: true,
                 isDownPayment: true,
-                paidAmount: sale.downPayment,
                 paymentPercent: 100
               });
             }
@@ -563,8 +594,8 @@ const ProfitDetailsModal = ({
     });
 
     return result.sort((a, b) => {
-      if (a.isPaid && !b.isPaid) return -1;
-      if (!a.isPaid && b.isPaid) return 1;
+      if (a.paymentPercent === 100 && b.paymentPercent < 100) return -1;
+      if (a.paymentPercent < 100 && b.paymentPercent === 100) return 1;
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
   }, [sales, customers, investors, type, monthStart, monthEnd, selectedAccountId]);
@@ -575,8 +606,8 @@ const ProfitDetailsModal = ({
     ? 'Нет ожидаемой прибыли в этом месяце'
     : 'Нет полученной прибыли в этом месяце';
 
-  const getStatusInfo = (percent: number, isPaid: boolean) => {
-    if (isPaid || percent >= 100) {
+  const getStatusInfo = (percent: number) => {
+    if (percent >= 100) {
       return {
         label: 'Получено',
         bg: 'bg-emerald-100',
@@ -642,7 +673,7 @@ const ProfitDetailsModal = ({
 
         {/* Итого */}
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-          <span className="text-sm text-slate-500">Итого прибыль</span>
+          <span className="text-sm text-slate-500">Итого прибыль (от остатка)</span>
           <span className="text-lg font-bold text-slate-800">
             {formatCurrency(totalProfit, appSettings.showCents)} ₽
           </span>
@@ -656,22 +687,25 @@ const ProfitDetailsModal = ({
               <p className="text-sm">{emptyText}</p>
             </div>
           ) : items.map((item, idx) => {
-            const statusInfo = getStatusInfo(item.paymentPercent, item.isPaid);
+            const statusInfo = getStatusInfo(item.paymentPercent);
+            const isFullyPaid = item.paymentPercent >= 100;
+            const isPartiallyPaid = item.paymentPercent > 0 && item.paymentPercent < 100;
             
             return (
               <div
                 key={`${item.sale.id}-${item.date}-${idx}`}
                 className={`bg-white p-3 rounded-xl border transition-all ${
-                  item.isPaid || item.paymentPercent > 0
-                    ? 'border-emerald-100' 
-                    : 'border-slate-100'
+                  isFullyPaid ? 'border-emerald-200 bg-emerald-50/30' :
+                  isPartiallyPaid ? 'border-amber-200' :
+                  'border-slate-100'
                 }`}
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      {(item.isPaid || item.paymentPercent > 0) && (
-                        <span className="text-emerald-500 flex-shrink-0 font-bold">✓</span>
+                      {/* Галочка для полностью оплаченных */}
+                      {isFullyPaid && (
+                        <span className="text-emerald-500 flex-shrink-0 text-lg font-bold">✓</span>
                       )}
                       <p className="font-semibold text-slate-800 text-sm truncate">{item.customerName}</p>
                     </div>
@@ -689,16 +723,17 @@ const ProfitDetailsModal = ({
                       +{formatCurrency(item.profitAmount, appSettings.showCents)} ₽
                     </p>
                     <p className="text-[10px] text-slate-400">
-                      от {formatCurrency(item.paymentAmount, appSettings.showCents)} ₽
+                      от {formatCurrency(item.remainingAmount, appSettings.showCents)} ₽
                     </p>
                   </div>
                 </div>
 
-                {item.paymentPercent > 0 && item.paymentPercent < 100 && (
+                {/* Прогресс-бар для частично оплаченных */}
+                {isPartiallyPaid && (
                   <div className="mb-2">
                     <div className="flex items-center justify-between text-[10px] mb-1">
                       <span className="text-slate-500">
-                        Оплачено {formatCurrency(item.paidAmount, appSettings.showCents)} из {formatCurrency(item.paymentAmount + item.paidAmount, appSettings.showCents)} ₽
+                        Оплачено {formatCurrency(item.paidAmount, appSettings.showCents)} из {formatCurrency(item.totalAmount, appSettings.showCents)} ₽
                       </span>
                       <span className="font-bold text-amber-600">
                         {Math.round(item.paymentPercent)}%
@@ -710,6 +745,13 @@ const ProfitDetailsModal = ({
                         style={{ width: `${item.paymentPercent}%` }}
                       />
                     </div>
+                  </div>
+                )}
+
+                {/* Для полностью оплаченных показываем сумму */}
+                {isFullyPaid && (
+                  <div className="mb-2 text-[10px] text-emerald-600 font-medium">
+                    Оплачено: {formatCurrency(item.totalAmount, appSettings.showCents)} ₽
                   </div>
                 )}
 
@@ -768,6 +810,14 @@ const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(nu
 const [showCalendarPicker, setShowCalendarPicker] = useState(false);
 const [calendarMonth, setCalendarMonth] = useState(new Date());
 const [selectedProfitType, setSelectedProfitType] = useState<'expected' | 'received' | null>(null);
+
+
+
+const currentMonthName = useMemo(() => {
+  const now = new Date();
+  const month = now.toLocaleString('ru-RU', { month: 'long' });
+  return month.charAt(0).toUpperCase() + month.slice(1); // "Июнь"
+}, []);
 
  const calculatedStats = useMemo(() => {
     const filteredSales = selectedAccountId
@@ -1364,12 +1414,12 @@ useEffect(() => {
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         
         {/* Ожидаемая прибыль в этом месяце */}
-        <div
-    className="group bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(59,130,246,0.15)] hover:shadow-xl transition-all duration-300 border border-blue-100 hover:border-blue-300 flex flex-col relative overflow-hidden cursor-pointer"
+      <div
+    className="group bg-gradient-to-br from-slate-50 to-blue-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(100,116,139,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-200 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-pointer"
     onClick={() => setSelectedProfitType('expected')}
 >
-    <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-100 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-500 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-blue-200">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-600 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-slate-200">
         <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
         </svg>
@@ -1380,15 +1430,15 @@ useEffect(() => {
             {formatCurrency(expectedProfitThisMonth, appSettings.showCents)}
             <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
         </p>
-        <p className="text-[10px] sm:text-xs text-blue-500 mt-1">Нажмите для деталей</p>
+        <p className="text-[10px] sm:text-xs text-slate-400 mt-1">{currentMonthName}</p>
+        <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
     </div>
     <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-        <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="9 18 15 12 9 6"/>
         </svg>
     </div>
 </div>
-
 {/* Полученная прибыль в этом месяце */}
 <div
     className="group bg-gradient-to-br from-emerald-50 to-teal-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(16,185,129,0.15)] hover:shadow-xl transition-all duration-300 border border-emerald-100 hover:border-emerald-300 flex flex-col relative overflow-hidden cursor-pointer"
@@ -1406,6 +1456,7 @@ useEffect(() => {
             {formatCurrency(receivedProfitThisMonth, appSettings.showCents)}
             <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
         </p>
+        <p className="text-[10px] sm:text-xs text-slate-400 mt-1">{currentMonthName}</p>
         <p className="text-[10px] sm:text-xs text-emerald-500 mt-1">Нажмите для деталей</p>
     </div>
     <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
