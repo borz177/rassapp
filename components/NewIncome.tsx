@@ -277,6 +277,7 @@ const isOverpayment = sourceType === 'CUSTOMER'
 const commonData = { 
   amount: isOverpayment ? fullDebt : numAmount, // 🔥 При переплате записываем только сумму долга
   date: finalDate,
+  actualDate: now.toISOString(),
   discountAmount: isDiscountApplied ? discountAmount : 0,
   discountPercent: isDiscountApplied ? discountPercentDisplay : 0,
   isFullRepaymentWithDiscount: isDiscountApplied,
