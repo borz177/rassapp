@@ -1027,7 +1027,7 @@ const receivedPaymentsThisMonth = useMemo(() => {
 
 
 
-
+// 💰 Полученная прибыль в этом месяце
 const receivedProfitThisMonth = useMemo(() => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -1049,34 +1049,33 @@ const receivedProfitThisMonth = useMemo(() => {
         const totalItemProfit = sale.totalAmount - sale.buyPrice;
         if (totalItemProfit <= 0) return;
 
-        // 🔹 Собираем ВСЕ платежи, созданные в этом месяце (по дате создания/оплаты)
         let totalPaidThisMonth = 0;
 
-        // Реальные платежи из paymentPlan (по дате оплаты)
+        // 🔹 Платежи из графика — по actualDate (факт) или date (план)
         sale.paymentPlan.forEach(payment => {
             if (payment.isPaid && payment.isRealPayment !== false) {
-                // 🔹 Используем payment.date как дату фактической оплаты
-                // (если у тебя есть отдельное поле payment.paidAt — используй его)
-                const paymentDate = new Date(payment.date);
-                paymentDate.setHours(0, 0, 0, 0);
-                if (paymentDate >= monthStart && paymentDate <= monthEnd) {
+                // 🔹 КЛЮЧЕВОЕ: используем actualDate если есть, иначе date
+                const paidDate = new Date(payment.actualDate || payment.date);
+                paidDate.setHours(0, 0, 0, 0);
+                
+                if (paidDate >= monthStart && paidDate <= monthEnd) {
                     totalPaidThisMonth += payment.amount;
                 }
             }
         });
 
-        // 🔹 Первый взнос, если продажа создана в этом месяце
+        // 🔹 Первый взнос — по дате создания продажи
         if (sale.downPayment > 0) {
-            const saleStart = new Date(sale.startDate);
-            saleStart.setHours(0, 0, 0, 0);
-            if (saleStart >= monthStart && saleStart <= monthEnd) {
+            const saleDate = new Date(sale.startDate);
+            saleDate.setHours(0, 0, 0, 0);
+            if (saleDate >= monthStart && saleDate <= monthEnd) {
                 totalPaidThisMonth += sale.downPayment;
             }
         }
 
         if (totalPaidThisMonth <= 0) return;
 
-        // 🔹 Как в бэкенде: БЕЗ min(..., 1.0)
+        // 🔹 Прибыль пропорционально оплате (как в бэкенде)
         const profitRatio = totalPaidThisMonth / sale.totalAmount;
         receivedProfit += totalItemProfit * profitRatio;
     });
@@ -1085,11 +1084,12 @@ const receivedProfitThisMonth = useMemo(() => {
 }, [sales, investors, selectedAccountId]);
 
 
-// 📊 Ожидаемая прибыль в этом месяце (как в бэкенде - forecast)
+// 📊 Ожидаемая прибыль в этом месяце
 const expectedProfitThisMonth = useMemo(() => {
     const now = new Date();
-    const currentMonthY = now.getFullYear();
-    const currentMonthM = now.getMonth(); // 0-indexed
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    monthStart.setHours(0, 0, 0, 0);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
     const filteredSales = selectedAccountId
         ? sales.filter(s => s.accountId === selectedAccountId)
@@ -1100,42 +1100,36 @@ const expectedProfitThisMonth = useMemo(() => {
     filteredSales.forEach(sale => {
         if (sale.customerId.startsWith('system_')) return;
         if (investors.some(i => i.id === sale.customerId)) return;
-        if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
         if (!sale.buyPrice || sale.buyPrice <= 0) return;
         if (sale.totalAmount <= 0) return;
-        if (!sale.installments || sale.installments <= 0) return;
+        if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
 
-        const itemTotalProfit = sale.totalAmount - sale.buyPrice;
-        if (itemTotalProfit <= 0) return;
+        const totalItemProfit = sale.totalAmount - sale.buyPrice;
+        if (totalItemProfit <= 0) return;
+        const profitMargin = totalItemProfit / sale.totalAmount;
 
-        const profitMargin = itemTotalProfit / sale.totalAmount;
-
-        // 🔹 Сумма ежемесячного платежа (как в бэкенде)
-        const downPayment = sale.downPayment || 0;
-        const remainingAmount = Math.max(sale.totalAmount - downPayment, 0);
-        const monthlyPayment = remainingAmount / sale.installments;
-        const monthlyProfit = monthlyPayment * profitMargin;
-
-        // 🔹 Генерируем график платежей (как в бэкенде)
-        const startDate = new Date(sale.startDate);
-        // Первый платёж через месяц после продажи
-        const firstPaymentDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, startDate.getDate());
-
-        for (let i = 0; i < sale.installments; i++) {
-            const paymentDate = new Date(firstPaymentDate.getFullYear(), firstPaymentDate.getMonth() + i, firstPaymentDate.getDate());
-            
-            // 🔹 Проверяем, попадает ли платёж в текущий месяц
-            if (paymentDate.getFullYear() === currentMonthY && paymentDate.getMonth() === currentMonthM) {
-                // 🔹 Проверяем, не оплачен ли уже этот платёж
-                const isPaid = sale.paymentPlan.some(p => 
-                    p.isPaid && p.isRealPayment !== false && 
-                    Math.abs(new Date(p.date).getTime() - paymentDate.getTime()) < 86400000 * 3 // в пределах 3 дней
-                );
+        // 🔹 Неоплаченные платежи — по ПЛАНОВОЙ дате (date)
+        sale.paymentPlan.forEach(payment => {
+            if (!payment.isPaid && payment.isRealPayment !== true) {
+                const planDate = new Date(payment.date);
+                planDate.setHours(0, 0, 0, 0);
                 
-                if (!isPaid) {
-                    expectedProfit += monthlyProfit;
+                if (planDate >= monthStart && planDate <= monthEnd) {
+                    expectedProfit += payment.amount * profitMargin;
                 }
-                break; // только один платёж в месяц
+            }
+        });
+
+        // 🔹 Неоплаченный первый взнос
+        if (sale.downPayment > 0) {
+            const totalPaid = sale.totalAmount - sale.remainingAmount;
+            if (totalPaid < sale.downPayment) {
+                const saleDate = new Date(sale.startDate);
+                saleDate.setHours(0, 0, 0, 0);
+                if (saleDate >= monthStart && saleDate <= monthEnd) {
+                    const unpaidDown = sale.downPayment - totalPaid;
+                    expectedProfit += unpaidDown * profitMargin;
+                }
             }
         }
     });
@@ -1422,7 +1416,7 @@ useEffect(() => {
             {formatCurrency(receivedProfitThisMonth, appSettings.showCents)}
             <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
         </p>
-        <p className="text-xs sm:text-sm font-semibold text-slate-600 mt-1">{currentMonthName}</p>
+        <p className="text-[10px] sm:text-xs text-slate-400 mt-1">{currentMonthName}</p>
         <p className="text-[10px] sm:text-xs text-emerald-500 mt-1">Нажмите для деталей</p>
     </div>
     <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
