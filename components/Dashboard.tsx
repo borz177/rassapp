@@ -416,6 +416,273 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
   );
 };
 
+
+
+
+
+
+const ProfitDetailsModal = ({
+  type,
+  sales,
+  customers,
+  investors,
+  selectedAccountId,
+  onClose,
+  appSettings
+}: {
+  type: 'expected' | 'received';
+  sales: Sale[];
+  customers: Customer[];
+  investors: Investor[];
+  selectedAccountId?: string | null;
+  onClose: () => void;
+  appSettings: AppSettings;
+}) => {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  monthStart.setHours(0, 0, 0, 0);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+  const items = useMemo(() => {
+    const result: Array<{
+      sale: Sale;
+      customerName: string;
+      paymentAmount: number;
+      profitAmount: number;
+      date: string;
+      isPaid: boolean;
+      isDownPayment: boolean;
+    }> = [];
+
+    const investorIds = new Set(investors.map(i => i.id));
+    const filteredSales = selectedAccountId
+      ? sales.filter(s => s.accountId === selectedAccountId)
+      : sales;
+
+    filteredSales.forEach(sale => {
+      if (sale.customerId.startsWith('system_')) return;
+      if (investorIds.has(sale.customerId)) return;
+      if (!sale.buyPrice || sale.buyPrice <= 0) return;
+      if (sale.totalAmount <= 0) return;
+
+      const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
+      if (profitMargin <= 0) return;
+
+      const customer = customers.find(c => c.id === sale.customerId);
+
+      if (type === 'expected') {
+        // Неоплаченные платежи из графика
+        sale.paymentPlan.forEach(payment => {
+          if (payment.isRealPayment !== true && !payment.isPaid) {
+            const paymentDate = new Date(payment.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate >= monthStart && paymentDate <= monthEnd) {
+              result.push({
+                sale,
+                customerName: customer?.name || 'Неизвестно',
+                paymentAmount: payment.amount,
+                profitAmount: payment.amount * profitMargin,
+                date: payment.date,
+                isPaid: false,
+                isDownPayment: false
+              });
+            }
+          }
+        });
+
+        // Неоплаченный downPayment
+        if (sale.downPayment > 0) {
+          const totalPaid = sale.totalAmount - sale.remainingAmount;
+          if (totalPaid < sale.downPayment) {
+            const saleStart = new Date(sale.startDate);
+            saleStart.setHours(0, 0, 0, 0);
+            if (saleStart >= monthStart && saleStart <= monthEnd) {
+              const unpaidDownPayment = sale.downPayment - totalPaid;
+              result.push({
+                sale,
+                customerName: customer?.name || 'Неизвестно',
+                paymentAmount: unpaidDownPayment,
+                profitAmount: unpaidDownPayment * profitMargin,
+                date: sale.startDate,
+                isPaid: false,
+                isDownPayment: true
+              });
+            }
+          }
+        }
+      } else {
+        // Оплаченные платежи из графика
+        sale.paymentPlan.forEach(payment => {
+          if (payment.isPaid && payment.isRealPayment !== false) {
+            const paymentDate = new Date(payment.date);
+            paymentDate.setHours(0, 0, 0, 0);
+            if (paymentDate >= monthStart && paymentDate <= monthEnd) {
+              result.push({
+                sale,
+                customerName: customer?.name || 'Неизвестно',
+                paymentAmount: payment.amount,
+                profitAmount: payment.amount * profitMargin,
+                date: payment.date,
+                isPaid: true,
+                isDownPayment: false
+              });
+            }
+          }
+        });
+
+        // Оплаченный downPayment
+        if (sale.downPayment > 0) {
+          const saleStart = new Date(sale.startDate);
+          saleStart.setHours(0, 0, 0, 0);
+          if (saleStart >= monthStart && saleStart <= monthEnd) {
+            const totalPaid = sale.totalAmount - sale.remainingAmount;
+            if (totalPaid >= sale.downPayment) {
+              result.push({
+                sale,
+                customerName: customer?.name || 'Неизвестно',
+                paymentAmount: sale.downPayment,
+                profitAmount: sale.downPayment * profitMargin,
+                date: sale.startDate,
+                isPaid: true,
+                isDownPayment: true
+              });
+            }
+          }
+        }
+      }
+    });
+
+    return result.sort((a, b) => {
+      if (a.isPaid && !b.isPaid) return -1;
+      if (!a.isPaid && b.isPaid) return 1;
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
+  }, [sales, customers, investors, type, monthStart, monthEnd, selectedAccountId]);
+
+  const totalProfit = items.reduce((sum, item) => sum + item.profitAmount, 0);
+  const title = type === 'expected' ? 'Ожидаемая прибыль' : 'Получено прибыли';
+  const emptyText = type === 'expected'
+    ? 'Нет ожидаемой прибыли в этом месяце'
+    : 'Нет полученной прибыли в этом месяце';
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Шапка */}
+        <div className={`px-4 py-3 flex items-center justify-between shrink-0 ${
+          type === 'expected' 
+            ? 'bg-gradient-to-r from-blue-500 to-indigo-500' 
+            : 'bg-gradient-to-r from-emerald-500 to-teal-500'
+        }`}>
+          <div className="flex items-center gap-3">
+            <div className="text-white bg-white/20 p-2 rounded-xl">
+              {type === 'expected' ? (
+                <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              ) : (
+                <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                </svg>
+              )}
+            </div>
+            <h3 className="text-base font-bold text-white">{title}</h3>
+          </div>
+          <button onClick={onClose} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Итого */}
+        <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+          <span className="text-sm text-slate-500">Итого прибыль</span>
+          <span className="text-lg font-bold text-slate-800">
+            {formatCurrency(totalProfit, appSettings.showCents)} ₽
+          </span>
+        </div>
+
+        {/* Список */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {items.length === 0 ? (
+            <div className="text-center py-8 text-slate-400">
+              <div className="text-4xl mb-2 opacity-30">📭</div>
+              <p className="text-sm">{emptyText}</p>
+            </div>
+          ) : items.map((item, idx) => (
+            <div
+              key={`${item.sale.id}-${item.date}-${idx}`}
+              className={`bg-white p-3 rounded-xl border transition-all ${
+                item.isPaid 
+                  ? 'border-emerald-100' 
+                  : 'border-slate-100'
+              }`}
+            >
+              <div className="flex justify-between items-start mb-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    {item.isPaid && (
+                      <span className="text-emerald-500">✓</span>
+                    )}
+                    <p className="font-semibold text-slate-800 text-sm truncate">{item.customerName}</p>
+                  </div>
+                  <p className="text-xs text-slate-500 truncate mt-0.5">
+                    {item.sale.productName}
+                    {item.isDownPayment && (
+                      <span className="ml-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-bold">
+                        Взнос
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div className="text-right ml-3">
+                  <p className="font-bold text-sm text-emerald-600">
+                    +{formatCurrency(item.profitAmount, appSettings.showCents)} ₽
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    от {formatCurrency(item.paymentAmount, appSettings.showCents)} ₽
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] text-slate-400">
+                <span>{formatDate(item.date)}</span>
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                  item.isPaid 
+                    ? 'bg-emerald-100 text-emerald-700' 
+                    : 'bg-amber-100 text-amber-700'
+                }`}>
+                  {item.isPaid ? 'Получено' : 'Ожидается'}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Кнопка закрытия */}
+        <button
+          onClick={onClose}
+          className="py-3 text-slate-400 text-sm hover:text-slate-600 hover:bg-slate-50 transition-colors shrink-0 border-t border-slate-100"
+        >
+          Закрыть
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+
+
+
 const Dashboard: React.FC<DashboardProps> = ({
     sales,
     customers,
@@ -446,6 +713,7 @@ const [selectedPaymentType, setSelectedPaymentType] = useState<'expected' | 'rec
 const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(null);
 const [showCalendarPicker, setShowCalendarPicker] = useState(false);
 const [calendarMonth, setCalendarMonth] = useState(new Date());
+const [selectedProfitType, setSelectedProfitType] = useState<'expected' | 'received' | null>(null);
 
  const calculatedStats = useMemo(() => {
     const filteredSales = selectedAccountId
@@ -1034,12 +1302,10 @@ useEffect(() => {
 {/* ═══════════════════════════════════════════════════════════════ */}
 {/* 📊 СЕКЦИЯ ПРИБЫЛИ */}
 {/* ═══════════════════════════════════════════════════════════════ */}
-<div className="relative">
+<div className="relative pt-6">
     {/* Декоративная линия */}
-     <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300 to-transparent"></div>
+    <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300 to-transparent"></div>
     
-    
-
     {/* Карточки прибыли */}
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         
@@ -1080,41 +1346,58 @@ useEffect(() => {
         </div>
 
         {/* Общая ожидаемая прибыль */}
-        <div className="group bg-gradient-to-br from-slate-50 to-blue-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(100,116,139,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-200 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-600 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-slate-200">
-                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                </svg>
-            </div>
-            <div className="z-10 relative mt-auto">
-                <p className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 leading-tight">Всего ожидается</p>
-                <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                    {formatCurrency(profitStats.expectedProfit, appSettings.showCents)}
-                    <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
-                </p>
-            </div>
-        </div>
-
-        {/* Общая полученная прибыль */}
-        <div className="group bg-gradient-to-br from-emerald-50 to-green-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(16,185,129,0.15)] hover:shadow-xl transition-all duration-300 border border-emerald-100 hover:border-emerald-300 flex flex-col relative overflow-hidden cursor-default">
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-100 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-emerald-600 to-green-500 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-emerald-200">
-                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-            </div>
-            <div className="z-10 relative mt-auto">
-                <p className="text-[10px] sm:text-xs font-bold text-emerald-600 uppercase tracking-wide mb-1 leading-tight">Всего получено</p>
-                <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
-                    {formatCurrency(profitStats.receivedProfit, appSettings.showCents)}
-                    <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
-                </p>
-            </div>
-        </div>
+        <div
+    className="group bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(59,130,246,0.15)] hover:shadow-xl transition-all duration-300 border border-blue-100 hover:border-blue-300 flex flex-col relative overflow-hidden cursor-pointer"
+    onClick={() => setSelectedProfitType('expected')}
+>
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-100 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-500 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-blue-200">
+        <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+    </div>
+    <div className="z-10 relative mt-auto">
+        <p className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 leading-tight">Ожидаемая прибыль</p>
+        <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+            {formatCurrency(expectedProfitThisMonth, appSettings.showCents)}
+            <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
+        </p>
+        <p className="text-[10px] sm:text-xs text-blue-500 mt-1">Нажмите для деталей</p>
+    </div>
+    <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+        <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="9 18 15 12 9 6"/>
+        </svg>
     </div>
 </div>
 
+{/* Полученная прибыль в этом месяце */}
+<div
+    className="group bg-gradient-to-br from-emerald-50 to-teal-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(16,185,129,0.15)] hover:shadow-xl transition-all duration-300 border border-emerald-100 hover:border-emerald-300 flex flex-col relative overflow-hidden cursor-pointer"
+    onClick={() => setSelectedProfitType('received')}
+>
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-100 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-500 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-emerald-200">
+        <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+        </svg>
+    </div>
+    <div className="z-10 relative mt-auto">
+        <p className="text-[10px] sm:text-xs font-bold text-emerald-600 uppercase tracking-wide mb-1 leading-tight">Получено прибыли</p>
+        <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+            {formatCurrency(receivedProfitThisMonth, appSettings.showCents)}
+            <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
+        </p>
+        <p className="text-[10px] sm:text-xs text-emerald-500 mt-1">Нажмите для деталей</p>
+    </div>
+    <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+        <svg className="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="9 18 15 12 9 6"/>
+        </svg>
+    </div>
+</div>
+    </div>
+</div>
 
 
 
@@ -1493,6 +1776,19 @@ useEffect(() => {
     appSettings={appSettings}
   />
 )}
+
+{selectedProfitType && (
+    <ProfitDetailsModal
+        type={selectedProfitType}
+        sales={sales}
+        customers={customers}
+        investors={investors}
+        selectedAccountId={selectedAccountId}
+        onClose={() => setSelectedProfitType(null)}
+        appSettings={appSettings}
+    />
+)}
+
       </div>
     </div>
   );
