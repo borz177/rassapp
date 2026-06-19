@@ -426,7 +426,7 @@ const ProfitDetailsModal = ({
   investors,
   selectedAccountId,
   onClose,
-  onViewSaleDetails,
+  onSelectCustomer, 
   appSettings
 }: {
   type: 'expected' | 'received';
@@ -435,7 +435,7 @@ const ProfitDetailsModal = ({
   investors: Investor[];
   selectedAccountId?: string | null;
   onClose: () => void;
-  onViewSaleDetails: (saleId: string, customerId: string) => void; 
+  onSelectCustomer: (customerId: string) => void; 
   appSettings: AppSettings;
 }) => {
   const now = new Date();
@@ -665,23 +665,21 @@ const ProfitDetailsModal = ({
             
             return (
               <div
-    key={`${item.sale.id}-${item.date}-${idx}`}
-    onClick={() => {
-        onViewSaleDetails(item.sale.id, item.customerId);
-        onClose();
-    }}
-    className={`group bg-white p-3 rounded-xl border transition-all cursor-pointer hover:shadow-md hover:border-indigo-300 ${
-        item.isPaid || item.paymentPercent > 0
-            ? 'border-emerald-100' 
-            : 'border-slate-100'
-    }`}
->
+                key={`${item.sale.id}-${item.date}-${idx}`}
+                onClick={() => {
+                  onSelectCustomer(item.customerId); // 🔹 Переход на детали клиента
+                  onClose(); // 🔹 Закрываем модалку
+                }}
+                className={`bg-white p-3 rounded-xl border transition-all ${
+                  item.isPaid || item.paymentPercent > 0
+                    ? 'border-emerald-100' 
+                    : 'border-slate-100'
+                }`}
+              >
                 <div className="flex justify-between items-start mb-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      {(item.isPaid || item.paymentPercent > 0) && (
-                        <span className="text-emerald-500 flex-shrink-0 font-bold">✓</span>
-                      )}
+                     
                       <p className="font-semibold text-slate-800 text-sm truncate">{item.customerName}</p>
 
                       <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" 
@@ -699,13 +697,15 @@ const ProfitDetailsModal = ({
                     </p>
                   </div>
                   <div className="text-right ml-3">
-                    <p className="font-bold text-sm text-emerald-600">
-                      +{formatCurrency(item.profitAmount, appSettings.showCents)} ₽
-                    </p>
-                    <p className="text-[10px] text-slate-400">
-                      от {formatCurrency(item.paymentAmount, appSettings.showCents)} ₽
-                    </p>
-                  </div>
+    <p className={`font-bold text-sm ${
+        type === 'expected' ? 'text-slate-800' : 'text-emerald-600'
+    }`}>
+        {type === 'received' ? '+' : ''}{formatCurrency(item.profitAmount, appSettings.showCents)} ₽
+    </p>
+    <p className="text-[10px] text-slate-400">
+        от {formatCurrency(item.paymentAmount, appSettings.showCents)} ₽
+    </p>
+</div>
                 </div>
 
                 {item.paymentPercent > 0 && item.paymentPercent < 100 && (
@@ -1859,21 +1859,14 @@ useEffect(() => {
         investors={investors}
         selectedAccountId={selectedAccountId}
         onClose={() => setSelectedProfitType(null)}
-        onViewSaleDetails={(saleId, customerId) => {
-            // 🔹 СНАЧАЛА устанавливаем ID договора
-            setInitialSaleIdForDetails(saleId);
-            // Потом устанавливаем клиента
-            setSelectedCustomerId(customerId);
-            // Закрываем модалку
+        onSelectCustomer={(customerId) => {
             setSelectedProfitType(null);
-            // Сохраняем предыдущий вид
-            setPreviousView(currentView);
-            // Переключаемся на детали клиента
-            setCurrentView('CUSTOMER_DETAILS');
+            onSelectCustomer(customerId); 
         }}
         appSettings={appSettings}
     />
 )}
+
 
       </div>
     </div>
