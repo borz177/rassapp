@@ -8,32 +8,17 @@ interface OperationsProps {
   accounts: Account[];
   customers: Customer[];
   employees?: User[];
-  accountBalances: Record<string, number>; 
   initialAccountId?: string | null;
   onClose?: () => void;
 }
 
 const Operations: React.FC<OperationsProps> = ({ 
-    sales, expenses, accounts, customers, employees = [], accountBalances, initialAccountId 
+    sales, expenses, accounts, customers, employees = [], initialAccountId 
 }) => {
   const [filterType, setFilterType] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [filterAccountId, setFilterAccountId] = useState<string>(initialAccountId || '');
   const [selectedOp, setSelectedOp] = useState<any | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
-
-
-
-
-
-  accounts.forEach(acc => {
-    console.log(`💳 Счёт "${acc.name}":`);
-    console.log(`   initialBalance: ${acc.initialBalance || 0}`);
-  });
-  
-  console.log('📈 Все счета:', accounts.map(a => ({
-    name: a.name,
-    initialBalance: a.initialBalance
-  })));
 
   useEffect(() => {
       if (initialAccountId) setFilterAccountId(initialAccountId);
@@ -42,10 +27,6 @@ const Operations: React.FC<OperationsProps> = ({
   const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Неизвестный счет';
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Системная операция';
   const getAccountInitialBalance = (id: string) => accounts.find(a => a.id === id)?.initialBalance || 0;
-
-
-
-
 
   // 🔥 Красивые названия категорий
   const getCategoryLabel = (cat: string) => {
@@ -92,7 +73,7 @@ const Operations: React.FC<OperationsProps> = ({
             incomeOps.push({
                 id: s.id,
                 date: s.startDate,
-                amount: s.totalAmount,
+                amount: s.downPayment, 
                 title: customerName,
                 description: s.productName,
                 accountId: s.accountId,
@@ -140,7 +121,7 @@ const Operations: React.FC<OperationsProps> = ({
         }
     });
 
-    const expenseOps = expenses.map(e => ({
+    const expenseOps = expenses.filter(e => e.isRefund !== true).map(e => ({
         id: e.id,
         date: e.date,
         amount: e.amount,
@@ -156,32 +137,21 @@ const Operations: React.FC<OperationsProps> = ({
 
     // 🔹 ШАГ 1: Рассчитываем скользящий баланс для каждого счёта
     const sortedForCalc = [...all].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    const currentBalances: Record<string, number> = {};
+    const accountBalances: Record<string, number> = {};
+
     accounts.forEach(acc => {
-        currentBalances[acc.id] = accountBalances[acc.id] || 0;
-    })
-
-
-
-    const historicalBalances: Record<string, number> = {};
-    accounts.forEach(acc => {
-        accountBalances[acc.id] = 0;  // ← Всегда начинаем с 0
+        accountBalances[acc.id] = acc.initialBalance || 0;
     });
 
     sortedForCalc.forEach(op => {
-        const currentBalance = historicalBalances[op.accountId] || 0;
+        const currentBalance = accountBalances[op.accountId] || 0;
         const newBalance = op.type === 'INCOME'
             ? currentBalance + op.amount
             : currentBalance - op.amount;
 
         op.balanceAfter = newBalance;
         op.balanceBefore = currentBalance;
-        historicalBalances[op.accountId] = newBalance;
-    });
-
-    console.log('📈 Финальные балансы после всех операций:');
-    accounts.forEach(acc => {
-        console.log(`   ${acc.name}: ${accountBalances[acc.id]}`);
+        accountBalances[op.accountId] = newBalance;
     });
 
     // 🔹 ШАГ 2: Применяем фильтры
@@ -198,7 +168,7 @@ const Operations: React.FC<OperationsProps> = ({
     // 🔹 ШАГ 3: Сортируем для отображения (от новых к старым)
     return all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  }, [sales, expenses, filterType, filterAccountId, filterCategory, customers, accounts, accountBalances]);
+  }, [sales, expenses, filterType, filterAccountId, filterCategory, customers, accounts]);
 
   const groupedOperations = useMemo(() => {
     const groups: { title: string; items: typeof operations }[] = [];
