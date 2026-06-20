@@ -165,7 +165,7 @@ const Operations: React.FC<OperationsProps> = ({
 
     const historicalBalances: Record<string, number> = {};
     accounts.forEach(acc => {
-        historicalBalances[acc.id] = acc.initialBalance || 0;
+        accountBalances[acc.id] = 0;  // ← Всегда начинаем с 0
     });
 
     sortedForCalc.forEach(op => {
