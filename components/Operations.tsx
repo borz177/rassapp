@@ -21,6 +21,20 @@ const Operations: React.FC<OperationsProps> = ({
   const [selectedOp, setSelectedOp] = useState<any | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
 
+
+
+
+
+  accounts.forEach(acc => {
+    console.log(`💳 Счёт "${acc.name}":`);
+    console.log(`   initialBalance: ${acc.initialBalance || 0}`);
+  });
+  
+  console.log('📈 Все счета:', accounts.map(a => ({
+    name: a.name,
+    initialBalance: a.initialBalance
+  })));
+
   useEffect(() => {
       if (initialAccountId) setFilterAccountId(initialAccountId);
   }, [initialAccountId]);
@@ -28,6 +42,10 @@ const Operations: React.FC<OperationsProps> = ({
   const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Неизвестный счет';
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Системная операция';
   const getAccountInitialBalance = (id: string) => accounts.find(a => a.id === id)?.initialBalance || 0;
+
+
+
+
 
   // 🔥 Красивые названия категорий
   const getCategoryLabel = (cat: string) => {
@@ -159,6 +177,11 @@ const Operations: React.FC<OperationsProps> = ({
         op.balanceAfter = newBalance;
         op.balanceBefore = currentBalance;
         historicalBalances[op.accountId] = newBalance;
+    });
+
+    console.log('📈 Финальные балансы после всех операций:');
+    accounts.forEach(acc => {
+        console.log(`   ${acc.name}: ${accountBalances[acc.id]}`);
     });
 
     // 🔹 ШАГ 2: Применяем фильтры

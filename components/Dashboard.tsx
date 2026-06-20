@@ -870,12 +870,34 @@ const currentMonthName = useMemo(() => {
 }, [sales, selectedAccountId, accounts, investors]);
 
   const currentWorkingCapital = useMemo(() => {
+
+
+     console.log('═══════════════════════════════════');
+    console.log('📊 Dashboard - Диагностика оборотных средств:');
+    console.log('═══════════════════════════════════');
+    console.log('🔹 accountBalances (из пропсов):', accountBalances);
+    console.log('🔹 globalWorkingCapital:', globalWorkingCapital);
+    console.log('🔹 calculatedStats.totalOutstanding:', calculatedStats.totalOutstanding);
+    console.log('🔹 selectedAccountId:', selectedAccountId);
+    
+    accounts.forEach(acc => {
+        console.log(`💳 Счёт "${acc.name}":`);
+        console.log(`   accountBalances[id]: ${accountBalances[acc.id] || 0}`);
+    });
+    
       if (selectedAccountId) {
-          const cash = accountBalances[selectedAccountId] || 0;
-          return cash + calculatedStats.totalOutstanding;
-      }
-      return globalWorkingCapital;
-  }, [selectedAccountId, accountBalances, calculatedStats.totalOutstanding, globalWorkingCapital]);
+        const cash = accountBalances[selectedAccountId] || 0;
+        const result = cash + calculatedStats.totalOutstanding;
+        console.log(`💰 Результат для выбранного счёта:`);
+        console.log(`   cash: ${cash}`);
+        console.log(`   totalOutstanding: ${calculatedStats.totalOutstanding}`);
+        console.log(`   ИТОГО: ${result}`);
+        return result;
+    }
+    
+    console.log(`💰 globalWorkingCapital: ${globalWorkingCapital}`);
+    return globalWorkingCapital;
+}, [selectedAccountId, accountBalances, calculatedStats.totalOutstanding, globalWorkingCapital, accounts]);
 
   const lastFiveSales = useMemo(() => {
       let filtered = sales;
