@@ -2589,6 +2589,7 @@ if (!user && !showSplash) {
                       initialAccountId={operationsAccountId}
                       onDelete={handleDeleteOperation}
                       employees={employees}
+                      accountBalances={accountBalances}
                       appSettings={appSettings}
                   />
               )}

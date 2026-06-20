@@ -8,12 +8,13 @@ interface OperationsProps {
   accounts: Account[];
   customers: Customer[];
   employees?: User[];
+  accountBalances: Record<string, number>; 
   initialAccountId?: string | null;
   onClose?: () => void;
 }
 
 const Operations: React.FC<OperationsProps> = ({ 
-    sales, expenses, accounts, customers, employees = [], initialAccountId 
+    sales, expenses, accounts, customers, employees = [], accountBalances, initialAccountId 
 }) => {
   const [filterType, setFilterType] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [filterAccountId, setFilterAccountId] = useState<string>(initialAccountId || '');
@@ -137,21 +138,27 @@ const Operations: React.FC<OperationsProps> = ({
 
     // 🔹 ШАГ 1: Рассчитываем скользящий баланс для каждого счёта
     const sortedForCalc = [...all].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    const accountBalances: Record<string, number> = {};
-
+    const currentBalances: Record<string, number> = {};
     accounts.forEach(acc => {
-        accountBalances[acc.id] = acc.initialBalance || 0;
+        currentBalances[acc.id] = accountBalances[acc.id] || 0;
+    })
+
+
+
+    const historicalBalances: Record<string, number> = {};
+    accounts.forEach(acc => {
+        historicalBalances[acc.id] = acc.initialBalance || 0;
     });
 
     sortedForCalc.forEach(op => {
-        const currentBalance = accountBalances[op.accountId] || 0;
+        const currentBalance = historicalBalances[op.accountId] || 0;
         const newBalance = op.type === 'INCOME'
             ? currentBalance + op.amount
             : currentBalance - op.amount;
 
         op.balanceAfter = newBalance;
         op.balanceBefore = currentBalance;
-        accountBalances[op.accountId] = newBalance;
+        historicalBalances[op.accountId] = newBalance;
     });
 
     // 🔹 ШАГ 2: Применяем фильтры
@@ -168,7 +175,7 @@ const Operations: React.FC<OperationsProps> = ({
     // 🔹 ШАГ 3: Сортируем для отображения (от новых к старым)
     return all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  }, [sales, expenses, filterType, filterAccountId, filterCategory, customers, accounts]);
+  }, [sales, expenses, filterType, filterAccountId, filterCategory, customers, accounts, accountBalances]);
 
   const groupedOperations = useMemo(() => {
     const groups: { title: string; items: typeof operations }[] = [];
