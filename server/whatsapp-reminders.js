@@ -262,6 +262,7 @@ async function processRemindersForUser(user) {
           customer,
           items: [],
           totalDueToday: 0,
+          totalDueTomorrow: 0,
           totalOverdue: 0,
           paymentsToUpdate: [],
           hasTrigger: false
@@ -288,6 +289,8 @@ async function processRemindersForUser(user) {
         clientData.totalOverdue += p.remaining;
       } else if (diffDays === 0) {
         clientData.totalDueToday += p.remaining;
+      } else if (diffDays === 1) {
+        clientData.totalDueTomorrow += p.remaining; 
       }
 
       if (isTrigger) {
@@ -316,7 +319,7 @@ async function processRemindersForUser(user) {
       templateType = 'upcoming';
     }
 
-    const totalToPay = data.totalDueToday + data.totalOverdue;
+    const totalToPay = data.totalDueToday + data.totalOverdue + data.totalDueTomorrow;
 
     // 🔹 Используем шаблоны из настроек или дефолтные
     const templates = settings.templates || DEFAULT_TEMPLATES;
