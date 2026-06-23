@@ -72,7 +72,9 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
     
     investorSales.forEach(sale => {
       // 📊 Продажи: общая сумма договоров
-      totalSalesAmount += Number(sale.totalAmount) || 0;
+        if (sale.type === 'INSTALLMENT') {
+        totalSalesAmount += Number(sale.totalAmount) || 0;
+      }
 
       // 💰 Собрано: фактически поступившие платежи
       totalCollected += Number(sale.downPayment) || 0;
