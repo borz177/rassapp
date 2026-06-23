@@ -56,28 +56,32 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
     return initialBalance + totalInflow - totalOutflow;
   }, [sales, expenses, accounts]);
 
-  // 🔹 СТАТИСТИКА: Исправленные расчёты
-  const stats = useMemo(() => {
+ const stats = useMemo(() => {
     let totalCollected = 0;
     let totalOutstanding = 0;
     let totalSalesAmount = 0;
 
-    // ✅ Учитываем ВСЕ реальные договоры (уже без system_)
-    const validSales = investorSales.filter(s =>
-      s.status === 'ACTIVE' || 
-      s.status === 'COMPLETED' || 
-      (s.status === 'DRAFT' && s.downPayment > 0)
-    );
-
-    validSales.forEach(sale => {
+    // 🔥 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: УБИРАЕМ ФИЛЬТР ПО СТАТУСУ!
+    // Раньше здесь было: s.status === 'ACTIVE' || s.status === 'COMPLETED' ...
+    // Из-за этого договоры со статусом 'DEFAULTED' (Просрочен) выпадали из расчётов,
+    // и долг клиентов (totalOutstanding) и сумма продаж (totalSalesAmount) занижались.
+    // Теперь учитываются ВСЕ продажи инвестора (кроме системных, которые отфильтрованы выше).
+    
+    investorSales.forEach(sale => {
+      // 📊 Продажи: общая сумма договоров
       totalSalesAmount += Number(sale.totalAmount) || 0;
+
+      // 💰 Собрано: фактически поступившие платежи
       totalCollected += Number(sale.downPayment) || 0;
       sale.paymentPlan
         .filter(p => p.isPaid && p.isRealPayment !== false)
         .forEach(p => totalCollected += Number(p.amount) || 0);
+
+      // 💸 Долг: остаток к оплате
       totalOutstanding += Number(sale.remainingAmount) || 0;
     });
 
+    // 🔄 Оборот: деньги на счёте + долг клиентов
     const workingCapital = balance + totalOutstanding;
 
     return { totalCollected, totalOutstanding, totalSalesAmount, workingCapital };
