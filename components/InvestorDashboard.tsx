@@ -18,64 +18,65 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'contracts'>('overview');
   const [contractTab, setContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
 
-  // 🔹 ФИЛЬТРАЦИЯ: Находим счёт инвестора по ownerId
-  const investorAccount = useMemo(() => {
-    return accounts.find(a => a.ownerId === investor.id);
+    // 🔹 ФИЛЬТРАЦИЯ: Находим ВСЕ счета инвестора по ownerId
+  const investorAccountIds = useMemo(() => {
+    return accounts
+      .filter(a => a.ownerId === investor.id)
+      .map(a => a.id);
   }, [accounts, investor.id]);
 
-  // 🔹 ФИЛЬТРАЦИЯ: Показываем только продажи этого инвестора
+  // 🔹 ФИЛЬТРАЦИЯ: Показываем продажи со ВСЕХ счетов инвестора
   const investorSales = useMemo(() => {
-  if (!investorAccount) return [];
-  return sales.filter(s =>
-    s.accountId === investorAccount.id &&
-    !s.customerId.startsWith('system_')  // ← ИСКЛЮЧАЕМ инвестиции и системные операции
-  );
-}, [sales, investorAccount]);
+    if (investorAccountIds.length === 0) return [];
+    return sales.filter(s =>
+      investorAccountIds.includes(s.accountId) &&
+      !s.customerId.startsWith('system_')  // ← ИСКЛЮЧАЕМ инвестиции и системные операции
+    );
+  }, [sales, investorAccountIds]);
 
-  // 🔹 ФИЛЬТРАЦИЯ: Показываем только расходы этого инвестора
+  // 🔹 ФИЛЬТРАЦИЯ: Показываем расходы со ВСЕХ счетов инвестора
   const investorExpenses = useMemo(() => {
-    if (!investorAccount) return [];
-    return expenses.filter(e => e.accountId === investorAccount.id);
-  }, [expenses, investorAccount]);
+    if (investorAccountIds.length === 0) return [];
+    return expenses.filter(e => investorAccountIds.includes(e.accountId));
+  }, [expenses, investorAccountIds]);
 
-   // 🔹 БАЛАНС СЧЁТА: Все поступления − Все расходы (как в InvestorDetails)
-const balance = useMemo(() => {
-  if (!investorAccount) return 0;
+  // 🔹 БАЛАНС СЧЁТА: Все поступления − Все расходы (учитываем ВСЕ счета)
+  const balance = useMemo(() => {
+    if (investorAccountIds.length === 0) return 0;
 
-  let totalInflow = 0;
-  let totalOutflow = 0;
+    let totalInflow = 0;
+    let totalOutflow = 0;
 
-  // 💰 ВСЕ поступления на счёт (включая системные/депозиты)
-  sales
-    .filter(s => s.accountId === investorAccount.id)
-    .forEach(s => {
-      totalInflow += Number(s.downPayment || 0);
-      s.paymentPlan
-        .filter(p => p.isPaid && p.isRealPayment !== false)
-        .forEach(p => totalInflow += Number(p.amount || 0));
-    });
+    // 💰 ВСЕ поступления на ВСЕ счета инвестора (включая системные/депозиты)
+    sales
+      .filter(s => investorAccountIds.includes(s.accountId))
+      .forEach(s => {
+        totalInflow += Number(s.downPayment || 0);
+        s.paymentPlan
+          .filter(p => p.isPaid && p.isRealPayment !== false)
+          .forEach(p => totalInflow += Number(p.amount || 0));
+      });
 
-  // 💸 ВСЕ расходы со счёта, ИСКЛЮЧАЯ возвраты (isRefund: true)
-  // Они создаются при удалении продажи, которая уже удалена из sales и не дает прихода.
-  expenses
-    .filter(e => e.accountId === investorAccount.id && e.isRefund !== true)
-    .forEach(e => totalOutflow += Number(e.amount || 0));
+    // 💸 ВСЕ расходы со ВСЕХ счетов, ИСКЛЮЧАЯ возвраты (isRefund: true)
+    expenses
+      .filter(e => investorAccountIds.includes(e.accountId) && e.isRefund !== true)
+      .forEach(e => totalOutflow += Number(e.amount || 0));
 
-  // ✅ Учитываем начальный баланс счёта (если он был задан)
-  const initialBalance = investorAccount.initialBalance || 0;
+    // ✅ Учитываем начальный баланс ВСЕХ счетов инвестора
+    const initialBalance = accounts
+      .filter(a => investorAccountIds.includes(a.id))
+      .reduce((sum, acc) => sum + (acc.initialBalance || 0), 0);
 
-  return initialBalance + totalInflow - totalOutflow;
-}, [sales, expenses, investorAccount]); 
+    return initialBalance + totalInflow - totalOutflow;
+  }, [sales, expenses, investorAccountIds, accounts]);
 
-
-   // 🔹 СТАТИСТИКА: Исправленные расчёты
+  // 🔹 СТАТИСТИКА: Исправленные расчёты (учитываем ВСЕ продажи инвестора)
   const stats = useMemo(() => {
     let totalCollected = 0;
     let totalOutstanding = 0;
     let totalSalesAmount = 0;
 
-    // ✅ ИСПРАВЛЕНО: убран фильтр s.buyPrice > 0
-    // Теперь учитываются ВСЕ реальные договоры, даже если закупочная цена не указана
+    // ✅ Учитываем ВСЕ реальные договоры (активные, закрытые и черновые с взносом)
     const validSales = investorSales.filter(s =>
       s.status === 'ACTIVE' || 
       s.status === 'COMPLETED' || 
@@ -96,14 +97,15 @@ const balance = useMemo(() => {
       totalOutstanding += Number(sale.remainingAmount) || 0;
     });
 
-    // 🔄 Оборот: деньги на счёте + долг клиентов
+    // 🔄 Оборот: деньги на счетах + долг клиентов
     const workingCapital = balance + totalOutstanding;
 
     return { totalCollected, totalOutstanding, totalSalesAmount, workingCapital };
   }, [investorSales, balance]);
+
   // 🔹 ПРИБЫЛЬ: Как в InvestorDetails
   const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
-    if (!investorAccount) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, profitAccruals: [] };
+    if (investorAccountIds.length === 0) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, profitAccruals: [] };
 
     const investorSalesFiltered = investorSales.filter(sale => sale.buyPrice > 0);
     let profitSum = 0;
@@ -142,8 +144,7 @@ const balance = useMemo(() => {
       totalProfitWithdrawn: withdrawnSum,
       profitAccruals: accruals.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     };
-  }, [investorSales, investorExpenses, investorAccount]);
-
+  }, [investorSales, investorExpenses, investorAccountIds]);
   // 🔹 Ожидаемая прибыль: Как в InvestorDetails
   // 🔹 Ожидаемая прибыль: от остатка долга по АКТИВНЫМ сделкам
 const expectedTotalProfit = useMemo(() => {
