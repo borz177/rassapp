@@ -23,11 +23,14 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
     return accounts.map(acc => acc.id);
   }, [accounts]);
 
-  // 🔹 Продажи: уже отфильтрованы в App.tsx по всем аккаунтам инвестора
-  // Дополнительно исключаем системные транзакции (депозиты)
-  const investorSales = useMemo(() => {
-    return sales.filter(s => !s.customerId.startsWith('system_'));
-  }, [sales]);
+    const investorSales = useMemo(() => {
+    if (investorAccountIds.length === 0) return [];
+    return sales.filter(s =>
+      investorAccountIds.includes(s.accountId) &&
+      !s.customerId.startsWith('system_') &&  // ← ИСКЛЮЧАЕМ системные операции
+      s.customerId !== investor.id            // ← ИСКЛЮЧАЕМ депозиты инвестора
+    );
+  }, [sales, investorAccountIds, investor.id]);
 
   // 🔹 Расходы: уже отфильтрованы в App.tsx
   const investorExpenses = expenses;
@@ -364,9 +367,9 @@ const expectedTotalProfit = useMemo(() => {
               </div>
 
               <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 rounded-2xl text-white shadow-lg">
-                <p className="text-emerald-100 text-sm mb-1">Доступно к выводу</p>
+                <p className="text-emerald-100 text-sm mb-1">Прибыль</p>
                 <p className="text-3xl font-bold">{formatCurrency(availableToWithdraw, appSettings.showCents)} ₽</p>
-                <p className="text-xs text-emerald-200 mt-2">Прибыль минус выплаты</p>
+                <p className="text-xs text-emerald-200 mt-2">Доступно к выводу</p>
               </div>
             </div>
 
