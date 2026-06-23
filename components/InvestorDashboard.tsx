@@ -16,6 +16,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
   sales, expenses, accounts, investor, appSettings, onLogout
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'contracts'>('overview');
+  const [contractTab, setContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
 
   // 🔹 ФИЛЬТРАЦИЯ: Находим счёт инвестора по ownerId
   const investorAccount = useMemo(() => {
@@ -67,18 +68,19 @@ const balance = useMemo(() => {
 }, [sales, expenses, investorAccount]); 
 
 
-  // 🔹 СТАТИСТИКА: Исправленные расчёты
-  // 🔹 СТАТИСТИКА: Исправленные расчёты
+   // 🔹 СТАТИСТИКА: Исправленные расчёты
   const stats = useMemo(() => {
     let totalCollected = 0;
     let totalOutstanding = 0;
     let totalSalesAmount = 0;
 
-    // Берём только реальные договоры (активные и закрытые)
-   const validSales = investorSales.filter(s =>
-  (s.status === 'ACTIVE' || s.status === 'COMPLETED' || (s.status === 'DRAFT' && s.downPayment > 0))
-  && s.buyPrice > 0
-);
+    // ✅ ИСПРАВЛЕНО: убран фильтр s.buyPrice > 0
+    // Теперь учитываются ВСЕ реальные договоры, даже если закупочная цена не указана
+    const validSales = investorSales.filter(s =>
+      s.status === 'ACTIVE' || 
+      s.status === 'COMPLETED' || 
+      (s.status === 'DRAFT' && s.downPayment > 0)
+    );
 
     validSales.forEach(sale => {
       // 📊 Продажи: общая сумма договоров
@@ -98,8 +100,7 @@ const balance = useMemo(() => {
     const workingCapital = balance + totalOutstanding;
 
     return { totalCollected, totalOutstanding, totalSalesAmount, workingCapital };
-  }, [investorSales, balance]); // ⚠️ Добавлен balance в зависимости
-
+  }, [investorSales, balance]);
   // 🔹 ПРИБЫЛЬ: Как в InvestorDetails
   const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
     if (!investorAccount) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, profitAccruals: [] };
@@ -182,6 +183,58 @@ const expectedTotalProfit = useMemo(() => {
       .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
       .slice(0, 5);
   }, [investorSales]);
+
+
+
+
+  // 🔹 СЧЁТЧИКИ И ФИЛЬТРАЦИЯ ДОГОВОРОВ (как в Contracts у менеджера)
+  const { contractCounts, filteredSales } = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let active = 0, overdue = 0, archive = 0;
+
+    // 🔧 Функция расчёта реальной просрочки
+    const calculateSaleOverdue = (sale: Sale) => {
+      let expectedTotal = sale.downPayment;
+      sale.paymentPlan.forEach(p => {
+        if (!p.isRealPayment && new Date(p.date) < today) {
+          expectedTotal += p.amount;
+        }
+      });
+      const totalPaid = sale.totalAmount - sale.remainingAmount;
+      const overdueAmount = expectedTotal - totalPaid;
+      return Math.max(0, overdueAmount);
+    };
+
+    // 🔹 Распределяем договоры по категориям
+    const categorized = investorSales.map(sale => {
+      if (sale.status === 'COMPLETED' || sale.remainingAmount === 0) {
+        return { sale, category: 'ARCHIVE' as const };
+      }
+      const overdueAmount = calculateSaleOverdue(sale);
+      if (overdueAmount > 0) {
+        return { sale, category: 'OVERDUE' as const };
+      }
+      return { sale, category: 'ACTIVE' as const };
+    });
+
+    // 🔹 Считаем счётчики
+    categorized.forEach(c => {
+      if (c.category === 'ARCHIVE') archive++;
+      else if (c.category === 'OVERDUE') overdue++;
+      else active++;
+    });
+
+    // 🔹 Фильтруем по выбранной вкладке
+    const filtered = categorized
+      .filter(c => c.category === contractTab)
+      .map(c => c.sale)
+      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+
+    return { contractCounts: { active, overdue, archive }, filteredSales: filtered };
+  }, [investorSales, contractTab]);
+
+  
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 pb-24">
@@ -365,16 +418,75 @@ const expectedTotalProfit = useMemo(() => {
           </div>
         )}
 
-        {/* 🔹 Вкладка: Договоры */}
+                {/* 🔹 Вкладка: Договоры */}
         {activeTab === 'contracts' && (
           <div className="space-y-4 animate-in fade-in duration-500">
-            {investorSales.length === 0 ? (
+            
+            {/* 🔹 ФИЛЬТРЫ-КНОПКИ С СЧЁТЧИКАМИ */}
+            <div className="flex gap-2 p-1 bg-white/70 backdrop-blur-sm rounded-2xl shadow-sm border border-white">
+              <button
+                onClick={() => setContractTab('ACTIVE')}
+                className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 ${
+                  contractTab === 'ACTIVE'
+                    ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-200'
+                    : 'text-slate-500 hover:text-indigo-600'
+                }`}
+              >
+                Активные
+                {contractCounts.active > 0 && (
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                    contractTab === 'ACTIVE' ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-600'
+                  }`}>
+                    {contractCounts.active}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setContractTab('OVERDUE')}
+                className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 ${
+                  contractTab === 'OVERDUE'
+                    ? 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-md shadow-red-200'
+                    : 'text-slate-500 hover:text-red-600'
+                }`}
+              >
+                Просроченные
+                {contractCounts.overdue > 0 && (
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                    contractTab === 'OVERDUE' ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600'
+                  }`}>
+                    {contractCounts.overdue}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setContractTab('ARCHIVE')}
+                className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 ${
+                  contractTab === 'ARCHIVE'
+                    ? 'bg-gradient-to-r from-slate-600 to-slate-500 text-white shadow-md shadow-slate-200'
+                    : 'text-slate-500 hover:text-slate-600'
+                }`}
+              >
+                Архив
+                {contractCounts.archive > 0 && (
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                    contractTab === 'ARCHIVE' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {contractCounts.archive}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* 🔹 Список договоров (теперь отфильтрованный) */}
+            {filteredSales.length === 0 ? (
               <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">
-                Нет активных договоров
+                {contractTab === 'ACTIVE' && 'Нет активных договоров'}
+                {contractTab === 'OVERDUE' && 'Нет просроченных договоров 🎉'}
+                {contractTab === 'ARCHIVE' && 'Архив пуст'}
               </div>
             ) : (
               <div className="grid gap-3">
-                {investorSales.map(sale => {
+                {filteredSales.map(sale => {
                   const progress = sale.totalAmount > 0
                     ? ((sale.totalAmount - sale.remainingAmount) / sale.totalAmount) * 100
                     : 0;
@@ -389,7 +501,7 @@ const expectedTotalProfit = useMemo(() => {
                         <span className={`text-xs px-3 py-1.5 rounded-full font-bold ${
                           sale.remainingAmount === 0 
                             ? 'bg-slate-100 text-slate-600' 
-                            : sale.status === 'Активно'
+                            : sale.status === 'ACTIVE'
                             ? 'bg-emerald-100 text-emerald-700'
                             : 'bg-amber-100 text-amber-700'
                         }`}>
