@@ -210,10 +210,12 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
   const monthlyPrice = calculatePrice(plan.basePrice);
   const totalPrice = monthlyPrice * duration;
 
-  // 🔥 ПРОВЕРКА: план текущий И активный
+  // 🔥 План совпадает с текущим И подписка активна
   const isCurrentPlan = !subStatus.expired && user?.subscription?.plan === plan.key;
-  // 🔥 ПРОВЕРКА: план совпадает, но истёк (можно продлить)
+  // 🔥 План совпадает, но подписка истекла
   const isExpiredPlan = subStatus.expired && user?.subscription?.plan === plan.key;
+  // 🔥 План отличается от текущего (апгрейд/даунгрейд)
+  const isDifferentPlan = user?.subscription?.plan !== plan.key;
 
   return (
     <div
@@ -231,7 +233,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
 
       {isCurrentPlan && (
         <div className="absolute top-0 right-0 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl flex items-center gap-1">
-          {ICONS.Check} Ваш текущий план
+          {ICONS.Check} Активен
         </div>
       )}
 
@@ -270,23 +272,24 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
         ))}
       </ul>
 
+      {/* 🔥 Кнопка: доступна всегда, кроме случая, когда это другой план и он активен (опционально) */}
       <button
-        onClick={() => {
-          // 🔥 Разрешаем выбор, если план не активен (можно выбрать новый или продлить старый)
-          if (!isCurrentPlan) {
-            handleSelectPlan(plan.name, monthlyPrice, plan.basePrice);
-          }
-        }}
-        disabled={isCurrentPlan}
+        onClick={() => handleSelectPlan(plan.name, monthlyPrice, plan.basePrice)}
+        // ❌ Убрали disabled={isCurrentPlan} — теперь можно продлевать активный тариф
         className={`w-full py-4 rounded-xl font-bold transition-opacity ${
           isCurrentPlan 
-            ? 'bg-emerald-600 text-white cursor-default' 
+            ? 'bg-emerald-600 text-white hover:bg-emerald-700' // активный план — зелёная кнопка
             : isExpiredPlan
               ? `${plan.btnColor} hover:opacity-90 ring-2 ring-amber-400`
               : `${plan.btnColor} hover:opacity-90`
         }`}
       >
-        {isCurrentPlan ? 'Активен' : isExpiredPlan ? '🔄 Продлить' : 'Выбрать'}
+        {isCurrentPlan 
+          ? '🔄 Продлить' 
+          : isExpiredPlan 
+            ? '🔄 Продлить' 
+            : 'Выбрать'
+        }
       </button>
     </div>
   );
