@@ -600,7 +600,7 @@ const ProfitDetailsModal = ({
       };
     }
     return {
-      label: 'Ожидается',
+      label: '',
       bg: 'bg-slate-100',
       text: 'text-slate-600',
       barColor: 'bg-slate-300',
