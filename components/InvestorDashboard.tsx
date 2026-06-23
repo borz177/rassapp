@@ -37,8 +37,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
     return expenses.filter(e => e.accountId === investorAccount.id);
   }, [expenses, investorAccount]);
 
-  // 🔹 БАЛАНС: Как в InvestorDetails (взносы + платежи - все расходы)
-  // 🔹 БАЛАНС СЧЁТА: Все поступления − Все расходы (как в InvestorDetails)
+   // 🔹 БАЛАНС СЧЁТА: Все поступления − Все расходы (как в InvestorDetails)
 const balance = useMemo(() => {
   if (!investorAccount) return 0;
 
@@ -55,13 +54,17 @@ const balance = useMemo(() => {
         .forEach(p => totalInflow += Number(p.amount || 0));
     });
 
-  // 💸 ВСЕ расходы со счёта
+  // 💸 ВСЕ расходы со счёта, ИСКЛЮЧАЯ возвраты (isRefund: true)
+  // Они создаются при удалении продажи, которая уже удалена из sales и не дает прихода.
   expenses
-    .filter(e => e.accountId === investorAccount.id)
+    .filter(e => e.accountId === investorAccount.id && e.isRefund !== true)
     .forEach(e => totalOutflow += Number(e.amount || 0));
 
-  return totalInflow - totalOutflow;
-}, [sales, expenses, investorAccount]); // ⚠️ Важно: зависимости от исходных массивов
+  // ✅ Учитываем начальный баланс счёта (если он был задан)
+  const initialBalance = investorAccount.initialBalance || 0;
+
+  return initialBalance + totalInflow - totalOutflow;
+}, [sales, expenses, investorAccount]); 
 
 
   // 🔹 СТАТИСТИКА: Исправленные расчёты
@@ -319,7 +322,7 @@ const expectedTotalProfit = useMemo(() => {
               <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 p-6 rounded-2xl text-white shadow-lg">
                 <p className="text-indigo-100 text-sm mb-1">Текущий баланс счета</p>
                 <p className="text-3xl font-bold">{formatCurrency(balance, appSettings.showCents)} ₽</p>
-                <p className="text-xs text-indigo-200 mt-2">Взносы + платежи − расходы</p>
+               
               </div>
 
               <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 rounded-2xl text-white shadow-lg">
@@ -386,7 +389,7 @@ const expectedTotalProfit = useMemo(() => {
                         <span className={`text-xs px-3 py-1.5 rounded-full font-bold ${
                           sale.remainingAmount === 0 
                             ? 'bg-slate-100 text-slate-600' 
-                            : sale.status === 'ACTIVE'
+                            : sale.status === 'Активно'
                             ? 'bg-emerald-100 text-emerald-700'
                             : 'bg-amber-100 text-amber-700'
                         }`}>
