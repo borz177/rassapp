@@ -45,7 +45,7 @@ const ContractInfoModal = ({
   const [isSending, setIsSending] = useState(false);
 
   const monthlyPayment = sale.paymentPlan[0]?.amount || 0;
-  const paidMonths = sale.paymentPlan.filter(p => p.isPaid).length;
+  const paidMonths = sale.paymentPlan.filter(p => p.isRealPayment).length;
 
   let expectedPaidByNow = sale.downPayment;
   sale.paymentPlan.forEach(p => {
@@ -56,7 +56,7 @@ const ContractInfoModal = ({
 
   const actualPaidTotal = sale.totalAmount - sale.remainingAmount;
   const realOverdueAmount = Math.max(0, expectedPaidByNow - actualPaidTotal);
-  const overduePaymentsList = sale.paymentPlan.filter(p => !p.isPaid && new Date(p.date) < today);
+  const overduePaymentsList = sale.paymentPlan.filter(p => !p.isRealPayment && new Date(p.date) < today);
   const nextUnpaidPayment = sale.paymentPlan.find(p => !p.isPaid && new Date(p.date) >= today);
   const nextPaymentDate = nextUnpaidPayment
     ? formatDate(nextUnpaidPayment.date)
