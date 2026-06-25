@@ -43,10 +43,41 @@ const ContractInfoModal = ({
   // 🔥 STATE для подтверждения отправки напоминания
   const [showConfirmReminder, setShowConfirmReminder] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const planPayments = sale.paymentPlan.filter(p => !p.isRealPayment);
 
-  const monthlyPayment = planPayments[0]?.amount || 0;
-const paidMonths = planPayments.filter(p => p.isPaid).length;
+  const planPayments = sale.paymentPlan.filter(p => !p.isRealPayment);
+const realPayments = sale.paymentPlan.filter(p => p.isRealPayment && p.isPaid);
+
+// Ежемесячный платёж берём из плана
+const monthlyPayment = planPayments[0]?.amount || 0;
+
+// 🔹 Оплаченные месяцы: считаем по реальным оплатам, сопоставляя с планом
+// Сортируем план по дате
+const sortedPlan = [...planPayments].sort((a, b) => 
+  new Date(a.date).getTime() - new Date(b.date).getTime()
+);
+
+// Сумма, оплаченная сверх первого взноса
+const paidExcludingDown = (sale.totalAmount - sale.remainingAmount) - sale.downPayment;
+
+// Проходим по плану и считаем, сколько полных платежей покрыто
+let remaining = Math.max(0, paidExcludingDown);
+let paidMonths = 0;
+
+for (const p of sortedPlan) {
+  if (remaining >= p.amount * 0.99) { // 99% для погрешности копеек
+    remaining -= p.amount;
+    paidMonths++;
+  } else {
+    break;
+  }
+}
+
+// 🔹 Пропущенные платежи: плановые, дата в прошлом, И не вошли в оплаченные
+const overduePaymentsList = sortedPlan.filter((p, index) => {
+  const isPast = new Date(p.date) < today;
+  const isCovered = index < paidMonths; // если вошёл в счёт оплаченных
+  return isPast && !isCovered;
+});
 
   let expectedPaidByNow = sale.downPayment;
   sale.paymentPlan.forEach(p => {
@@ -57,7 +88,7 @@ const paidMonths = planPayments.filter(p => p.isPaid).length;
 
   const actualPaidTotal = sale.totalAmount - sale.remainingAmount;
   const realOverdueAmount = Math.max(0, expectedPaidByNow - actualPaidTotal);
-  const overduePaymentsList = planPayments.filter(p => !p.isPaid && new Date(p.date) < today);
+
   const nextUnpaidPayment = sale.paymentPlan.find(p => !p.isPaid && new Date(p.date) >= today);
   const nextPaymentDate = nextUnpaidPayment
     ? formatDate(nextUnpaidPayment.date)
