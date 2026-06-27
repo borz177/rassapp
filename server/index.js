@@ -2543,7 +2543,8 @@ app.post('/api/payment/create', auth, async (req, res) => {
       metadata: {
         userId: req.user.id,
         plan: plan,
-        months: months
+        months: months,
+        payment_method_list: ['sbp', 'bank_card'] 
       }
     }, {
       headers: {
