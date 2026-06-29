@@ -51,12 +51,10 @@ const EditCustomerModal = ({
     customer,
     onClose,
     onUpdate,
-    isOnline = navigator.onLine
 }: {
     customer: Customer,
     onClose: () => void,
     onUpdate: (c: Customer) => void,
-    isOnline?: boolean
 }) => {
     const [name, setName] = useState(customer.name);
     const [phone, setPhone] = useState(customer.phone);
@@ -66,7 +64,6 @@ const EditCustomerModal = ({
     const [passportSeries, setPassportSeries] = useState(customer.passportSeries || '');
     const [passportNumber, setPassportNumber] = useState(customer.passportNumber || '');
     const [passportIssuedBy, setPassportIssuedBy] = useState(customer.passportIssuedBy || '');
-    const [isUploading, setIsUploading] = useState(false);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -81,10 +78,101 @@ const EditCustomerModal = ({
         onClose();
     };
 
+    return (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5 max-h-[90vh] overflow-y-auto my-4" onClick={e => e.stopPropagation()}>
+                <h3 className="text-lg font-bold text-slate-800 mb-4 sticky top-0 bg-white pb-2 z-10">Редактировать клиента</h3>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">ФИО</label>
+                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} required/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Телефон</label>
+                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={phone} onChange={e => setPhone(e.target.value)} required/>
+                    </div>
+                    <details className="group" open>
+                        <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600">
+                            <span className="transition-transform group-open:rotate-90">▶</span> 📍 Адрес и паспорт
+                        </summary>
+                        <div className="mt-3 space-y-4 p-4 bg-slate-50 rounded-xl">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Адрес</label>
+                                <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" placeholder="г. Москва, ул. Ленина, д. 1" value={address} onChange={e => setAddress(e.target.value)}/>
+                            </div>
+                            <div className="border-t border-slate-200 pt-3">
+                                <p className="text-xs font-medium text-slate-500 mb-3">🪪 Паспортные данные <span className="font-normal text-slate-400">(необязательно)</span></p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs text-slate-500 mb-1">Серия</label>
+                                        <input type="text" placeholder="4501" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono uppercase" value={passportSeries} onChange={e => setPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))} maxLength={4}/>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-slate-500 mb-1">Номер</label>
+                                        <input type="text" placeholder="123456" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono" value={passportNumber} onChange={e => setPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} maxLength={6}/>
+                                    </div>
+                                </div>
+                                <div className="mt-3">
+                                    <label className="block text-xs text-slate-500 mb-1">Кем выдан</label>
+                                    <input type="text" placeholder="УФМС России по г. Москве" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm" value={passportIssuedBy} onChange={e => setPassportIssuedBy(e.target.value)} maxLength={100}/>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Заметки</label>
+                        <textarea className="w-full p-3 border border-slate-200 rounded-xl outline-none resize-none" rows={3} value={notes} onChange={e => setNotes(e.target.value)}/>
+                    </div>
+                    <div className="flex items-center justify-between bg-emerald-50 p-3 rounded-xl border border-emerald-100">
+                        <div className="flex items-center gap-2">
+                            <span className="text-emerald-600">{ICONS.Send}</span>
+                            <div>
+                                <p className="text-sm font-bold text-slate-800">Напоминания WhatsApp</p>
+                                <p className="text-xs text-slate-500">Авто-отправка сообщений</p>
+                            </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked={allowWhatsapp} onChange={() => setAllowWhatsapp(!allowWhatsapp)} className="sr-only peer"/>
+                            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                        </label>
+                    </div>
+                    <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 sticky bottom-0 bg-white">
+                        <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
+                        <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+// 🔹 НОВОЕ: Модальное окно для управления документами
+const DocumentsModal = ({
+    customer,
+    onClose,
+    onUpdate,
+    isOnline = navigator.onLine
+}: {
+    customer: Customer,
+    onClose: () => void,
+    onUpdate: (c: Customer) => void,
+    isOnline?: boolean
+}) => {
+    const [isUploading, setIsUploading] = useState(false);
+    const [selectedDocument, setSelectedDocument] = useState<CustomerDocument | null>(null);
+
+    const formatFileSize = (bytes: number): string => {
+        if (bytes === 0) return '0 Б';
+        const k = 1024;
+        const sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    };
+
     const handleAddDocument = async () => {
-        const nameInput = document.getElementById('doc-name') as HTMLInputElement;
-        const categorySelect = document.getElementById('doc-category') as HTMLSelectElement;
-        const fileInput = document.getElementById('doc-file') as HTMLInputElement;
+        const nameInput = document.getElementById('doc-name-modal') as HTMLInputElement;
+        const categorySelect = document.getElementById('doc-category-modal') as HTMLSelectElement;
+        const fileInput = document.getElementById('doc-file-modal') as HTMLInputElement;
 
         if (!fileInput.files?.[0] || !nameInput.value) {
             alert('Заполните название и выберите файл');
@@ -160,137 +248,159 @@ const EditCustomerModal = ({
         }
     };
 
+    const handleViewDocument = (doc: CustomerDocument) => {
+        if (doc.fileType === 'image') {
+            setSelectedDocument(doc);
+        }
+    };
+
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5 max-h-[90vh] overflow-y-auto my-4" onClick={e => e.stopPropagation()}>
-                <h3 className="text-lg font-bold text-slate-800 mb-4 sticky top-0 bg-white pb-2 z-10">Редактировать клиента</h3>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">ФИО</label>
-                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} required/>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Телефон</label>
-                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={phone} onChange={e => setPhone(e.target.value)} required/>
-                    </div>
-                    <details className="group" open>
-                        <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600">
-                            <span className="transition-transform group-open:rotate-90">▶</span> 📍 Адрес и документы
-                        </summary>
-                        <div className="mt-3 space-y-4 p-4 bg-slate-50 rounded-xl">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Адрес</label>
-                                <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" placeholder="г. Москва, ул. Ленина, д. 1" value={address} onChange={e => setAddress(e.target.value)}/>
-                            </div>
-                            <div className="border-t border-slate-200 pt-3">
-                                <p className="text-xs font-medium text-slate-500 mb-3">🪪 Паспортные данные <span className="font-normal text-slate-400">(необязательно)</span></p>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-xs text-slate-500 mb-1">Серия</label>
-                                        <input type="text" placeholder="4501" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono uppercase" value={passportSeries} onChange={e => setPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))} maxLength={4}/>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs text-slate-500 mb-1">Номер</label>
-                                        <input type="text" placeholder="123456" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono" value={passportNumber} onChange={e => setPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} maxLength={6}/>
-                                    </div>
-                                </div>
-                                <div className="mt-3">
-                                    <label className="block text-xs text-slate-500 mb-1">Кем выдан</label>
-                                    <input type="text" placeholder="УФМС России по г. Москве" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm" value={passportIssuedBy} onChange={e => setPassportIssuedBy(e.target.value)} maxLength={100}/>
-                                </div>
-                            </div>
+        <>
+            <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+                <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5 max-h-[90vh] overflow-y-auto my-4" onClick={e => e.stopPropagation()}>
+                    <h3 className="text-lg font-bold text-slate-800 mb-4 sticky top-0 bg-white pb-2 z-10 flex items-center justify-between">
+                        <span>📎 Документы</span>
+                        <span className="text-sm font-normal text-slate-400">{customer.documents?.length || 0} шт.</span>
+                    </h3>
+
+                    {!isOnline && (
+                        <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
+                            <span className="text-amber-600 mt-0.5">⚠️</span>
+                            <p className="text-xs text-amber-800"><strong>Офлайн-режим:</strong> Загрузка новых документов недоступна.</p>
                         </div>
-                    </details>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Заметки</label>
-                        <textarea className="w-full p-3 border border-slate-200 rounded-xl outline-none resize-none" rows={3} value={notes} onChange={e => setNotes(e.target.value)}/>
-                    </div>
-                    <div className="flex items-center justify-between bg-emerald-50 p-3 rounded-xl border border-emerald-100">
-                        <div className="flex items-center gap-2">
-                            <span className="text-emerald-600">{ICONS.Send}</span>
-                            <div>
-                                <p className="text-sm font-bold text-slate-800">Напоминания WhatsApp</p>
-                                <p className="text-xs text-slate-500">Авто-отправка сообщений</p>
-                            </div>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" checked={allowWhatsapp} onChange={() => setAllowWhatsapp(!allowWhatsapp)} className="sr-only peer"/>
-                            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-                        </label>
-                    </div>
-                    <div className="flex gap-3 pt-2">
-                        <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
-                        <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
-                    </div>
-                    <div className="border-t border-slate-100 pt-4">
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Документы клиента</label>
-                        {!isOnline && (
-                            <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
-                                <span className="text-amber-600 mt-0.5">⚠️</span>
-                                <p className="text-xs text-amber-800"><strong>Офлайн-режим:</strong> Загрузка новых документов недоступна.</p>
-                            </div>
-                        )}
-                        {customer.documents?.length > 0 && (
-                            <div className="space-y-2 mb-3">
-                                {customer.documents.map(doc => (
-                                    <div key={doc.id} className="flex items-center justify-between bg-slate-50 p-3 rounded-xl">
-                                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                                            <div className={`p-2 rounded-lg flex-shrink-0 ${doc.fileType === 'pdf' ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                                                {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
-                                            </div>
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-medium text-slate-800 truncate">{doc.name}</p>
-                                                <p className="text-xs text-slate-500">
+                    )}
+
+                    {customer.documents && customer.documents.length > 0 ? (
+                        <div className="space-y-2 mb-4">
+                            {customer.documents.map(doc => {
+                                const fileUrl = doc.fileUrl.startsWith('http') ? doc.fileUrl : `${window.location.origin}${doc.fileUrl}`;
+                                return (
+                                    <div key={doc.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors group">
+                                        <div
+                                            className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${doc.fileType === 'pdf' ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600 cursor-pointer'}`}
+                                            onClick={() => handleViewDocument(doc)}
+                                        >
+                                            {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-slate-800 truncate">{doc.name}</p>
+                                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                                <span className="text-[10px] text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">
                                                     {doc.category === 'passport' && '🪪 Паспорт'}
                                                     {doc.category === 'guarantor' && '🤝 Поручительство'}
                                                     {doc.category === 'contract' && '📄 Договор'}
                                                     {doc.category === 'photo' && '📷 Фото'}
                                                     {doc.category === 'other' && '📎 Другое'}
-                                                </p>
+                                                </span>
                                                 {doc._isTemp || doc.fileUrl?.startsWith('temp_doc_') ? (
-                                                    <span className="text-[10px] text-amber-600 bg-amber-100 px-2 py-0.5 rounded mt-1 inline-block">⏳ Ожидает загрузки</span>
+                                                    <span className="text-[10px] text-amber-600 bg-amber-100 px-2 py-0.5 rounded">⏳ Ожидает</span>
                                                 ) : doc.fileSize ? (
-                                                    <p className="text-[10px] text-slate-400 mt-1">{(doc.fileSize / 1024).toFixed(1)} КБ</p>
+                                                    <span className="text-[10px] text-slate-400">{formatFileSize(doc.fileSize)}</span>
                                                 ) : null}
                                             </div>
                                         </div>
-                                        <button type="button" onClick={() => {
-                                            const updatedDocs = customer.documents?.filter(d => d.id !== doc.id) || [];
-                                            onUpdate({...customer, documents: updatedDocs});
-                                        }} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded flex-shrink-0 ml-2" disabled={!isOnline && !(doc._isTemp || doc.fileUrl?.startsWith('temp_doc_'))}>
-                                            {ICONS.Delete}
-                                        </button>
+                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                            {doc.fileType === 'pdf' && (
+                                                <a href={fileUrl} download={doc.name} className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors" title="Скачать PDF" onClick={(e) => e.stopPropagation()}>
+                                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                                        <polyline points="7 10 12 15 17 10"/>
+                                                        <line x1="12" y1="15" x2="12" y2="3"/>
+                                                    </svg>
+                                                </a>
+                                            )}
+                                            {doc.fileType === 'image' && (
+                                                <button onClick={() => handleViewDocument(doc)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-200 rounded-lg transition-colors" title="Просмотреть">
+                                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                                        <circle cx="12" cy="12" r="3"/>
+                                                    </svg>
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (window.confirm('Удалить документ?')) {
+                                                        const updatedDocs = customer.documents?.filter(d => d.id !== doc.id) || [];
+                                                        onUpdate({...customer, documents: updatedDocs});
+                                                    }
+                                                }}
+                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                disabled={!isOnline && !(doc._isTemp || doc.fileUrl?.startsWith('temp_doc_'))}
+                                                title="Удалить"
+                                            >
+                                                {ICONS.Delete}
+                                            </button>
+                                        </div>
                                     </div>
-                                ))}
-                            </div>
-                        )}
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="text-center py-8 text-slate-400 text-sm">
+                            <div className="text-4xl mb-2">📂</div>
+                            <p>Документов пока нет</p>
+                        </div>
+                    )}
+
+                    <div className="border-t border-slate-100 pt-4">
                         <details className="group">
                             <summary className={`flex items-center gap-2 text-sm font-medium cursor-pointer list-none ${!isOnline ? 'text-slate-400' : 'text-indigo-600'}`}>
                                 <span className={`transition-transform ${!isOnline ? '' : 'group-open:rotate-90'}`}>▶</span> Добавить документ
                             </summary>
                             <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">
-                                <input type="text" placeholder="Название документа" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm" id="doc-name" disabled={!isOnline}/>
-                                <select className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400" id="doc-category" disabled={!isOnline}>
+                                <input type="text" placeholder="Название документа" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm" id="doc-name-modal" disabled={!isOnline}/>
+                                <select className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400" id="doc-category-modal" disabled={!isOnline}>
                                     <option value="passport">🪪 Паспорт</option>
                                     <option value="guarantor">🤝 Поручительство</option>
                                     <option value="contract">📄 Договор</option>
                                     <option value="photo">📷 Фото клиента</option>
                                     <option value="other">📎 Другое</option>
                                 </select>
-                                <input type="file" accept="image/*,.pdf" className="w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 disabled:file:bg-slate-100 disabled:file:text-slate-400 disabled:file:cursor-not-allowed" id="doc-file" disabled={!isOnline}/>
+                                <input type="file" accept="image/*,.pdf" className="w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 disabled:file:bg-slate-100 disabled:file:text-slate-400 disabled:file:cursor-not-allowed" id="doc-file-modal" disabled={!isOnline}/>
                                 <button type="button" onClick={handleAddDocument} disabled={!isOnline || isUploading} className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${!isOnline ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : isUploading ? 'bg-indigo-400 text-white cursor-wait' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
                                     {isUploading ? (<><span className="animate-spin">⏳</span> Загрузка...</>) : !isOnline ? ('📴 Недоступно офлайн') : ('Прикрепить документ')}
                                 </button>
                             </div>
                         </details>
                     </div>
+
                     <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 sticky bottom-0 bg-white">
-                        <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
-                        <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
+                        <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Закрыть</button>
                     </div>
-                </form>
+                </div>
             </div>
-        </div>
+
+            {selectedDocument && selectedDocument.fileType === 'image' && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedDocument(null)}>
+                    <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => setSelectedDocument(null)} className="absolute -top-12 right-0 text-white/80 hover:text-white p-2">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </button>
+                        <div className="bg-white rounded-2xl overflow-hidden shadow-2xl">
+                            <img src={selectedDocument.fileUrl} alt={selectedDocument.name} className="w-full h-auto max-h-[80vh] object-contain"/>
+                            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                                <div>
+                                    <p className="font-medium text-slate-800">{selectedDocument.name}</p>
+                                    <p className="text-xs text-slate-500">{formatFileSize(selectedDocument.fileSize || 0)} • {new Date(selectedDocument.uploadedAt).toLocaleDateString('ru-RU')}</p>
+                                </div>
+                                <a href={selectedDocument.fileUrl} download={selectedDocument.name} className="text-indigo-600 text-sm font-medium hover:text-indigo-700 flex items-center gap-1">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                        <polyline points="7 10 12 15 17 10"/>
+                                        <line x1="12" y1="15" x2="12" y2="3"/>
+                                    </svg>
+                                    Скачать
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 };
 
@@ -303,6 +413,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
     const [activeTab, setActiveTab] = useState<'INFO' | 'INSTALLMENTS'>('INFO');
     const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
     const [showEditModal, setShowEditModal] = useState(false);
+    const [showDocumentsModal, setShowDocumentsModal] = useState(false);
     const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
     const [editDate, setEditDate] = useState('');
     const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
@@ -317,16 +428,6 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
-
-    const handleViewDocument = (e: React.MouseEvent, doc: CustomerDocument) => {
-        e.stopPropagation();
-        if (!doc.fileUrl) return;
-        if (doc.fileType === 'image') {
-            setSelectedDocument(doc);
-        }
-    };
-
-    const [selectedDocument, setSelectedDocument] = useState<CustomerDocument | null>(null);
 
     useEffect(() => {
         if (initialSaleId) {
@@ -415,26 +516,16 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
         return phoneNumber.number.replace('+', '');
     };
 
+    // 🔥 ИСПРАВЛЕНИЕ: теперь ближайший платеж берётся из paymentSchedule,
+    // который уже учитывает авансовые оплаты (surplus от переплат и скидок)
     const handleSendSaleReminder = () => {
         if (!selectedSale) return;
 
-        // 🔹 Считаем реальную сумму оплаченную клиентом и скидки
-        const totalRealPaid = selectedSale.paymentPlan
-            .filter(p => p.isRealPayment === true)
-            .reduce((sum, p) => sum + p.amount, 0);
-        
-        const totalDiscounts = selectedSale.paymentPlan
-            .filter(p => (p as any).discountAmount > 0)
-            .reduce((sum, p) => sum + ((p as any).discountAmount || 0), 0);
-
-        const upcomingPayments = (selectedSale.paymentPlan || [])
-            .filter(p => !p.isPaid)
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        const nextPayment = upcomingPayments[0];
-
         const paymentHistory = formatPaymentHistory(selectedSale.paymentPlan || [], 5);
-
         const isClosed = selectedSale.status === 'COMPLETED' || selectedSale.remainingAmount <= 0;
+
+        // 🔹 Ближайший платёж — первый из графика, который уже рассчитан с учётом surplus
+        const nextPayment = paymentSchedule[0];
 
         let message = `
 Здравствуйте, ${customer.name}!
@@ -451,7 +542,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
         }
 
         if (!isClosed && nextPayment) {
-            message += `\n- *Ближайший платеж:* ${formatCurrency(nextPayment.amount, appSettings.showCents)} ₽ до ${formatDate(nextPayment.date)}`;
+            message += `\n- *Ближайший платеж:* ${formatCurrency(nextPayment.amountToPay, appSettings.showCents)} ₽ до ${formatDate(nextPayment.date)}`;
         }
 
         message += paymentHistory;
@@ -513,29 +604,24 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
             return { paidPayments: [], paymentSchedule: [], totalDiscounts: 0, totalRealPaid: 0 };
         }
 
-        // 1. История реальных платежей
         const paidPayments = selectedSale.paymentPlan
             .filter(p => p.isPaid && p.isRealPayment !== false)
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-        // 2. 🔥 Считаем общую сумму всех скидок по договору
         const totalDiscounts = selectedSale.paymentPlan
             .filter(p => (p as any).discountAmount > 0)
             .reduce((sum, p) => sum + ((p as any).discountAmount || 0), 0);
 
-        // 3. 🔥 Считаем реальную сумму, которую заплатил клиент
         const totalRealPaid = selectedSale.paymentPlan
             .filter(p => p.isRealPayment === true)
             .reduce((sum, p) => sum + p.amount, 0);
 
-        // 4. 🔥 ГЛАВНОЕ ИСПРАВЛЕНИЕ: Если договор закрыт — график платежей ПУСТОЙ!
         const isClosed = selectedSale.status === 'COMPLETED' || selectedSale.remainingAmount <= 0;
         
         if (isClosed) {
             return { paidPayments, paymentSchedule: [], totalDiscounts, totalRealPaid };
         }
 
-        // 5. Иначе считаем график как раньше
         const totalAllocated = selectedSale.paymentPlan
             .filter(p => p.isPaid && p.isRealPayment !== true)
             .reduce((sum, p) => sum + p.amount, 0);
@@ -572,8 +658,6 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
     };
 
     if (selectedSale) {
-        // 🔥 ИСПРАВЛЕННЫЙ расчёт оплаченной суммы
-        // paidAmount = реальная сумма клиента + скидки = полная сумма закрытия
         const paidAmount = totalRealPaid + totalDiscounts;
         const profit = selectedSale.buyPrice > 0 ? selectedSale.totalAmount - selectedSale.buyPrice : 0;
         const monthlyProfit = selectedSale.installments > 0 && profit > 0 ? profit / selectedSale.installments : 0;
@@ -586,7 +670,6 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
                     <div className="flex items-center gap-3">
                         <button onClick={() => setSelectedSaleId(null)} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
                         <h2 className="text-xl font-bold text-slate-800 truncate">{selectedSale.productName}</h2>
-                        
                     </div>
                     <button onClick={handleSendSaleReminder} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
                         {ICONS.Send} WhatsApp
@@ -630,13 +713,11 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
                         </span>
                     </div>
                     
-                    {/* 🔥 НОВОЕ: Показываем реальную сумму, которую заплатил клиент */}
                     <div className="flex justify-between border-b border-slate-50 pb-2">
                         <span className="text-slate-500">Оплачено клиентом</span>
                         <span className="font-bold text-emerald-600">{formatCurrency(totalRealPaid, appSettings.showCents)} ₽</span>
                     </div>
                     
-                    {/* 🔥 НОВОЕ: Показываем сумму скидок, если они были */}
                     {totalDiscounts > 0 && (
                         <div className="flex justify-between border-b border-slate-50 pb-2 bg-amber-50/50 -mx-5 px-5 py-2">
                             <span className="text-amber-800 font-medium flex items-center gap-1">
@@ -688,7 +769,6 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
                             </thead>
                             <tbody>
                                 {paidPayments.map((payment) => {
-                                    const discountAmount = (payment as any).discountAmount || 0;
                                     return (
                                         <tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50">
                                             <td className="px-4 py-3 text-slate-700">{formatDate(payment.date)}</td>
@@ -696,7 +776,6 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
                                                 <div className="font-bold text-emerald-600">
                                                     +{formatCurrency(payment.amount, appSettings.showCents)} ₽
                                                 </div>
-                                                
                                             </td>
                                             <td className="px-4 py-3 text-right">
                                                 <div className="flex justify-end gap-2">
@@ -720,7 +799,6 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
                     )}
                 </div>
 
-                {/* 🔥 ИСПРАВЛЕННЫЙ график платежей — теперь пустой при закрытом договоре */}
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                     <div className="p-4 border-b border-slate-100 bg-slate-50">
                         <h3 className="font-bold text-slate-700">График платежей</h3>
@@ -833,7 +911,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
                                 {showActionsMenu && (
                                     <>
                                         <div className="fixed inset-0 z-10" onClick={() => setShowActionsMenu(false)}/>
-                                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-20 animate-fade-in">
+                                        <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-20 animate-fade-in">
                                             {onUpdateCustomer && (!isEmployee || user?.permissions?.canEdit) && (
                                                 <button onClick={() => {
                                                     setShowActionsMenu(false);
@@ -842,6 +920,19 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
                                                     <span className="text-indigo-600">{ICONS.Edit}</span> Редактировать
                                                 </button>
                                             )}
+                                            {/* 🔹 НОВОЕ: пункт "Документы" в меню действий */}
+                                            <button onClick={() => {
+                                                setShowActionsMenu(false);
+                                                setShowDocumentsModal(true);
+                                            }} className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                                                <span className="text-slate-600">{ICONS.File}</span>
+                                                <span>Документы</span>
+                                                {customer.documents && customer.documents.length > 0 && (
+                                                    <span className="ml-auto text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full font-medium">
+                                                        {customer.documents.length}
+                                                    </span>
+                                                )}
+                                            </button>
                                             {onUpdateCustomer && onDeleteCustomer && (!isEmployee || (user?.permissions?.canEdit && user?.permissions?.canDelete)) && (
                                                 <div className="my-1 border-t border-slate-100"/>
                                             )}
@@ -899,60 +990,26 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
                             </p>
                         </div>
                     </div>
-                    {customer.documents && customer.documents.length > 0 && (
-                        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="font-bold text-slate-800 flex items-center gap-2">{ICONS.File} Документы</h3>
-                                <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full font-medium">{customer.documents.length}</span>
+
+                    {/* 🔹 Компактная ссылка на документы вместо полного списка */}
+                    <button
+                        onClick={() => setShowDocumentsModal(true)}
+                        className="w-full bg-white rounded-xl p-4 shadow-sm border border-slate-100 flex items-center justify-between hover:bg-slate-50 transition-colors"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center">
+                                {ICONS.File}
                             </div>
-                            <div className="space-y-3">
-                                {customer.documents?.map(doc => {
-                                    const fileUrl = doc.fileUrl.startsWith('http') ? doc.fileUrl : `${window.location.origin}${doc.fileUrl}`;
-                                    return (
-                                        <div key={doc.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors group" onClick={(e) => handleViewDocument(e, doc)}>
-                                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${doc.fileType === 'pdf' ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600 cursor-pointer'}`}>
-                                                {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-slate-800 truncate">{doc.name}</p>
-                                                <div className="flex items-center gap-2 mt-0.5">
-                                                    <span className="text-[10px] text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">
-                                                        {doc.category === 'passport' && '🪪 Паспорт'}
-                                                        {doc.category === 'guarantor' && '🤝 Поручительство'}
-                                                        {doc.category === 'contract' && '📄 Договор'}
-                                                        {doc.category === 'photo' && '📷 Фото'}
-                                                        {doc.category === 'other' && '📎 Другое'}
-                                                    </span>
-                                                    {doc.fileSize && (
-                                                        <span className="text-[10px] text-slate-400">{formatFileSize(doc.fileSize)}</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                {doc.fileType === 'pdf' && (
-                                                    <a href={fileUrl} download={doc.name} className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors" title="Скачать PDF" onClick={(e) => e.stopPropagation()}>
-                                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                                            <polyline points="7 10 12 15 17 10"/>
-                                                            <line x1="12" y1="15" x2="12" y2="3"/>
-                                                        </svg>
-                                                    </a>
-                                                )}
-                                                {doc.fileType === 'image' && (
-                                                    <button className="p-2 text-slate-400 group-hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors" title="Просмотреть фото">
-                                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                                                            <circle cx="12" cy="12" r="3"/>
-                                                        </svg>
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                            <div className="text-left">
+                                <p className="font-bold text-slate-800">Документы</p>
+                                <p className="text-xs text-slate-500">{customer.documents?.length || 0} файлов</p>
                             </div>
                         </div>
-                    )}
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400">
+                            <polyline points="9 18 15 12 9 6"/>
+                        </svg>
+                    </button>
+
                     <div className="pt-2">
                         <button onClick={handleSendFullReport} className="w-full bg-slate-800 text-white py-4 rounded-xl font-semibold flex items-center justify-center gap-2">
                             {ICONS.Send} Отправить отчет в WhatsApp
@@ -992,36 +1049,16 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
                 </div>
             )}
             {showEditModal && onUpdateCustomer && (
-                <EditCustomerModal customer={customer} onClose={() => setShowEditModal(false)} onUpdate={onUpdateCustomer} isOnline={navigator.onLine}/>
+                <EditCustomerModal customer={customer} onClose={() => setShowEditModal(false)} onUpdate={onUpdateCustomer}/>
             )}
-            {selectedDocument && selectedDocument.fileType === 'image' && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedDocument(null)}>
-                    <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => setSelectedDocument(null)} className="absolute -top-12 right-0 text-white/80 hover:text-white p-2">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <line x1="18" y1="6" x2="6" y2="18"/>
-                                <line x1="6" y1="6" x2="18" y2="18"/>
-                            </svg>
-                        </button>
-                        <div className="bg-white rounded-2xl overflow-hidden shadow-2xl">
-                            <img src={selectedDocument.fileUrl} alt={selectedDocument.name} className="w-full h-auto max-h-[80vh] object-contain"/>
-                            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-                                <div>
-                                    <p className="font-medium text-slate-800">{selectedDocument.name}</p>
-                                    <p className="text-xs text-slate-500">{formatFileSize(selectedDocument.fileSize || 0)} • {new Date(selectedDocument.uploadedAt).toLocaleDateString('ru-RU')}</p>
-                                </div>
-                                <a href={selectedDocument.fileUrl} download={selectedDocument.name} className="text-indigo-600 text-sm font-medium hover:text-indigo-700 flex items-center gap-1">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                        <polyline points="7 10 12 15 17 10"/>
-                                        <line x1="12" y1="15" x2="12" y2="3"/>
-                                    </svg>
-                                    Скачать
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            {/* 🔹 НОВОЕ: модалка документов */}
+            {showDocumentsModal && onUpdateCustomer && (
+                <DocumentsModal
+                    customer={customer}
+                    onClose={() => setShowDocumentsModal(false)}
+                    onUpdate={onUpdateCustomer}
+                    isOnline={navigator.onLine}
+                />
             )}
             {showDeleteModal && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
