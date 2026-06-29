@@ -79,7 +79,7 @@ const EditCustomerModal = ({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
     <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
         {/* 🔹 Заголовок — всегда виден сверху */}
         <div className="p-5 pb-3 border-b border-slate-100 flex-shrink-0">
