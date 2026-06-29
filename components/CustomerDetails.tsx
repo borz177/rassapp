@@ -170,83 +170,84 @@ const DocumentsModal = ({
     };
 
     const handleAddDocument = async () => {
-        const nameInput = document.getElementById('doc-name-modal') as HTMLInputElement;
-        const categorySelect = document.getElementById('doc-category-modal') as HTMLSelectElement;
-        const fileInput = document.getElementById('doc-file-modal') as HTMLInputElement;
+    const categorySelect = document.getElementById('doc-category-modal') as HTMLSelectElement;
+    const fileInput = document.getElementById('doc-file-modal') as HTMLInputElement;
 
-        if (!fileInput.files?.[0] || !nameInput.value) {
-            alert('Заполните название и выберите файл');
+    if (!fileInput.files?.[0]) {
+        alert('Выберите файл');
+        return;
+    }
+
+    setIsUploading(true);
+
+    try {
+        const file = fileInput.files[0];
+        if (file.size > 5 * 1024 * 1024) {
+            alert('Файл слишком большой. Максимальный размер: 5 МБ');
             return;
         }
 
-        setIsUploading(true);
+        // 🔹 Используем имя файла как название документа
+        const docName = file.name;
 
-        try {
-            const file = fileInput.files[0];
-            if (file.size > 5 * 1024 * 1024) {
-                alert('Файл слишком большой. Максимальный размер: 5 МБ');
-                return;
-            }
-
-            let fileToUpload: File = file;
-            if (file.type.startsWith('image/')) {
-                const compressedBlob = await compressImage(file, 1920);
-                fileToUpload = new File([compressedBlob], file.name, { type: 'image/jpeg' });
-            }
-
-            let fileUrl: string;
-            let isTemp = false;
-
-            if (!isOnline) {
-                const tempId = await offlineStorage.saveTempFile(fileToUpload);
-                fileUrl = tempId;
-                isTemp = true;
-            } else {
-                const formData = new FormData();
-                formData.append('file', fileToUpload);
-
-                const res: Response = await fetch('/api/upload/document', {
-                    method: 'POST',
-                    headers: { 'x-auth-token': localStorage.getItem('token') || '' },
-                    body: formData
-                } as RequestInit);
-
-                if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    throw new Error(err.error || 'Ошибка загрузки на сервер');
-                }
-
-                const uploadData = await res.json();
-                fileUrl = uploadData.fileUrl;
-            }
-
-            const newDoc: CustomerDocument = {
-                id: crypto.randomUUID() as string,
-                name: nameInput.value,
-                category: categorySelect.value as CustomerDocument['category'],
-                fileUrl,
-                fileType: (file.type.includes('pdf') ? 'pdf' : 'image') as CustomerDocument['fileType'],
-                uploadedAt: new Date().toISOString(),
-                fileSize: fileToUpload.size,
-                _isTemp: isTemp
-            };
-
-            const updatedDocs = [...(customer.documents || []), newDoc];
-            onUpdate({ ...customer, documents: updatedDocs });
-
-            nameInput.value = '';
-            fileInput.value = '';
-
-            if (isTemp) {
-                alert('📴 Файл сохранён локально. Загрузится автоматически при подключении.');
-            }
-        } catch (error: any) {
-            console.error('❌ Failed to add document:', error);
-            alert(error.message || 'Не удалось загрузить файл. Попробуйте ещё раз.');
-        } finally {
-            setIsUploading(false);
+        let fileToUpload: File = file;
+        if (file.type.startsWith('image/')) {
+            const compressedBlob = await compressImage(file, 1920);
+            fileToUpload = new File([compressedBlob], file.name, { type: 'image/jpeg' });
         }
-    };
+
+        let fileUrl: string;
+        let isTemp = false;
+
+        if (!isOnline) {
+            const tempId = await offlineStorage.saveTempFile(fileToUpload);
+            fileUrl = tempId;
+            isTemp = true;
+        } else {
+            const formData = new FormData();
+            formData.append('file', fileToUpload);
+
+            const res: Response = await fetch('/api/upload/document', {
+                method: 'POST',
+                headers: { 'x-auth-token': localStorage.getItem('token') || '' },
+                body: formData
+            } as RequestInit);
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || 'Ошибка загрузки на сервер');
+            }
+
+            const uploadData = await res.json();
+            fileUrl = uploadData.fileUrl;
+        }
+
+        const newDoc: CustomerDocument = {
+            id: crypto.randomUUID() as string,
+            name: docName,  // 🔹 Имя файла
+            category: categorySelect.value as CustomerDocument['category'],
+            fileUrl,
+            fileType: (file.type.includes('pdf') ? 'pdf' : 'image') as CustomerDocument['fileType'],
+            uploadedAt: new Date().toISOString(),
+            fileSize: fileToUpload.size,
+            _isTemp: isTemp
+        };
+
+        const updatedDocs = [...(customer.documents || []), newDoc];
+        onUpdate({ ...customer, documents: updatedDocs });
+
+        fileInput.value = '';
+
+        if (isTemp) {
+            alert('📴 Файл сохранён локально. Загрузится автоматически при подключении.');
+        }
+    } catch (error: any) {
+        console.error('❌ Failed to add document:', error);
+        alert(error.message || 'Не удалось загрузить файл. Попробуйте ещё раз.');
+    } finally {
+        setIsUploading(false);
+    }
+};
 
     const handleViewDocument = (doc: CustomerDocument) => {
         if (doc.fileType === 'image') {
@@ -344,25 +345,24 @@ const DocumentsModal = ({
                     )}
 
                     <div className="border-t border-slate-100 pt-4">
-                        <details className="group">
-                            <summary className={`flex items-center gap-2 text-sm font-medium cursor-pointer list-none ${!isOnline ? 'text-slate-400' : 'text-indigo-600'}`}>
-                                <span className={`transition-transform ${!isOnline ? '' : 'group-open:rotate-90'}`}>▶</span> Добавить документ
-                            </summary>
-                            <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">
-                                <input type="text" placeholder="Название документа" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm" id="doc-name-modal" disabled={!isOnline}/>
-                                <select className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400" id="doc-category-modal" disabled={!isOnline}>
-                                    <option value="passport">🪪 Паспорт</option>
-                                    <option value="guarantor">🤝 Поручительство</option>
-                                    <option value="contract">📄 Договор</option>
-                                    <option value="photo">📷 Фото клиента</option>
-                                    <option value="other">📎 Другое</option>
-                                </select>
-                                <input type="file" accept="image/*,.pdf" className="w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 disabled:file:bg-slate-100 disabled:file:text-slate-400 disabled:file:cursor-not-allowed" id="doc-file-modal" disabled={!isOnline}/>
-                                <button type="button" onClick={handleAddDocument} disabled={!isOnline || isUploading} className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${!isOnline ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : isUploading ? 'bg-indigo-400 text-white cursor-wait' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
-                                    {isUploading ? (<><span className="animate-spin">⏳</span> Загрузка...</>) : !isOnline ? ('📴 Недоступно офлайн') : ('Прикрепить документ')}
-                                </button>
-                            </div>
-                        </details>
+                       <details className="group">
+    <summary className={`flex items-center gap-2 text-sm font-medium cursor-pointer list-none ${!isOnline ? 'text-slate-400' : 'text-indigo-600'}`}>
+        <span className={`transition-transform ${!isOnline ? '' : 'group-open:rotate-90'}`}>▶</span> Добавить документ
+    </summary>
+    <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">
+        <select className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400" id="doc-category-modal" disabled={!isOnline}>
+            <option value="passport">🪪 Паспорт</option>
+            <option value="guarantor">🤝 Поручительство</option>
+            <option value="contract">📄 Договор</option>
+            <option value="photo">📷 Фото клиента</option>
+            <option value="other">📎 Другое</option>
+        </select>
+        <input type="file" accept="image/*,.pdf" className="w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 disabled:file:bg-slate-100 disabled:file:text-slate-400 disabled:file:cursor-not-allowed" id="doc-file-modal" disabled={!isOnline}/>
+        <button type="button" onClick={handleAddDocument} disabled={!isOnline || isUploading} className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${!isOnline ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : isUploading ? 'bg-indigo-400 text-white cursor-wait' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
+            {isUploading ? (<><span className="animate-spin">⏳</span> Загрузка...</>) : !isOnline ? ('📴 Недоступно офлайн') : ('Прикрепить документ')}
+        </button>
+    </div>
+</details>
                     </div>
 
                     <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 sticky bottom-0 bg-white">
