@@ -144,7 +144,7 @@ const EditCustomerModal = ({
         </form>
         
         {/* 🔹 Футер с кнопками — всегда виден снизу */}
-        <div className="p-5 pt-3 border-t border-slate-100 flex-shrink-0 bg-white">
+        <div className="p-5 pt-3 border-t border-slate-100 flex-shrink-0 bg-white rounded-b-2xl">
             <div className="flex gap-3">
                 <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
                 <button type="submit" onClick={handleSubmit} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
