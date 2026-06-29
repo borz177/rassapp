@@ -79,70 +79,79 @@ const EditCustomerModal = ({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5 max-h-[90vh] overflow-y-auto my-4" onClick={e => e.stopPropagation()}>
-                <h3 className="text-lg font-bold text-slate-800 mb-4 sticky top-0 bg-white pb-2 z-10">Редактировать клиента</h3>
-                <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+    <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        {/* 🔹 Заголовок — всегда виден сверху */}
+        <div className="p-5 pb-3 border-b border-slate-100 flex-shrink-0">
+            <h3 className="text-lg font-bold text-slate-800">Редактировать клиента</h3>
+        </div>
+        
+        {/* 🔹 Контент формы — прокручивается */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
+            <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">ФИО</label>
+                <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} required/>
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Телефон</label>
+                <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={phone} onChange={e => setPhone(e.target.value)} required/>
+            </div>
+            <details className="group" open>
+                <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600">
+                    <span className="transition-transform group-open:rotate-90">▶</span> 📍 Адрес и паспорт
+                </summary>
+                <div className="mt-3 space-y-4 p-4 bg-slate-50 rounded-xl">
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">ФИО</label>
-                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} required/>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Адрес</label>
+                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" placeholder="г. Москва, ул. Ленина, д. 1" value={address} onChange={e => setAddress(e.target.value)}/>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Телефон</label>
-                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={phone} onChange={e => setPhone(e.target.value)} required/>
-                    </div>
-                    <details className="group" open>
-                        <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600">
-                            <span className="transition-transform group-open:rotate-90">▶</span> 📍 Адрес и паспорт
-                        </summary>
-                        <div className="mt-3 space-y-4 p-4 bg-slate-50 rounded-xl">
+                    <div className="border-t border-slate-200 pt-3">
+                        <p className="text-xs font-medium text-slate-500 mb-3">🪪 Паспортные данные <span className="font-normal text-slate-400">(необязательно)</span></p>
+                        <div className="grid grid-cols-2 gap-3">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Адрес</label>
-                                <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" placeholder="г. Москва, ул. Ленина, д. 1" value={address} onChange={e => setAddress(e.target.value)}/>
+                                <label className="block text-xs text-slate-500 mb-1">Серия</label>
+                                <input type="text" placeholder="4501" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono uppercase" value={passportSeries} onChange={e => setPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))} maxLength={4}/>
                             </div>
-                            <div className="border-t border-slate-200 pt-3">
-                                <p className="text-xs font-medium text-slate-500 mb-3">🪪 Паспортные данные <span className="font-normal text-slate-400">(необязательно)</span></p>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-xs text-slate-500 mb-1">Серия</label>
-                                        <input type="text" placeholder="4501" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono uppercase" value={passportSeries} onChange={e => setPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))} maxLength={4}/>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs text-slate-500 mb-1">Номер</label>
-                                        <input type="text" placeholder="123456" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono" value={passportNumber} onChange={e => setPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} maxLength={6}/>
-                                    </div>
-                                </div>
-                                <div className="mt-3">
-                                    <label className="block text-xs text-slate-500 mb-1">Кем выдан</label>
-                                    <input type="text" placeholder="УФМС России по г. Москве" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm" value={passportIssuedBy} onChange={e => setPassportIssuedBy(e.target.value)} maxLength={100}/>
-                                </div>
+                            <div>
+                                <label className="block text-xs text-slate-500 mb-1">Номер</label>
+                                <input type="text" placeholder="123456" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono" value={passportNumber} onChange={e => setPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} maxLength={6}/>
                             </div>
                         </div>
-                    </details>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Заметки</label>
-                        <textarea className="w-full p-3 border border-slate-200 rounded-xl outline-none resize-none" rows={3} value={notes} onChange={e => setNotes(e.target.value)}/>
-                    </div>
-                    <div className="flex items-center justify-between bg-emerald-50 p-3 rounded-xl border border-emerald-100">
-                        <div className="flex items-center gap-2">
-                            <span className="text-emerald-600">{ICONS.Send}</span>
-                            <div>
-                                <p className="text-sm font-bold text-slate-800">Напоминания WhatsApp</p>
-                                <p className="text-xs text-slate-500">Авто-отправка сообщений</p>
-                            </div>
+                        <div className="mt-3">
+                            <label className="block text-xs text-slate-500 mb-1">Кем выдан</label>
+                            <input type="text" placeholder="УФМС России по г. Москве" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm" value={passportIssuedBy} onChange={e => setPassportIssuedBy(e.target.value)} maxLength={100}/>
                         </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" checked={allowWhatsapp} onChange={() => setAllowWhatsapp(!allowWhatsapp)} className="sr-only peer"/>
-                            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-                        </label>
                     </div>
-                    <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 sticky bottom-0 bg-white">
-                        <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
-                        <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
+                </div>
+            </details>
+            <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Заметки</label>
+                <textarea className="w-full p-3 border border-slate-200 rounded-xl outline-none resize-none" rows={3} value={notes} onChange={e => setNotes(e.target.value)}/>
+            </div>
+            <div className="flex items-center justify-between bg-emerald-50 p-3 rounded-xl border border-emerald-100">
+                <div className="flex items-center gap-2">
+                    <span className="text-emerald-600">{ICONS.Send}</span>
+                    <div>
+                        <p className="text-sm font-bold text-slate-800">Напоминания WhatsApp</p>
+                        <p className="text-xs text-slate-500">Авто-отправка сообщений</p>
                     </div>
-                </form>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" checked={allowWhatsapp} onChange={() => setAllowWhatsapp(!allowWhatsapp)} className="sr-only peer"/>
+                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+            </div>
+        </form>
+        
+        {/* 🔹 Футер с кнопками — всегда виден снизу */}
+        <div className="p-5 pt-3 border-t border-slate-100 flex-shrink-0 bg-white">
+            <div className="flex gap-3">
+                <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
+                <button type="submit" onClick={handleSubmit} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
             </div>
         </div>
+    </div>
+</div>
     );
 };
 
@@ -528,7 +537,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
         const nextPayment = paymentSchedule[0];
 
         let message = `
-Здравствуйте, ${customer.name}!
+${customer.name}!
 
 Информация по договору на "${selectedSale.productName}".
 
