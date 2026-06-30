@@ -83,10 +83,9 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
   const { customer, items } = customerData;
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
-  // 🔹 ГРУППИРУЕМ по УНИКАЛЬНОЙ комбинации: sale.id + productName
+  // 🔹 ГРУППИРУЕМ по УНИКАЛЬНОЙ комбинации: saleId + productName
   const products = {};
   items.forEach(item => {
-    // Создаем уникальный ключ для каждой сделки
     const uniqueKey = `${item.saleId || ''}_${item.productName}`;
     
     if (!products[uniqueKey]) {
@@ -97,7 +96,7 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
         overdueDebt: 0,
         firstOverdueDate: null,
         originalAmount: item.originalAmount,
-        dates: [] // Храним все даты для этого товара
+        dates: []
       };
     }
     
@@ -125,31 +124,36 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
   const productEntries = Object.entries(products);
   
   for (let i = 0; i < productEntries.length; i++) {
-    const [key, data] = productEntries[i];
+    const [key, prod] = productEntries[i]; // ← используем prod вместо data
     const isLast = i === productEntries.length - 1;
     
-    productsBlock += `🔸 *${data.productName}*\n`;
+    productsBlock += `🔸 *${prod.productName}*\n`;
     
-    if (data.currentDue > 0) {
-      productsBlock += `   • К оплате: *${Math.round(data.currentDue).toLocaleString('ru-RU')} ₽*\n`;
+    if (prod.currentDue > 0) {
+      productsBlock += `   • К оплате: *${Math.round(prod.currentDue).toLocaleString('ru-RU')} ₽*\n`;
     }
     
-    if (data.overdueDebt > 0) {
-      let months = 1;
-      if (data.firstOverdueDate) {
-        months = Math.max(1,
-          (today.getFullYear() - data.firstOverdueDate.getFullYear()) * 12 +
-          (today.getMonth() - data.firstOverdueDate.getMonth()) +
-          (today.getDate() >= data.firstOverdueDate.getDate() ? 1 : 0)
-        );
+    if (prod.overdueDebt > 0) {
+      // ✅ ИСПРАВЛЕННЫЙ РАСЧЁТ МЕСЯЦЕВ ПРОСРОЧКИ
+      let months = 0;
+      if (prod.firstOverdueDate) {
+        months = (today.getFullYear() - prod.firstOverdueDate.getFullYear()) * 12 +
+                 (today.getMonth() - prod.firstOverdueDate.getMonth());
+        
+        // Если текущий день месяца ещё не наступил — минус 1 месяц
+        if (today.getDate() < prod.firstOverdueDate.getDate()) {
+          months = Math.max(0, months - 1);
+        }
       }
+      months = Math.max(1, months); // Минимум 1 месяц, если есть долг
+
       if (templateType === 'overdue') {
-        productsBlock += `   • Ежемесячный платёж: *${Math.round(data.originalAmount).toLocaleString('ru-RU')} ₽*\n`;
+        productsBlock += `   • Ежемесячный платёж: *${Math.round(prod.originalAmount).toLocaleString('ru-RU')} ₽*\n`;
       }
-      productsBlock += `   • Задолженность: *${Math.round(data.overdueDebt).toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
+      productsBlock += `   • Задолженность: *${Math.round(prod.overdueDebt).toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
     }
     
-    // Добавляем разделитель между товарами (кроме последнего)
+    // Разделитель между товарами (кроме последнего)
     if (!isLast) {
       productsBlock += '\n';
     }
@@ -172,13 +176,15 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
   // 🔹 Формируем {долг} — общая сумма долга
   const totalDebt = Object.values(products).reduce((sum, p) => sum + p.overdueDebt, 0);
 
-  // 🔹 Формируем {месяцы} — максимальное количество месяцев просрочки
- let maxMonths = 0;
-  for (const prod of Object.values(products)) { // ← заменили data на prod
+  // 🔹 Формируем {месяцы} — максимальное количество месяцев просрочки (для шаблона)
+  let maxMonths = 0;
+  for (const prod of Object.values(products)) {
     if (prod.overdueDebt > 0 && prod.firstOverdueDate) {
       let m = (today.getFullYear() - prod.firstOverdueDate.getFullYear()) * 12 +
               (today.getMonth() - prod.firstOverdueDate.getMonth());
-      if (today.getDate() < prod.firstOverdueDate.getDate()) m = Math.max(0, m - 1);
+      if (today.getDate() < prod.firstOverdueDate.getDate()) {
+        m = Math.max(0, m - 1);
+      }
       m = Math.max(1, m);
       if (m > maxMonths) maxMonths = m;
     }
@@ -206,7 +212,7 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
     .replace(/{долг_блок}/g, '')
     .replace(/{итого_блок}/g, totalBlock);
 
-  // Убираем лишние пустые строки
+  // Убираем лишние пустые строки (более 2-х подряд)
   message = message.replace(/\n{3,}/g, '\n\n').trim();
 
   return message;
