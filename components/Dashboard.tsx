@@ -1333,7 +1333,7 @@ useEffect(() => {
         {formatCurrency(totalOverdue, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
-      <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для просмотра</p>
+     
     </div>
   </div>
 
@@ -1385,7 +1385,7 @@ useEffect(() => {
         {formatCurrency(totalBuyCost, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
-      <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Общая стоимость товара</p>
+      
     </div>
   </div>
 
