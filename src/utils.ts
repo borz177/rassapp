@@ -15,12 +15,15 @@ export const formatDate = (dateString: string | undefined | null): string => {
   return date.toLocaleDateString('ru-RU');
 };
 
-
 export const getSellerPhone = (user: any): string => {
-  // Читаем актуальные настройки прямо сейчас
+  // 🔥 Читаем ПРЯМО СЕЙЧАС из localStorage
   const appSettings = JSON.parse(localStorage.getItem('appSettings') || '{}');
   
-  return user?.phone || appSettings?.sellerPhone || appSettings?.companyPhone || "+7 (___) ___-__-__";
+  // Приоритет: user.phone → appSettings.sellerPhone → appSettings.companyPhone → заглушка
+  return user?.phone || 
+         appSettings?.sellerPhone || 
+         appSettings?.companyPhone || 
+         "+7 (___) ___-__-__";
 };
 
 // Добавьте эту функцию внутри компонента или вынесите в utils

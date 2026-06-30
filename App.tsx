@@ -67,7 +67,7 @@ async function setupNativeApp() {
       // 3. Делаем статус-бар полностью прозрачным
       await StatusBar.setBackgroundColor({ color: '#00000000' });
       
-      console.log('✅ Native app configured: StatusBar overlay enabled');
+      
     } catch (e) {
       console.warn('⚠️ StatusBar setup failed:', e);
     }
@@ -203,7 +203,7 @@ const mergeServerData = <T extends { id: string }>(
     // 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ДЛЯ СОТРУДНИКОВ:
     // Если вошел сотрудник, и сервер вернул пустой массив (нет доступа), мы ОБЯЗАНЫ очистить кэш.
     if (user?.role === 'employee' && fresh.length === 0 && current.length > 0) {
-        console.log(`🧹 Очищаем локальный кэш "${collectionName}" для сотрудника (нет доступа).`);
+        
         return [];
     }
 
@@ -350,7 +350,7 @@ const handleSync = async () => {
           setAppSettings(freshData.settings);
           saveAppSettings(freshData.settings);
         }
-        console.log('✅ Fresh data loaded and merged safely');
+       
       }
     } catch (fetchErr: any) {
       console.warn('⚠️ Failed to fetch fresh data:', fetchErr.message);
@@ -441,7 +441,7 @@ useEffect(() => {
                 try {
                     const queue = await offlineStorage.getQueue();
                     if (queue.length > 0) {
-                        console.log(`📦 Применяем ${queue.length} элементов из офлайн-очереди при старте...`);
+                        
                         for (const item of queue) {
                             if (!item.collection || !cachedData[item.collection]) continue;
                             
@@ -537,7 +537,7 @@ useEffect(() => {
                 setAppSettings(freshData.settings);
                 saveAppSettings(freshData.settings);
               }
-              console.log('✅ Фоновая синхронизация успешно завершена');
+             
             }
           }
         } catch (err: any) {
@@ -1144,7 +1144,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
         };
         const savedExpense = await api.saveItem('expenses', buyPriceExpense);
         updateList(setExpenses, savedExpense);
-        console.log('✅ Расход закупа создан:', savedExpense.id);
+       
       } catch (e: any) {
         console.warn('⚠️ Расход закупа не создан (будет создан при синхронизации):', e.message);
         // 🔹 НЕ прерываем выполнение — договор уже сохранён
@@ -1159,7 +1159,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
           const updatedProd = { ...prod, stock: prod.stock - 1 };
           const savedProd = await api.saveItem('products', updatedProd);
           updateList(setProducts, savedProd);
-          console.log('✅ Остаток товара обновлён');
+         
         }
       } catch (e: any) {
         console.warn('⚠️ Остаток товара не обновлён:', e.message);
@@ -1235,7 +1235,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
           isRefund: false
         };
         updateList(setExpenses, buyPriceExpense);
-        console.log('💾 Расход закупа сохранён локально');
+        
       }
       
       // 🔹 🔑 ОБНОВЛЯЕМ ОСТАТОК ТОВАРА ЛОКАЛЬНО
@@ -1244,7 +1244,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
         if (prod) {
           const updatedProd = { ...prod, stock: prod.stock - 1 };
           updateList(setProducts, updatedProd);
-          console.log('💾 Остаток товара обновлён локально');
+          
         }
       }
       
@@ -1683,7 +1683,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
       // 🔹 3. 🗑️ УДАЛЯЕМ СТАРОГО ИНВЕСТОРА С СЕРВЕРА (КРИТИЧНО!)
       try {
         await api.deleteItem('investors', oldInvestorId);
-        console.log(`🗑️ Старый инвестор ${oldInvestorId} удалён`);
+       
       } catch (delErr) {
         console.warn('⚠️ Не удалось удалить старого инвестора:', delErr);
       }

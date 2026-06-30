@@ -20,15 +20,22 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onBack, onLogo
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const handleProfileSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onUpdateProfile({ name, email, phone });
-     const settings = getAppSettings();
-    if (settings) {
-        settings.sellerPhone = phone;
-        localStorage.setItem('appSettings', JSON.stringify(settings));
-    }
-
+  e.preventDefault();
+  onUpdateProfile({ name, email, phone });
+  
+  // 🔥 ЧИТАЕМ текущие настройки ИЛИ создаём пустой объект
+  const existingSettings = JSON.parse(localStorage.getItem('appSettings') || '{}');
+  
+  // 🔥 СОХРАНЯЕМ телефон
+  const updatedSettings = {
+    ...existingSettings,
+    sellerPhone: phone
   };
+  
+  localStorage.setItem('appSettings', JSON.stringify(updatedSettings));
+  
+  alert("✅ Профиль обновлён!");
+};
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
       e.preventDefault();

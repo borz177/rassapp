@@ -578,11 +578,7 @@ if (initialData.id && initialData.paymentPlan) {
   // === renderContractContent (Скрытый рендер для PDF) ===
   const renderContractContent = () => {
 
-    console.log('🔍 Debug sellerPhone:', {
-  userPhone: user?.phone,
-  localStorage: JSON.parse(localStorage.getItem('appSettings') || '{}')?.sellerPhone,
-  final: getSellerPhone(user)
-});
+
     if (!createdSale || !selectedCustomer) return null;
     const sale = createdSale;
     const companyName = appSettings?.companyName || "Компания";
