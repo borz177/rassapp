@@ -595,21 +595,29 @@ useEffect(() => {
         const allowedCustomerIds = new Set(filteredSales.map(s => s.customerId));
         setCustomers(prev => prev.filter(c => allowedCustomerIds.has(c.id)));
     }
-}, [user, accounts, sales]); // 🔥 Важно: accounts и sales в зависимостях!
+}, [user, accounts, sales]); 
+
+
+
+
+
+
+
+
 
 
 //для модалки сообщения
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v7';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v8';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
   const now = Date.now();
 
   if (!lastShown || now - Number(lastShown) >= FIVE_HOURS) {
-    setShowTemplateUpdateModal(false);
+    setShowTemplateUpdateModal(true);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
@@ -3181,84 +3189,35 @@ if (!user && !showSplash) {
 
 {showTemplateUpdateModal && (
   <div
-    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
     onClick={() => setShowTemplateUpdateModal(false)}
   >
     <div
-      className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
+      className="bg-white w-full max-w-xs rounded-2xl shadow-xl p-6 text-center animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
-      {/* Шапка */}
-      <div className="relative bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 p-8 text-white overflow-hidden">
-        {/* Декоративные круги */}
-        <div className="absolute -top-10 -right-10 w-40 h-40 bg-indigo-500/20 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-emerald-500/20 rounded-full blur-3xl"></div>
-        
-        <div className="relative z-10">
-          <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-4xl shadow-2xl shadow-emerald-500/50">
-            💰
-          </div>
-          <h3 className="text-2xl font-bold text-center mb-2">
-            Прибыль за месяц
-          </h3>
-         
-        </div>
+      <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center text-2xl">
+        ⚙️
       </div>
 
-      {/* Контент */}
-      <div className="p-6 space-y-4">
-        <div className="space-y-3">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center text-sm font-bold">
-              ✓
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800 text-sm">Ожидаемая прибыль</p>
-              <p className="text-xs text-slate-500 mt-0.5">Сколько вы заработаете от платежей этого месяца</p>
-            </div>
-          </div>
+      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        Ведутся технические работы
+      </h3>
+      
+      <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+        Возможны кратковременные сбои.
+      </p>
 
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">
-              ✓
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800 text-sm">Полученная прибыль</p>
-              <p className="text-xs text-slate-500 mt-0.5">Реальный доход от оплат в этом месяце</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-bold">
-              ✓
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800 text-sm">Детализация по клиентам</p>
-              <p className="text-xs text-slate-500 mt-0.5">Нажмите на карточку — увидите кто платил, а кто нет</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Подсказка */}
-        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-3 border border-indigo-100">
-          <p className="text-xs text-indigo-700 text-center font-medium">
-            💡 Нажмите на карточку прибыли, чтобы увидеть детали по каждому договору
-          </p>
-        </div>
-      </div>
-
-      {/* Кнопка */}
-      <div className="px-6 pb-6">
-        <button
-          onClick={() => setShowTemplateUpdateModal(false)}
-          className="w-full py-3.5 bg-gradient-to-r from-slate-900 to-indigo-900 text-white text-sm font-bold rounded-xl hover:from-slate-800 hover:to-indigo-800 active:scale-[0.98] transition-all shadow-lg shadow-slate-300"
-        >
-          Понятно, начать использовать 🚀
-        </button>
-      </div>
+      <button
+        onClick={() => setShowTemplateUpdateModal(false)}
+        className="w-full py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 active:scale-[0.98] transition-all"
+      >
+        Хорошо
+      </button>
     </div>
   </div>
 )}
+
 
 
   </Layout>
