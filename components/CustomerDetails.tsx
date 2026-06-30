@@ -171,9 +171,55 @@ const DocumentsModal = ({
     const [selectedDocument, setSelectedDocument] = useState<CustomerDocument | null>(null);
     const [isClosing, setIsClosing] = useState(false);
 
+    // 🔹 Drag-to-dismiss
+    const [dragY, setDragY] = useState(0);
+    const [isDragging, setIsDragging] = useState(false);
+    const touchStartY = React.useRef<number | null>(null);
+    const touchStartTime = React.useRef<number>(0);
+    const sheetRef = React.useRef<HTMLDivElement>(null);
+
     const handleClose = () => {
         setIsClosing(true);
-        setTimeout(onClose, 280); // должно совпадать с длительностью slide-down-sheet
+        setTimeout(onClose, 280); // совпадает с длительностью slide-down-sheet
+    };
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        // Не начинаем драг, если внутри списка идёт скролл не с самого верха
+        if (sheetRef.current && sheetRef.current.scrollTop > 0) return;
+        touchStartY.current = e.touches[0].clientY;
+        touchStartTime.current = Date.now();
+        setIsDragging(true);
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        if (touchStartY.current === null) return;
+        const delta = e.touches[0].clientY - touchStartY.current;
+        if (delta > 0) {
+            // тянем только вниз, наверх не пускаем (resistance = 1 для естественности)
+            setDragY(delta);
+            // блокируем скролл страницы, пока тянем шторку
+            if (delta > 5) e.preventDefault();
+        }
+    };
+
+    const handleTouchEnd = () => {
+        if (touchStartY.current === null) return;
+        const elapsed = Date.now() - touchStartTime.current;
+        const velocity = dragY / Math.max(elapsed, 1); // px/ms
+
+        const shouldClose = dragY > 120 || velocity > 0.5;
+
+        touchStartY.current = null;
+        setIsDragging(false);
+
+        if (shouldClose) {
+            // плавно доезжаем вниз и закрываем
+            setDragY(window.innerHeight);
+            setTimeout(onClose, 200);
+        } else {
+            // пружинисто возвращаем на место
+            setDragY(0);
+        }
     };
 
     const formatFileSize = (bytes: number): string => {
@@ -185,84 +231,83 @@ const DocumentsModal = ({
     };
 
     const handleAddDocument = async () => {
-    const categorySelect = document.getElementById('doc-category-modal') as HTMLSelectElement;
-    const fileInput = document.getElementById('doc-file-modal') as HTMLInputElement;
+        const categorySelect = document.getElementById('doc-category-modal') as HTMLSelectElement;
+        const fileInput = document.getElementById('doc-file-modal') as HTMLInputElement;
 
-    if (!fileInput.files?.[0]) {
-        alert('Выберите файл');
-        return;
-    }
-
-    setIsUploading(true);
-
-    try {
-        const file = fileInput.files[0];
-        if (file.size > 5 * 1024 * 1024) {
-            alert('Файл слишком большой. Максимальный размер: 5 МБ');
+        if (!fileInput.files?.[0]) {
+            alert('Выберите файл');
             return;
         }
 
-        // 🔹 Используем имя файла как название документа
-        const docName = file.name;
+        setIsUploading(true);
 
-        let fileToUpload: File = file;
-        if (file.type.startsWith('image/')) {
-            const compressedBlob = await compressImage(file, 1920);
-            fileToUpload = new File([compressedBlob], file.name, { type: 'image/jpeg' });
-        }
-
-        let fileUrl: string;
-        let isTemp = false;
-
-        if (!isOnline) {
-            const tempId = await offlineStorage.saveTempFile(fileToUpload);
-            fileUrl = tempId;
-            isTemp = true;
-        } else {
-            const formData = new FormData();
-            formData.append('file', fileToUpload);
-
-            const res: Response = await fetch('/api/upload/document', {
-                method: 'POST',
-                headers: { 'x-auth-token': localStorage.getItem('token') || '' },
-                body: formData
-            } as RequestInit);
-
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.error || 'Ошибка загрузки на сервер');
+        try {
+            const file = fileInput.files[0];
+            if (file.size > 5 * 1024 * 1024) {
+                alert('Файл слишком большой. Максимальный размер: 5 МБ');
+                return;
             }
 
-            const uploadData = await res.json();
-            fileUrl = uploadData.fileUrl;
+            const docName = file.name;
+
+            let fileToUpload: File = file;
+            if (file.type.startsWith('image/')) {
+                const compressedBlob = await compressImage(file, 1920);
+                fileToUpload = new File([compressedBlob], file.name, { type: 'image/jpeg' });
+            }
+
+            let fileUrl: string;
+            let isTemp = false;
+
+            if (!isOnline) {
+                const tempId = await offlineStorage.saveTempFile(fileToUpload);
+                fileUrl = tempId;
+                isTemp = true;
+            } else {
+                const formData = new FormData();
+                formData.append('file', fileToUpload);
+
+                const res: Response = await fetch('/api/upload/document', {
+                    method: 'POST',
+                    headers: { 'x-auth-token': localStorage.getItem('token') || '' },
+                    body: formData
+                } as RequestInit);
+
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.error || 'Ошибка загрузки на сервер');
+                }
+
+                const uploadData = await res.json();
+                fileUrl = uploadData.fileUrl;
+            }
+
+            const newDoc: CustomerDocument = {
+                id: crypto.randomUUID() as string,
+                name: docName,
+                category: categorySelect.value as CustomerDocument['category'],
+                fileUrl,
+                fileType: (file.type.includes('pdf') ? 'pdf' : 'image') as CustomerDocument['fileType'],
+                uploadedAt: new Date().toISOString(),
+                fileSize: fileToUpload.size,
+                _isTemp: isTemp
+            };
+
+            const updatedDocs = [...(customer.documents || []), newDoc];
+            onUpdate({ ...customer, documents: updatedDocs });
+
+            fileInput.value = '';
+
+            if (isTemp) {
+                alert('📴 Файл сохранён локально. Загрузится автоматически при подключении.');
+            }
+        } catch (error: any) {
+            console.error('❌ Failed to add document:', error);
+            alert(error.message || 'Не удалось загрузить файл. Попробуйте ещё раз.');
+        } finally {
+            setIsUploading(false);
         }
-
-        const newDoc: CustomerDocument = {
-            id: crypto.randomUUID() as string,
-            name: docName,  // 🔹 Имя файла
-            category: categorySelect.value as CustomerDocument['category'],
-            fileUrl,
-            fileType: (file.type.includes('pdf') ? 'pdf' : 'image') as CustomerDocument['fileType'],
-            uploadedAt: new Date().toISOString(),
-            fileSize: fileToUpload.size,
-            _isTemp: isTemp
-        };
-
-        const updatedDocs = [...(customer.documents || []), newDoc];
-        onUpdate({ ...customer, documents: updatedDocs });
-
-        fileInput.value = '';
-
-        if (isTemp) {
-            alert('📴 Файл сохранён локально. Загрузится автоматически при подключении.');
-        }
-    } catch (error: any) {
-        console.error('❌ Failed to add document:', error);
-        alert(error.message || 'Не удалось загрузить файл. Попробуйте ещё раз.');
-    } finally {
-        setIsUploading(false);
-    }
-};
+    };
 
     const handleViewDocument = (doc: CustomerDocument) => {
         if (doc.fileType === 'image') {
@@ -270,18 +315,28 @@ const DocumentsModal = ({
         }
     };
 
+    // 🔹 Итоговый transform: либо живой драг, либо CSS-анимация
+    const sheetStyle: React.CSSProperties = isDragging || dragY > 0
+        ? { transform: `translateY(${dragY}px)`, transition: isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.32,0.72,0,1)' }
+        : {};
+
     return (
         <>
             <div
-                className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+                className={`fixed inset-0 z-100 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
                 onClick={handleClose}
             >
                 <div
-                    className={`bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-xl p-5 pt-2 max-h-[88vh] overflow-y-auto ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+                    ref={sheetRef}
+                    className={`bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-xl p-5 pt-2 max-h-[88vh] overflow-y-auto overscroll-contain ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+                    style={sheetStyle}
                     onClick={e => e.stopPropagation()}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
                 >
-                    {/* 🔹 Ручка как в Telegram, только на мобильных */}
-                    <div className="flex justify-center pb-3 -mx-5 sticky top-0 bg-white sm:hidden">
+                    {/* 🔹 Ручка как в Telegram — основная зона захвата для свайпа */}
+                    <div className="flex justify-center pb-3 -mx-5 sticky top-0 bg-white sm:hidden cursor-grab active:cursor-grabbing">
                         <div className="w-10 h-1.5 bg-slate-300 rounded-full mt-2"/>
                     </div>
 
@@ -372,23 +427,23 @@ const DocumentsModal = ({
 
                     <div className="border-t border-slate-100 pt-4">
                        <details className="group">
-    <summary className={`flex items-center gap-2 text-sm font-medium cursor-pointer list-none ${!isOnline ? 'text-slate-400' : 'text-indigo-600'}`}>
-        <span className={`transition-transform ${!isOnline ? '' : 'group-open:rotate-90'}`}>▶</span> Добавить документ
-    </summary>
-    <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">
-        <select className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400" id="doc-category-modal" disabled={!isOnline}>
-            <option value="passport">🪪 Паспорт</option>
-            <option value="guarantor">🤝 Поручительство</option>
-            <option value="contract">📄 Договор</option>
-            <option value="photo">📷 Фото клиента</option>
-            <option value="other">📎 Другое</option>
-        </select>
-        <input type="file" accept="image/*,.pdf" className="w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 disabled:file:bg-slate-100 disabled:file:text-slate-400 disabled:file:cursor-not-allowed" id="doc-file-modal" disabled={!isOnline}/>
-        <button type="button" onClick={handleAddDocument} disabled={!isOnline || isUploading} className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${!isOnline ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : isUploading ? 'bg-indigo-400 text-white cursor-wait' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
-            {isUploading ? (<><span className="animate-spin">⏳</span> Загрузка...</>) : !isOnline ? ('📴 Недоступно офлайн') : ('Прикрепить документ')}
-        </button>
-    </div>
-</details>
+                            <summary className={`flex items-center gap-2 text-sm font-medium cursor-pointer list-none ${!isOnline ? 'text-slate-400' : 'text-indigo-600'}`}>
+                                <span className={`transition-transform ${!isOnline ? '' : 'group-open:rotate-90'}`}>▶</span> Добавить документ
+                            </summary>
+                            <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">
+                                <select className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400" id="doc-category-modal" disabled={!isOnline}>
+                                    <option value="passport">🪪 Паспорт</option>
+                                    <option value="guarantor">🤝 Поручительство</option>
+                                    <option value="contract">📄 Договор</option>
+                                    <option value="photo">📷 Фото клиента</option>
+                                    <option value="other">📎 Другое</option>
+                                </select>
+                                <input type="file" accept="image/*,.pdf" className="w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 disabled:file:bg-slate-100 disabled:file:text-slate-400 disabled:file:cursor-not-allowed" id="doc-file-modal" disabled={!isOnline}/>
+                                <button type="button" onClick={handleAddDocument} disabled={!isOnline || isUploading} className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${!isOnline ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : isUploading ? 'bg-indigo-400 text-white cursor-wait' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
+                                    {isUploading ? (<><span className="animate-spin">⏳</span> Загрузка...</>) : !isOnline ? ('📴 Недоступно офлайн') : ('Прикрепить документ')}
+                                </button>
+                            </div>
+                        </details>
                     </div>
 
                     <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 sticky bottom-0 bg-white">
