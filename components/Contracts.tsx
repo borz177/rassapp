@@ -44,6 +44,13 @@ const ContractInfoModal = ({
   const [showConfirmReminder, setShowConfirmReminder] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
+
+  const [isClosing, setIsClosing] = useState(false);
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(onClose, 280);
+  };
+
   const planPayments = sale.paymentPlan.filter(p => !p.isRealPayment);
 const realPayments = sale.paymentPlan.filter(p => p.isRealPayment && p.isPaid);
 
@@ -150,13 +157,13 @@ const handleSendReminder = async () => {
   }
 };
 
-  return createPortal(
+   return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
+      className={`fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+      onClick={handleClose}
     >
       <div
-        className="bg-white w-full sm:max-w-sm sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+        className={`bg-white w-full sm:max-w-sm sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
         onClick={e => e.stopPropagation()}
       >
         {/* 🔥 ШАПКА С КНОПКОЙ «НАПОМНИТЬ» */}
@@ -232,22 +239,16 @@ const handleSendReminder = async () => {
 
         {/* 🔘 НИЖНИЕ КНОПКИ: Позвонить / WhatsApp */}
         <div className="p-3 bg-slate-50 border-t border-slate-100 flex gap-2 shrink-0">
-          <button
-            onClick={handleCall}
-            className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
-          >
+          <button onClick={handleCall} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
             <Phone size={16} /> Позвонить
           </button>
-          <button
-            onClick={handleWhatsApp}
-            className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
-          >
+          <button onClick={handleWhatsApp} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
             <Phone size={16} /> WhatsApp
           </button>
         </div>
 
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="py-3 text-slate-400 text-sm hover:text-slate-600 hover:bg-slate-50 transition-colors shrink-0"
         >
           Закрыть
@@ -336,6 +337,7 @@ const Contracts: React.FC<ContractsProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterAccountId, setFilterAccountId] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [isMenuClosing, setIsMenuClosing] = useState(false);
   const [deletingSale, setDeletingSale] = useState<Sale | null>(null);
   const [selectedSaleForInfo, setSelectedSaleForInfo] = useState<Sale | null>(null);
   const [currentMenuSale, setCurrentMenuSale] = useState<Sale | null>(null);
@@ -421,13 +423,25 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
 
 
 
-  const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
-  e.stopPropagation();
 
-  if (activeMenuId === sale.id) {
+const closeActionMenu = (after?: () => void) => {
+  setIsMenuClosing(true);
+  setTimeout(() => {
     setActiveMenuId(null);
     setCurrentMenuSale(null);
     setMenuPosition(null);
+    setIsMenuClosing(false);
+    after?.();
+  }, 250);
+};
+
+
+
+const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
+  e.stopPropagation();
+
+  if (activeMenuId === sale.id) {
+    closeActionMenu();
     return;
   }
 
@@ -665,19 +679,16 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
   return createPortal(
     <>
       <div
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9998] animate-fade-in"
-        onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+        className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9998] ${isMenuClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+        onClick={() => closeActionMenu()}
       />
 
       {isMobile ? (
-        <div className="fixed left-0 right-0 bottom-0 z-[9999] animate-slide-up">
+        <div className={`fixed left-0 right-0 bottom-0 z-[9999] ${isMenuClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}>
           <div className="bg-white rounded-t-3xl shadow-2xl w-full mx-auto overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
               <span className="text-sm font-semibold text-slate-700">Действия</span>
-              <button
-                onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-                className="p-1 text-slate-400 hover:text-slate-600"
-              >
+              <button onClick={() => closeActionMenu()} className="p-1 text-slate-400 hover:text-slate-600">
                 <X size={20} />
               </button>
             </div>
@@ -689,7 +700,7 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
 
             <div className="py-2">
               <button
-                onClick={() => { setSelectedSaleForInfo(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+                onClick={() => closeActionMenu(() => setSelectedSaleForInfo(currentMenuSale))}
                 className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
               >
                 <span className="text-blue-500"><FileText size={18} /></span>
@@ -697,50 +708,47 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
               </button>
 
               <button
-                onClick={() => { onViewSchedule(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+                onClick={() => closeActionMenu(() => onViewSchedule(currentMenuSale))}
                 className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
               >
                 <span className="text-indigo-500"><Calendar size={18} /></span>
                 <span>График платежей</span>
               </button>
 
-              {/* 🔹 ДОБАВЛЕНО: Кнопка редактирования в мобильном меню */}
-             {/* 🔥 Кнопка редактирования - скрываем если нет прав canEdit */}
-{(!isEmployee || user?.permissions?.canEdit) && (
-    <button
-        onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-        className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-    >
-        <span className="text-slate-500"><Edit3 size={18} /></span>
-        <span>Редактировать</span>
-    </button>
-)}
+              {(!isEmployee || user?.permissions?.canEdit) && (
+                <button
+                  onClick={() => closeActionMenu(() => onEditSale(currentMenuSale))}
+                  className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+                >
+                  <span className="text-slate-500"><Edit3 size={18} /></span>
+                  <span>Редактировать</span>
+                </button>
+              )}
 
-<button
-    onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-    className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
->
-    <span className="text-slate-500"><Printer size={18} /></span>
-    <span>Печать договора</span>
-</button>
-</div>
+              <button
+                onClick={() => closeActionMenu(() => printContract(currentMenuSale))}
+                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+              >
+                <span className="text-slate-500"><Printer size={18} /></span>
+                <span>Печать договора</span>
+              </button>
+            </div>
 
-<div className="border-t border-slate-100 py-2">
-    {/* 🔥 Кнопка удаления - скрываем если нет прав canDelete */}
-    {(!isEmployee || user?.permissions?.canDelete) && (
-        <button
-            onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-            className="w-full text-left px-4 py-3.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
-        >
-            <span className="text-red-500"><Trash2 size={18} /></span>
-            <span>Удалить договор</span>
-        </button>
-    )}
-</div>
+            <div className="border-t border-slate-100 py-2">
+              {(!isEmployee || user?.permissions?.canDelete) && (
+                <button
+                  onClick={() => closeActionMenu(() => setDeletingSale(currentMenuSale))}
+                  className="w-full text-left px-4 py-3.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                >
+                  <span className="text-red-500"><Trash2 size={18} /></span>
+                  <span>Удалить договор</span>
+                </button>
+              )}
+            </div>
 
             <div className="px-4 pb-4 pt-2">
               <button
-                onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
+                onClick={() => closeActionMenu()}
                 className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition-colors"
               >
                 Отмена
@@ -751,10 +759,7 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
       ) : (
         <div
           className="fixed z-[9999] bg-white rounded-2xl shadow-2xl w-64 overflow-hidden animate-scale-in border border-slate-100 max-h-[85vh] overflow-y-auto"
-          style={{
-            top: `${menuPosition?.top ?? 0}px`,
-            left: `${menuPosition?.left ?? 0}px`
-          }}
+          style={{ top: `${menuPosition?.top ?? 0}px`, left: `${menuPosition?.left ?? 0}px` }}
           onClick={e => e.stopPropagation()}
         >
           <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
@@ -817,35 +822,31 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
   );
 };
 
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && activeMenuId) {
-        setActiveMenuId(null);
-        setCurrentMenuSale(null);
-        setMenuPosition(null);
-      }
-    };
-
-    const handleClickOutside = (e: MouseEvent) => {
-      if (activeMenuId && !(e.target as HTMLElement).closest('[aria-label="Меню"]')) {
-        setActiveMenuId(null);
-        setCurrentMenuSale(null);
-        setMenuPosition(null);
-      }
-    };
-
-    if (activeMenuId) {
-      document.addEventListener('keydown', handleEscape);
-      document.addEventListener('click', handleClickOutside);
-      document.body.style.overflow = 'hidden';
+useEffect(() => {
+  const handleEscape = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && activeMenuId) {
+      closeActionMenu();
     }
+  };
 
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-      document.removeEventListener('click', handleClickOutside);
-      document.body.style.overflow = '';
-    };
-  }, [activeMenuId]);
+  const handleClickOutside = (e: MouseEvent) => {
+    if (activeMenuId && !(e.target as HTMLElement).closest('[aria-label="Меню"]')) {
+      closeActionMenu();
+    }
+  };
+
+  if (activeMenuId) {
+    document.addEventListener('keydown', handleEscape);
+    document.addEventListener('click', handleClickOutside);
+    document.body.style.overflow = 'hidden';
+  }
+
+  return () => {
+    document.removeEventListener('keydown', handleEscape);
+    document.removeEventListener('click', handleClickOutside);
+    document.body.style.overflow = '';
+  };
+}, [activeMenuId]);
 
   return (
     <div className="space-y-4 pb-20 w-full max-w-5xl mx-auto px-3 sm:px-4" onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}>
