@@ -952,6 +952,10 @@ const dashboardStats = useMemo(() => {
 
   const handleAction = (action: string) => {
       switch (action) {
+        case 'VIEW_OVERDUE':  // ← НОВОЕ: переход на просроченные договоры
+            setActiveContractTab('OVERDUE');
+            setCurrentView('CONTRACTS');
+            break;
           case 'CREATE_SALE': setDraftSaleData({}); setEditingSale(null); setCurrentView('CREATE_SALE'); break;
           case 'INCOME': setDraftSaleData({}); setCurrentView('CREATE_INCOME'); break;
           case 'EXPENSE': setCurrentView('CREATE_EXPENSE'); break;
