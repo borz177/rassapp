@@ -83,25 +83,33 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
   const { customer, items } = customerData;
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
-  // Группируем по товарам
+  // 🔹 ГРУППИРУЕМ по УНИКАЛЬНОЙ комбинации: sale.id + productName
   const products = {};
   items.forEach(item => {
-    if (!products[item.productName]) {
-      products[item.productName] = {
+    // Создаем уникальный ключ для каждой сделки
+    const uniqueKey = `${item.saleId || ''}_${item.productName}`;
+    
+    if (!products[uniqueKey]) {
+      products[uniqueKey] = {
+        productName: item.productName,
+        saleId: item.saleId,
         currentDue: 0,
         overdueDebt: 0,
         firstOverdueDate: null,
-        originalAmount: item.originalAmount
+        originalAmount: item.originalAmount,
+        dates: [] // Храним все даты для этого товара
       };
     }
+    
     if (item.diffDays >= 0) {
-      products[item.productName].currentDue += item.remaining;
+      products[uniqueKey].currentDue += item.remaining;
     } else {
-      products[item.productName].overdueDebt += item.remaining;
-      if (!products[item.productName].firstOverdueDate || item.dateObj < products[item.productName].firstOverdueDate) {
-        products[item.productName].firstOverdueDate = item.dateObj;
+      products[uniqueKey].overdueDebt += item.remaining;
+      if (!products[uniqueKey].firstOverdueDate || item.dateObj < products[uniqueKey].firstOverdueDate) {
+        products[uniqueKey].firstOverdueDate = item.dateObj;
       }
     }
+    products[uniqueKey].dates.push(item.date);
   });
 
   // Выбираем шаблон
@@ -112,14 +120,20 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
   const hasAnyOverdue = Object.values(products).some(p => p.overdueDebt > 0);
   const productsWithDue = Object.values(products).filter(p => p.currentDue > 0).length;
 
-  // 🔹 Формируем {товары_блок} — ПОЛНЫЙ блок со ВСЕМИ товарами
+  // 🔹 Формируем {товары_блок} — КАЖДЫЙ ТОВАР В ОТДЕЛЬНОЙ СТРОКЕ
   let productsBlock = '';
-  for (const [name, data] of Object.entries(products)) {
-    productsBlock += `🔸 *${name}*\n`;
+  const productEntries = Object.entries(products);
+  
+  for (let i = 0; i < productEntries.length; i++) {
+    const [key, data] = productEntries[i];
+    const isLast = i === productEntries.length - 1;
+    
+    productsBlock += `🔸 *${data.productName}*\n`;
+    
     if (data.currentDue > 0) {
-      // 🔹 Math.round() делает число целым
       productsBlock += `   • К оплате: *${Math.round(data.currentDue).toLocaleString('ru-RU')} ₽*\n`;
     }
+    
     if (data.overdueDebt > 0) {
       let months = 1;
       if (data.firstOverdueDate) {
@@ -134,13 +148,16 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
       }
       productsBlock += `   • Задолженность: *${Math.round(data.overdueDebt).toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
     }
-    productsBlock += '\n';
+    
+    // Добавляем разделитель между товарами (кроме последнего)
+    if (!isLast) {
+      productsBlock += '\n';
+    }
   }
   productsBlock = productsBlock.trim();
 
   // 🔹 Формируем {товар} — список всех названий через запятую
-  const productNames = Object.keys(products).join(', ');
-
+  const productNames = Object.values(products).map(p => p.productName).join(', ');
 
   // 🔹 Формируем {дата}
   let targetDateStr = '';
@@ -152,7 +169,7 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
     }
   }
 
-  // 🔹 Формируем {долг} — общая сумма долга (целое число)
+  // 🔹 Формируем {долг} — общая сумма долга
   const totalDebt = Object.values(products).reduce((sum, p) => sum + p.overdueDebt, 0);
 
   // 🔹 Формируем {месяцы} — максимальное количество месяцев просрочки
@@ -174,28 +191,27 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
     totalBlock = `💰 *ИТОГО К ОПЛАТЕ: ${Math.round(totalToPay).toLocaleString('ru-RU')} ₽*`;
   }
 
-  // 🔹 Формируем {сумма} — общая сумма (целое число)
+  // 🔹 Формируем {сумма}
   const totalAmount = Math.round(totalToPay).toLocaleString('ru-RU');
 
   // 🔹 Подставляем переменные в шаблон
   let message = template
-  .replace(/{имя}/g, customer.name || 'Клиент')
-  .replace(/{товар}/g, productNames)
-  .replace(/{сумма}/g, totalAmount)
-  .replace(/{дата}/g, targetDateStr)
-  .replace(/{долг}/g, Math.round(totalDebt).toLocaleString('ru-RU'))
-  .replace(/{месяцы}/g, maxMonths.toString())
-  .replace(/{итого}/g, Math.round(totalToPay).toLocaleString('ru-RU'))
-  .replace(/{товары_блок}/g, productsBlock)
-  .replace(/{долг_блок}/g, '')
-  .replace(/{итого_блок}/g, totalBlock);
+    .replace(/{имя}/g, customer.name || 'Клиент')
+    .replace(/{товар}/g, productNames)
+    .replace(/{сумма}/g, totalAmount)
+    .replace(/{дата}/g, targetDateStr)
+    .replace(/{долг}/g, Math.round(totalDebt).toLocaleString('ru-RU'))
+    .replace(/{месяцы}/g, maxMonths.toString())
+    .replace(/{итого}/g, Math.round(totalToPay).toLocaleString('ru-RU'))
+    .replace(/{товары_блок}/g, productsBlock)
+    .replace(/{долг_блок}/g, '')
+    .replace(/{итого_блок}/g, totalBlock);
 
-  // Убираем лишние пустые строки (более 2-х подряд)
+  // Убираем лишние пустые строки
   message = message.replace(/\n{3,}/g, '\n\n').trim();
 
   return message;
 }
-
 async function processRemindersForUser(user) {
   const { id, whatsapp_settings } = user;
 
@@ -276,6 +292,7 @@ async function processRemindersForUser(user) {
       }
 
       clientData.items.push({
+        saleId: sale.id,
         productName: sale.productName,
         date: p.date,
         remaining: p.remaining,
