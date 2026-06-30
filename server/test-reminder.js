@@ -63,29 +63,38 @@ function calculateSalePaymentStates(sale) {
   return scheduled.filter(p => p.remaining > 0.01);
 }
 
+// 🔹 ИСПРАВЛЕННАЯ ФУНКЦИЯ: каждый товар в отдельной строке
 function buildConsolidatedMessage(customerData, totalToPay, templates, templateType) {
   const { customer, items } = customerData;
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
-  // Группируем по товарам
+  // 🔹 ГРУППИРУЕМ по УНИКАЛЬНОЙ комбинации: saleId + productName
   const products = {};
   items.forEach(item => {
-    if (!products[item.productName]) {
-      products[item.productName] = {
+    // Создаем уникальный ключ для каждой сделки + товара
+    const uniqueKey = `${item.saleId || 'unknown'}_${item.productName}`;
+    
+    if (!products[uniqueKey]) {
+      products[uniqueKey] = {
+        productName: item.productName,
+        saleId: item.saleId,
         currentDue: 0,
         overdueDebt: 0,
         firstOverdueDate: null,
-        originalAmount: item.originalAmount
+        originalAmount: item.originalAmount,
+        dates: []
       };
     }
+    
     if (item.diffDays >= 0) {
-      products[item.productName].currentDue += item.remaining;
+      products[uniqueKey].currentDue += item.remaining;
     } else {
-      products[item.productName].overdueDebt += item.remaining;
-      if (!products[item.productName].firstOverdueDate || item.dateObj < products[item.productName].firstOverdueDate) {
-        products[item.productName].firstOverdueDate = item.dateObj;
+      products[uniqueKey].overdueDebt += item.remaining;
+      if (!products[uniqueKey].firstOverdueDate || item.dateObj < products[uniqueKey].firstOverdueDate) {
+        products[uniqueKey].firstOverdueDate = item.dateObj;
       }
     }
+    products[uniqueKey].dates.push(item.date);
   });
 
   // Выбираем шаблон
@@ -96,14 +105,20 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
   const hasAnyOverdue = Object.values(products).some(p => p.overdueDebt > 0);
   const productsWithDue = Object.values(products).filter(p => p.currentDue > 0).length;
 
-  // 🔹 Формируем {товары_блок} — ПОЛНЫЙ блок со ВСЕМИ товарами
+  // 🔹 Формируем {товары_блок} — КАЖДЫЙ ТОВАР В ОТДЕЛЬНОЙ СТРОКЕ
   let productsBlock = '';
-  for (const [name, data] of Object.entries(products)) {
-    productsBlock += `🔸 *${name}*\n`;
+  const productEntries = Object.entries(products);
+  
+  for (let i = 0; i < productEntries.length; i++) {
+    const [key, data] = productEntries[i];
+    const isLast = i === productEntries.length - 1;
+    
+    productsBlock += `🔸 *${data.productName}*\n`;
+    
     if (data.currentDue > 0) {
-      // 🔹 Math.round() делает число целым
       productsBlock += `   • К оплате: *${Math.round(data.currentDue).toLocaleString('ru-RU')} ₽*\n`;
     }
+    
     if (data.overdueDebt > 0) {
       let months = 1;
       if (data.firstOverdueDate) {
@@ -118,13 +133,16 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
       }
       productsBlock += `   • Задолженность: *${Math.round(data.overdueDebt).toLocaleString('ru-RU')} ₽* (${months} мес.)\n`;
     }
-    productsBlock += '\n';
+    
+    // Добавляем разделитель между товарами (кроме последнего)
+    if (!isLast) {
+      productsBlock += '\n';
+    }
   }
   productsBlock = productsBlock.trim();
 
   // 🔹 Формируем {товар} — список всех названий через запятую
-  const productNames = Object.keys(products).join(', ');
-
+  const productNames = Object.values(products).map(p => p.productName).join(', ');
 
   // 🔹 Формируем {дата}
   let targetDateStr = '';
@@ -136,7 +154,7 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
     }
   }
 
-  // 🔹 Формируем {долг} — общая сумма долга (целое число)
+  // 🔹 Формируем {долг} — общая сумма долга
   const totalDebt = Object.values(products).reduce((sum, p) => sum + p.overdueDebt, 0);
 
   // 🔹 Формируем {месяцы} — максимальное количество месяцев просрочки
@@ -158,27 +176,28 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
     totalBlock = `💰 *ИТОГО К ОПЛАТЕ: ${Math.round(totalToPay).toLocaleString('ru-RU')} ₽*`;
   }
 
-  // 🔹 Формируем {сумма} — общая сумма (целое число)
+  // 🔹 Формируем {сумма}
   const totalAmount = Math.round(totalToPay).toLocaleString('ru-RU');
 
   // 🔹 Подставляем переменные в шаблон
- let message = template
-  .replace(/{имя}/g, customer.name || 'Клиент')
-  .replace(/{товар}/g, productNames)
-  .replace(/{сумма}/g, totalAmount)
-  .replace(/{дата}/g, targetDateStr)
-  .replace(/{долг}/g, Math.round(totalDebt).toLocaleString('ru-RU'))
-  .replace(/{месяцы}/g, maxMonths.toString())
-  .replace(/{итого}/g, Math.round(totalToPay).toLocaleString('ru-RU'))
-  .replace(/{товары_блок}/g, productsBlock)
-  .replace(/{долг_блок}/g, '')
-  .replace(/{итого_блок}/g, totalBlock);
+  let message = template
+    .replace(/{имя}/g, customer.name || 'Клиент')
+    .replace(/{товар}/g, productNames)
+    .replace(/{сумма}/g, totalAmount)
+    .replace(/{дата}/g, targetDateStr)
+    .replace(/{долг}/g, Math.round(totalDebt).toLocaleString('ru-RU'))
+    .replace(/{месяцы}/g, maxMonths.toString())
+    .replace(/{итого}/g, Math.round(totalToPay).toLocaleString('ru-RU'))
+    .replace(/{товары_блок}/g, productsBlock)
+    .replace(/{долг_блок}/g, '')
+    .replace(/{итого_блок}/g, totalBlock);
 
   // Убираем лишние пустые строки (более 2-х подряд)
   message = message.replace(/\n{3,}/g, '\n\n').trim();
 
   return message;
 }
+
 async function runTest() {
   console.log(`\n🚀 Начало тестирования для пользователя: ${TEST_USER_ID}`);
 
@@ -191,8 +210,6 @@ async function runTest() {
   console.log('✅ Пользователь найден. WhatsApp включен:', user.whatsapp_settings?.enabled);
 
   const settings = user.whatsapp_settings;
-
-  // 🔹 Используем шаблоны из настроек или дефолтные
   const templates = settings.templates || DEFAULT_TEMPLATES;
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -246,7 +263,9 @@ async function runTest() {
 
       if (isTrigger) customerReminders[customer.id].hasTrigger = true;
 
+      // 🔹 ДОБАВЛЕНО: saleId для уникальной идентификации товара
       customerReminders[customer.id].items.push({
+        saleId: sale.id,  // ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
         productName: sale.productName,
         date: p.date,
         remaining: p.remaining,
@@ -271,7 +290,7 @@ async function runTest() {
       continue;
     }
 
-    // 🔹 Определяем тип шаблона (синхронизировано с whatsapp-reminders.js)
+    // 🔹 Определяем тип шаблона
     let templateType = 'today';
     const hasToday = data.items.some(i => i.diffDays === 0);
     const hasUpcoming = data.items.some(i => i.diffDays === 1);
