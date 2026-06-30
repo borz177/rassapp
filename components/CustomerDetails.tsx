@@ -453,7 +453,7 @@ const DocumentsModal = ({
             </div>
 
             {selectedDocument && selectedDocument.fileType === 'image' && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedDocument(null)}>
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedDocument(null)}>
                     <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
                         <button onClick={() => setSelectedDocument(null)} className="absolute -top-12 right-0 text-white/80 hover:text-white p-2">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
