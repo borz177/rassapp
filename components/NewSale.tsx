@@ -6,6 +6,7 @@ import { sendWhatsAppFile } from '../services/whatsapp';
 import jsPDF from "jspdf";
 import html2canvas from 'html2canvas';
 import { api } from '../services/api';
+import { getSellerPhone } from '../src/utils'; 
 
 interface NewSaleProps {
   initialData: any;
@@ -580,7 +581,7 @@ if (initialData.id && initialData.paymentPlan) {
     const sale = createdSale;
     const companyName = appSettings?.companyName || "Компания";
     const hasGuarantor = !!sale.guarantorName;
-    const sellerPhone = user?.phone || "";
+    const sellerPhone = getSellerPhone(user, appSettings);
 
     const styles = {
       page: {
@@ -817,7 +818,7 @@ if (initialData.id && initialData.paymentPlan) {
     const sale = createdSale;
     const customer = selectedCustomer;
     const companyName = appSettings?.companyName || "Компания";
-    const sellerPhone = user?.phone || "";
+    const sellerPhone = getSellerPhone(user, appSettings);
     const hasGuarantor = !!sale.guarantorName;
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }

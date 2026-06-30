@@ -16,6 +16,12 @@ export const formatDate = (dateString: string | undefined | null): string => {
 };
 
 
+
+export const getSellerPhone = (user: any, appSettings: any): string => {
+  return user?.phone || appSettings?.sellerPhone || appSettings?.companyPhone || "+7 (___) ___-__-__";
+};
+
+
 // Добавьте эту функцию внутри компонента или вынесите в utils
 const normalizePhoneForWhatsApp = (phone: string): string => {
   // Удаляем все нецифровые символы
