@@ -158,17 +158,16 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
   const totalDebt = Object.values(products).reduce((sum, p) => sum + p.overdueDebt, 0);
 
   // 🔹 Формируем {месяцы} — максимальное количество месяцев просрочки
-  let maxMonths = 0;
-  for (const data of Object.values(products)) {
-    if (data.overdueDebt > 0 && data.firstOverdueDate) {
-      const months = Math.max(1,
-        (today.getFullYear() - data.firstOverdueDate.getFullYear()) * 12 +
-        (today.getMonth() - data.firstOverdueDate.getMonth()) +
-        (today.getDate() >= data.firstOverdueDate.getDate() ? 1 : 0)
-      );
-      if (months > maxMonths) maxMonths = months;
-    }
+  let months = 0;
+if (data.firstOverdueDate) {
+  months = (today.getFullYear() - data.firstOverdueDate.getFullYear()) * 12 +
+           (today.getMonth() - data.firstOverdueDate.getMonth());
+  
+  if (today.getDate() < data.firstOverdueDate.getDate()) {
+    months = Math.max(0, months - 1);
   }
+}
+months = Math.max(1, months);
 
   // 🔹 Формируем {итого_блок}
   let totalBlock = '';
