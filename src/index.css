@@ -213,4 +213,37 @@ input, textarea, [contenteditable] {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+
+
+
+
+@keyframes slide-up-sheet {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@keyframes slide-down-sheet {
+  from { transform: translateY(0); }
+  to   { transform: translateY(100%); }
+}
+@keyframes fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+.animate-slide-up-sheet {
+  animation: slide-up-sheet 0.32s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+.animate-slide-down-sheet {
+  animation: slide-down-sheet 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+.animate-fade-out {
+  animation: fade-out 0.25s ease forwards;
+}
+
+
+
+
+
+
 }

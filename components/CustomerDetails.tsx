@@ -169,6 +169,12 @@ const DocumentsModal = ({
 }) => {
     const [isUploading, setIsUploading] = useState(false);
     const [selectedDocument, setSelectedDocument] = useState<CustomerDocument | null>(null);
+    const [isClosing, setIsClosing] = useState(false);
+
+    const handleClose = () => {
+        setIsClosing(true);
+        setTimeout(onClose, 280); // должно совпадать с длительностью slide-down-sheet
+    };
 
     const formatFileSize = (bytes: number): string => {
         if (bytes === 0) return '0 Б';
@@ -266,8 +272,19 @@ const DocumentsModal = ({
 
     return (
         <>
-            <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-                <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5 max-h-[90vh] overflow-y-auto my-4" onClick={e => e.stopPropagation()}>
+            <div
+                className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+                onClick={handleClose}
+            >
+                <div
+                    className={`bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-xl p-5 pt-2 max-h-[88vh] overflow-y-auto ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+                    onClick={e => e.stopPropagation()}
+                >
+                    {/* 🔹 Ручка как в Telegram, только на мобильных */}
+                    <div className="flex justify-center pb-3 -mx-5 sticky top-0 bg-white sm:hidden">
+                        <div className="w-10 h-1.5 bg-slate-300 rounded-full mt-2"/>
+                    </div>
+
                     <h3 className="text-lg font-bold text-slate-800 mb-4 sticky top-0 bg-white pb-2 z-10 flex items-center justify-between">
                         <span>📎 Документы</span>
                         <span className="text-sm font-normal text-slate-400">{customer.documents?.length || 0} шт.</span>
@@ -375,7 +392,7 @@ const DocumentsModal = ({
                     </div>
 
                     <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 sticky bottom-0 bg-white">
-                        <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Закрыть</button>
+                        <button type="button" onClick={handleClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Закрыть</button>
                     </div>
                 </div>
             </div>
