@@ -580,7 +580,7 @@ if (initialData.id && initialData.paymentPlan) {
     const sale = createdSale;
     const companyName = appSettings?.companyName || "Компания";
     const hasGuarantor = !!sale.guarantorName;
-    const sellerPhone = formatPhone(user?.phone || appSettings?.sellerPhone)
+    const sellerPhone = user?.phone || "";
 
     const styles = {
       page: {
@@ -817,7 +817,7 @@ if (initialData.id && initialData.paymentPlan) {
     const sale = createdSale;
     const customer = selectedCustomer;
     const companyName = appSettings?.companyName || "Компания";
-    const sellerPhone = formatPhone(appSettings?.sellerPhone);
+    const sellerPhone = user?.phone || "";
     const hasGuarantor = !!sale.guarantorName;
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }
@@ -908,7 +908,7 @@ if (initialData.id && initialData.paymentPlan) {
           <div class="section">
             <div class="field-row">
               <span><span class="field-label">Продавец:</span> ${companyName}</span>
-              <span>Тел: ${sellerPhone || '+7 (___) ___-__-__'}</span>
+              <span>Тел: ${formatPhone(sellerPhone)}</span>
             </div>
             <div class="field-row">
               <span><span class="field-label">Покупатель:</span> ${customer?.name || '__________________'}</span>
