@@ -1192,15 +1192,12 @@ const getPaymentsByDate = useMemo(() => {
   sales.forEach(sale => {
     if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
 
-    // 🔹 Сколько реально оплачено сверх плана (surplus от досрочных/дополнительных платежей)
     const realInstallmentPayments = sale.paymentPlan
         .filter(p => p.isPaid && p.isRealPayment !== false)
         .reduce((sum, p) => sum + p.amount, 0);
 
     let paymentPool = realInstallmentPayments;
 
-    // 🔹 Важно: сортируем по дате, чтобы pool расходовался в том же порядке,
-    // что и в upcomingAndOverduePayments
     const planItems = sale.paymentPlan
       .filter(p => p.isRealPayment === false || p.isRealPayment === undefined)
       .filter(p => !p.isPaid)
@@ -1212,11 +1209,14 @@ const getPaymentsByDate = useMemo(() => {
       paymentPool -= coveredByPool;
       const actualDue = amountDue - coveredByPool;
 
-      // 🔹 Учитываем в календаре только реально причитающуюся сумму
       if (actualDue > 0.01) {
         const paymentDate = new Date(p.date);
         paymentDate.setHours(0, 0, 0, 0);
         const dateKey = paymentDate.toDateString();
+
+        // 🔍 ВРЕМЕННЫЙ ЛОГ — удали после диагностики
+        console.log(`[Calendar] ${dateKey}: sale=${sale.id} product="${sale.productName}" actualDue=${actualDue}`);
+
         const current = map.get(dateKey) || 0;
         map.set(dateKey, current + actualDue);
       }
