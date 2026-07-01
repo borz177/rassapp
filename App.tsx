@@ -2185,12 +2185,18 @@ const handleUpdateProfile = async (data: any) => {
         }
 
         // Обновление профиля
-        const updatedUser = await api.updateProfile(user.id, {
+        const response = await api.updateProfile(user.id, {
             name: data.name,
             phone: data.phone,
         });
 
-        // ✅ Обновляем стейт
+        // ✅ Мержим: берём ответ сервера, но phone точно не теряем
+        const updatedUser = {
+            ...user,
+            ...(response.user || response),
+            phone: response.user?.phone ?? response.phone ?? data.phone,
+        };
+
         setUser(updatedUser);
         localStorage.setItem('user', JSON.stringify(updatedUser));
         alert("✅ Профиль обновлён!");

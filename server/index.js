@@ -1622,6 +1622,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
                 id: user.id,
                 name: user.name,
                 email: user.email,
+                phone: user.phone,
                 role: user.role,
                 managerId: user.manager_id,
                 permissions: user.permissions,
