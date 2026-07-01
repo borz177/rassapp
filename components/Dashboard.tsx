@@ -1186,25 +1186,40 @@ const expectedProfitThisMonth = useMemo(() => {
 
 
 
-
 const getPaymentsByDate = useMemo(() => {
   const map = new Map<string, number>();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
 
   sales.forEach(sale => {
     if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
 
+    // 🔹 Сколько реально оплачено сверх плана (surplus от досрочных/дополнительных платежей)
+    const realInstallmentPayments = sale.paymentPlan
+        .filter(p => p.isPaid && p.isRealPayment !== false)
+        .reduce((sum, p) => sum + p.amount, 0);
+
+    let paymentPool = realInstallmentPayments;
+
+    // 🔹 Важно: сортируем по дате, чтобы pool расходовался в том же порядке,
+    // что и в upcomingAndOverduePayments
     const planItems = sale.paymentPlan
       .filter(p => p.isRealPayment === false || p.isRealPayment === undefined)
-      .filter(p => !p.isPaid);
+      .filter(p => !p.isPaid)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     planItems.forEach(p => {
-      const paymentDate = new Date(p.date);
-      paymentDate.setHours(0, 0, 0, 0);
-      const dateKey = paymentDate.toDateString();
-      const current = map.get(dateKey) || 0;
-      map.set(dateKey, current + p.amount);
+      const amountDue = p.amount;
+      const coveredByPool = Math.min(amountDue, paymentPool);
+      paymentPool -= coveredByPool;
+      const actualDue = amountDue - coveredByPool;
+
+      // 🔹 Учитываем в календаре только реально причитающуюся сумму
+      if (actualDue > 0.01) {
+        const paymentDate = new Date(p.date);
+        paymentDate.setHours(0, 0, 0, 0);
+        const dateKey = paymentDate.toDateString();
+        const current = map.get(dateKey) || 0;
+        map.set(dateKey, current + actualDue);
+      }
     });
   });
 
