@@ -2614,7 +2614,7 @@ if (!user && !showSplash) {
               )}
               {currentView === 'REPORTS' && reportData &&
                   <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters}
-                           data={reportData} appSettings={appSettings}/>}
+                           data={reportData} appSettings={appSettings} sales={sales} expenses={expenses} accounts={accounts}/>}
 
               {currentView === 'CREATE_INCOME' &&
                   <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts}
