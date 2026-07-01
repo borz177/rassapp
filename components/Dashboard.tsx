@@ -35,16 +35,29 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
 
     const status = statusMap[sale.status] || { label: sale.status, color: 'bg-slate-100 text-slate-700 border-slate-200' };
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/60 backdrop-blur-md animate-in fade-in zoom-in duration-300" onClick={onClose}>
-            <div className="bg-white backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20" onClick={e => e.stopPropagation()}>
+    // 🔹 НОВОЕ
+    const [isClosing, setIsClosing] = useState(false);
+    const handleClose = () => {
+        setIsClosing(true);
+        setTimeout(onClose, 200);
+    };
+
+   return (
+        <div
+          className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/60 backdrop-blur-md ${isClosing ? 'animate-fade-out' : 'animate-in fade-in zoom-in duration-300'}`}
+          onClick={handleClose}
+        >
+            <div
+              className={`bg-white backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20 ${isClosing ? 'animate-zoom-out-modal' : ''}`}
+              onClick={e => e.stopPropagation()}
+            >
                 <div className="relative p-6 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-8 -mt-8 blur-2xl"></div>
                     <h3 className="text-xl font-bold mb-1">{sale.productName}</h3>
                     <p className="text-indigo-100 text-sm flex items-center gap-1">
                         <span className="opacity-70">👤</span> {customerName}
                     </p>
-                    <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm transition-all">
+                    <button onClick={handleClose} className="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm transition-all">
                         <span className="text-lg">✕</span>
                     </button>
                 </div>
@@ -104,8 +117,8 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
                     )}
                 </div>
 
-                <div className="p-4 border-t border-slate-200 bg-white">
-                    <button onClick={onClose} className="w-full py-3.5 bg-gradient-to-r from-slate-800 to-slate-700 text-white font-bold rounded-xl hover:from-slate-900 hover:to-slate-800 shadow-lg shadow-slate-200 transition-all">
+               <div className="p-4 border-t border-slate-200 bg-white">
+                    <button onClick={handleClose} className="w-full py-3.5 bg-gradient-to-r from-slate-800 to-slate-700 text-white font-bold rounded-xl hover:from-slate-900 hover:to-slate-800 shadow-lg shadow-slate-200 transition-all">
                         Закрыть
                     </button>
                 </div>
@@ -115,31 +128,26 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
 };
 
 const PaymentActionModal = ({
-    sale,
-    customerName,
-    onClose,
-    onSelectCustomer,
-    onInitiatePayment,
-    onViewSchedule,
-    totalDue,
-    appSettings
+    sale, customerName, onClose, onSelectCustomer, onInitiatePayment, onViewSchedule, totalDue, appSettings
 }: {
-    sale: Sale,
-    customerName: string,
-    onClose: () => void,
-    onSelectCustomer: (id: string) => void,
-    onInitiatePayment: (sale: Sale, amount: number) => void,
-    onViewSchedule: (sale: Sale) => void,
-    totalDue: number,
-    appSettings: AppSettings
+    sale: Sale, customerName: string, onClose: () => void,
+    onSelectCustomer: (id: string) => void, onInitiatePayment: (sale: Sale, amount: number) => void,
+    onViewSchedule: (sale: Sale) => void, totalDue: number, appSettings: AppSettings
 }) => {
+    // 🔹 НОВОЕ
+    const [isClosing, setIsClosing] = useState(false);
+    const handleClose = () => {
+        setIsClosing(true);
+        setTimeout(onClose, 200);
+    };
+
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/60 backdrop-blur-md animate-in fade-in zoom-in duration-300"
-            onClick={onClose}
+            className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/60 backdrop-blur-md ${isClosing ? 'animate-fade-out' : 'animate-in fade-in zoom-in duration-300'}`}
+            onClick={handleClose}
         >
             <div
-                className="bg-white backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20"
+                className={`bg-white backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20 ${isClosing ? 'animate-zoom-out-modal' : ''}`}
                 onClick={e => e.stopPropagation()}
             >
                 <div className="relative p-6 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white">
@@ -149,7 +157,7 @@ const PaymentActionModal = ({
                         <span className="opacity-70">📦</span> {sale.productName}
                     </p>
                     <button
-                        onClick={onClose}
+                        onClick={handleClose}
                         className="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm transition-all"
                     >
                         <span className="text-lg">✕</span>
@@ -167,7 +175,7 @@ const PaymentActionModal = ({
 
                 <div className="px-6 pb-6 space-y-2">
                     <button
-                        onClick={() => { onSelectCustomer(sale.customerId); onClose(); }}
+                        onClick={() => { onSelectCustomer(sale.customerId); handleClose(); }}
                         className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors rounded-xl"
                     >
                         <span className="text-indigo-500">👤</span>
@@ -175,7 +183,7 @@ const PaymentActionModal = ({
                     </button>
 
                     <button
-                        onClick={() => { onInitiatePayment(sale, totalDue); onClose(); }}
+                        onClick={() => { onInitiatePayment(sale, totalDue); handleClose(); }}
                         className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-emerald-50 flex items-center gap-3 transition-colors rounded-xl border-t border-slate-100 pt-3.5 mt-1"
                     >
                         <span className="text-emerald-500">💰</span>
@@ -183,7 +191,7 @@ const PaymentActionModal = ({
                     </button>
 
                     <button
-                        onClick={() => { onViewSchedule(sale); onClose(); }}
+                        onClick={() => { onViewSchedule(sale); handleClose(); }}
                         className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors rounded-xl border-t border-slate-100 pt-3.5 mt-1"
                     >
                         <span className="text-indigo-500"><CalendarIcon size={18}/></span>
@@ -201,30 +209,25 @@ const PaymentActionModal = ({
 // 📋 Модалка с детализацией платежей
 // ─────────────────────────────────────────────────────────────
 const PaymentDetailsModal = ({
-  type,
-  sales,
-  customers,
-  investors,
-  selectedAccountId,
-  onClose,
-  onInitiatePayment,
-  onViewSchedule,
-  appSettings
+  type, sales, customers, investors, selectedAccountId, onClose,
+  onInitiatePayment, onViewSchedule, appSettings
 }: {
-  type: 'expected' | 'received';
-  sales: Sale[];
-  customers: Customer[];
-  investors: Investor[];
-  selectedAccountId?: string | null;
-  onClose: () => void;
-  onInitiatePayment?: (sale: Sale, amount: number) => void;
-  onViewSchedule?: (sale: Sale) => void;
+  type: 'expected' | 'received'; sales: Sale[]; customers: Customer[]; investors: Investor[];
+  selectedAccountId?: string | null; onClose: () => void;
+  onInitiatePayment?: (sale: Sale, amount: number) => void; onViewSchedule?: (sale: Sale) => void;
   appSettings: AppSettings;
 }) => {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const today = new Date(); today.setHours(0,0,0,0);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+  // 🔹 НОВОЕ
+  const [isClosing, setIsClosing] = useState(false);
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(onClose, 280);
+  };
 
   const items = useMemo(() => {
     const result: Array<{
@@ -318,19 +321,19 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
     ? 'Нет ожидаемых платежей в этом месяце'
     : 'Нет полученных платежей в этом месяце';
 
-  return createPortal(
+    return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
+      className={`fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+      onClick={handleClose}
     >
       <div
-        className="bg-white w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+        className={`bg-white w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
         onClick={e => e.stopPropagation()}
       >
         {/* Шапка */}
         <div className={`px-4 py-3 flex items-center justify-between shrink-0 ${
-          type === 'expected' 
-            ? 'bg-gradient-to-r from-amber-500 to-orange-500' 
+          type === 'expected'
+            ? 'bg-gradient-to-r from-amber-500 to-orange-500'
             : 'bg-gradient-to-r from-emerald-500 to-teal-500'
         }`}>
           <div className="flex items-center gap-3">
@@ -339,7 +342,7 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
             </div>
             <h3 className="text-base font-bold text-white">{title}</h3>
           </div>
-          <button onClick={onClose} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+          <button onClick={handleClose} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -383,7 +386,7 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
                 <div className="flex gap-1">
                   {type === 'expected' && onInitiatePayment && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); onInitiatePayment(item.sale, item.amount); onClose(); }}
+                      onClick={(e) => { e.stopPropagation(); onInitiatePayment(item.sale, item.amount); handleClose(); }}
                       className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg font-medium hover:bg-emerald-100 transition-colors"
                     >
                       + Платёж
@@ -391,7 +394,7 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
                   )}
                   {onViewSchedule && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); onViewSchedule(item.sale); onClose(); }}
+                      onClick={(e) => { e.stopPropagation(); onViewSchedule(item.sale); handleClose(); }}
                       className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg font-medium hover:bg-indigo-100 transition-colors"
                     >
                       График
@@ -403,9 +406,8 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
           ))}
         </div>
 
-        {/* Кнопка закрытия */}
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="py-3 text-slate-400 text-sm hover:text-slate-600 hover:bg-slate-50 transition-colors shrink-0 border-t border-slate-100"
         >
           Закрыть
@@ -420,29 +422,23 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
 
 
 const ProfitDetailsModal = ({
-  type,
-  sales,
-  customers,
-  investors,
-  selectedAccountId,
-  onClose,
-  onSelectCustomer, 
-  appSettings
+  type, sales, customers, investors, selectedAccountId, onClose, onSelectCustomer, appSettings
 }: {
-  type: 'expected' | 'received';
-  sales: Sale[];
-  customers: Customer[];
-  investors: Investor[];
-  selectedAccountId?: string | null;
-  onClose: () => void;
-  onSelectCustomer: (customerId: string) => void; 
-  appSettings: AppSettings;
+  type: 'expected' | 'received'; sales: Sale[]; customers: Customer[]; investors: Investor[];
+  selectedAccountId?: string | null; onClose: () => void;
+  onSelectCustomer: (customerId: string) => void; appSettings: AppSettings;
 }) => {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   monthStart.setHours(0, 0, 0, 0);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
+  // 🔹 НОВОЕ
+  const [isClosing, setIsClosing] = useState(false);
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(onClose, 280);
+  };
   const items = useMemo(() => {
     const result: Array<{
       sale: Sale;
@@ -610,17 +606,17 @@ const ProfitDetailsModal = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
+      className={`fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+      onClick={handleClose}
     >
       <div
-        className="bg-white w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+        className={`bg-white w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
         onClick={e => e.stopPropagation()}
       >
         {/* Шапка */}
         <div className={`px-4 py-3 flex items-center justify-between shrink-0 ${
-          type === 'expected' 
-            ? 'bg-gradient-to-r from-blue-500 to-indigo-500' 
+          type === 'expected'
+            ? 'bg-gradient-to-r from-blue-500 to-indigo-500'
             : 'bg-gradient-to-r from-emerald-500 to-teal-500'
         }`}>
           <div className="flex items-center gap-3">
@@ -637,13 +633,14 @@ const ProfitDetailsModal = ({
             </div>
             <h3 className="text-base font-bold text-white">{title}</h3>
           </div>
-          <button onClick={onClose} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+          <button onClick={handleClose} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
         </div>
+
 
         {/* Итого */}
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
@@ -654,7 +651,7 @@ const ProfitDetailsModal = ({
         </div>
 
         {/* Список */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+       <div className="flex-1 overflow-y-auto p-4 space-y-2">
           {items.length === 0 ? (
             <div className="text-center py-8 text-slate-400">
               <div className="text-4xl mb-2 opacity-30">📭</div>
@@ -662,17 +659,17 @@ const ProfitDetailsModal = ({
             </div>
           ) : items.map((item, idx) => {
             const statusInfo = getStatusInfo(item.paymentPercent, item.isPaid);
-            
+
             return (
               <div
                 key={`${item.sale.id}-${item.date}-${idx}`}
                 onClick={() => {
-                  onSelectCustomer(item.customerId); // 🔹 Переход на детали клиента
-                  onClose(); // 🔹 Закрываем модалку
+                  onSelectCustomer(item.customerId);
+                  handleClose();
                 }}
                 className={`bg-white p-3 rounded-xl border transition-all ${
                   item.isPaid || item.paymentPercent > 0
-                    ? 'border-emerald-100' 
+                    ? 'border-emerald-100'
                     : 'border-slate-100'
                 }`}
               >
@@ -739,7 +736,7 @@ const ProfitDetailsModal = ({
         </div>
 
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="py-3 text-slate-400 text-sm hover:text-slate-600 hover:bg-slate-50 transition-colors shrink-0 border-t border-slate-100"
         >
           Закрыть
