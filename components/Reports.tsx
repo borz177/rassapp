@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Investor, AppSettings, Sale, Expense, Account } from '../types';
+import React, { useMemo, useState } from 'react';
+import { Investor, AppSettings, Sale, Expense, Account, Customer } from '../types';
 import { formatCurrency } from '../src/utils';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
@@ -29,6 +29,7 @@ interface ReportsProps {
     sales: Sale[];
     expenses: Expense[];
     accounts: Account[];
+    customers: Customer[];
 }
 
 type PeriodPreset = 'today' | 'week' | 'month' | 'lastMonth' | 'quarter' | 'year' | 'all';
@@ -119,7 +120,7 @@ const ProgressRow: React.FC<ProgressRowProps> = ({ label, realized, expected, co
 
 const Reports: React.FC<ReportsProps> = ({
     investors, filters, onFiltersChange, data, appSettings,
-    sales = [], expenses = [], accounts = []
+    sales = [], expenses = [], accounts = [], customers = []
 }) => {
     const hasInvestors = investors.length > 0;
     const showInvestorBreakdown = filters.investorId === 'ALL' && investors.length > 1;
@@ -255,6 +256,112 @@ const Reports: React.FC<ReportsProps> = ({
         });
     }, [investors, accounts, sales, filters, totalInvestment]);
 
+    // Modal state
+    const [activeModal, setActiveModal] = useState<'payments' | 'investor_payouts' | 'other_expenses' | null>(null);
+
+    // Export modal state
+    const [exportModal, setExportModal] = useState<'pdf' | 'csv' | null>(null);
+    const [exportOptions, setExportOptions] = useState({
+        timeline: true,
+        investorBreakdown: true,
+        expenses: true,
+        overduePayments: false,
+        customerBreakdown: false,
+    });
+    const toggleExportOption = (key: keyof typeof exportOptions) =>
+        setExportOptions((prev: typeof exportOptions) => ({ ...prev, [key]: !prev[key] }));
+
+    // Payment detail items for modal
+    const paymentsDetail = useMemo(() => {
+        if (!sales.length) return [] as { date: string; productName: string; customerId: string; amount: number; label: string }[];
+        const startDate = new Date(filters.period.start);
+        const endDate = new Date(filters.period.end);
+        endDate.setHours(23, 59, 59, 999);
+        const typedSales = sales as Sale[];
+        const filteredSales = filters.investorId !== 'ALL'
+            ? typedSales.filter((s: Sale) => { const acc = (accounts as Account[]).find((a: Account) => a.id === s.accountId); return (acc as any)?.ownerId === filters.investorId; })
+            : typedSales;
+        const items: { date: string; productName: string; customerId: string; amount: number; label: string }[] = [];
+        filteredSales.forEach((sale: Sale) => {
+            const dpDate = new Date(sale.startDate);
+            if (dpDate >= startDate && dpDate <= endDate && sale.downPayment > 0) {
+                items.push({ date: sale.startDate, productName: sale.productName, customerId: sale.customerId, amount: sale.downPayment, label: 'Первый взнос' });
+            }
+            (sale.paymentPlan || []).filter((p: any) => p.isPaid && p.isRealPayment !== false).forEach((p: any) => {
+                const pDate = new Date(p.date);
+                if (pDate >= startDate && pDate <= endDate) {
+                    items.push({ date: p.actualDate || p.date, productName: sale.productName, customerId: sale.customerId, amount: p.amount, label: 'Платёж' + (p.note ? ` · ${p.note}` : '') });
+                }
+            });
+        });
+        return items.sort((a, b) => b.date.localeCompare(a.date));
+    }, [sales, accounts, filters]);
+
+    // Investor payout detail items for modal
+    const investorPayoutsDetail = useMemo(() => {
+        const typedExpenses = expenses as Expense[];
+        if (!typedExpenses.length) return [] as (Expense & { investorName?: string })[];
+        const startDate = new Date(filters.period.start);
+        const endDate = new Date(filters.period.end);
+        endDate.setHours(23, 59, 59, 999);
+        return typedExpenses.filter((e: Expense) => {
+            const eDate = new Date(e.date);
+            return eDate >= startDate && eDate <= endDate && !e.isRefund &&
+                (e.payoutType === 'PROFIT' || e.payoutType === 'INVESTMENT');
+        }).sort((a: Expense, b: Expense) => b.date.localeCompare(a.date))
+            .map((e: Expense) => ({ ...e, investorName: (investors as Investor[]).find((i: Investor) => i.id === e.investorId)?.name }));
+    }, [expenses, investors, filters]);
+
+    // Other expense detail items for modal
+    const otherExpensesDetail = useMemo(() => {
+        const typedExpenses = expenses as Expense[];
+        if (!typedExpenses.length) return [] as Expense[];
+        const startDate = new Date(filters.period.start);
+        const endDate = new Date(filters.period.end);
+        endDate.setHours(23, 59, 59, 999);
+        return typedExpenses.filter((e: Expense) => {
+            const eDate = new Date(e.date);
+            return eDate >= startDate && eDate <= endDate && !e.isRefund &&
+                e.payoutType !== 'PROFIT' && e.payoutType !== 'INVESTMENT';
+        }).sort((a: Expense, b: Expense) => b.date.localeCompare(a.date));
+    }, [expenses, filters]);
+
+    // Overdue payments — active sales with unpaid installments past due (as of today, no period filter)
+    const overduePayments = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const result: { saleId: string; productName: string; customerName: string; dueDate: string; amount: number; daysOverdue: number }[] = [];
+        (sales as Sale[]).filter((s: Sale) => s.status === 'ACTIVE').forEach((sale: Sale) => {
+            const customer = (customers as Customer[]).find((c: Customer) => c.id === sale.customerId);
+            const customerName = customer?.name || 'Клиент';
+            (sale.paymentPlan || []).filter((p: any) => !p.isPaid).forEach((p: any) => {
+                const dueDate = new Date(p.date);
+                dueDate.setHours(0, 0, 0, 0);
+                if (dueDate < today) {
+                    const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+                    result.push({ saleId: sale.id, productName: sale.productName, customerName, dueDate: p.date.substring(0, 10), amount: p.amount, daysOverdue });
+                }
+            });
+        });
+        return result.sort((a, b) => b.daysOverdue - a.daysOverdue);
+    }, [sales, customers]);
+
+    // Customer breakdown — group paymentsDetail by customer
+    const customerBreakdown = useMemo(() => {
+        const map: Record<string, { customerName: string; total: number; count: number }> = {};
+        paymentsDetail.forEach((item: { customerId: string; amount: number; productName: string; date: string; label: string }) => {
+            if (!map[item.customerId]) {
+                const customer = (customers as Customer[]).find((c: Customer) => c.id === item.customerId);
+                map[item.customerId] = { customerName: customer?.name || 'Клиент', total: 0, count: 0 };
+            }
+            map[item.customerId].total += item.amount;
+            map[item.customerId].count += 1;
+        });
+        return Object.entries(map)
+            .map(([customerId, v]) => ({ customerId, ...v }))
+            .sort((a, b) => b.total - a.total);
+    }, [paymentsDetail, customers]);
+
     // Chart data
     const pieData = [
         { name: 'Моя прибыль', value: data.realizedManagerProfit, color: '#10B981' },
@@ -270,7 +377,7 @@ const Reports: React.FC<ReportsProps> = ({
     const efficiencyLabel = efficiency >= 80 ? 'Отлично' : efficiency >= 50 ? 'Норма' : 'Низкая';
 
     // CSV Export
-    const exportCSV = () => {
+    const exportCSV = (opts: typeof exportOptions) => {
         const sep = ';';
         const selectedInvestorName = filters.investorId === 'ALL'
             ? 'Все инвесторы'
@@ -278,6 +385,7 @@ const Reports: React.FC<ReportsProps> = ({
 
         const lines: string[] = [
             `Финансовый отчёт${sep}${sep}`,
+            `Компания${sep}${appSettings.companyName || '—'}${sep}`,
             `Период${sep}${filters.period.start} — ${filters.period.end}${sep}`,
             `Инвестор${sep}${selectedInvestorName}${sep}`,
             `${sep}${sep}`,
@@ -294,14 +402,14 @@ const Reports: React.FC<ReportsProps> = ({
             `${sep}${sep}`,
         ];
 
-        if (paymentTimeline.length > 0) {
+        if (opts.timeline && paymentTimeline.length > 0) {
             lines.push(`ДИНАМИКА ПЛАТЕЖЕЙ${sep}${sep}`);
             lines.push(`Период${sep}Поступления (₽)${sep}`);
             paymentTimeline.forEach(p => lines.push(`${p.key}${sep}${p.amount.toFixed(2)}${sep}`));
             lines.push(`${sep}${sep}`);
         }
 
-        if (showInvestorBreakdown && accurateInvestorBreakdown.length > 0) {
+        if (opts.investorBreakdown && showInvestorBreakdown && accurateInvestorBreakdown.length > 0) {
             lines.push(`РАЗБИВКА ПО ИНВЕСТОРАМ${sep}${sep}${sep}${sep}${sep}`);
             lines.push(`Инвестор${sep}Капитал (₽)${sep}Доля капитала (%)${sep}% прибыли${sep}Ожидается (₽)${sep}Получено (₽)${sep}Контрактов${sep}`);
             accurateInvestorBreakdown.forEach(({ inv, share, expectedProfit, realizedProfit, salesCount }) => {
@@ -310,15 +418,31 @@ const Reports: React.FC<ReportsProps> = ({
             lines.push(`${sep}${sep}`);
         }
 
-        if (expenseStats) {
+        if (opts.expenses && expenseStats) {
             lines.push(`РАСХОДЫ ЗА ПЕРИОД${sep}${sep}`);
             lines.push(`Статья${sep}Сумма (₽)${sep}`);
             lines.push(`Выплаты инвесторам${sep}${expenseStats.investorPayouts.toFixed(2)}${sep}`);
             lines.push(`Прочие расходы${sep}${expenseStats.otherExpenses.toFixed(2)}${sep}`);
             lines.push(`Итого расходов${sep}${expenseStats.total.toFixed(2)}${sep}`);
             lines.push(`${sep}${sep}`);
-            const netFlow = data.customerPaymentsInPeriod - expenseStats.total;
-            lines.push(`Чистый денежный поток${sep}${netFlow.toFixed(2)}${sep}`);
+        }
+
+        if (opts.overduePayments && overduePayments.length > 0) {
+            lines.push(`ПРОСРОЧЕННЫЕ ПЛАТЕЖИ (на дату экспорта)${sep}${sep}${sep}${sep}`);
+            lines.push(`Клиент${sep}Товар${sep}Дата платежа${sep}Просрочка (дней)${sep}Сумма (₽)${sep}`);
+            overduePayments.forEach((p: { customerName: string; productName: string; dueDate: string; daysOverdue: number; amount: number }) => {
+                lines.push(`${p.customerName}${sep}${p.productName}${sep}${p.dueDate}${sep}${p.daysOverdue}${sep}${p.amount.toFixed(2)}${sep}`);
+            });
+            lines.push(`${sep}${sep}`);
+        }
+
+        if (opts.customerBreakdown && customerBreakdown.length > 0) {
+            lines.push(`ДЕТАЛИЗАЦИЯ ПОСТУПЛЕНИЙ ПО КЛИЕНТАМ${sep}${sep}${sep}`);
+            lines.push(`Клиент${sep}Платежей${sep}Сумма (₽)${sep}`);
+            customerBreakdown.forEach((c: { customerName: string; count: number; total: number }) => {
+                lines.push(`${c.customerName}${sep}${c.count}${sep}${c.total.toFixed(2)}${sep}`);
+            });
+            lines.push(`${sep}${sep}`);
         }
 
         const csv = '﻿' + lines.join('\n');
@@ -334,13 +458,14 @@ const Reports: React.FC<ReportsProps> = ({
     };
 
     // PDF Export (formatted print window)
-    const exportPDF = () => {
+    const exportPDF = (opts: typeof exportOptions) => {
         const selectedInvestorName = filters.investorId === 'ALL'
             ? 'Все инвесторы'
             : investors.find(i => i.id === filters.investorId)?.name || filters.investorId;
         const fmt = (n: number) => formatCurrency(n, appSettings.showCents) + ' ₽';
+        const companyName = appSettings.companyName || '';
 
-        const investorTableHTML = showInvestorBreakdown && accurateInvestorBreakdown.length > 0 ? `
+        const investorTableHTML = opts.investorBreakdown && showInvestorBreakdown && accurateInvestorBreakdown.length > 0 ? `
             <h2>Разбивка по инвесторам</h2>
             <p class="note">Ожидаемая и полученная прибыль рассчитаны из реальных сделок каждого инвестора</p>
             <table>
@@ -357,7 +482,7 @@ const Reports: React.FC<ReportsProps> = ({
                 </tr>`).join('')}
             </table>` : '';
 
-        const timelineHTML = paymentTimeline.length > 0 ? `
+        const timelineHTML = opts.timeline && paymentTimeline.length > 0 ? `
             <h2>Динамика платежей</h2>
             <table>
                 <tr><th>Период</th><th>Поступления</th></tr>
@@ -365,28 +490,50 @@ const Reports: React.FC<ReportsProps> = ({
                 <tr class="total"><td><strong>Итого</strong></td><td><strong>${fmt(data.customerPaymentsInPeriod)}</strong></td></tr>
             </table>` : '';
 
-        const expenseHTML = expenseStats ? `
+        const expenseHTML = opts.expenses && expenseStats ? `
             <h2>Расходы за период</h2>
             <table>
                 <tr><th>Статья</th><th>Сумма</th></tr>
                 <tr><td>Выплаты инвесторам</td><td>${fmt(expenseStats.investorPayouts)}</td></tr>
                 <tr><td>Прочие расходы</td><td>${fmt(expenseStats.otherExpenses)}</td></tr>
                 <tr class="total"><td><strong>Итого расходов</strong></td><td><strong>${fmt(expenseStats.total)}</strong></td></tr>
-                <tr><td>Поступления от клиентов</td><td class="green">${fmt(data.customerPaymentsInPeriod)}</td></tr>
-                <tr class="total">
-                    <td><strong>Чистый поток</strong></td>
-                    <td class="${data.customerPaymentsInPeriod - expenseStats.total >= 0 ? 'green' : 'red'}">
-                        <strong>${fmt(data.customerPaymentsInPeriod - expenseStats.total)}</strong>
-                    </td>
-                </tr>
+            </table>` : '';
+
+        const overdueHTML = opts.overduePayments && overduePayments.length > 0 ? `
+            <h2>Просроченные платежи (на дату отчёта)</h2>
+            <table>
+                <tr><th>Клиент</th><th>Товар</th><th>Дата платежа</th><th>Просрочка</th><th>Сумма</th></tr>
+                ${overduePayments.map((p: { customerName: string; productName: string; dueDate: string; daysOverdue: number; amount: number }) => `
+                <tr>
+                    <td><strong>${p.customerName}</strong></td>
+                    <td>${p.productName}</td>
+                    <td>${p.dueDate}</td>
+                    <td class="red">${p.daysOverdue} дн.</td>
+                    <td class="red">${fmt(p.amount)}</td>
+                </tr>`).join('')}
+                <tr class="total"><td colspan="4"><strong>Итого просрочено</strong></td><td class="red"><strong>${fmt(overduePayments.reduce((s: number, p: { amount: number }) => s + p.amount, 0))}</strong></td></tr>
+            </table>` : '';
+
+        const customerBreakdownHTML = opts.customerBreakdown && customerBreakdown.length > 0 ? `
+            <h2>Детализация поступлений по клиентам</h2>
+            <table>
+                <tr><th>Клиент</th><th>Платежей</th><th>Сумма</th></tr>
+                ${customerBreakdown.map((c: { customerName: string; count: number; total: number }) => `
+                <tr>
+                    <td><strong>${c.customerName}</strong></td>
+                    <td>${c.count}</td>
+                    <td class="green">${fmt(c.total)}</td>
+                </tr>`).join('')}
+                <tr class="total"><td><strong>Итого</strong></td><td><strong>${customerBreakdown.reduce((s: number, c: { count: number }) => s + c.count, 0)}</strong></td><td class="green"><strong>${fmt(data.customerPaymentsInPeriod)}</strong></td></tr>
             </table>` : '';
 
         const html = `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
         <title>Финансовый отчёт ${filters.period.start} — ${filters.period.end}</title>
         <style>
             body { font-family: 'Arial', sans-serif; padding: 32px; color: #1e293b; font-size: 13px; }
-            h1 { font-size: 22px; color: #4f46e5; margin: 0 0 4px; }
-            .subtitle { color: #64748b; font-size: 12px; margin-bottom: 28px; }
+            h1 { font-size: 22px; color: #4f46e5; margin: 0 0 2px; }
+            .company { font-size: 13px; color: #6366f1; font-weight: 600; margin-bottom: 2px; }
+            .subtitle { color: #64748b; font-size: 12px; margin-bottom: 20px; }
             h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #4f46e5; margin: 28px 0 8px; border-bottom: 2px solid #e0e7ff; padding-bottom: 6px; }
             .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 8px; }
             .kpi { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; background: #f8fafc; }
@@ -400,8 +547,21 @@ const Reports: React.FC<ReportsProps> = ({
             .green { color: #059669; }
             .red { color: #dc2626; }
             .note { font-size: 11px; color: #94a3b8; margin: -4px 0 8px; }
-            @media print { @page { margin: 1.5cm; size: A4; } body { padding: 0; } }
+            .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0; }
+            .toolbar-title { font-size: 11px; color: #94a3b8; flex: 1; }
+            .btn { padding: 7px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; font-family: Arial, sans-serif; }
+            .btn-print { background: #4f46e5; color: white; }
+            .btn-close { background: #f1f5f9; color: #475569; }
+            .btn-print:hover { background: #4338ca; }
+            .btn-close:hover { background: #e2e8f0; }
+            @media print { .toolbar { display: none !important; } @page { margin: 1.5cm; size: A4; } body { padding: 0; } }
         </style></head><body>
+        <div class="toolbar">
+            <span class="toolbar-title">Финансовый отчёт · ${filters.period.start} — ${filters.period.end}</span>
+            <button class="btn btn-print" onclick="window.print()">🖨️ Сохранить PDF</button>
+            <button class="btn btn-close" onclick="window.close()">✕ Закрыть</button>
+        </div>
+        ${companyName ? `<div class="company">${companyName}</div>` : ''}
         <h1>Финансовый отчёт</h1>
         <div class="subtitle">Период: <strong>${filters.period.start} — ${filters.period.end}</strong> · Инвестор: <strong>${selectedInvestorName}</strong></div>
         <h2>Ключевые показатели</h2>
@@ -416,6 +576,8 @@ const Reports: React.FC<ReportsProps> = ({
         ${timelineHTML}
         ${investorTableHTML}
         ${expenseHTML}
+        ${overdueHTML}
+        ${customerBreakdownHTML}
         </body></html>`;
 
         const win = window.open('', '_blank', 'width=900,height=700');
@@ -448,13 +610,13 @@ const Reports: React.FC<ReportsProps> = ({
                             </div>
                         )}
                         <button
-                            onClick={exportCSV}
+                            onClick={() => setExportModal('csv')}
                             className="flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-semibold hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
                         >
                             <span>📥</span> CSV
                         </button>
                         <button
-                            onClick={exportPDF}
+                            onClick={() => setExportModal('pdf')}
                             className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white rounded-xl text-xs font-semibold hover:shadow-lg hover:shadow-indigo-200 hover:-translate-y-0.5 transition-all shadow-sm"
                         >
                             <span>🖨️</span> PDF
@@ -694,55 +856,41 @@ const Reports: React.FC<ReportsProps> = ({
                                     <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Расходы за период</h4>
                                     <span className="ml-auto text-xs text-slate-400">{expenseStats.count} операций</span>
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                                    <div className="bg-gradient-to-br from-emerald-50 to-white p-4 rounded-xl border border-emerald-100">
-                                        <p className="text-xs font-medium text-emerald-600 mb-1">Поступления</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <button
+                                        onClick={() => setActiveModal('payments')}
+                                        className="group text-left bg-gradient-to-br from-emerald-50 to-white p-4 rounded-xl border border-emerald-100 hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer"
+                                    >
+                                        <div className="flex items-center justify-between mb-1">
+                                            <p className="text-xs font-medium text-emerald-600">Поступления</p>
+                                            <span className="text-emerald-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Детали →</span>
+                                        </div>
                                         <p className="text-xl font-bold text-emerald-700">{formatCurrency(data.customerPaymentsInPeriod, appSettings.showCents)} ₽</p>
-                                        <p className="text-xs text-emerald-500 mt-1">от клиентов</p>
-                                    </div>
-                                    <div className="bg-gradient-to-br from-indigo-50 to-white p-4 rounded-xl border border-indigo-100">
-                                        <p className="text-xs font-medium text-indigo-600 mb-1">Выплаты инвесторам</p>
+                                        <p className="text-xs text-emerald-500 mt-1">{paymentsDetail.length} платежей от клиентов</p>
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveModal('investor_payouts')}
+                                        className="group text-left bg-gradient-to-br from-indigo-50 to-white p-4 rounded-xl border border-indigo-100 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer"
+                                    >
+                                        <div className="flex items-center justify-between mb-1">
+                                            <p className="text-xs font-medium text-indigo-600">Выплаты инвесторам</p>
+                                            <span className="text-indigo-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Детали →</span>
+                                        </div>
                                         <p className="text-xl font-bold text-indigo-700">{formatCurrency(expenseStats.investorPayouts, appSettings.showCents)} ₽</p>
-                                        <p className="text-xs text-indigo-500 mt-1">прибыль и капитал</p>
-                                    </div>
-                                    <div className="bg-gradient-to-br from-red-50 to-white p-4 rounded-xl border border-red-100">
-                                        <p className="text-xs font-medium text-red-500 mb-1">Прочие расходы</p>
+                                        <p className="text-xs text-indigo-500 mt-1">{investorPayoutsDetail.length} выплат</p>
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveModal('other_expenses')}
+                                        className="group text-left bg-gradient-to-br from-red-50 to-white p-4 rounded-xl border border-red-100 hover:border-red-300 hover:shadow-md transition-all cursor-pointer"
+                                    >
+                                        <div className="flex items-center justify-between mb-1">
+                                            <p className="text-xs font-medium text-red-500">Прочие расходы</p>
+                                            <span className="text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Детали →</span>
+                                        </div>
                                         <p className="text-xl font-bold text-red-600">{formatCurrency(expenseStats.otherExpenses, appSettings.showCents)} ₽</p>
-                                        <p className="text-xs text-red-400 mt-1">операционные</p>
-                                    </div>
-                                    <div className={`p-4 rounded-xl border ${data.customerPaymentsInPeriod - expenseStats.total >= 0 ? 'bg-gradient-to-br from-teal-50 to-white border-teal-100' : 'bg-gradient-to-br from-rose-50 to-white border-rose-100'}`}>
-                                        <p className={`text-xs font-medium mb-1 ${data.customerPaymentsInPeriod - expenseStats.total >= 0 ? 'text-teal-600' : 'text-rose-500'}`}>Чистый поток</p>
-                                        <p className={`text-xl font-bold ${data.customerPaymentsInPeriod - expenseStats.total >= 0 ? 'text-teal-700' : 'text-rose-600'}`}>
-                                            {data.customerPaymentsInPeriod - expenseStats.total >= 0 ? '+' : ''}{formatCurrency(data.customerPaymentsInPeriod - expenseStats.total, appSettings.showCents)} ₽
-                                        </p>
-                                        <p className={`text-xs mt-1 ${data.customerPaymentsInPeriod - expenseStats.total >= 0 ? 'text-teal-500' : 'text-rose-400'}`}>поступления − расходы</p>
-                                    </div>
+                                        <p className="text-xs text-red-400 mt-1">{otherExpensesDetail.length} операций</p>
+                                    </button>
                                 </div>
-
-                                {/* Income vs expense visual bar */}
-                                {data.customerPaymentsInPeriod > 0 && (
-                                    <div className="mt-4">
-                                        <div className="flex justify-between text-xs text-slate-500 mb-1.5">
-                                            <span>Расходы {expenseStats.total > 0 ? Math.round((expenseStats.total / data.customerPaymentsInPeriod) * 100) : 0}% от поступлений</span>
-                                            <span className={data.customerPaymentsInPeriod - expenseStats.total >= 0 ? 'text-teal-600 font-semibold' : 'text-rose-500 font-semibold'}>
-                                                {data.customerPaymentsInPeriod - expenseStats.total >= 0 ? 'Положительный баланс' : 'Отрицательный баланс'}
-                                            </span>
-                                        </div>
-                                        <div className="h-3 bg-slate-100 rounded-full overflow-hidden flex gap-0.5">
-                                            {expenseStats.investorPayouts > 0 && (
-                                                <div className="h-full bg-indigo-400 rounded-l-full transition-all duration-700" style={{ width: `${Math.min((expenseStats.investorPayouts / data.customerPaymentsInPeriod) * 100, 100)}%` }}></div>
-                                            )}
-                                            {expenseStats.otherExpenses > 0 && (
-                                                <div className="h-full bg-red-400 transition-all duration-700" style={{ width: `${Math.min((expenseStats.otherExpenses / data.customerPaymentsInPeriod) * 100, 100)}%` }}></div>
-                                            )}
-                                        </div>
-                                        <div className="flex gap-4 mt-2">
-                                            <div className="flex items-center gap-1 text-xs text-slate-500"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-400"></span>Инвесторам</div>
-                                            <div className="flex items-center gap-1 text-xs text-slate-500"><span className="w-2.5 h-2.5 rounded-sm bg-red-400"></span>Прочее</div>
-                                            <div className="flex items-center gap-1 text-xs text-slate-500"><span className="w-2.5 h-2.5 rounded-sm bg-slate-100 border border-slate-200"></span>Остаток</div>
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         )}
 
@@ -858,6 +1006,244 @@ const Reports: React.FC<ReportsProps> = ({
                     </>
                 )}
             </div>
+
+            {/* Export Options Modal */}
+            {exportModal && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                    onClick={() => setExportModal(null)}
+                >
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200" />
+                    <div
+                        className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-200"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                            <div className="flex items-center gap-2.5">
+                                <span className="text-lg">{exportModal === 'pdf' ? '🖨️' : '📥'}</span>
+                                <div>
+                                    <h3 className="font-bold text-slate-800 text-sm">Настройка экспорта</h3>
+                                    <p className="text-xs text-slate-400">{exportModal === 'pdf' ? 'PDF документ' : 'CSV таблица'}</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setExportModal(null)}
+                                className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors text-xs font-bold"
+                            >✕</button>
+                        </div>
+
+                        {/* Company info line */}
+                        {appSettings.companyName && (
+                            <div className="mx-5 mt-4 px-3 py-2 bg-indigo-50 rounded-xl flex items-center gap-2">
+                                <span className="text-indigo-400 text-sm">🏢</span>
+                                <span className="text-xs font-medium text-indigo-700">{appSettings.companyName}</span>
+                                <span className="ml-auto text-xs text-indigo-400">в шапке отчёта</span>
+                            </div>
+                        )}
+
+                        {/* Options */}
+                        <div className="px-5 py-4 space-y-1">
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Разделы отчёта</p>
+                            {([
+                                { key: 'timeline', label: 'Динамика поступлений', icon: '📈', always: false },
+                                { key: 'investorBreakdown', label: 'Разбивка по инвесторам', icon: '👥', always: false, hidden: !showInvestorBreakdown },
+                                { key: 'expenses', label: 'Расходы за период', icon: '💸', always: false, hidden: !expenseStats },
+                                { key: 'overduePayments', label: 'Просроченные платежи', icon: '⚠️', always: false, badge: overduePayments.length > 0 ? `${overduePayments.length}` : undefined },
+                                { key: 'customerBreakdown', label: 'Детализация по клиентам', icon: '👤', always: false },
+                            ] as { key: keyof typeof exportOptions; label: string; icon: string; always?: boolean; hidden?: boolean; badge?: string }[])
+                                .filter(o => !o.hidden)
+                                .map(opt => (
+                                <button
+                                    key={opt.key}
+                                    onClick={() => toggleExportOption(opt.key)}
+                                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left ${
+                                        exportOptions[opt.key]
+                                            ? 'bg-indigo-50 border border-indigo-200'
+                                            : 'bg-slate-50 border border-transparent hover:bg-slate-100'
+                                    }`}
+                                >
+                                    <span className="text-base leading-none">{opt.icon}</span>
+                                    <span className={`text-sm flex-1 font-medium ${exportOptions[opt.key] ? 'text-indigo-700' : 'text-slate-600'}`}>
+                                        {opt.label}
+                                    </span>
+                                    {opt.badge && (
+                                        <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">{opt.badge}</span>
+                                    )}
+                                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                                        exportOptions[opt.key]
+                                            ? 'bg-indigo-600 border-indigo-600'
+                                            : 'border-slate-300 bg-white'
+                                    }`}>
+                                        {exportOptions[opt.key] && <span className="text-white text-xs">✓</span>}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-5 pb-5 flex gap-2">
+                            <button
+                                onClick={() => setExportModal(null)}
+                                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-all"
+                            >
+                                Отмена
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (exportModal === 'csv') exportCSV(exportOptions);
+                                    else exportPDF(exportOptions);
+                                    setExportModal(null);
+                                }}
+                                className="flex-2 flex-grow py-2.5 px-5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 text-white text-sm font-semibold hover:shadow-lg hover:shadow-indigo-200 hover:-translate-y-0.5 transition-all"
+                            >
+                                {exportModal === 'pdf' ? '🖨️ Скачать PDF' : '📥 Скачать CSV'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Expense Detail Modal — Telegram style bottom sheet */}
+            {activeModal && (
+                <div
+                    className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+                    onClick={() => setActiveModal(null)}
+                >
+                    {/* Backdrop */}
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200" />
+
+                    {/* Sheet */}
+                    <div
+                        className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:zoom-in-95 sm:slide-in-from-bottom-0 duration-300"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Drag handle (mobile) */}
+                        <div className="flex justify-center pt-3 pb-1 sm:hidden">
+                            <div className="w-10 h-1 bg-slate-200 rounded-full" />
+                        </div>
+
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
+                            <div>
+                                <h3 className="font-bold text-slate-800 text-base">
+                                    {activeModal === 'payments' ? 'Поступления от клиентов' :
+                                     activeModal === 'investor_payouts' ? 'Выплаты инвесторам' :
+                                     'Прочие расходы'}
+                                </h3>
+                                <p className="text-xs text-slate-400 mt-0.5">{filters.period.start} — {filters.period.end}</p>
+                            </div>
+                            <button
+                                onClick={() => setActiveModal(null)}
+                                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors text-sm font-bold flex-shrink-0"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Scrollable content */}
+                        <div className="flex-1 overflow-y-auto">
+                            {activeModal === 'payments' && (
+                                paymentsDetail.length > 0 ? (
+                                    <div className="divide-y divide-slate-50">
+                                        {paymentsDetail.map((item, i) => (
+                                            <div key={i} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50/50 transition-colors">
+                                                <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0 text-base">💳</div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-slate-700 text-sm truncate">{item.productName}</p>
+                                                    <p className="text-xs text-slate-400">{item.label} · {new Date(item.date).toLocaleDateString('ru-RU')}</p>
+                                                </div>
+                                                <span className="font-semibold text-emerald-600 text-sm flex-shrink-0">+{formatCurrency(item.amount, appSettings.showCents)} ₽</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center h-36 text-slate-400">
+                                        <span className="text-3xl mb-2 opacity-40">💳</span>
+                                        <p className="text-sm">Нет поступлений за период</p>
+                                    </div>
+                                )
+                            )}
+
+                            {activeModal === 'investor_payouts' && (
+                                investorPayoutsDetail.length > 0 ? (
+                                    <div className="divide-y divide-slate-50">
+                                        {investorPayoutsDetail.map((item, i) => (
+                                            <div key={i} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50/50 transition-colors">
+                                                <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0 text-base">👥</div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-slate-700 text-sm truncate">{item.title}</p>
+                                                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                                        {item.investorName && (
+                                                            <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md">{item.investorName}</span>
+                                                        )}
+                                                        <span className="text-xs text-slate-400">
+                                                            {item.payoutType === 'PROFIT' ? 'Прибыль' : 'Инвестиция'} · {new Date(item.date).toLocaleDateString('ru-RU')}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <span className="font-semibold text-indigo-600 text-sm flex-shrink-0">−{formatCurrency(item.amount, appSettings.showCents)} ₽</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center h-36 text-slate-400">
+                                        <span className="text-3xl mb-2 opacity-40">👥</span>
+                                        <p className="text-sm">Нет выплат за период</p>
+                                    </div>
+                                )
+                            )}
+
+                            {activeModal === 'other_expenses' && (
+                                otherExpensesDetail.length > 0 ? (
+                                    <div className="divide-y divide-slate-50">
+                                        {otherExpensesDetail.map((item, i) => (
+                                            <div key={i} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50/50 transition-colors">
+                                                <div className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0 text-base">📋</div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-slate-700 text-sm truncate">{item.title}</p>
+                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                        {item.category && (
+                                                            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md">{item.category}</span>
+                                                        )}
+                                                        <span className="text-xs text-slate-400">{new Date(item.date).toLocaleDateString('ru-RU')}</span>
+                                                    </div>
+                                                </div>
+                                                <span className="font-semibold text-red-600 text-sm flex-shrink-0">−{formatCurrency(item.amount, appSettings.showCents)} ₽</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center h-36 text-slate-400">
+                                        <span className="text-3xl mb-2 opacity-40">📋</span>
+                                        <p className="text-sm">Нет расходов за период</p>
+                                    </div>
+                                )
+                            )}
+                        </div>
+
+                        {/* Footer with total */}
+                        <div className="px-5 py-4 border-t border-slate-100 bg-slate-50/80 flex-shrink-0">
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm text-slate-500">
+                                    {activeModal === 'payments'
+                                        ? `${paymentsDetail.length} платежей`
+                                        : activeModal === 'investor_payouts'
+                                        ? `${investorPayoutsDetail.length} выплат`
+                                        : `${otherExpensesDetail.length} расходов`}
+                                </span>
+                                <span className="font-bold text-slate-800 text-base">
+                                    {activeModal === 'payments'
+                                        ? formatCurrency(data.customerPaymentsInPeriod, appSettings.showCents)
+                                        : activeModal === 'investor_payouts'
+                                        ? formatCurrency(expenseStats?.investorPayouts || 0, appSettings.showCents)
+                                        : formatCurrency(expenseStats?.otherExpenses || 0, appSettings.showCents)} ₽
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
