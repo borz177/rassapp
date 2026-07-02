@@ -18,10 +18,13 @@ const PLAN_LIMITS: Record<SubscriptionPlan, {
   BUSINESS: { contracts: -1, investors: -1, employees: -1, whatsapp: true, ai: true }, // -1 = безлимит
 };
 
+type SubscriptionFilter = 'all' | 'active' | 'expired' | 'none';
+
 const AdminPanel: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [subscriptionFilter, setSubscriptionFilter] = useState<SubscriptionFilter>('all'); // 🔹 Новый фильтр
     const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'logs'>('users');
 
     // Modal State
@@ -182,12 +185,37 @@ const handleResetUserPassword = async (user: User) => {
 };
 
     const filteredUsers = useMemo(() => {
-        return users.filter(u =>
-            u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            u.id.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [users, searchTerm]);
+        return users.filter(u => {
+            // Поиск по тексту
+            const matchesSearch = 
+                u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                u.id.toLowerCase().includes(searchTerm.toLowerCase());
+            
+            if (!matchesSearch) return false;
+
+            // 🔹 Фильтр по подписке
+            if (subscriptionFilter === 'all') return true;
+            
+            if (subscriptionFilter === 'none') {
+                return !u.subscription;
+            }
+            
+            if (!u.subscription) return false;
+            
+            const isExpired = new Date(u.subscription.expiresAt) < new Date();
+            
+            if (subscriptionFilter === 'active') {
+                return !isExpired;
+            }
+            
+            if (subscriptionFilter === 'expired') {
+                return isExpired;
+            }
+            
+            return true;
+        });
+    }, [users, searchTerm, subscriptionFilter]);
 
     const getPlanBadge = (plan: SubscriptionPlan) => {
         const styles: Record<SubscriptionPlan, string> = {
@@ -275,8 +303,8 @@ const getContractUsage = (user: User): {
                 </div>*/}
             </div>
 
-            {/* Search */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+            {/* Search & Filter */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
                 <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{ICONS.Search}</span>
                     <input
@@ -286,6 +314,50 @@ const getContractUsage = (user: User): {
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                     />
+                </div>
+                
+                {/* 🔹 Фильтр по подписке */}
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        onClick={() => setSubscriptionFilter('all')}
+                        className={`px-4 py-2 text-sm font-medium rounded-lg border transition ${
+                            subscriptionFilter === 'all' 
+                                ? 'bg-slate-800 text-white border-slate-800' 
+                                : 'bg-white border-slate-200 hover:border-slate-400'
+                        }`}
+                    >
+                        Все
+                    </button>
+                    <button
+                        onClick={() => setSubscriptionFilter('active')}
+                        className={`px-4 py-2 text-sm font-medium rounded-lg border transition ${
+                            subscriptionFilter === 'active' 
+                                ? 'bg-emerald-600 text-white border-emerald-600' 
+                                : 'bg-white text-emerald-600 border-emerald-200 hover:border-emerald-400'
+                        }`}
+                    >
+                        ✅ Активные
+                    </button>
+                    <button
+                        onClick={() => setSubscriptionFilter('expired')}
+                        className={`px-4 py-2 text-sm font-medium rounded-lg border transition ${
+                            subscriptionFilter === 'expired' 
+                                ? 'bg-red-600 text-white border-red-600' 
+                                : 'bg-white text-red-600 border-red-200 hover:border-red-400'
+                        }`}
+                    >
+                        ⚠️ Истёкшие
+                    </button>
+                    <button
+                        onClick={() => setSubscriptionFilter('none')}
+                        className={`px-4 py-2 text-sm font-medium rounded-lg border transition ${
+                            subscriptionFilter === 'none' 
+                                ? 'bg-slate-600 text-white border-slate-600' 
+                                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+                        }`}
+                    >
+                        ❌ Без подписки
+                    </button>
                 </div>
             </div>
 
@@ -420,8 +492,8 @@ const getContractUsage = (user: User): {
                 <div className="text-center py-12 bg-white rounded-xl border border-slate-200">
                     <div className="text-4xl mb-3">🔍</div>
                     <p className="text-slate-500">Пользователи не найдены</p>
-                    <button onClick={() => setSearchTerm('')} className="mt-2 text-indigo-600 hover:underline text-sm">
-                        Сбросить поиск
+                    <button onClick={() => { setSearchTerm(''); setSubscriptionFilter('all'); }} className="mt-2 text-indigo-600 hover:underline text-sm">
+                        Сбросить фильтры
                     </button>
                 </div>
             )}
