@@ -195,22 +195,30 @@ const Reports: React.FC<ReportsProps> = ({
         const endDate = new Date(filters.period.end);
         endDate.setHours(23, 59, 59, 999);
 
-        const periodExpenses = expenses.filter(e => {
+        const periodExpenses = (expenses as Expense[]).filter((e: Expense) => {
             const eDate = new Date(e.date);
-            return eDate >= startDate && eDate <= endDate && !e.isRefund;
+            if (!(eDate >= startDate && eDate <= endDate && !e.isRefund)) return false;
+            if (filters.investorId !== 'ALL') {
+                if (e.payoutType === 'PROFIT' || e.payoutType === 'INVESTMENT') {
+                    return e.investorId === filters.investorId;
+                }
+                const acc = (accounts as Account[]).find((a: Account) => a.id === e.accountId);
+                return acc?.ownerId === filters.investorId;
+            }
+            return true;
         });
         if (!periodExpenses.length) return null;
 
         const investorPayouts = periodExpenses
-            .filter(e => e.payoutType === 'PROFIT' || e.payoutType === 'INVESTMENT')
-            .reduce((sum, e) => sum + e.amount, 0);
+            .filter((e: Expense) => e.payoutType === 'PROFIT' || e.payoutType === 'INVESTMENT')
+            .reduce((sum: number, e: Expense) => sum + e.amount, 0);
         const otherExpenses = periodExpenses
-            .filter(e => e.payoutType !== 'PROFIT' && e.payoutType !== 'INVESTMENT')
-            .reduce((sum, e) => sum + e.amount, 0);
-        const total = periodExpenses.reduce((sum, e) => sum + e.amount, 0);
+            .filter((e: Expense) => e.payoutType !== 'PROFIT' && e.payoutType !== 'INVESTMENT')
+            .reduce((sum: number, e: Expense) => sum + e.amount, 0);
+        const total = periodExpenses.reduce((sum: number, e: Expense) => sum + e.amount, 0);
 
         return { investorPayouts, otherExpenses, total, count: periodExpenses.length };
-    }, [expenses, filters]);
+    }, [expenses, accounts, filters]);
 
     // Accurate per-investor breakdown from real sales
     const totalInvestment = useMemo(() => investors.reduce((s, inv) => s + inv.initialAmount, 0), [investors]);
@@ -310,8 +318,10 @@ const Reports: React.FC<ReportsProps> = ({
         endDate.setHours(23, 59, 59, 999);
         return typedExpenses.filter((e: Expense) => {
             const eDate = new Date(e.date);
-            return eDate >= startDate && eDate <= endDate && !e.isRefund &&
-                (e.payoutType === 'PROFIT' || e.payoutType === 'INVESTMENT');
+            if (!(eDate >= startDate && eDate <= endDate && !e.isRefund &&
+                (e.payoutType === 'PROFIT' || e.payoutType === 'INVESTMENT'))) return false;
+            if (filters.investorId !== 'ALL') return e.investorId === filters.investorId;
+            return true;
         }).sort((a: Expense, b: Expense) => b.date.localeCompare(a.date))
             .map((e: Expense) => ({ ...e, investorName: (investors as Investor[]).find((i: Investor) => i.id === e.investorId)?.name }));
     }, [expenses, investors, filters]);
@@ -325,10 +335,15 @@ const Reports: React.FC<ReportsProps> = ({
         endDate.setHours(23, 59, 59, 999);
         return typedExpenses.filter((e: Expense) => {
             const eDate = new Date(e.date);
-            return eDate >= startDate && eDate <= endDate && !e.isRefund &&
-                e.payoutType !== 'PROFIT' && e.payoutType !== 'INVESTMENT';
+            if (!(eDate >= startDate && eDate <= endDate && !e.isRefund &&
+                e.payoutType !== 'PROFIT' && e.payoutType !== 'INVESTMENT')) return false;
+            if (filters.investorId !== 'ALL') {
+                const acc = (accounts as Account[]).find((a: Account) => a.id === e.accountId);
+                return acc?.ownerId === filters.investorId;
+            }
+            return true;
         }).sort((a: Expense, b: Expense) => b.date.localeCompare(a.date));
-    }, [expenses, filters]);
+    }, [expenses, accounts, filters]);
 
     // Overdue payments — same algorithm as calculateSaleOverdue in Contracts.tsx
     // Uses remainingAmount (not isPaid) to correctly account for partial/cash payments
@@ -338,7 +353,14 @@ const Reports: React.FC<ReportsProps> = ({
         const result: { saleId: string; productName: string; customerName: string; overdueAmount: number; missedCount: number; earliestMissedDate: string }[] = [];
 
         (sales as Sale[])
-            .filter((s: Sale) => s.status !== 'COMPLETED' && s.remainingAmount > 0)
+            .filter((s: Sale) => {
+                if (s.status === 'COMPLETED' || s.remainingAmount <= 0) return false;
+                if (filters.investorId !== 'ALL') {
+                    const acc = (accounts as Account[]).find((a: Account) => a.id === s.accountId);
+                    return acc?.ownerId === filters.investorId;
+                }
+                return true;
+            })
             .forEach((sale: Sale) => {
                 // expectedTotal = первый взнос + все плановые платежи, срок которых уже прошёл
                 let expectedTotal = sale.downPayment;
@@ -376,7 +398,7 @@ const Reports: React.FC<ReportsProps> = ({
             });
 
         return result.sort((a, b) => b.overdueAmount - a.overdueAmount);
-    }, [sales, customers]);
+    }, [sales, customers, accounts, filters]);
 
     // Customer breakdown — group paymentsDetail by customer
     const customerBreakdown = useMemo(() => {
