@@ -611,7 +611,7 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v8';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v9';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -3200,31 +3200,91 @@ if (!user && !showSplash) {
 
 {showTemplateUpdateModal && (
   <div
-    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
     onClick={() => setShowTemplateUpdateModal(false)}
   >
     <div
-      className="bg-white w-full max-w-xs rounded-2xl shadow-xl p-6 text-center animate-scale-in"
+      className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
-      <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center text-2xl">
-        ⚙️
+      {/* Шапка */}
+      <div className="relative bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-8 text-white overflow-hidden">
+        {/* Декоративные круги */}
+        <div className="absolute -top-10 -right-10 w-40 h-40 bg-purple-500/20 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-blue-500/20 rounded-full blur-3xl"></div>
+        
+        <div className="relative z-10">
+          <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-4xl shadow-2xl shadow-purple-500/50">
+            ✨
+          </div>
+          <h3 className="text-2xl font-bold text-center mb-1">
+            Что нового?
+          </h3>
+         
+        </div>
       </div>
 
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">
-        Ведутся технические работы
-      </h3>
-      
-      <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-        Возможны кратковременные сбои.
-      </p>
+      {/* Контент */}
+      <div className="p-6 space-y-5">
+        <div className="space-y-4">
 
-      <button
-        onClick={() => setShowTemplateUpdateModal(false)}
-        className="w-full py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 active:scale-[0.98] transition-all"
-      >
-        Хорошо
-      </button>
+
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-green-100 text-green-600 flex items-center justify-center text-sm font-bold">
+              📤
+            </div>
+            <div>
+              <p className="font-semibold text-slate-800 text-sm">Отчеты</p>
+              <p className="text-xs text-slate-500 mt-0.5">В разделе «Отчеты» добавлена выгрузка данных в PDF и CSV и добавили разные показатели данных.</p>
+            </div>
+          </div>
+
+
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-red-100 text-red-600 flex items-center justify-center text-sm font-bold">
+              ⚠️
+            </div>
+            <div>
+              <p className="font-semibold text-slate-800 text-sm">Карточка просрочек</p>
+              <p className="text-xs text-slate-500 mt-0.5">На главном экране: мгновенный контроль над просроченными платежами и задачами</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center text-sm font-bold">
+              🛒
+            </div>
+            <div>
+              <p className="font-semibold text-slate-800 text-sm">Карточка закупок</p>
+              <p className="text-xs text-slate-500 mt-0.5">Быстрый доступ к закупкам и расходам прямо с дашборда</p>
+            </div>
+          </div>
+
+          
+
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">
+              📎
+            </div>
+            <div>
+              <p className="font-semibold text-slate-800 text-sm">Обновление документов</p>
+              <p className="text-xs text-slate-500 mt-0.5">Улучшен интерфейс добавления и управления документами у клиентов</p>
+            </div>
+          </div>
+        </div>
+
+       
+      </div>
+
+      {/* Кнопка */}
+      <div className="px-6 pb-6">
+        <button
+          onClick={() => setShowTemplateUpdateModal(false)}
+          className="w-full py-3.5 bg-gradient-to-r from-indigo-900 to-purple-900 text-white text-sm font-bold rounded-xl hover:from-indigo-800 hover:to-purple-800 active:scale-[0.98] transition-all shadow-lg shadow-indigo-300"
+        >
+          Отлично 🚀
+        </button>
+      </div>
     </div>
   </div>
 )}

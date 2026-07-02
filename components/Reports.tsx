@@ -258,6 +258,10 @@ const Reports: React.FC<ReportsProps> = ({
 
     // Modal state
     const [activeModal, setActiveModal] = useState<'payments' | 'investor_payouts' | 'other_expenses' | null>(null);
+    const [closingModal, setClosingModal] = useState<'active' | 'export' | null>(null);
+
+    const closeActiveModal = () => setClosingModal('active');
+    const closeExportModal = () => setClosingModal('export');
 
     // Export modal state
     const [exportModal, setExportModal] = useState<'pdf' | 'csv' | null>(null);
@@ -326,24 +330,52 @@ const Reports: React.FC<ReportsProps> = ({
         }).sort((a: Expense, b: Expense) => b.date.localeCompare(a.date));
     }, [expenses, filters]);
 
-    // Overdue payments — active sales with unpaid installments past due (as of today, no period filter)
+    // Overdue payments — same algorithm as calculateSaleOverdue in Contracts.tsx
+    // Uses remainingAmount (not isPaid) to correctly account for partial/cash payments
     const overduePayments = useMemo(() => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const result: { saleId: string; productName: string; customerName: string; dueDate: string; amount: number; daysOverdue: number }[] = [];
-        (sales as Sale[]).filter((s: Sale) => s.status === 'ACTIVE').forEach((sale: Sale) => {
-            const customer = (customers as Customer[]).find((c: Customer) => c.id === sale.customerId);
-            const customerName = customer?.name || 'Клиент';
-            (sale.paymentPlan || []).filter((p: any) => !p.isPaid).forEach((p: any) => {
-                const dueDate = new Date(p.date);
-                dueDate.setHours(0, 0, 0, 0);
-                if (dueDate < today) {
-                    const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-                    result.push({ saleId: sale.id, productName: sale.productName, customerName, dueDate: p.date.substring(0, 10), amount: p.amount, daysOverdue });
+        const result: { saleId: string; productName: string; customerName: string; overdueAmount: number; missedCount: number; earliestMissedDate: string }[] = [];
+
+        (sales as Sale[])
+            .filter((s: Sale) => s.status !== 'COMPLETED' && s.remainingAmount > 0)
+            .forEach((sale: Sale) => {
+                // expectedTotal = первый взнос + все плановые платежи, срок которых уже прошёл
+                let expectedTotal = sale.downPayment;
+                (sale.paymentPlan || []).forEach((p: any) => {
+                    if (!p.isRealPayment && new Date(p.date) < today) expectedTotal += p.amount;
+                });
+                const totalPaid = sale.totalAmount - sale.remainingAmount;
+                const overdueAmount = Math.max(0, expectedTotal - totalPaid);
+                if (overdueAmount <= 0) return;
+
+                // Считаем пропущенные месяцы (аналог overduePaymentsList в Contracts.tsx)
+                const planPayments = (sale.paymentPlan || []).filter((p: any) => !p.isRealPayment);
+                const sortedPlan = [...planPayments].sort((a: any, b: any) =>
+                    new Date(a.date).getTime() - new Date(b.date).getTime()
+                );
+                let remaining = Math.max(0, totalPaid - sale.downPayment);
+                let paidMonths = 0;
+                for (const p of sortedPlan) {
+                    if (remaining >= (p as any).amount * 0.99) { remaining -= (p as any).amount; paidMonths++; }
+                    else break;
                 }
+                const missedList = sortedPlan.filter((p: any, idx: number) =>
+                    new Date(p.date) < today && idx >= paidMonths
+                );
+
+                const customer = (customers as Customer[]).find((c: Customer) => c.id === sale.customerId);
+                result.push({
+                    saleId: sale.id,
+                    productName: sale.productName,
+                    customerName: customer?.name || 'Клиент',
+                    overdueAmount,
+                    missedCount: missedList.length,
+                    earliestMissedDate: missedList[0] ? (missedList[0] as any).date.substring(0, 10) : '',
+                });
             });
-        });
-        return result.sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+        return result.sort((a, b) => b.overdueAmount - a.overdueAmount);
     }, [sales, customers]);
 
     // Customer breakdown — group paymentsDetail by customer
@@ -429,10 +461,12 @@ const Reports: React.FC<ReportsProps> = ({
 
         if (opts.overduePayments && overduePayments.length > 0) {
             lines.push(`ПРОСРОЧЕННЫЕ ПЛАТЕЖИ (на дату экспорта)${sep}${sep}${sep}${sep}`);
-            lines.push(`Клиент${sep}Товар${sep}Дата платежа${sep}Просрочка (дней)${sep}Сумма (₽)${sep}`);
-            overduePayments.forEach((p: { customerName: string; productName: string; dueDate: string; daysOverdue: number; amount: number }) => {
-                lines.push(`${p.customerName}${sep}${p.productName}${sep}${p.dueDate}${sep}${p.daysOverdue}${sep}${p.amount.toFixed(2)}${sep}`);
+            lines.push(`Клиент${sep}Товар${sep}Пропущено платежей${sep}С даты${sep}Сумма долга (₽)${sep}`);
+            overduePayments.forEach((p: { customerName: string; productName: string; missedCount: number; earliestMissedDate: string; overdueAmount: number }) => {
+                lines.push(`${p.customerName}${sep}${p.productName}${sep}${p.missedCount}${sep}${p.earliestMissedDate}${sep}${p.overdueAmount.toFixed(2)}${sep}`);
             });
+            const totalOverdue = overduePayments.reduce((s: number, p: { overdueAmount: number }) => s + p.overdueAmount, 0);
+            lines.push(`Итого просрочено${sep}${sep}${sep}${sep}${totalOverdue.toFixed(2)}${sep}`);
             lines.push(`${sep}${sep}`);
         }
 
@@ -502,16 +536,16 @@ const Reports: React.FC<ReportsProps> = ({
         const overdueHTML = opts.overduePayments && overduePayments.length > 0 ? `
             <h2>Просроченные платежи (на дату отчёта)</h2>
             <table>
-                <tr><th>Клиент</th><th>Товар</th><th>Дата платежа</th><th>Просрочка</th><th>Сумма</th></tr>
-                ${overduePayments.map((p: { customerName: string; productName: string; dueDate: string; daysOverdue: number; amount: number }) => `
+                <tr><th>Клиент</th><th>Товар</th><th>Пропущено</th><th>С даты</th><th>Сумма долга</th></tr>
+                ${overduePayments.map((p: { customerName: string; productName: string; missedCount: number; earliestMissedDate: string; overdueAmount: number }) => `
                 <tr>
                     <td><strong>${p.customerName}</strong></td>
                     <td>${p.productName}</td>
-                    <td>${p.dueDate}</td>
-                    <td class="red">${p.daysOverdue} дн.</td>
-                    <td class="red">${fmt(p.amount)}</td>
+                    <td class="red">${p.missedCount} пл.</td>
+                    <td>${p.earliestMissedDate}</td>
+                    <td class="red">${fmt(p.overdueAmount)}</td>
                 </tr>`).join('')}
-                <tr class="total"><td colspan="4"><strong>Итого просрочено</strong></td><td class="red"><strong>${fmt(overduePayments.reduce((s: number, p: { amount: number }) => s + p.amount, 0))}</strong></td></tr>
+                <tr class="total"><td colspan="4"><strong>Итого просрочено</strong></td><td class="red"><strong>${fmt(overduePayments.reduce((s: number, p: { overdueAmount: number }) => s + p.overdueAmount, 0))}</strong></td></tr>
             </table>` : '';
 
         const customerBreakdownHTML = opts.customerBreakdown && customerBreakdown.length > 0 ? `
@@ -1008,15 +1042,21 @@ const Reports: React.FC<ReportsProps> = ({
             </div>
 
             {/* Export Options Modal */}
-            {exportModal && (
+            {(exportModal || closingModal === 'export') && (
                 <div
                     className="fixed inset-0 z-50 flex items-center justify-center p-4"
-                    onClick={() => setExportModal(null)}
+                    onClick={closeExportModal}
                 >
-                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200" />
+                    <div className={`absolute inset-0 bg-black/50 backdrop-blur-sm ${closingModal === 'export' ? 'animate-fade-out' : ''}`} />
                     <div
-                        className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-200"
+                        className={`relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden ${closingModal === 'export' ? 'animate-fade-out' : 'animate-slide-up-sheet'}`}
                         onClick={e => e.stopPropagation()}
+                        onAnimationEnd={() => {
+                            if (closingModal === 'export') {
+                                setExportModal(null);
+                                setClosingModal(null);
+                            }
+                        }}
                     >
                         {/* Header */}
                         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
@@ -1028,7 +1068,7 @@ const Reports: React.FC<ReportsProps> = ({
                                 </div>
                             </div>
                             <button
-                                onClick={() => setExportModal(null)}
+                                onClick={closeExportModal}
                                 className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors text-xs font-bold"
                             >✕</button>
                         </div>
@@ -1084,7 +1124,7 @@ const Reports: React.FC<ReportsProps> = ({
                         {/* Footer */}
                         <div className="px-5 pb-5 flex gap-2">
                             <button
-                                onClick={() => setExportModal(null)}
+                                onClick={closeExportModal}
                                 className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-all"
                             >
                                 Отмена
@@ -1093,7 +1133,7 @@ const Reports: React.FC<ReportsProps> = ({
                                 onClick={() => {
                                     if (exportModal === 'csv') exportCSV(exportOptions);
                                     else exportPDF(exportOptions);
-                                    setExportModal(null);
+                                    closeExportModal();
                                 }}
                                 className="flex-2 flex-grow py-2.5 px-5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 text-white text-sm font-semibold hover:shadow-lg hover:shadow-indigo-200 hover:-translate-y-0.5 transition-all"
                             >
@@ -1105,18 +1145,24 @@ const Reports: React.FC<ReportsProps> = ({
             )}
 
             {/* Expense Detail Modal — Telegram style bottom sheet */}
-            {activeModal && (
+            {(activeModal || closingModal === 'active') && (
                 <div
-                    className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
-                    onClick={() => setActiveModal(null)}
+                    className="fixed inset-0 z-110 flex items-end justify-center"
+                    onClick={closeActiveModal}
                 >
                     {/* Backdrop */}
-                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200" />
+                    <div className={`absolute inset-0 bg-black/50 backdrop-blur-sm ${closingModal === 'active' ? 'animate-fade-out' : ''}`} />
 
                     {/* Sheet */}
                     <div
-                        className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:zoom-in-95 sm:slide-in-from-bottom-0 duration-300"
+                        className={`relative w-full sm:max-w-lg bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col overflow-hidden ${closingModal === 'active' ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
                         onClick={e => e.stopPropagation()}
+                        onAnimationEnd={() => {
+                            if (closingModal === 'active') {
+                                setActiveModal(null);
+                                setClosingModal(null);
+                            }
+                        }}
                     >
                         {/* Drag handle (mobile) */}
                         <div className="flex justify-center pt-3 pb-1 sm:hidden">
@@ -1134,7 +1180,7 @@ const Reports: React.FC<ReportsProps> = ({
                                 <p className="text-xs text-slate-400 mt-0.5">{filters.period.start} — {filters.period.end}</p>
                             </div>
                             <button
-                                onClick={() => setActiveModal(null)}
+                                onClick={closeActiveModal}
                                 className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors text-sm font-bold flex-shrink-0"
                             >
                                 ✕
