@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, User, AppSettings } from '../types';
 import { ICONS } from '../constants';
-import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X } from 'lucide-react';
+import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
 import { formatCurrency, formatDate } from '../src/utils';
 import { createPortal } from 'react-dom';
 import { api } from '../services/api';
@@ -17,8 +17,9 @@ interface ContractsProps {
   onDeleteSale: (saleId: string) => void;
   readOnly?: boolean;
   user?: User | null;
+  employees?: User[];
   appSettings?: AppSettings;
-  
+
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -331,11 +332,13 @@ const formatPhone = (raw: string | undefined): string => {
 const Contracts: React.FC<ContractsProps> = ({
   sales, customers, accounts, activeTab, onTabChange,
   onViewSchedule, onEditSale, onDeleteSale, readOnly = false,
-  user, appSettings
+  user, employees = [], appSettings
 }) => {
   const isEmployee = user?.role === 'employee';
   const [searchTerm, setSearchTerm] = useState('');
   const [filterAccountId, setFilterAccountId] = useState('');
+  const [filterEmployeeId, setFilterEmployeeId] = useState('');
+  const getCreatorName = (sale: Sale) => employees.find(e => e.id === sale.createdByUserId)?.name;
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [isMenuClosing, setIsMenuClosing] = useState(false);
   const [deletingSale, setDeletingSale] = useState<Sale | null>(null);
@@ -385,9 +388,10 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
       });
     }
     if (filterAccountId) list = list.filter(sale => sale.accountId === filterAccountId);
+    if (filterEmployeeId) list = list.filter(sale => sale.createdByUserId === filterEmployeeId);
 
     return { filteredList: list.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()) };
-  }, [sales, customers, activeTab, searchTerm, filterAccountId]);
+  }, [sales, customers, activeTab, searchTerm, filterAccountId, filterEmployeeId]);
 
   const totalOverdueSum = useMemo(() => {
     if (activeTab !== 'OVERDUE') return 0;
@@ -923,6 +927,20 @@ useEffect(() => {
             </select>
           </div>
         </div>
+
+        {employees.length > 0 && (
+          <div className="relative">
+            <UserIcon className="absolute left-3 top-2.5 text-slate-400 dark:text-slate-500" size={16} />
+            <select
+              className="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all appearance-none bg-white dark:bg-slate-900 dark:text-white"
+              value={filterEmployeeId}
+              onChange={e => setFilterEmployeeId(e.target.value)}
+            >
+              <option value="">Все сотрудники</option>
+              {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Список договоров */}
@@ -978,6 +996,11 @@ useEffect(() => {
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
                     {formatDate(sale.startDate)} • {sale.installments} мес.
                   </p>
+                  {employees.length > 0 && getCreatorName(sale) && (
+                    <p className="text-[10px] text-indigo-500 dark:text-indigo-400 mt-0.5 flex items-center gap-1">
+                      <UserIcon size={10} /> {getCreatorName(sale)}
+                    </p>
+                  )}
                 </div>
 
                 <div className="text-right shrink-0">

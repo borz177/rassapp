@@ -518,7 +518,8 @@ useEffect(() => {
             const mergedUser = {
               ...freshUser,
               permissions: freshUser.permissions || localUser.permissions,
-              allowedInvestorIds: freshUser.allowedInvestorIds || localUser.allowedInvestorIds
+              allowedInvestorIds: freshUser.allowedInvestorIds || localUser.allowedInvestorIds,
+              fullAccessInvestorIds: freshUser.fullAccessInvestorIds || localUser.fullAccessInvestorIds
             };
 
             setUser(mergedUser);
@@ -577,11 +578,17 @@ useEffect(() => {
 
 
 // 🔥 Мгновенная и полная фильтрация стейта для сотрудника
+// По умолчанию сотрудник видит только СВОИ записи (createdByUserId), кроме счетов/инвесторов
+// из fullAccessInvestorIds — там менеджер разрешил видеть ВСЕ записи.
 useEffect(() => {
     if (user?.role === 'employee') {
         const allowedIds = user.allowedInvestorIds || [];
         const hasMainAccess = allowedIds.includes('MAIN_ACCOUNT');
         const investorIds = allowedIds.filter(id => id !== 'MAIN_ACCOUNT');
+
+        const safeFullAccessIds = (user.fullAccessInvestorIds || []).filter(id => allowedIds.includes(id));
+        const hasFullMainAccess = safeFullAccessIds.includes('MAIN_ACCOUNT');
+        const fullAccessInvestorIdSet = new Set(safeFullAccessIds.filter(id => id !== 'MAIN_ACCOUNT'));
 
         // 1. Инвесторы
         setInvestors(prev => prev.filter(inv => investorIds.includes(inv.id)));
@@ -596,17 +603,32 @@ useEffect(() => {
         setAccounts(filteredAccounts);
 
         const allowedAccountIds = new Set(filteredAccounts.map(acc => acc.id));
+        const fullAccessAccountIds = new Set(
+            filteredAccounts
+                .filter(acc => {
+                    const isMainAccount = !acc.ownerId || acc.type === 'MAIN';
+                    if (isMainAccount && hasFullMainAccess) return true;
+                    if (acc.ownerId && fullAccessInvestorIdSet.has(acc.ownerId)) return true;
+                    return false;
+                })
+                .map(acc => acc.id)
+        );
+        const canSeeRecord = (record: { accountId?: string; createdByUserId?: string }) => {
+            if (!record.accountId || !allowedAccountIds.has(record.accountId)) return false;
+            if (fullAccessAccountIds.has(record.accountId)) return true;
+            return record.createdByUserId === user.id;
+        };
 
         // 3. Продажи и расходы
-        const filteredSales = sales.filter(s => s.accountId && allowedAccountIds.has(s.accountId));
+        const filteredSales = sales.filter(canSeeRecord);
         setSales(filteredSales);
-        setExpenses(prev => prev.filter(e => e.accountId && allowedAccountIds.has(e.accountId)));
+        setExpenses(prev => prev.filter(canSeeRecord));
 
         // 4. 🔥 КЛИЕНТЫ: Оставляем только тех, кто есть в отфильтрованных продажах
         const allowedCustomerIds = new Set(filteredSales.map(s => s.customerId));
         setCustomers(prev => prev.filter(c => allowedCustomerIds.has(c.id)));
     }
-}, [user, accounts, sales]); 
+}, [user, accounts, sales]);
 
 
 
@@ -1108,6 +1130,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
       ...data,
       id: saleId,
       userId: ownerId,
+      createdByUserId: data.createdByUserId || user.id, // Сохраняем создателя при редактировании, ставим текущего при создании
       paymentDay: preferredDay,
       paymentPlan: data.type === 'CASH'
         ? []
@@ -1453,6 +1476,7 @@ const handleIncomeSubmit = async (data: any) => {
         const newTransaction: Sale = {
             id: `inc_${Date.now()}`,
             userId: ownerId,
+            createdByUserId: user.id,
             type: 'CASH',
             customerId: data.investorId || 'system_income',
             productName: data.note || 'Приход',
@@ -1485,7 +1509,7 @@ const handleIncomeSubmit = async (data: any) => {
             }
         }
     }
-};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: crypto.randomUUID(), userId: ownerId, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
+};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: crypto.randomUUID(), userId: ownerId, createdByUserId: user.id, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
  const handleAddEmployee = async (data: any) => {
   if (!user || !isManager) return;
 
@@ -2550,6 +2574,7 @@ if (!user && !showSplash) {
                       onDeleteSale={handleDeleteSale}
                       readOnly={isInvestor}
                       user={user}
+                      employees={employees}
                       appSettings={appSettings}
                   />
               )}

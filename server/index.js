@@ -67,7 +67,9 @@ const PLAN_LIMITS = {
 
 
 // 🔹 Фильтрация данных для сотрудника по allowed_investor_ids
-const filterDataForEmployee = (dataByType, allowedInvestorIds) => {
+// 🔥 По умолчанию сотрудник видит только СВОИ записи (createdByUserId === employeeId).
+//    Если счёт/инвестор входит в fullAccessInvestorIds — сотрудник видит ВСЕ записи по нему.
+const filterDataForEmployee = (dataByType, allowedInvestorIds, fullAccessInvestorIds, employeeId) => {
     // 🔥 Если доступов нет вообще — возвращаем пустоту (безопасность)
     if (!allowedInvestorIds || allowedInvestorIds.length === 0) {
         return {
@@ -84,6 +86,11 @@ const filterDataForEmployee = (dataByType, allowedInvestorIds) => {
     const hasMainAccess = allowedInvestorIds.includes('MAIN_ACCOUNT');
     const investorIds = allowedInvestorIds.filter(id => id !== 'MAIN_ACCOUNT');
 
+    // 🔒 Полный доступ считаем только по тем пунктам, на которые есть базовый доступ
+    const safeFullAccessIds = (fullAccessInvestorIds || []).filter(id => allowedInvestorIds.includes(id));
+    const hasFullMainAccess = safeFullAccessIds.includes('MAIN_ACCOUNT');
+    const fullAccessInvestorIdsSet = new Set(safeFullAccessIds.filter(id => id !== 'MAIN_ACCOUNT'));
+
     // 1. Инвесторы: только явно разрешенные
     filtered.investors = (filtered.investors || []).filter(inv => investorIds.includes(inv.id));
 
@@ -95,10 +102,28 @@ const filterDataForEmployee = (dataByType, allowedInvestorIds) => {
         return false;
     });
 
-    // 3. Продажи и расходы: СТРОГО по разрешенным счетам
+    // 2.1 Счета с полным доступом (видны ВСЕ записи, не только свои)
+    const fullAccessAccountIds = new Set(
+        filtered.accounts
+            .filter(acc => {
+                const isMainAccount = !acc.ownerId || acc.type === 'MAIN';
+                if (isMainAccount && hasFullMainAccess) return true;
+                if (acc.ownerId && fullAccessInvestorIdsSet.has(acc.ownerId)) return true;
+                return false;
+            })
+            .map(acc => acc.id)
+    );
+
+    // 3. Продажи и расходы: СТРОГО по разрешенным счетам,
+    //    и только свои — если по счёту не выдан полный доступ
     const allowedAccountIds = new Set(filtered.accounts.map(acc => acc.id));
-    filtered.sales = (filtered.sales || []).filter(sale => sale.accountId && allowedAccountIds.has(sale.accountId));
-    filtered.expenses = (filtered.expenses || []).filter(expense => expense.accountId && allowedAccountIds.has(expense.accountId));
+    const canSeeRecord = (record) => {
+        if (!record.accountId || !allowedAccountIds.has(record.accountId)) return false;
+        if (fullAccessAccountIds.has(record.accountId)) return true;
+        return record.createdByUserId === employeeId;
+    };
+    filtered.sales = (filtered.sales || []).filter(canSeeRecord);
+    filtered.expenses = (filtered.expenses || []).filter(canSeeRecord);
 
     // 4. 🔥 КЛИЕНТЫ: Показываем только тех, у кого есть продажи на разрешенных счетах
     const allowedCustomerIds = new Set(filtered.sales.map(s => s.customerId));
@@ -458,6 +483,9 @@ const initDB = async () => {
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='api_key') THEN
           ALTER TABLE users ADD COLUMN api_key TEXT UNIQUE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='full_access_investor_ids') THEN
+          ALTER TABLE users ADD COLUMN full_access_investor_ids JSONB;
         END IF;
       END $$;
     `);
@@ -1627,6 +1655,7 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
                 managerId: user.manager_id,
                 permissions: user.permissions,
                 allowedInvestorIds: user.allowed_investor_ids,
+                fullAccessInvestorIds: user.full_access_investor_ids,
                 subscription: subscription, // <- Передаем подписку владельца!
                 whatsapp_settings: user.whatsapp_settings
             }
@@ -1642,7 +1671,7 @@ app.get('/api/auth/me', auth, async (req, res) => {
     try {
         // 🔥 ДОБАВИЛИ permissions и allowed_investor_ids в SELECT
         const result = await pool.query(
-            'SELECT id, name, email, phone, role, manager_id, subscription, whatsapp_settings, api_key, permissions, allowed_investor_ids FROM users WHERE id = $1',
+            'SELECT id, name, email, phone, role, manager_id, subscription, whatsapp_settings, api_key, permissions, allowed_investor_ids, full_access_investor_ids FROM users WHERE id = $1',
             [req.user.id]
         );
         if (result.rows.length === 0) return res.status(404).json({ msg: 'User not found' });
@@ -1668,6 +1697,7 @@ app.get('/api/auth/me', auth, async (req, res) => {
             whatsapp_settings: user.whatsapp_settings,
             permissions: user.permissions, // 🔥 ВОЗВРАЩАЕМ ПРАВА (canEdit, canDelete)
             allowedInvestorIds: user.allowed_investor_ids, // 🔥 ВОЗВРАЩАЕМ СПИСОК ИНВЕСТОРОВ
+            fullAccessInvestorIds: user.full_access_investor_ids,
             apiKey: user.role === 'admin' ? user.api_key : undefined
         });
     } catch (err) {
@@ -1805,17 +1835,24 @@ app.get('/api/data', auth, async (req, res) => {
         email: u.email,
         role: u.role,
         permissions: u.permissions,
-        allowedInvestorIds: u.allowed_investor_ids
+        allowedInvestorIds: u.allowed_investor_ids,
+        fullAccessInvestorIds: u.full_access_investor_ids
       }));
     }
 
     let finalResult = { ...result, employees };
 
-    if (req.user.role === 'employee' && req.user.allowed_investor_ids) {
-      const allowedIds = parseAllowedInvestorIds(req.user.allowed_investor_ids);
-      if (allowedIds.length > 0) {
-        finalResult = filterDataForEmployee(finalResult, allowedIds);
-      }
+    // 🔥 ИСПРАВЛЕНО: allowed_investor_ids отсутствовал в JWT (там только id/role/managerId),
+    // поэтому фильтрация раньше никогда не срабатывала — сотрудник видел весь датасет менеджера.
+    // Теперь берём актуальные права доступа прямо из БД.
+    if (req.user.role === 'employee') {
+      const empResult = await pool.query(
+        'SELECT allowed_investor_ids, full_access_investor_ids FROM users WHERE id = $1',
+        [req.user.id]
+      );
+      const allowedIds = parseAllowedInvestorIds(empResult.rows[0]?.allowed_investor_ids);
+      const fullAccessIds = parseAllowedInvestorIds(empResult.rows[0]?.full_access_investor_ids);
+      finalResult = filterDataForEmployee(finalResult, allowedIds, fullAccessIds, req.user.id);
     }
 
     res.json(finalResult);
@@ -2092,7 +2129,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
     // 🔹 ACTION: CREATE
     // ========================================
     if (action === 'create') {
-      const { name, email, password, role, permissions, allowedInvestorIds, phone } = userData;
+      const { name, email, password, role, permissions, allowedInvestorIds, fullAccessInvestorIds, phone } = userData;
 
 
        if (role === 'employee' || role === 'investor') {
@@ -2180,8 +2217,8 @@ app.post('/api/users/manage', auth, async (req, res) => {
 
       // 🔹 Создаём пользователя
       await pool.query(
-        `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, phone) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, full_access_investor_ids, phone)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           id,
           name,
@@ -2191,6 +2228,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
           req.user.id,
           JSON.stringify(permissions || {}),
           JSON.stringify(allowedInvestorIds || []),
+          JSON.stringify(fullAccessInvestorIds || []),
           phone || null
         ]
       );
@@ -2219,7 +2257,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
       }
 
       return res.json({
-        id, name, email, role, managerId: req.user.id, permissions, allowedInvestorIds, phone
+        id, name, email, role, managerId: req.user.id, permissions, allowedInvestorIds, fullAccessInvestorIds, phone
       });
     }
 
@@ -2264,13 +2302,14 @@ app.post('/api/users/manage', auth, async (req, res) => {
 }
 
    if (action === 'update') {
-  const { id, name, email, permissions, allowedInvestorIds, password, phone } = userData;
+  const { id, name, email, permissions, allowedInvestorIds, fullAccessInvestorIds, password, phone } = userData;
   const isSelfUpdate = (id === req.user.id);
 
   try {
     // Безопасная сериализация JSON
     const permJson = permissions !== undefined ? JSON.stringify(permissions) : null;
     const allowedJson = allowedInvestorIds !== undefined ? JSON.stringify(allowedInvestorIds) : null;
+    const fullAccessJson = fullAccessInvestorIds !== undefined ? JSON.stringify(fullAccessInvestorIds) : null;
 
     // 🔹 Преобразуем пустые строки в NULL, чтобы COALESCE корректно очищал поля
     const safeName = name?.trim() || null;
@@ -2278,27 +2317,29 @@ app.post('/api/users/manage', auth, async (req, res) => {
     const safePhone = phone?.trim() || null;
 
     // 🔹 COALESCE сохраняет старое значение, если пришло null
-    let query = `UPDATE users SET 
-      name = COALESCE($1, name), 
-      email = COALESCE($2, email), 
-      permissions = COALESCE($3, permissions), 
-      allowed_investor_ids = COALESCE($4, allowed_investor_ids), 
-      phone = COALESCE($5, phone), 
-      updated_at = NOW() 
-      WHERE id = $6`;
+    let query = `UPDATE users SET
+      name = COALESCE($1, name),
+      email = COALESCE($2, email),
+      permissions = COALESCE($3, permissions),
+      allowed_investor_ids = COALESCE($4, allowed_investor_ids),
+      full_access_investor_ids = COALESCE($5, full_access_investor_ids),
+      phone = COALESCE($6, phone),
+      updated_at = NOW()
+      WHERE id = $7`;
 
     let params = [
       safeName,
       safeEmail,
       permJson,
       allowedJson,
+      fullAccessJson,
       safePhone,  // ✅ Пустая строка → NULL → телефон очистится
       id
     ];
 
     // Проверка manager_id только для чужих профилей
     if (!isSelfUpdate) {
-      query += ` AND manager_id = $7`;
+      query += ` AND manager_id = $8`;
       params.push(req.user.id);
     }
 
@@ -2313,10 +2354,10 @@ app.post('/api/users/manage', auth, async (req, res) => {
 
     // 🔥 ПОЛУЧАЕМ ОБНОВЛЁННОГО ПОЛЬЗОВАТЕЛЯ С СЕРВЕРА
     const updatedUserResult = await pool.query(
-      `SELECT 
-        id, name, email, phone, role, manager_id, 
-        permissions, allowed_investor_ids, subscription, 
-        created_at, updated_at 
+      `SELECT
+        id, name, email, phone, role, manager_id,
+        permissions, allowed_investor_ids, full_access_investor_ids, subscription,
+        created_at, updated_at
        FROM users WHERE id = $1`,
       [id]
     );
@@ -2339,6 +2380,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
         managerId: updatedUser.manager_id,
         permissions: updatedUser.permissions,
         allowedInvestorIds: updatedUser.allowed_investor_ids,
+        fullAccessInvestorIds: updatedUser.full_access_investor_ids,
         subscription: updatedUser.subscription,
         createdAt: updatedUser.created_at,
         updatedAt: updatedUser.updated_at

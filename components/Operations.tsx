@@ -19,6 +19,7 @@ const Operations: React.FC<OperationsProps> = ({
   const [filterAccountId, setFilterAccountId] = useState<string>(initialAccountId || '');
   const [selectedOp, setSelectedOp] = useState<any | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
+  const [filterEmployeeId, setFilterEmployeeId] = useState<string>('');
 
   useEffect(() => {
       if (initialAccountId) setFilterAccountId(initialAccountId);
@@ -164,11 +165,14 @@ const Operations: React.FC<OperationsProps> = ({
     if (filterCategory !== 'ALL') {
         all = all.filter(op => op.category === filterCategory);
     }
+    if (filterEmployeeId) {
+        all = all.filter(op => op.raw?.createdByUserId === filterEmployeeId);
+    }
 
     // 🔹 ШАГ 3: Сортируем для отображения (от новых к старым)
     return all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  }, [sales, expenses, filterType, filterAccountId, filterCategory, customers, accounts]);
+  }, [sales, expenses, filterType, filterAccountId, filterCategory, filterEmployeeId, customers, accounts]);
 
   const groupedOperations = useMemo(() => {
     const groups: { title: string; items: typeof operations }[] = [];
@@ -248,18 +252,35 @@ const Operations: React.FC<OperationsProps> = ({
               </select>
           </div>
 
+          {employees.length > 0 && (
+              <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Сотрудник</label>
+                  <select
+                      className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg outline-none text-sm text-slate-700 dark:text-slate-300"
+                      value={filterEmployeeId}
+                      onChange={e => setFilterEmployeeId(e.target.value)}
+                  >
+                      <option value="">Все сотрудники</option>
+                      {employees.map(emp => (
+                          <option key={emp.id} value={emp.id}>{emp.name}</option>
+                      ))}
+                  </select>
+              </div>
+          )}
+
           <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
               <button onClick={() => setFilterType('ALL')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'ALL' ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Все</button>
               <button onClick={() => setFilterType('INCOME')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'INCOME' ? 'bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Приход</button>
               <button onClick={() => setFilterType('EXPENSE')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'EXPENSE' ? 'bg-white dark:bg-slate-600 text-red-600 dark:text-red-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Расход</button>
           </div>
 
-          {(filterAccountId || filterCategory !== 'ALL' || filterType !== 'ALL') && (
+          {(filterAccountId || filterCategory !== 'ALL' || filterType !== 'ALL' || filterEmployeeId) && (
               <button
                   onClick={() => {
                       setFilterAccountId('');
                       setFilterCategory('ALL');
                       setFilterType('ALL');
+                      setFilterEmployeeId('');
                   }}
                   className="w-full py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors flex items-center justify-center gap-1"
               >
@@ -313,6 +334,11 @@ const Operations: React.FC<OperationsProps> = ({
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                     {getTimeMsk(op.date)} • {getCategoryLabel(op.description)}
                 </p>
+                {employees.length > 0 && getEmployeeName(op.raw?.createdByUserId) && op.raw?.createdByUserId !== op.raw?.employeeId && (
+                    <p className="text-[10px] text-indigo-500 dark:text-indigo-400 mt-0.5">
+                        Добавил: {getEmployeeName(op.raw.createdByUserId)}
+                    </p>
+                )}
             </div>
         </div>
         <div className="text-right">

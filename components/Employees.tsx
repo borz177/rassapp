@@ -23,6 +23,7 @@ const Employees: React.FC<EmployeesProps> = ({
   const [password, setPassword] = useState('');
 
 const [allowMainAccount, setAllowMainAccount] = useState(false);
+const [fullAccessMainAccount, setFullAccessMainAccount] = useState(false);
 
   const [permissions, setPermissions] = useState({
       canCreate: true,
@@ -30,6 +31,7 @@ const [allowMainAccount, setAllowMainAccount] = useState(false);
       canDelete: false
   });
   const [allowedInvestorIds, setAllowedInvestorIds] = useState<string[]>([]);
+  const [fullAccessInvestorIds, setFullAccessInvestorIds] = useState<string[]>([]);
 
   const resetForm = () => {
     setName('');
@@ -37,7 +39,9 @@ const [allowMainAccount, setAllowMainAccount] = useState(false);
     setPassword('');
     setPermissions({ canCreate: true, canEdit: false, canDelete: false });
     setAllowedInvestorIds([]);
+    setFullAccessInvestorIds([]);
     setAllowMainAccount(false); // <-- СБРОС
+    setFullAccessMainAccount(false);
     setEditingId(null);
     setIsAdding(false);
 };
@@ -45,19 +49,32 @@ const [allowMainAccount, setAllowMainAccount] = useState(false);
   const handleStartEdit = (emp: User) => {
     setName(emp.name);
     setEmail(emp.email);
-    setPassword(''); 
+    setPassword('');
     setPermissions(emp.permissions || { canCreate: false, canEdit: false, canDelete: false });
-    
+
     const ids = emp.allowedInvestorIds || [];
     setAllowedInvestorIds(ids.filter((id: string) => id !== 'MAIN_ACCOUNT'));
     setAllowMainAccount(ids.includes('MAIN_ACCOUNT')); // <-- ЧТЕНИЕ
-    
+
+    const fullIds = (emp.fullAccessInvestorIds || []).filter(id => ids.includes(id));
+    setFullAccessInvestorIds(fullIds.filter((id: string) => id !== 'MAIN_ACCOUNT'));
+    setFullAccessMainAccount(fullIds.includes('MAIN_ACCOUNT'));
+
     setEditingId(emp.id);
     setIsAdding(true);
 };
 
   const handleInvestorToggle = (id: string) => {
-      setAllowedInvestorIds(prev => 
+      setAllowedInvestorIds(prev => {
+          const next = prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id];
+          // Если доступ сняли — снимаем и полный доступ
+          if (!next.includes(id)) setFullAccessInvestorIds(f => f.filter(fid => fid !== id));
+          return next;
+      });
+  };
+
+  const handleFullAccessInvestorToggle = (id: string) => {
+      setFullAccessInvestorIds(prev =>
           prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]
       );
   };
@@ -70,15 +87,20 @@ const handleSubmit = (e: React.FormEvent) => {
     }
 
     // Формируем итоговый массив: инвесторы + 'MAIN_ACCOUNT' если нужно
-    const finalAllowedIds = allowMainAccount 
-        ? [...new Set([...allowedInvestorIds, 'MAIN_ACCOUNT'])] 
+    const finalAllowedIds = allowMainAccount
+        ? [...new Set([...allowedInvestorIds, 'MAIN_ACCOUNT'])]
         : allowedInvestorIds.filter((id: string) => id !== 'MAIN_ACCOUNT');
+
+    // Полный доступ имеет смысл только для пунктов из finalAllowedIds
+    const finalFullAccessIds = (fullAccessMainAccount ? [...new Set([...fullAccessInvestorIds, 'MAIN_ACCOUNT'])] : fullAccessInvestorIds)
+        .filter((id: string) => finalAllowedIds.includes(id));
 
     const employeeData = {
         name,
         email,
         permissions,
-        allowedInvestorIds: finalAllowedIds // <-- ИСПОЛЬЗУЕМ ИТОГОВЫЙ МАССИВ
+        allowedInvestorIds: finalAllowedIds, // <-- ИСПОЛЬЗУЕМ ИТОГОВЫЙ МАССИВ
+        fullAccessInvestorIds: finalFullAccessIds
     };
 
     if (editingId) {
@@ -193,41 +215,70 @@ const handleSubmit = (e: React.FormEvent) => {
               {/* Доступ к счетам */}
 <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-3">
     <h4 className="text-sm font-bold text-slate-600 dark:text-slate-300">Доступ к счетам</h4>
+    <p className="text-xs text-slate-500 dark:text-slate-400 -mt-2">
+        По умолчанию сотрудник видит только созданные им самим записи. Включите «Видит все данные»,
+        чтобы дать полный доступ ко всем операциям по счёту/инвестору.
+    </p>
 
     {/* ГАЛОЧКА ДЛЯ ОСНОВНОГО СЧЕТА */}
-    <label className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-        <input
-            type="checkbox"
-            className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
-            checked={allowMainAccount}
-            onChange={e => setAllowMainAccount(e.target.checked)}
-        />
-        <div className="text-sm">
-            <span className="font-semibold text-slate-800 dark:text-white block">Основной счет компании</span>
-            <span className="text-slate-500 dark:text-slate-400 text-xs">Сотрудник сможет видеть и создавать операции на главном счете, даже если нет инвесторов.</span>
-        </div>
-    </label>
-
-    <p className="text-xs text-slate-500 dark:text-slate-400 mt-4 mb-2">Или выберите конкретных инвесторов:</p>
-    <div className="max-h-40 overflow-y-auto space-y-2 border border-slate-200 dark:border-slate-600 rounded-lg p-2 bg-white dark:bg-slate-800">
-        {investors.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-500 p-2">Нет инвесторов</p>}
-        {investors.map(inv => (
-            <label key={inv.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg cursor-pointer">
+    <div className="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg space-y-2">
+        <label className="flex items-center gap-3 cursor-pointer">
+            <input
+                type="checkbox"
+                className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
+                checked={allowMainAccount}
+                onChange={e => {
+                    setAllowMainAccount(e.target.checked);
+                    if (!e.target.checked) setFullAccessMainAccount(false);
+                }}
+            />
+            <div className="text-sm">
+                <span className="font-semibold text-slate-800 dark:text-white block">Основной счет компании</span>
+                <span className="text-slate-500 dark:text-slate-400 text-xs">Сотрудник сможет видеть и создавать операции на главном счете, даже если нет инвесторов.</span>
+            </div>
+        </label>
+        {allowMainAccount && (
+            <label className="flex items-center gap-2 pl-8 cursor-pointer">
                 <input
                     type="checkbox"
-                    className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-purple-600 focus:ring-purple-500"
-                    checked={allowedInvestorIds.includes(inv.id)}
-                    onChange={() => {
-                        setAllowedInvestorIds(prev =>
-                            prev.includes(inv.id) ? prev.filter(pid => pid !== inv.id) : [...prev, inv.id]
-                        );
-                    }}
+                    className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500"
+                    checked={fullAccessMainAccount}
+                    onChange={e => setFullAccessMainAccount(e.target.checked)}
                 />
-                <div className="text-sm">
-                    <span className="font-semibold text-slate-800 dark:text-white block">{inv.name}</span>
-                    <span className="text-slate-500 dark:text-slate-400 text-xs">{inv.email}</span>
-                </div>
+                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Видит все данные по этому счёту</span>
             </label>
+        )}
+    </div>
+
+    <p className="text-xs text-slate-500 dark:text-slate-400 mt-4 mb-2">Или выберите конкретных инвесторов:</p>
+    <div className="max-h-56 overflow-y-auto space-y-2 border border-slate-200 dark:border-slate-600 rounded-lg p-2 bg-white dark:bg-slate-800">
+        {investors.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-500 p-2">Нет инвесторов</p>}
+        {investors.map(inv => (
+            <div key={inv.id} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg space-y-1.5">
+                <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-purple-600 focus:ring-purple-500"
+                        checked={allowedInvestorIds.includes(inv.id)}
+                        onChange={() => handleInvestorToggle(inv.id)}
+                    />
+                    <div className="text-sm">
+                        <span className="font-semibold text-slate-800 dark:text-white block">{inv.name}</span>
+                        <span className="text-slate-500 dark:text-slate-400 text-xs">{inv.email}</span>
+                    </div>
+                </label>
+                {allowedInvestorIds.includes(inv.id) && (
+                    <label className="flex items-center gap-2 pl-8 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500"
+                            checked={fullAccessInvestorIds.includes(inv.id)}
+                            onChange={() => handleFullAccessInvestorToggle(inv.id)}
+                        />
+                        <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Видит все данные по этому инвестору</span>
+                    </label>
+                )}
+            </div>
         ))}
     </div>
 </div>
@@ -263,6 +314,11 @@ const handleSubmit = (e: React.FormEvent) => {
                       <span className="text-xs bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-1 rounded-full font-medium">
                           Инвесторов: {emp.allowedInvestorIds?.length || 0}
                       </span>
+                      {!!emp.fullAccessInvestorIds?.length && (
+                          <span className="text-xs bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-full font-medium">
+                              Полный доступ: {emp.fullAccessInvestorIds.length}
+                          </span>
+                      )}
                       <div className="flex gap-2">
                           <button onClick={() => handleStartEdit(emp)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded">
                               {ICONS.Edit}

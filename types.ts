@@ -54,7 +54,8 @@ export interface User {
   role: 'admin' | 'manager' | 'investor' | 'employee';
   managerId?: string; // If role is 'investor' or 'employee', this links to the manager
   permissions?: UserPermissions; // Only for employees
-  allowedInvestorIds?: string[]; // IDs of investors this employee can manage/see
+  allowedInvestorIds?: string[]; // IDs of investors (+ 'MAIN_ACCOUNT') this employee can access
+  fullAccessInvestorIds?: string[]; // Subset of allowedInvestorIds where employee sees ALL records, not just their own
   subscription?: UserSubscription; // New field
   whatsapp_settings?: WhatsAppSettings; // Saved in users table
   // Admin specific optional fields
@@ -168,6 +169,7 @@ export interface Payment {
 export interface Expense {
   id: string;
   userId: string; // Owner
+  createdByUserId?: string; // Actual creator (manager or employee id) — for audit/visibility
   accountId: string; // Linked account
   title: string;
   amount: number;
@@ -197,6 +199,7 @@ export interface Expense {
 export interface Sale {
   id: string;
   userId: string; // Owner
+  createdByUserId?: string; // Actual creator (manager or employee id) — for audit/visibility
   type: 'INSTALLMENT' | 'CASH';
   customerId: string;
   productName: string; // Changed from productId to name for flexibility
