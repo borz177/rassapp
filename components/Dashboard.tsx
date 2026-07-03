@@ -519,7 +519,7 @@ const ProfitDetailsModal = ({
         // 🔹 Оплаченные платежи из графика (та же логика, что в карточке)
         sale.paymentPlan.forEach(payment => {
           if (payment.isPaid && payment.isRealPayment !== false) {
-            const paymentDate = new Date(payment.actualDate || payment.date);
+            const paymentDate = new Date(payment.date);
             paymentDate.setHours(0, 0, 0, 0);
             if (paymentDate >= monthStart && paymentDate <= monthEnd) {
               result.push({
@@ -1102,7 +1102,7 @@ const receivedProfitThisMonth = useMemo(() => {
         // 1. Прибыль от оплаченных платежей из графика
         sale.paymentPlan.forEach(payment => {
             if (payment.isPaid && payment.isRealPayment !== false) {
-                const paymentDate = new Date(payment.actualDate || payment.date);
+                const paymentDate = new Date(payment.date);
                 paymentDate.setHours(0, 0, 0, 0);
                 if (paymentDate >= monthStart && paymentDate <= monthEnd) {
                     receivedProfit += payment.amount * profitMargin;
