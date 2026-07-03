@@ -1304,14 +1304,14 @@ if (initialData.id && initialData.paymentPlan) {
         <button
             type="submit"
             disabled={isSubmitting || isSubscriptionExpired}
-            className={`w-full text-white py-4 rounded-xl font-bold transition-colors shadow-lg flex items-center justify-center gap-2 ${
+            className={`w-full text-white py-4 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 ${
                 isSubscriptionExpired
                     ? 'bg-slate-400 cursor-not-allowed shadow-none'
                     : isSubmitting
                         ? 'bg-slate-400 cursor-not-allowed'
                         : mode === 'INSTALLMENT'
-                            ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
-                            : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+                            ? 'bg-indigo-600 hover:bg-indigo-700'
+                            : 'bg-emerald-600 hover:bg-emerald-700'
             }`}
         >
           {isSubscriptionExpired ? (
