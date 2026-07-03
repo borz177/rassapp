@@ -628,7 +628,7 @@ useEffect(() => {
   const now = Date.now();
 
   if (!lastShown || now - Number(lastShown) >= FIVE_HOURS) {
-    setShowTemplateUpdateModal(false);
+    setShowTemplateUpdateModal(true);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
@@ -3221,7 +3221,6 @@ if (!user && !showSplash) {
           <h3 className="text-2xl font-bold text-center mb-1">
             Что нового?
           </h3>
-         
         </div>
       </div>
 
@@ -3229,59 +3228,25 @@ if (!user && !showSplash) {
       <div className="p-6 space-y-5">
         <div className="space-y-4">
 
-
+          {/* 🌙 Темный режим */}
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center text-sm font-bold">
-              📤
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 flex items-center justify-center text-sm font-bold">
+              🌙
             </div>
             <div>
-              <p className="font-semibold text-slate-800 dark:text-white text-sm">Отчеты</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">В разделе «Отчеты» добавлена выгрузка данных в PDF и CSV и добавили разные показатели данных.</p>
+              <p className="font-semibold text-slate-800 dark:text-white text-sm">Темный режим</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Возможности: автоматическое переключение по системе или ручной выбор в настройках</p>
             </div>
           </div>
 
-
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 flex items-center justify-center text-sm font-bold">
-              ⚠️
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800 dark:text-white text-sm">Карточка просрочек</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">На главном экране: мгновенный контроль над просроченными платежами и задачами</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 flex items-center justify-center text-sm font-bold">
-              🛒
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800 dark:text-white text-sm">Карточка закупок</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Быстрый доступ к закупкам и расходам прямо с дашборда</p>
-            </div>
-          </div>
-
-
-
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold">
-              📎
-            </div>
-            <div>
-              <p className="font-semibold text-slate-800 dark:text-white text-sm">Обновление документов</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Улучшен интерфейс добавления и управления документами у клиентов</p>
-            </div>
-          </div>
         </div>
-
-       
       </div>
 
       {/* Кнопка */}
       <div className="px-6 pb-6">
         <button
           onClick={() => setShowTemplateUpdateModal(false)}
-          className="w-full py-3.5 bg-gradient-to-r from-indigo-900 to-purple-900 text-white text-sm font-bold rounded-xl hover:from-indigo-800 hover:to-purple-800 active:scale-[0.98] transition-all shadow-lg shadow-indigo-300"
+          className="w-full py-3.5 bg-gradient-to-r from-indigo-900 to-purple-900 text-white text-sm font-bold rounded-xl hover:from-indigo-800 hover:to-purple-800 active:scale-[0.98] transition-all shadow-lg shadow-indigo-300 dark:shadow-indigo-900/50"
         >
           Отлично 🚀
         </button>

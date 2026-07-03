@@ -1607,7 +1607,7 @@ useEffect(() => {
                        <div className="space-y-4">
                           <button
                             onClick={() => onAction('CREATE_SALE')}
-                            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white py-4 rounded-xl font-semibold shadow-lg shadow-indigo-200 hover:shadow-xl hover:from-indigo-700 hover:to-indigo-600 transition-all hover:-translate-y-0.5"
+                            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white py-4 rounded-xl font-semibold hover:shadow-xl hover:from-indigo-700 hover:to-indigo-600 transition-all hover:-translate-y-0.5"
                           >
                             <span className="text-lg">+</span> Новая рассрочка
                           </button>

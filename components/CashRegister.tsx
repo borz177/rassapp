@@ -66,7 +66,7 @@ const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubm
                         </button>
                         <button
                             type="submit"
-                            className="flex-1 py-3.5 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-lg shadow-indigo-200"
+                            className="flex-1 py-3.5 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all"
                         >
                             Создать
                         </button>
@@ -731,7 +731,7 @@ const investorProfitPayouts = useMemo(() => {
         {isManager && (
           <button
             onClick={() => setIsAdding(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-lg shadow-indigo-200 text-sm sm:text-base"
+            className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all text-sm sm:text-base"
           >
             <span className="text-lg">{ICONS.Plus}</span>
             <span className="hidden sm:inline">+Новый счет</span>
@@ -748,13 +748,13 @@ const investorProfitPayouts = useMemo(() => {
       {/* Account Cards */}
       {accounts.length === 0 ? (
         <div className="bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-800 dark:to-indigo-950/30 rounded-3xl p-8 sm:p-12 text-center border-2 border-dashed border-indigo-200 dark:border-indigo-900/50">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white dark:bg-slate-800 rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white dark:bg-slate-800 rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto mb-4 ">
             <span className="text-2xl sm:text-3xl text-indigo-400">{ICONS.Wallet}</span>
           </div>
           <h3 className="text-lg sm:text-xl font-bold text-slate-800 dark:text-white mb-2">Нет созданных счетов</h3>
           <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 mb-6">Создайте первый счет для начала работы</p>
           {isManager && (
-            <button onClick={() => setIsAdding(true)} className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-5 py-2.5 sm:px-6 sm:py-3 rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-lg text-sm sm:text-base">
+            <button onClick={() => setIsAdding(true)} className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-5 py-2.5 sm:px-6 sm:py-3 rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all text-sm sm:text-base">
               <span>{ICONS.Plus}</span><span>Создать счет</span>
             </button>
           )}
