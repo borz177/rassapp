@@ -621,7 +621,7 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v9';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v10';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
