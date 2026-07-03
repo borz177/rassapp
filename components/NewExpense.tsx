@@ -456,10 +456,10 @@ const NewExpense: React.FC<NewExpenseProps> = ({
         <button
           type="submit"
           disabled={isSubmitting}
-          className={`w-full text-white py-4 rounded-xl font-bold transition-transform active:scale-95 shadow-lg flex items-center justify-center gap-2 ${
+          className={`w-full text-white py-4 rounded-xl font-bold transition-transform active:scale-95 flex items-center justify-center gap-2 ${
             isSubmitting 
               ? 'bg-slate-400 cursor-not-allowed' 
-              : 'bg-red-600 hover:bg-red-700 shadow-red-200'
+              : 'bg-red-600 hover:bg-red-700'
           }`}
         >
           {isSubmitting ? (

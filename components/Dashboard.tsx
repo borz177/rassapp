@@ -1252,7 +1252,7 @@ useEffect(() => {
             onClick={() => setActiveTab('overview')}
             className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${
               activeTab === 'overview'
-                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-200'
+                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white'
                 : 'text-slate-500 hover:text-indigo-600'
             }`}
           >
@@ -1262,7 +1262,7 @@ useEffect(() => {
             onClick={() => setActiveTab('upcoming')}
             className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 relative ${
               activeTab === 'upcoming' 
-                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-200' 
+                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white' 
                 : 'text-slate-500 hover:text-indigo-600'
             }`}
           >

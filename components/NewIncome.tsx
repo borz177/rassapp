@@ -724,12 +724,12 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
         <button
           type="submit"
           disabled={isSubmitting || isSubscriptionExpired}
-          className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95 ${
+          className={`w-full py-4 rounded-xl font-bold text-white  transition-transform active:scale-95 ${
             isSubmitting || isSubscriptionExpired
               ? isSubscriptionExpired
                 ? 'bg-slate-400 cursor-not-allowed shadow-none'
                 : 'bg-emerald-400 cursor-not-allowed'
-              : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+              : 'bg-emerald-600 hover:bg-emerald-700'
           }`}
         >
           {isSubscriptionExpired ? (
