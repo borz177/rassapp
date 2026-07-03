@@ -145,38 +145,38 @@ const expectedTotalProfit = useMemo(() => {
 
   return (
     <div className="space-y-4 animate-fade-in pb-20">
-      <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
-          <button onClick={onBack} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
-          <h2 className="text-xl font-bold text-slate-800">{investor.name}</h2>
+      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 bg-white dark:bg-slate-900 sticky top-0 z-10 pt-2">
+          <button onClick={onBack} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">{ICONS.Back}</button>
+          <h2 className="text-xl font-bold text-slate-800 dark:text-white">{investor.name}</h2>
       </div>
 
-      <div className="flex border-b border-slate-200"><button onClick={() => setActiveTab('INFO')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INFO' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>Детали и Прибыль</button><button onClick={() => setActiveTab('HISTORY')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'HISTORY' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>История операций</button></div>
+      <div className="flex border-b border-slate-200 dark:border-slate-700"><button onClick={() => setActiveTab('INFO')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INFO' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400'}`}>Детали и Прибыль</button><button onClick={() => setActiveTab('HISTORY')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'HISTORY' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400'}`}>История операций</button></div>
 
       {activeTab === 'INFO' && (
           <div className="space-y-4 pt-2">
-               <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 space-y-4">
-                  <div className="flex items-center gap-4 border-b border-slate-50 pb-4"><div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center text-2xl font-bold">{investor.name.charAt(0)}</div><div><h3 className="font-bold text-lg text-slate-800">{investor.name}</h3><p className="text-slate-500">{investor.email}</p></div></div>
+               <div className="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 space-y-4">
+                  <div className="flex items-center gap-4 border-b border-slate-50 dark:border-slate-700 pb-4"><div className="w-16 h-16 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center text-2xl font-bold">{investor.name.charAt(0)}</div><div><h3 className="font-bold text-lg text-slate-800 dark:text-white">{investor.name}</h3><p className="text-slate-500 dark:text-slate-400">{investor.email}</p></div></div>
                   <div className="grid grid-cols-2 gap-4">
-                      <div><label className="text-xs text-slate-400 uppercase">Телефон</label><p className="font-medium text-slate-800">{investor.phone || '-'}</p></div>
-                      <div><label className="text-xs text-slate-400 uppercase">Дата регистрации</label><p className="font-medium text-slate-800">{new Date(investor.joinedDate).toLocaleDateString()}</p></div>
-                      <div><label className="text-xs text-slate-400 uppercase">Баланс инвестиций</label><p className="font-semibold text-slate-700">{formatCurrency(investor.initialAmount, appSettings.showCents)} ₽</p></div>
-                      <div><label className="text-xs text-slate-400 uppercase">Процент прибыли</label><p className="font-semibold text-indigo-600">{investor.profitPercentage}%</p></div>
+                      <div><label className="text-xs text-slate-400 uppercase">Телефон</label><p className="font-medium text-slate-800 dark:text-white">{investor.phone || '-'}</p></div>
+                      <div><label className="text-xs text-slate-400 uppercase">Дата регистрации</label><p className="font-medium text-slate-800 dark:text-white">{new Date(investor.joinedDate).toLocaleDateString()}</p></div>
+                      <div><label className="text-xs text-slate-400 uppercase">Баланс инвестиций</label><p className="font-semibold text-slate-700 dark:text-slate-300">{formatCurrency(investor.initialAmount, appSettings.showCents)} ₽</p></div>
+                      <div><label className="text-xs text-slate-400 uppercase">Процент прибыли</label><p className="font-semibold text-indigo-600 dark:text-indigo-400">{investor.profitPercentage}%</p></div>
                   </div>
-                  <div className="pt-2"><label className="text-xs text-slate-400 uppercase">Текущий баланс счета</label><p className="text-3xl font-bold text-indigo-600 mt-1">{formatCurrency(balance, appSettings.showCents)} ₽</p></div>
+                  <div className="pt-2"><label className="text-xs text-slate-400 uppercase">Текущий баланс счета</label><p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{formatCurrency(balance, appSettings.showCents)} ₽</p></div>
                </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100"><h3 className="font-bold text-sm text-slate-800 mb-1">Ожидаемая прибыль</h3><p className="text-xs text-slate-500 mb-2">С активных договоров</p><p className="text-2xl font-bold text-indigo-800">{formatCurrency(expectedTotalProfit, appSettings.showCents)} ₽</p></div>
-                    <div onClick={() => setShowProfitDetails(true)} className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 cursor-pointer hover:bg-slate-50"><h3 className="font-bold text-sm text-slate-800 mb-1">Полученная прибыль</h3><p className="text-xs text-slate-500 mb-2">Общий баланс</p><p className="text-2xl font-bold text-emerald-800">{formatCurrency(totalProfitEarned * (investor.profitPercentage/100) - totalProfitWithdrawn, appSettings.showCents)} ₽</p></div>
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-100 dark:border-slate-700"><h3 className="font-bold text-sm text-slate-800 dark:text-white mb-1">Ожидаемая прибыль</h3><p className="text-xs text-slate-500 dark:text-slate-400 mb-2">С активных договоров</p><p className="text-2xl font-bold text-indigo-800 dark:text-indigo-400">{formatCurrency(expectedTotalProfit, appSettings.showCents)} ₽</p></div>
+                    <div onClick={() => setShowProfitDetails(true)} className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-100 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700"><h3 className="font-bold text-sm text-slate-800 dark:text-white mb-1">Полученная прибыль</h3><p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Общий баланс</p><p className="text-2xl font-bold text-emerald-800 dark:text-emerald-400">{formatCurrency(totalProfitEarned * (investor.profitPercentage/100) - totalProfitWithdrawn, appSettings.showCents)} ₽</p></div>
                 </div>
 
-               <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 space-y-4">
-                  <h3 className="font-bold text-slate-800">Полученная прибыль за период</h3>
+               <div className="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 space-y-4">
+                  <h3 className="font-bold text-slate-800 dark:text-white">Полученная прибыль за период</h3>
                   <div className="grid grid-cols-2 gap-3">
-                      <div><label className="text-xs text-slate-500 mb-1 block">Начало</label><input type="date" className="w-full p-2 border border-slate-200 rounded-lg" value={period.start} onChange={e => setPeriod(p => ({...p, start: e.target.value}))} /></div>
-                      <div><label className="text-xs text-slate-500 mb-1 block">Конец</label><input type="date" className="w-full p-2 border border-slate-200 rounded-lg" value={period.end} onChange={e => setPeriod(p => ({...p, end: e.target.value}))} /></div>
+                      <div><label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Начало</label><input type="date" className="w-full p-2 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg" value={period.start} onChange={e => setPeriod(p => ({...p, start: e.target.value}))} /></div>
+                      <div><label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Конец</label><input type="date" className="w-full p-2 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg" value={period.end} onChange={e => setPeriod(p => ({...p, end: e.target.value}))} /></div>
                   </div>
-                   <div className="bg-emerald-50 p-4 rounded-xl text-center"><p className="text-sm text-emerald-700 mb-1">Получено инвестором за период</p><p className="text-3xl font-bold text-emerald-800">{formatCurrency(periodProfit, appSettings.showCents)} ₽</p></div>
+                   <div className="bg-emerald-50 dark:bg-emerald-900/30 p-4 rounded-xl text-center"><p className="text-sm text-emerald-700 dark:text-emerald-400 mb-1">Получено инвестором за период</p><p className="text-3xl font-bold text-emerald-800 dark:text-emerald-400">{formatCurrency(periodProfit, appSettings.showCents)} ₽</p></div>
                </div>
           </div>
       )}
@@ -184,27 +184,27 @@ const expectedTotalProfit = useMemo(() => {
       {activeTab === 'HISTORY' && (
           <div className="space-y-3 pt-2">
               {history.length === 0 && (<div className="text-center py-10 text-slate-400">Нет операций</div>)}
-              {history.map(op => (<div key={op.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"><div className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50" onClick={() => setExpandedOpId(expandedOpId === op.id ? null : op.id)}><div className="flex items-center gap-3"><div className={`p-2 rounded-full ${op.type === 'EXPENSE' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>{op.type === 'EXPENSE' ? ICONS.Expense : ICONS.Income}</div><div><p className="font-bold text-slate-800 text-sm">{op.title}</p><p className="text-xs text-slate-500">{new Date(op.date).toLocaleDateString()}</p></div></div><div className="flex items-center gap-2"><span className={`font-bold ${op.type === 'EXPENSE' ? 'text-slate-800' : 'text-emerald-600'}`}>{op.type === 'EXPENSE' ? '-' : '+'}{formatCurrency(op.amount, appSettings.showCents)}</span><span className={`text-slate-300 transition-transform ${expandedOpId === op.id ? 'rotate-180' : ''}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span></div></div>{expandedOpId === op.id && (<div className="bg-slate-50 p-4 border-t border-slate-100 text-sm text-slate-600 space-y-2 animate-fade-in">{op.type === 'INCOME' ? (<><div className="flex justify-between"><span>Тип:</span><span className="font-medium">Пополнение</span></div><div className="flex justify-between"><span>Источник:</span><span className="font-medium">{(op.details as Sale).productName}</span></div><div className="flex justify-between"><span>Сумма:</span><span className="font-medium">{formatCurrency((op.details as Sale).totalAmount, appSettings.showCents)} ₽</span></div></>) : (<><div className="flex justify-between"><span>Тип:</span><span className="font-medium">{(op.details as Expense).payoutType === 'PROFIT' ? 'Выплата прибыли' : 'Возврат инвестиций'}</span></div><div className="flex justify-between"><span>Сумма:</span><span className="font-medium">{formatCurrency((op.details as Expense).amount, appSettings.showCents)} ₽</span></div></>)}</div>)}</div>))}
+              {history.map(op => (<div key={op.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden"><div className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700" onClick={() => setExpandedOpId(expandedOpId === op.id ? null : op.id)}><div className="flex items-center gap-3"><div className={`p-2 rounded-full ${op.type === 'EXPENSE' ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'}`}>{op.type === 'EXPENSE' ? ICONS.Expense : ICONS.Income}</div><div><p className="font-bold text-slate-800 dark:text-white text-sm">{op.title}</p><p className="text-xs text-slate-500 dark:text-slate-400">{new Date(op.date).toLocaleDateString()}</p></div></div><div className="flex items-center gap-2"><span className={`font-bold ${op.type === 'EXPENSE' ? 'text-slate-800 dark:text-white' : 'text-emerald-600 dark:text-emerald-400'}`}>{op.type === 'EXPENSE' ? '-' : '+'}{formatCurrency(op.amount, appSettings.showCents)}</span><span className={`text-slate-300 transition-transform ${expandedOpId === op.id ? 'rotate-180' : ''}`}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span></div></div>{expandedOpId === op.id && (<div className="bg-slate-50 dark:bg-slate-900 p-4 border-t border-slate-100 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-300 space-y-2 animate-fade-in">{op.type === 'INCOME' ? (<><div className="flex justify-between"><span>Тип:</span><span className="font-medium">Пополнение</span></div><div className="flex justify-between"><span>Источник:</span><span className="font-medium">{(op.details as Sale).productName}</span></div><div className="flex justify-between"><span>Сумма:</span><span className="font-medium">{formatCurrency((op.details as Sale).totalAmount, appSettings.showCents)} ₽</span></div></>) : (<><div className="flex justify-between"><span>Тип:</span><span className="font-medium">{(op.details as Expense).payoutType === 'PROFIT' ? 'Выплата прибыли' : 'Возврат инвестиций'}</span></div><div className="flex justify-between"><span>Сумма:</span><span className="font-medium">{formatCurrency((op.details as Expense).amount, appSettings.showCents)} ₽</span></div></>)}</div>)}</div>))}
           </div>
       )}
 
       {showProfitDetails && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowProfitDetails(false)}>
-              <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
-                  <div className="p-5 border-b border-slate-200"><h3 className="text-lg font-bold text-slate-800">Детализация прибыли</h3><p className="text-sm text-slate-500">Общий баланс: <span className="font-bold text-emerald-600">{formatCurrency(totalProfitEarned * (investor.profitPercentage/100) - totalProfitWithdrawn, appSettings.showCents)} ₽</span></p></div>
+              <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                  <div className="p-5 border-b border-slate-200 dark:border-slate-700"><h3 className="text-lg font-bold text-slate-800 dark:text-white">Детализация прибыли</h3><p className="text-sm text-slate-500 dark:text-slate-400">Общий баланс: <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(totalProfitEarned * (investor.profitPercentage/100) - totalProfitWithdrawn, appSettings.showCents)} ₽</span></p></div>
 
-                  <div className="flex border-b border-slate-200 px-2">
-                      <button onClick={() => setProfitDetailsTab('accruals')} className={`flex-1 py-3 text-sm font-semibold transition-colors ${profitDetailsTab === 'accruals' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-slate-500'}`}>Начисления</button>
-                      <button onClick={() => setProfitDetailsTab('payouts')} className={`flex-1 py-3 text-sm font-semibold transition-colors ${profitDetailsTab === 'payouts' ? 'text-red-600 border-b-2 border-red-600' : 'text-slate-500'}`}>Выплаты</button>
+                  <div className="flex border-b border-slate-200 dark:border-slate-700 px-2">
+                      <button onClick={() => setProfitDetailsTab('accruals')} className={`flex-1 py-3 text-sm font-semibold transition-colors ${profitDetailsTab === 'accruals' ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-600' : 'text-slate-500 dark:text-slate-400'}`}>Начисления</button>
+                      <button onClick={() => setProfitDetailsTab('payouts')} className={`flex-1 py-3 text-sm font-semibold transition-colors ${profitDetailsTab === 'payouts' ? 'text-red-600 dark:text-red-400 border-b-2 border-red-600' : 'text-slate-500 dark:text-slate-400'}`}>Выплаты</button>
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-5">
                       {profitDetailsTab === 'accruals' && (
                           <div className="animate-fade-in space-y-2">
                               {profitAccruals.length === 0 ? <p className="text-center text-slate-400 py-4">Начислений нет</p> : profitAccruals.map(p => (
-                                  <div key={p.id} className="flex justify-between items-center text-sm p-2 bg-emerald-50 rounded-lg">
-                                      <div className="flex flex-col"><span className="text-slate-800">{p.source}</span><span className="text-xs text-slate-400">{new Date(p.date).toLocaleDateString()}</span></div>
-                                      <span className="font-bold text-emerald-600">+{formatCurrency(p.amount * (investor.profitPercentage/100), appSettings.showCents)} ₽</span>
+                                  <div key={p.id} className="flex justify-between items-center text-sm p-2 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg">
+                                      <div className="flex flex-col"><span className="text-slate-800 dark:text-white">{p.source}</span><span className="text-xs text-slate-400">{new Date(p.date).toLocaleDateString()}</span></div>
+                                      <span className="font-bold text-emerald-600 dark:text-emerald-400">+{formatCurrency(p.amount * (investor.profitPercentage/100), appSettings.showCents)} ₽</span>
                                   </div>
                               ))}
                           </div>
@@ -212,15 +212,15 @@ const expectedTotalProfit = useMemo(() => {
                       {profitDetailsTab === 'payouts' && (
                            <div className="animate-fade-in space-y-2">
                               {profitWithdrawals.length === 0 ? <p className="text-center text-slate-400 py-4">Выплат нет</p> : profitWithdrawals.map(e => (
-                                  <div key={e.id} className="flex justify-between items-center text-sm p-2 bg-red-50 rounded-lg">
-                                      <div className="flex flex-col"><span className="text-slate-800">{e.title}</span><span className="text-xs text-slate-400">{new Date(e.date).toLocaleDateString()}</span></div>
-                                      <span className="font-bold text-red-600">-{formatCurrency(e.amount, appSettings.showCents)} ₽</span>
+                                  <div key={e.id} className="flex justify-between items-center text-sm p-2 bg-red-50 dark:bg-red-900/30 rounded-lg">
+                                      <div className="flex flex-col"><span className="text-slate-800 dark:text-white">{e.title}</span><span className="text-xs text-slate-400">{new Date(e.date).toLocaleDateString()}</span></div>
+                                      <span className="font-bold text-red-600 dark:text-red-400">-{formatCurrency(e.amount, appSettings.showCents)} ₽</span>
                                   </div>
                               ))}
                           </div>
                       )}
                   </div>
-                  <div className="p-4 border-t border-slate-100"><button onClick={() => setShowProfitDetails(false)} className="w-full py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200">Закрыть</button></div>
+                  <div className="p-4 border-t border-slate-100 dark:border-slate-700"><button onClick={() => setShowProfitDetails(false)} className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600">Закрыть</button></div>
               </div>
           </div>
       )}

@@ -67,11 +67,11 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
 
   return (
     <div className="space-y-4 h-full flex flex-col animate-fade-in">
-      <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
-        <button onClick={onCancel} className="text-slate-500 hover:text-slate-800">
+      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4">
+        <button onClick={onCancel} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200">
            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
         </button>
-        <h2 className="text-xl font-bold text-slate-800">{title}</h2>
+        <h2 className="text-xl font-bold text-slate-800 dark:text-white">{title}</h2>
       </div>
 
       {!isCreating ? (
@@ -80,19 +80,19 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                 <input
                 type="text"
                 placeholder="Поиск..."
-                className="w-full p-3 pl-10 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full p-3 pl-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 autoFocus
                 />
-                <div className="absolute left-3 top-3.5 text-slate-400">
+                <div className="absolute left-3 top-3.5 text-slate-400 dark:text-slate-500">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 </div>
             </div>
 
             <button
                 onClick={() => setIsCreating(true)}
-                className="w-full py-3 bg-indigo-50 text-indigo-600 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-indigo-100"
+                className="w-full py-3 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
             >
                 {ICONS.AddSmall} Добавить нового клиента
             </button>
@@ -102,33 +102,33 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                 <div
                     key={item.id}
                     onClick={() => onSelect(item.id)}
-                    className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm active:bg-slate-50 cursor-pointer flex justify-between items-center"
+                    className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm active:bg-slate-50 dark:active:bg-slate-700 cursor-pointer flex justify-between items-center"
                 >
                     <div>
-                    <h3 className="font-bold text-slate-800">{item.title}</h3>
-                    {item.subtitle && <p className="text-sm text-slate-500">{item.subtitle}</p>}
+                    <h3 className="font-bold text-slate-800 dark:text-white">{item.title}</h3>
+                    {item.subtitle && <p className="text-sm text-slate-500 dark:text-slate-400">{item.subtitle}</p>}
                     </div>
-                    <div className="text-slate-300">
+                    <div className="text-slate-300 dark:text-slate-600">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                     </div>
                 </div>
                 ))}
                 {filteredItems.length === 0 && (
-                    <div className="text-center py-10 text-slate-400">Ничего не найдено</div>
+                    <div className="text-center py-10 text-slate-400 dark:text-slate-500">Ничего не найдено</div>
                 )}
             </div>
           </>
       ) : (
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 animate-fade-in">
               <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold text-lg text-slate-800">Новый клиент</h3>
+                  <h3 className="font-bold text-lg text-slate-800 dark:text-white">Новый клиент</h3>
                   <button onClick={() => setIsCreating(false)} className="text-sm text-red-500 font-medium">Отмена</button>
               </div>
               <form onSubmit={handleCreateSubmit} className="space-y-4">
                   <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">ФИО</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">ФИО</label>
                       <input
-                          className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-indigo-500"
+                          className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500"
                           placeholder="Иванов Иван Иванович"
                           value={newName}
                           onChange={e => setNewName(e.target.value)}
@@ -137,9 +137,9 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                       />
                   </div>
                   <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Телефон</label>
+                      <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Телефон</label>
                       <input
-                          className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-indigo-500"
+                          className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500"
                           placeholder="+7"
                           value={newPhone}
                           onChange={e => setNewPhone(e.target.value)}
@@ -154,12 +154,12 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                       📍 Адрес и документы
                     </summary>
 
-                    <div className="mt-3 space-y-4 p-4 bg-slate-50 rounded-xl">
+                    <div className="mt-3 space-y-4 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl">
                       {/* Адрес */}
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Адрес</label>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Адрес</label>
                         <textarea
-                          className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 resize-none"
+                          className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500 resize-none"
                           placeholder="Город, Село, Улица..."
                           rows={2}
                           value={newAddress}
@@ -168,30 +168,30 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                       </div>
 
                       {/* Разделитель */}
-                      <div className="border-t border-slate-200 pt-3">
-                        <p className="text-xs font-medium text-slate-500 mb-3">
-                          🪪 Паспортные данные <span className="font-normal text-slate-400">(необязательно)</span>
+                      <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
+                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">
+                          🪪 Паспортные данные <span className="font-normal text-slate-400 dark:text-slate-500">(необязательно)</span>
                         </p>
 
                         {/* Серия и Номер */}
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-xs text-slate-500 mb-1">Серия</label>
+                            <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Серия</label>
                             <input
                               type="text"
                               placeholder="4501"
-                              className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono uppercase"
+                              className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono uppercase"
                               value={newPassportSeries}
                               onChange={e => setNewPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))}
                               maxLength={4}
                             />
                           </div>
                           <div>
-                            <label className="block text-xs text-slate-500 mb-1">Номер</label>
+                            <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Номер</label>
                             <input
                               type="text"
                               placeholder="123456"
-                              className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono"
+                              className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono"
                               value={newPassportNumber}
                               onChange={e => setNewPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
                               maxLength={6}
@@ -201,11 +201,11 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
 
                         {/* Кем выдан */}
                         <div className="mt-3">
-                          <label className="block text-xs text-slate-500 mb-1">Кем выдан</label>
+                          <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Кем выдан</label>
                           <input
                             type="text"
                             placeholder="УФМС России по г. Москве"
-                            className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm"
+                            className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm"
                             value={newPassportIssuedBy}
                             onChange={e => setNewPassportIssuedBy(e.target.value)}
                             maxLength={100}
@@ -214,7 +214,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                       </div>
 
                       {/* Подсказка */}
-                      <p className="text-[10px] text-slate-400 flex items-start gap-1">
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 flex items-start gap-1">
                         <span>🔒</span>
                         Данные хранятся локально
                       </p>

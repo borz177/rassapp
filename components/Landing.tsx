@@ -20,7 +20,7 @@ export default function Landing() {
             return {
                 title: "Политика конфиденциальности",
                 content: (
-                    <div className="space-y-4 text-sm text-slate-600 leading-relaxed">
+                    <div className="space-y-4 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                         <p><strong>1. Общие положения</strong></p>
                         <p>Настоящая политика определяет порядок обработки и защиты информации о пользователях приложения FinUchet.</p>
 
@@ -33,7 +33,7 @@ export default function Landing() {
                         <p><strong>4. Ваши права</strong></p>
                         <p>Вы можете в любой момент запросить копию своих данных или потребовать их удаления через настройки приложения.</p>
 
-                        <p className="text-xs text-slate-400 mt-4">Версия документа: 2.0 от 01.01.2026</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-4">Версия документа: 2.0 от 01.01.2026</p>
                     </div>
                 )
             }
@@ -42,7 +42,7 @@ export default function Landing() {
             return {
                 title: "Согласие на обработку данных",
                 content: (
-                    <div className="space-y-4 text-sm text-slate-600 leading-relaxed">
+                    <div className="space-y-4 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                         <p>Нажимая кнопку «Начать работу», вы даёте согласие на обработку ваших персональных данных в соответствии с Федеральным законом № 152-ФЗ.</p>
 
                         <p><strong>Вы соглашаетесь на:</strong></p>
@@ -55,7 +55,7 @@ export default function Landing() {
                         <p><strong>Вы можете отозвать согласие:</strong></p>
                         <p>Через настройки приложения или написав на support@finuchet.ru. После отзыва ваши данные будут удалены в течение 30 дней.</p>
 
-                        <p className="text-xs text-slate-400 mt-4">Версия документа: 2.0 от 01.01.2026</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-4">Версия документа: 2.0 от 01.01.2026</p>
                     </div>
                 )
             }
@@ -66,7 +66,7 @@ export default function Landing() {
     const legalContent = getLegalContent()
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 font-['Inter',sans-serif] text-slate-900">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/30 font-['Inter',sans-serif] text-slate-900 dark:text-white">
             <style jsx>{`
                 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
                 
@@ -165,7 +165,7 @@ export default function Landing() {
                         <div className="h-0.5 bg-gradient-to-r from-indigo-600 to-teal-600 scale-x-0 group-hover:scale-x-100 transition-transform origin-left"></div>
                     </div>
                     <div className="flex gap-3 items-center">
-                        <a href="/app" className="relative px-5 py-2.5 text-sm font-semibold text-slate-600 hover:text-indigo-600 transition-all group">
+                        <a href="/app" className="relative px-5 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all group">
                             Войти
                             <span className="absolute bottom-0 left-1/2 w-0 h-0.5 bg-indigo-600 group-hover:w-full group-hover:left-0 transition-all"></span>
                         </a>
@@ -180,9 +180,9 @@ export default function Landing() {
             {/* HERO SECTION */}
             <section className="relative pt-32 pb-20 px-6 overflow-hidden">
                 <div className="max-w-6xl mx-auto text-center">
-                    <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-full px-4 py-2 mb-8 fade-up">
+                    <div className="inline-flex items-center gap-2 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/50 rounded-full px-4 py-2 mb-8 fade-up">
                         <span className="w-2 h-2 bg-indigo-600 rounded-full animate-pulse"></span>
-                        <span className="text-sm font-semibold text-indigo-700">✨ Новая версия 2.0</span>
+                        <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-400">✨ Новая версия 2.0</span>
                     </div>
 
                     <h1 className="text-6xl md:text-8xl font-black tracking-tight leading-[1.1] fade-up">
@@ -195,7 +195,7 @@ export default function Landing() {
                         </div>
                     </h1>
 
-                    <p className="text-xl md:text-2xl text-slate-500 mt-8 max-w-3xl mx-auto leading-relaxed fade-up delay-1 font-medium">
+                    <p className="text-xl md:text-2xl text-slate-500 dark:text-slate-400 mt-8 max-w-3xl mx-auto leading-relaxed fade-up delay-1 font-medium">
                         Управляйте договорами, отслеживайте платежи и считайте прибыль
                         <br className="hidden md:block" />
                         инвесторов в современном интерфейсе.
@@ -207,22 +207,22 @@ export default function Landing() {
                             <span>Скачать для Android</span>
                             <span className="text-xs opacity-60">APK</span>
                         </a>
-                        <a href="/downloads/finuchet-setup.exe" download className="flex items-center gap-3 bg-white/80 backdrop-blur-sm text-slate-900 border-2 border-slate-200 px-8 py-4 rounded-2xl font-bold shadow-sm hover:border-indigo-400 hover:shadow-xl transition-all hover:scale-105 active:scale-95 group">
+                        <a href="/downloads/finuchet-setup.exe" download className="flex items-center gap-3 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-slate-900 dark:text-white border-2 border-slate-200 dark:border-slate-700 px-8 py-4 rounded-2xl font-bold shadow-sm hover:border-indigo-400 hover:shadow-xl transition-all hover:scale-105 active:scale-95 group">
                             <span className="text-2xl group-hover:rotate-12 transition-transform">🪟</span>
                             <span>Windows</span>
                         </a>
                     </div>
 
                     {/* 🔹 Измени grid-cols-2 md:grid-cols-4 на grid-cols-2 max-w-2xl mx-auto */}
-<div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto mt-20 pt-8 border-t border-slate-200">
+<div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto mt-20 pt-8 border-t border-slate-200 dark:border-slate-700">
     {[
         { value: "100+", label: "Активных пользователей", icon: "👥" },
         { value: "24/7", label: "Поддержка", icon: "🎧" }
     ].map((stat, idx) => (
         <div key={idx} className={`text-center fade-up delay-${idx + 3}`}>
             <div className="text-3xl mb-2">{stat.icon}</div>
-            <div className="text-2xl md:text-3xl font-black text-slate-900">{stat.value}</div>
-            <div className="text-sm text-slate-500 mt-1">{stat.label}</div>
+            <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">{stat.value}</div>
+            <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">{stat.label}</div>
         </div>
     ))}
 </div>
@@ -232,13 +232,13 @@ export default function Landing() {
             {/* SCREENSHOTS SECTION */}
             <section className="max-w-7xl mx-auto py-20 px-6">
                 <div className="text-center mb-16">
-                    <span className="inline-block px-4 py-1 bg-indigo-50 text-indigo-600 font-bold tracking-wider uppercase text-sm rounded-full fade-up">
+                    <span className="inline-block px-4 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-bold tracking-wider uppercase text-sm rounded-full fade-up">
                         Интерфейс
                     </span>
                     <h2 className="text-4xl md:text-5xl font-black mt-4 fade-up delay-1">
                         Всё под контролем
                     </h2>
-                    <p className="text-xl text-slate-500 mt-4 fade-up delay-2">
+                    <p className="text-xl text-slate-500 dark:text-slate-400 mt-4 fade-up delay-2">
                         Интуитивно понятный интерфейс для эффективной работы
                     </p>
                 </div>
@@ -250,7 +250,7 @@ export default function Landing() {
                         { title: "База клиентов", desc: "Полная история взаимодействий", icon: "👤", img: "/screens/customers.png" }
                     ].map((item, idx) => (
                         <div key={idx} className={`group fade-up delay-${idx + 1}`}>
-                            <div className="screen-card rounded-3xl overflow-hidden bg-white shadow-xl relative">
+                            <div className="screen-card rounded-3xl overflow-hidden bg-white dark:bg-slate-800 shadow-xl relative">
                                 <div className="absolute inset-0 bg-gradient-to-t from-indigo-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity z-10"></div>
                                 <img src={item.img} alt={item.title} className="w-full h-auto transform group-hover:scale-105 transition-transform duration-500" />
                                 <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity z-20">
@@ -341,7 +341,7 @@ export default function Landing() {
                         <h2 className="text-3xl md:text-4xl font-black mb-4">
                             Готовы оптимизировать учет?
                         </h2>
-                        <p className="text-xl text-slate-600 mb-8">
+                        <p className="text-xl text-slate-600 dark:text-slate-300 mb-8">
                             Присоединяйтесь к тысячам компаний, которые уже используют FinUchet
                         </p>
                         <div className="flex justify-center gap-4 flex-wrap">
@@ -354,7 +354,7 @@ export default function Landing() {
             </section>
 
             {/* FOOTER */}
-            <footer className="py-12 border-t border-slate-200 bg-white/50 backdrop-blur-sm">
+            <footer className="py-12 border-t border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
                 <div className="max-w-7xl mx-auto px-6">
                     <div className="flex flex-col md:flex-row justify-between items-center gap-6">
                         <div className="text-2xl font-black bg-gradient-to-r from-indigo-600 to-teal-600 bg-clip-text text-transparent">
@@ -370,7 +370,7 @@ export default function Landing() {
                                 <button
                                     key={item.value}
                                     onClick={() => setLegalView(item.value)}
-                                    className="w-full text-left p-3 rounded-xl hover:bg-slate-50 text-sm font-medium text-slate-700 flex justify-between items-center transition-colors"
+                                    className="w-full text-left p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium text-slate-700 dark:text-slate-300 flex justify-between items-center transition-colors"
                                 >
                                     {item.label}
                                     <span className="text-slate-400">
@@ -382,8 +382,8 @@ export default function Landing() {
                             ))}
                         </div>
                     </div>
-                    <div className="text-center mt-8 pt-8 border-t border-slate-100">
-                        <p className="text-slate-400 text-sm">
+                    <div className="text-center mt-8 pt-8 border-t border-slate-100 dark:border-slate-700">
+                        <p className="text-slate-400 dark:text-slate-500 text-sm">
                             © 2026 FinUchet. Сделано для эффективного бизнеса. Все права защищены.
                         </p>
                     </div>
@@ -397,15 +397,15 @@ export default function Landing() {
                     onClick={() => setLegalView(null)}
                 >
                     <div
-                        className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-scale-in max-h-[85vh] flex flex-col"
+                        className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-scale-in max-h-[85vh] flex flex-col"
                         onClick={e => e.stopPropagation()}
                     >
                         {/* Заголовок */}
-                        <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-slate-50">
-                            <h3 className="font-bold text-lg text-slate-800">{legalContent.title}</h3>
+                        <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-r from-indigo-50 to-slate-50 dark:from-indigo-950/30 dark:to-slate-800">
+                            <h3 className="font-bold text-lg text-slate-800 dark:text-white">{legalContent.title}</h3>
                             <button
                                 onClick={() => setLegalView(null)}
-                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors"
                             >
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <line x1="18" y1="6" x2="6" y2="18"/>
@@ -420,7 +420,7 @@ export default function Landing() {
                         </div>
 
                         {/* Кнопка закрытия */}
-                        <div className="p-4 border-t border-slate-100 bg-slate-50">
+                        <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
                             <button
                                 onClick={() => setLegalView(null)}
                                 className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all"

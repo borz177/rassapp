@@ -37,18 +37,18 @@ const SupportButton: React.FC<SupportButtonProps> = ({
     return (
       <button
         onClick={handleClick}
-        className="w-full bg-white rounded-xl border border-slate-100 p-4
-                   flex items-center justify-between hover:bg-slate-50
-                   active:bg-slate-100 transition-colors relative"
+        className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4
+                   flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700
+                   active:bg-slate-100 dark:active:bg-slate-600 transition-colors relative"
         aria-label={isAdmin ? "Панель поддержки" : "Открыть техподдержку"}
       >
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-full ${
-            isAdmin ? 'bg-purple-100 text-purple-600' : 'bg-indigo-100 text-indigo-600'
+            isAdmin ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
           }`}>
             {isAdmin ? ICONS.Crown : ICONS.Chat}
           </div>
-          <span className="font-medium text-slate-700">
+          <span className="font-medium text-slate-700 dark:text-slate-300">
             {isAdmin ? 'Панель поддержки' : 'Техподдержка'}
           </span>
         </div>

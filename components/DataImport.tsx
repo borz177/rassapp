@@ -679,14 +679,14 @@ if (duplicatesFound.length > 0) {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-                    <h3 className="text-xl font-bold text-slate-800">Импорт данных (Excel)</h3>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl">✕</button>
+            <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl p-6 space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-4">
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white">Импорт данных (Excel)</h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl">✕</button>
                 </div>
 
                 <div className="space-y-4">
-                    <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 text-sm text-indigo-800">
+                    <div className="bg-indigo-50 dark:bg-indigo-900/30 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 text-sm text-indigo-800 dark:text-indigo-400">
                         <p className="font-bold mb-2">📋 Инструкция:</p>
                         <ul className="list-disc list-inside space-y-1 text-xs">
                             <li>Файл должен содержать листы: <b>Обзор клиентов</b> и <b>История платежей</b></li>
@@ -697,7 +697,7 @@ if (duplicatesFound.length > 0) {
                         </ul>
                     </div>
 
-                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                    <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-8 text-center hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                         <input
                             type="file"
                             ref={fileInputRef}
@@ -707,9 +707,9 @@ if (duplicatesFound.length > 0) {
                         />
                         <div className="text-4xl mb-2">📄</div>
                         {file ? (
-                            <p className="font-bold text-slate-800 text-sm break-all">{file.name}</p>
+                            <p className="font-bold text-slate-800 dark:text-white text-sm break-all">{file.name}</p>
                         ) : (
-                            <p className="text-slate-500 text-sm">Нажмите для выбора файла Excel</p>
+                            <p className="text-slate-500 dark:text-slate-400 text-sm">Нажмите для выбора файла Excel</p>
                         )}
                     </div>
 
@@ -722,7 +722,7 @@ if (duplicatesFound.length > 0) {
                     <div className="flex gap-3">
                         <button
                             onClick={downloadTemplate}
-                            className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors text-sm"
+                            className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-sm"
                         >
                             📥 Шаблон
                         </button>

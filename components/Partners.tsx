@@ -31,22 +31,22 @@ const CreatePartnershipModal = ({ onClose, onSubmit, investors }: { onClose: () 
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={e => e.stopPropagation()}>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">Новое партнерство</h3>
+            <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={e => e.stopPropagation()}>
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">Новое партнерство</h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Название предприятия</label>
-                        <input autoFocus value={name} onChange={e => setName(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl outline-none" placeholder="Например: Цех №1" />
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Название предприятия</label>
+                        <input autoFocus value={name} onChange={e => setName(e.target.value)} className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" placeholder="Например: Цех №1" />
                     </div>
-                    
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 max-h-40 overflow-y-auto">
-                        <p className="text-xs text-slate-500 font-bold mb-2 uppercase">Участники</p>
-                        {investors.length === 0 ? <p className="text-xs text-slate-400">Нет инвесторов</p> : (
+
+                    <div className="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700 max-h-40 overflow-y-auto">
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mb-2 uppercase">Участники</p>
+                        {investors.length === 0 ? <p className="text-xs text-slate-400 dark:text-slate-500">Нет инвесторов</p> : (
                             <div className="space-y-2">
                                 {investors.map(inv => (
-                                    <label key={inv.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 p-1 rounded">
+                                    <label key={inv.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-600 p-1 rounded">
                                         <input type="checkbox" checked={selectedPartners.includes(inv.id)} onChange={() => togglePartner(inv.id)} className="rounded text-indigo-600 focus:ring-indigo-500" />
-                                        <span className="text-sm text-slate-700">{inv.name}</span>
+                                        <span className="text-sm text-slate-700 dark:text-slate-300">{inv.name}</span>
                                     </label>
                                 ))}
                             </div>
@@ -54,7 +54,7 @@ const CreatePartnershipModal = ({ onClose, onSubmit, investors }: { onClose: () 
                     </div>
 
                     <div className="flex gap-3 mt-4">
-                        <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
+                        <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold">Отмена</button>
                         <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Создать</button>
                     </div>
                 </form>
@@ -129,13 +129,13 @@ const PartnershipDetail = ({ partnership, accounts, sales, expenses, investors, 
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                <div className="p-5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+            <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 flex justify-between items-center">
                     <div>
-                        <h3 className="text-xl font-bold text-slate-800">{partnership.name}</h3>
-                        <p className="text-xs text-slate-500">Счет: {stats.accountName}</p>
+                        <h3 className="text-xl font-bold text-slate-800 dark:text-white">{partnership.name}</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Счет: {stats.accountName}</p>
                     </div>
-                    <button onClick={onClose} className="p-2 bg-white rounded-full text-slate-400 hover:text-slate-600 shadow-sm">
+                    <button onClick={onClose} className="p-2 bg-white dark:bg-slate-800 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shadow-sm">
                         {ICONS.Close}
                     </button>
                 </div>
@@ -143,27 +143,27 @@ const PartnershipDetail = ({ partnership, accounts, sales, expenses, investors, 
                 <div className="p-5 space-y-5 overflow-y-auto">
                     {/* Key Metrics */}
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                            <p className="text-xs font-bold text-indigo-700 uppercase mb-1">Активы (Equity)</p>
-                            <p className="text-2xl font-bold text-indigo-900">{stats.totalEquity.toLocaleString()} ₽</p>
-                            <p className="text-[10px] text-indigo-500 mt-1">Кэш + Долги клиентов</p>
+                        <div className="bg-indigo-50 dark:bg-indigo-900/30 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50">
+                            <p className="text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase mb-1">Активы (Equity)</p>
+                            <p className="text-2xl font-bold text-indigo-900 dark:text-indigo-300">{stats.totalEquity.toLocaleString()} ₽</p>
+                            <p className="text-[10px] text-indigo-500 dark:text-indigo-400 mt-1">Кэш + Долги клиентов</p>
                         </div>
-                        <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
-                            <p className="text-xs font-bold text-emerald-700 uppercase mb-1">Прибыль</p>
-                            <p className="text-2xl font-bold text-emerald-900">+{stats.totalProfit.toLocaleString()} ₽</p>
-                            <p className="text-[10px] text-emerald-500 mt-1">Активы - Вложения</p>
+                        <div className="bg-emerald-50 dark:bg-emerald-900/30 p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
+                            <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase mb-1">Прибыль</p>
+                            <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-300">+{stats.totalProfit.toLocaleString()} ₽</p>
+                            <p className="text-[10px] text-emerald-500 dark:text-emerald-400 mt-1">Активы - Вложения</p>
                         </div>
                     </div>
 
-                    <div className="flex gap-2 text-xs text-slate-500 bg-slate-50 p-3 rounded-lg">
-                        <span className="font-medium">Касса: <span className="text-slate-800">{stats.cashBalance.toLocaleString()} ₽</span></span>
+                    <div className="flex gap-2 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg">
+                        <span className="font-medium">Касса: <span className="text-slate-800 dark:text-white">{stats.cashBalance.toLocaleString()} ₽</span></span>
                         <span>•</span>
-                        <span className="font-medium">В товаре: <span className="text-slate-800">{stats.receivables.toLocaleString()} ₽</span></span>
+                        <span className="font-medium">В товаре: <span className="text-slate-800 dark:text-white">{stats.receivables.toLocaleString()} ₽</span></span>
                     </div>
 
                     {/* Breakdown */}
                     <div>
-                        <h4 className="font-bold text-slate-700 mb-3 text-sm">Доли участия</h4>
+                        <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-3 text-sm">Доли участия</h4>
                         <div className="space-y-3">
                             {stats.members.map(m => {
                                 const sharePercent = stats.totalNetInvested > 0 ? (m.netInvested / stats.totalNetInvested) * 100 : 0;
@@ -171,26 +171,26 @@ const PartnershipDetail = ({ partnership, accounts, sales, expenses, investors, 
                                 const profitShare = Math.max(0, valueShare - m.netInvested);
 
                                 return (
-                                    <div key={m.id} className="bg-white border border-slate-200 p-3 rounded-xl shadow-sm">
+                                    <div key={m.id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded-xl shadow-sm">
                                         <div className="flex justify-between items-center mb-2">
-                                            <span className="font-bold text-slate-800">{m.name}</span>
-                                            <span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded-full font-bold">{sharePercent.toFixed(1)}%</span>
+                                            <span className="font-bold text-slate-800 dark:text-white">{m.name}</span>
+                                            <span className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs px-2 py-1 rounded-full font-bold">{sharePercent.toFixed(1)}%</span>
                                         </div>
-                                        <div className="w-full bg-slate-100 h-1.5 rounded-full mb-3 overflow-hidden">
-                                            <div className="bg-slate-800 h-full rounded-full" style={{width: `${sharePercent}%`}}></div>
+                                        <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full mb-3 overflow-hidden">
+                                            <div className="bg-slate-800 dark:bg-slate-400 h-full rounded-full" style={{width: `${sharePercent}%`}}></div>
                                         </div>
                                         <div className="grid grid-cols-2 text-xs gap-2">
                                             <div>
-                                                <span className="text-slate-400 block">Вложено</span>
+                                                <span className="text-slate-400 dark:text-slate-500 block">Вложено</span>
                                                 <span className="font-medium">{m.netInvested.toLocaleString()} ₽</span>
                                             </div>
                                             <div className="text-right">
-                                                <span className="text-slate-400 block">Текущая стоимость</span>
-                                                <span className="font-bold text-slate-700">{Math.round(valueShare).toLocaleString()} ₽</span>
+                                                <span className="text-slate-400 dark:text-slate-500 block">Текущая стоимость</span>
+                                                <span className="font-bold text-slate-700 dark:text-slate-300">{Math.round(valueShare).toLocaleString()} ₽</span>
                                             </div>
                                         </div>
                                         {profitShare > 0 && (
-                                            <div className="mt-2 pt-2 border-t border-slate-50 flex justify-between text-xs">
+                                            <div className="mt-2 pt-2 border-t border-slate-50 dark:border-slate-700 flex justify-between text-xs">
                                                 <span className="text-emerald-600 font-medium">Прибыль</span>
                                                 <span className="font-bold text-emerald-600">+{Math.round(profitShare).toLocaleString()} ₽</span>
                                             </div>
@@ -233,8 +233,8 @@ const Partners: React.FC<PartnersProps> = ({
     <div className="space-y-6 pb-20 animate-fade-in">
       <header className="flex justify-between items-center">
         <div>
-            <h2 className="text-2xl font-bold text-slate-800">Партнеры</h2>
-            <p className="text-slate-500 text-sm">Совместные предприятия</p>
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Партнеры</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">Совместные предприятия</p>
         </div>
         <button 
             onClick={() => setIsAdding(true)}
@@ -253,43 +253,43 @@ const Partners: React.FC<PartnersProps> = ({
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {partnershipStats.length === 0 && <div className="col-span-full text-center py-12 text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200">Нет активных партнерств</div>}
-          
+          {partnershipStats.length === 0 && <div className="col-span-full text-center py-12 text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">Нет активных партнерств</div>}
+
           {partnershipStats.map(p => (
-              <div key={p.id} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 relative overflow-hidden">
+              <div key={p.id} className="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-700 relative overflow-hidden">
                   <div className="flex justify-between items-start mb-4">
                       <div>
-                          <h3 className="font-bold text-lg text-slate-800">{p.name}</h3>
-                          <p className="text-xs text-slate-500">{new Date(p.createdAt).toLocaleDateString()}</p>
+                          <h3 className="font-bold text-lg text-slate-800 dark:text-white">{p.name}</h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{new Date(p.createdAt).toLocaleDateString()}</p>
                       </div>
-                      <div className="bg-slate-100 p-2 rounded-lg text-slate-600">
+                      <div className="bg-slate-100 dark:bg-slate-700 p-2 rounded-lg text-slate-600 dark:text-slate-300">
                           {ICONS.Partners}
                       </div>
                   </div>
 
                   <div className="mb-4">
-                      <p className="text-xs text-slate-400 uppercase font-bold mb-1">Баланс счета</p>
-                      <p className="text-2xl font-bold text-indigo-600">{p.balance.toLocaleString()} ₽</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 uppercase font-bold mb-1">Баланс счета</p>
+                      <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{p.balance.toLocaleString()} ₽</p>
                   </div>
 
                   <div className="flex -space-x-2 overflow-hidden mb-4">
                         {p.partnerIds.slice(0, 5).map(pid => (
-                            <div key={pid} className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600" title={investors.find(i => i.id === pid)?.name}>
+                            <div key={pid} className="inline-block h-8 w-8 rounded-full ring-2 ring-white dark:ring-slate-800 bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300" title={investors.find(i => i.id === pid)?.name}>
                                 {investors.find(i => i.id === pid)?.name.charAt(0)}
                             </div>
                         ))}
                         {p.partnerIds.length > 5 && (
-                            <div className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
+                            <div className="inline-block h-8 w-8 rounded-full ring-2 ring-white dark:ring-slate-800 bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-500 dark:text-slate-400">
                                 +{p.partnerIds.length - 5}
                             </div>
                         )}
                   </div>
 
                   <div className="flex gap-2">
-                      <button onClick={() => setSelectedPartnership(p)} className="flex-1 py-2 bg-slate-50 text-slate-700 font-semibold rounded-lg hover:bg-slate-100 transition-colors text-sm">
+                      <button onClick={() => setSelectedPartnership(p)} className="flex-1 py-2 bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-lg hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors text-sm">
                           Аналитика
                       </button>
-                      <button onClick={() => onSelectAccount(p.accountId)} className="flex-1 py-2 bg-indigo-50 text-indigo-700 font-semibold rounded-lg hover:bg-indigo-100 transition-colors text-sm">
+                      <button onClick={() => onSelectAccount(p.accountId)} className="flex-1 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-semibold rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors text-sm">
                           Операции
                       </button>
                   </div>

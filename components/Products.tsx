@@ -49,8 +49,8 @@ const Products: React.FC<ProductsProps> = ({ products, onAddProduct, onUpdatePro
     <div className="space-y-6 animate-fade-in pb-20">
       <header className="flex justify-between items-center">
         <div>
-            <h2 className="text-2xl font-bold text-slate-800">Склад</h2>
-            <p className="text-slate-500 text-sm">Управление товарами</p>
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Склад</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">Управление товарами</p>
         </div>
         <button 
             onClick={() => setIsAdding(!isAdding)} 
@@ -61,28 +61,28 @@ const Products: React.FC<ProductsProps> = ({ products, onAddProduct, onUpdatePro
       </header>
 
       {isAdding && (
-          <form onSubmit={handleAddSubmit} className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm space-y-3 animate-fade-in">
-              <h3 className="font-bold text-sm text-indigo-800">Новый товар</h3>
-              <input 
-                placeholder="Название" 
-                className="w-full p-3 border border-slate-200 rounded-lg outline-none"
+          <form onSubmit={handleAddSubmit} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 shadow-sm space-y-3 animate-fade-in">
+              <h3 className="font-bold text-sm text-indigo-800 dark:text-indigo-300">Новый товар</h3>
+              <input
+                placeholder="Название"
+                className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none"
                 value={addForm.name}
                 onChange={e => setAddForm({...addForm, name: e.target.value})}
                 required
               />
               <div className="flex gap-2">
-                <input 
+                <input
                     type="number"
-                    placeholder="Цена (₽)" 
-                    className="flex-1 p-3 border border-slate-200 rounded-lg outline-none"
+                    placeholder="Цена (₽)"
+                    className="flex-1 p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none"
                     value={addForm.price}
                     onChange={e => setAddForm({...addForm, price: e.target.value})}
                     required
                 />
-                <input 
+                <input
                     type="number"
-                    placeholder="Кол-во" 
-                    className="w-24 p-3 border border-slate-200 rounded-lg outline-none"
+                    placeholder="Кол-во"
+                    className="w-24 p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none"
                     value={addForm.stock}
                     onChange={e => setAddForm({...addForm, stock: e.target.value})}
                 />
@@ -93,45 +93,45 @@ const Products: React.FC<ProductsProps> = ({ products, onAddProduct, onUpdatePro
 
       <div className="grid gap-4">
         {products.map(p => (
-            <div key={p.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div key={p.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                 {editingId === p.id ? (
                     <div className="space-y-3">
-                        <input 
-                            className="w-full p-2 border border-slate-300 rounded"
+                        <input
+                            className="w-full p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded"
                             value={editForm.name}
                             onChange={e => setEditForm({...editForm, name: e.target.value})}
                         />
                         <div className="flex gap-2">
-                             <input 
+                             <input
                                 type="number"
-                                className="flex-1 p-2 border border-slate-300 rounded"
+                                className="flex-1 p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded"
                                 value={editForm.price}
                                 onChange={e => setEditForm({...editForm, price: Number(e.target.value)})}
                              />
-                             <input 
+                             <input
                                 type="number"
-                                className="w-20 p-2 border border-slate-300 rounded"
+                                className="w-20 p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded"
                                 value={editForm.stock}
                                 onChange={e => setEditForm({...editForm, stock: Number(e.target.value)})}
                              />
                         </div>
                         <div className="flex gap-2 justify-end">
-                            <button onClick={() => setEditingId(null)} className="px-3 py-1 text-slate-500 text-sm">Отмена</button>
+                            <button onClick={() => setEditingId(null)} className="px-3 py-1 text-slate-500 dark:text-slate-400 text-sm">Отмена</button>
                             <button onClick={handleSaveEdit} className="px-3 py-1 bg-emerald-500 text-white rounded text-sm">OK</button>
                         </div>
                     </div>
                 ) : (
                     <div className="flex justify-between items-center">
                         <div>
-                            <h3 className="font-bold text-slate-800">{p.name}</h3>
-                            <p className="text-emerald-600 font-semibold">{p.price.toLocaleString()} ₽</p>
+                            <h3 className="font-bold text-slate-800 dark:text-white">{p.name}</h3>
+                            <p className="text-emerald-600 dark:text-emerald-400 font-semibold">{p.price.toLocaleString()} ₽</p>
                             <p className="text-xs text-slate-400">На складе: {p.stock} шт.</p>
                         </div>
                         <div className="flex gap-2">
-                            <button onClick={() => handleStartEdit(p)} className="p-2 bg-slate-50 text-slate-600 rounded-lg hover:bg-slate-100">
+                            <button onClick={() => handleStartEdit(p)} className="p-2 bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-600">
                                 {ICONS.Edit}
                             </button>
-                            <button onClick={() => handleDeleteClick(p.id)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100">
+                            <button onClick={() => handleDeleteClick(p.id)} className="p-2 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50">
                                 {ICONS.Delete}
                             </button>
                         </div>

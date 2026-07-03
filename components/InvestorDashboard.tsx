@@ -227,31 +227,31 @@ const expectedTotalProfit = useMemo(() => {
   
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 pb-24">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-900 dark:to-slate-900 pb-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-6">
 
         {/* 🔹 Заголовок */}
         <header className="flex justify-between items-center mb-4">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">Кабинет инвестора</h2>
-            <p className="text-slate-500 text-sm">{investor.name} • {investor.email}</p>
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Кабинет инвестора</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">{investor.name} • {investor.email}</p>
           </div>
           <button
             onClick={onLogout}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-xl transition-colors"
           >
             {ICONS.Logout} Выйти
           </button>
         </header>
 
         {/* 🔹 Табы */}
-        <div className="flex bg-white/70 backdrop-blur-sm p-1.5 rounded-2xl shadow-sm border border-white">
+        <div className="flex bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm p-1.5 rounded-2xl shadow-sm border border-white dark:border-slate-700">
           <button
             onClick={() => setActiveTab('overview')}
             className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${
-              activeTab === 'overview' 
-                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-200' 
-                : 'text-slate-500 hover:text-indigo-600'
+              activeTab === 'overview'
+                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-200'
+                : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600'
             }`}
           >
             Обзор
@@ -259,9 +259,9 @@ const expectedTotalProfit = useMemo(() => {
           <button
             onClick={() => setActiveTab('contracts')}
             className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${
-              activeTab === 'contracts' 
-                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-200' 
-                : 'text-slate-500 hover:text-indigo-600'
+              activeTab === 'contracts'
+                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-200'
+                : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600'
             }`}
           >
             Мои договоры
@@ -276,84 +276,84 @@ const expectedTotalProfit = useMemo(() => {
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
 
               {/* 1. Собрано средств */}
-              <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4">
+              <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-emerald-200">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor">
                     <text x="5" y="18" fontSize="16" fontWeight="bold">₽</text>
                   </svg>
                 </div>
                 <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">Собрано</p>
-                <p className="text-lg sm:text-2xl font-bold text-slate-800">
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white">
                   {formatCurrency(stats.totalCollected, appSettings.showCents)}
                   <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
                 </p>
               </div>
 
               {/* 2. Долг клиентов */}
-              <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-4">
+              <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-amber-200">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center text-amber-600 dark:text-amber-400 mb-4">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                 </div>
                 <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">Долг клиентов</p>
-                <p className="text-lg sm:text-2xl font-bold text-slate-800">
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white">
                   {formatCurrency(stats.totalOutstanding, appSettings.showCents)}
                   <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
                 </p>
               </div>
 
               {/* 3. В обороте */}
-              <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600 mb-4">
+              <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-blue-200">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                   </svg>
                 </div>
                 <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">В обороте</p>
-                <p className="text-lg sm:text-2xl font-bold text-slate-800">
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white">
                   {formatCurrency(stats.workingCapital, appSettings.showCents)}
                   <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
                 </p>
               </div>
 
               {/* 4. Продажи */}
-              <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 mb-4">
+              <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-indigo-200">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-4">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                   </svg>
                 </div>
                 <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">Продажи</p>
-                <p className="text-lg sm:text-2xl font-bold text-slate-800">
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white">
                   {formatCurrency(stats.totalSalesAmount, appSettings.showCents)}
                   <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
                 </p>
               </div>
 
               {/* 5. Ожидаемая прибыль */}
-              <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 mb-4">
+              <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-indigo-200">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-4">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
                 <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">Ожидается прибыли</p>
-                <p className="text-lg sm:text-2xl font-bold text-slate-800">
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white">
                   {formatCurrency(expectedTotalProfit, appSettings.showCents)}
                   <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
                 </p>
               </div>
 
               {/* 6. Получено прибыли */}
-              <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4">
+              <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-emerald-200">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                   </svg>
                 </div>
                 <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">Получено прибыли</p>
-                <p className="text-lg sm:text-2xl font-bold text-slate-800">
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white">
                   {formatCurrency(totalProfitEarned * (investor.profitPercentage / 100), appSettings.showCents)}
                   <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
                 </p>
@@ -376,27 +376,27 @@ const expectedTotalProfit = useMemo(() => {
             </div>
 
             {/* 🔹 Последние договоры */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
                 <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
                 Последние договоры
               </h3>
               <div className="space-y-3">
                 {lastFiveSales.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-xl">
+                  <div className="text-center py-8 text-slate-400 bg-slate-50 dark:bg-slate-900 rounded-xl">
                     Нет договоров
                   </div>
                 ) : (
                   lastFiveSales.map((sale, idx) => (
-                    <div key={sale.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                    <div key={sale.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-xl">
                       <div className="min-w-0">
-                        <p className="font-bold text-sm text-slate-800 truncate">{sale.productName}</p>
-                        <p className="text-xs text-slate-500 mt-1">{formatDate(sale.startDate)}</p>
+                        <p className="font-bold text-sm text-slate-800 dark:text-white truncate">{sale.productName}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{formatDate(sale.startDate)}</p>
                       </div>
                       <span className={`text-xs px-3 py-1.5 rounded-full font-bold ${
-                        sale.remainingAmount === 0 
-                          ? 'bg-slate-100 text-slate-600' 
-                          : 'bg-emerald-100 text-emerald-700'
+                        sale.remainingAmount === 0
+                          ? 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                          : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
                       }`}>
                         {sale.remainingAmount === 0 ? 'ЗАКРЫТО' : 'АКТИВНО'}
                       </span>
@@ -413,19 +413,19 @@ const expectedTotalProfit = useMemo(() => {
           <div className="space-y-4 animate-in fade-in duration-500">
             
             {/* 🔹 ФИЛЬТРЫ-КНОПКИ С СЧЁТЧИКАМИ */}
-            <div className="flex gap-2 p-1 bg-white/70 backdrop-blur-sm rounded-2xl shadow-sm border border-white">
+            <div className="flex gap-2 p-1 bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-2xl shadow-sm border border-white dark:border-slate-700">
               <button
                 onClick={() => setContractTab('ACTIVE')}
                 className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 ${
                   contractTab === 'ACTIVE'
                     ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-200'
-                    : 'text-slate-500 hover:text-indigo-600'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600'
                 }`}
               >
                 Активные
                 {contractCounts.active > 0 && (
                   <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                    contractTab === 'ACTIVE' ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-600'
+                    contractTab === 'ACTIVE' ? 'bg-white/20 text-white' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
                   }`}>
                     {contractCounts.active}
                   </span>
@@ -436,13 +436,13 @@ const expectedTotalProfit = useMemo(() => {
                 className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 ${
                   contractTab === 'OVERDUE'
                     ? 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-md shadow-red-200'
-                    : 'text-slate-500 hover:text-red-600'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-red-600'
                 }`}
               >
                 Просроченные
                 {contractCounts.overdue > 0 && (
                   <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                    contractTab === 'OVERDUE' ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600'
+                    contractTab === 'OVERDUE' ? 'bg-white/20 text-white' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
                   }`}>
                     {contractCounts.overdue}
                   </span>
@@ -453,13 +453,13 @@ const expectedTotalProfit = useMemo(() => {
                 className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 ${
                   contractTab === 'ARCHIVE'
                     ? 'bg-gradient-to-r from-slate-600 to-slate-500 text-white shadow-md shadow-slate-200'
-                    : 'text-slate-500 hover:text-slate-600'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-600'
                 }`}
               >
                 Архив
                 {contractCounts.archive > 0 && (
                   <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                    contractTab === 'ARCHIVE' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                    contractTab === 'ARCHIVE' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                   }`}>
                     {contractCounts.archive}
                   </span>
@@ -469,7 +469,7 @@ const expectedTotalProfit = useMemo(() => {
 
             {/* 🔹 Список договоров (теперь отфильтрованный) */}
             {filteredSales.length === 0 ? (
-              <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200 text-slate-400">
+              <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 text-slate-400">
                 {contractTab === 'ACTIVE' && 'Нет активных договоров'}
                 {contractTab === 'OVERDUE' && 'Нет просроченных договоров 🎉'}
                 {contractTab === 'ARCHIVE' && 'Архив пуст'}
@@ -482,18 +482,18 @@ const expectedTotalProfit = useMemo(() => {
                     : 0;
 
                   return (
-                    <div key={sale.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all">
+                    <div key={sale.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-all">
                       <div className="flex justify-between items-start mb-3">
                         <div>
-                          <p className="font-bold text-lg text-slate-800">{sale.productName}</p>
-                          <p className="text-xs text-slate-500 mt-1">{formatDate(sale.startDate)} • {sale.installments} мес.</p>
+                          <p className="font-bold text-lg text-slate-800 dark:text-white">{sale.productName}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{formatDate(sale.startDate)} • {sale.installments} мес.</p>
                         </div>
                         <span className={`text-xs px-3 py-1.5 rounded-full font-bold ${
-                          sale.remainingAmount === 0 
-                            ? 'bg-slate-100 text-slate-600' 
+                          sale.remainingAmount === 0
+                            ? 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                             : sale.status === 'ACTIVE'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-amber-100 text-amber-700'
+                            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                            : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
                         }`}>
                           {sale.remainingAmount === 0 ? 'ЗАКРЫТО' : sale.status}
                         </span>
@@ -501,20 +501,20 @@ const expectedTotalProfit = useMemo(() => {
 
                       <div className="space-y-2 mb-4">
                         <div className="flex justify-between text-sm">
-                          <span className="text-slate-500">Сумма:</span>
-                          <span className="font-medium">{formatCurrency(sale.totalAmount, appSettings.showCents)} ₽</span>
+                          <span className="text-slate-500 dark:text-slate-400">Сумма:</span>
+                          <span className="font-medium dark:text-slate-200">{formatCurrency(sale.totalAmount, appSettings.showCents)} ₽</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-slate-500">Остаток:</span>
-                          <span className="font-bold text-amber-600">{formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽</span>
+                          <span className="text-slate-500 dark:text-slate-400">Остаток:</span>
+                          <span className="font-bold text-amber-600 dark:text-amber-400">{formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽</span>
                         </div>
-                        <div className="flex justify-between text-sm text-emerald-600">
+                        <div className="flex justify-between text-sm text-emerald-600 dark:text-emerald-400">
                           <span>Ваша доля:</span>
                           <span className="font-bold">{investor.profitPercentage}%</span>
                         </div>
                       </div>
 
-                      <div className="w-full bg-slate-100 rounded-full h-2">
+                      <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2">
                         <div
                           className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-2 rounded-full transition-all"
                           style={{ width: `${progress}%` }}

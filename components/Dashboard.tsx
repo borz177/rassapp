@@ -33,7 +33,7 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
         'DEFAULTED': { label: 'Просрочен', color: 'bg-rose-100 text-rose-700 border-rose-200' }
     };
 
-    const status = statusMap[sale.status] || { label: sale.status, color: 'bg-slate-100 text-slate-700 border-slate-200' };
+    const status = statusMap[sale.status] || { label: sale.status, color: 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600' };
 
     // 🔹 НОВОЕ
     const [isClosing, setIsClosing] = useState(false);
@@ -48,7 +48,7 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
           onClick={handleClose}
         >
             <div
-              className={`bg-white backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20 ${isClosing ? 'animate-zoom-out-modal' : ''}`}
+              className={`bg-white dark:bg-slate-800 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20 ${isClosing ? 'animate-zoom-out-modal' : ''}`}
               onClick={e => e.stopPropagation()}
             >
                 <div className="relative p-6 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white">
@@ -62,63 +62,63 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
                     </button>
                 </div>
 
-                <div className="p-6 space-y-4 bg-slate-50">
+                <div className="p-6 space-y-4 bg-slate-50 dark:bg-slate-900">
                     <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-slate-500">Статус договора</span>
+                        <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Статус договора</span>
                         <span className={`px-3 py-1.5 rounded-full text-xs font-bold border ${status.color}`}>
                             {status.label}
                         </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                            <p className="text-xs text-slate-500 mb-1">Дата</p>
-                            <p className="font-semibold text-slate-800">{formatDate(sale.startDate)}</p>
+                        <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Дата</p>
+                            <p className="font-semibold text-slate-800 dark:text-white">{formatDate(sale.startDate)}</p>
                         </div>
-                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                            <p className="text-xs text-slate-500 mb-1">Срок</p>
-                            <p className="font-semibold text-slate-800">{sale.installments} мес.</p>
+                        <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Срок</p>
+                            <p className="font-semibold text-slate-800 dark:text-white">{sale.installments} мес.</p>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm space-y-3">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-100 dark:border-slate-700 shadow-sm space-y-3">
                         <div className="flex justify-between items-center">
-                            <span className="text-sm text-slate-500">Общая сумма</span>
+                            <span className="text-sm text-slate-500 dark:text-slate-400">Общая сумма</span>
                             <span className="text-lg font-bold text-indigo-600 whitespace-nowrap">{formatCurrency(sale.totalAmount, appSettings.showCents)} ₽</span>
                         </div>
                         <div className="flex justify-between items-center">
-                            <span className="text-sm text-slate-500">Первый взнос</span>
-                            <span className="font-medium text-slate-700 whitespace-nowrap">{formatCurrency(sale.downPayment, appSettings.showCents)} ₽</span>
+                            <span className="text-sm text-slate-500 dark:text-slate-400">Первый взнос</span>
+                            <span className="font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">{formatCurrency(sale.downPayment, appSettings.showCents)} ₽</span>
                         </div>
-                        <div className="flex justify-between items-center pt-2 border-t border-dashed border-slate-200">
-                            <span className="text-sm font-medium text-slate-600">Остаток долга</span>
+                        <div className="flex justify-between items-center pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
+                            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Остаток долга</span>
                             <span className="text-lg font-bold text-amber-600 whitespace-nowrap">{formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽</span>
                         </div>
                     </div>
 
                     {sale.paymentPlan && sale.paymentPlan.length > 0 && (
-                        <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
-                            <p className="text-sm font-medium text-slate-700 mb-3">График платежей</p>
+                        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-100 dark:border-slate-700 shadow-sm">
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">График платежей</p>
                             <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
                                 {sale.paymentPlan.slice(0, 3).map((payment, idx) => (
                                     <div key={idx} className="flex justify-between items-center text-xs">
-                                        <span className="text-slate-500">{formatDate(payment.date)}</span>
-                                        <span className="font-medium text-slate-700 whitespace-nowrap">{formatCurrency(payment.amount, appSettings.showCents)} ₽</span>
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${payment.isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                        <span className="text-slate-500 dark:text-slate-400">{formatDate(payment.date)}</span>
+                                        <span className="font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">{formatCurrency(payment.amount, appSettings.showCents)} ₽</span>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${payment.isPaid ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'}`}>
                                             {payment.isPaid ? 'Оплачено' : 'Ожидается'}
                                         </span>
                                     </div>
                                 ))}
                                 {sale.paymentPlan.length > 3 && (
-                                    <p className="text-center text-[10px] text-slate-400 mt-1">+ еще {sale.paymentPlan.length - 3} платежей</p>
+                                    <p className="text-center text-[10px] text-slate-400 dark:text-slate-500 mt-1">+ еще {sale.paymentPlan.length - 3} платежей</p>
                                 )}
                             </div>
                         </div>
                     )}
                 </div>
 
-               <div className="p-4 border-t border-slate-200 bg-white">
-                    <button onClick={handleClose} className="w-full py-3.5 bg-gradient-to-r from-slate-800 to-slate-700 text-white font-bold rounded-xl hover:from-slate-900 hover:to-slate-800 shadow-lg shadow-slate-200 transition-all">
+               <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                    <button onClick={handleClose} className="w-full py-3.5 bg-gradient-to-r from-slate-800 to-slate-700 text-white font-bold rounded-xl hover:from-slate-900 hover:to-slate-800 shadow-lg shadow-slate-200 dark:shadow-slate-900/30 transition-all">
                         Закрыть
                     </button>
                 </div>
@@ -147,7 +147,7 @@ const PaymentActionModal = ({
             onClick={handleClose}
         >
             <div
-                className={`bg-white backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20 ${isClosing ? 'animate-zoom-out-modal' : ''}`}
+                className={`bg-white dark:bg-slate-800 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20 ${isClosing ? 'animate-zoom-out-modal' : ''}`}
                 onClick={e => e.stopPropagation()}
             >
                 <div className="relative p-6 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white">
@@ -165,8 +165,8 @@ const PaymentActionModal = ({
                 </div>
 
                 <div className="p-6 pb-4">
-                    <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
-                        <p className="text-sm text-slate-500 mb-1">Сумма к оплате</p>
+                    <div className="bg-indigo-50 dark:bg-indigo-900/30 rounded-xl p-4 border border-indigo-100 dark:border-indigo-900/50">
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Сумма к оплате</p>
                         <p className="text-2xl font-bold text-indigo-600">
                             {formatCurrency(totalDue, appSettings.showCents)} ₽
                         </p>
@@ -176,7 +176,7 @@ const PaymentActionModal = ({
                 <div className="px-6 pb-6 space-y-2">
                     <button
                         onClick={() => { onSelectCustomer(sale.customerId); handleClose(); }}
-                        className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors rounded-xl"
+                        className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-3 transition-colors rounded-xl"
                     >
                         <span className="text-indigo-500">👤</span>
                         <span>Инфо о клиенте</span>
@@ -184,7 +184,7 @@ const PaymentActionModal = ({
 
                     <button
                         onClick={() => { onInitiatePayment(sale, totalDue); handleClose(); }}
-                        className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-emerald-50 flex items-center gap-3 transition-colors rounded-xl border-t border-slate-100 pt-3.5 mt-1"
+                        className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-3 transition-colors rounded-xl border-t border-slate-100 dark:border-slate-700 pt-3.5 mt-1"
                     >
                         <span className="text-emerald-500">💰</span>
                         <span>Добавить платеж</span>
@@ -192,7 +192,7 @@ const PaymentActionModal = ({
 
                     <button
                         onClick={() => { onViewSchedule(sale); handleClose(); }}
-                        className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors rounded-xl border-t border-slate-100 pt-3.5 mt-1"
+                        className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-3 transition-colors rounded-xl border-t border-slate-100 dark:border-slate-700 pt-3.5 mt-1"
                     >
                         <span className="text-indigo-500"><CalendarIcon size={18}/></span>
                         <span>График платежей</span>
@@ -327,7 +327,7 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
       onClick={handleClose}
     >
       <div
-        className={`bg-white w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+        className={`bg-white dark:bg-slate-800 w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
         onClick={e => e.stopPropagation()}
       >
         {/* Шапка */}
@@ -348,9 +348,9 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
         </div>
 
        {/* Итого */}
-<div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-  <span className="text-sm text-slate-500">Итого</span>
-  <span className="text-lg font-bold text-slate-800">
+<div className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+  <span className="text-sm text-slate-500 dark:text-slate-400">Итого</span>
+  <span className="text-lg font-bold text-slate-800 dark:text-white">
     {formatCurrency(installmentTotal, appSettings.showCents)} ₽
   </span>
 </div>
@@ -364,15 +364,15 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
           ) : items.map((item, idx) => (
             <div
               key={`${item.sale.id}-${item.date}-${idx}`}
-              className="bg-white p-3 rounded-xl border border-slate-100 hover:border-indigo-200 hover:shadow-sm transition-all"
+              className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-sm transition-all"
             >
               <div className="flex justify-between items-start mb-2">
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-slate-800 text-sm truncate">{item.customerName}</p>
-                  <p className="text-xs text-slate-500 truncate">{item.sale.productName}</p>
+                  <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{item.customerName}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{item.sale.productName}</p>
                 </div>
                 <div className="text-right ml-3">
-                  <p className={`font-bold text-sm ${item.isOverdue ? 'text-red-600' : 'text-slate-800'}`}>
+                  <p className={`font-bold text-sm ${item.isOverdue ? 'text-red-600' : 'text-slate-800 dark:text-white'}`}>
                     {formatCurrency(item.amount, appSettings.showCents)} ₽
                   </p>
                   {item.isOverdue && (
@@ -387,7 +387,7 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
                   {type === 'expected' && onInitiatePayment && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onInitiatePayment(item.sale, item.amount); handleClose(); }}
-                      className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg font-medium hover:bg-emerald-100 transition-colors"
+                      className="px-2 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
                     >
                       + Платёж
                     </button>
@@ -395,7 +395,7 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
                   {onViewSchedule && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onViewSchedule(item.sale); handleClose(); }}
-                      className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg font-medium hover:bg-indigo-100 transition-colors"
+                      className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
                     >
                       График
                     </button>
@@ -408,7 +408,7 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
 
         <button
           onClick={handleClose}
-          className="py-3 text-slate-400 text-sm hover:text-slate-600 hover:bg-slate-50 transition-colors shrink-0 border-t border-slate-100"
+          className="py-3 text-slate-400 text-sm hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shrink-0 border-t border-slate-100 dark:border-slate-700"
         >
           Закрыть
         </button>
@@ -580,27 +580,27 @@ const ProfitDetailsModal = ({
     if (isPaid || percent >= 100) {
       return {
         label: 'Получено',
-        bg: 'bg-emerald-100',
-        text: 'text-emerald-700',
+        bg: 'bg-emerald-100 dark:bg-emerald-900/30',
+        text: 'text-emerald-700 dark:text-emerald-400',
         barColor: 'bg-emerald-500',
-        barBg: 'bg-emerald-100'
+        barBg: 'bg-emerald-100 dark:bg-emerald-900/30'
       };
     }
     if (percent > 0) {
       return {
         label: 'Частично',
-        bg: 'bg-amber-100',
-        text: 'text-amber-700',
+        bg: 'bg-amber-100 dark:bg-amber-900/30',
+        text: 'text-amber-700 dark:text-amber-400',
         barColor: 'bg-amber-500',
-        barBg: 'bg-amber-100'
+        barBg: 'bg-amber-100 dark:bg-amber-900/30'
       };
     }
     return {
       label: '',
-      bg: 'bg-slate-100',
-      text: 'text-slate-600',
+      bg: 'bg-slate-100 dark:bg-slate-700',
+      text: 'text-slate-600 dark:text-slate-300',
       barColor: 'bg-slate-300',
-      barBg: 'bg-slate-100'
+      barBg: 'bg-slate-100 dark:bg-slate-700'
     };
   };
 
@@ -610,7 +610,7 @@ const ProfitDetailsModal = ({
       onClick={handleClose}
     >
       <div
-        className={`bg-white w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+        className={`bg-white dark:bg-slate-800 w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
         onClick={e => e.stopPropagation()}
       >
         {/* Шапка */}
@@ -643,9 +643,9 @@ const ProfitDetailsModal = ({
 
 
         {/* Итого */}
-        <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-          <span className="text-sm text-slate-500">Итого прибыль</span>
-          <span className="text-lg font-bold text-slate-800">
+        <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+          <span className="text-sm text-slate-500 dark:text-slate-400">Итого прибыль</span>
+          <span className="text-lg font-bold text-slate-800 dark:text-white">
             {formatCurrency(totalProfit, appSettings.showCents)} ₽
           </span>
         </div>
@@ -667,27 +667,27 @@ const ProfitDetailsModal = ({
                   onSelectCustomer(item.customerId);
                   handleClose();
                 }}
-                className={`bg-white p-3 rounded-xl border transition-all ${
+                className={`bg-white dark:bg-slate-800 p-3 rounded-xl border transition-all ${
                   item.isPaid || item.paymentPercent > 0
-                    ? 'border-emerald-100'
-                    : 'border-slate-100'
+                    ? 'border-emerald-100 dark:border-emerald-900/50'
+                    : 'border-slate-100 dark:border-slate-700'
                 }`}
               >
                 <div className="flex justify-between items-start mb-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                     
-                      <p className="font-semibold text-slate-800 text-sm truncate">{item.customerName}</p>
 
-                      <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" 
+                      <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{item.customerName}</p>
+
+                      <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <polyline points="9 18 15 12 9 6"/>
                       </svg>
                     </div>
-                    <p className="text-xs text-slate-500 truncate mt-0.5">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                       {item.sale.productName}
                       {item.isDownPayment && (
-                        <span className="ml-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-bold">
+                        <span className="ml-1 px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded text-[9px] font-bold">
                           Взнос
                         </span>
                       )}
@@ -695,7 +695,7 @@ const ProfitDetailsModal = ({
                   </div>
                   <div className="text-right ml-3">
     <p className={`font-bold text-sm ${
-        type === 'expected' ? 'text-slate-800' : 'text-emerald-600'
+        type === 'expected' ? 'text-slate-800 dark:text-white' : 'text-emerald-600'
     }`}>
         {type === 'received' ? '+' : ''}{formatCurrency(item.profitAmount, appSettings.showCents)} ₽
     </p>
@@ -708,7 +708,7 @@ const ProfitDetailsModal = ({
                 {item.paymentPercent > 0 && item.paymentPercent < 100 && (
                   <div className="mb-2">
                     <div className="flex items-center justify-between text-[10px] mb-1">
-                      <span className="text-slate-500">
+                      <span className="text-slate-500 dark:text-slate-400">
                         Оплачено {formatCurrency(item.paidAmount, appSettings.showCents)} из {formatCurrency(item.paymentAmount + item.paidAmount, appSettings.showCents)} ₽
                       </span>
                       <span className="font-bold text-amber-600">
@@ -716,7 +716,7 @@ const ProfitDetailsModal = ({
                       </span>
                     </div>
                     <div className={`h-1.5 rounded-full ${statusInfo.barBg} overflow-hidden`}>
-                      <div 
+                      <div
                         className={`h-full ${statusInfo.barColor} rounded-full transition-all duration-500`}
                         style={{ width: `${item.paymentPercent}%` }}
                       />
@@ -737,7 +737,7 @@ const ProfitDetailsModal = ({
 
         <button
           onClick={handleClose}
-          className="py-3 text-slate-400 text-sm hover:text-slate-600 hover:bg-slate-50 transition-colors shrink-0 border-t border-slate-100"
+          className="py-3 text-slate-400 text-sm hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shrink-0 border-t border-slate-100 dark:border-slate-700"
         >
           Закрыть
         </button>
@@ -1243,16 +1243,16 @@ useEffect(() => {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 pb-24 w-full">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-900 dark:to-indigo-950/20 pb-24 w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
 
         {/* Tabs */}
-        <div className="flex bg-white/70 backdrop-blur-sm p-1.5 rounded-2xl shadow-sm border border-white">
+        <div className="flex bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm p-1.5 rounded-2xl shadow-sm border border-white dark:border-slate-700">
           <button
             onClick={() => setActiveTab('overview')}
             className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${
-              activeTab === 'overview' 
-                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-200' 
+              activeTab === 'overview'
+                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-200'
                 : 'text-slate-500 hover:text-indigo-600'
             }`}
           >
@@ -1285,9 +1285,9 @@ useEffect(() => {
                             <button
                               onClick={() => setSelectedAccountId(null)}
                               className={`px-5 py-2.5 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-300 border ${
-                                !selectedAccountId 
-                                  ? 'bg-gradient-to-r from-slate-800 to-slate-700 text-white border-slate-800 shadow-lg shadow-slate-200 scale-105' 
-                                  : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+                                !selectedAccountId
+                                  ? 'bg-gradient-to-r from-slate-800 to-slate-700 text-white border-slate-800 shadow-lg shadow-slate-200 dark:shadow-slate-900/30 scale-105'
+                                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-300 hover:text-indigo-600'
                               }`}
                             >
                                 Все счета
@@ -1297,9 +1297,9 @@ useEffect(() => {
                                   key={acc.id}
                                   onClick={() => setSelectedAccountId(acc.id)}
                                   className={`px-5 py-2.5 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-300 border ${
-                                    selectedAccountId === acc.id 
-                                      ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-indigo-600 shadow-lg shadow-indigo-200 scale-105' 
-                                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+                                    selectedAccountId === acc.id
+                                      ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-indigo-600 shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30 scale-105'
+                                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-300 hover:text-indigo-600'
                                   }`}
                                 >
                                     {acc.name}
@@ -1307,23 +1307,23 @@ useEffect(() => {
                             ))}
                         </div>
                     </div>
-                    <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-indigo-50/50 to-transparent pointer-events-none"></div>
+                    <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-indigo-50/50 dark:from-indigo-950/20 to-transparent pointer-events-none"></div>
                   </div>
                 )}
 
                 {/* Карточки статистики: 2 в ряд на мобилках, 4 на больших экранах */}
                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
   {/* 1. Долг клиентов (перенесён на 1 место) */}
-  <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-amber-200 flex flex-col relative overflow-hidden cursor-default">
-    <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-4 z-10 relative group-hover:bg-amber-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+  <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-amber-200 flex flex-col relative overflow-hidden cursor-default">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 dark:bg-amber-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center text-amber-600 dark:text-amber-400 mb-4 z-10 relative group-hover:bg-amber-500 group-hover:text-white transition-colors duration-300 shadow-sm">
       <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
       </svg>
     </div>
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Долг клиентов</p>
-      <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+      <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
         {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
@@ -1331,10 +1331,10 @@ useEffect(() => {
   </div>
 
   {/* 2. Просрочено (НОВАЯ) */}
-  <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(220,38,38,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-red-200 flex flex-col relative overflow-hidden cursor-pointer"
+  <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(220,38,38,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-red-200 flex flex-col relative overflow-hidden cursor-pointer"
        onClick={() => onAction('VIEW_OVERDUE')}>
-    <div className="absolute -right-6 -top-6 w-24 h-24 bg-red-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-100 rounded-xl flex items-center justify-center text-red-600 mb-4 z-10 relative group-hover:bg-red-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-red-50 dark:bg-red-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-100 dark:bg-red-900/30 rounded-xl flex items-center justify-center text-red-600 dark:text-red-400 mb-4 z-10 relative group-hover:bg-red-500 group-hover:text-white transition-colors duration-300 shadow-sm">
       <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
       </svg>
@@ -1345,21 +1345,21 @@ useEffect(() => {
         {formatCurrency(totalOverdue, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
-     
+
     </div>
   </div>
 
   {/* 3. Оборотные средства (оставлен на 3 месте) */}
-  <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
-    <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600 mb-4 z-10 relative group-hover:bg-blue-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+  <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 dark:bg-blue-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4 z-10 relative group-hover:bg-blue-500 group-hover:text-white transition-colors duration-300 shadow-sm">
       <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
       </svg>
     </div>
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">В обороте</p>
-      <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+      <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
         {formatCurrency(currentWorkingCapital, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
@@ -1369,16 +1369,16 @@ useEffect(() => {
 
 
   {/* 4. Собрано (ПЕРЕНЕСЁН СЮДА) */}
-  <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default">
-    <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+  <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 dark:bg-emerald-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
       <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor">
         <text x="5" y="18" fontSize="16" fontWeight="bold">₽</text>
       </svg>
     </div>
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Собрано</p>
-      <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+      <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
         {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
@@ -1386,34 +1386,34 @@ useEffect(() => {
   </div>
 
   {/* 5. Закуп (НОВАЯ) */}
-  <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(100,116,139,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-slate-200 flex flex-col relative overflow-hidden cursor-default">
-    <div className="absolute -right-6 -top-6 w-24 h-24 bg-slate-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 mb-4 z-10 relative group-hover:bg-slate-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+  <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(100,116,139,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-slate-200 flex flex-col relative overflow-hidden cursor-default">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-slate-50 dark:bg-slate-700/50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 mb-4 z-10 relative group-hover:bg-slate-500 group-hover:text-white transition-colors duration-300 shadow-sm">
       <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
       </svg>
     </div>
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Закуп</p>
-      <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+      <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
         {formatCurrency(totalBuyCost, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
-      
+
     </div>
   </div>
 
   {/* 6. Продажи в рассрочку (перенесён на 6 место) */}
-  <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 flex flex-col relative overflow-hidden cursor-default">
-    <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 mb-4 z-10 relative group-hover:bg-indigo-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+  <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 flex flex-col relative overflow-hidden cursor-default">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 dark:bg-indigo-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-4 z-10 relative group-hover:bg-indigo-500 group-hover:text-white transition-colors duration-300 shadow-sm">
       <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
       </svg>
     </div>
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Продажи</p>
-      <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+      <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
         {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
@@ -1421,14 +1421,14 @@ useEffect(() => {
   </div>
 
   {/* 7. Ожидаемые платежи */}
-  <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 flex flex-col relative overflow-hidden cursor-default">
-    <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 rounded-full opacity-50 pointer-events-none"></div>
-    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-4 z-10 relative shadow-sm">
+  <div className="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-default">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 dark:bg-amber-900/20 rounded-full opacity-50 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center text-amber-600 dark:text-amber-400 mb-4 z-10 relative shadow-sm">
       <CalendarIcon size={20}/>
     </div>
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Ожидаемые платежи</p>
-      <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+      <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
         {formatCurrency(expectedPaymentsThisMonth, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
@@ -1437,17 +1437,17 @@ useEffect(() => {
   </div>
 
   {/* 8. Получено в этом месяце */}
-  <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default"
+  <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default"
        onClick={() => setSelectedPaymentType('received')}>
-    <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 dark:bg-emerald-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
       <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor">
         <text x="5" y="18" fontSize="16" fontWeight="bold">✓</text>
       </svg>
     </div>
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Получено в этом месяце</p>
-      <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+      <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
         {formatCurrency(receivedPaymentsThisMonth, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
@@ -1473,22 +1473,22 @@ useEffect(() => {
         
         {/* Ожидаемая прибыль в этом месяце */}
       <div
-    className="group bg-gradient-to-br from-slate-50 to-blue-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(100,116,139,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-200 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-pointer"
+    className="group bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-800 dark:to-blue-950/30 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(100,116,139,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-200 dark:border-slate-700 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-pointer"
     onClick={() => setSelectedProfitType('expected')}
 >
-    <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-600 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-slate-200">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 dark:bg-blue-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-600 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-slate-200 dark:shadow-slate-900/30">
         <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
         </svg>
     </div>
     <div className="z-10 relative mt-auto">
-        <p className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 leading-tight">Ожидаемая прибыль</p>
-        <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+        <p className="text-[10px] sm:text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide mb-1 leading-tight">Ожидаемая прибыль</p>
+        <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
             {formatCurrency(expectedProfitThisMonth, appSettings.showCents)}
-            <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
+            <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
         </p>
-        <p className="text-xs sm:text-sm font-semibold text-slate-600 mt-1">{currentMonthName}</p>
+        <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">{currentMonthName}</p>
         <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
     </div>
     <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1499,22 +1499,22 @@ useEffect(() => {
 </div>
 {/* Полученная прибыль в этом месяце */}
 <div
-    className="group bg-gradient-to-br from-emerald-50 to-teal-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(16,185,129,0.15)] hover:shadow-xl transition-all duration-300 border border-emerald-100 hover:border-emerald-300 flex flex-col relative overflow-hidden cursor-pointer"
+    className="group bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(16,185,129,0.15)] hover:shadow-xl transition-all duration-300 border border-emerald-100 dark:border-emerald-900/50 hover:border-emerald-300 flex flex-col relative overflow-hidden cursor-pointer"
     onClick={() => setSelectedProfitType('received')}
 >
-    <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-100 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-500 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-emerald-200">
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-100 dark:bg-emerald-900/30 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-500 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-emerald-200 dark:shadow-emerald-900/30">
         <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
         </svg>
     </div>
     <div className="z-10 relative mt-auto">
-        <p className="text-[10px] sm:text-xs font-bold text-emerald-600 uppercase tracking-wide mb-1 leading-tight">Получено прибыли</p>
-        <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+        <p className="text-[10px] sm:text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-1 leading-tight">Получено прибыли</p>
+        <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
             {formatCurrency(receivedProfitThisMonth, appSettings.showCents)}
-            <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
+            <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
         </p>
-        <p className="text-xs sm:text-sm font-semibold text-slate-600 mt-1">{currentMonthName}</p>
+        <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">{currentMonthName}</p>
         <p className="text-[10px] sm:text-xs text-emerald-500 mt-1">Нажмите для деталей</p>
     </div>
     <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1524,35 +1524,35 @@ useEffect(() => {
     </div>
 </div>
         {/* Общая ожидаемая прибыль */}
-        <div className="group bg-gradient-to-br from-slate-50 to-blue-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(100,116,139,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-200 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-600 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-slate-200">
+        <div className="group bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-800 dark:to-blue-950/30 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(100,116,139,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-200 dark:border-slate-700 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 dark:bg-blue-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-600 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-slate-200 dark:shadow-slate-900/30">
                 <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                 </svg>
             </div>
             <div className="z-10 relative mt-auto">
-                <p className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-wide mb-1 leading-tight">Всего ожидается</p>
-                <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                <p className="text-[10px] sm:text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide mb-1 leading-tight">Всего ожидается</p>
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
                     {formatCurrency(profitStats.expectedProfit, appSettings.showCents)}
-                    <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
+                    <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
                 </p>
             </div>
         </div>
 
         {/* Общая полученная прибыль */}
-        <div className="group bg-gradient-to-br from-emerald-50 to-green-50 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(16,185,129,0.15)] hover:shadow-xl transition-all duration-300 border border-emerald-100 hover:border-emerald-300 flex flex-col relative overflow-hidden cursor-default">
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-100 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-emerald-600 to-green-500 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-emerald-200">
+        <div className="group bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/30 dark:to-green-950/30 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(16,185,129,0.15)] hover:shadow-xl transition-all duration-300 border border-emerald-100 dark:border-emerald-900/50 hover:border-emerald-300 flex flex-col relative overflow-hidden cursor-default">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-100 dark:bg-emerald-900/30 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-emerald-600 to-green-500 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-emerald-200 dark:shadow-emerald-900/30">
                 <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
             </div>
             <div className="z-10 relative mt-auto">
-                <p className="text-[10px] sm:text-xs font-bold text-emerald-600 uppercase tracking-wide mb-1 leading-tight">Всего получено</p>
-                <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                <p className="text-[10px] sm:text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-1 leading-tight">Всего получено</p>
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
                     {formatCurrency(profitStats.receivedProfit, appSettings.showCents)}
-                    <span className="text-xs sm:text-sm text-slate-500 ml-1 font-bold">₽</span>
+                    <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
                 </p>
             </div>
         </div>
@@ -1569,24 +1569,24 @@ useEffect(() => {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div
-                        className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-all">
-                        <h3 className="text-lg font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                        className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-all">
+                        <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
                             <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
                             Последние договоры
                         </h3>
                         <div className="space-y-3">
                             {lastFiveSales.length === 0 ? (
                                 <div
-                                    className="text-center py-8 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                    className="text-center py-8 text-slate-400 bg-slate-50 dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
                                     Нет договоров
                                 </div>
                             ) : lastFiveSales.map((sale, idx) => (
                                 <div key={sale.id}
-                                     className="group flex items-center justify-between p-3 bg-slate-50 hover:bg-white rounded-xl transition-all hover:shadow-md border border-transparent hover:border-indigo-100 animate-in fade-in slide-in-from-bottom-2"
+                                     className="group flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 hover:bg-white dark:hover:bg-slate-700 rounded-xl transition-all hover:shadow-md border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900 animate-in fade-in slide-in-from-bottom-2"
                                      style={{animationDelay: `${idx * 50}ms`}}>
                                     <div className="min-w-0">
-                                        <p className="font-bold text-sm text-slate-800 truncate">{customers.find(c => c.id === sale.customerId)?.name}</p>
-                                        <p className="text-xs text-slate-500 mt-1">{sale.productName} • {formatDate(sale.startDate)}</p>
+                                        <p className="font-bold text-sm text-slate-800 dark:text-white truncate">{customers.find(c => c.id === sale.customerId)?.name}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{sale.productName} • {formatDate(sale.startDate)}</p>
                                   </div>
                                   <button
                                     onClick={() => setSelectedSaleForModal(sale)}
@@ -1599,8 +1599,8 @@ useEffect(() => {
                       </div>
                   </div>
 
-                  <div className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-all">
-                       <h3 className="text-lg font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                  <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-all">
+                       <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
                         <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
                         Быстрые действия
                       </h3>
@@ -1638,13 +1638,13 @@ useEffect(() => {
   <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
     {/* 🔹 Фильтры + Календарь */}
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex gap-1 p-1 bg-white/70 backdrop-blur-sm rounded-xl shadow-sm">
+      <div className="flex gap-1 p-1 bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-xl shadow-sm">
         <button
           onClick={() => { setSelectedCalendarDate(null); setPaymentDateFilter('ALL'); }}
           className={`px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
             !selectedCalendarDate && paymentDateFilter === 'ALL'
               ? 'bg-gradient-to-r from-slate-800 to-slate-700 text-white shadow-md'
-              : 'text-slate-600 hover:text-indigo-600'
+              : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600'
           }`}
         >
           Все
@@ -1654,7 +1654,7 @@ useEffect(() => {
           className={`px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
             !selectedCalendarDate && paymentDateFilter === 'TODAY'
               ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-md shadow-emerald-200'
-              : 'text-slate-600 hover:text-emerald-600'
+              : 'text-slate-600 dark:text-slate-300 hover:text-emerald-600'
           }`}
         >
           Сегодня
@@ -1664,7 +1664,7 @@ useEffect(() => {
           className={`px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
             !selectedCalendarDate && paymentDateFilter === 'TOMORROW'
               ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-white shadow-md shadow-amber-200'
-              : 'text-slate-600 hover:text-amber-500'
+              : 'text-slate-600 dark:text-slate-300 hover:text-amber-500'
           }`}
         >
           Завтра
@@ -1684,7 +1684,7 @@ useEffect(() => {
     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 border ${
       selectedCalendarDate
         ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-indigo-600 shadow-md shadow-indigo-200'
-        : 'bg-white/70 backdrop-blur-sm text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+        : 'bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-300 hover:text-indigo-600'
     }`}
   >
     <CalendarIcon size={16} />
@@ -1709,21 +1709,21 @@ useEffect(() => {
       />
 
       {/* Сам календарь */}
-      <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 w-full max-w-[320px] animate-in fade-in zoom-in-95 duration-200 sm:min-w-[280px]">
+      <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4 w-full max-w-[320px] animate-in fade-in zoom-in-95 duration-200 sm:min-w-[280px]">
         {/* Заголовок календаря */}
         <div className="flex items-center justify-between mb-3">
           <button
             onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1))}
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
           >
             <ChevronLeft size={20} />
           </button>
-          <span className="text-sm font-bold text-slate-700 capitalize">
+          <span className="text-sm font-bold text-slate-700 dark:text-slate-300 capitalize">
             {calendarMonth.toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}
           </span>
           <button
             onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1))}
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
           >
             <ChevronRight size={20} />
           </button>
@@ -1766,10 +1766,10 @@ useEffect(() => {
                     isSelected
                       ? 'bg-gradient-to-br from-indigo-600 to-indigo-500 text-white font-bold shadow-lg scale-105'
                       : isToday
-                        ? 'bg-indigo-100 text-indigo-700 font-bold border-2 border-indigo-300'
+                        ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-bold border-2 border-indigo-300 dark:border-indigo-800'
                         : hasPayments
-                          ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-                          : 'hover:bg-slate-100 text-slate-600'
+                          ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-900/50'
+                          : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
                   }`}
                 >
                   <span className="text-sm">{d}</span>
@@ -1786,12 +1786,12 @@ useEffect(() => {
         </div>
 
         {/* Легенда */}
-        <div className="flex items-center justify-center gap-3 mt-3 pt-3 border-t border-slate-100 text-[10px] text-slate-500">
+        <div className="flex items-center justify-center gap-3 mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 text-[10px] text-slate-500 dark:text-slate-400">
           <span className="flex items-center gap-1">
-            <span className="w-3 h-3 bg-indigo-100 rounded border border-indigo-300" /> Сегодня
+            <span className="w-3 h-3 bg-indigo-100 dark:bg-indigo-900/30 rounded border border-indigo-300 dark:border-indigo-800" /> Сегодня
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-3 h-3 bg-emerald-50 rounded border border-emerald-200" /> Есть платежи
+            <span className="w-3 h-3 bg-emerald-50 dark:bg-emerald-900/30 rounded border border-emerald-200 dark:border-emerald-900/50" /> Есть платежи
           </span>
         </div>
       </div>
@@ -1812,7 +1812,7 @@ useEffect(() => {
 
     {/* 🔹 Список платежей */}
     {upcomingAndOverduePayments.length === 0 ? (
-      <div className="text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl border border-dashed border-slate-200">
+      <div className="text-center py-16 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
         <div className="text-6xl mb-4 opacity-30">📅</div>
         <p className="text-slate-400 font-medium">
           {selectedCalendarDate ? 'Нет платежей на выбранную дату' : 'Нет платежей на сегодня и завтра'}
@@ -1832,13 +1832,13 @@ useEffect(() => {
                 totalDue: p.totalDue
               });
             }}
-            className="group bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 relative animate-in fade-in slide-in-from-bottom-2 cursor-pointer"
+            className="group bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-800 relative animate-in fade-in slide-in-from-bottom-2 cursor-pointer"
             style={{animationDelay: `${idx * 100}ms`}}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4 min-w-0 flex-1">
                 <div className="min-w-0">
-                  <p className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors break-words leading-tight">
+                  <p className="font-bold text-slate-800 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors break-words leading-tight">
                     {p.customerName}
                   </p>
                   <p className="text-xs text-slate-500 mt-0.5 break-words">

@@ -964,9 +964,9 @@ if (initialData.id && initialData.paymentPlan) {
       {/* === СКРЫТЫЙ КОНТРАКТ ДЛЯ PDF === */}
       {renderContractContent()}
 
-      <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
-        <button onClick={onClose} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
-        <h2 className="text-xl font-bold text-slate-800">
+      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 bg-white dark:bg-slate-800 sticky top-0 z-10 pt-2">
+        <button onClick={onClose} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">{ICONS.Back}</button>
+        <h2 className="text-xl font-bold text-slate-800 dark:text-white">
           {formData.id ? (
             <span className="flex items-center gap-2">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -987,42 +987,42 @@ if (initialData.id && initialData.paymentPlan) {
         </div>
       )}
 
-      <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-100">
-        <button onClick={() => updateMode('INSTALLMENT')} className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${mode === 'INSTALLMENT' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Рассрочка</button>
-        <button onClick={() => updateMode('CASH')} className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${mode === 'CASH' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>Наличные</button>
+      <div className="flex bg-white dark:bg-slate-800 p-1 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">
+        <button onClick={() => updateMode('INSTALLMENT')} className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${mode === 'INSTALLMENT' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Рассрочка</button>
+        <button onClick={() => updateMode('CASH')} className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${mode === 'CASH' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Наличные</button>
       </div>
 
       <form onSubmit={handleFormSubmit} className="space-y-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
           <div className="flex flex-wrap gap-6">
             <div className="w-40">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Дата продажи</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Дата продажи</label>
               <input type="date" required
-                     className={`w-full p-2 border rounded-lg outline-none bg-white text-slate-900 text-sm ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300 focus:border-indigo-500'}`}
+                     className={`w-full p-2 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600 focus:border-indigo-500'}`}
                      value={formData.startDate}
                      onChange={e => setFormData({...formData, startDate: e.target.value})}
                      disabled={!!formData.id}/>
             </div>
             {mode === 'INSTALLMENT' && (
                 <div className="w-40">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                     Первый платеж
                     {formData.id && hasPaidPayments && (
-                        <span className="ml-1 text-[10px] text-amber-600 font-normal">🔒 Заблокировано</span>
+                        <span className="ml-1 text-[10px] text-amber-600 dark:text-amber-400 font-normal">🔒 Заблокировано</span>
                     )}
                   </label>
                   <input type="date" required
-                         className={`w-full p-2 border rounded-lg outline-none bg-white text-slate-900 text-sm ${
+                         className={`w-full p-2 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm ${
                              formData.id && hasPaidPayments
-                                 ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
-                                 : 'border-slate-300 focus:border-indigo-500'
+                                 ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed'
+                                 : 'border-slate-300 dark:border-slate-600 focus:border-indigo-500'
                          }`}
                          value={formData.paymentDate}
                          onChange={handlePaymentDateChange}
                          disabled={formData.id && hasPaidPayments}/>
                   {/* 🔹 Подсказка */}
                   {formData.id && !hasPaidPayments && (
-                      <p className="text-[10px] text-slate-400 mt-1">
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
                         💡 Изменение даты пересчитает график будущих платежей
                       </p>
                   )}
@@ -1036,50 +1036,50 @@ if (initialData.id && initialData.paymentPlan) {
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Клиент</label>
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Клиент</label>
           <div onClick={() => onSelectCustomer({...formData, mode})}
-               className={`w-full p-3 border rounded-lg cursor-pointer flex justify-between items-center ${formData.customerId ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-dashed border-slate-300'} ${formData.id ? 'cursor-not-allowed opacity-60' : ''}`}
+               className={`w-full p-3 border rounded-lg cursor-pointer flex justify-between items-center ${formData.customerId ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' : 'bg-slate-50 dark:bg-slate-700/50 border-dashed border-slate-300 dark:border-slate-600'} ${formData.id ? 'cursor-not-allowed opacity-60' : ''}`}
                style={{pointerEvents: formData.id ? 'none' : 'auto'}}>
             <div className="flex items-center gap-2">
-              {formData.customerId && <div className="text-indigo-600">{ICONS.Customers}</div>}
+              {formData.customerId && <div className="text-indigo-600 dark:text-indigo-400">{ICONS.Customers}</div>}
               <span
-                  className={formData.customerId ? 'text-slate-800 font-bold' : 'text-slate-400'}>{selectedCustomer ? selectedCustomer.name : 'Выбрать клиента...'}</span>
+                  className={formData.customerId ? 'text-slate-800 dark:text-white font-bold' : 'text-slate-400 dark:text-slate-500'}>{selectedCustomer ? selectedCustomer.name : 'Выбрать клиента...'}</span>
             </div>
-            <span className="text-slate-400"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+            <span className="text-slate-400 dark:text-slate-500"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
                                                   stroke="currentColor" strokeWidth="2" strokeLinecap="round"
                                                   strokeLinejoin="round"><polyline
                 points="9 18 15 12 9 6"/></svg></span>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm relative">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Товар</label>
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative">
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Товар</label>
           <input type="text"
-                 className={`w-full p-3 border rounded-lg outline-none text-slate-900 placeholder:text-slate-400 bg-white ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
+                 className={`w-full p-3 border rounded-lg outline-none text-slate-900 dark:text-white placeholder:text-slate-400 bg-white dark:bg-slate-900 ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
                  placeholder="Введите название товара..."
                  value={formData.productName}
                  onChange={(e) => handleProductChange(e.target.value)}
                  disabled={!!formData.id}/>
           {showSuggestions && suggestions.length > 0 && (
               <div
-                  className="absolute left-4 right-4 top-[72px] bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
+                  className="absolute left-4 right-4 top-[72px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
                 {suggestions.map(s => (
                     <div key={s.id}
-                         className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0 text-slate-800"
+                         className="p-3 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer border-b border-slate-50 dark:border-slate-700 last:border-0 text-slate-800 dark:text-white"
                          onClick={() => handleSuggestionClick(s)}>
-                      <p className="font-medium text-slate-800">{s.name}</p>
-                      <p className="text-xs text-slate-500">Цена: {s.price} ₽</p>
+                      <p className="font-medium text-slate-800 dark:text-white">{s.name}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Цена: {s.price} ₽</p>
                     </div>
                 ))}
               </div>
           )}
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Касса (Приход)</label>
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Касса (Приход)</label>
           <select required
-                  className={`w-full p-3 bg-white border rounded-lg outline-none text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
+                  className={`w-full p-3 bg-white dark:bg-slate-900 border rounded-lg outline-none text-slate-900 dark:text-white ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
                   value={formData.accountId}
                   onChange={e => setFormData({...formData, accountId: e.target.value})}
                   disabled={!!formData.id}>
@@ -1087,15 +1087,15 @@ if (initialData.id && initialData.paymentPlan) {
           </select>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
           {/* 🔹 Закуп и Наценка */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Закуп (Себест.)</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Закуп (Себест.)</label>
               <input
                   type="number"
                   min="0"
-                  className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
+                  className={`w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
                   value={formData.buyPrice === 0 ? '' : formData.buyPrice}
                   onChange={e => {
                     setFormData({...formData, buyPrice: e.target.value});
@@ -1106,11 +1106,11 @@ if (initialData.id && initialData.paymentPlan) {
             </div>
             {mode === 'INSTALLMENT' && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Наценка (%)</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Наценка (%)</label>
                   <input
                       type="number"
                       min="0"
-                      className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
+                      className={`w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
                       value={formData.interestRate === 0 ? '' : formData.interestRate}
                       onChange={e => {
                         setFormData({...formData, interestRate: e.target.value});
@@ -1124,19 +1124,19 @@ if (initialData.id && initialData.paymentPlan) {
 
           {/* 🔹 Цена в рассрочку / Цена продажи */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               {mode === 'INSTALLMENT' ? 'Цена в рассрочку' : 'Цена продажи'}
             </label>
             <div className="relative">
               <input
                   type="number"
                   min="0"
-                  className={`w-full p-3 border rounded-lg outline-none font-bold text-slate-900 bg-white transition-all ${
+                  className={`w-full p-3 border rounded-lg outline-none font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-900 transition-all ${
                       isPriceManual && !formData.id
-                          ? 'border-indigo-400 ring-2 ring-indigo-100'
+                          ? 'border-indigo-400 dark:border-indigo-500 ring-2 ring-indigo-100 dark:ring-indigo-900/40'
                           : formData.id
-                              ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
-                              : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                              ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed'
+                              : 'border-slate-300 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/40'
                   }`}
                   value={formData.price === 0 ? '' : formData.price}
                   onChange={e => {
@@ -1155,9 +1155,9 @@ if (initialData.id && initialData.paymentPlan) {
               {mode === 'INSTALLMENT' && !formData.id && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase">
                     {isPriceManual ? (
-                        <span className="text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">Вручную</span>
+                        <span className="text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">Вручную</span>
                     ) : (
-                        <span className="text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full">Авто</span>
+                        <span className="text-emerald-500 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">Авто</span>
                     )}
                   </div>
               )}
@@ -1166,15 +1166,15 @@ if (initialData.id && initialData.paymentPlan) {
 
           {/* 🔹 Срок и Первый взнос */}
           {mode === 'INSTALLMENT' && (
-              <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+              <div className="grid grid-cols-2 gap-4 border-t border-slate-100 dark:border-slate-700 pt-4">
                 {/* Срок */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Срок (мес.)</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Срок (мес.)</label>
                   <input
                       type="number"
                       min="1"
                       max="24"
-                      className={`w-full p-3 border rounded-lg outline-none text-slate-900 bg-white ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
+                      className={`w-full p-3 border rounded-lg outline-none text-slate-900 dark:text-white bg-white dark:bg-slate-900 ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
                       value={formData.installments === 0 ? '' : formData.installments}
                       onChange={e => setFormData({...formData, installments: e.target.value})}
                       placeholder="0"
@@ -1183,18 +1183,18 @@ if (initialData.id && initialData.paymentPlan) {
 
                 {/* 🔹 Первый взнос + чекбокс в одну строку */}
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Первый взнос (₽)</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Первый взнос (₽)</label>
                   <div className="relative">
                     <input
                         type="number"
                         min="0"
                         max={calculatedValues.totalAmount}
-                        className={`w-full p-3 pr-12 border rounded-lg outline-none text-slate-900 bg-white transition-all ${
+                        className={`w-full p-3 pr-12 border rounded-lg outline-none text-slate-900 dark:text-white bg-white dark:bg-slate-900 transition-all ${
                             downPaymentFromMarkup && !formData.id
-                                ? 'border-emerald-300 bg-emerald-50/50 ring-2 ring-emerald-100'
+                                ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-900/20 ring-2 ring-emerald-100 dark:ring-emerald-900/40'
                                 : formData.id
-                                    ? 'border-slate-200 bg-slate-100 cursor-not-allowed'
-                                    : 'border-slate-300 hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                                    ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed'
+                                    : 'border-slate-300 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/40'
                         }`}
                         value={formData.downPayment === 0 ? '' : formData.downPayment}
                         onChange={e => {
@@ -1218,25 +1218,25 @@ if (initialData.id && initialData.paymentPlan) {
                   {/* ✅ Чекбокс в одну строку */}
                   {Number(formData.buyPrice) > 0 && !formData.id && (
                       <label
-                          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer group hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200">
+                          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer group hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600">
                         <div className="relative flex-shrink-0">
                           <input
                               type="checkbox"
                               checked={downPaymentFromMarkup}
                               onChange={e => setDownPaymentFromMarkup(e.target.checked)}
-                              className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
+                              className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
                           />
                           {downPaymentFromMarkup && (
-                              <span className="absolute inset-0 rounded-full bg-indigo-100 animate-ping opacity-20"/>
+                              <span className="absolute inset-0 rounded-full bg-indigo-100 dark:bg-indigo-900/40 animate-ping opacity-20"/>
                           )}
                         </div>
                         <div className="flex-1 flex items-center justify-between gap-3 min-w-0">
               <span
-                  className="text-xs text-slate-600 group-hover:text-indigo-600 transition-colors font-medium truncate">
+                  className="text-xs text-slate-600 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors font-medium truncate">
                 Взнос
               </span>
                           <span
-                              className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg whitespace-nowrap flex-shrink-0">
+                              className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded-lg whitespace-nowrap flex-shrink-0">
                 +{Math.round(Number(formData.buyPrice) * formData.interestRate / 100).toLocaleString()} ₽
               </span>
                         </div>
@@ -1247,18 +1247,18 @@ if (initialData.id && initialData.paymentPlan) {
           )}
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
-          <h3 className="text-sm font-semibold text-slate-600">Поручитель (необязательно)</h3>
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+          <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-300">Поручитель (необязательно)</h3>
           <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-xs font-medium text-slate-500 mb-1">ФИО Поручителя</label><input
+            <div><label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">ФИО Поручителя</label><input
                 type="text"
-                className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
+                className={`w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
                 value={formData.guarantorName}
                 onChange={e => setFormData({...formData, guarantorName: e.target.value})}
                 disabled={!!formData.id}/></div>
-            <div><label className="block text-xs font-medium text-slate-500 mb-1">Телефон поручителя</label><input
+            <div><label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Телефон поручителя</label><input
                 type="text"
-                className={`w-full p-3 border rounded-lg outline-none bg-white text-slate-900 ${formData.id ? 'border-slate-200 bg-slate-100 cursor-not-allowed' : 'border-slate-300'}`}
+                className={`w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
                 value={formData.guarantorPhone}
                 onChange={e => setFormData({...formData, guarantorPhone: e.target.value})}
                 disabled={!!formData.id}/></div>
@@ -1266,36 +1266,36 @@ if (initialData.id && initialData.paymentPlan) {
         </div>
 
         <div
-            className={`${mode === 'INSTALLMENT' ? 'bg-indigo-50 border-indigo-100' : 'bg-emerald-50 border-emerald-100'} p-5 rounded-xl space-y-3 border`}>
+            className={`${mode === 'INSTALLMENT' ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-100 dark:border-indigo-900/50' : 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-100 dark:border-emerald-900/50'} p-5 rounded-xl space-y-3 border`}>
           <div className="flex justify-between text-sm"><span
-              className="text-slate-500">{mode === 'INSTALLMENT' ? 'Итоговая цена' : 'Цена продажи'}</span><span
-              className="font-medium text-slate-900">{calculatedValues.totalAmount.toLocaleString()} ₽</span></div>
+              className="text-slate-500 dark:text-slate-400">{mode === 'INSTALLMENT' ? 'Итоговая цена' : 'Цена продажи'}</span><span
+              className="font-medium text-slate-900 dark:text-white">{calculatedValues.totalAmount.toLocaleString()} ₽</span></div>
           {mode === 'INSTALLMENT' && (
               <>
                 <div className="flex justify-between text-sm"><span
-                    className="text-slate-500">Чистая прибыль</span><span
-                    className="font-medium text-emerald-600">+{Math.round(calculatedValues.totalAmount - Number(formData.buyPrice)).toLocaleString()} ₽</span>
+                    className="text-slate-500 dark:text-slate-400">Чистая прибыль</span><span
+                    className="font-medium text-emerald-600 dark:text-emerald-400">+{Math.round(calculatedValues.totalAmount - Number(formData.buyPrice)).toLocaleString()} ₽</span>
                 </div>
-                <div className="flex flex-col gap-2 text-sm pt-3 border-t border-indigo-100">
-                  <span className="text-slate-500 font-medium">Округление платежа (до 100 ₽)</span>
-                  <div className="flex bg-slate-100 p-1 rounded-lg">
+                <div className="flex flex-col gap-2 text-sm pt-3 border-t border-indigo-100 dark:border-indigo-900/50">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">Округление платежа (до 100 ₽)</span>
+                  <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
                     <button type="button" onClick={() => setRoundingMode('NONE')}
-                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'NONE' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'NONE' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
                             disabled={!!formData.id}>Нет
                     </button>
                     <button type="button" onClick={() => setRoundingMode('DOWN')}
-                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'DOWN' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'DOWN' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
                             disabled={!!formData.id}>Вниз
                     </button>
                     <button type="button" onClick={() => setRoundingMode('UP')}
-                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'UP' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'UP' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
                             disabled={!!formData.id}>Вверх
                     </button>
                   </div>
                 </div>
-                <div className="flex justify-between text-sm pt-3 border-t border-indigo-100"><span
-                    className="text-indigo-800 font-semibold">Платёж в месяц</span><span
-                    className="text-indigo-800 font-bold">{calculatedValues.monthlyPayment.toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</span>
+                <div className="flex justify-between text-sm pt-3 border-t border-indigo-100 dark:border-indigo-900/50"><span
+                    className="text-indigo-800 dark:text-indigo-300 font-semibold">Платёж в месяц</span><span
+                    className="text-indigo-800 dark:text-indigo-300 font-bold">{calculatedValues.monthlyPayment.toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</span>
                 </div>
               </>
           )}
@@ -1339,25 +1339,25 @@ if (initialData.id && initialData.paymentPlan) {
           <div
               className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
               onClick={() => setShowConfirmModal(false)}>
-            <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
+            <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
                  onClick={e => e.stopPropagation()}>
-              <h3 className="text-xl font-bold text-slate-800 text-center">Подтверждение</h3>
-              <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-slate-500">Клиент:</span><span
-                    className="font-bold text-slate-800">{selectedCustomer?.name}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">Товар:</span><span
-                    className="font-bold text-slate-800">{formData.productName}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">Сумма:</span><span
-                    className="font-bold text-indigo-600">{calculatedValues.totalAmount.toLocaleString()} ₽</span></div>
-                <div className="border-t border-slate-200 pt-2 mt-2 flex justify-between items-center">
-                  <span className="text-slate-500">Зачисление в:</span>
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white text-center">Подтверждение</h3>
+              <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Клиент:</span><span
+                    className="font-bold text-slate-800 dark:text-white">{selectedCustomer?.name}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Товар:</span><span
+                    className="font-bold text-slate-800 dark:text-white">{formData.productName}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Сумма:</span><span
+                    className="font-bold text-indigo-600 dark:text-indigo-400">{calculatedValues.totalAmount.toLocaleString()} ₽</span></div>
+                <div className="border-t border-slate-200 dark:border-slate-700 pt-2 mt-2 flex justify-between items-center">
+                  <span className="text-slate-500 dark:text-slate-400">Зачисление в:</span>
                   <span
-                      className="bg-emerald-100 text-emerald-800 px-2 py-1 rounded text-xs font-bold">{selectedAccount?.name}</span>
+                      className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400 px-2 py-1 rounded text-xs font-bold">{selectedAccount?.name}</span>
                 </div>
               </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowConfirmModal(false)}
-                        className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Отмена
+                        className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300">Отмена
                 </button>
                 <button onClick={handleConfirm}
                         className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Подтвердить
@@ -1370,22 +1370,22 @@ if (initialData.id && initialData.paymentPlan) {
       {showSuccessModal && (
           <div
               className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-5"
+            <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-5"
                  onClick={e => e.stopPropagation()}>
               <div
-                  className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl">{ICONS.Check}</div>
+                  className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl">{ICONS.Check}</div>
               <div>
-                <h3 className="text-2xl font-bold text-slate-800">Успешно!</h3>
-                <p className="text-slate-500 text-sm mt-1">Сделка оформлена и сохранена.</p>
+                <h3 className="text-2xl font-bold text-slate-800 dark:text-white">Успешно!</h3>
+                <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Сделка оформлена и сохранена.</p>
               </div>
               <div className="flex flex-col gap-3">
                 <button onClick={handlePrintContract}
-                        className="w-full py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 flex items-center justify-center gap-2">{ICONS.File} Печать
+                        className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center justify-center gap-2">{ICONS.File} Печать
                   договора
                 </button>
                 {appSettings.whatsapp?.enabled && (
                     <button onClick={handleSendContract}
-                            className="w-full py-3 bg-emerald-50 text-emerald-600 font-bold rounded-xl hover:bg-emerald-100 flex items-center justify-center gap-2">{ICONS.Send} Отправить
+                            className="w-full py-3 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 font-bold rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/50 flex items-center justify-center gap-2">{ICONS.Send} Отправить
                       договор (PDF)</button>
                 )}
               </div>
@@ -1393,7 +1393,7 @@ if (initialData.id && initialData.paymentPlan) {
                 <button onClick={() => {
                   setShowSuccessModal(false);
                   onClose();
-                }} className="text-slate-400 text-sm font-medium hover:text-slate-600">Закрыть и вернуться
+                }} className="text-slate-400 dark:text-slate-500 text-sm font-medium hover:text-slate-600 dark:hover:text-slate-300">Закрыть и вернуться
                 </button>
               </div>
             </div>
@@ -1407,36 +1407,36 @@ if (initialData.id && initialData.paymentPlan) {
           onClick={() => setShowWhatsAppConfirmModal(false)}
         >
           <div
-            className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
+            className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
             onClick={e => e.stopPropagation()}
           >
-            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl">
+            <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl">
               {ICONS.Send}
             </div>
-            <h3 className="text-xl font-bold text-slate-800 text-center">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white text-center">
               Отправить договор в WhatsApp?
             </h3>
-            <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm border border-slate-100">
+            <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-2 text-sm border border-slate-100 dark:border-slate-700">
               <div className="flex justify-between">
-                <span className="text-slate-500">Клиент:</span>
-                <span className="font-bold text-slate-800">{selectedCustomer?.name}</span>
+                <span className="text-slate-500 dark:text-slate-400">Клиент:</span>
+                <span className="font-bold text-slate-800 dark:text-white">{selectedCustomer?.name}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Телефон:</span>
-                <span className="font-medium text-slate-800">{formatPhone(selectedCustomer?.phone)}</span>
+                <span className="text-slate-500 dark:text-slate-400">Телефон:</span>
+                <span className="font-medium text-slate-800 dark:text-white">{formatPhone(selectedCustomer?.phone)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Договор:</span>
-                <span className="font-medium text-slate-800">{createdSale?.productName}</span>
+                <span className="text-slate-500 dark:text-slate-400">Договор:</span>
+                <span className="font-medium text-slate-800 dark:text-white">{createdSale?.productName}</span>
               </div>
-              <div className="flex justify-between pt-2 border-t border-slate-200">
-                <span className="text-slate-500">Сумма:</span>
-                <span className="font-bold text-indigo-600">{createdSale?.totalAmount.toLocaleString()} ₽</span>
+              <div className="flex justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
+                <span className="text-slate-500 dark:text-slate-400">Сумма:</span>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400">{createdSale?.totalAmount.toLocaleString()} ₽</span>
               </div>
             </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2 items-start">
-              <span className="text-amber-500 flex-shrink-0 mt-0.5">⚠️</span>
-              <p className="text-xs text-amber-800">
+            <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 rounded-lg p-3 flex gap-2 items-start">
+              <span className="text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5">⚠️</span>
+              <p className="text-xs text-amber-800 dark:text-amber-300">
                 PDF-файл будет отправлен на номер {formatPhone(selectedCustomer?.phone)}.
                 Убедитесь, что номер корректен.
               </p>
@@ -1444,7 +1444,7 @@ if (initialData.id && initialData.paymentPlan) {
             <div className="flex gap-3 pt-2">
               <button
                   onClick={() => setShowWhatsAppConfirmModal(false)}
-                  className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+                  className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
               >
                 Отмена
               </button>

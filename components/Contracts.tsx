@@ -163,7 +163,7 @@ const handleSendReminder = async () => {
       onClick={handleClose}
     >
       <div
-        className={`bg-white w-full sm:max-w-sm sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+        className={`bg-white dark:bg-slate-800 w-full sm:max-w-sm sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
         onClick={e => e.stopPropagation()}
       >
         {/* 🔥 ШАПКА С КНОПКОЙ «НАПОМНИТЬ» */}
@@ -187,49 +187,49 @@ const handleSendReminder = async () => {
         </div>
 
         <div className="p-4 space-y-3 overflow-y-auto flex-1">
-          <div className="bg-slate-50 p-3 rounded-xl">
-            <label className="text-[11px] text-slate-500 block mb-1">Товар</label>
-            <p className="font-semibold text-slate-800 text-sm">{sale.productName}</p>
+          <div className="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl">
+            <label className="text-[11px] text-slate-500 dark:text-slate-400 block mb-1">Товар</label>
+            <p className="font-semibold text-slate-800 dark:text-white text-sm">{sale.productName}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <InfoItem label="Срок" value={`${sale.installments} мес.`} />
-            <InfoItem label="Оплачено" value={`${paidMonths} мес.`} color="text-emerald-600" />
+            <InfoItem label="Оплачено" value={`${paidMonths} мес.`} color="text-emerald-600 dark:text-emerald-400" />
             <InfoItem label="Платёж" value={`${formatCurrency(monthlyPayment, appSettings?.showCents)} ₽`} small />
-            <InfoItem label="След. платеж" value={nextPaymentDate} color="text-indigo-600" small />
+            <InfoItem label="След. платеж" value={nextPaymentDate} color="text-indigo-600 dark:text-indigo-400" small />
           </div>
 
           {/* Блок просрочки */}
           {activeTab !== 'ACTIVE' && realOverdueAmount > 0 && (
-            <div className="bg-gradient-to-r from-red-50 to-orange-50 p-3 rounded-xl border border-red-100">
+            <div className="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/30 dark:to-orange-900/30 p-3 rounded-xl border border-red-100 dark:border-red-900/50">
               <div className="flex justify-between items-center">
-                <label className="text-[11px] text-red-600 font-medium">Просрочка</label>
-                <p className="font-bold text-red-600 text-lg">{formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽</p>
+                <label className="text-[11px] text-red-600 dark:text-red-400 font-medium">Просрочка</label>
+                <p className="font-bold text-red-600 dark:text-red-400 text-lg">{formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽</p>
               </div>
               <div className="flex justify-between items-center mt-1">
-                <label className="text-[11px] text-slate-600">Остаток</label>
-                <p className="font-semibold text-slate-700 text-sm">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
+                <label className="text-[11px] text-slate-600 dark:text-slate-300">Остаток</label>
+                <p className="font-semibold text-slate-700 dark:text-slate-300 text-sm">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
               </div>
             </div>
           )}
 
           {activeTab === 'ACTIVE' && (
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <div className="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
               <div className="flex justify-between items-center">
-                <label className="text-[11px] text-slate-600">Остаток</label>
-                <p className="font-bold text-slate-800 text-lg">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
+                <label className="text-[11px] text-slate-600 dark:text-slate-300">Остаток</label>
+                <p className="font-bold text-slate-800 dark:text-white text-lg">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</p>
               </div>
             </div>
           )}
 
           {overduePaymentsList.length > 0 && (
-            <div className="bg-slate-50 p-3 rounded-xl">
-              <label className="text-[11px] font-medium text-slate-500 block mb-2">Пропущенные платежи</label>
+            <div className="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl">
+              <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block mb-2">Пропущенные платежи</label>
               <div className="space-y-1.5 max-h-24 overflow-y-auto">
                 {overduePaymentsList.map(p => (
-                  <div key={p.id} className="flex justify-between items-center bg-white px-2.5 py-2 rounded-lg">
-                    <span className="text-red-600 text-xs font-medium">{formatDate(p.date)}</span>
-                    <span className="text-slate-500 text-[11px]">{formatCurrency(p.amount, appSettings?.showCents)} ₽</span>
+                  <div key={p.id} className="flex justify-between items-center bg-white dark:bg-slate-800 px-2.5 py-2 rounded-lg">
+                    <span className="text-red-600 dark:text-red-400 text-xs font-medium">{formatDate(p.date)}</span>
+                    <span className="text-slate-500 dark:text-slate-400 text-[11px]">{formatCurrency(p.amount, appSettings?.showCents)} ₽</span>
                   </div>
                 ))}
               </div>
@@ -238,7 +238,7 @@ const handleSendReminder = async () => {
         </div>
 
         {/* 🔘 НИЖНИЕ КНОПКИ: Позвонить / WhatsApp */}
-        <div className="p-3 bg-slate-50 border-t border-slate-100 flex gap-2 shrink-0">
+        <div className="p-3 bg-slate-50 dark:bg-slate-700/50 border-t border-slate-100 dark:border-slate-700 flex gap-2 shrink-0">
           <button onClick={handleCall} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
             <Phone size={16} /> Позвонить
           </button>
@@ -249,7 +249,7 @@ const handleSendReminder = async () => {
 
         <button
           onClick={handleClose}
-          className="py-3 text-slate-400 text-sm hover:text-slate-600 hover:bg-slate-50 transition-colors shrink-0"
+          className="py-3 text-slate-400 dark:text-slate-500 text-sm hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shrink-0"
         >
           Закрыть
         </button>
@@ -261,14 +261,14 @@ const handleSendReminder = async () => {
             onClick={() => !isSending && setShowConfirmReminder(false)}
           >
             <div
-              className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl animate-scale-in"
+              className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-3xl p-5 shadow-2xl animate-scale-in"
               onClick={e => e.stopPropagation()}
             >
-              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
                 <Phone size={24} className="rotate-90" />
               </div>
-              <h4 className="text-center font-bold text-slate-800 mb-1">Отправить напоминание?</h4>
-              <p className="text-center text-slate-500 text-sm mb-4">
+              <h4 className="text-center font-bold text-slate-800 dark:text-white mb-1">Отправить напоминание?</h4>
+              <p className="text-center text-slate-500 dark:text-slate-400 text-sm mb-4">
                 Клиент <b>{customer?.name}</b> получит сообщение в WhatsApp о задолженности{' '}
                 <b>{formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽</b>
               </p>
@@ -277,7 +277,7 @@ const handleSendReminder = async () => {
                 <button
                   onClick={() => setShowConfirmReminder(false)}
                   disabled={isSending}
-                  className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition-all disabled:opacity-50"
+                  className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-200 dark:hover:bg-slate-600 transition-all disabled:opacity-50"
                 >
                   Отмена
                 </button>
@@ -306,11 +306,11 @@ const handleSendReminder = async () => {
   );
 };
 
-const InfoItem = ({ label, value, color = 'text-slate-800', small = false }: {
+const InfoItem = ({ label, value, color = 'text-slate-800 dark:text-white', small = false }: {
   label: string, value: string | number, color?: string, small?: boolean
 }) => (
-  <div className="bg-white p-2.5 rounded-xl border border-slate-100">
-    <label className="text-[10px] text-slate-400 block mb-0.5">{label}</label>
+  <div className="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700">
+    <label className="text-[10px] text-slate-400 dark:text-slate-500 block mb-0.5">{label}</label>
     <p className={`font-semibold ${color} ${small ? 'text-xs' : 'text-sm'}`}>{value}</p>
   </div>
 );
@@ -685,62 +685,62 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
 
       {isMobile ? (
         <div className={`fixed left-0 right-0 bottom-0 z-[9999] ${isMenuClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}>
-          <div className="bg-white rounded-t-3xl shadow-2xl w-full mx-auto overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-              <span className="text-sm font-semibold text-slate-700">Действия</span>
-              <button onClick={() => closeActionMenu()} className="p-1 text-slate-400 hover:text-slate-600">
+          <div className="bg-white dark:bg-slate-800 rounded-t-3xl shadow-2xl w-full mx-auto overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700">
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Действия</span>
+              <button onClick={() => closeActionMenu()} className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300">
                 <X size={20} />
               </button>
             </div>
 
-            <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
-              <p className="text-sm font-semibold text-slate-800 truncate">{customer?.name}</p>
-              <p className="text-xs text-slate-500 truncate">{currentMenuSale.productName}</p>
+            <div className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
+              <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{customer?.name}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{currentMenuSale.productName}</p>
             </div>
 
             <div className="py-2">
               <button
                 onClick={() => closeActionMenu(() => setSelectedSaleForInfo(currentMenuSale))}
-                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
+                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center gap-3 transition-colors"
               >
-                <span className="text-blue-500"><FileText size={18} /></span>
+                <span className="text-blue-500 dark:text-blue-400"><FileText size={18} /></span>
                 <span>Информация о договоре</span>
               </button>
 
               <button
                 onClick={() => closeActionMenu(() => onViewSchedule(currentMenuSale))}
-                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
+                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex items-center gap-3 transition-colors"
               >
-                <span className="text-indigo-500"><Calendar size={18} /></span>
+                <span className="text-indigo-500 dark:text-indigo-400"><Calendar size={18} /></span>
                 <span>График платежей</span>
               </button>
 
               {(!isEmployee || user?.permissions?.canEdit) && (
                 <button
                   onClick={() => closeActionMenu(() => onEditSale(currentMenuSale))}
-                  className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+                  className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
                 >
-                  <span className="text-slate-500"><Edit3 size={18} /></span>
+                  <span className="text-slate-500 dark:text-slate-400"><Edit3 size={18} /></span>
                   <span>Редактировать</span>
                 </button>
               )}
 
               <button
                 onClick={() => closeActionMenu(() => printContract(currentMenuSale))}
-                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
               >
-                <span className="text-slate-500"><Printer size={18} /></span>
+                <span className="text-slate-500 dark:text-slate-400"><Printer size={18} /></span>
                 <span>Печать договора</span>
               </button>
             </div>
 
-            <div className="border-t border-slate-100 py-2">
+            <div className="border-t border-slate-100 dark:border-slate-700 py-2">
               {(!isEmployee || user?.permissions?.canDelete) && (
                 <button
                   onClick={() => closeActionMenu(() => setDeletingSale(currentMenuSale))}
-                  className="w-full text-left px-4 py-3.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                  className="w-full text-left px-4 py-3.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-3 transition-colors"
                 >
-                  <span className="text-red-500"><Trash2 size={18} /></span>
+                  <span className="text-red-500 dark:text-red-400"><Trash2 size={18} /></span>
                   <span>Удалить договор</span>
                 </button>
               )}
@@ -749,7 +749,7 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
             <div className="px-4 pb-4 pt-2">
               <button
                 onClick={() => closeActionMenu()}
-                className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition-colors"
+                className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
               >
                 Отмена
               </button>
@@ -758,59 +758,59 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
         </div>
       ) : (
         <div
-          className="fixed z-[9999] bg-white rounded-2xl shadow-2xl w-64 overflow-hidden animate-scale-in border border-slate-100 max-h-[85vh] overflow-y-auto"
+          className="fixed z-[9999] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-64 overflow-hidden animate-scale-in border border-slate-100 dark:border-slate-700 max-h-[85vh] overflow-y-auto"
           style={{ top: `${menuPosition?.top ?? 0}px`, left: `${menuPosition?.left ?? 0}px` }}
           onClick={e => e.stopPropagation()}
         >
-          <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
-            <p className="text-sm font-semibold text-slate-800 truncate">{customer?.name}</p>
-            <p className="text-xs text-slate-500 truncate">{currentMenuSale.productName}</p>
+          <div className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
+            <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{customer?.name}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{currentMenuSale.productName}</p>
           </div>
 
           <div className="py-2">
             <button
               onClick={() => { setSelectedSaleForInfo(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-              className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
+              className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center gap-3 transition-colors"
             >
-              <span className="text-blue-500"><FileText size={16}/></span>
+              <span className="text-blue-500 dark:text-blue-400"><FileText size={16}/></span>
               <span>Информация</span>
             </button>
 
             <button
               onClick={() => { onViewSchedule(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-              className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
+              className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex items-center gap-3 transition-colors"
             >
-              <span className="text-indigo-500"><Calendar size={16}/></span>
+              <span className="text-indigo-500 dark:text-indigo-400"><Calendar size={16}/></span>
               <span>График</span>
             </button>
 
    {(!isEmployee || user?.permissions?.canEdit) && (
     <button
         onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-        className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+        className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
     >
-        <span className="text-slate-500"><Edit3 size={16}/></span>
+        <span className="text-slate-500 dark:text-slate-400"><Edit3 size={16}/></span>
         <span>Редактировать</span>
     </button>
 )}
 
 <button
     onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-    className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+    className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
 >
-    <span className="text-slate-500"><Printer size={16}/></span>
+    <span className="text-slate-500 dark:text-slate-400"><Printer size={16}/></span>
     <span>Печать</span>
 </button>
 </div>
 
-<div className="border-t border-slate-100 py-2">
+<div className="border-t border-slate-100 dark:border-slate-700 py-2">
     {/* 🔥 Удалить - скрываем если нет прав canDelete */}
     {(!isEmployee || user?.permissions?.canDelete) && (
         <button
             onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-            className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+            className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-3 transition-colors"
         >
-            <span className="text-red-500"><Trash2 size={16}/></span>
+            <span className="text-red-500 dark:text-red-400"><Trash2 size={16}/></span>
             <span>Удалить</span>
         </button>
     )}
@@ -855,16 +855,16 @@ useEffect(() => {
       {activeTab !== 'OVERDUE' ? (
         <div className="flex justify-between items-center py-2">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">{getTabTitle()}</h2>
-            <p className="text-slate-400 text-xs mt-0.5">Найдено: {filteredList.length}</p>
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-white">{getTabTitle()}</h2>
+            <p className="text-slate-400 dark:text-slate-500 text-xs mt-0.5">Найдено: {filteredList.length}</p>
           </div>
         </div>
       ) : (
-        <div className="bg-gradient-to-br from-red-50 to-orange-50 border border-red-200 p-4 rounded-2xl mb-3">
+        <div className="bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-900/30 dark:to-orange-900/30 border border-red-200 dark:border-red-900/50 p-4 rounded-2xl mb-3">
           <div className="flex justify-between items-start">
             <div>
-              <h2 className="text-lg font-bold text-slate-800">Просроченные договоры</h2>
-              <p className="text-slate-500 text-xs">Всего: {filteredList.length}</p>
+              <h2 className="text-lg font-bold text-slate-800 dark:text-white">Просроченные договоры</h2>
+              <p className="text-slate-500 dark:text-slate-400 text-xs">Всего: {filteredList.length}</p>
             </div>
             <div className="flex items-center gap-2">
               {/* 🔔 КНОПКА "НАПОМНИТЬ ВСЕМ" */}
@@ -890,31 +890,31 @@ useEffect(() => {
             </div>
 
           </div>
-          <div className="mt-3 pt-3 border-t border-red-200">
-            <p className="text-xs text-slate-500 font-medium">Общая просрочка</p>
-            <p className="text-2xl font-bold text-red-600">{formatCurrency(totalOverdueSum, appSettings?.showCents)} ₽</p>
+          <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-900/50">
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Общая просрочка</p>
+            <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(totalOverdueSum, appSettings?.showCents)} ₽</p>
           </div>
         </div>
       )}
 
       {/* Фильтры */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 space-y-3">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 text-slate-400" size={16}/>
+            <Search className="absolute left-3 top-2.5 text-slate-400 dark:text-slate-500" size={16}/>
             <input
                 type="text"
                 placeholder="Поиск по имени или товару..."
-                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all"
+                className="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all"
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
             />
           </div>
 
           <div className="relative">
-            <Wallet className="absolute left-3 top-2.5 text-slate-400" size={16} />
+            <Wallet className="absolute left-3 top-2.5 text-slate-400 dark:text-slate-500" size={16} />
             <select
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all appearance-none bg-white"
+              className="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all appearance-none bg-white dark:bg-slate-900 dark:text-white"
               value={filterAccountId}
               onChange={e => setFilterAccountId(e.target.value)}
             >
@@ -928,9 +928,9 @@ useEffect(() => {
       {/* Список договоров */}
       <div className="space-y-2.5">
         {filteredList.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200">
+          <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
             <div className="text-4xl mb-2">📄</div>
-            <p className="text-slate-400 text-sm">Ничего не найдено</p>
+            <p className="text-slate-400 dark:text-slate-500 text-sm">Ничего не найдено</p>
           </div>
         ) : filteredList.map((sale, index) => {
           const customer = customers.find(c => c.id === sale.customerId);
@@ -942,7 +942,7 @@ useEffect(() => {
           return (
             <div
               key={sale.id}
-              className="bg-white rounded-2xl shadow-sm p-3.5 border border-slate-100 hover:border-blue-200 hover:shadow transition-all cursor-pointer"
+              className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-3.5 border border-slate-100 dark:border-slate-700 hover:border-blue-200 dark:hover:border-blue-800 hover:shadow transition-all cursor-pointer"
               onClick={() => !readOnly && setSelectedSaleForInfo(sale)}
             >
               <div className="flex items-start justify-between mb-2.5">
@@ -951,7 +951,7 @@ useEffect(() => {
                     {displayNumber}
                   </span>
                   <span className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide rounded-md ${
-                    isOverdue ? 'bg-red-100 text-red-700' : isCompleted ? 'bg-slate-100 text-slate-600' : 'bg-blue-100 text-blue-700'
+                    isOverdue ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' : isCompleted ? 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
                   }`}>
                     {isOverdue ? 'Просрочено' : isCompleted ? 'Закрыто' : 'Активно'}
                   </span>
@@ -959,7 +959,7 @@ useEffect(() => {
                 {!readOnly && (
                   <button
                     onClick={(e) => { e.stopPropagation(); handleActionClick(e, sale); }}
-                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all shrink-0"
+                    className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all shrink-0"
                     aria-label="Меню"
                   >
                     <MoreVertical size={16} />
@@ -969,31 +969,31 @@ useEffect(() => {
 
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-slate-800 text-sm truncate" title={customer?.name}>
+                  <p className="font-semibold text-slate-800 dark:text-white text-sm truncate" title={customer?.name}>
                     {customer?.name || 'Неизвестно'}
                   </p>
-                  <p className="text-xs text-slate-500 truncate mt-0.5" title={sale.productName}>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5" title={sale.productName}>
                     {sale.productName}
                   </p>
-                  <p className="text-[10px] text-slate-400 mt-1">
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
                     {formatDate(sale.startDate)} • {sale.installments} мес.
                   </p>
                 </div>
 
                 <div className="text-right shrink-0">
-                  <p className={`text-base font-bold ${isOverdue ? 'text-red-600' : 'text-slate-800'}`}>
+                  <p className={`text-base font-bold ${isOverdue ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-white'}`}>
                     {formatCurrency(isOverdue ? overdueSum : sale.totalAmount, appSettings?.showCents)} ₽
                   </p>
                 </div>
               </div>
 
               {activeTab !== 'OVERDUE' && !isCompleted && (
-                <div className="flex items-center justify-between pt-2 border-t border-slate-50">
-                  <span className="text-[10px] text-slate-500">
-                    Оплачено: <span className="font-medium text-emerald-600">{formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings?.showCents)} ₽</span>
+                <div className="flex items-center justify-between pt-2 border-t border-slate-50 dark:border-slate-700">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Оплачено: <span className="font-medium text-emerald-600 dark:text-emerald-400">{formatCurrency(sale.totalAmount - sale.remainingAmount, appSettings?.showCents)} ₽</span>
                   </span>
-                  <span className="text-[10px] text-slate-500">
-                    Остаток: <span className="font-medium text-slate-700">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Остаток: <span className="font-medium text-slate-700 dark:text-slate-300">{formatCurrency(sale.remainingAmount, appSettings?.showCents)} ₽</span>
                   </span>
                 </div>
               )}
@@ -1008,12 +1008,12 @@ useEffect(() => {
       {/* Модалка удаления */}
       {deletingSale && !readOnly && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setDeletingSale(null)}>
-          <div className="bg-white w-full max-w-sm p-6 rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="w-14 h-14 bg-red-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4"><Trash2 size={28} /></div>
-            <h3 className="text-lg font-bold text-slate-800 text-center mb-1.5">Удалить договор?</h3>
-            <p className="text-center text-slate-500 mb-6 text-sm">Все данные о платежах будут удалены. Товар вернётся на склад.</p>
+            <h3 className="text-lg font-bold text-slate-800 dark:text-white text-center mb-1.5">Удалить договор?</h3>
+            <p className="text-center text-slate-500 dark:text-slate-400 mb-6 text-sm">Все данные о платежах будут удалены. Товар вернётся на склад.</p>
             <div className="flex gap-2.5">
-              <button onClick={() => setDeletingSale(null)} className="flex-1 py-2.5 bg-slate-100 rounded-xl font-medium text-slate-600 hover:bg-slate-200 transition-all">Отмена</button>
+              <button onClick={() => setDeletingSale(null)} className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 rounded-xl font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-all">Отмена</button>
               <button onClick={handleDeleteConfirm} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-all">Удалить</button>
             </div>
           </div>
@@ -1027,19 +1027,19 @@ useEffect(() => {
     onClick={() => !isSendingAll && setShowConfirmRemindAll(false)}
   >
     <div
-      className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl animate-scale-in"
+      className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-3xl p-5 shadow-2xl animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
-      <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
+      <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
         <Phone size={24} className="rotate-90" />
       </div>
-      <h4 className="text-center font-bold text-slate-800 mb-1">Напомнить всем клиентам?</h4>
-      <p className="text-center text-slate-500 text-sm mb-4">
+      <h4 className="text-center font-bold text-slate-800 dark:text-white mb-1">Напомнить всем клиентам?</h4>
+      <p className="text-center text-slate-500 dark:text-slate-400 text-sm mb-4">
         Будет отправлено <b>{filteredList.length}</b> напоминаний в WhatsApp о просроченной задолженности.
       </p>
 
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
-        <p className="text-[11px] text-amber-800">
+      <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 rounded-xl p-3 mb-4">
+        <p className="text-[11px] text-amber-800 dark:text-amber-300">
           💡 Отправка займёт около {Math.ceil(filteredList.length * 0.3 / 60)} мин.
           Между сообщениями будет пауза 300ms.
         </p>
@@ -1049,7 +1049,7 @@ useEffect(() => {
         <button
           onClick={() => setShowConfirmRemindAll(false)}
           disabled={isSendingAll}
-          className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm hover:bg-slate-200 transition-all disabled:opacity-50"
+          className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-200 dark:hover:bg-slate-600 transition-all disabled:opacity-50"
         >
           Отмена
         </button>

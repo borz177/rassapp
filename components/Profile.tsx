@@ -57,43 +57,43 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onBack, onLogo
   return (
     <div className="space-y-6 animate-fade-in pb-20">
       <header className="flex items-center gap-3">
-        <button onClick={onBack} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
+        <button onClick={onBack} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">{ICONS.Back}</button>
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Мой профиль</h2>
-          <p className="text-slate-500 text-sm">Управление личными данными</p>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Мой профиль</h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">Управление личными данными</p>
         </div>
       </header>
 
       {/* Profile Info Form */}
         <form onSubmit={handleProfileSubmit}
-              className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-            <h3 className="text-lg font-semibold text-slate-800">Личные данные</h3>
+              className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-4">
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-white">Личные данные</h3>
             <div>
-                <label className="text-sm font-medium text-slate-600 mb-1 block">Имя</label>
+                <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1 block">Имя</label>
                 <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
                 />
             </div>
             <div>
-                <label className="text-sm font-medium text-slate-600 mb-1 block">Email (Логин)</label>
+                <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1 block">Email (Логин)</label>
                 <input
                     type="email"
                     value={email}
                     readOnly
                     title="Email изменить нельзя"
-                    className="w-full p-3 border border-slate-200 bg-slate-50 text-slate-500 rounded-xl cursor-not-allowed select-none"
+                    className="w-full p-3 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 rounded-xl cursor-not-allowed select-none"
                 />
             </div>
             <div>
-                <label className="text-sm font-medium text-slate-600 mb-1 block">Телефон</label>
+                <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1 block">Телефон</label>
                 <input
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="+7 (XXX) XXX-XX-XX"
                 />
             </div>
@@ -105,47 +105,47 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdateProfile, onBack, onLogo
 
         {/* Change Password Form */}
         <form onSubmit={handlePasswordSubmit}
-              className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-            <h3 className="text-lg font-semibold text-slate-800">Смена пароля</h3>
+              className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-4">
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-white">Смена пароля</h3>
             <div>
-                <label className="text-sm font-medium text-slate-600 mb-1 block">Текущий пароль</label>
-          <input 
+                <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1 block">Текущий пароль</label>
+          <input
             type="password"
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
-            className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
             placeholder="••••••"
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-sm font-medium text-slate-600 mb-1 block">Новый пароль</label>
-            <input 
+            <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1 block">Новый пароль</label>
+            <input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
               placeholder="••••••"
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-600 mb-1 block">Подтвердите</label>
-            <input 
+            <label className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1 block">Подтвердите</label>
+            <input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
               placeholder="••••••"
             />
           </div>
         </div>
-        <button type="submit" className="w-full py-3 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900">
+        <button type="submit" className="w-full py-3 bg-slate-800 dark:bg-slate-700 text-white font-bold rounded-xl hover:bg-slate-900 dark:hover:bg-slate-600">
           Изменить пароль
         </button>
       </form>
-      
+
       <div className="pt-4">
-          <button onClick={onLogout} className="w-full p-4 bg-red-50 text-red-600 rounded-xl font-medium">Выйти из системы</button>
+          <button onClick={onLogout} className="w-full p-4 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl font-medium">Выйти из системы</button>
       </div>
 
     </div>

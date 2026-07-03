@@ -129,12 +129,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     return (
         <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
-            <div className="bg-white p-8 rounded-2xl w-full max-w-sm shadow-xl animate-fade-in relative">
+            <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl w-full max-w-sm shadow-xl animate-fade-in relative">
 
                 {/* Header */}
                 <div className="text-center mb-6">
-                    <h1 className="text-3xl font-bold text-slate-800">FinUchet</h1>
-                    <p className="text-slate-500 text-sm">
+                    <h1 className="text-3xl font-bold text-slate-800 dark:text-white">FinUchet</h1>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm">
                         {mode === 'LOGIN' && 'Вход в систему'}
                         {mode === 'REGISTER' && 'Регистрация аккаунта'}
                         {mode === 'RESET' && 'Восстановление пароля'}
@@ -142,21 +142,21 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 </div>
 
                 {/* Error Banner */}
-                {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center mb-4">{error}</div>}
+                {error && <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-3 rounded-lg text-sm text-center mb-4">{error}</div>}
 
                 {/* --- LOGIN MODE --- */}
                 {mode === 'LOGIN' && (
                     <form onSubmit={handleLogin} className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                            <input type="email" className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={email} onChange={e => setEmail(e.target.value)} placeholder="mail@example.com" />
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email</label>
+                            <input type="email" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={email} onChange={e => setEmail(e.target.value)} placeholder="mail@example.com" />
                         </div>
                         <div>
                             <div className="flex justify-between">
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Пароль</label>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Пароль</label>
                                 <button type="button" onClick={() => switchMode('RESET')} className="text-xs text-indigo-600 hover:underline">Забыли пароль?</button>
                             </div>
-                            <input type="password" className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" />
+                            <input type="password" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" />
                         </div>
                         <button type="submit" disabled={isLoading} className="w-full bg-indigo-600 text-white p-4 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-70">
                             {isLoading ? 'Вход...' : 'Войти'}
@@ -175,8 +175,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         {step === 'EMAIL' && (
                             <>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Ваш Email</label>
-                                    <input type="email" className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={email} onChange={e => setEmail(e.target.value)} placeholder="mail@example.com" />
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Ваш Email</label>
+                                    <input type="email" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={email} onChange={e => setEmail(e.target.value)} placeholder="mail@example.com" />
                                 </div>
                                 <button onClick={handleSendCode} disabled={isLoading} className="w-full bg-indigo-600 text-white p-4 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-70">
                                     {isLoading ? 'Отправка...' : 'Получить код'}
@@ -187,18 +187,18 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         {/* Step 2: Code Verification */}
                         {step === 'CODE' && (
                             <div className="animate-fade-in">
-                                <div className="mb-2 text-center text-sm text-slate-500">
-                                    Мы отправили код на <span className="font-bold text-slate-700">{email}</span>
+                                <div className="mb-2 text-center text-sm text-slate-500 dark:text-slate-400">
+                                    Мы отправили код на <span className="font-bold text-slate-700 dark:text-slate-300">{email}</span>
                                 </div>
                                 <div className="mb-4">
-                                    <input type="text" maxLength={6} className="w-full p-3 text-center text-2xl tracking-widest border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-mono" value={code} onChange={e => setCode(e.target.value.replace(/\D/g,''))} placeholder="000000" />
+                                    <input type="text" maxLength={6} className="w-full p-3 text-center text-2xl tracking-widest border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500 font-mono" value={code} onChange={e => setCode(e.target.value.replace(/\D/g,''))} placeholder="000000" />
                                 </div>
                                 <button onClick={handleVerifyCodeStep} className="w-full bg-indigo-600 text-white p-4 rounded-xl font-bold hover:bg-indigo-700 transition-colors mb-3">
                                     Подтвердить
                                 </button>
                                 <div className="text-center">
                                     {resendTimer > 0 ? (
-                                        <span className="text-xs text-slate-400">Отправить повторно через {resendTimer}с</span>
+                                        <span className="text-xs text-slate-400 dark:text-slate-500">Отправить повторно через {resendTimer}с</span>
                                     ) : (
                                         <button onClick={handleSendCode} className="text-xs text-indigo-600 font-bold hover:underline">Отправить код повторно</button>
                                     )}
@@ -210,12 +210,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         {step === 'DETAILS' && mode === 'REGISTER' && (
                             <div className="animate-fade-in space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Ваше Имя</label>
-                                    <input type="text" className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} placeholder="Иван Иванов" />
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Ваше Имя</label>
+                                    <input type="text" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} placeholder="Иван Иванов" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Придумайте пароль</label>
-                                    <input type="password" className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" />
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Придумайте пароль</label>
+                                    <input type="password" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" />
                                 </div>
                                 <button onClick={handleRegister} disabled={isLoading} className="w-full bg-emerald-600 text-white p-4 rounded-xl font-bold hover:bg-emerald-700 transition-colors disabled:opacity-70">
                                     {isLoading ? 'Создание...' : 'Завершить регистрацию'}
@@ -227,12 +227,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         {step === 'NEW_PASSWORD' && mode === 'RESET' && (
                             <div className="animate-fade-in space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Новый пароль</label>
-                                    <input type="password" className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" />
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Новый пароль</label>
+                                    <input type="password" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Подтвердите пароль</label>
-                                    <input type="password" className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="••••••" />
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Подтвердите пароль</label>
+                                    <input type="password" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="••••••" />
                                 </div>
                                 <button onClick={handleResetPassword} disabled={isLoading} className="w-full bg-indigo-600 text-white p-4 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-70">
                                     {isLoading ? 'Сохранение...' : 'Сменить пароль'}
@@ -240,8 +240,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                             </div>
                         )}
 
-                        <div className="text-center mt-4 border-t border-slate-100 pt-4">
-                            <button onClick={() => switchMode('LOGIN')} className="text-slate-500 text-sm hover:text-slate-800">
+                        <div className="text-center mt-4 border-t border-slate-100 dark:border-slate-700 pt-4">
+                            <button onClick={() => switchMode('LOGIN')} className="text-slate-500 dark:text-slate-400 text-sm hover:text-slate-800 dark:hover:text-slate-200">
                                 Вернуться ко входу
                             </button>
                         </div>
@@ -249,7 +249,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 )}
 
                 {/* Legal Footer */}
-                <div className="mt-6 text-[10px] text-center text-slate-400 leading-tight">
+                <div className="mt-6 text-[10px] text-center text-slate-400 dark:text-slate-500 leading-tight">
                     Продолжая, вы соглашаетесь с <br/>
                     <button onClick={() => setLegalView('PRIVACY')} className="text-indigo-500 hover:underline">Политикой конфиденциальности</button>
                     {' '}и{' '}

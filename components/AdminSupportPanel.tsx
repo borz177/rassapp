@@ -103,14 +103,14 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 p-4 sm:p-6 pb-safe">
+    <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-slate-900 p-4 sm:p-6 pb-safe">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-6 gap-3">
-        <button onClick={onBack} className="flex items-center gap-2 text-gray-600 hover:text-gray-800 active:opacity-70 min-h-[44px] px-2 py-2 rounded-lg">
+        <button onClick={onBack} className="flex items-center gap-2 text-gray-600 dark:text-slate-300 hover:text-gray-800 dark:hover:text-white active:opacity-70 min-h-[44px] px-2 py-2 rounded-lg">
           {ICONS.ArrowLeft}
           <span className="font-medium">Назад</span>
         </button>
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Панель поддержки</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Панель поддержки</h1>
         <button
           onClick={() => setShowBroadcastForm(true)}
           className="w-full sm:w-auto bg-purple-500 text-white px-4 py-2.5 rounded-xl hover:bg-purple-600 active:bg-purple-700 flex items-center justify-center gap-2 min-h-[44px] transition-colors font-medium shadow-sm"
@@ -123,25 +123,25 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
       {/* Stats */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4 sm:mb-6">
-          <div className="bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-gray-100">
-            <p className="text-gray-500 text-xs sm:text-sm">Всего</p>
-            <p className="text-xl sm:text-2xl font-bold">{stats.total_tickets}</p>
+          <div className="bg-white dark:bg-slate-800 p-3 sm:p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+            <p className="text-gray-500 dark:text-slate-400 text-xs sm:text-sm">Всего</p>
+            <p className="text-xl sm:text-2xl font-bold dark:text-white">{stats.total_tickets}</p>
           </div>
-          <div className="bg-green-50 p-3 sm:p-4 rounded-xl shadow-sm border border-green-100">
-            <p className="text-green-600 text-xs sm:text-sm">Открытые</p>
-            <p className="text-xl sm:text-2xl font-bold text-green-700">{stats.open_tickets}</p>
+          <div className="bg-green-50 dark:bg-emerald-900/30 p-3 sm:p-4 rounded-xl shadow-sm border border-green-100 dark:border-emerald-900/50">
+            <p className="text-green-600 dark:text-emerald-400 text-xs sm:text-sm">Открытые</p>
+            <p className="text-xl sm:text-2xl font-bold text-green-700 dark:text-emerald-400">{stats.open_tickets}</p>
           </div>
-          <div className="bg-blue-50 p-3 sm:p-4 rounded-xl shadow-sm border border-blue-100">
-            <p className="text-blue-600 text-xs sm:text-sm">В работе</p>
-            <p className="text-xl sm:text-2xl font-bold text-blue-700">{stats.in_progress_tickets}</p>
+          <div className="bg-blue-50 dark:bg-blue-900/30 p-3 sm:p-4 rounded-xl shadow-sm border border-blue-100 dark:border-blue-900/50">
+            <p className="text-blue-600 dark:text-blue-400 text-xs sm:text-sm">В работе</p>
+            <p className="text-xl sm:text-2xl font-bold text-blue-700 dark:text-blue-400">{stats.in_progress_tickets}</p>
           </div>
-          <div className="bg-gray-50 p-3 sm:p-4 rounded-xl shadow-sm border border-gray-100">
-            <p className="text-gray-600 text-xs sm:text-sm">Закрытые</p>
-            <p className="text-xl sm:text-2xl font-bold text-gray-700">{stats.closed_tickets}</p>
+          <div className="bg-gray-50 dark:bg-slate-700/50 p-3 sm:p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+            <p className="text-gray-600 dark:text-slate-300 text-xs sm:text-sm">Закрытые</p>
+            <p className="text-xl sm:text-2xl font-bold text-gray-700 dark:text-slate-300">{stats.closed_tickets}</p>
           </div>
-          <div className="bg-red-50 p-3 sm:p-4 rounded-xl shadow-sm border border-red-100">
-            <p className="text-red-600 text-xs sm:text-sm">Высокий приор.</p>
-            <p className="text-xl sm:text-2xl font-bold text-red-700">{stats.high_priority}</p>
+          <div className="bg-red-50 dark:bg-red-900/30 p-3 sm:p-4 rounded-xl shadow-sm border border-red-100 dark:border-red-900/50">
+            <p className="text-red-600 dark:text-red-400 text-xs sm:text-sm">Высокий приор.</p>
+            <p className="text-xl sm:text-2xl font-bold text-red-700 dark:text-red-400">{stats.high_priority}</p>
           </div>
         </div>
       )}
@@ -151,7 +151,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-white text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px] shadow-sm"
+          className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 dark:text-white text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px] shadow-sm"
         >
           <option value="">Все статусы</option>
           <option value="OPEN">Открытые</option>
@@ -164,16 +164,16 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
       {!selectedTicket ? (
         <div className="space-y-3 flex-1">
           {tickets.length === 0 ? (
-            <div className="text-center py-12 text-gray-500 bg-white rounded-xl shadow-sm border border-gray-100">
+            <div className="text-center py-12 text-gray-500 dark:text-slate-400 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
               Тикеты не найдены
             </div>
           ) : (
             tickets.map(ticket => (
-              <div key={ticket.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 active:scale-[0.99] transition-transform">
+              <div key={ticket.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 active:scale-[0.99] transition-transform">
                 <div className="flex justify-between items-start mb-2">
                   <div className="min-w-0 flex-1 mr-2">
-                    <p className="font-semibold text-gray-900 truncate">{ticket.user_name}</p>
-                    <p className="text-xs text-gray-500 truncate">{ticket.user_email}</p>
+                    <p className="font-semibold text-gray-900 dark:text-white truncate">{ticket.user_name}</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 truncate">{ticket.user_email}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-medium text-white ${
@@ -188,9 +188,9 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
                   </div>
                 </div>
                 
-                <p className="text-sm text-gray-700 mb-3 line-clamp-2">{ticket.subject}</p>
-                
-                <div className="flex items-center justify-between mt-2 pt-3 border-t border-gray-100">
+                <p className="text-sm text-gray-700 dark:text-slate-300 mb-3 line-clamp-2">{ticket.subject}</p>
+
+                <div className="flex items-center justify-between mt-2 pt-3 border-t border-gray-100 dark:border-slate-700">
                   <div className="flex items-center gap-3">
                     {ticket.unread_count > 0 && (
                       <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[24px] h-6 px-1.5 flex items-center justify-center">
@@ -204,7 +204,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
                   <div className="flex gap-2">
                     <button
                       onClick={() => assignTicket(ticket.id)}
-                      className="px-3 py-2 text-sm text-green-700 bg-green-50 rounded-lg hover:bg-green-100 active:bg-green-200 min-h-[40px] font-medium"
+                      className="px-3 py-2 text-sm text-green-700 dark:text-emerald-400 bg-green-50 dark:bg-emerald-900/30 rounded-lg hover:bg-green-100 dark:hover:bg-emerald-900/50 active:bg-green-200 min-h-[40px] font-medium"
                     >
                       Назначить
                     </button>
@@ -221,25 +221,25 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
           )}
         </div>
       ) : (
-        <div className="flex flex-col bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-[calc(100dvh-14rem)] sm:h-[650px] max-h-[80vh]">
-          <div className="p-3 sm:p-4 border-b flex justify-between items-center bg-gray-50">
+        <div className="flex flex-col bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden h-[calc(100dvh-14rem)] sm:h-[650px] max-h-[80vh]">
+          <div className="p-3 sm:p-4 border-b dark:border-slate-700 flex justify-between items-center bg-gray-50 dark:bg-slate-900/50">
             <div className="min-w-0 flex-1 mr-2">
-              <h2 className="font-bold text-gray-900 truncate">{selectedTicket.subject}</h2>
-              <p className="text-xs text-gray-500 truncate">{selectedTicket.user_name} • {selectedTicket.user_email}</p>
+              <h2 className="font-bold text-gray-900 dark:text-white truncate">{selectedTicket.subject}</h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400 truncate">{selectedTicket.user_name} • {selectedTicket.user_email}</p>
             </div>
-            <button 
-              onClick={() => setSelectedTicket(null)} 
-              className="p-2 text-gray-500 hover:text-gray-700 rounded-full hover:bg-gray-200 active:bg-gray-300 min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
+            <button
+              onClick={() => setSelectedTicket(null)}
+              className="p-2 text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 rounded-full hover:bg-gray-200 dark:hover:bg-slate-700 active:bg-gray-300 min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
             >
               {ICONS.Close}
             </button>
           </div>
 
-          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 bg-gray-50">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 bg-gray-50 dark:bg-slate-900/50">
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.is_from_user ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] sm:max-w-[70%] p-3 rounded-2xl shadow-sm ${
-                  msg.is_from_user ? 'bg-gray-200 text-gray-800' : 'bg-blue-500 text-white'
+                  msg.is_from_user ? 'bg-gray-200 dark:bg-slate-700 text-gray-800 dark:text-slate-100' : 'bg-blue-500 text-white'
                 }`}>
                   <p className="text-sm sm:text-base break-words leading-relaxed">{msg.message}</p>
                   <p className="text-[10px] sm:text-xs mt-1.5 opacity-70 text-right">
@@ -253,7 +253,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
             )}
           </div>
 
-          <div className="p-3 sm:p-4 border-t bg-white">
+          <div className="p-3 sm:p-4 border-t dark:border-slate-700 bg-white dark:bg-slate-800">
             <div className="flex gap-2">
               <input
                 type="text"
@@ -261,7 +261,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !isLoading && sendMessage()}
                 placeholder="Ответ пользователю..."
-                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px] bg-gray-50 focus:bg-white transition-colors"
+                className="flex-1 px-4 py-2.5 border border-gray-300 dark:border-slate-600 rounded-xl text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[44px] bg-gray-50 dark:bg-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-900 transition-colors"
               />
               <button
                 onClick={sendMessage}
@@ -278,21 +278,21 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
       {/* Broadcast Form Modal */}
       {showBroadcastForm && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4">
-          <div className="bg-white p-5 sm:p-6 rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto shadow-2xl animate-slide-up sm:animate-none">
-            <h3 className="text-lg font-bold mb-4 text-gray-900">Массовая рассылка</h3>
+          <div className="bg-white dark:bg-slate-800 p-5 sm:p-6 rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto shadow-2xl animate-slide-up sm:animate-none">
+            <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">Массовая рассылка</h3>
 
             <input
               type="text"
               value={broadcastData.title}
               onChange={(e) => setBroadcastData({...broadcastData, title: e.target.value})}
               placeholder="Заголовок"
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl mb-3 text-base focus:ring-2 focus:ring-purple-500 focus:border-purple-500 min-h-[44px]"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl mb-3 text-base focus:ring-2 focus:ring-purple-500 focus:border-purple-500 min-h-[44px]"
             />
 
             <select
               value={broadcastData.targetRole}
               onChange={(e) => setBroadcastData({...broadcastData, targetRole: e.target.value})}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl mb-3 text-base focus:ring-2 focus:ring-purple-500 focus:border-purple-500 min-h-[44px] bg-white"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 rounded-xl mb-3 text-base focus:ring-2 focus:ring-purple-500 focus:border-purple-500 min-h-[44px] bg-white dark:bg-slate-900 dark:text-white"
             >
               <option value="">Все пользователи</option>
               <option value="manager">Менеджеры</option>
@@ -305,13 +305,13 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
               onChange={(e) => setBroadcastData({...broadcastData, message: e.target.value})}
               placeholder="Сообщение..."
               rows={4}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl mb-4 text-base focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl mb-4 text-base focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
             />
 
             <div className="flex gap-3">
               <button
                 onClick={() => setShowBroadcastForm(false)}
-                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 active:bg-gray-100 font-medium min-h-[44px]"
+                className="flex-1 px-4 py-3 border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 active:bg-gray-100 font-medium min-h-[44px]"
               >
                 Отмена
               </button>

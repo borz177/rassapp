@@ -221,24 +221,24 @@ const Operations: React.FC<OperationsProps> = ({
   return (
     <div className="space-y-4 animate-fade-in pb-20 w-full">
       <header>
-          <h2 className="text-2xl font-bold text-slate-800">История операций</h2>
-          <p className="text-slate-500 text-sm">Финансовый поток</p>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">История операций</h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">Финансовый поток</p>
       </header>
 
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
+      <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-3">
           <div>
               <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Счет</label>
-              <select className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm text-slate-700" value={filterAccountId} onChange={e => setFilterAccountId(e.target.value)}>
+              <select className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg outline-none text-sm text-slate-700 dark:text-slate-300" value={filterAccountId} onChange={e => setFilterAccountId(e.target.value)}>
                   <option value="">Все счета</option>
                   {accounts.map(acc => (<option key={acc.id} value={acc.id}>{acc.name}</option>))}
               </select>
           </div>
-          
+
           <div>
               <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Категория</label>
-              <select 
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm text-slate-700" 
-                  value={filterCategory} 
+              <select
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg outline-none text-sm text-slate-700 dark:text-slate-300"
+                  value={filterCategory}
                   onChange={e => setFilterCategory(e.target.value)}
               >
                   <option value="ALL">Все категории</option>
@@ -247,13 +247,13 @@ const Operations: React.FC<OperationsProps> = ({
                   ))}
               </select>
           </div>
-          
-          <div className="flex bg-slate-100 p-1 rounded-lg">
-              <button onClick={() => setFilterType('ALL')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'ALL' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Все</button>
-              <button onClick={() => setFilterType('INCOME')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'INCOME' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}>Приход</button>
-              <button onClick={() => setFilterType('EXPENSE')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'EXPENSE' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500'}`}>Расход</button>
+
+          <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
+              <button onClick={() => setFilterType('ALL')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'ALL' ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Все</button>
+              <button onClick={() => setFilterType('INCOME')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'INCOME' ? 'bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Приход</button>
+              <button onClick={() => setFilterType('EXPENSE')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'EXPENSE' ? 'bg-white dark:bg-slate-600 text-red-600 dark:text-red-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Расход</button>
           </div>
-          
+
           {(filterAccountId || filterCategory !== 'ALL' || filterType !== 'ALL') && (
               <button
                   onClick={() => {
@@ -261,7 +261,7 @@ const Operations: React.FC<OperationsProps> = ({
                       setFilterCategory('ALL');
                       setFilterType('ALL');
                   }}
-                  className="w-full py-2 text-xs text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center gap-1"
+                  className="w-full py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors flex items-center justify-center gap-1"
               >
                   ✕ Сбросить фильтры
               </button>
@@ -269,17 +269,17 @@ const Operations: React.FC<OperationsProps> = ({
       </div>
 
       <div className="space-y-6">
-          {groupedOperations.length === 0 && (<div className="text-center py-10 text-slate-400 border border-dashed border-slate-200 rounded-xl">Операций не найдено</div>)}
+          {groupedOperations.length === 0 && (<div className="text-center py-10 text-slate-400 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">Операций не найдено</div>)}
 
           {groupedOperations.map((group, idx) => (
     <div key={idx} className="space-y-2">
         <h3 className="text-sm font-bold text-slate-400 px-2 uppercase tracking-wider">{group.title}</h3>
         <div className="space-y-2">
             {group.items.map(op => (
-    <div 
-        key={op.id} 
-        onClick={() => setSelectedOp(op)} 
-        className={`bg-white p-4 rounded-xl shadow-sm flex items-center justify-between cursor-pointer hover:bg-slate-50 active:scale-[0.99] transition-transform border-l-4 ${
+    <div
+        key={op.id}
+        onClick={() => setSelectedOp(op)}
+        className={`bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-[0.99] transition-transform border-l-4 ${
             op.category === 'Salary' 
                 ? 'border-l-blue-500' 
                 : op.type === 'INCOME' 
@@ -289,49 +289,49 @@ const Operations: React.FC<OperationsProps> = ({
     >
         <div className="flex items-center gap-3">
             <div className={`p-2.5 rounded-full ${
-                op.type === 'EXPENSE' 
-                    ? op.category === 'Salary' 
-                        ? 'bg-blue-50 text-blue-600' 
-                        : 'bg-red-50 text-red-600'
-                    : 'bg-emerald-50 text-emerald-600'
+                op.type === 'EXPENSE'
+                    ? op.category === 'Salary'
+                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                        : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                    : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
             }`}>
-                {op.type === 'EXPENSE' 
-                    ? op.category === 'Salary' 
+                {op.type === 'EXPENSE'
+                    ? op.category === 'Salary'
                         ? <span className="text-lg">💼</span>
-                        : ICONS.Expense 
+                        : ICONS.Expense
                     : ICONS.Income}
             </div>
             <div>
-                <p className="font-bold text-slate-800 text-sm">
+                <p className="font-bold text-slate-800 dark:text-white text-sm">
                     {op.title}
                     {op.category === 'Salary' && op.raw?.employeeId && (
-                        <span className="ml-1 text-xs text-blue-600 font-normal">
+                        <span className="ml-1 text-xs text-blue-600 dark:text-blue-400 font-normal">
                             → {getEmployeeName(op.raw.employeeId)}
                         </span>
                     )}
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                     {getTimeMsk(op.date)} • {getCategoryLabel(op.description)}
                 </p>
             </div>
         </div>
         <div className="text-right">
-            <span className={`font-bold block ${op.type === 'EXPENSE' ? 'text-slate-800' : 'text-emerald-600'}`}>
+            <span className={`font-bold block ${op.type === 'EXPENSE' ? 'text-slate-800 dark:text-white' : 'text-emerald-600 dark:text-emerald-400'}`}>
                 {op.type === 'EXPENSE' ? '-' : '+'}{op.amount.toLocaleString()} ₽
             </span>
 
             {/* 🆕 Бейдж скидки, если она была применена */}
             {op.discountAmount > 0 && (
-                <span className="inline-block mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                <span className="inline-block mt-1 text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-900/50">
                     🎁 −{op.discountAmount.toLocaleString()} ₽
                 </span>
             )}
 
             <div className="mt-1 flex flex-col items-end gap-1">
-                <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                <span className="text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">
                     {getAccountName(op.accountId)}
                 </span>
-                <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded border border-emerald-100 dark:border-emerald-900/50">
                     Баланс: {op.balanceAfter?.toLocaleString('ru-RU')} ₽
                 </span>
             </div>
@@ -345,7 +345,7 @@ const Operations: React.FC<OperationsProps> = ({
 
       {selectedOp && (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedOp(null)}>
-        <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className={`p-6 text-white ${
                 selectedOp.type === 'EXPENSE' 
                     ? selectedOp.category === 'Salary' 
@@ -368,31 +368,31 @@ const Operations: React.FC<OperationsProps> = ({
                 </p>
             </div>
             <div className="p-6 space-y-4">
-                <div className="flex justify-between border-b border-slate-100 pb-2">
-                    <span className="text-slate-500 text-sm">Счет</span>
-                    <span className="font-semibold text-slate-800">{getAccountName(selectedOp.accountId)}</span>
+                <div className="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+                    <span className="text-slate-500 dark:text-slate-400 text-sm">Счет</span>
+                    <span className="font-semibold text-slate-800 dark:text-white">{getAccountName(selectedOp.accountId)}</span>
                 </div>
 
-                <div className="flex justify-between border-b border-slate-100 pb-2">
-                    <span className="text-slate-500 text-sm">Баланс до операции</span>
-                    <span className="font-semibold text-slate-700">{selectedOp.balanceBefore?.toLocaleString('ru-RU')} ₽</span>
+                <div className="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+                    <span className="text-slate-500 dark:text-slate-400 text-sm">Баланс до операции</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedOp.balanceBefore?.toLocaleString('ru-RU')} ₽</span>
                 </div>
-                <div className="flex justify-between border-b border-slate-100 pb-2">
-                    <span className="text-slate-500 text-sm">Баланс после операции</span>
+                <div className="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+                    <span className="text-slate-500 dark:text-slate-400 text-sm">Баланс после операции</span>
                     <span className="font-semibold text-emerald-600">{selectedOp.balanceAfter?.toLocaleString('ru-RU')} ₽</span>
                 </div>
 
-                <div className="flex justify-between border-b border-slate-100 pb-2">
-                    <span className="text-slate-500 text-sm">Категория</span>
-                    <span className="font-semibold text-slate-800">{getCategoryLabel(selectedOp.category)}</span>
+                <div className="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+                    <span className="text-slate-500 dark:text-slate-400 text-sm">Категория</span>
+                    <span className="font-semibold text-slate-800 dark:text-white">{getCategoryLabel(selectedOp.category)}</span>
                 </div>
                 
                 {selectedOp.category === 'Salary' && selectedOp.raw?.employeeId && (
-                    <div className="flex justify-between border-b border-slate-100 pb-2 bg-blue-50 -mx-6 px-6 py-3">
-                        <span className="text-slate-500 text-sm flex items-center gap-1">
+                    <div className="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2 bg-blue-50 dark:bg-blue-900/30 -mx-6 px-6 py-3">
+                        <span className="text-slate-500 dark:text-slate-400 text-sm flex items-center gap-1">
                             👤 Сотрудник
                         </span>
-                        <span className="font-bold text-blue-700">
+                        <span className="font-bold text-blue-700 dark:text-blue-400">
                             {getEmployeeName(selectedOp.raw.employeeId)}
                         </span>
                     </div>
@@ -402,55 +402,55 @@ const Operations: React.FC<OperationsProps> = ({
                     <>
                         {/* 🆕 Красивый блок со скидкой (появляется только если она была) */}
                         {selectedOp.discountAmount > 0 && (
-                            <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl space-y-2 mb-3">
-                                <div className="flex items-center gap-2 text-amber-800 font-bold text-sm">
+                            <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 p-3 rounded-xl space-y-2 mb-3">
+                                <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold text-sm">
                                     🎁 Скидка при полном погашении
                                 </div>
                                 <div className="flex justify-between text-sm">
-                                    <span className="text-slate-600">Сумма скидки:</span>
-                                    <span className="font-bold text-red-600">−{selectedOp.discountAmount.toLocaleString()} ₽</span>
+                                    <span className="text-slate-600 dark:text-slate-300">Сумма скидки:</span>
+                                    <span className="font-bold text-red-600 dark:text-red-400">−{selectedOp.discountAmount.toLocaleString()} ₽</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
-                                    <span className="text-slate-600">Процент скидки:</span>
-                                    <span className="font-bold text-red-600">{selectedOp.discountPercent.toFixed(1)}%</span>
+                                    <span className="text-slate-600 dark:text-slate-300">Процент скидки:</span>
+                                    <span className="font-bold text-red-600 dark:text-red-400">{selectedOp.discountPercent.toFixed(1)}%</span>
                                 </div>
                                 {selectedOp.note && (
-                                    <div className="text-xs text-amber-700 italic pt-1 border-t border-amber-200">
+                                    <div className="text-xs text-amber-700 dark:text-amber-400 italic pt-1 border-t border-amber-200 dark:border-amber-900/50">
                                         {selectedOp.note}
                                     </div>
                                 )}
                             </div>
                         )}
 
-                        <div className="flex justify-between border-b border-slate-100 pb-2">
-                            <span className="text-slate-500 text-sm">Клиент / Источник</span>
-                            <span className="font-semibold text-slate-800">{getCustomerName(selectedOp.raw.customerId)}</span>
+                        <div className="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+                            <span className="text-slate-500 dark:text-slate-400 text-sm">Клиент / Источник</span>
+                            <span className="font-semibold text-slate-800 dark:text-white">{getCustomerName(selectedOp.raw.customerId)}</span>
                         </div>
-                        <div className="flex justify-between border-b border-slate-100 pb-2">
-                            <span className="text-slate-500 text-sm">Товар</span>
-                            <span className="font-semibold text-slate-800">{selectedOp.raw.productName}</span>
+                        <div className="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+                            <span className="text-slate-500 dark:text-slate-400 text-sm">Товар</span>
+                            <span className="font-semibold text-slate-800 dark:text-white">{selectedOp.raw.productName}</span>
                         </div>
-                        <div className="bg-slate-50 p-3 rounded-xl text-sm space-y-1">
+                        <div className="bg-slate-50 dark:bg-slate-900 p-3 rounded-xl text-sm space-y-1">
                             <div className="flex justify-between">
-                                <span className="text-slate-500">Тип сделки:</span>
-                                <span className="font-medium">{selectedOp.raw.type === 'CASH' ? 'Наличные' : 'Рассрочка'}</span>
+                                <span className="text-slate-500 dark:text-slate-400">Тип сделки:</span>
+                                <span className="font-medium dark:text-slate-200">{selectedOp.raw.type === 'CASH' ? 'Наличные' : 'Рассрочка'}</span>
                             </div>
                             {selectedOp.raw.type === 'INSTALLMENT' && (
                                 <div className="flex justify-between">
-                                    <span className="text-slate-500">Полная сумма:</span>
-                                    <span className="font-medium">{selectedOp.raw.totalAmount.toLocaleString()} ₽</span>
+                                    <span className="text-slate-500 dark:text-slate-400">Полная сумма:</span>
+                                    <span className="font-medium dark:text-slate-200">{selectedOp.raw.totalAmount.toLocaleString()} ₽</span>
                                 </div>
                             )}
                         </div>
                     </>
                 )}
                 {selectedOp.type === 'EXPENSE' && (
-                    <div className="flex justify-between border-b border-slate-100 pb-2">
-                        <span className="text-slate-500 text-sm">Назначение</span>
-                        <span className="font-semibold text-slate-800">{selectedOp.title}</span>
+                    <div className="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+                        <span className="text-slate-500 dark:text-slate-400 text-sm">Назначение</span>
+                        <span className="font-semibold text-slate-800 dark:text-white">{selectedOp.title}</span>
                     </div>
                 )}
-                <button onClick={() => setSelectedOp(null)} className="w-full py-3 bg-slate-100 text-slate-700 font-bold rounded-xl mt-4 hover:bg-slate-200">
+                <button onClick={() => setSelectedOp(null)} className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl mt-4 hover:bg-slate-200 dark:hover:bg-slate-600">
                     Закрыть
                 </button>
             </div>

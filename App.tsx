@@ -43,6 +43,7 @@ import { withTimeout } from './src/timeout';
 import { offlineStorage } from "./services/offlineStorage";
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
+import { useTheme } from './src/theme/ThemeContext';
 
 async function enablePersistentStorage() {
   if (navigator.storage && navigator.storage.persist) {
@@ -88,6 +89,7 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
 const App: React.FC = () => {
     const path = window.location.pathname
 const isLanding = path === "/"
+  const { resolvedTheme } = useTheme();
   // Auth State
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -559,6 +561,14 @@ useEffect(() => {
 
   initApp();
 }, []);
+
+useEffect(() => {
+  if (Capacitor.isNativePlatform()) {
+    StatusBar.setStyle({ style: resolvedTheme === 'dark' ? Style.Light : Style.Dark }).catch(() => {});
+  }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff');
+}, [resolvedTheme]);
 
 
 
@@ -2303,15 +2313,6 @@ const contractCounts = useMemo(() => {
 
 
 
-function toggleTheme() {
-  const html = document.documentElement
-
-  html.classList.toggle("dark")
-
-  const theme = html.classList.contains("dark") ? "dark" : "light"
-
-  localStorage.setItem("theme", theme)
-}
 
 const handleUpdateSettings = async (newSettings: AppSettings) => {
 
@@ -2467,7 +2468,7 @@ if (!user && !showSplash) {
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-            <p className="text-slate-500">Загрузка данных...</p>
+            <p className="text-slate-500 dark:text-slate-400">Загрузка данных...</p>
           </div>
         </div>
       );
@@ -2711,10 +2712,10 @@ if (!user && !showSplash) {
    {/* Профиль */}
 <button
   onClick={() => setCurrentView('PROFILE')}
-  className="group w-full bg-white/80 backdrop-blur-sm hover:bg-white/90
-             text-slate-800 p-6 rounded-2xl flex items-center gap-4
+  className="group w-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm hover:bg-white/90 dark:hover:bg-slate-800/90
+             text-slate-800 dark:text-white p-6 rounded-2xl flex items-center gap-4
              transition-all duration-300 hover:shadow-xl
-             border border-slate-200/80 hover:border-[var(--color-primary-400)]
+             border border-slate-200/80 dark:border-slate-700/80 hover:border-[var(--color-primary-400)]
              shadow-sm relative overflow-hidden"
 >
   {/* 🔹 Декоративная полоска статуса (сверху) */}
@@ -2741,16 +2742,16 @@ if (!user && !showSplash) {
 
   <div className="flex-1 min-w-0 relative z-10">
     <div className="flex items-center justify-between gap-2">
-      <h2 className="text-xl font-bold text-left text-slate-800 truncate">{user.name}</h2>
+      <h2 className="text-xl font-bold text-left text-slate-800 dark:text-white truncate">{user.name}</h2>
 
       {/* 🔹 Бейдж подписки — использует цвета темы */}
       {!isInvestor && (
         <div
           className={`flex-shrink-0 px-2.5 py-1.5 rounded-xl font-bold text-[10px] flex flex-col items-end leading-tight cursor-pointer transition-all hover:scale-105
-            ${subStatus.expired 
-              ? 'bg-red-100 text-red-700 border border-red-200' 
-              : subStatus.isWarning 
-                ? 'bg-amber-100 text-amber-700 border border-amber-200' 
+            ${subStatus.expired
+              ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900/50'
+              : subStatus.isWarning
+                ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50'
                 : 'bg-[var(--color-primary-100)] text-[var(--color-primary-700)] border border-[var(--color-primary-200)]'
             }`}
           onClick={(e) => { e.stopPropagation(); setCurrentView('TARIFFS'); }}
@@ -2764,7 +2765,7 @@ if (!user && !showSplash) {
       )}
     </div>
 
-    <p className="text-slate-500 text-xs mt-2 text-left flex items-center gap-1">
+    <p className="text-slate-500 dark:text-slate-400 text-xs mt-2 text-left flex items-center gap-1">
       <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
       </svg>
@@ -2773,7 +2774,7 @@ if (!user && !showSplash) {
 
     {/* 🔹 Прогресс-бар дней — использует цвета темы */}
     {!isInvestor && !subStatus.expired && (
-      <div className="mt-3 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+      <div className="mt-3 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{
@@ -2789,7 +2790,7 @@ if (!user && !showSplash) {
 
   {/* 🔹 Стрелка навигации — использует цвет темы */}
   <div
-    className="text-slate-300 group-hover:text-[var(--color-primary-500)] transition-colors relative z-10"
+    className="text-slate-300 dark:text-slate-600 group-hover:text-[var(--color-primary-500)] transition-colors relative z-10"
   >
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <polyline points="9 18 15 12 9 6"/>
@@ -2799,35 +2800,35 @@ if (!user && !showSplash) {
 
         <div className="space-y-2 pt-4">
           {/* Касса (аккордеон) */}
-          <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden">
             <button onClick={() => toggleMoreSection('CASH')}
-                    className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
+                    className="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
               <div className="flex items-center gap-3">
-                <div className="bg-emerald-100 text-emerald-600 p-2 rounded-lg">{ICONS.Wallet}</div>
-                <span className="font-semibold text-slate-800">Касса</span>
+                <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 p-2 rounded-lg">{ICONS.Wallet}</div>
+                <span className="font-semibold text-slate-800 dark:text-white">Касса</span>
               </div>
-              <span className={`text-slate-400 transition-transform ${moreExpandedSection === 'CASH' ? 'rotate-90' : ''}`}>
+              <span className={`text-slate-400 dark:text-slate-500 transition-transform ${moreExpandedSection === 'CASH' ? 'rotate-90' : ''}`}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="9 18 15 12 9 6"/>
                 </svg>
               </span>
             </button>
             {moreExpandedSection === 'CASH' && (
-              <div className="bg-slate-50 border-t border-slate-100 p-2 space-y-1">
+              <div className="bg-slate-50 dark:bg-slate-700/50 border-t border-slate-100 dark:border-slate-700 p-2 space-y-1">
                 <button onClick={() => setCurrentView('CASH_REGISTER')}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <span className="opacity-70">{ICONS.Wallet}</span> Счета
                 </button>
                 <button onClick={() => handleAction('INCOME')}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <span className="opacity-70">{ICONS.Income}</span> Приход
                 </button>
                 <button onClick={() => handleAction('EXPENSE')}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <span className="opacity-70">{ICONS.Expense}</span> Расход
                 </button>
                 <button onClick={() => handleAction('OPERATIONS')}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <span className="opacity-70">{ICONS.List}</span> История
                 </button>
               </div>
@@ -2835,39 +2836,39 @@ if (!user && !showSplash) {
           </div>
 
           {/* Договоры (аккордеон) */}
-          <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden">
             <button onClick={() => toggleMoreSection('CONTRACTS')}
-                    className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
+                    className="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
               <div className="flex items-center gap-3">
-                <div className="bg-indigo-100 text-indigo-600 p-2 rounded-lg">{ICONS.File}</div>
-                <span className="font-semibold text-slate-800">Договоры</span>
+                <div className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 p-2 rounded-lg">{ICONS.File}</div>
+                <span className="font-semibold text-slate-800 dark:text-white">Договоры</span>
               </div>
-              <span className={`text-slate-400 transition-transform ${moreExpandedSection === 'CONTRACTS' ? 'rotate-90' : ''}`}>
+              <span className={`text-slate-400 dark:text-slate-500 transition-transform ${moreExpandedSection === 'CONTRACTS' ? 'rotate-90' : ''}`}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="9 18 15 12 9 6"/>
                 </svg>
               </span>
             </button>
             {moreExpandedSection === 'CONTRACTS' && (
-              <div className="bg-slate-50 border-t border-slate-100 p-2 space-y-1">
+              <div className="bg-slate-50 dark:bg-slate-700/50 border-t border-slate-100 dark:border-slate-700 p-2 space-y-1">
                 <button onClick={() => handleAction('CREATE_SALE')}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center gap-2">
+                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <span className="opacity-70">{ICONS.AddSmall}</span> Оформить
                 </button>
                 <button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('ACTIVE'); }}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2">
+                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Check}</span> Активные</div>
-                  {contractCounts.active > 0 && <span className="text-xs bg-indigo-100 text-indigo-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.active}</span>}
+                  {contractCounts.active > 0 && <span className="text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-semibold px-2 py-0.5 rounded-full">{contractCounts.active}</span>}
                 </button>
                 <button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('OVERDUE'); }}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2">
+                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Alert}</span> Просроченные</div>
-                  {contractCounts.overdue > 0 && <span className="text-xs bg-red-100 text-red-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.overdue}</span>}
+                  {contractCounts.overdue > 0 && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold px-2 py-0.5 rounded-full">{contractCounts.overdue}</span>}
                 </button>
                 <button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('ARCHIVE'); }}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white text-sm text-slate-600 flex items-center justify-between gap-2">
+                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Clock}</span> Архив</div>
-                  {contractCounts.archive > 0 && <span className="text-xs bg-slate-100 text-slate-600 font-semibold px-2 py-0.5 rounded-full">{contractCounts.archive}</span>}
+                  {contractCounts.archive > 0 && <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold px-2 py-0.5 rounded-full">{contractCounts.archive}</span>}
                 </button>
               </div>
             )}
@@ -2875,12 +2876,12 @@ if (!user && !showSplash) {
 
           {/* Отчеты */}
           <button onClick={() => setCurrentView('REPORTS')}
-                  className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                  className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
             <div className="flex items-center gap-3">
-              <div className="bg-sky-100 text-sky-600 p-2 rounded-lg">{ICONS.Dashboard}</div>
-              <span className="font-semibold text-slate-800">Отчеты</span>
+              <div className="bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 p-2 rounded-lg">{ICONS.Dashboard}</div>
+              <span className="font-semibold text-slate-800 dark:text-white">Отчеты</span>
             </div>
-            <span className="text-slate-400">
+            <span className="text-slate-400 dark:text-slate-500">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
@@ -2890,12 +2891,12 @@ if (!user && !showSplash) {
 
           {/* Инвесторы */}
           <button onClick={() => setCurrentView('INVESTORS')}
-                  className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                  className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
             <div className="flex items-center gap-3">
-              <div className="bg-purple-100 text-purple-600 p-2 rounded-lg">{ICONS.Users}</div>
-              <span className="font-semibold text-slate-800">Инвесторы</span>
+              <div className="bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 p-2 rounded-lg">{ICONS.Users}</div>
+              <span className="font-semibold text-slate-800 dark:text-white">Инвесторы</span>
             </div>
-            <span className="text-slate-400">
+            <span className="text-slate-400 dark:text-slate-500">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
@@ -2905,12 +2906,12 @@ if (!user && !showSplash) {
           {/* Сотрудники (только менеджер) */}
           {user.role === 'manager' && (
             <button onClick={() => setCurrentView('EMPLOYEES')}
-                    className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                    className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
               <div className="flex items-center gap-3">
-                <div className="bg-blue-100 text-blue-600 p-2 rounded-lg">{ICONS.Employees}</div>
-                <span className="font-semibold text-slate-800">Сотрудники</span>
+                <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 p-2 rounded-lg">{ICONS.Employees}</div>
+                <span className="font-semibold text-slate-800 dark:text-white">Сотрудники</span>
               </div>
-              <span className="text-slate-400">
+              <span className="text-slate-400 dark:text-slate-500">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="9 18 15 12 9 6"/>
                 </svg>
@@ -2920,12 +2921,12 @@ if (!user && !showSplash) {
 
           {/* Тарифы */}
           <button onClick={() => setCurrentView('TARIFFS')}
-                  className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                  className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
             <div className="flex items-center gap-3">
-              <div className="bg-emerald-100 text-emerald-600 p-2 rounded-lg">{ICONS.Tariffs}</div>
-              <span className="font-semibold text-slate-800">Тарифы</span>
+              <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 p-2 rounded-lg">{ICONS.Tariffs}</div>
+              <span className="font-semibold text-slate-800 dark:text-white">Тарифы</span>
             </div>
-            <span className="text-slate-400">
+            <span className="text-slate-400 dark:text-slate-500">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
@@ -2935,12 +2936,12 @@ if (!user && !showSplash) {
           {/* Админ панель (только админ) */}
           {user.role === 'admin' && (
             <button onClick={() => setCurrentView('ADMIN_PANEL')}
-                    className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                    className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
               <div className="flex items-center gap-3">
-                <div className="bg-red-100 text-red-600 p-2 rounded-lg">{ICONS.Crown}</div>
-                <span className="font-semibold text-slate-800">Админ панель</span>
+                <div className="bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-2 rounded-lg">{ICONS.Crown}</div>
+                <span className="font-semibold text-slate-800 dark:text-white">Админ панель</span>
               </div>
-              <span className="text-slate-400">
+              <span className="text-slate-400 dark:text-slate-500">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="9 18 15 12 9 6"/>
                 </svg>
@@ -2951,12 +2952,12 @@ if (!user && !showSplash) {
             {/* 🔹 НОВАЯ КНОПКА: Техподдержка (только для админов) */}
 {user.role === 'admin' && (
   <button onClick={() => setCurrentView('ADMIN_SUPPORT')}
-          className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+          className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
       <div className="flex items-center gap-3">
-          <div className="bg-blue-100 text-blue-600 p-2 rounded-lg">{ICONS.Chat}</div>
-          <span className="font-semibold text-slate-800">Техподдержка</span>
+          <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 p-2 rounded-lg">{ICONS.Chat}</div>
+          <span className="font-semibold text-slate-800 dark:text-white">Техподдержка</span>
       </div>
-      <span className="text-slate-400">
+      <span className="text-slate-400 dark:text-slate-500">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="9 18 15 12 9 6"/>
           </svg>
@@ -2970,13 +2971,13 @@ if (!user && !showSplash) {
     loadSupportUnreadCount(user); // Принудительное обновление
     setShowSupportChat(true);
   }}
-  className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50 relative"
+  className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700 relative"
 >
   <div className="flex items-center gap-3">
-    <div className="bg-indigo-100 p-2 rounded-full text-indigo-600">
+    <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2 rounded-full text-indigo-600 dark:text-indigo-400">
       {ICONS.Chat}
     </div>
-    <span className="font-semibold text-slate-700">Техподдержка</span>
+    <span className="font-semibold text-slate-700 dark:text-slate-300">Техподдержка</span>
   </div>
 
   {/* 🔴 Счётчик непрочитанных */}
@@ -2989,12 +2990,12 @@ if (!user && !showSplash) {
 
           {/* Настройки */}
           <button onClick={() => setCurrentView('SETTINGS')}
-                  className="w-full bg-white rounded-xl border border-slate-100 p-4 flex items-center justify-between hover:bg-slate-50">
+                  className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
             <div className="flex items-center gap-3">
-              <div className="bg-slate-100 text-slate-600 p-2 rounded-lg">{ICONS.Settings}</div>
-              <span className="font-semibold text-slate-800">Настройки</span>
+              <div className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 p-2 rounded-lg">{ICONS.Settings}</div>
+              <span className="font-semibold text-slate-800 dark:text-white">Настройки</span>
             </div>
-            <span className="text-slate-400">
+            <span className="text-slate-400 dark:text-slate-500">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
@@ -3013,11 +3014,11 @@ if (!user && !showSplash) {
     onClick={() => setShowDeleteConfirm(null)}
   >
     <div
-      className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-2xl animate-scale-in"
+      className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-2xl shadow-2xl animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
       {/* 🔴 Иконка предупреждения */}
-      <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+      <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
           <line x1="12" y1="9" x2="12" y2="13"/>
@@ -3026,13 +3027,13 @@ if (!user && !showSplash) {
       </div>
 
       {/* 🔹 Заголовок */}
-      <h3 className="text-lg font-bold text-slate-800 text-center mb-2">
+      <h3 className="text-lg font-bold text-slate-800 dark:text-white text-center mb-2">
         Удалить клиента?
       </h3>
 
       {/* 🔹 Текст предупреждения */}
-      <p className="text-center text-slate-500 mb-6 text-sm leading-relaxed">
-        Это действие <strong className="text-slate-700">нельзя отменить</strong>.<br/>
+      <p className="text-center text-slate-500 dark:text-slate-400 mb-6 text-sm leading-relaxed">
+        Это действие <strong className="text-slate-700 dark:text-slate-300">нельзя отменить</strong>.<br/>
         Все данные клиента будут удалены безвозвратно.
       </p>
 
@@ -3040,13 +3041,13 @@ if (!user && !showSplash) {
       <div className="flex gap-3">
         <button
           onClick={() => setShowDeleteConfirm(null)}
-          className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300"
+          className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300"
         >
           Отмена
         </button>
         <button
           onClick={confirmDeleteCustomer}
-          className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors shadow-lg shadow-red-200 focus:outline-none focus:ring-2 focus:ring-red-300"
+          className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors shadow-lg shadow-red-200 dark:shadow-red-900/30 focus:outline-none focus:ring-2 focus:ring-red-300"
         >
           Да, удалить
         </button>
@@ -3112,11 +3113,11 @@ if (!user && !showSplash) {
                    onClick={() => setShowBlockedDeleteModal(null)}
                >
                    <div
-                       className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-2xl animate-scale-in"
+                       className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-2xl shadow-2xl animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
       {/* 🔴 Иконка предупреждения */}
-      <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+      <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="10"/>
           <line x1="12" y1="8" x2="12" y2="12"/>
@@ -3125,25 +3126,25 @@ if (!user && !showSplash) {
       </div>
 
       {/* 🔹 Заголовок */}
-      <h3 className="text-lg font-bold text-slate-800 text-center mb-1">
+      <h3 className="text-lg font-bold text-slate-800 dark:text-white text-center mb-1">
         Невозможно удалить
       </h3>
-      <p className="text-center text-slate-500 mb-4 text-sm">
+      <p className="text-center text-slate-500 dark:text-slate-400 mb-4 text-sm">
         У клиента <strong>{showBlockedDeleteModal.customerName}</strong> есть активные договоры
       </p>
 
       {/* 🔹 Список договоров */}
-      <div className="bg-slate-50 rounded-xl p-4 mb-6 max-h-48 overflow-y-auto">
-        <p className="text-xs font-medium text-slate-500 mb-2 uppercase">
+      <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 mb-6 max-h-48 overflow-y-auto">
+        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2 uppercase">
           Привязанные договоры ({showBlockedDeleteModal.contracts.length})
         </p>
         <ul className="space-y-2">
           {showBlockedDeleteModal.contracts.map(contract => (
             <li
               key={contract.id}
-              className="flex items-center gap-2 text-sm text-slate-700 bg-white px-3 py-2 rounded-lg border border-slate-100"
+              className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 px-3 py-2 rounded-lg border border-slate-100 dark:border-slate-700"
             >
-              <span className="text-slate-400 flex-shrink-0">
+              <span className="text-slate-400 dark:text-slate-500 flex-shrink-0">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                   <polyline points="14 2 14 8 20 8"/>
@@ -3156,7 +3157,7 @@ if (!user && !showSplash) {
       </div>
 
       {/* 🔹 Текст инструкции */}
-      <p className="text-center text-slate-500 text-sm mb-6">
+      <p className="text-center text-slate-500 dark:text-slate-400 text-sm mb-6">
         Сначала удалите привязанные договоры.
       </p>
 
@@ -3169,13 +3170,13 @@ if (!user && !showSplash) {
             setSelectedCustomerId(showBlockedDeleteModal.customerId);
             setCurrentView('CUSTOMER_DETAILS');
           }}
-          className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+          className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
         >
           Перейти к договорам
         </button>
         <button
           onClick={() => setShowBlockedDeleteModal(null)}
-          className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+          className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30"
         >
           Понятно
         </button>
@@ -3204,7 +3205,7 @@ if (!user && !showSplash) {
     onClick={() => setShowTemplateUpdateModal(false)}
   >
     <div
-      className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
+      className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
       {/* Шапка */}
@@ -3230,45 +3231,45 @@ if (!user && !showSplash) {
 
 
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-green-100 text-green-600 flex items-center justify-center text-sm font-bold">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center text-sm font-bold">
               📤
             </div>
             <div>
-              <p className="font-semibold text-slate-800 text-sm">Отчеты</p>
-              <p className="text-xs text-slate-500 mt-0.5">В разделе «Отчеты» добавлена выгрузка данных в PDF и CSV и добавили разные показатели данных.</p>
+              <p className="font-semibold text-slate-800 dark:text-white text-sm">Отчеты</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">В разделе «Отчеты» добавлена выгрузка данных в PDF и CSV и добавили разные показатели данных.</p>
             </div>
           </div>
 
 
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-red-100 text-red-600 flex items-center justify-center text-sm font-bold">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 flex items-center justify-center text-sm font-bold">
               ⚠️
             </div>
             <div>
-              <p className="font-semibold text-slate-800 text-sm">Карточка просрочек</p>
-              <p className="text-xs text-slate-500 mt-0.5">На главном экране: мгновенный контроль над просроченными платежами и задачами</p>
+              <p className="font-semibold text-slate-800 dark:text-white text-sm">Карточка просрочек</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">На главном экране: мгновенный контроль над просроченными платежами и задачами</p>
             </div>
           </div>
 
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center text-sm font-bold">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 flex items-center justify-center text-sm font-bold">
               🛒
             </div>
             <div>
-              <p className="font-semibold text-slate-800 text-sm">Карточка закупок</p>
-              <p className="text-xs text-slate-500 mt-0.5">Быстрый доступ к закупкам и расходам прямо с дашборда</p>
+              <p className="font-semibold text-slate-800 dark:text-white text-sm">Карточка закупок</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Быстрый доступ к закупкам и расходам прямо с дашборда</p>
             </div>
           </div>
 
-          
+
 
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-sm font-bold">
               📎
             </div>
             <div>
-              <p className="font-semibold text-slate-800 text-sm">Обновление документов</p>
-              <p className="text-xs text-slate-500 mt-0.5">Улучшен интерфейс добавления и управления документами у клиентов</p>
+              <p className="font-semibold text-slate-800 dark:text-white text-sm">Обновление документов</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Улучшен интерфейс добавления и управления документами у клиентов</p>
             </div>
           </div>
         </div>

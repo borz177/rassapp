@@ -243,64 +243,64 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-                    <h3 className="text-xl font-bold text-slate-800">Экспорт данных в Excel</h3>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl">✕</button>
+            <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl p-6 space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-4">
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white">Экспорт данных в Excel</h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl">✕</button>
                 </div>
 
                 <div className="space-y-4">
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                        <h4 className="font-bold text-slate-700 text-sm">⚙️ Настройки выгрузки</h4>
+                    <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
+                        <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm">⚙️ Настройки выгрузки</h4>
 
                         {/* 🔧 НОВОЕ: Переключатель "Весь период" */}
-                        <label className="flex items-center space-x-2 cursor-pointer bg-white p-3 rounded-lg border border-slate-200 hover:border-indigo-300 transition-colors">
+                        <label className="flex items-center space-x-2 cursor-pointer bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors">
                             <input
                                 type="checkbox"
                                 checked={allTime}
                                 onChange={(e) => setAllTime(e.target.checked)}
-                                className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                                className="w-4 h-4 text-indigo-600 rounded border-slate-300 dark:border-slate-600 focus:ring-indigo-500"
                             />
-                            <span className="text-sm font-medium text-slate-800">Выгрузить за весь период</span>
+                            <span className="text-sm font-medium text-slate-800 dark:text-white">Выгрузить за весь период</span>
                         </label>
 
                         {/* Блок дат: блокируется, если выбран "Весь период" */}
                         <div className={`grid grid-cols-2 gap-3 transition-all duration-300 ${allTime ? 'opacity-40 pointer-events-none grayscale' : ''}`}>
                             <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">Дата с</label>
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Дата с</label>
                                 <input
                                     type="date"
                                     value={startDate}
                                     onChange={(e) => setStartDate(e.target.value)}
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">Дата по</label>
+                                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Дата по</label>
                                 <input
                                     type="date"
                                     value={endDate}
                                     onChange={(e) => setEndDate(e.target.value)}
-                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                 />
                             </div>
                         </div>
 
-                        <div className="space-y-2 pt-2 border-t border-slate-200">
+                        <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700">
                             <label className="flex items-center space-x-2 cursor-pointer">
                                 <input
                                     type="checkbox"
                                     checked={onlyActive}
                                     onChange={(e) => setOnlyActive(e.target.checked)}
-                                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 dark:border-slate-600 focus:ring-indigo-500"
                                 />
-                                <span className="text-sm text-slate-700">Только активные продажи</span>
+                                <span className="text-sm text-slate-700 dark:text-slate-300">Только активные продажи</span>
                             </label>
 
                         </div>
                     </div>
 
-                    <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-xs text-emerald-800">
+                    <div className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-900/50 rounded-xl p-3 text-xs text-emerald-800 dark:text-emerald-400">
                         <p className="font-bold mb-1">📋 Файл будет содержать 3 листа:</p>
                         <ul className="list-disc list-inside space-y-0.5">
                             <li><b>Обзор клиентов</b> — продажи с точным остатком долга</li>
@@ -318,7 +318,7 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                     <div className="flex gap-3 pt-2">
                         <button
                             onClick={onClose}
-                            className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors text-sm"
+                            className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-sm"
                         >
                             Отмена
                         </button>

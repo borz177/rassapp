@@ -273,18 +273,18 @@ const counts = useMemo(() => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col md:flex-row font-sans">
       {/* Mobile Top Navbar */}
  {/* Mobile Top Navbar */}
 <header
-  className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-slate-200 z-40 safe-area-top"
+  className="md:hidden fixed top-0 left-0 right-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 z-40 safe-area-top"
 
 >
   <div className="h-16 flex items-center px-4">
     <div className="flex flex-col w-full">
-      <h1 className="text-xl font-bold tracking-tight text-indigo-600">{appSettings.companyName}</h1>
+      <h1 className="text-xl font-bold tracking-tight text-indigo-600 dark:text-indigo-400">{appSettings.companyName}</h1>
       {isOnline && isSyncing && (
-        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded w-fit">
+        <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded w-fit">
           Синхронизация...
         </span>
       )}
@@ -324,7 +324,7 @@ const counts = useMemo(() => {
       </aside>
 
       {/* Main Content Area - Updated margins and centering */}
-      <main className="flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50 mobile-main-offset">
+      <main className="flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50 dark:bg-slate-900 mobile-main-offset">
         <div className="w-full max-w-7xl mx-auto h-full">
             {children}
         </div>
@@ -336,24 +336,24 @@ const counts = useMemo(() => {
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden flex flex-col justify-end pb-24 px-4 animate-fade-in"
           onClick={() => setIsMenuOpen(false)}
         >
-          <div className="bg-white rounded-2xl p-4 shadow-2xl space-y-2 mb-4" onClick={e => e.stopPropagation()}>
-             <div className="pb-2 mb-2 border-b border-slate-100">
-                 <h3 className="text-slate-500 font-bold text-sm uppercase px-2">Быстрые действия</h3>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-2xl space-y-2 mb-4" onClick={e => e.stopPropagation()}>
+             <div className="pb-2 mb-2 border-b border-slate-100 dark:border-slate-700">
+                 <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm uppercase px-2">Быстрые действия</h3>
              </div>
-             <button onClick={() => handleActionClick('CREATE_SALE')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
-                <div className="bg-indigo-100 p-2 rounded-full text-indigo-600">{ICONS.Sales}</div>
+             <button onClick={() => handleActionClick('CREATE_SALE')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2 rounded-full text-indigo-600 dark:text-indigo-400">{ICONS.Sales}</div>
                 <span className="font-semibold">Оформить продажу</span>
              </button>
-             <button onClick={() => handleActionClick('INCOME')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
-                <div className="bg-emerald-100 p-2 rounded-full text-emerald-600">{ICONS.Income}</div>
+             <button onClick={() => handleActionClick('INCOME')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2 rounded-full text-emerald-600 dark:text-emerald-400">{ICONS.Income}</div>
                 <span className="font-semibold">Приход (Внести)</span>
              </button>
-             <button onClick={() => handleActionClick('EXPENSE')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
-                <div className="bg-red-100 p-2 rounded-full text-red-600">{ICONS.Expense}</div>
+             <button onClick={() => handleActionClick('EXPENSE')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                <div className="bg-red-100 dark:bg-red-900/30 p-2 rounded-full text-red-600 dark:text-red-400">{ICONS.Expense}</div>
                 <span className="font-semibold">Расход (Изъять)</span>
              </button>
-             <button onClick={() => handleActionClick('OPERATIONS')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl text-slate-700">
-                <div className="bg-slate-100 p-2 rounded-full text-slate-600">{ICONS.List}</div>
+             <button onClick={() => handleActionClick('OPERATIONS')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                <div className="bg-slate-100 dark:bg-slate-700 p-2 rounded-full text-slate-600 dark:text-slate-300">{ICONS.List}</div>
                 <span className="font-semibold">Все операции</span>
              </button>
           </div>
@@ -361,15 +361,15 @@ const counts = useMemo(() => {
       )}
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-50 px-2 flex justify-between items-end safe-area-pb">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-50 px-2 flex justify-between items-end safe-area-pb">
 
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
-            <button onClick={() => setView('DASHBOARD')} className={`flex flex-col items-center p-2 ${currentView === 'DASHBOARD' ? 'text-indigo-600' : 'text-slate-400'}`}>
+            <button onClick={() => setView('DASHBOARD')} className={`flex flex-col items-center p-2 ${currentView === 'DASHBOARD' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`}>
                 {ICONS.Dashboard}
                 <span className="text-[10px] mt-1 font-medium">Главная</span>
             </button>
             {!isInvestor && (
-              <button onClick={() => setView('CASH_REGISTER')} className={`flex flex-col items-center p-2 ${currentView === 'CASH_REGISTER' ? 'text-indigo-600' : 'text-slate-400'}`}>
+              <button onClick={() => setView('CASH_REGISTER')} className={`flex flex-col items-center p-2 ${currentView === 'CASH_REGISTER' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`}>
                   {ICONS.Wallet}
                   <span className="text-[10px] mt-1 font-medium">Касса</span>
               </button>
@@ -389,7 +389,7 @@ const counts = useMemo(() => {
 
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
             {!isInvestor && (
-              <button onClick={() => setView('CUSTOMERS')} className={`flex flex-col items-center p-2 ${currentView === 'CUSTOMERS' || currentView === 'CUSTOMER_DETAILS' ? 'text-indigo-600' : 'text-slate-400'}`}>
+              <button onClick={() => setView('CUSTOMERS')} className={`flex flex-col items-center p-2 ${currentView === 'CUSTOMERS' || currentView === 'CUSTOMER_DETAILS' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`}>
                   {ICONS.Customers}
                   <span className="text-[10px] mt-1 font-medium">Клиенты</span>
               </button>
@@ -408,7 +408,7 @@ const counts = useMemo(() => {
                     currentView === 'CONTRACTS' || currentView === 'INVESTORS' ||
                     currentView === 'EMPLOYEES' || currentView === 'SETTINGS' ||
                     currentView === 'TARIFFS' || currentView === 'ADMIN_PANEL'
-                        ? 'text-indigo-600' : 'text-slate-400'
+                        ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
                 }`}
             >
                 {ICONS.Menu}
@@ -422,14 +422,14 @@ const counts = useMemo(() => {
     onClick={() => setShowInvestorMobileMenu(false)}
   >
     <div
-      className="bg-white w-full max-w-sm rounded-t-3xl p-5 pb-8 shadow-2xl animate-slide-up"
+      className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-t-3xl p-5 pb-8 shadow-2xl animate-slide-up"
       onClick={e => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-        <h3 className="font-bold text-slate-800">Доступные разделы</h3>
+      <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-700">
+        <h3 className="font-bold text-slate-800 dark:text-white">Доступные разделы</h3>
         <button
           onClick={() => setShowInvestorMobileMenu(false)}
-          className="p-1 text-slate-400 hover:text-slate-600"
+          className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -444,12 +444,12 @@ const counts = useMemo(() => {
               setView('CONTRACTS');
               onContractTabChange?.('ACTIVE');
             }}
-            className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-indigo-50 rounded-xl text-left transition-colors"
+            className="w-full flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-xl text-left transition-colors"
           >
-            <span className="text-indigo-600">{ICONS.File}</span>
+            <span className="text-indigo-600 dark:text-indigo-400">{ICONS.File}</span>
             <div>
-              <p className="font-semibold text-slate-800">Договоры</p>
-              <p className="text-xs text-slate-500">Просмотр активных сделок</p>
+              <p className="font-semibold text-slate-800 dark:text-white">Договоры</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Просмотр активных сделок</p>
             </div>
           </button>
         )}
@@ -461,12 +461,12 @@ const counts = useMemo(() => {
               setShowInvestorMobileMenu(false);
               setView('OPERATIONS');
             }}
-            className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-indigo-50 rounded-xl text-left transition-colors"
+            className="w-full flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-xl text-left transition-colors"
           >
-            <span className="text-indigo-600">{ICONS.List}</span>
+            <span className="text-indigo-600 dark:text-indigo-400">{ICONS.List}</span>
             <div>
-              <p className="font-semibold text-slate-800">История операций</p>
-              <p className="text-xs text-slate-500">Все платежи и движения</p>
+              <p className="font-semibold text-slate-800 dark:text-white">История операций</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Все платежи и движения</p>
             </div>
           </button>
         )}
@@ -482,7 +482,7 @@ const counts = useMemo(() => {
       {/* Кнопка закрытия */}
       <button
         onClick={() => setShowInvestorMobileMenu(false)}
-        className="w-full mt-4 py-3 bg-slate-100 text-slate-700 font-medium rounded-xl hover:bg-slate-200 transition-colors"
+        className="w-full mt-4 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
       >
         Закрыть
       </button>

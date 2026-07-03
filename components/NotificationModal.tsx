@@ -39,35 +39,35 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   // Стили по типу уведомления
   const styles = {
     success: {
-      bg: 'bg-emerald-50',
-      border: 'border-emerald-200',
-      text: 'text-emerald-800',
-      icon: 'text-emerald-600',
-      iconBg: 'bg-emerald-100',
+      bg: 'bg-emerald-50 dark:bg-emerald-900/30',
+      border: 'border-emerald-200 dark:border-emerald-900/50',
+      text: 'text-emerald-800 dark:text-emerald-400',
+      icon: 'text-emerald-600 dark:text-emerald-400',
+      iconBg: 'bg-emerald-100 dark:bg-emerald-900/50',
       button: 'bg-emerald-600 hover:bg-emerald-700'
     },
     error: {
-      bg: 'bg-red-50',
-      border: 'border-red-200',
-      text: 'text-red-800',
-      icon: 'text-red-600',
-      iconBg: 'bg-red-100',
+      bg: 'bg-red-50 dark:bg-red-900/30',
+      border: 'border-red-200 dark:border-red-900/50',
+      text: 'text-red-800 dark:text-red-400',
+      icon: 'text-red-600 dark:text-red-400',
+      iconBg: 'bg-red-100 dark:bg-red-900/50',
       button: 'bg-red-600 hover:bg-red-700'
     },
     warning: {
-      bg: 'bg-amber-50',
-      border: 'border-amber-200',
-      text: 'text-amber-800',
-      icon: 'text-amber-600',
-      iconBg: 'bg-amber-100',
+      bg: 'bg-amber-50 dark:bg-amber-900/30',
+      border: 'border-amber-200 dark:border-amber-900/50',
+      text: 'text-amber-800 dark:text-amber-400',
+      icon: 'text-amber-600 dark:text-amber-400',
+      iconBg: 'bg-amber-100 dark:bg-amber-900/50',
       button: 'bg-amber-600 hover:bg-amber-700'
     },
     info: {
-      bg: 'bg-indigo-50',
-      border: 'border-indigo-200',
-      text: 'text-indigo-800',
-      icon: 'text-indigo-600',
-      iconBg: 'bg-indigo-100',
+      bg: 'bg-indigo-50 dark:bg-indigo-900/30',
+      border: 'border-indigo-200 dark:border-indigo-900/50',
+      text: 'text-indigo-800 dark:text-indigo-400',
+      icon: 'text-indigo-600 dark:text-indigo-400',
+      iconBg: 'bg-indigo-100 dark:bg-indigo-900/50',
       button: 'bg-indigo-600 hover:bg-indigo-700'
     }
   };
@@ -99,7 +99,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
             {showClose && (
               <button
                 onClick={onClose}
-                className="absolute top-4 right-4 p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/50"
+                className="absolute top-4 right-4 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
               >
                 {ICONS.Close}
               </button>
@@ -125,7 +125,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
           <button
             onClick={onClose}
             className={`flex-1 py-3 font-bold rounded-xl transition-colors ${
-              actionLabel ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : `${style.button} text-white`
+              actionLabel ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600' : `${style.button} text-white`
             }`}
           >
             {actionLabel ? 'Закрыть' : 'Понятно'}

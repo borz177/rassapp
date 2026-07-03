@@ -80,73 +80,73 @@ const EditCustomerModal = ({
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-    <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+    <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
         {/* 🔹 Заголовок — всегда виден сверху */}
-        <div className="p-5 pb-3 border-b border-slate-100 flex-shrink-0">
-            <h3 className="text-lg font-bold text-slate-800">Редактировать клиента</h3>
+        <div className="p-5 pb-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-white">Редактировать клиента</h3>
         </div>
-        
+
         {/* 🔹 Контент формы — прокручивается */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
             <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">ФИО</label>
-                <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} required/>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ФИО</label>
+                <input className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} required/>
             </div>
             <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Телефон</label>
-                <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" value={phone} onChange={e => setPhone(e.target.value)} required/>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Телефон</label>
+                <input className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={phone} onChange={e => setPhone(e.target.value)} required/>
             </div>
             <details className="group" open>
-                <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600">
+                <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600 dark:text-indigo-400">
                     <span className="transition-transform group-open:rotate-90">▶</span> 📍 Адрес и паспорт
                 </summary>
-                <div className="mt-3 space-y-4 p-4 bg-slate-50 rounded-xl">
+                <div className="mt-3 space-y-4 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl">
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Адрес</label>
-                        <input className="w-full p-3 border border-slate-200 rounded-xl outline-none" placeholder="г. Москва, ул. Ленина, д. 1" value={address} onChange={e => setAddress(e.target.value)}/>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Адрес</label>
+                        <input className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" placeholder="г. Москва, ул. Ленина, д. 1" value={address} onChange={e => setAddress(e.target.value)}/>
                     </div>
-                    <div className="border-t border-slate-200 pt-3">
-                        <p className="text-xs font-medium text-slate-500 mb-3">🪪 Паспортные данные <span className="font-normal text-slate-400">(необязательно)</span></p>
+                    <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
+                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">🪪 Паспортные данные <span className="font-normal text-slate-400 dark:text-slate-500">(необязательно)</span></p>
                         <div className="grid grid-cols-2 gap-3">
                             <div>
-                                <label className="block text-xs text-slate-500 mb-1">Серия</label>
-                                <input type="text" placeholder="4501" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono uppercase" value={passportSeries} onChange={e => setPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))} maxLength={4}/>
+                                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Серия</label>
+                                <input type="text" placeholder="4501" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono uppercase" value={passportSeries} onChange={e => setPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))} maxLength={4}/>
                             </div>
                             <div>
-                                <label className="block text-xs text-slate-500 mb-1">Номер</label>
-                                <input type="text" placeholder="123456" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm font-mono" value={passportNumber} onChange={e => setPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} maxLength={6}/>
+                                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Номер</label>
+                                <input type="text" placeholder="123456" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono" value={passportNumber} onChange={e => setPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} maxLength={6}/>
                             </div>
                         </div>
                         <div className="mt-3">
-                            <label className="block text-xs text-slate-500 mb-1">Кем выдан</label>
-                            <input type="text" placeholder="УФМС России по г. Москве" className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm" value={passportIssuedBy} onChange={e => setPassportIssuedBy(e.target.value)} maxLength={100}/>
+                            <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Кем выдан</label>
+                            <input type="text" placeholder="УФМС России по г. Москве" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm" value={passportIssuedBy} onChange={e => setPassportIssuedBy(e.target.value)} maxLength={100}/>
                         </div>
                     </div>
                 </div>
             </details>
             <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Заметки</label>
-                <textarea className="w-full p-3 border border-slate-200 rounded-xl outline-none resize-none" rows={3} value={notes} onChange={e => setNotes(e.target.value)}/>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Заметки</label>
+                <textarea className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none resize-none" rows={3} value={notes} onChange={e => setNotes(e.target.value)}/>
             </div>
-            <div className="flex items-center justify-between bg-emerald-50 p-3 rounded-xl border border-emerald-100">
+            <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/30 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
                 <div className="flex items-center gap-2">
-                    <span className="text-emerald-600">{ICONS.Send}</span>
+                    <span className="text-emerald-600 dark:text-emerald-400">{ICONS.Send}</span>
                     <div>
-                        <p className="text-sm font-bold text-slate-800">Напоминания WhatsApp</p>
-                        <p className="text-xs text-slate-500">Авто-отправка сообщений</p>
+                        <p className="text-sm font-bold text-slate-800 dark:text-white">Напоминания WhatsApp</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Авто-отправка сообщений</p>
                     </div>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" checked={allowWhatsapp} onChange={() => setAllowWhatsapp(!allowWhatsapp)} className="sr-only peer"/>
-                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                    <div className="w-11 h-6 bg-slate-300 dark:bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
                 </label>
             </div>
         </form>
-        
+
         {/* 🔹 Футер с кнопками — всегда виден снизу */}
-        <div className="p-5 pt-3 border-t border-slate-100 flex-shrink-0 bg-white rounded-b-2xl">
+        <div className="p-5 pt-3 border-t border-slate-100 dark:border-slate-700 flex-shrink-0 bg-white dark:bg-slate-800 rounded-b-2xl">
             <div className="flex gap-3">
-                <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Отмена</button>
+                <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold">Отмена</button>
                 <button type="submit" onClick={handleSubmit} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
             </div>
         </div>
@@ -328,7 +328,7 @@ const DocumentsModal = ({
             >
                 <div
                     ref={sheetRef}
-                    className={`bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-xl p-5 pt-2 max-h-[88vh] overflow-y-auto overscroll-contain ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+                    className={`bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-xl p-5 pt-2 max-h-[88vh] overflow-y-auto overscroll-contain ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
                     style={sheetStyle}
                     onClick={e => e.stopPropagation()}
                     onTouchStart={handleTouchStart}
@@ -336,19 +336,19 @@ const DocumentsModal = ({
                     onTouchEnd={handleTouchEnd}
                 >
                     {/* 🔹 Ручка как в Telegram — основная зона захвата для свайпа */}
-                    <div className="flex justify-center pb-3 -mx-5 sticky top-0 bg-white sm:hidden cursor-grab active:cursor-grabbing">
-                        <div className="w-10 h-1.5 bg-slate-300 rounded-full mt-2"/>
+                    <div className="flex justify-center pb-3 -mx-5 sticky top-0 bg-white dark:bg-slate-800 sm:hidden cursor-grab active:cursor-grabbing">
+                        <div className="w-10 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full mt-2"/>
                     </div>
 
-                    <h3 className="text-lg font-bold text-slate-800 mb-4 sticky top-0 bg-white pb-2 z-10 flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4 sticky top-0 bg-white dark:bg-slate-800 pb-2 z-10 flex items-center justify-between">
                         <span>📎 Документы</span>
-                        <span className="text-sm font-normal text-slate-400">{customer.documents?.length || 0} шт.</span>
+                        <span className="text-sm font-normal text-slate-400 dark:text-slate-500">{customer.documents?.length || 0} шт.</span>
                     </h3>
 
                     {!isOnline && (
-                        <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
-                            <span className="text-amber-600 mt-0.5">⚠️</span>
-                            <p className="text-xs text-amber-800"><strong>Офлайн-режим:</strong> Загрузка новых документов недоступна.</p>
+                        <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 rounded-xl flex items-start gap-2">
+                            <span className="text-amber-600 dark:text-amber-400 mt-0.5">⚠️</span>
+                            <p className="text-xs text-amber-800 dark:text-amber-300"><strong>Офлайн-режим:</strong> Загрузка новых документов недоступна.</p>
                         </div>
                     )}
 
@@ -357,17 +357,17 @@ const DocumentsModal = ({
                             {customer.documents.map(doc => {
                                 const fileUrl = doc.fileUrl.startsWith('http') ? doc.fileUrl : `${window.location.origin}${doc.fileUrl}`;
                                 return (
-                                    <div key={doc.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors group">
+                                    <div key={doc.id} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group">
                                         <div
-                                            className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${doc.fileType === 'pdf' ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600 cursor-pointer'}`}
+                                            className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${doc.fileType === 'pdf' ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 cursor-pointer'}`}
                                             onClick={() => handleViewDocument(doc)}
                                         >
                                             {doc.fileType === 'pdf' ? ICONS.File : ICONS.Image}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-slate-800 truncate">{doc.name}</p>
+                                            <p className="text-sm font-medium text-slate-800 dark:text-white truncate">{doc.name}</p>
                                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                                <span className="text-[10px] text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">
+                                                <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-200 dark:bg-slate-600 px-1.5 py-0.5 rounded">
                                                     {doc.category === 'passport' && '🪪 Паспорт'}
                                                     {doc.category === 'guarantor' && '🤝 Поручительство'}
                                                     {doc.category === 'contract' && '📄 Договор'}
@@ -375,15 +375,15 @@ const DocumentsModal = ({
                                                     {doc.category === 'other' && '📎 Другое'}
                                                 </span>
                                                 {doc._isTemp || doc.fileUrl?.startsWith('temp_doc_') ? (
-                                                    <span className="text-[10px] text-amber-600 bg-amber-100 px-2 py-0.5 rounded">⏳ Ожидает</span>
+                                                    <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded">⏳ Ожидает</span>
                                                 ) : doc.fileSize ? (
-                                                    <span className="text-[10px] text-slate-400">{formatFileSize(doc.fileSize)}</span>
+                                                    <span className="text-[10px] text-slate-400 dark:text-slate-500">{formatFileSize(doc.fileSize)}</span>
                                                 ) : null}
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-1 flex-shrink-0">
                                             {doc.fileType === 'pdf' && (
-                                                <a href={fileUrl} download={doc.name} className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors" title="Скачать PDF" onClick={(e) => e.stopPropagation()}>
+                                                <a href={fileUrl} download={doc.name} className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors" title="Скачать PDF" onClick={(e) => e.stopPropagation()}>
                                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                                                         <polyline points="7 10 12 15 17 10"/>
@@ -392,7 +392,7 @@ const DocumentsModal = ({
                                                 </a>
                                             )}
                                             {doc.fileType === 'image' && (
-                                                <button onClick={() => handleViewDocument(doc)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-200 rounded-lg transition-colors" title="Просмотреть">
+                                                <button onClick={() => handleViewDocument(doc)} className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors" title="Просмотреть">
                                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                                                         <circle cx="12" cy="12" r="3"/>
@@ -407,7 +407,7 @@ const DocumentsModal = ({
                                                         onUpdate({...customer, documents: updatedDocs});
                                                     }
                                                 }}
-                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                                                 disabled={!isOnline && !(doc._isTemp || doc.fileUrl?.startsWith('temp_doc_'))}
                                                 title="Удалить"
                                             >
@@ -419,35 +419,35 @@ const DocumentsModal = ({
                             })}
                         </div>
                     ) : (
-                        <div className="text-center py-8 text-slate-400 text-sm">
+                        <div className="text-center py-8 text-slate-400 dark:text-slate-500 text-sm">
                             <div className="text-4xl mb-2">📂</div>
                             <p>Документов пока нет</p>
                         </div>
                     )}
 
-                    <div className="border-t border-slate-100 pt-4">
+                    <div className="border-t border-slate-100 dark:border-slate-700 pt-4">
                        <details className="group">
-                            <summary className={`flex items-center gap-2 text-sm font-medium cursor-pointer list-none ${!isOnline ? 'text-slate-400' : 'text-indigo-600'}`}>
+                            <summary className={`flex items-center gap-2 text-sm font-medium cursor-pointer list-none ${!isOnline ? 'text-slate-400 dark:text-slate-500' : 'text-indigo-600 dark:text-indigo-400'}`}>
                                 <span className={`transition-transform ${!isOnline ? '' : 'group-open:rotate-90'}`}>▶</span> Добавить документ
                             </summary>
-                            <div className="mt-3 space-y-3 p-3 bg-slate-50 rounded-xl">
-                                <select className="w-full p-2.5 border border-slate-200 rounded-lg outline-none text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400" id="doc-category-modal" disabled={!isOnline}>
+                            <div className="mt-3 space-y-3 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl">
+                                <select className="w-full p-2.5 border border-slate-200 dark:border-slate-600 rounded-lg outline-none text-sm bg-white dark:bg-slate-900 dark:text-white disabled:bg-slate-100 dark:disabled:bg-slate-700 disabled:text-slate-400" id="doc-category-modal" disabled={!isOnline}>
                                     <option value="passport">🪪 Паспорт</option>
                                     <option value="guarantor">🤝 Поручительство</option>
                                     <option value="contract">📄 Договор</option>
                                     <option value="photo">📷 Фото клиента</option>
                                     <option value="other">📎 Другое</option>
                                 </select>
-                                <input type="file" accept="image/*,.pdf" className="w-full text-sm text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 disabled:file:bg-slate-100 disabled:file:text-slate-400 disabled:file:cursor-not-allowed" id="doc-file-modal" disabled={!isOnline}/>
-                                <button type="button" onClick={handleAddDocument} disabled={!isOnline || isUploading} className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${!isOnline ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : isUploading ? 'bg-indigo-400 text-white cursor-wait' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
+                                <input type="file" accept="image/*,.pdf" className="w-full text-sm text-slate-500 dark:text-slate-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 dark:file:bg-indigo-900/30 file:text-indigo-600 dark:file:text-indigo-400 hover:file:bg-indigo-100 dark:hover:file:bg-indigo-900/50 disabled:file:bg-slate-100 dark:disabled:file:bg-slate-700 disabled:file:text-slate-400" id="doc-file-modal" disabled={!isOnline}/>
+                                <button type="button" onClick={handleAddDocument} disabled={!isOnline || isUploading} className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${!isOnline ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed' : isUploading ? 'bg-indigo-400 text-white cursor-wait' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
                                     {isUploading ? (<><span className="animate-spin">⏳</span> Загрузка...</>) : !isOnline ? ('📴 Недоступно офлайн') : ('Прикрепить документ')}
                                 </button>
                             </div>
                         </details>
                     </div>
 
-                    <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 sticky bottom-0 bg-white">
-                        <button type="button" onClick={handleClose} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">Закрыть</button>
+                    <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 sticky bottom-0 bg-white dark:bg-slate-800">
+                        <button type="button" onClick={handleClose} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold">Закрыть</button>
                     </div>
                 </div>
             </div>
@@ -461,14 +461,14 @@ const DocumentsModal = ({
                                 <line x1="6" y1="6" x2="18" y2="18"/>
                             </svg>
                         </button>
-                        <div className="bg-white rounded-2xl overflow-hidden shadow-2xl">
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden shadow-2xl">
                             <img src={selectedDocument.fileUrl} alt={selectedDocument.name} className="w-full h-auto max-h-[80vh] object-contain"/>
-                            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                            <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 flex items-center justify-between">
                                 <div>
-                                    <p className="font-medium text-slate-800">{selectedDocument.name}</p>
-                                    <p className="text-xs text-slate-500">{formatFileSize(selectedDocument.fileSize || 0)} • {new Date(selectedDocument.uploadedAt).toLocaleDateString('ru-RU')}</p>
+                                    <p className="font-medium text-slate-800 dark:text-white">{selectedDocument.name}</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">{formatFileSize(selectedDocument.fileSize || 0)} • {new Date(selectedDocument.uploadedAt).toLocaleDateString('ru-RU')}</p>
                                 </div>
-                                <a href={selectedDocument.fileUrl} download={selectedDocument.name} className="text-indigo-600 text-sm font-medium hover:text-indigo-700 flex items-center gap-1">
+                                <a href={selectedDocument.fileUrl} download={selectedDocument.name} className="text-indigo-600 dark:text-indigo-400 text-sm font-medium hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                                         <polyline points="7 10 12 15 17 10"/>
@@ -747,101 +747,101 @@ ${customer.name}!
 
         return (
             <div className="space-y-4 animate-fade-in pb-20 relative">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
+                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-4 bg-white dark:bg-slate-900 sticky top-0 z-10 pt-2">
                     <div className="flex items-center gap-3">
-                        <button onClick={() => setSelectedSaleId(null)} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
-                        <h2 className="text-xl font-bold text-slate-800 truncate">{selectedSale.productName}</h2>
+                        <button onClick={() => setSelectedSaleId(null)} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">{ICONS.Back}</button>
+                        <h2 className="text-xl font-bold text-slate-800 dark:text-white truncate">{selectedSale.productName}</h2>
                     </div>
-                    <button onClick={handleSendSaleReminder} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
+                    <button onClick={handleSendSaleReminder} className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
                         {ICONS.Send} WhatsApp
                     </button>
                 </div>
 
-                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-3">
+                <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 space-y-3">
                     {firstPaymentDate && (
-                        <div className="flex justify-between border-b border-slate-50 pb-2">
-                            <span className="text-slate-500">Первый платеж</span>
-                            <span className="font-medium text-slate-800">{formatDate(firstPaymentDate)}</span>
+                        <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2">
+                            <span className="text-slate-500 dark:text-slate-400">Первый платеж</span>
+                            <span className="font-medium text-slate-800 dark:text-white">{formatDate(firstPaymentDate)}</span>
                         </div>
                     )}
-                    <div className="flex justify-between border-b border-slate-50 pb-2">
-                        <span className="text-slate-500">Цена закупа</span>
-                        <span className="font-medium text-slate-800">{formatCurrency(selectedSale.buyPrice, appSettings.showCents)} ₽</span>
+                    <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2">
+                        <span className="text-slate-500 dark:text-slate-400">Цена закупа</span>
+                        <span className="font-medium text-slate-800 dark:text-white">{formatCurrency(selectedSale.buyPrice, appSettings.showCents)} ₽</span>
                     </div>
-                    <div className="flex justify-between border-b border-slate-50 pb-2">
-                        <span className="text-slate-500">Цена в рассрочку</span>
-                        <span className="font-medium text-slate-800">{formatCurrency(selectedSale.totalAmount, appSettings.showCents)} ₽</span>
+                    <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2">
+                        <span className="text-slate-500 dark:text-slate-400">Цена в рассрочку</span>
+                        <span className="font-medium text-slate-800 dark:text-white">{formatCurrency(selectedSale.totalAmount, appSettings.showCents)} ₽</span>
                     </div>
                     {selectedSale.downPayment > 0 && (
-                        <div className="flex justify-between border-b border-slate-50 pb-2">
-                            <span className="text-slate-500">Первый взнос</span>
-                            <span className="font-bold text-slate-800">{formatCurrency(selectedSale.downPayment, appSettings.showCents)} ₽</span>
+                        <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2">
+                            <span className="text-slate-500 dark:text-slate-400">Первый взнос</span>
+                            <span className="font-bold text-slate-800 dark:text-white">{formatCurrency(selectedSale.downPayment, appSettings.showCents)} ₽</span>
                         </div>
                     )}
                     {selectedSale.installments > 0 && (
-                        <div className="flex justify-between border-b border-slate-50 pb-2">
-                            <span className="text-slate-500">Ежемесячный платеж</span>
-                            <span className="font-bold text-indigo-600">
+                        <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2">
+                            <span className="text-slate-500 dark:text-slate-400">Ежемесячный платеж</span>
+                            <span className="font-bold text-indigo-600 dark:text-indigo-400">
                                 {formatCurrency(Math.round((selectedSale.totalAmount - selectedSale.downPayment) / selectedSale.installments), appSettings.showCents)} ₽
                             </span>
                         </div>
                     )}
-                    
-                    <div className="flex justify-between border-b border-slate-50 pb-2">
-                        <span className="text-slate-500">Остаток долга</span>
-                        <span className={`font-bold ${isClosed ? 'text-emerald-600' : 'text-amber-600'}`}>
+
+                    <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2">
+                        <span className="text-slate-500 dark:text-slate-400">Остаток долга</span>
+                        <span className={`font-bold ${isClosed ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
                             {isClosed ? '0 ₽' : `${formatCurrency(selectedSale.remainingAmount, appSettings.showCents)} ₽`}
                         </span>
                     </div>
-                    
-                    <div className="flex justify-between border-b border-slate-50 pb-2">
-                        <span className="text-slate-500">Оплачено клиентом</span>
-                        <span className="font-bold text-emerald-600">{formatCurrency(totalRealPaid, appSettings.showCents)} ₽</span>
+
+                    <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2">
+                        <span className="text-slate-500 dark:text-slate-400">Оплачено клиентом</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(totalRealPaid, appSettings.showCents)} ₽</span>
                     </div>
                     
                     {totalDiscounts > 0 && (
-                        <div className="flex justify-between border-b border-slate-50 pb-2 bg-amber-50/50 -mx-5 px-5 py-2">
-                            <span className="text-amber-800 font-medium flex items-center gap-1">
+                        <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2 bg-amber-50/50 dark:bg-amber-900/20 -mx-5 px-5 py-2">
+                            <span className="text-amber-800 dark:text-amber-300 font-medium flex items-center gap-1">
                                 🎁 Предоставлено скидок
                             </span>
-                            <span className="font-bold text-amber-700">−{formatCurrency(totalDiscounts, appSettings.showCents)} ₽</span>
+                            <span className="font-bold text-amber-700 dark:text-amber-400">−{formatCurrency(totalDiscounts, appSettings.showCents)} ₽</span>
                         </div>
                     )}
-                    
+
                     {selectedSale.guarantorName && (
                         <>
-                            <div className="flex justify-between border-b border-slate-50 pb-2 pt-2">
-                                <span className="text-slate-500">Поручитель</span>
-                                <span className="font-medium text-slate-800">{selectedSale.guarantorName}</span>
+                            <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2 pt-2">
+                                <span className="text-slate-500 dark:text-slate-400">Поручитель</span>
+                                <span className="font-medium text-slate-800 dark:text-white">{selectedSale.guarantorName}</span>
                             </div>
                             {selectedSale.guarantorPhone && (
-                                <div className="flex justify-between border-b border-slate-50 pb-2">
-                                    <span className="text-slate-500">Телефон поручителя</span>
-                                    <span className="font-medium text-slate-800">{selectedSale.guarantorPhone}</span>
+                                <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2">
+                                    <span className="text-slate-500 dark:text-slate-400">Телефон поручителя</span>
+                                    <span className="font-medium text-slate-800 dark:text-white">{selectedSale.guarantorPhone}</span>
                                 </div>
                             )}
                         </>
                     )}
-                    <div className="pt-2 mt-2 border-t border-slate-100 grid grid-cols-2 gap-4">
-                        <div className="bg-emerald-50 p-3 rounded-xl">
-                            <p className="text-xs text-emerald-600 mb-1">Прибыль (Общ)</p>
-                            <p className="font-bold text-emerald-800">{formatCurrency(profit, appSettings.showCents)} ₽</p>
+                    <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-700 grid grid-cols-2 gap-4">
+                        <div className="bg-emerald-50 dark:bg-emerald-900/30 p-3 rounded-xl">
+                            <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-1">Прибыль (Общ)</p>
+                            <p className="font-bold text-emerald-800 dark:text-emerald-300">{formatCurrency(profit, appSettings.showCents)} ₽</p>
                         </div>
-                        <div className="bg-blue-50 p-3 rounded-xl">
-                            <p className="text-xs text-blue-600 mb-1">Прибыль / мес</p>
-                            <p className="font-bold text-blue-800">~{formatCurrency(Math.round(monthlyProfit), appSettings.showCents)} ₽</p>
+                        <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded-xl">
+                            <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Прибыль / мес</p>
+                            <p className="font-bold text-blue-800 dark:text-blue-300">~{formatCurrency(Math.round(monthlyProfit), appSettings.showCents)} ₽</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 bg-emerald-50/50 flex justify-between items-center">
-                        <h3 className="font-bold text-emerald-800">История поступлений</h3>
-                        <span className="bg-emerald-100 text-emerald-700 text-xs px-2 py-1 rounded-full font-bold">{paidPayments.length}</span>
+                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-emerald-50/50 dark:bg-emerald-900/20 flex justify-between items-center">
+                        <h3 className="font-bold text-emerald-800 dark:text-emerald-300">История поступлений</h3>
+                        <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs px-2 py-1 rounded-full font-bold">{paidPayments.length}</span>
                     </div>
-                    {paidPayments.length === 0 ? <div className="p-6 text-center text-slate-400 text-sm">Нет поступлений</div> : (
+                    {paidPayments.length === 0 ? <div className="p-6 text-center text-slate-400 dark:text-slate-500 text-sm">Нет поступлений</div> : (
                         <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-slate-500 uppercase bg-slate-50">
+                            <thead className="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-700/50">
                                 <tr>
                                     <th className="px-4 py-3">Дата</th>
                                     <th className="px-4 py-3">Сумма</th>
@@ -851,22 +851,22 @@ ${customer.name}!
                             <tbody>
                                 {paidPayments.map((payment) => {
                                     return (
-                                        <tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50">
-                                            <td className="px-4 py-3 text-slate-700">{formatDate(payment.date)}</td>
+                                        <tr key={payment.id} className="border-b border-slate-50 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                            <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{formatDate(payment.date)}</td>
                                             <td className="px-4 py-3">
-                                                <div className="font-bold text-emerald-600">
+                                                <div className="font-bold text-emerald-600 dark:text-emerald-400">
                                                     +{formatCurrency(payment.amount, appSettings.showCents)} ₽
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 text-right">
                                                 <div className="flex justify-end gap-2">
                                                     {(!isEmployee || user?.permissions?.canEdit) && (
-                                                        <button onClick={() => handleEditClick(payment)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded">
+                                                        <button onClick={() => handleEditClick(payment)} className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded">
                                                             {ICONS.Edit}
                                                         </button>
                                                     )}
                                                     {(!isEmployee || user?.permissions?.canDelete) && (
-                                                        <button onClick={() => handleDeleteClick(payment.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded">
+                                                        <button onClick={() => handleDeleteClick(payment.id)} className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded">
                                                             {ICONS.Delete}
                                                         </button>
                                                     )}
@@ -880,17 +880,17 @@ ${customer.name}!
                     )}
                 </div>
 
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 bg-slate-50">
-                        <h3 className="font-bold text-slate-700">График платежей</h3>
+                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50">
+                        <h3 className="font-bold text-slate-700 dark:text-slate-300">График платежей</h3>
                     </div>
                     {paymentSchedule.length === 0 ? (
-                        <div className="p-6 text-center text-slate-400 text-sm">
+                        <div className="p-6 text-center text-slate-400 dark:text-slate-500 text-sm">
                             {isClosed ? '✅ Договор полностью закрыт! 🎉' : 'Все оплачено! 🎉'}
                         </div>
                     ) : (
                         <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-slate-500 uppercase bg-slate-50">
+                            <thead className="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-700/50">
                                 <tr>
                                     <th className="px-4 py-3">Дата</th>
                                     <th className="px-4 py-3">Осталось</th>
@@ -899,11 +899,11 @@ ${customer.name}!
                             </thead>
                             <tbody>
                                 {paymentSchedule.map((payment) => (
-                                    <tr key={payment.id} className="border-b border-slate-50 hover:bg-slate-50">
-                                        <td className={`px-4 py-3 ${new Date(payment.date) < new Date() ? 'text-red-500 font-bold' : 'text-slate-700'}`}>
+                                    <tr key={payment.id} className="border-b border-slate-50 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                                        <td className={`px-4 py-3 ${new Date(payment.date) < new Date() ? 'text-red-500 dark:text-red-400 font-bold' : 'text-slate-700 dark:text-slate-300'}`}>
                                             {formatDate(payment.date)}
                                         </td>
-                                        <td className="px-4 py-3 font-bold text-slate-800">
+                                        <td className="px-4 py-3 font-bold text-slate-800 dark:text-white">
                                             {formatCurrency(payment.amountToPay, appSettings.showCents)} ₽
                                         </td>
                                         <td className="px-4 py-3">
@@ -914,7 +914,7 @@ ${customer.name}!
                                                         : Math.round(payment.amountToPay);
                                                     onInitiatePayment(selectedSale, {...payment, amount: roundedAmount});
                                                 }}
-                                                className="text-indigo-600 font-bold text-xs border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition-colors"
+                                                className="text-indigo-600 dark:text-indigo-400 font-bold text-xs border border-indigo-200 dark:border-indigo-800 px-3 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition-colors"
                                             >
                                                 Принять
                                             </button>
@@ -928,12 +928,12 @@ ${customer.name}!
 
                 {editingPayment && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-                        <div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl">
-                            <h3 className="text-lg font-bold text-slate-800 mb-4">Изменить дату платежа</h3>
-                            <p className="text-sm text-slate-500 mb-4">Сумма: {formatCurrency(editingPayment.amount, appSettings.showCents)} ₽</p>
-                            <input type="date" className="w-full p-3 border border-slate-300 rounded-xl mb-6 outline-none" value={editDate} onChange={(e) => setEditDate(e.target.value)}/>
+                        <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-2xl shadow-xl">
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">Изменить дату платежа</h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Сумма: {formatCurrency(editingPayment.amount, appSettings.showCents)} ₽</p>
+                            <input type="date" className="w-full p-3 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl mb-6 outline-none" value={editDate} onChange={(e) => setEditDate(e.target.value)}/>
                             <div className="flex gap-3">
-                                <button onClick={() => setEditingPayment(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Отмена</button>
+                                <button onClick={() => setEditingPayment(null)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-medium text-slate-600 dark:text-slate-300">Отмена</button>
                                 <button onClick={saveEdit} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
                             </div>
                         </div>
@@ -941,12 +941,12 @@ ${customer.name}!
                 )}
                 {deletingPaymentId && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-                        <div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl">
-                            <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">{ICONS.Delete}</div>
-                            <h3 className="text-lg font-bold text-slate-800 text-center mb-2">Отменить платеж?</h3>
-                            <p className="text-center text-slate-500 mb-6 text-sm">Сумма вернется в долг, а статус платежа изменится на "Не оплачено".</p>
+                        <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-2xl shadow-xl">
+                            <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-4">{ICONS.Delete}</div>
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-white text-center mb-2">Отменить платеж?</h3>
+                            <p className="text-center text-slate-500 dark:text-slate-400 mb-6 text-sm">Сумма вернется в долг, а статус платежа изменится на "Не оплачено".</p>
                             <div className="flex gap-3">
-                                <button onClick={() => setDeletingPaymentId(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-medium text-slate-600">Нет</button>
+                                <button onClick={() => setDeletingPaymentId(null)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-medium text-slate-600 dark:text-slate-300">Нет</button>
                                 <button onClick={confirmDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold">Да, отменить</button>
                             </div>
                         </div>
@@ -958,31 +958,31 @@ ${customer.name}!
 
     return (
         <div className="space-y-4 animate-fade-in pb-20">
-            <div className="flex items-center gap-3 border-b border-slate-200 pb-4 bg-white sticky top-0 z-10 pt-2">
-                <button onClick={onBack} className="text-slate-500 hover:text-slate-800">{ICONS.Back}</button>
-                <h2 className="text-xl font-bold text-slate-800">{customer.name}</h2>
+            <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 bg-white dark:bg-slate-900 sticky top-0 z-10 pt-2">
+                <button onClick={onBack} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">{ICONS.Back}</button>
+                <h2 className="text-xl font-bold text-slate-800 dark:text-white">{customer.name}</h2>
             </div>
-            <div className="flex border-b border-slate-200">
-                <button onClick={() => setActiveTab('INFO')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INFO' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>Информация</button>
-                <button onClick={() => setActiveTab('INSTALLMENTS')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INSTALLMENTS' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>Рассрочки</button>
+            <div className="flex border-b border-slate-200 dark:border-slate-700">
+                <button onClick={() => setActiveTab('INFO')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INFO' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400'}`}>Информация</button>
+                <button onClick={() => setActiveTab('INSTALLMENTS')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INSTALLMENTS' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400'}`}>Рассрочки</button>
             </div>
             {activeTab === 'INFO' && (
                 <div className="space-y-4 pt-2">
                     <div className="flex justify-center">
-                        <div className="w-32 h-32 rounded-full bg-slate-200 overflow-hidden border-4 border-white shadow-lg">
+                        <div className="w-32 h-32 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden border-4 border-white dark:border-slate-800 shadow-lg">
                             {customer.photo ?
                                 <img src={customer.photo} alt={customer.name} className="w-full h-full object-cover"/> :
                                 <div className="w-full h-full flex items-center justify-center text-slate-400 text-4xl font-bold">{customer.name.charAt(0)}</div>
                             }
                         </div>
                     </div>
-                    <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 space-y-4 relative">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 space-y-4 relative">
                         {(onUpdateCustomer || onDeleteCustomer) && (
                             <div className="absolute top-4 right-4 z-20">
                                 <button onClick={(e) => {
                                     e.stopPropagation();
                                     setShowActionsMenu(!showActionsMenu);
-                                }} className="p-2 bg-slate-50 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors" title="Действия">
+                                }} className="p-2 bg-slate-50 dark:bg-slate-700 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors" title="Действия">
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                         <circle cx="12" cy="6" r="2"/>
                                         <circle cx="12" cy="12" r="2"/>
@@ -992,36 +992,36 @@ ${customer.name}!
                                 {showActionsMenu && (
                                     <>
                                         <div className="fixed inset-0 z-10" onClick={() => setShowActionsMenu(false)}/>
-                                        <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-20 animate-fade-in">
+                                        <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 py-1 z-20 animate-fade-in">
                                             {onUpdateCustomer && (!isEmployee || user?.permissions?.canEdit) && (
                                                 <button onClick={() => {
                                                     setShowActionsMenu(false);
                                                     setShowEditModal(true);
-                                                }} className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
-                                                    <span className="text-indigo-600">{ICONS.Edit}</span> Редактировать
+                                                }} className="w-full px-4 py-2.5 text-left text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2">
+                                                    <span className="text-indigo-600 dark:text-indigo-400">{ICONS.Edit}</span> Редактировать
                                                 </button>
                                             )}
                                             {/* 🔹 НОВОЕ: пункт "Документы" в меню действий */}
                                             <button onClick={() => {
                                                 setShowActionsMenu(false);
                                                 setShowDocumentsModal(true);
-                                            }} className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
-                                                <span className="text-slate-600">{ICONS.File}</span>
+                                            }} className="w-full px-4 py-2.5 text-left text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2">
+                                                <span className="text-slate-600 dark:text-slate-300">{ICONS.File}</span>
                                                 <span>Документы</span>
                                                 {customer.documents && customer.documents.length > 0 && (
-                                                    <span className="ml-auto text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full font-medium">
+                                                    <span className="ml-auto text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-full font-medium">
                                                         {customer.documents.length}
                                                     </span>
                                                 )}
                                             </button>
                                             {onUpdateCustomer && onDeleteCustomer && (!isEmployee || (user?.permissions?.canEdit && user?.permissions?.canDelete)) && (
-                                                <div className="my-1 border-t border-slate-100"/>
+                                                <div className="my-1 border-t border-slate-100 dark:border-slate-700"/>
                                             )}
                                             {onDeleteCustomer && (!isEmployee || user?.permissions?.canDelete) && (
                                                 <button onClick={() => {
                                                     setShowActionsMenu(false);
                                                     handleDeleteRequest();
-                                                }} className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
+                                                }} className="w-full px-4 py-2.5 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-2">
                                                     <span>{ICONS.Delete}</span> Удалить
                                                 </button>
                                             )}
@@ -1032,37 +1032,37 @@ ${customer.name}!
                         )}
                         <div>
                             <label className="text-xs text-slate-400 uppercase">Телефон</label>
-                            <p className="text-lg font-medium text-slate-800">{customer.phone}</p>
+                            <p className="text-lg font-medium text-slate-800 dark:text-white">{customer.phone}</p>
                         </div>
                         {customer.address && (
                             <div>
                                 <label className="text-xs text-slate-400 uppercase">Адрес</label>
-                                <p className="text-base font-medium text-slate-800">{customer.address}</p>
+                                <p className="text-base font-medium text-slate-800 dark:text-white">{customer.address}</p>
                             </div>
                         )}
                         {(customer.passportSeries || customer.passportNumber) && (
                             <div>
                                 <label className="text-xs text-slate-400 uppercase flex items-center gap-1">Паспорт</label>
-                                <p className="text-base font-medium text-slate-800 font-mono tracking-wider">
+                                <p className="text-base font-medium text-slate-800 dark:text-white font-mono tracking-wider">
                                     {customer.passportSeries} {customer.passportNumber}
                                 </p>
                                 {customer.passportIssuedBy && (
-                                    <p className="text-xs text-slate-500 mt-0.5 leading-snug">{customer.passportIssuedBy}</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">{customer.passportIssuedBy}</p>
                                 )}
                             </div>
                         )}
                         <div>
                             <label className="text-xs text-slate-400 uppercase">Рейтинг доверия</label>
                             <div className="flex items-center gap-2 mt-1">
-                                <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
+                                <div className="flex-1 bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
                                     <div className="bg-emerald-500 h-full" style={{width: `${customer.trustScore}%`}}></div>
                                 </div>
-                                <span className="text-sm font-bold">{customer.trustScore}%</span>
+                                <span className="text-sm font-bold dark:text-white">{customer.trustScore}%</span>
                             </div>
                         </div>
                         <div>
                             <label className="text-xs text-slate-400 uppercase">Заметки</label>
-                            <p className="text-sm text-slate-600 mt-1">{customer.notes || 'Нет заметок'}</p>
+                            <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">{customer.notes || 'Нет заметок'}</p>
                         </div>
                         <div>
                             <label className="text-xs text-slate-400 uppercase">Напоминания WhatsApp</label>
@@ -1075,15 +1075,15 @@ ${customer.name}!
                     {/* 🔹 Компактная ссылка на документы вместо полного списка */}
                     <button
                         onClick={() => setShowDocumentsModal(true)}
-                        className="w-full bg-white rounded-xl p-4 shadow-sm border border-slate-100 flex items-center justify-between hover:bg-slate-50 transition-colors"
+                        className="w-full bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                     >
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center">
+                            <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center">
                                 {ICONS.File}
                             </div>
                             <div className="text-left">
-                                <p className="font-bold text-slate-800">Документы</p>
-                                <p className="text-xs text-slate-500">{customer.documents?.length || 0} файлов</p>
+                                <p className="font-bold text-slate-800 dark:text-white">Документы</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">{customer.documents?.length || 0} файлов</p>
                             </div>
                         </div>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400">
@@ -1105,22 +1105,22 @@ ${customer.name}!
                         const investorName = getInvestorInfo(sale);
                         const isClosed = sale.status === 'COMPLETED' || sale.remainingAmount <= 0;
                         return (
-                            <div key={sale.id} onClick={() => setSelectedSaleId(sale.id)} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm active:bg-slate-50 cursor-pointer">
+                            <div key={sale.id} onClick={() => setSelectedSaleId(sale.id)} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm active:bg-slate-50 dark:active:bg-slate-700 cursor-pointer">
                                 <div className="flex justify-between items-start mb-2">
-                                    <h3 className="font-bold text-slate-800">{sale.productName}</h3>
-                                    <span className={`text-xs px-2 py-1 rounded-full ${isClosed ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                                    <h3 className="font-bold text-slate-800 dark:text-white">{sale.productName}</h3>
+                                    <span className={`text-xs px-2 py-1 rounded-full ${isClosed ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'}`}>
                                         {isClosed ? 'Закрыто' : 'Активно'}
                                     </span>
                                 </div>
-                                <p className="text-xs text-slate-500 mb-2">от {formatDate(sale.startDate)}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">от {formatDate(sale.startDate)}</p>
                                 {investorName && (
                                     <div className="mb-2">
-                                        <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold">Инвестор: {investorName}</span>
+                                        <span className="text-[10px] bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-2 py-0.5 rounded font-bold">Инвестор: {investorName}</span>
                                     </div>
                                 )}
-                                <div className="flex justify-between text-sm mt-3 pt-3 border-t border-slate-100">
-                                    <span className="text-slate-500">Остаток:</span>
-                                    <span className={`font-bold ${isClosed ? 'text-emerald-600' : 'text-slate-800'}`}>
+                                <div className="flex justify-between text-sm mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+                                    <span className="text-slate-500 dark:text-slate-400">Остаток:</span>
+                                    <span className={`font-bold ${isClosed ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-white'}`}>
                                         {isClosed ? '0 ₽' : `${formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽`}
                                     </span>
                                 </div>
@@ -1143,34 +1143,34 @@ ${customer.name}!
             )}
             {showDeleteModal && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-xl animate-scale-in">
-                        <div className="w-14 h-14 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">{ICONS.Delete}</div>
-                        <h3 className="text-lg font-bold text-slate-800 text-center mb-2">Удалить клиента?</h3>
-                        <p className="text-center text-slate-500 mb-6 text-sm">Это действие нельзя отменить. Все данные клиента будут удалены безвозвратно.</p>
+                    <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-2xl shadow-xl animate-scale-in">
+                        <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-4">{ICONS.Delete}</div>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-white text-center mb-2">Удалить клиента?</h3>
+                        <p className="text-center text-slate-500 dark:text-slate-400 mb-6 text-sm">Это действие нельзя отменить. Все данные клиента будут удалены безвозвратно.</p>
                         <div className="flex gap-3">
-                            <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition">Отмена</button>
-                            <button onClick={confirmDeleteCustomer} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition shadow-lg shadow-red-200">Да, удалить</button>
+                            <button onClick={() => setShowDeleteModal(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-600 transition">Отмена</button>
+                            <button onClick={confirmDeleteCustomer} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition shadow-lg shadow-red-200 dark:shadow-red-900/30">Да, удалить</button>
                         </div>
                     </div>
                 </div>
             )}
             {showBlockedDeleteModal && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => setShowBlockedDeleteModal(false)}>
-                    <div className="bg-white w-full max-w-sm p-6 rounded-2xl shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
-                        <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                    <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-2xl shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
+                        <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
                             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <circle cx="12" cy="12" r="10"/>
                                 <line x1="12" y1="8" x2="12" y2="12"/>
                                 <line x1="12" y1="16" x2="12.01" y2="16"/>
                             </svg>
                         </div>
-                        <h3 className="text-lg font-bold text-slate-800 text-center mb-1">Невозможно удалить</h3>
-                        <p className="text-center text-slate-500 mb-4 text-sm">У клиента <strong>{customer.name}</strong> есть активные договоры</p>
-                        <div className="bg-slate-50 rounded-xl p-4 mb-6 max-h-48 overflow-y-auto">
-                            <p className="text-xs font-medium text-slate-500 mb-2 uppercase">Привязанные договоры ({sales.filter(s => s.customerId === customer.id).length})</p>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-white text-center mb-1">Невозможно удалить</h3>
+                        <p className="text-center text-slate-500 dark:text-slate-400 mb-4 text-sm">У клиента <strong>{customer.name}</strong> есть активные договоры</p>
+                        <div className="bg-slate-50 dark:bg-slate-900 rounded-xl p-4 mb-6 max-h-48 overflow-y-auto">
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2 uppercase">Привязанные договоры ({sales.filter(s => s.customerId === customer.id).length})</p>
                             <ul className="space-y-2">
                                 {sales.filter(s => s.customerId === customer.id).map(contract => (
-                                    <li key={contract.id} className="flex items-center gap-2 text-sm text-slate-700 bg-white px-3 py-2 rounded-lg border border-slate-100">
+                                    <li key={contract.id} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 px-3 py-2 rounded-lg border border-slate-100 dark:border-slate-700">
                                         <span className="text-slate-400 flex-shrink-0">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -1182,13 +1182,13 @@ ${customer.name}!
                                 ))}
                             </ul>
                         </div>
-                        <p className="text-center text-slate-500 text-sm mb-6">Сначала удалите привязанные договоры.</p>
+                        <p className="text-center text-slate-500 dark:text-slate-400 text-sm mb-6">Сначала удалите привязанные договоры.</p>
                         <div className="flex gap-3">
                             <button onClick={() => {
                                 setShowBlockedDeleteModal(false);
                                 setActiveTab('INSTALLMENTS');
-                            }} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Перейти к договорам</button>
-                            <button onClick={() => setShowBlockedDeleteModal(false)} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">Понятно</button>
+                            }} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">Перейти к договорам</button>
+                            <button onClick={() => setShowBlockedDeleteModal(false)} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">Понятно</button>
                         </div>
                     </div>
                 </div>

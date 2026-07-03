@@ -36,22 +36,22 @@ const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubm
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20" onClick={e => e.stopPropagation()}>
+            <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20 dark:border-slate-700/50" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-3 mb-6">
                     <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white shadow-lg">
                         {ICONS.Plus}
                     </div>
-                    <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-indigo-800 bg-clip-text text-transparent">Новый счет</h3>
+                    <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-indigo-800 dark:from-white dark:to-indigo-400 bg-clip-text text-transparent">Новый счет</h3>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <div className="space-y-2">
-                        <label className="block text-sm font-semibold text-slate-700">Название счета</label>
+                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Название счета</label>
                         <input
                             autoFocus
                             value={name}
                             onChange={e => setName(e.target.value)}
-                            className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                            className="w-full p-3.5 bg-slate-50 dark:bg-slate-900 dark:text-white border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
                             placeholder="Например: Касса 1"
                         />
                     </div>
@@ -60,7 +60,7 @@ const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubm
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all"
+                            className="flex-1 py-3.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-600 transition-all"
                         >
                             Отмена
                         </button>
@@ -89,22 +89,22 @@ const EditAccountModal = ({ account, onClose, onUpdate }: { account: Account, on
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20" onClick={e => e.stopPropagation()}>
+            <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20 dark:border-slate-700/50" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-3 mb-6">
                     <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-white shadow-lg">
                         {ICONS.Edit}
                     </div>
-                    <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-amber-800 bg-clip-text text-transparent">Редактировать счет</h3>
+                    <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-amber-800 dark:from-white dark:to-amber-400 bg-clip-text text-transparent">Редактировать счет</h3>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <div className="space-y-2">
-                        <label className="block text-sm font-semibold text-slate-700">Название счета</label>
+                        <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Название счета</label>
                         <input
                             autoFocus
                             value={name}
                             onChange={e => setName(e.target.value)}
-                            className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-100 transition-all"
+                            className="w-full p-3.5 bg-slate-50 dark:bg-slate-900 dark:text-white border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-100 transition-all"
                         />
                     </div>
 
@@ -112,7 +112,7 @@ const EditAccountModal = ({ account, onClose, onUpdate }: { account: Account, on
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all"
+                            className="flex-1 py-3.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-600 transition-all"
                         >
                             Отмена
                         </button>
@@ -176,7 +176,7 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, ap
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white/95 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-white/20" onClick={e => e.stopPropagation()}>
+            <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-white/20 dark:border-slate-700/50" onClick={e => e.stopPropagation()}>
                 <div className="p-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
                     <div className="flex items-center gap-3 mb-2">
                         <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
@@ -191,13 +191,13 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, ap
 
                 <div className="p-6 space-y-6 overflow-y-auto">
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 p-4 rounded-2xl">
-                            <p className="text-xs text-emerald-700 font-medium mb-1">Кэш в кассе</p>
-                            <p className="text-xl font-bold text-emerald-800">{formatCurrency(cashBalance, appSettings.showCents)} ₽</p>
+                        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-900/20 p-4 rounded-2xl">
+                            <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium mb-1">Кэш в кассе</p>
+                            <p className="text-xl font-bold text-emerald-800 dark:text-emerald-300">{formatCurrency(cashBalance, appSettings.showCents)} ₽</p>
                         </div>
-                        <div className="bg-gradient-to-br from-amber-50 to-amber-100 p-4 rounded-2xl">
-                            <p className="text-xs text-amber-700 font-medium mb-1">В товаре (Долги)</p>
-                            <p className="text-xl font-bold text-amber-800">{formatCurrency(receivables, appSettings.showCents)} ₽</p>
+                        <div className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-900/20 p-4 rounded-2xl">
+                            <p className="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">В товаре (Долги)</p>
+                            <p className="text-xl font-bold text-amber-800 dark:text-amber-300">{formatCurrency(receivables, appSettings.showCents)} ₽</p>
                         </div>
                     </div>
 
@@ -211,7 +211,7 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, ap
                     </div>
 
                     <div className="space-y-3">
-                        <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                        <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
                             <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>
                             Распределение долей
                         </h4>
@@ -224,28 +224,28 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, ap
                                 const profitShare = Math.max(0, equityValue - p.netCapital);
 
                                 return (
-                                    <div key={p.id} className="bg-white border border-slate-100 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all">
+                                    <div key={p.id} className="bg-white dark:bg-slate-700 border border-slate-100 dark:border-slate-600 p-4 rounded-2xl shadow-sm hover:shadow-md transition-all">
                                         <div className="flex justify-between items-center mb-3">
-                                            <span className="font-bold text-slate-800">{p.name}</span>
-                                            <span className="bg-indigo-100 text-indigo-700 text-xs px-3 py-1 rounded-full font-bold">
+                                            <span className="font-bold text-slate-800 dark:text-white">{p.name}</span>
+                                            <span className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-xs px-3 py-1 rounded-full font-bold">
                                                 {sharePercent.toFixed(1)}%
                                             </span>
                                         </div>
-                                        <div className="w-full bg-slate-100 h-2 rounded-full mb-4 overflow-hidden">
+                                        <div className="w-full bg-slate-100 dark:bg-slate-600 h-2 rounded-full mb-4 overflow-hidden">
                                             <div className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full transition-all" style={{width: `${sharePercent}%`}}></div>
                                         </div>
                                         <div className="grid grid-cols-2 text-sm gap-3">
                                             <div>
-                                                <span className="text-slate-400 text-xs block">Вложено</span>
-                                                <span className="font-medium text-slate-800">{formatCurrency(p.netCapital, appSettings.showCents)} ₽</span>
+                                                <span className="text-slate-400 dark:text-slate-400 text-xs block">Вложено</span>
+                                                <span className="font-medium text-slate-800 dark:text-white">{formatCurrency(p.netCapital, appSettings.showCents)} ₽</span>
                                             </div>
                                             <div className="text-right">
-                                                <span className="text-slate-400 text-xs block">Доля в активах</span>
-                                                <span className="font-bold text-slate-800">{formatCurrency(Math.round(equityValue), appSettings.showCents)} ₽</span>
+                                                <span className="text-slate-400 dark:text-slate-400 text-xs block">Доля в активах</span>
+                                                <span className="font-bold text-slate-800 dark:text-white">{formatCurrency(Math.round(equityValue), appSettings.showCents)} ₽</span>
                                             </div>
                                         </div>
                                         {profitShare > 0 && (
-                                            <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between text-sm">
+                                            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-600 flex justify-between text-sm">
                                                 <span className="text-emerald-600 font-medium">Доступная прибыль</span>
                                                 <span className="font-bold text-emerald-600">+{formatCurrency(Math.round(profitShare), appSettings.showCents)} ₽</span>
                                             </div>
@@ -257,10 +257,10 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, ap
                     </div>
                 </div>
 
-                <div className="p-4 border-t border-slate-100 bg-slate-50">
+                <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
                     <button
                         onClick={onClose}
-                        className="w-full py-3.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-100 transition-all"
+                        className="w-full py-3.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
                     >
                         Закрыть
                     </button>
@@ -313,22 +313,22 @@ const AccountActionModal = ({
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="bg-white dark:bg-slate-800 w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                 <div className={`h-2 bg-gradient-to-r ${getAccountTypeColor(account.type)}`}></div>
 
                 <div className="p-5">
-                    <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-100">
+                    <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-100 dark:border-slate-700">
                         <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${getAccountTypeColor(account.type)} flex items-center justify-center text-white text-xl shadow-lg`}>
                             {getAccountTypeIcon(account.type)}
                         </div>
                         <div className="flex-1">
-                            <h3 className="font-bold text-lg text-slate-800">{account.name}</h3>
-                            <p className="text-xs text-slate-500">
+                            <h3 className="font-bold text-lg text-slate-800 dark:text-white">{account.name}</h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
                                 {account.type === 'MAIN' ? 'Основной счет' :
                                  account.type === 'INVESTOR' ? 'Счет инвестора' :
                                  account.type === 'SHARED' ? 'Общий счет' : 'Дополнительный счет'}
                             </p>
-                            <p className="text-sm font-bold text-indigo-600 mt-1">
+                            <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-1">
                                 {formatCurrency(balance, appSettings.showCents)} ₽
                             </p>
                         </div>
@@ -337,28 +337,28 @@ const AccountActionModal = ({
                     <div className="space-y-1">
                         <button
                             onClick={() => { onSelectAccount(account.id); onClose(); }}
-                            className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 rounded-xl flex items-center gap-3 transition-all group"
+                            className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-xl flex items-center gap-3 transition-all group"
                         >
-                            <span className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 group-hover:bg-indigo-100 transition-all">
+                            <span className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/50 transition-all">
                                 {ICONS.List}
                             </span>
                             <div>
                                 <span className="font-medium">История операций</span>
-                                <p className="text-xs text-slate-400">Просмотр всех движений по счету</p>
+                                <p className="text-xs text-slate-400 dark:text-slate-500">Просмотр всех движений по счету</p>
                             </div>
                         </button>
 
                         {isManager && onUpdateAccount && (
                             <button
                                 onClick={() => { onEdit(account); onClose(); }}
-                                className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-amber-50 rounded-xl flex items-center gap-3 transition-all group"
+                                className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-xl flex items-center gap-3 transition-all group"
                             >
-                                <span className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center text-amber-600 group-hover:bg-amber-100 transition-all">
+                                <span className="w-8 h-8 bg-amber-50 dark:bg-amber-900/30 rounded-lg flex items-center justify-center text-amber-600 dark:text-amber-400 group-hover:bg-amber-100 dark:group-hover:bg-amber-900/50 transition-all">
                                     {ICONS.Edit}
                                 </span>
                                 <div>
                                     <span className="font-medium">Редактировать</span>
-                                    <p className="text-xs text-slate-400">Изменить название счета</p>
+                                    <p className="text-xs text-slate-400 dark:text-slate-500">Изменить название счета</p>
                                 </div>
                             </button>
                         )}
@@ -366,14 +366,14 @@ const AccountActionModal = ({
                         {isManager && account.type !== 'MAIN' && (
                             <button
                                 onClick={() => { onSetMain(account.id); onClose(); }}
-                                className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-emerald-50 rounded-xl flex items-center gap-3 transition-all group"
+                                className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-xl flex items-center gap-3 transition-all group"
                             >
-                                <span className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600 group-hover:bg-emerald-100 transition-all">
+                                <span className="w-8 h-8 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/50 transition-all">
                                     {ICONS.Check}
                                 </span>
                                 <div>
                                     <span className="font-medium">Сделать основным</span>
-                                    <p className="text-xs text-slate-400">Установить как основной счет</p>
+                                    <p className="text-xs text-slate-400 dark:text-slate-500">Установить как основной счет</p>
                                 </div>
                             </button>
                         )}
@@ -381,7 +381,7 @@ const AccountActionModal = ({
 
                     <button
                         onClick={onClose}
-                        className="w-full mt-4 py-3 bg-slate-100 text-slate-600 font-medium rounded-xl hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                        className="w-full mt-4 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-all flex items-center justify-center gap-2"
                     >
                         <span>✕</span>
                         <span>Закрыть</span>
@@ -723,7 +723,7 @@ const investorProfitPayouts = useMemo(() => {
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white shadow-lg">
             {ICONS.Wallet}
           </div>
-          <h2 className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-indigo-800 bg-clip-text text-transparent">
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-indigo-800 dark:from-white dark:to-indigo-400 bg-clip-text text-transparent">
             Мои Счета
           </h2>
         </div>
@@ -747,12 +747,12 @@ const investorProfitPayouts = useMemo(() => {
 
       {/* Account Cards */}
       {accounts.length === 0 ? (
-        <div className="bg-gradient-to-br from-slate-50 to-indigo-50 rounded-3xl p-8 sm:p-12 text-center border-2 border-dashed border-indigo-200">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+        <div className="bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-800 dark:to-indigo-950/30 rounded-3xl p-8 sm:p-12 text-center border-2 border-dashed border-indigo-200 dark:border-indigo-900/50">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white dark:bg-slate-800 rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg">
             <span className="text-2xl sm:text-3xl text-indigo-400">{ICONS.Wallet}</span>
           </div>
-          <h3 className="text-lg sm:text-xl font-bold text-slate-800 mb-2">Нет созданных счетов</h3>
-          <p className="text-sm sm:text-base text-slate-500 mb-6">Создайте первый счет для начала работы</p>
+          <h3 className="text-lg sm:text-xl font-bold text-slate-800 dark:text-white mb-2">Нет созданных счетов</h3>
+          <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 mb-6">Создайте первый счет для начала работы</p>
           {isManager && (
             <button onClick={() => setIsAdding(true)} className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-5 py-2.5 sm:px-6 sm:py-3 rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-lg text-sm sm:text-base">
               <span>{ICONS.Plus}</span><span>Создать счет</span>
@@ -762,7 +762,7 @@ const investorProfitPayouts = useMemo(() => {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {accounts.map(acc => (
-            <div key={acc.id} className="relative bg-white rounded-2xl sm:rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden" onClick={() => handleSharedAccountClick(acc)}>
+            <div key={acc.id} className="relative bg-white dark:bg-slate-800 rounded-2xl sm:rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden" onClick={() => handleSharedAccountClick(acc)}>
               <div className={`absolute inset-0 bg-gradient-to-br ${getAccountTypeColor(acc.type)} opacity-0 hover:opacity-5 transition-opacity`}></div>
               <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${getAccountTypeColor(acc.type)}`}></div>
               <div className="relative p-4 sm:p-6">
@@ -771,12 +771,12 @@ const investorProfitPayouts = useMemo(() => {
                     {acc.type === 'SHARED' && <span className="text-[10px] sm:text-xs">{ICONS.Users}</span>}
                     <span className="truncate max-w-[80px] sm:max-w-none">{getAccountTypeLabel(acc.type)}</span>
                   </div>
-                  <button onClick={(e) => handleMenuClick(e, acc)} className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg sm:rounded-xl transition-all z-10" aria-label="Действия со счетом">{ICONS.More}</button>
+                  <button onClick={(e) => handleMenuClick(e, acc)} className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg sm:rounded-xl transition-all z-10" aria-label="Действия со счетом">{ICONS.More}</button>
                 </div>
                 <div className="space-y-3 sm:space-y-4">
                   <div>
-                    <h3 className="font-bold text-lg sm:text-xl text-slate-800 mb-1 truncate">{acc.name}</h3>
-                    <p className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+                    <h3 className="font-bold text-lg sm:text-xl text-slate-800 dark:text-white mb-1 truncate">{acc.name}</h3>
+                    <p className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
                       {formatCurrency(accountBalances[acc.id] || 0, appSettings.showCents)} ₽
                     </p>
                   </div>
@@ -787,16 +787,16 @@ const investorProfitPayouts = useMemo(() => {
                           const investor = investors.find(i => i.id === pid);
                           const colors = ['bg-indigo-500', 'bg-purple-500', 'bg-pink-500', 'bg-amber-500'];
                           return (
-                            <div key={pid} className={`inline-flex h-6 w-6 sm:h-8 sm:w-8 rounded-full ${colors[idx % colors.length]} ring-2 ring-white items-center justify-center text-white text-[10px] sm:text-xs font-bold shadow-sm`} title={investor?.name}>
+                            <div key={pid} className={`inline-flex h-6 w-6 sm:h-8 sm:w-8 rounded-full ${colors[idx % colors.length]} ring-2 ring-white dark:ring-slate-800 items-center justify-center text-white text-[10px] sm:text-xs font-bold shadow-sm`} title={investor?.name}>
                               {investor?.name?.charAt(0) || '?'}
                             </div>
                           );
                         })}
                         {acc.partners.length > 4 && (
-                          <div className="inline-flex h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-slate-100 ring-2 ring-white items-center justify-center text-[10px] sm:text-xs font-bold text-slate-600">+{acc.partners.length - 4}</div>
+                          <div className="inline-flex h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-slate-100 dark:bg-slate-700 ring-2 ring-white dark:ring-slate-800 items-center justify-center text-[10px] sm:text-xs font-bold text-slate-600 dark:text-slate-300">+{acc.partners.length - 4}</div>
                         )}
                       </div>
-                      <span className="text-[10px] sm:text-xs text-slate-400">{acc.partners.length} участников</span>
+                      <span className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500">{acc.partners.length} участников</span>
                     </div>
                   )}
                 </div>
@@ -814,12 +814,12 @@ const investorProfitPayouts = useMemo(() => {
      {isManager && (
     <div className="space-y-6 pt-8">
         {/* Фильтры */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 dark:border-slate-700">
             <div className="space-y-3">
                 <div>
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Фильтр по счету</label>
+                    <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5 block">Фильтр по счету</label>
                     <select
-                        className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                        className="w-full p-2.5 sm:p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-300 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
                         value={profitFilterAccountId}
                         onChange={e => setProfitFilterAccountId(e.target.value)}
                     >
@@ -831,19 +831,19 @@ const investorProfitPayouts = useMemo(() => {
                 </div>
                 <div className="grid grid-cols-1 gap-3">
                     <div>
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Начало</label>
+                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5 block">Начало</label>
                         <input
                             type="date"
-                            className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                            className="w-full p-2.5 sm:p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-700 dark:text-slate-300 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
                             value={myProfitPeriod.start}
                             onChange={e => setMyProfitPeriod(p => ({...p, start: e.target.value}))}
                         />
                     </div>
                     <div>
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Конец</label>
+                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5 block">Конец</label>
                         <input
                             type="date"
-                            className="w-full p-2.5 sm:p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                            className="w-full p-2.5 sm:p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-700 dark:text-slate-300 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
                             value={myProfitPeriod.end}
                             onChange={e => setMyProfitPeriod(p => ({...p, end: e.target.value}))}
                         />
@@ -851,7 +851,7 @@ const investorProfitPayouts = useMemo(() => {
                 </div>
             </div>
             {(!myProfitPeriod.start && !myProfitPeriod.end) && (
-                <p className="text-[10px] sm:text-xs text-center text-slate-400 bg-slate-50 py-2 rounded-lg mt-3">
+                <p className="text-[10px] sm:text-xs text-center text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900 py-2 rounded-lg mt-3">
                     Показаны данные за все время
                 </p>
             )}
@@ -862,7 +862,7 @@ const investorProfitPayouts = useMemo(() => {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-lg">
                 {ICONS.TrendingUp}
             </div>
-            <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-emerald-800 bg-clip-text text-transparent">
+            <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-emerald-800 dark:from-white dark:to-emerald-400 bg-clip-text text-transparent">
                 Моя прибыль
             </h3>
         </div>
@@ -871,53 +871,53 @@ const investorProfitPayouts = useMemo(() => {
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
 
             {/* 1. Ожидаемая прибыль */}
-            <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-indigo-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 flex flex-col relative overflow-hidden cursor-default">
 
                 <div
-                    className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+                    className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor">
                         <text x="5" y="18" fontSize="16" fontWeight="bold">₽</text>
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Ожидается</p>
-                    <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1 leading-tight">Ожидается</p>
+                    <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
                         {formatCurrency(calculatedExpectedProfit, appSettings.showCents)}
-                        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                        <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
                 </div>
             </div>
 
             {/* 2. Полученная прибыль */}
-            <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default">
 
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Получено</p>
-                    <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1 leading-tight">Получено</p>
+                    <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
                         {formatCurrency(totalManagerProfitEarned, appSettings.showCents)}
-                        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                        <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
                 </div>
             </div>
 
             {/* 3. Выплачено */}
-            <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-rose-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-rose-200 flex flex-col relative overflow-hidden cursor-default">
 
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-rose-100 rounded-xl flex items-center justify-center text-rose-600 mb-4 z-10 relative group-hover:bg-rose-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-rose-100 dark:bg-rose-900/30 rounded-xl flex items-center justify-center text-rose-600 dark:text-rose-400 mb-4 z-10 relative group-hover:bg-rose-500 group-hover:text-white transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Выплачено</p>
-                    <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1 leading-tight">Выплачено</p>
+                    <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
                         {formatCurrency(totalManagerProfitWithdrawn, appSettings.showCents)}
-                        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                        <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
                 </div>
             </div>
@@ -960,7 +960,7 @@ const investorProfitPayouts = useMemo(() => {
                         className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white shadow-lg">
                 {ICONS.Users}
             </div>
-            <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-purple-800 bg-clip-text text-transparent">
+            <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-purple-800 dark:from-white dark:to-purple-400 bg-clip-text text-transparent">
                 Прибыль инвестора
             </h3>
         </div>
@@ -969,53 +969,53 @@ const investorProfitPayouts = useMemo(() => {
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
 
             {/* 1. Ожидаемая прибыль инвестора */}
-            <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-purple-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-purple-200 flex flex-col relative overflow-hidden cursor-default">
 
                 <div
-                    className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+                    className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor">
                         <text x="5" y="18" fontSize="16" fontWeight="bold">₽</text>
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Ожидается</p>
-                    <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1 leading-tight">Ожидается</p>
+                    <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
                         {formatCurrency(investorProfitStats.expectedProfit, appSettings.showCents)}
-                        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                        <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
                 </div>
             </div>
 
             {/* 2. Полученная прибыль инвестора */}
-            <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-violet-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-violet-200 flex flex-col relative overflow-hidden cursor-default">
 
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-violet-100 rounded-xl flex items-center justify-center text-violet-600 mb-4 z-10 relative group-hover:bg-violet-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center text-violet-600 dark:text-violet-400 mb-4 z-10 relative group-hover:bg-violet-500 group-hover:text-white transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Получено</p>
-                    <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1 leading-tight">Получено</p>
+                    <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
                         {formatCurrency(investorProfitStats.receivedProfit, appSettings.showCents)}
-                        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                        <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
                 </div>
             </div>
 
             {/* 3. Выплачено инвестору */}
-            <div className="group bg-white p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 hover:border-rose-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-rose-200 flex flex-col relative overflow-hidden cursor-default">
 
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-rose-100 rounded-xl flex items-center justify-center text-rose-600 mb-4 z-10 relative group-hover:bg-rose-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-rose-100 dark:bg-rose-900/30 rounded-xl flex items-center justify-center text-rose-600 dark:text-rose-400 mb-4 z-10 relative group-hover:bg-rose-500 group-hover:text-white transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Выплачено</p>
-                    <p className="text-lg sm:text-2xl font-bold text-slate-800 break-words leading-none">
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1 leading-tight">Выплачено</p>
+                    <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
                         {formatCurrency(investorProfitStats.totalWithdrawn, appSettings.showCents)}
-                        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                        <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
                 </div>
             </div>
@@ -1060,7 +1060,7 @@ const investorProfitPayouts = useMemo(() => {
         onClick={() => setShowProfitDetails(false)}
     >
         <div
-            className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-white/20 animate-slide-up"
+            className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-white/20 dark:border-slate-700/50 animate-slide-up"
             onClick={e => e.stopPropagation()}
         >
             {/* Header */}
@@ -1084,14 +1084,14 @@ const investorProfitPayouts = useMemo(() => {
             </div>
 
             {/* Tabs */}
-            <div className="px-6 py-4 border-b border-slate-100">
-                <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700">
+                <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-xl">
                     <button
                         onClick={() => setProfitDetailsTab('accruals')}
                         className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
-                            profitDetailsTab === 'accruals' 
-                                ? 'bg-white text-emerald-600 shadow-sm' 
-                                : 'text-slate-500 hover:text-slate-700'
+                            profitDetailsTab === 'accruals'
+                                ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                         }`}
                     >
                         Начисления ({managerProfitAccruals.length})
@@ -1099,9 +1099,9 @@ const investorProfitPayouts = useMemo(() => {
                     <button
                         onClick={() => setProfitDetailsTab('payouts')}
                         className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
-                            profitDetailsTab === 'payouts' 
-                                ? 'bg-white text-rose-600 shadow-sm' 
-                                : 'text-slate-500 hover:text-slate-700'
+                            profitDetailsTab === 'payouts'
+                                ? 'bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 shadow-sm'
+                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                         }`}
                     >
                         Выплаты ({managerProfitPayouts.length})
@@ -1115,19 +1115,19 @@ const investorProfitPayouts = useMemo(() => {
                     <div className="space-y-3">
                         {managerProfitAccruals.length === 0 ? (
                             <div className="text-center py-16">
-                                <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
                                     <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
                                 </div>
-                                <p className="text-slate-500 font-medium">Нет начислений за этот период</p>
+                                <p className="text-slate-500 dark:text-slate-400 font-medium">Нет начислений за этот период</p>
                             </div>
                         ) : (
                             managerProfitAccruals.map(p => (
-                                <div key={p.id} className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 hover:border-emerald-200 transition-all">
+                                <div key={p.id} className="bg-emerald-50 dark:bg-emerald-900/30 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/50 hover:border-emerald-200 transition-all">
                                     <div className="flex justify-between items-start mb-2">
-                                        <p className="font-bold text-slate-800">{p.source}</p>
-                                        <span className="font-bold text-emerald-600">+{formatCurrency(p.amount, appSettings.showCents)} ₽</span>
+                                        <p className="font-bold text-slate-800 dark:text-white">{p.source}</p>
+                                        <span className="font-bold text-emerald-600 dark:text-emerald-400">+{formatCurrency(p.amount, appSettings.showCents)} ₽</span>
                                     </div>
-                                    <p className="text-xs text-slate-500">{formatDate(p.date)}</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">{formatDate(p.date)}</p>
                                 </div>
                             ))
                         )}
@@ -1138,19 +1138,19 @@ const investorProfitPayouts = useMemo(() => {
                     <div className="space-y-3">
                         {managerProfitPayouts.length === 0 ? (
                             <div className="text-center py-16">
-                                <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
                                     <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
                                 </div>
-                                <p className="text-slate-500 font-medium">Нет выплат за этот период</p>
+                                <p className="text-slate-500 dark:text-slate-400 font-medium">Нет выплат за этот период</p>
                             </div>
                         ) : (
                             managerProfitPayouts.map(e => (
-                                <div key={e.id} className="bg-rose-50 p-4 rounded-2xl border border-rose-100 hover:border-rose-200 transition-all">
+                                <div key={e.id} className="bg-rose-50 dark:bg-rose-900/30 p-4 rounded-2xl border border-rose-100 dark:border-rose-900/50 hover:border-rose-200 transition-all">
                                     <div className="flex justify-between items-start mb-2">
-                                        <p className="font-bold text-slate-800">{e.title}</p>
-                                        <span className="font-bold text-rose-600">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
+                                        <p className="font-bold text-slate-800 dark:text-white">{e.title}</p>
+                                        <span className="font-bold text-rose-600 dark:text-rose-400">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
                                     </div>
-                                    <p className="text-xs text-slate-500">{formatDate(e.date)}</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">{formatDate(e.date)}</p>
                                 </div>
                             ))
                         )}
@@ -1168,7 +1168,7 @@ const investorProfitPayouts = useMemo(() => {
         onClick={() => setShowInvestorProfitDetails(false)}
     >
         <div
-            className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-white/20 animate-slide-up"
+            className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-white/20 dark:border-slate-700/50 animate-slide-up"
             onClick={e => e.stopPropagation()}
         >
             {/* Header */}
@@ -1192,14 +1192,14 @@ const investorProfitPayouts = useMemo(() => {
             </div>
 
             {/* Tabs */}
-            <div className="px-6 py-4 border-b border-slate-100">
-                <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700">
+                <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-xl">
                     <button
                         onClick={() => setProfitDetailsTab('accruals')}
                         className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
-                            profitDetailsTab === 'accruals' 
-                                ? 'bg-white text-purple-600 shadow-sm' 
-                                : 'text-slate-500 hover:text-slate-700'
+                            profitDetailsTab === 'accruals'
+                                ? 'bg-white dark:bg-slate-800 text-purple-600 dark:text-purple-400 shadow-sm'
+                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                         }`}
                     >
                         Начисления ({investorProfitAccruals.length})
@@ -1207,9 +1207,9 @@ const investorProfitPayouts = useMemo(() => {
                     <button
                         onClick={() => setProfitDetailsTab('payouts')}
                         className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
-                            profitDetailsTab === 'payouts' 
-                                ? 'bg-white text-rose-600 shadow-sm' 
-                                : 'text-slate-500 hover:text-slate-700'
+                            profitDetailsTab === 'payouts'
+                                ? 'bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 shadow-sm'
+                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                         }`}
                     >
                         Выплаты ({investorProfitPayouts.length})
@@ -1223,19 +1223,19 @@ const investorProfitPayouts = useMemo(() => {
                     <div className="space-y-3">
                         {investorProfitAccruals.length === 0 ? (
                             <div className="text-center py-16">
-                                <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
                                     <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
                                 </div>
-                                <p className="text-slate-500 font-medium">Нет начислений за этот период</p>
+                                <p className="text-slate-500 dark:text-slate-400 font-medium">Нет начислений за этот период</p>
                             </div>
                         ) : (
                             investorProfitAccruals.map(p => (
-                                <div key={p.id} className="bg-purple-50 p-4 rounded-2xl border border-purple-100 hover:border-purple-200 transition-all">
+                                <div key={p.id} className="bg-purple-50 dark:bg-purple-900/30 p-4 rounded-2xl border border-purple-100 dark:border-purple-900/50 hover:border-purple-200 transition-all">
                                     <div className="flex justify-between items-start mb-2">
-                                        <p className="font-bold text-slate-800">{p.source}</p>
-                                        <span className="font-bold text-purple-600">+{formatCurrency(p.amount, appSettings.showCents)} ₽</span>
+                                        <p className="font-bold text-slate-800 dark:text-white">{p.source}</p>
+                                        <span className="font-bold text-purple-600 dark:text-purple-400">+{formatCurrency(p.amount, appSettings.showCents)} ₽</span>
                                     </div>
-                                    <p className="text-xs text-slate-500">{formatDate(p.date)}</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">{formatDate(p.date)}</p>
                                 </div>
                             ))
                         )}
@@ -1246,24 +1246,24 @@ const investorProfitPayouts = useMemo(() => {
                     <div className="space-y-3">
                         {investorProfitPayouts.length === 0 ? (
                             <div className="text-center py-16">
-                                <div className="w-20 h-20 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
                                     <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
                                 </div>
-                                <p className="text-slate-500 font-medium">Нет выплат инвестору за этот период</p>
+                                <p className="text-slate-500 dark:text-slate-400 font-medium">Нет выплат инвестору за этот период</p>
                             </div>
                         ) : (
                             investorProfitPayouts.map(e => {
                                 const investor = investors.find(i => i.id === e.investorId);
                                 return (
-                                    <div key={e.id} className="bg-rose-50 p-4 rounded-2xl border border-rose-100 hover:border-rose-200 transition-all">
+                                    <div key={e.id} className="bg-rose-50 dark:bg-rose-900/30 p-4 rounded-2xl border border-rose-100 dark:border-rose-900/50 hover:border-rose-200 transition-all">
                                         <div className="flex justify-between items-start mb-2">
                                             <div>
-                                                <p className="font-bold text-slate-800">{e.title}</p>
-                                                <p className="text-xs text-slate-500">{investor?.name || 'Инвестор'}</p>
+                                                <p className="font-bold text-slate-800 dark:text-white">{e.title}</p>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400">{investor?.name || 'Инвестор'}</p>
                                             </div>
-                                            <span className="font-bold text-rose-600">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
+                                            <span className="font-bold text-rose-600 dark:text-rose-400">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
                                         </div>
-                                        <p className="text-xs text-slate-500">{formatDate(e.date)}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">{formatDate(e.date)}</p>
                                     </div>
                                 );
                             })

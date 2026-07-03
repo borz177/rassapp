@@ -64,13 +64,13 @@ const MONTH_NAMES = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
 type KpiColor = 'emerald' | 'teal' | 'sky' | 'indigo' | 'purple' | 'amber' | 'red';
 
 const COLOR_MAP: Record<KpiColor, { bg: string; shadow: string; text: string; light: string; border: string }> = {
-    emerald: { bg: 'from-emerald-500 to-emerald-400', shadow: 'shadow-emerald-200', text: 'text-emerald-700', light: 'bg-emerald-50 text-emerald-600', border: 'hover:border-emerald-200' },
-    teal:    { bg: 'from-teal-500 to-teal-400',       shadow: 'shadow-teal-200',    text: 'text-teal-700',    light: 'bg-teal-50 text-teal-600',    border: 'hover:border-teal-200'    },
-    sky:     { bg: 'from-sky-500 to-sky-400',         shadow: 'shadow-sky-200',     text: 'text-sky-700',     light: 'bg-sky-50 text-sky-600',      border: 'hover:border-sky-200'     },
-    indigo:  { bg: 'from-indigo-500 to-indigo-400',   shadow: 'shadow-indigo-200',  text: 'text-indigo-700',  light: 'bg-indigo-50 text-indigo-600', border: 'hover:border-indigo-200' },
-    purple:  { bg: 'from-purple-500 to-purple-400',   shadow: 'shadow-purple-200',  text: 'text-purple-700',  light: 'bg-purple-50 text-purple-600', border: 'hover:border-purple-200' },
-    amber:   { bg: 'from-amber-500 to-amber-400',     shadow: 'shadow-amber-200',   text: 'text-amber-700',   light: 'bg-amber-50 text-amber-600',   border: 'hover:border-amber-200'  },
-    red:     { bg: 'from-red-500 to-red-400',         shadow: 'shadow-red-200',     text: 'text-red-700',     light: 'bg-red-50 text-red-600',       border: 'hover:border-red-200'    },
+    emerald: { bg: 'from-emerald-500 to-emerald-400', shadow: 'shadow-emerald-200 dark:shadow-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', light: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400', border: 'hover:border-emerald-200 dark:hover:border-emerald-800' },
+    teal:    { bg: 'from-teal-500 to-teal-400',       shadow: 'shadow-teal-200 dark:shadow-teal-900/30',    text: 'text-teal-700 dark:text-teal-400',    light: 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400',    border: 'hover:border-teal-200 dark:hover:border-teal-800'    },
+    sky:     { bg: 'from-sky-500 to-sky-400',         shadow: 'shadow-sky-200 dark:shadow-sky-900/30',     text: 'text-sky-700 dark:text-sky-400',     light: 'bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400',      border: 'hover:border-sky-200 dark:hover:border-sky-800'     },
+    indigo:  { bg: 'from-indigo-500 to-indigo-400',   shadow: 'shadow-indigo-200 dark:shadow-indigo-900/30',  text: 'text-indigo-700 dark:text-indigo-400',  light: 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400', border: 'hover:border-indigo-200 dark:hover:border-indigo-800' },
+    purple:  { bg: 'from-purple-500 to-purple-400',   shadow: 'shadow-purple-200 dark:shadow-purple-900/30',  text: 'text-purple-700 dark:text-purple-400',  light: 'bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400', border: 'hover:border-purple-200 dark:hover:border-purple-800' },
+    amber:   { bg: 'from-amber-500 to-amber-400',     shadow: 'shadow-amber-200 dark:shadow-amber-900/30',   text: 'text-amber-700 dark:text-amber-400',   light: 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400',   border: 'hover:border-amber-200 dark:hover:border-amber-800'  },
+    red:     { bg: 'from-red-500 to-red-400',         shadow: 'shadow-red-200 dark:shadow-red-900/30',     text: 'text-red-700 dark:text-red-400',     light: 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400',       border: 'hover:border-red-200 dark:hover:border-red-800'    },
 };
 
 interface KpiCardProps {
@@ -80,14 +80,14 @@ interface KpiCardProps {
 const KpiCard: React.FC<KpiCardProps> = ({ icon, label, value, badge, color, subtext }) => {
     const c = COLOR_MAP[color];
     return (
-        <div className={`group bg-white/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 ${c.border} hover:-translate-y-1`}>
+        <div className={`group bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 ${c.border} hover:-translate-y-1`}>
             <div className="flex items-center justify-between mb-3">
                 <div className={`p-2.5 bg-gradient-to-br ${c.bg} text-white rounded-xl shadow-lg ${c.shadow} group-hover:scale-110 transition-transform text-base leading-none`}>{icon}</div>
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.light}`}>{badge}</span>
             </div>
-            <p className="text-xs font-medium text-slate-500 mb-1 leading-tight">{label}</p>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 leading-tight">{label}</p>
             <p className={`text-xl font-bold ${c.text} leading-tight`}>{value}</p>
-            {subtext && <p className="text-xs text-slate-400 mt-1">{subtext}</p>}
+            {subtext && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{subtext}</p>}
         </div>
     );
 };
@@ -99,19 +99,19 @@ interface ProgressRowProps {
 const ProgressRow: React.FC<ProgressRowProps> = ({ label, realized, expected, color, showCents }) => {
     const pct = expected > 0 ? Math.min(Math.round((realized / expected) * 100), 100) : 0;
     const barColor = color === 'emerald' ? 'bg-emerald-500' : 'bg-indigo-500';
-    const textColor = color === 'emerald' ? 'text-emerald-600' : 'text-indigo-600';
+    const textColor = color === 'emerald' ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400';
     return (
         <div>
             <div className="flex justify-between items-center mb-1.5">
-                <span className="text-xs font-medium text-slate-600">{label}</span>
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{label}</span>
                 <div className="flex items-center gap-2 text-xs">
-                    <span className="text-slate-500 font-medium">{formatCurrency(realized, showCents)} ₽</span>
-                    <span className="text-slate-300">/</span>
-                    <span className="text-slate-400">{formatCurrency(expected, showCents)} ₽</span>
+                    <span className="text-slate-500 dark:text-slate-400 font-medium">{formatCurrency(realized, showCents)} ₽</span>
+                    <span className="text-slate-300 dark:text-slate-600">/</span>
+                    <span className="text-slate-400 dark:text-slate-500">{formatCurrency(expected, showCents)} ₽</span>
                     <span className={`font-bold ${textColor}`}>{pct}%</span>
                 </div>
             </div>
-            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                 <div className={`h-full ${barColor} rounded-full transition-all duration-700`} style={{ width: `${pct}%` }}></div>
             </div>
         </div>
@@ -645,7 +645,7 @@ const Reports: React.FC<ReportsProps> = ({
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 pb-24 w-full">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-900 dark:to-slate-900 pb-24 w-full">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
 
                 {/* Header */}
@@ -654,20 +654,20 @@ const Reports: React.FC<ReportsProps> = ({
                         <h2 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-indigo-400 bg-clip-text text-transparent">
                             Отчеты
                         </h2>
-                        <p className="text-slate-500 text-sm mt-1 flex items-center gap-2">
+                        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 flex items-center gap-2">
                             <span className="w-1 h-1 bg-indigo-400 rounded-full inline-block"></span>
                             Финансовая аналитика · {filters.period.start} — {filters.period.end}
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
                         {hasData && (
-                            <div className={`hidden sm:block px-4 py-2 rounded-xl text-sm font-semibold ${efficiencyColor === 'emerald' ? 'bg-emerald-100 text-emerald-700' : efficiencyColor === 'amber' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                            <div className={`hidden sm:block px-4 py-2 rounded-xl text-sm font-semibold ${efficiencyColor === 'emerald' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : efficiencyColor === 'amber' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
                                 Эффективность {efficiency}%
                             </div>
                         )}
                         <button
                             onClick={() => setExportModal('csv')}
-                            className="flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-semibold hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
+                            className="flex items-center gap-1.5 px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all shadow-sm"
                         >
                             <span>📥</span> CSV
                         </button>
@@ -681,10 +681,10 @@ const Reports: React.FC<ReportsProps> = ({
                 </header>
 
                 {/* Filters */}
-                <div className="bg-white/80 backdrop-blur-sm p-5 rounded-2xl shadow-lg border border-white/20 hover:shadow-xl transition-all duration-300 space-y-4">
+                <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm p-5 rounded-2xl shadow-lg border border-white/20 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300 space-y-4">
                     <div className="flex items-center gap-2">
                         <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
-                        <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Фильтры</h3>
+                        <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Фильтры</h3>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         {(Object.keys(PRESET_LABELS) as PeriodPreset[]).map(preset => {
@@ -692,7 +692,7 @@ const Reports: React.FC<ReportsProps> = ({
                             const isActive = filters.period.start === dates.start && filters.period.end === dates.end;
                             return (
                                 <button key={preset} onClick={() => applyPreset(preset)}
-                                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 ${isActive ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-200 scale-105' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:scale-105'}`}>
+                                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 ${isActive ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-200 dark:shadow-indigo-900/30 scale-105' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 hover:scale-105'}`}>
                                     {PRESET_LABELS[preset]}
                                 </button>
                             );
@@ -700,43 +700,43 @@ const Reports: React.FC<ReportsProps> = ({
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
                                 <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></span>Инвестор
                             </label>
                             <div className="relative">
                                 <select
-                                    className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none text-sm appearance-none cursor-pointer hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
+                                    className="w-full p-3 bg-white dark:bg-slate-900 dark:text-white border border-slate-200 dark:border-slate-600 rounded-xl outline-none text-sm appearance-none cursor-pointer hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
                                     value={filters.investorId}
                                     onChange={e => onFiltersChange(prev => ({ ...prev, investorId: e.target.value }))}
                                 >
                                     <option value="ALL">Все инвесторы</option>
                                     {investors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
                                 </select>
-                                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs">▼</div>
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none text-xs">▼</div>
                             </div>
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
                                 <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>Начало периода
                             </label>
-                            <input type="date" className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none text-sm hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
+                            <input type="date" className="w-full p-3 bg-white dark:bg-slate-900 dark:text-white border border-slate-200 dark:border-slate-600 rounded-xl outline-none text-sm hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
                                 value={filters.period.start} onChange={e => handlePeriodInput('start', e.target.value)} />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
                                 <span className="w-1.5 h-1.5 bg-amber-400 rounded-full"></span>Конец периода
                             </label>
-                            <input type="date" className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none text-sm hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
+                            <input type="date" className="w-full p-3 bg-white dark:bg-slate-900 dark:text-white border border-slate-200 dark:border-slate-600 rounded-xl outline-none text-sm hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
                                 value={filters.period.end} onChange={e => handlePeriodInput('end', e.target.value)} />
                         </div>
                     </div>
                 </div>
 
                 {!hasData ? (
-                    <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-dashed border-slate-200 p-16 text-center">
+                    <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-16 text-center">
                         <div className="text-7xl mb-4 opacity-30">📊</div>
-                        <h3 className="text-xl font-bold text-slate-700 mb-2">Нет данных за выбранный период</h3>
-                        <p className="text-slate-400 max-w-md mx-auto">Выберите другой период или инвестора для просмотра аналитики</p>
+                        <h3 className="text-xl font-bold text-slate-700 dark:text-slate-200 mb-2">Нет данных за выбранный период</h3>
+                        <p className="text-slate-400 dark:text-slate-500 max-w-md mx-auto">Выберите другой период или инвестора для просмотра аналитики</p>
                         <button onClick={() => applyPreset('month')}
                             className="mt-6 px-6 py-3 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white rounded-xl font-semibold shadow-lg shadow-indigo-200 hover:shadow-xl hover:-translate-y-0.5 transition-all">
                             Показать текущий месяц
@@ -761,11 +761,11 @@ const Reports: React.FC<ReportsProps> = ({
 
                         {/* Payment timeline — area chart */}
                         {paymentTimeline.length > 1 && (
-                            <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100">
+                            <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700">
                                 <div className="flex items-center gap-2 mb-5">
                                     <span className="w-1 h-5 bg-emerald-500 rounded-full"></span>
-                                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Динамика поступлений</h4>
-                                    <span className="ml-auto text-xs text-slate-400">{paymentTimeline.length} точек · всего {formatCurrency(data.customerPaymentsInPeriod, appSettings.showCents)} ₽</span>
+                                    <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Динамика поступлений</h4>
+                                    <span className="ml-auto text-xs text-slate-400 dark:text-slate-500">{paymentTimeline.length} точек · всего {formatCurrency(data.customerPaymentsInPeriod, appSettings.showCents)} ₽</span>
                                 </div>
                                 <div className="h-56">
                                     <ResponsiveContainer width="100%" height="100%">
@@ -801,10 +801,10 @@ const Reports: React.FC<ReportsProps> = ({
 
                         {/* Main charts: bar + pie */}
                         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                            <div className="lg:col-span-3 bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100">
+                            <div className="lg:col-span-3 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700">
                                 <div className="flex items-center gap-2 mb-5">
                                     <span className="w-1 h-5 bg-indigo-500 rounded-full"></span>
-                                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Ожидаемое vs Полученное</h4>
+                                    <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Ожидаемое vs Полученное</h4>
                                 </div>
                                 <div className="h-52">
                                     <ResponsiveContainer width="100%" height="100%">
@@ -822,7 +822,7 @@ const Reports: React.FC<ReportsProps> = ({
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </div>
-                                <div className="mt-5 pt-5 border-t border-slate-100 space-y-3">
+                                <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-700 space-y-3">
                                     <ProgressRow label="Менеджер — план/факт" realized={data.realizedManagerProfit} expected={data.expectedManagerProfit} color="emerald" showCents={appSettings.showCents} />
                                     {hasInvestors && (
                                         <ProgressRow label="Инвесторы — план/факт" realized={data.realizedInvestorProfit} expected={data.expectedInvestorProfit} color="indigo" showCents={appSettings.showCents} />
@@ -830,10 +830,10 @@ const Reports: React.FC<ReportsProps> = ({
                                 </div>
                             </div>
 
-                            <div className="lg:col-span-2 bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100">
+                            <div className="lg:col-span-2 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700">
                                 <div className="flex items-center gap-2 mb-4">
                                     <span className="w-1 h-5 bg-emerald-500 rounded-full"></span>
-                                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Распределение прибыли</h4>
+                                    <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Распределение прибыли</h4>
                                 </div>
                                 {pieData.length > 0 ? (
                                     <>
@@ -859,46 +859,46 @@ const Reports: React.FC<ReportsProps> = ({
                                                 <div key={entry.name} className="flex items-center justify-between text-sm">
                                                     <div className="flex items-center gap-2">
                                                         <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }}></span>
-                                                        <span className="text-slate-600">{entry.name}</span>
+                                                        <span className="text-slate-600 dark:text-slate-300">{entry.name}</span>
                                                     </div>
-                                                    <span className="font-semibold text-slate-700">{formatCurrency(entry.value, appSettings.showCents)} ₽</span>
+                                                    <span className="font-semibold text-slate-700 dark:text-slate-200">{formatCurrency(entry.value, appSettings.showCents)} ₽</span>
                                                 </div>
                                             ))}
-                                            <div className="pt-2 border-t border-slate-100 flex justify-between text-sm">
-                                                <span className="text-slate-500">Итого получено</span>
-                                                <span className="font-bold text-slate-700">{formatCurrency(totalRealized, appSettings.showCents)} ₽</span>
+                                            <div className="pt-2 border-t border-slate-100 dark:border-slate-700 flex justify-between text-sm">
+                                                <span className="text-slate-500 dark:text-slate-400">Итого получено</span>
+                                                <span className="font-bold text-slate-700 dark:text-slate-200">{formatCurrency(totalRealized, appSettings.showCents)} ₽</span>
                                             </div>
                                         </div>
                                     </>
                                 ) : (
-                                    <div className="h-48 flex items-center justify-center text-slate-400 text-sm">Нет данных о прибыли</div>
+                                    <div className="h-48 flex items-center justify-center text-slate-400 dark:text-slate-500 text-sm">Нет данных о прибыли</div>
                                 )}
                             </div>
                         </div>
 
                         {/* Expected profit section */}
-                        <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100">
+                        <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700">
                             <div className="flex items-center gap-2 mb-5">
                                 <span className="w-1 h-5 bg-slate-400 rounded-full"></span>
-                                <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Ожидаемая прибыль по контрактам</h4>
-                                <span className="ml-auto text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">Прогноз</span>
+                                <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Ожидаемая прибыль по контрактам</h4>
+                                <span className="ml-auto text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full">Прогноз</span>
                             </div>
                             <div className={`grid grid-cols-1 gap-4 ${hasInvestors ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
-                                <div className="bg-gradient-to-br from-slate-50 to-white p-4 rounded-xl border border-slate-100">
-                                    <p className="text-xs font-medium text-slate-500 mb-1">Итого ожидается</p>
-                                    <p className="text-2xl font-bold text-slate-700">{formatCurrency(totalExpected, appSettings.showCents)} ₽</p>
-                                    <p className="text-xs text-slate-400 mt-1">из активных и завершённых контрактов</p>
+                                <div className="bg-gradient-to-br from-slate-50 to-white dark:from-slate-700/50 dark:to-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
+                                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Итого ожидается</p>
+                                    <p className="text-2xl font-bold text-slate-700 dark:text-slate-200">{formatCurrency(totalExpected, appSettings.showCents)} ₽</p>
+                                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">из активных и завершённых контрактов</p>
                                 </div>
-                                <div className="bg-gradient-to-br from-sky-50 to-white p-4 rounded-xl border border-sky-100">
-                                    <p className="text-xs font-medium text-sky-600 mb-1">Прогноз менеджера</p>
-                                    <p className="text-2xl font-bold text-sky-700">{formatCurrency(data.expectedManagerProfit, appSettings.showCents)} ₽</p>
-                                    <p className="text-xs text-sky-500 mt-1">{totalExpected > 0 ? Math.round((data.expectedManagerProfit / totalExpected) * 100) : 0}% от общей суммы</p>
+                                <div className="bg-gradient-to-br from-sky-50 to-white dark:from-sky-900/20 dark:to-slate-800 p-4 rounded-xl border border-sky-100 dark:border-sky-900/40">
+                                    <p className="text-xs font-medium text-sky-600 dark:text-sky-400 mb-1">Прогноз менеджера</p>
+                                    <p className="text-2xl font-bold text-sky-700 dark:text-sky-400">{formatCurrency(data.expectedManagerProfit, appSettings.showCents)} ₽</p>
+                                    <p className="text-xs text-sky-500 dark:text-sky-400/80 mt-1">{totalExpected > 0 ? Math.round((data.expectedManagerProfit / totalExpected) * 100) : 0}% от общей суммы</p>
                                 </div>
                                 {hasInvestors && (
-                                    <div className="bg-gradient-to-br from-indigo-50 to-white p-4 rounded-xl border border-indigo-100">
-                                        <p className="text-xs font-medium text-indigo-600 mb-1">Прогноз инвесторов</p>
-                                        <p className="text-2xl font-bold text-indigo-700">{formatCurrency(data.expectedInvestorProfit, appSettings.showCents)} ₽</p>
-                                        <p className="text-xs text-indigo-500 mt-1">{totalExpected > 0 ? Math.round((data.expectedInvestorProfit / totalExpected) * 100) : 0}% от общей суммы</p>
+                                    <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/20 dark:to-slate-800 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/40">
+                                        <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400 mb-1">Прогноз инвесторов</p>
+                                        <p className="text-2xl font-bold text-indigo-700 dark:text-indigo-400">{formatCurrency(data.expectedInvestorProfit, appSettings.showCents)} ₽</p>
+                                        <p className="text-xs text-indigo-500 dark:text-indigo-400/80 mt-1">{totalExpected > 0 ? Math.round((data.expectedInvestorProfit / totalExpected) * 100) : 0}% от общей суммы</p>
                                     </div>
                                 )}
                             </div>
@@ -906,45 +906,45 @@ const Reports: React.FC<ReportsProps> = ({
 
                         {/* Expenses section */}
                         {expenseStats && (
-                            <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100">
+                            <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700">
                                 <div className="flex items-center gap-2 mb-5">
                                     <span className="w-1 h-5 bg-red-400 rounded-full"></span>
-                                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Расходы за период</h4>
-                                    <span className="ml-auto text-xs text-slate-400">{expenseStats.count} операций</span>
+                                    <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Расходы за период</h4>
+                                    <span className="ml-auto text-xs text-slate-400 dark:text-slate-500">{expenseStats.count} операций</span>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                     <button
                                         onClick={() => setActiveModal('payments')}
-                                        className="group text-left bg-gradient-to-br from-emerald-50 to-white p-4 rounded-xl border border-emerald-100 hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer"
+                                        className="group text-left bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-900/20 dark:to-slate-800 p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/40 hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-md transition-all cursor-pointer"
                                     >
                                         <div className="flex items-center justify-between mb-1">
-                                            <p className="text-xs font-medium text-emerald-600">Поступления</p>
+                                            <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Поступления</p>
                                             <span className="text-emerald-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Детали →</span>
                                         </div>
-                                        <p className="text-xl font-bold text-emerald-700">{formatCurrency(data.customerPaymentsInPeriod, appSettings.showCents)} ₽</p>
-                                        <p className="text-xs text-emerald-500 mt-1">{paymentsDetail.length} платежей от клиентов</p>
+                                        <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(data.customerPaymentsInPeriod, appSettings.showCents)} ₽</p>
+                                        <p className="text-xs text-emerald-500 dark:text-emerald-400/80 mt-1">{paymentsDetail.length} платежей от клиентов</p>
                                     </button>
                                     <button
                                         onClick={() => setActiveModal('investor_payouts')}
-                                        className="group text-left bg-gradient-to-br from-indigo-50 to-white p-4 rounded-xl border border-indigo-100 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer"
+                                        className="group text-left bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/20 dark:to-slate-800 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/40 hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-md transition-all cursor-pointer"
                                     >
                                         <div className="flex items-center justify-between mb-1">
-                                            <p className="text-xs font-medium text-indigo-600">Выплаты инвесторам</p>
+                                            <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400">Выплаты инвесторам</p>
                                             <span className="text-indigo-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Детали →</span>
                                         </div>
-                                        <p className="text-xl font-bold text-indigo-700">{formatCurrency(expenseStats.investorPayouts, appSettings.showCents)} ₽</p>
-                                        <p className="text-xs text-indigo-500 mt-1">{investorPayoutsDetail.length} выплат</p>
+                                        <p className="text-xl font-bold text-indigo-700 dark:text-indigo-400">{formatCurrency(expenseStats.investorPayouts, appSettings.showCents)} ₽</p>
+                                        <p className="text-xs text-indigo-500 dark:text-indigo-400/80 mt-1">{investorPayoutsDetail.length} выплат</p>
                                     </button>
                                     <button
                                         onClick={() => setActiveModal('other_expenses')}
-                                        className="group text-left bg-gradient-to-br from-red-50 to-white p-4 rounded-xl border border-red-100 hover:border-red-300 hover:shadow-md transition-all cursor-pointer"
+                                        className="group text-left bg-gradient-to-br from-red-50 to-white dark:from-red-900/20 dark:to-slate-800 p-4 rounded-xl border border-red-100 dark:border-red-900/40 hover:border-red-300 dark:hover:border-red-700 hover:shadow-md transition-all cursor-pointer"
                                     >
                                         <div className="flex items-center justify-between mb-1">
-                                            <p className="text-xs font-medium text-red-500">Прочие расходы</p>
+                                            <p className="text-xs font-medium text-red-500 dark:text-red-400">Прочие расходы</p>
                                             <span className="text-red-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Детали →</span>
                                         </div>
-                                        <p className="text-xl font-bold text-red-600">{formatCurrency(expenseStats.otherExpenses, appSettings.showCents)} ₽</p>
-                                        <p className="text-xs text-red-400 mt-1">{otherExpensesDetail.length} операций</p>
+                                        <p className="text-xl font-bold text-red-600 dark:text-red-400">{formatCurrency(expenseStats.otherExpenses, appSettings.showCents)} ₽</p>
+                                        <p className="text-xs text-red-400 dark:text-red-400/80 mt-1">{otherExpensesDetail.length} операций</p>
                                     </button>
                                 </div>
                             </div>
@@ -952,53 +952,53 @@ const Reports: React.FC<ReportsProps> = ({
 
                         {/* Per-investor breakdown */}
                         {showInvestorBreakdown && accurateInvestorBreakdown.length > 0 && (
-                            <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100">
+                            <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700">
                                 <div className="flex items-center gap-2 mb-1">
                                     <span className="w-1 h-5 bg-purple-500 rounded-full"></span>
-                                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Разбивка по инвесторам</h4>
+                                    <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Разбивка по инвесторам</h4>
                                 </div>
-                                <p className="text-xs text-slate-400 mb-5 ml-3">Прибыль рассчитана из реальных сделок каждого инвестора с учётом его процентной ставки</p>
+                                <p className="text-xs text-slate-400 dark:text-slate-500 mb-5 ml-3">Прибыль рассчитана из реальных сделок каждого инвестора с учётом его процентной ставки</p>
                                 <div className="overflow-x-auto -mx-1">
                                     <table className="w-full text-sm min-w-[600px]">
                                         <thead>
                                             <tr>
-                                                <th className="pb-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider pl-1">Инвестор</th>
-                                                <th className="pb-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Капитал</th>
-                                                <th className="pb-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Доля капитала</th>
-                                                <th className="pb-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Ожидается</th>
-                                                <th className="pb-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Получено</th>
-                                                <th className="pb-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider pr-1">% плана</th>
+                                                <th className="pb-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pl-1">Инвестор</th>
+                                                <th className="pb-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Капитал</th>
+                                                <th className="pb-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Доля капитала</th>
+                                                <th className="pb-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Ожидается</th>
+                                                <th className="pb-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Получено</th>
+                                                <th className="pb-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pr-1">% плана</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-50">
+                                        <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
                                             {accurateInvestorBreakdown.map(({ inv, share, expectedProfit, realizedProfit, salesCount, color }) => {
                                                 const pct = expectedProfit > 0 ? Math.round((realizedProfit / expectedProfit) * 100) : 0;
-                                                const rowPctColor = pct >= 80 ? 'text-emerald-600' : pct >= 50 ? 'text-amber-600' : 'text-red-500';
+                                                const rowPctColor = pct >= 80 ? 'text-emerald-600 dark:text-emerald-400' : pct >= 50 ? 'text-amber-600 dark:text-amber-400' : 'text-red-500 dark:text-red-400';
                                                 return (
-                                                    <tr key={inv.id} className="hover:bg-slate-50/70 transition-colors">
+                                                    <tr key={inv.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-700/50 transition-colors">
                                                         <td className="py-3 pl-1">
                                                             <div className="flex items-center gap-2.5">
                                                                 <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ backgroundColor: color }}>
                                                                     {inv.name.charAt(0).toUpperCase()}
                                                                 </div>
                                                                 <div>
-                                                                    <p className="font-medium text-slate-700">{inv.name}</p>
-                                                                    <p className="text-xs text-slate-400">{inv.profitPercentage}% ставка · {salesCount} контр.</p>
+                                                                    <p className="font-medium text-slate-700 dark:text-slate-200">{inv.name}</p>
+                                                                    <p className="text-xs text-slate-400 dark:text-slate-500">{inv.profitPercentage}% ставка · {salesCount} контр.</p>
                                                                 </div>
                                                             </div>
                                                         </td>
-                                                        <td className="py-3 text-right font-medium text-slate-600">{formatCurrency(inv.initialAmount, appSettings.showCents)} ₽</td>
+                                                        <td className="py-3 text-right font-medium text-slate-600 dark:text-slate-300">{formatCurrency(inv.initialAmount, appSettings.showCents)} ₽</td>
                                                         <td className="py-3 text-right">
                                                             <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ backgroundColor: color + '18', color }}>
                                                                 {share}%
                                                             </span>
                                                         </td>
-                                                        <td className="py-3 text-right text-slate-500">{formatCurrency(expectedProfit, appSettings.showCents)} ₽</td>
-                                                        <td className="py-3 text-right font-semibold text-emerald-600">{formatCurrency(realizedProfit, appSettings.showCents)} ₽</td>
+                                                        <td className="py-3 text-right text-slate-500 dark:text-slate-400">{formatCurrency(expectedProfit, appSettings.showCents)} ₽</td>
+                                                        <td className="py-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(realizedProfit, appSettings.showCents)} ₽</td>
                                                         <td className="py-3 pr-1">
                                                             <div className="flex flex-col items-end gap-1">
                                                                 <span className={`text-xs font-bold ${rowPctColor}`}>{pct}%</span>
-                                                                <div className="w-14 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                                <div className="w-14 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                                                                     <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(pct, 100)}%` }}></div>
                                                                 </div>
                                                             </div>
@@ -1008,14 +1008,14 @@ const Reports: React.FC<ReportsProps> = ({
                                             })}
                                         </tbody>
                                         <tfoot>
-                                            <tr className="border-t-2 border-slate-200">
-                                                <td className="pt-3 pl-1 font-semibold text-slate-700">Итого</td>
-                                                <td className="pt-3 text-right font-semibold text-slate-700">{formatCurrency(totalInvestment, appSettings.showCents)} ₽</td>
-                                                <td className="pt-3 text-right text-slate-500">100%</td>
-                                                <td className="pt-3 text-right font-semibold text-slate-600">{formatCurrency(data.expectedInvestorProfit, appSettings.showCents)} ₽</td>
-                                                <td className="pt-3 text-right font-bold text-emerald-600">{formatCurrency(data.realizedInvestorProfit, appSettings.showCents)} ₽</td>
+                                            <tr className="border-t-2 border-slate-200 dark:border-slate-600">
+                                                <td className="pt-3 pl-1 font-semibold text-slate-700 dark:text-slate-200">Итого</td>
+                                                <td className="pt-3 text-right font-semibold text-slate-700 dark:text-slate-200">{formatCurrency(totalInvestment, appSettings.showCents)} ₽</td>
+                                                <td className="pt-3 text-right text-slate-500 dark:text-slate-400">100%</td>
+                                                <td className="pt-3 text-right font-semibold text-slate-600 dark:text-slate-300">{formatCurrency(data.expectedInvestorProfit, appSettings.showCents)} ₽</td>
+                                                <td className="pt-3 text-right font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(data.realizedInvestorProfit, appSettings.showCents)} ₽</td>
                                                 <td className="pt-3 pr-1 text-right">
-                                                    <span className={`text-xs font-bold ${efficiency >= 80 ? 'text-emerald-600' : efficiency >= 50 ? 'text-amber-600' : 'text-red-500'}`}>{efficiency}%</span>
+                                                    <span className={`text-xs font-bold ${efficiency >= 80 ? 'text-emerald-600 dark:text-emerald-400' : efficiency >= 50 ? 'text-amber-600 dark:text-amber-400' : 'text-red-500 dark:text-red-400'}`}>{efficiency}%</span>
                                                 </td>
                                             </tr>
                                         </tfoot>
@@ -1071,7 +1071,7 @@ const Reports: React.FC<ReportsProps> = ({
                 >
                     <div className={`absolute inset-0 bg-black/50 backdrop-blur-sm ${closingModal === 'export' ? 'animate-fade-out' : ''}`} />
                     <div
-                        className={`relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden ${closingModal === 'export' ? 'animate-fade-out' : 'animate-slide-up-sheet'}`}
+                        className={`relative w-full max-w-sm bg-white dark:bg-slate-800 rounded-2xl shadow-2xl overflow-hidden ${closingModal === 'export' ? 'animate-fade-out' : 'animate-slide-up-sheet'}`}
                         onClick={e => e.stopPropagation()}
                         onAnimationEnd={() => {
                             if (closingModal === 'export') {
@@ -1081,32 +1081,32 @@ const Reports: React.FC<ReportsProps> = ({
                         }}
                     >
                         {/* Header */}
-                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700">
                             <div className="flex items-center gap-2.5">
                                 <span className="text-lg">{exportModal === 'pdf' ? '🖨️' : '📥'}</span>
                                 <div>
-                                    <h3 className="font-bold text-slate-800 text-sm">Настройка экспорта</h3>
-                                    <p className="text-xs text-slate-400">{exportModal === 'pdf' ? 'PDF документ' : 'CSV таблица'}</p>
+                                    <h3 className="font-bold text-slate-800 dark:text-white text-sm">Настройка экспорта</h3>
+                                    <p className="text-xs text-slate-400 dark:text-slate-500">{exportModal === 'pdf' ? 'PDF документ' : 'CSV таблица'}</p>
                                 </div>
                             </div>
                             <button
                                 onClick={closeExportModal}
-                                className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors text-xs font-bold"
+                                className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-xs font-bold"
                             >✕</button>
                         </div>
 
                         {/* Company info line */}
                         {appSettings.companyName && (
-                            <div className="mx-5 mt-4 px-3 py-2 bg-indigo-50 rounded-xl flex items-center gap-2">
+                            <div className="mx-5 mt-4 px-3 py-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl flex items-center gap-2">
                                 <span className="text-indigo-400 text-sm">🏢</span>
-                                <span className="text-xs font-medium text-indigo-700">{appSettings.companyName}</span>
+                                <span className="text-xs font-medium text-indigo-700 dark:text-indigo-400">{appSettings.companyName}</span>
                                 <span className="ml-auto text-xs text-indigo-400">в шапке отчёта</span>
                             </div>
                         )}
 
                         {/* Options */}
                         <div className="px-5 py-4 space-y-1">
-                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Разделы отчёта</p>
+                            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Разделы отчёта</p>
                             {([
                                 { key: 'timeline', label: 'Динамика поступлений', icon: '📈', always: false },
                                 { key: 'investorBreakdown', label: 'Разбивка по инвесторам', icon: '👥', always: false, hidden: !showInvestorBreakdown },
@@ -1121,21 +1121,21 @@ const Reports: React.FC<ReportsProps> = ({
                                     onClick={() => toggleExportOption(opt.key)}
                                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left ${
                                         exportOptions[opt.key]
-                                            ? 'bg-indigo-50 border border-indigo-200'
-                                            : 'bg-slate-50 border border-transparent hover:bg-slate-100'
+                                            ? 'bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800'
+                                            : 'bg-slate-50 dark:bg-slate-700/50 border border-transparent hover:bg-slate-100 dark:hover:bg-slate-700'
                                     }`}
                                 >
                                     <span className="text-base leading-none">{opt.icon}</span>
-                                    <span className={`text-sm flex-1 font-medium ${exportOptions[opt.key] ? 'text-indigo-700' : 'text-slate-600'}`}>
+                                    <span className={`text-sm flex-1 font-medium ${exportOptions[opt.key] ? 'text-indigo-700 dark:text-indigo-400' : 'text-slate-600 dark:text-slate-300'}`}>
                                         {opt.label}
                                     </span>
                                     {opt.badge && (
-                                        <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">{opt.badge}</span>
+                                        <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">{opt.badge}</span>
                                     )}
                                     <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${
                                         exportOptions[opt.key]
                                             ? 'bg-indigo-600 border-indigo-600'
-                                            : 'border-slate-300 bg-white'
+                                            : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
                                     }`}>
                                         {exportOptions[opt.key] && <span className="text-white text-xs">✓</span>}
                                     </div>
@@ -1147,7 +1147,7 @@ const Reports: React.FC<ReportsProps> = ({
                         <div className="px-5 pb-5 flex gap-2">
                             <button
                                 onClick={closeExportModal}
-                                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-all"
+                                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
                             >
                                 Отмена
                             </button>
@@ -1177,7 +1177,7 @@ const Reports: React.FC<ReportsProps> = ({
 
                     {/* Sheet */}
                     <div
-                        className={`relative w-full sm:max-w-lg bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col overflow-hidden ${closingModal === 'active' ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+                        className={`relative w-full sm:max-w-lg bg-white dark:bg-slate-800 rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col overflow-hidden ${closingModal === 'active' ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
                         onClick={e => e.stopPropagation()}
                         onAnimationEnd={() => {
                             if (closingModal === 'active') {
@@ -1188,22 +1188,22 @@ const Reports: React.FC<ReportsProps> = ({
                     >
                         {/* Drag handle (mobile) */}
                         <div className="flex justify-center pt-3 pb-1 sm:hidden">
-                            <div className="w-10 h-1 bg-slate-200 rounded-full" />
+                            <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full" />
                         </div>
 
                         {/* Header */}
-                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
                             <div>
-                                <h3 className="font-bold text-slate-800 text-base">
+                                <h3 className="font-bold text-slate-800 dark:text-white text-base">
                                     {activeModal === 'payments' ? 'Поступления от клиентов' :
                                      activeModal === 'investor_payouts' ? 'Выплаты инвесторам' :
                                      'Прочие расходы'}
                                 </h3>
-                                <p className="text-xs text-slate-400 mt-0.5">{filters.period.start} — {filters.period.end}</p>
+                                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{filters.period.start} — {filters.period.end}</p>
                             </div>
                             <button
                                 onClick={closeActiveModal}
-                                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors text-sm font-bold flex-shrink-0"
+                                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-sm font-bold flex-shrink-0"
                             >
                                 ✕
                             </button>
@@ -1213,20 +1213,20 @@ const Reports: React.FC<ReportsProps> = ({
                         <div className="flex-1 overflow-y-auto">
                             {activeModal === 'payments' && (
                                 paymentsDetail.length > 0 ? (
-                                    <div className="divide-y divide-slate-50">
+                                    <div className="divide-y divide-slate-50 dark:divide-slate-700">
                                         {paymentsDetail.map((item, i) => (
-                                            <div key={i} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50/50 transition-colors">
-                                                <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0 text-base">💳</div>
+                                            <div key={i} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50/50 dark:hover:bg-slate-700/50 transition-colors">
+                                                <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0 text-base">💳</div>
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="font-medium text-slate-700 text-sm truncate">{item.productName}</p>
-                                                    <p className="text-xs text-slate-400">{item.label} · {new Date(item.date).toLocaleDateString('ru-RU')}</p>
+                                                    <p className="font-medium text-slate-700 dark:text-slate-200 text-sm truncate">{item.productName}</p>
+                                                    <p className="text-xs text-slate-400 dark:text-slate-500">{item.label} · {new Date(item.date).toLocaleDateString('ru-RU')}</p>
                                                 </div>
-                                                <span className="font-semibold text-emerald-600 text-sm flex-shrink-0">+{formatCurrency(item.amount, appSettings.showCents)} ₽</span>
+                                                <span className="font-semibold text-emerald-600 dark:text-emerald-400 text-sm flex-shrink-0">+{formatCurrency(item.amount, appSettings.showCents)} ₽</span>
                                             </div>
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col items-center justify-center h-36 text-slate-400">
+                                    <div className="flex flex-col items-center justify-center h-36 text-slate-400 dark:text-slate-500">
                                         <span className="text-3xl mb-2 opacity-40">💳</span>
                                         <p className="text-sm">Нет поступлений за период</p>
                                     </div>
@@ -1235,27 +1235,27 @@ const Reports: React.FC<ReportsProps> = ({
 
                             {activeModal === 'investor_payouts' && (
                                 investorPayoutsDetail.length > 0 ? (
-                                    <div className="divide-y divide-slate-50">
+                                    <div className="divide-y divide-slate-50 dark:divide-slate-700">
                                         {investorPayoutsDetail.map((item, i) => (
-                                            <div key={i} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50/50 transition-colors">
-                                                <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0 text-base">👥</div>
+                                            <div key={i} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50/50 dark:hover:bg-slate-700/50 transition-colors">
+                                                <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center flex-shrink-0 text-base">👥</div>
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="font-medium text-slate-700 text-sm truncate">{item.title}</p>
+                                                    <p className="font-medium text-slate-700 dark:text-slate-200 text-sm truncate">{item.title}</p>
                                                     <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                                         {item.investorName && (
-                                                            <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md">{item.investorName}</span>
+                                                            <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded-md">{item.investorName}</span>
                                                         )}
-                                                        <span className="text-xs text-slate-400">
+                                                        <span className="text-xs text-slate-400 dark:text-slate-500">
                                                             {item.payoutType === 'PROFIT' ? 'Прибыль' : 'Инвестиция'} · {new Date(item.date).toLocaleDateString('ru-RU')}
                                                         </span>
                                                     </div>
                                                 </div>
-                                                <span className="font-semibold text-indigo-600 text-sm flex-shrink-0">−{formatCurrency(item.amount, appSettings.showCents)} ₽</span>
+                                                <span className="font-semibold text-indigo-600 dark:text-indigo-400 text-sm flex-shrink-0">−{formatCurrency(item.amount, appSettings.showCents)} ₽</span>
                                             </div>
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col items-center justify-center h-36 text-slate-400">
+                                    <div className="flex flex-col items-center justify-center h-36 text-slate-400 dark:text-slate-500">
                                         <span className="text-3xl mb-2 opacity-40">👥</span>
                                         <p className="text-sm">Нет выплат за период</p>
                                     </div>
@@ -1264,25 +1264,25 @@ const Reports: React.FC<ReportsProps> = ({
 
                             {activeModal === 'other_expenses' && (
                                 otherExpensesDetail.length > 0 ? (
-                                    <div className="divide-y divide-slate-50">
+                                    <div className="divide-y divide-slate-50 dark:divide-slate-700">
                                         {otherExpensesDetail.map((item, i) => (
-                                            <div key={i} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50/50 transition-colors">
-                                                <div className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0 text-base">📋</div>
+                                            <div key={i} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50/50 dark:hover:bg-slate-700/50 transition-colors">
+                                                <div className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0 text-base">📋</div>
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="font-medium text-slate-700 text-sm truncate">{item.title}</p>
+                                                    <p className="font-medium text-slate-700 dark:text-slate-200 text-sm truncate">{item.title}</p>
                                                     <div className="flex items-center gap-1.5 mt-0.5">
                                                         {item.category && (
-                                                            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md">{item.category}</span>
+                                                            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded-md">{item.category}</span>
                                                         )}
-                                                        <span className="text-xs text-slate-400">{new Date(item.date).toLocaleDateString('ru-RU')}</span>
+                                                        <span className="text-xs text-slate-400 dark:text-slate-500">{new Date(item.date).toLocaleDateString('ru-RU')}</span>
                                                     </div>
                                                 </div>
-                                                <span className="font-semibold text-red-600 text-sm flex-shrink-0">−{formatCurrency(item.amount, appSettings.showCents)} ₽</span>
+                                                <span className="font-semibold text-red-600 dark:text-red-400 text-sm flex-shrink-0">−{formatCurrency(item.amount, appSettings.showCents)} ₽</span>
                                             </div>
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col items-center justify-center h-36 text-slate-400">
+                                    <div className="flex flex-col items-center justify-center h-36 text-slate-400 dark:text-slate-500">
                                         <span className="text-3xl mb-2 opacity-40">📋</span>
                                         <p className="text-sm">Нет расходов за период</p>
                                     </div>
@@ -1291,16 +1291,16 @@ const Reports: React.FC<ReportsProps> = ({
                         </div>
 
                         {/* Footer with total */}
-                        <div className="px-5 py-4 border-t border-slate-100 bg-slate-50/80 flex-shrink-0">
+                        <div className="px-5 py-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-700/50 flex-shrink-0">
                             <div className="flex justify-between items-center">
-                                <span className="text-sm text-slate-500">
+                                <span className="text-sm text-slate-500 dark:text-slate-400">
                                     {activeModal === 'payments'
                                         ? `${paymentsDetail.length} платежей`
                                         : activeModal === 'investor_payouts'
                                         ? `${investorPayoutsDetail.length} выплат`
                                         : `${otherExpensesDetail.length} расходов`}
                                 </span>
-                                <span className="font-bold text-slate-800 text-base">
+                                <span className="font-bold text-slate-800 dark:text-white text-base">
                                     {activeModal === 'payments'
                                         ? formatCurrency(data.customerPaymentsInPeriod, appSettings.showCents)
                                         : activeModal === 'investor_payouts'

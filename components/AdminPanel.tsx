@@ -219,10 +219,10 @@ const handleResetUserPassword = async (user: User) => {
 
     const getPlanBadge = (plan: SubscriptionPlan) => {
         const styles: Record<SubscriptionPlan, string> = {
-            TRIAL: 'bg-gray-100 text-gray-700',
-            START: 'bg-emerald-100 text-emerald-700',
-            STANDARD: 'bg-indigo-100 text-indigo-700',
-            BUSINESS: 'bg-purple-100 text-purple-700',
+            TRIAL: 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300',
+            START: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
+            STANDARD: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
+            BUSINESS: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
         };
         const labels: Record<SubscriptionPlan, string> = {
             TRIAL: '🧪 Тест',
@@ -234,16 +234,16 @@ const handleResetUserPassword = async (user: User) => {
     };
 
     const getStatusColor = (user: User) => {
-        if (!user.subscription) return 'bg-slate-100 text-slate-500';
+        if (!user.subscription) return 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400';
         const isExpired = new Date(user.subscription.expiresAt) < new Date();
-        if (isExpired) return 'bg-red-100 text-red-600';
+        if (isExpired) return 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400';
         const styles: Record<SubscriptionPlan, string> = {
-            TRIAL: 'bg-gray-100 text-gray-600',
-            START: 'bg-emerald-100 text-emerald-700',
-            STANDARD: 'bg-indigo-100 text-indigo-700',
-            BUSINESS: 'bg-purple-100 text-purple-700',
+            TRIAL: 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300',
+            START: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
+            STANDARD: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
+            BUSINESS: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
         };
-        return styles[user.subscription.plan] || 'bg-slate-100 text-slate-500';
+        return styles[user.subscription.plan] || 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400';
     };
 
     // 🔹 Прогресс использования лимита договоров
@@ -274,14 +274,14 @@ const getContractUsage = (user: User): {
             {/* Header */}
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800">🛡️ Панель Администратора</h2>
-                    <p className="text-slate-500 text-sm">Управление пользователями и тарифами</p>
+                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white">🛡️ Панель Администратора</h2>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm">Управление пользователями и тарифами</p>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={loadUsers} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200 transition" title="Обновить">
+                    <button onClick={loadUsers} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition" title="Обновить">
                         {ICONS.Refresh}
                     </button>
-                    <button onClick={loadSystemStats} className="p-2 bg-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-200 transition" title="Статистика">
+                    <button onClick={loadSystemStats} className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition" title="Статистика">
                         {ICONS.Dashboard}
                     </button>
                 </div>
@@ -289,9 +289,9 @@ const getContractUsage = (user: User): {
 
             {/* System Stats Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="text-sm text-slate-500">Всего пользователей</div>
-                    <div className="text-2xl font-bold text-slate-800">{systemStats.totalUsers}</div>
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <div className="text-sm text-slate-500 dark:text-slate-400">Всего пользователей</div>
+                    <div className="text-2xl font-bold text-slate-800 dark:text-white">{systemStats.totalUsers}</div>
                 </div>
                {/* <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                     <div className="text-sm text-slate-500">Активные подписки</div>
@@ -304,26 +304,26 @@ const getContractUsage = (user: User): {
             </div>
 
             {/* Search & Filter */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-3">
                 <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{ICONS.Search}</span>
                     <input
                         type="text"
                         placeholder="Поиск по имени, email или ID..."
-                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition"
+                        className="w-full pl-10 pr-4 py-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none focus:border-indigo-500 transition"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                     />
                 </div>
-                
+
                 {/* 🔹 Фильтр по подписке */}
                 <div className="flex flex-wrap gap-2">
                     <button
                         onClick={() => setSubscriptionFilter('all')}
                         className={`px-4 py-2 text-sm font-medium rounded-lg border transition ${
-                            subscriptionFilter === 'all' 
-                                ? 'bg-slate-800 text-white border-slate-800' 
-                                : 'bg-white border-slate-200 hover:border-slate-400'
+                            subscriptionFilter === 'all'
+                                ? 'bg-slate-800 text-white border-slate-800'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
                         }`}
                     >
                         Все
@@ -331,9 +331,9 @@ const getContractUsage = (user: User): {
                     <button
                         onClick={() => setSubscriptionFilter('active')}
                         className={`px-4 py-2 text-sm font-medium rounded-lg border transition ${
-                            subscriptionFilter === 'active' 
-                                ? 'bg-emerald-600 text-white border-emerald-600' 
-                                : 'bg-white text-emerald-600 border-emerald-200 hover:border-emerald-400'
+                            subscriptionFilter === 'active'
+                                ? 'bg-emerald-600 text-white border-emerald-600'
+                                : 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50 hover:border-emerald-400 dark:hover:border-emerald-700'
                         }`}
                     >
                         ✅ Активные
@@ -341,9 +341,9 @@ const getContractUsage = (user: User): {
                     <button
                         onClick={() => setSubscriptionFilter('expired')}
                         className={`px-4 py-2 text-sm font-medium rounded-lg border transition ${
-                            subscriptionFilter === 'expired' 
-                                ? 'bg-red-600 text-white border-red-600' 
-                                : 'bg-white text-red-600 border-red-200 hover:border-red-400'
+                            subscriptionFilter === 'expired'
+                                ? 'bg-red-600 text-white border-red-600'
+                                : 'bg-white dark:bg-slate-800 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/50 hover:border-red-400 dark:hover:border-red-700'
                         }`}
                     >
                         ⚠️ Истёкшие
@@ -351,9 +351,9 @@ const getContractUsage = (user: User): {
                     <button
                         onClick={() => setSubscriptionFilter('none')}
                         className={`px-4 py-2 text-sm font-medium rounded-lg border transition ${
-                            subscriptionFilter === 'none' 
-                                ? 'bg-slate-600 text-white border-slate-600' 
-                                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+                            subscriptionFilter === 'none'
+                                ? 'bg-slate-600 text-white border-slate-600'
+                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
                         }`}
                     >
                         ❌ Без подписки
@@ -365,7 +365,7 @@ const getContractUsage = (user: User): {
             {loading ? (
                 <div className="text-center py-10">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-3"></div>
-                    <span className="text-slate-500">Загрузка пользователей...</span>
+                    <span className="text-slate-500 dark:text-slate-400">Загрузка пользователей...</span>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -374,9 +374,9 @@ const getContractUsage = (user: User): {
                         const isExpired = user.subscription && new Date(user.subscription.expiresAt) < new Date();
                         
                         return (
-                            <div key={user.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition relative overflow-hidden group">
+                            <div key={user.id} className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition relative overflow-hidden group">
                                 {/* Role Badge */}
-                                <div className="absolute top-0 right-0 px-3 py-1 bg-slate-100 rounded-bl-lg text-xs font-bold uppercase text-slate-500">
+                                <div className="absolute top-0 right-0 px-3 py-1 bg-slate-100 dark:bg-slate-700 rounded-bl-lg text-xs font-bold uppercase text-slate-500 dark:text-slate-400">
                                     {user.role === 'admin' && '👑'}
                                     {user.role === 'manager' && '💼'}
                                     {user.role === 'investor' && '📊'}
@@ -393,16 +393,16 @@ const getContractUsage = (user: User): {
                                         {user.name.charAt(0).toUpperCase()}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <h3 className="font-bold text-slate-800 text-lg truncate">{user.name}</h3>
-                                        <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                                        <h3 className="font-bold text-slate-800 dark:text-white text-lg truncate">{user.name}</h3>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
                                         {user.phone && <p className="text-xs text-slate-400">{user.phone}</p>}
                                     </div>
                                 </div>
 
                                 {/* Subscription Info */}
-                                <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
+                                <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 space-y-3">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-xs text-slate-500">Тариф</span>
+                                        <span className="text-xs text-slate-500 dark:text-slate-400">Тариф</span>
                                         {user.subscription ? (
                                             <div className="flex items-center gap-2">
                                                 {getPlanBadge(user.subscription.plan)}
@@ -414,9 +414,9 @@ const getContractUsage = (user: User): {
                                     </div>
 
                                     {user.subscription && (
-                                        <div className="text-xs text-slate-500">
+                                        <div className="text-xs text-slate-500 dark:text-slate-400">
                                             <span>Действует до: </span>
-                                            <span className={isExpired ? 'text-red-600 font-medium' : 'text-slate-700'}>
+                                            <span className={isExpired ? 'text-red-600 dark:text-red-400 font-medium' : 'text-slate-700 dark:text-slate-300'}>
                                                 {new Date(user.subscription.expiresAt).toLocaleDateString('ru-RU')}
                                             </span>
                                         </div>
@@ -426,12 +426,12 @@ const getContractUsage = (user: User): {
                                     {!usage.unlimited && (
                                         <div>
                                             <div className="flex justify-between text-xs mb-1">
-                                                <span className="text-slate-500">Договоры</span>
-                                                <span className={`font-medium ${usage.percent >= 90 ? 'text-red-600' : usage.percent >= 70 ? 'text-amber-600' : 'text-slate-700'}`}>
+                                                <span className="text-slate-500 dark:text-slate-400">Договоры</span>
+                                                <span className={`font-medium ${usage.percent >= 90 ? 'text-red-600 dark:text-red-400' : usage.percent >= 70 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-slate-300'}`}>
                                                     {usage.used} / {usage.limit}
                                                 </span>
                                             </div>
-                                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                            <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                                                 <div 
                                                     className={`h-full rounded-full transition-all ${
                                                         usage.percent >= 90 ? 'bg-red-500' : 
@@ -448,7 +448,7 @@ const getContractUsage = (user: User): {
                                 </div>
 
                                 {/* Actions */}
-                                <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
+                                <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
                                     <button
                                         onClick={() => handleOpenModal(user)}
                                         className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition flex items-center justify-center gap-1.5"
@@ -457,7 +457,7 @@ const getContractUsage = (user: User): {
                                     </button>
                                     <button
                                         onClick={() => setApiModalUser(user)}
-                                        className="flex-1 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition flex items-center justify-center gap-1.5"
+                                        className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition flex items-center justify-center gap-1.5"
                                     >
                                         {ICONS.Key} API
                                     </button>
@@ -489,9 +489,9 @@ const getContractUsage = (user: User): {
 
             {/* Empty State */}
             {!loading && filteredUsers.length === 0 && (
-                <div className="text-center py-12 bg-white rounded-xl border border-slate-200">
+                <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
                     <div className="text-4xl mb-3">🔍</div>
-                    <p className="text-slate-500">Пользователи не найдены</p>
+                    <p className="text-slate-500 dark:text-slate-400">Пользователи не найдены</p>
                     <button onClick={() => { setSearchTerm(''); setSubscriptionFilter('all'); }} className="mt-2 text-indigo-600 hover:underline text-sm">
                         Сбросить фильтры
                     </button>
@@ -501,13 +501,13 @@ const getContractUsage = (user: User): {
             {/* 🔹 Modal: Управление тарифом */}
             {selectedUser && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedUser(null)}>
-                    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="flex items-start justify-between mb-4">
                             <div>
-                                <h3 className="text-xl font-bold text-slate-800">📋 Управление тарифом</h3>
-                                <p className="text-sm text-slate-500">{selectedUser.name} • {selectedUser.email}</p>
+                                <h3 className="text-xl font-bold text-slate-800 dark:text-white">📋 Управление тарифом</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">{selectedUser.name} • {selectedUser.email}</p>
                             </div>
-                            <button onClick={() => setSelectedUser(null)} className="p-2 hover:bg-slate-100 rounded-lg">{ICONS.Close}</button>
+                            <button onClick={() => setSelectedUser(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">{ICONS.Close}</button>
                         </div>
 
                         {/* Validation Error */}
@@ -521,7 +521,7 @@ const getContractUsage = (user: User): {
                         <div className="space-y-5">
                             {/* Plan Selection */}
                             <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-3">Тарифный план</label>
+                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Тарифный план</label>
                                 <div className="grid grid-cols-2 gap-2">
                                     {(['TRIAL', 'START', 'STANDARD', 'BUSINESS'] as SubscriptionPlan[]).map((p) => {
                                         const limits = PLAN_LIMITS[p];
@@ -530,13 +530,13 @@ const getContractUsage = (user: User): {
                                                 key={p}
                                                 onClick={() => handlePlanChange(p)}
                                                 className={`p-3 text-left rounded-xl border-2 transition-all ${
-                                                    plan === p 
-                                                        ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200' 
-                                                        : 'border-slate-200 hover:border-slate-300'
+                                                    plan === p
+                                                        ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 ring-2 ring-indigo-200 dark:ring-indigo-900/50'
+                                                        : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                                                 }`}
                                             >
-                                                <div className="font-bold text-slate-800">{p === 'TRIAL' ? '🧪 TRIAL' : p === 'START' ? '🚀 START' : p === 'STANDARD' ? '⭐ STANDARD' : '💼 BUSINESS'}</div>
-                                                <div className="text-xs text-slate-500 mt-1">
+                                                <div className="font-bold text-slate-800 dark:text-white">{p === 'TRIAL' ? '🧪 TRIAL' : p === 'START' ? '🚀 START' : p === 'STANDARD' ? '⭐ STANDARD' : '💼 BUSINESS'}</div>
+                                                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                                                     Договоры: {limits.contracts === -1 ? '∞' : limits.contracts}<br/>
                                                     Инвесторы: {limits.investors === -1 ? '∞' : limits.investors}
                                                 </div>
@@ -548,35 +548,35 @@ const getContractUsage = (user: User): {
 
                             {/* Period Selection */}
                             <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-3">Срок действия</label>
+                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Срок действия</label>
                                 <div className="flex flex-wrap gap-2 mb-3">
                                     {[1, 3, 6, 12].map(m => (
                                         <button key={m} onClick={() => { setMonths(m); setInputValue(''); setIsCustom(false); }}
                                             className={`px-4 py-2 text-sm font-medium rounded-lg border transition ${
-                                                months === m && !isCustom ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-slate-200 hover:border-slate-400'
+                                                months === m && !isCustom ? 'bg-slate-800 text-white border-slate-800' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
                                             }`}>
                                             {m} мес.
                                         </button>
                                     ))}
                                     <button onClick={() => { setMonths(999); setInputValue(''); setIsCustom(false); }}
                                         className={`px-4 py-2 text-sm font-medium rounded-lg border transition ${
-                                            months === 999 && !isCustom ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-emerald-600 border-emerald-200 hover:border-emerald-400'
+                                            months === 999 && !isCustom ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50 hover:border-emerald-400 dark:hover:border-emerald-700'
                                         }`} title="Бессрочно">∞</button>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <input type="number" min="1" max="120" value={isCustom ? inputValue : ''}
                                         onChange={(e) => { setInputValue(e.target.value); setIsCustom(true); const v = parseInt(e.target.value); if (v > 0) setMonths(Math.min(v, 120)); }}
                                         placeholder="Свой срок" disabled={months === 999}
-                                        className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-indigo-500 disabled:bg-slate-50"/>
-                                    <span className="text-sm text-slate-500">{months === 999 ? '∞' : 'мес.'}</span>
+                                        className="flex-1 px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none focus:border-indigo-500 disabled:bg-slate-50 dark:disabled:bg-slate-800"/>
+                                    <span className="text-sm text-slate-500 dark:text-slate-400">{months === 999 ? '∞' : 'мес.'}</span>
                                 </div>
                             </div>
 
                             {/* Expiration Preview */}
-                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
                                 <div className="flex items-center gap-2 text-sm">
-                                    <span className="text-slate-500">📅 Будет действовать до:</span>
-                                    <span className="font-bold text-slate-800">
+                                    <span className="text-slate-500 dark:text-slate-400">📅 Будет действовать до:</span>
+                                    <span className="font-bold text-slate-800 dark:text-white">
                                         {months === 999 ? 'Не ограничено' : new Date(Date.now() + months * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('ru-RU')}
                                     </span>
                                 </div>
@@ -595,32 +595,32 @@ const getContractUsage = (user: User): {
             {/* 🔹 Modal: API Key */}
             {apiModalUser && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setApiModalUser(null)}>
-                    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
                         <div className="flex items-start justify-between mb-4">
                             <div>
-                                <h3 className="text-xl font-bold text-slate-800">🔑 API Доступ</h3>
-                                <p className="text-sm text-slate-500">{apiModalUser.name}</p>
+                                <h3 className="text-xl font-bold text-slate-800 dark:text-white">🔑 API Доступ</h3>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">{apiModalUser.name}</p>
                             </div>
-                            <button onClick={() => setApiModalUser(null)} className="p-2 hover:bg-slate-100 rounded-lg">{ICONS.Close}</button>
+                            <button onClick={() => setApiModalUser(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">{ICONS.Close}</button>
                         </div>
 
                         <div className="space-y-4">
-                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">API Ключ</label>
+                            <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">API Ключ</label>
                                 {generatedKey || apiModalUser.apiKey ? (
                                     <div className="flex items-center gap-2">
-                                        <code className="flex-1 bg-white p-2 rounded border border-slate-200 text-xs font-mono break-all">
+                                        <code className="flex-1 bg-white dark:bg-slate-800 p-2 rounded border border-slate-200 dark:border-slate-600 text-xs font-mono break-all">
                                             {generatedKey || apiModalUser.apiKey}
                                         </code>
-                                        <button onClick={() => { navigator.clipboard.writeText(generatedKey || apiModalUser.apiKey!); alert("📋 Скопировано!"); }} 
-                                            className="p-2 text-indigo-600 hover:bg-indigo-50 rounded">{ICONS.Copy}</button>
+                                        <button onClick={() => { navigator.clipboard.writeText(generatedKey || apiModalUser.apiKey!); alert("📋 Скопировано!"); }}
+                                            className="p-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded">{ICONS.Copy}</button>
                                     </div>
                                 ) : (
                                     <p className="text-sm text-slate-400 italic">Ключ не сгенерирован</p>
                                 )}
                             </div>
 
-                            <div className="text-xs text-slate-500 space-y-1 bg-amber-50 p-3 rounded-lg border border-amber-200">
+                            <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1 bg-amber-50 dark:bg-amber-900/30 p-3 rounded-lg border border-amber-200 dark:border-amber-900/50">
                                 <p>🔑 Ключ даёт полный доступ к данным пользователя</p>
                                 <p>⚠️ При перегенерации старый ключ перестанет работать</p>
                             </div>

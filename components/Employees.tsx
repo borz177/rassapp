@@ -111,8 +111,8 @@ const handleSubmit = (e: React.FormEvent) => {
     <div className="space-y-6 pb-20 animate-fade-in">
       <header className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Сотрудники</h2>
-          <p className="text-slate-500 text-sm">Управление доступом</p>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Сотрудники</h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">Управление доступом</p>
         </div>
         {!isAdding && (
             <button 
@@ -125,15 +125,15 @@ const handleSubmit = (e: React.FormEvent) => {
       </header>
 
       {isAdding && (
-          <form onSubmit={handleSubmit} className="bg-white p-5 rounded-2xl shadow-md border border-slate-100 space-y-5 animate-fade-in">
-              <h3 className="font-bold text-slate-800 border-b border-slate-100 pb-2">
+          <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-md border border-slate-100 dark:border-slate-700 space-y-5 animate-fade-in">
+              <h3 className="font-bold text-slate-800 dark:text-white border-b border-slate-100 dark:border-slate-700 pb-2">
                   {editingId ? 'Редактирование сотрудника' : 'Новый сотрудник'}
               </h3>
 
               <div className="space-y-3">
                   <input 
                     placeholder="Имя Фамилия"
-                    className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                    className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
                     value={name}
                     onChange={e => setName(e.target.value)}
                   />
@@ -141,14 +141,14 @@ const handleSubmit = (e: React.FormEvent) => {
                       <input 
                         placeholder="Email (Логин)"
                         type="email"
-                        className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                        className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
                         value={email}
                         onChange={e => setEmail(e.target.value)}
                       />
                       <input 
                         placeholder={editingId ? "Новый пароль (необяз.)" : "Пароль"}
                         type="text"
-                        className="w-full p-3 border border-slate-200 rounded-xl outline-none"
+                        className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
                         value={password}
                         onChange={e => setPassword(e.target.value)}
                       />
@@ -156,66 +156,66 @@ const handleSubmit = (e: React.FormEvent) => {
               </div>
 
               {/* Permissions */}
-              <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-                  <h4 className="text-sm font-bold text-slate-600">Права доступа (CRUD)</h4>
+              <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-3">
+                  <h4 className="text-sm font-bold text-slate-600 dark:text-slate-300">Права доступа (CRUD)</h4>
                   <div className="flex gap-4">
                       <label className="flex items-center gap-2 cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          <input
+                            type="checkbox"
+                            className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
                             checked={permissions.canCreate}
                             onChange={e => setPermissions({...permissions, canCreate: e.target.checked})}
                           />
-                          <span className="text-sm text-slate-700">Создание</span>
+                          <span className="text-sm text-slate-700 dark:text-slate-300">Создание</span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          <input
+                            type="checkbox"
+                            className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
                             checked={permissions.canEdit}
                             onChange={e => setPermissions({...permissions, canEdit: e.target.checked})}
                           />
-                          <span className="text-sm text-slate-700">Редактирование</span>
+                          <span className="text-sm text-slate-700 dark:text-slate-300">Редактирование</span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          <input
+                            type="checkbox"
+                            className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
                             checked={permissions.canDelete}
                             onChange={e => setPermissions({...permissions, canDelete: e.target.checked})}
                           />
-                          <span className="text-sm text-slate-700">Удаление</span>
+                          <span className="text-sm text-slate-700 dark:text-slate-300">Удаление</span>
                       </label>
                   </div>
               </div>
 
               {/* Investor Access */}
               {/* Доступ к счетам */}
-<div className="bg-slate-50 p-4 rounded-xl space-y-3">
-    <h4 className="text-sm font-bold text-slate-600">Доступ к счетам</h4>
-    
+<div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-3">
+    <h4 className="text-sm font-bold text-slate-600 dark:text-slate-300">Доступ к счетам</h4>
+
     {/* ГАЛОЧКА ДЛЯ ОСНОВНОГО СЧЕТА */}
-    <label className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
+    <label className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
         <input
             type="checkbox"
-            className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
             checked={allowMainAccount}
             onChange={e => setAllowMainAccount(e.target.checked)}
         />
         <div className="text-sm">
-            <span className="font-semibold text-slate-800 block">Основной счет компании</span>
-            <span className="text-slate-500 text-xs">Сотрудник сможет видеть и создавать операции на главном счете, даже если нет инвесторов.</span>
+            <span className="font-semibold text-slate-800 dark:text-white block">Основной счет компании</span>
+            <span className="text-slate-500 dark:text-slate-400 text-xs">Сотрудник сможет видеть и создавать операции на главном счете, даже если нет инвесторов.</span>
         </div>
     </label>
 
-    <p className="text-xs text-slate-500 mt-4 mb-2">Или выберите конкретных инвесторов:</p>
-    <div className="max-h-40 overflow-y-auto space-y-2 border border-slate-200 rounded-lg p-2 bg-white">
-        {investors.length === 0 && <p className="text-xs text-slate-400 p-2">Нет инвесторов</p>}
+    <p className="text-xs text-slate-500 dark:text-slate-400 mt-4 mb-2">Или выберите конкретных инвесторов:</p>
+    <div className="max-h-40 overflow-y-auto space-y-2 border border-slate-200 dark:border-slate-600 rounded-lg p-2 bg-white dark:bg-slate-800">
+        {investors.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-500 p-2">Нет инвесторов</p>}
         {investors.map(inv => (
-            <label key={inv.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer">
+            <label key={inv.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg cursor-pointer">
                 <input
                     type="checkbox"
-                    className="w-5 h-5 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                    className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-purple-600 focus:ring-purple-500"
                     checked={allowedInvestorIds.includes(inv.id)}
                     onChange={() => {
                         setAllowedInvestorIds(prev =>
@@ -224,8 +224,8 @@ const handleSubmit = (e: React.FormEvent) => {
                     }}
                 />
                 <div className="text-sm">
-                    <span className="font-semibold text-slate-800 block">{inv.name}</span>
-                    <span className="text-slate-500 text-xs">{inv.email}</span>
+                    <span className="font-semibold text-slate-800 dark:text-white block">{inv.name}</span>
+                    <span className="text-slate-500 dark:text-slate-400 text-xs">{inv.email}</span>
                 </div>
             </label>
         ))}
@@ -233,7 +233,7 @@ const handleSubmit = (e: React.FormEvent) => {
 </div>
 
               <div className="flex gap-3">
-                  <button type="button" onClick={resetForm} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Отмена</button>
+                  <button type="button" onClick={resetForm} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300">Отмена</button>
                   <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">
                       {editingId ? 'Сохранить изменения' : 'Создать сотрудника'}
                   </button>
@@ -244,30 +244,30 @@ const handleSubmit = (e: React.FormEvent) => {
       {/* Employee List */}
       <div className="grid gap-4">
           {employees.length === 0 && !isAdding && (
-              <div className="text-center py-10 text-slate-400">Нет сотрудников</div>
+              <div className="text-center py-10 text-slate-400 dark:text-slate-500">Нет сотрудников</div>
           )}
           {employees.map(emp => (
-              <div key={emp.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div key={emp.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-lg">
+                      <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center font-bold text-lg">
                           {emp.name.charAt(0)}
                       </div>
                       <div>
-                          <h3 className="font-bold text-slate-800">{emp.name}</h3>
-                          <p className="text-xs text-slate-500">{emp.email}</p>
-                          
+                          <h3 className="font-bold text-slate-800 dark:text-white">{emp.name}</h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{emp.email}</p>
+
                       </div>
                   </div>
-                  
+
                   <div className="text-right flex flex-col items-end gap-2">
-                      <span className="text-xs bg-purple-50 text-purple-600 px-2 py-1 rounded-full font-medium">
+                      <span className="text-xs bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-1 rounded-full font-medium">
                           Инвесторов: {emp.allowedInvestorIds?.length || 0}
                       </span>
                       <div className="flex gap-2">
-                          <button onClick={() => handleStartEdit(emp)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded">
+                          <button onClick={() => handleStartEdit(emp)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded">
                               {ICONS.Edit}
                           </button>
-                          <button onClick={() => handleDelete(emp.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-slate-50 rounded">
+                          <button onClick={() => handleDelete(emp.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded">
                               {ICONS.Delete}
                           </button>
                       </div>

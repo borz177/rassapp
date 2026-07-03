@@ -258,23 +258,23 @@ const availableTerms = useMemo(() => {
 }, [termRates, isPublic]);  // 🔹 Зависимость от isPublic
 
   return (
-    <div className={`min-h-screen ${isPublic ? 'bg-slate-50 flex items-center justify-center p-4' : 'animate-fade-in pb-20'}`}>
-        <div className={`bg-white w-full ${isPublic ? 'max-w-md rounded-3xl shadow-xl' : 'rounded-none bg-transparent'}`}>
+    <div className={`min-h-screen ${isPublic ? 'bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4' : 'animate-fade-in pb-20'}`}>
+        <div className={`bg-white dark:bg-slate-800 w-full ${isPublic ? 'max-w-md rounded-3xl shadow-xl' : 'rounded-none bg-transparent'}`}>
 
             {/* Header */}
             <div className={`p-6 ${isPublic ? 'bg-indigo-600 rounded-t-3xl text-white' : ''}`}>
                 <div className="flex items-center gap-3 mb-2">
                     {!isPublic && onBack && (
-                        <button onClick={onBack} className="text-slate-500 hover:text-slate-800">
+                        <button onClick={onBack} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200">
                             {ICONS.Back}
                         </button>
                     )}
                     <div>
-                        <h2 className={`text-2xl font-bold ${isPublic ? 'text-white' : 'text-slate-800'}`}>
+                        <h2 className={`text-2xl font-bold ${isPublic ? 'text-white' : 'text-slate-800 dark:text-white'}`}>
                             {isPublic ? 'Калькулятор рассрочки' : 'Калькулятор'}
                         </h2>
                         {isPublic && <p className="text-indigo-200 text-sm">{publicCompany}</p>}
-                        {!isPublic && <p className="text-slate-500 text-sm">Расчет условий и ссылка для клиента</p>}
+                        {!isPublic && <p className="text-slate-500 dark:text-slate-400 text-sm">Расчет условий и ссылка для клиента</p>}
                     </div>
                 </div>
             </div>
@@ -293,26 +293,26 @@ const availableTerms = useMemo(() => {
                 )}
 
                 {/* Inputs */}
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-4">
                     <div>
-                        <label className="block text-sm font-bold text-slate-500 mb-1">Стоимость товара</label>
+                        <label className="block text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">Стоимость товара</label>
                         <div className="relative">
                             <input
                                 type="number"
-                                className="w-full p-4 pl-4 pr-12 text-xl font-bold border border-slate-200 rounded-xl outline-none focus:border-indigo-500"
+                                className="w-full p-4 pl-4 pr-12 text-xl font-bold border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500"
                                 placeholder="0"
                                 value={price}
                                 onChange={e => setPrice(e.target.value)}
                             />
-                            <span className="absolute right-4 top-4 text-slate-400">₽</span>
+                            <span className="absolute right-4 top-4 text-slate-400 dark:text-slate-500">₽</span>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-bold text-slate-500 mb-1">Срок (мес)</label>
+                            <label className="block text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">Срок (мес)</label>
                             <select
-                                className="w-full p-4 border border-slate-200 rounded-xl outline-none bg-white font-medium"
+                                className="w-full p-4 border border-slate-200 dark:border-slate-600 rounded-xl outline-none bg-white dark:bg-slate-900 dark:text-white font-medium"
                                 value={months}
                                 onChange={e => setMonths(parseInt(e.target.value))}
                             >
@@ -322,10 +322,10 @@ const availableTerms = useMemo(() => {
                             </select>
                         </div>
                         <div>
-                            <label className="block text-sm font-bold text-slate-500 mb-1">Взнос</label>
+                            <label className="block text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">Взнос</label>
                             <input
                                 type="number"
-                                className="w-full p-4 border border-slate-200 rounded-xl outline-none"
+                                className="w-full p-4 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
                                 placeholder="0"
                                 value={downPayment}
                                 onChange={e => setDownPayment(e.target.value)}
@@ -360,10 +360,10 @@ const availableTerms = useMemo(() => {
 
                 {/* Admin Controls (Hidden in Public Mode) */}
                 {!isPublic && (
-                    <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 animate-fade-in">
+                    <div className="bg-indigo-50 dark:bg-indigo-950/40 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 animate-fade-in">
                         <div className="flex justify-between items-center mb-3">
-                            <h3 className="font-bold text-indigo-900">Настройки ставок</h3>
-                            <button onClick={() => setShowSettings(!showSettings)} className="text-xs text-indigo-600 underline font-bold">
+                            <h3 className="font-bold text-indigo-900 dark:text-indigo-300">Настройки ставок</h3>
+                            <button onClick={() => setShowSettings(!showSettings)} className="text-xs text-indigo-600 dark:text-indigo-400 underline font-bold">
                                 {showSettings ? 'Свернуть' : 'Развернуть'}
                             </button>
                         </div>
@@ -375,40 +375,40 @@ const availableTerms = useMemo(() => {
                                     <div className="flex gap-2">
                                         <input
                                             type="number"
-                                            className="flex-1 p-3 border border-indigo-200 rounded-xl outline-none"
+                                            className="flex-1 p-3 border border-indigo-200 dark:border-indigo-900/50 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
                                             value={defaultRate}
                                             onChange={e => setDefaultRate(e.target.value)}
                                             placeholder="30"
                                         />
                                     </div>
-                                    <p className="text-[10px] text-slate-500 mt-1">Применяется, если для срока нет отдельного правила.</p>
+                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Применяется, если для срока нет отдельного правила.</p>
                                 </div>
 
-                                <div className="bg-white p-3 rounded-xl border border-indigo-100">
+                                <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/50">
                                     <label className="block text-xs font-bold text-indigo-400 uppercase mb-2">Специальные ставки по срокам</label>
 
                                     {/* List of existing rules */}
                                     <div className="space-y-2 mb-3">
                                         {termRates.map(rule => (
-                                            <div key={rule.months} className="flex justify-between items-center bg-indigo-50 p-2 rounded-lg text-sm">
-                                                <span className="font-bold text-indigo-900">{rule.months} мес.</span>
+                                            <div key={rule.months} className="flex justify-between items-center bg-indigo-50 dark:bg-indigo-950/40 p-2 rounded-lg text-sm">
+                                                <span className="font-bold text-indigo-900 dark:text-indigo-300">{rule.months} мес.</span>
                                                 <div className="flex items-center gap-3">
-                                                    <span className="font-bold text-indigo-600">{rule.rate}%</span>
+                                                    <span className="font-bold text-indigo-600 dark:text-indigo-400">{rule.rate}%</span>
                                                     <button onClick={() => removeRule(rule.months)} className="text-red-400 hover:text-red-600">
                                                         {ICONS.Close}
                                                     </button>
                                                 </div>
                                             </div>
                                         ))}
-                                        {termRates.length === 0 && <p className="text-center text-xs text-slate-400 py-2">Нет специальных правил</p>}
+                                        {termRates.length === 0 && <p className="text-center text-xs text-slate-400 dark:text-slate-500 py-2">Нет специальных правил</p>}
                                     </div>
 
                                     {/* Add new rule */}
                                     <div className="flex gap-2 items-end">
                                         <div className="flex-1">
-                                            <label className="text-[10px] text-slate-400 block mb-1">Срок</label>
+                                            <label className="text-[10px] text-slate-400 dark:text-slate-500 block mb-1">Срок</label>
                                             <select
-                                                className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-slate-50 outline-none"
+                                                className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm bg-slate-50 dark:bg-slate-900 dark:text-white outline-none"
                                                 value={newRuleMonth}
                                                 onChange={e => setNewRuleMonth(parseInt(e.target.value))}
                                             >
@@ -416,10 +416,10 @@ const availableTerms = useMemo(() => {
                                             </select>
                                         </div>
                                         <div className="w-20">
-                                            <label className="text-[10px] text-slate-400 block mb-1">Ставка %</label>
+                                            <label className="text-[10px] text-slate-400 dark:text-slate-500 block mb-1">Ставка %</label>
                                             <input
                                                 type="number"
-                                                className="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none"
+                                                className="w-full p-2 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm outline-none"
                                                 value={newRuleRate}
                                                 onChange={e => setNewRuleRate(e.target.value)}
                                                 placeholder="%"
@@ -431,7 +431,7 @@ const availableTerms = useMemo(() => {
                                     </div>
                                 </div>
 
-                                <button onClick={handleSaveConfig} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200">
+                                <button onClick={handleSaveConfig} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">
                                     Сохранить настройки
                                 </button>
                             </div>
@@ -440,7 +440,7 @@ const availableTerms = useMemo(() => {
                                 <button
                                     onClick={handleCopyLink}
                                     disabled={isLoadingConfig}
-                                    className={`w-full py-3 bg-white border-2 border-indigo-200 text-indigo-700 font-bold rounded-xl hover:bg-indigo-100 flex items-center justify-center gap-2 transition-colors ${isLoadingConfig ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    className={`w-full py-3 bg-white dark:bg-slate-800 border-2 border-indigo-200 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-400 font-bold rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/40 flex items-center justify-center gap-2 transition-colors ${isLoadingConfig ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
                                     {isLoadingConfig ? (
                                         <>
@@ -502,7 +502,7 @@ const availableTerms = useMemo(() => {
       </button>
     )}
 
-    <p className="text-xs text-slate-400">
+    <p className="text-xs text-slate-400 dark:text-slate-500">
       Расчет является предварительным. {publicCompany}
     </p>
   </div>

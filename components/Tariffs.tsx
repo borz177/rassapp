@@ -100,8 +100,8 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
         "База клиентов (до 100)",
         "Учет расходов",
       ],
-      color: "bg-slate-100",
-      textColor: "text-slate-800",
+      color: "bg-slate-100 dark:bg-slate-700",
+      textColor: "text-slate-800 dark:text-white",
       btnColor: "bg-slate-800",
       highlight: false
     },
@@ -115,8 +115,8 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
         "Печать договоров (PDF)",
         "База клиентов (до 1000)"
       ],
-      color: "bg-indigo-50 border-2 border-indigo-500",
-      textColor: "text-indigo-900",
+      color: "bg-indigo-50 dark:bg-indigo-950/40 border-2 border-indigo-500",
+      textColor: "text-indigo-900 dark:text-indigo-300",
       btnColor: "bg-indigo-600",
       highlight: true,
       badge: "Популярный"
@@ -142,21 +142,21 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
   return (
     <div className="space-y-6 animate-fade-in pb-20 relative">
       <header className="text-center">
-        <h2 className="text-3xl font-bold text-slate-800">Тарифы</h2>
-        <p className="text-slate-500 mt-2">Выберите подходящий план для вашего бизнеса</p>
+        <h2 className="text-3xl font-bold text-slate-800 dark:text-white">Тарифы</h2>
+        <p className="text-slate-500 dark:text-slate-400 mt-2">Выберите подходящий план для вашего бизнеса</p>
       </header>
 
       {/* 🔹 Блок статуса текущей подписки */}
       {user?.subscription && (
         <div className={`max-w-2xl mx-auto px-2 p-4 rounded-2xl border-2 flex items-center gap-3 ${
-          subStatus.expired 
-            ? 'bg-red-50 border-red-200 text-red-800' 
-            : subStatus.isWarning 
-              ? 'bg-amber-50 border-amber-200 text-amber-800' 
-              : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          subStatus.expired
+            ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-900/50 text-red-800 dark:text-red-400'
+            : subStatus.isWarning
+              ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-400'
+              : 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-400'
         }`}>
           <div className={`p-2 rounded-full ${
-            subStatus.expired ? 'bg-red-100' : subStatus.isWarning ? 'bg-amber-100' : 'bg-emerald-100'
+            subStatus.expired ? 'bg-red-100 dark:bg-red-900/50' : subStatus.isWarning ? 'bg-amber-100 dark:bg-amber-900/50' : 'bg-emerald-100 dark:bg-emerald-900/50'
           }`}>
             {subStatus.expired ? ICONS.Alert : subStatus.isWarning ? ICONS.Clock : ICONS.CheckCircle}
           </div>
@@ -187,15 +187,15 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
 
       {/* Duration Switcher */}
       <div className="flex justify-center">
-        <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-200 inline-flex">
+        <div className="bg-white dark:bg-slate-800 p-1 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 inline-flex">
           {[1, 3, 6, 12].map((m) => (
             <button
               key={m}
               onClick={() => setDuration(m as any)}
               className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                duration === m 
-                  ? 'bg-slate-800 text-white shadow-md' 
-                  : 'text-slate-500 hover:bg-slate-50'
+                duration === m
+                  ? 'bg-slate-800 text-white shadow-md'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
               }`}
             >
               {m} мес. {m > 1 && <span className="text-[10px] opacity-70">-{getDiscount(m)*100}%</span>}
@@ -265,7 +265,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
             <span className={plan.name === 'Бизнес' ? 'text-emerald-400' : 'text-emerald-600'}>
               {ICONS.Check}
             </span>
-            <span className={`${plan.name === 'Бизнес' ? 'text-slate-300' : 'text-slate-600'}`}>
+            <span className={`${plan.name === 'Бизнес' ? 'text-slate-300' : 'text-slate-600 dark:text-slate-300'}`}>
               {feature}
             </span>
           </li>
@@ -296,44 +296,44 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
 })}
       </div>
 
-      <div className="text-center text-xs text-slate-400 mt-8">
+      <div className="text-center text-xs text-slate-400 dark:text-slate-500 mt-8">
         Оплата производится через безопасный шлюз ЮKassa. Активация происходит автоматически после подтверждения платежа.
       </div>
 
       {/* Confirmation Modal */}
       {confirmData && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !loading && setConfirmData(null)}>
-              <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 relative overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 relative overflow-hidden" onClick={e => e.stopPropagation()}>
 
                   {/* Decorative Background Element */}
-                  <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-50 rounded-full opacity-50 pointer-events-none"></div>
+                  <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-50 dark:bg-indigo-950/40 rounded-full opacity-50 pointer-events-none"></div>
 
-                  <h3 className="text-xl font-bold text-slate-800 mb-1">Подтверждение заказа</h3>
-                  <p className="text-sm text-slate-500 mb-6">Проверьте детали перед оплатой</p>
+                  <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1">Подтверждение заказа</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Проверьте детали перед оплатой</p>
 
-                  <div className="bg-slate-50 p-4 rounded-xl space-y-3 border border-slate-100 mb-6">
+                  <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-3 border border-slate-100 dark:border-slate-700 mb-6">
                       <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-sm">Тариф</span>
-                          <span className="font-bold text-slate-800">{confirmData.name}</span>
+                          <span className="text-slate-500 dark:text-slate-400 text-sm">Тариф</span>
+                          <span className="font-bold text-slate-800 dark:text-white">{confirmData.name}</span>
                       </div>
                       <div className="flex justify-between items-center">
-                          <span className="text-slate-500 text-sm">Период</span>
-                          <span className="font-medium text-slate-800">{duration} мес.</span>
+                          <span className="text-slate-500 dark:text-slate-400 text-sm">Период</span>
+                          <span className="font-medium text-slate-800 dark:text-white">{duration} мес.</span>
                       </div>
-                      <div className="border-t border-slate-200 my-2"></div>
-                      <div className="flex justify-between items-center text-xs text-slate-400">
+                      <div className="border-t border-slate-200 dark:border-slate-700 my-2"></div>
+                      <div className="flex justify-between items-center text-xs text-slate-400 dark:text-slate-500">
                           <span>Цена за месяц</span>
                           <span>{confirmData.monthlyPrice} ₽</span>
                       </div>
                       {confirmData.basePrice > confirmData.monthlyPrice && (
-                          <div className="flex justify-between items-center text-xs text-emerald-600 font-medium">
+                          <div className="flex justify-between items-center text-xs text-emerald-600 dark:text-emerald-400 font-medium">
                               <span>Скидка ({(1 - confirmData.monthlyPrice / confirmData.basePrice) * 100}%)</span>
                               <span>-{(confirmData.basePrice * duration - confirmData.monthlyPrice * duration).toLocaleString()} ₽</span>
                           </div>
                       )}
                       <div className="flex justify-between items-end pt-2">
-                          <span className="text-slate-800 font-bold">Итого к оплате:</span>
-                          <span className="text-2xl font-bold text-indigo-600">{(confirmData.monthlyPrice * duration).toLocaleString()} ₽</span>
+                          <span className="text-slate-800 dark:text-white font-bold">Итого к оплате:</span>
+                          <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{(confirmData.monthlyPrice * duration).toLocaleString()} ₽</span>
                       </div>
                   </div>
 
@@ -359,14 +359,14 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
                       <button
                           onClick={() => setConfirmData(null)}
                           disabled={!!loading}
-                          className="w-full py-3 bg-white text-slate-500 rounded-xl font-medium hover:bg-slate-50 transition-colors"
+                          className="w-full py-3 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                       >
                           Отмена
                       </button>
                   </div>
 
                   <div className="mt-4 flex justify-center opacity-50">
-                      <span className="text-[10px] text-slate-400">Безопасный платеж • SSL Encrypted</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">Безопасный платеж • SSL Encrypted</span>
                   </div>
               </div>
           </div>
