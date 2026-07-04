@@ -69,10 +69,10 @@
 
 .dark {
 
-  --color-bg: #010203;
+  --color-bg: #000000;
   --color-text: #e5e7eb;
 
-  --color-primary-50: #060911;
+  --color-primary-50: #000000;
   --color-primary-100: #172554;
   --color-primary-200: #1e3a8a;
   --color-primary-300: #1d4ed8;
