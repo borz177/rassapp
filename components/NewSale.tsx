@@ -144,15 +144,32 @@ const NewSale: React.FC<NewSaleProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
-  // 🔹 Проверка: есть ли уже оплаченные платежи (для защиты при редактировании)
-  const hasPaidPayments = useMemo(() => {
-  return initialData.paymentPlan?.some((p: Payment) => p.isPaid) || false;
+// 🔹 Сводка по уже зафиксированным (оплаченным/реальным) платежам —
+// используется и для пересчёта графика, и для валидации перед сохранением.
+const preservedPaymentsInfo = useMemo(() => {
+  const existing: Payment[] = initialData.paymentPlan || [];
+  const real = existing.filter((p: Payment) => p.isRealPayment === true);
+  const legacyPaid = existing.filter(
+    (p: Payment) => p.isPaid && p.isRealPayment !== true && !real.some((rp: Payment) => rp.id === p.id)
+  );
+  const preserved = [...real, ...legacyPaid];
+  return {
+    count: preserved.length,
+    amount: preserved.reduce((sum: number, p: Payment) => sum + p.amount, 0)
+  };
 }, [initialData.paymentPlan]);
 
-// 🔹 Проверка: есть ли реальные платежи (новая логика защиты)
-const hasRealPayments = useMemo(() => {
-  return initialData.paymentPlan?.some((p: Payment) => p.isRealPayment === true) || false;
-}, [initialData.paymentPlan]);
+// 🔹 Sale не хранит paymentDate как поле — только paymentDay. Чтобы понять, действительно
+// ли пользователь поменял дату первого платежа (а не просто открыл форму редактирования),
+// сравниваем с датой, которая была бы посчитана автоматически из исходных paymentDay/startDate
+// (та же формула, что и в эффекте автозаполнения выше).
+const impliedOriginalPaymentDate = useMemo(() => {
+  if (!initialData.paymentDay || !initialData.startDate) return '';
+  const d = new Date(initialData.startDate);
+  d.setMonth(d.getMonth() + 1);
+  d.setDate(initialData.paymentDay);
+  return d.toISOString().split('T')[0];
+}, [initialData.paymentDay, initialData.startDate]);
 
   const selectedCustomer = customers.find(c => c.id === formData.customerId);
   const selectedAccount = accounts.find(a => a.id === formData.accountId);
@@ -185,8 +202,15 @@ const regeneratePaymentPlan = (
     return preservedPayments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }
 
-  // 🔹 6. Считаем сумму для будущих платежей
-  const remainingAmount = saleData.remainingAmount || (saleData.totalAmount - saleData.downPayment - preservedAmount);
+  // 🔹 6. Считаем сумму для будущих платежей.
+  // 🔥 ВАЖНО: считаем ВСЕГДА от totalAmount/downPayment/preservedAmount, а не берём
+  // saleData.remainingAmount "как есть" — это поле обычно равно (totalAmount - downPayment)
+  // и НЕ учитывает уже оплаченные платежи по графику (preservedAmount). Раньше это было
+  // безопасно, т.к. функция вызывалась только когда preservedAmount === 0, но теперь
+  // редактирование пересчитывает график и при наличии оплаченных платежей — тут это критично.
+  // 🔒 Защита от отрицательного остатка (не должно происходить — валидируется до вызова,
+  // но подстраховываемся на случай прямого вызова функции с некорректными данными).
+  const remainingAmount = Math.max(0, saleData.totalAmount - saleData.downPayment - preservedAmount);
   const monthlyAmount = remainingInstallments > 0
     ? Number((remainingAmount / remainingInstallments).toFixed(2))
     : 0;
@@ -290,10 +314,11 @@ const regeneratePaymentPlan = (
       };
     }
 
-    // 🔥 КЛЮЧЕВОЕ: При редактировании используем сохранённый totalAmount
+    // 🔥 При редактировании считаем от актуального значения поля "Цена" (formData.price),
+    // а не от замороженной исходной суммы — иначе редактирование цены не имело бы эффекта.
     let totalAmount: number;
-    if (initialData.id && initialData.totalAmount) {
-      totalAmount = initialData.totalAmount;
+    if (initialData.id) {
+      totalAmount = Number(formData.price) || initialData.totalAmount || 0;
     } else {
       totalAmount = Number(formData.price) || baseCalculatedPrice;
     }
@@ -380,14 +405,11 @@ const regeneratePaymentPlan = (
   const handlePaymentDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const dateVal = e.target.value;
 
-    // 🔥 При изменении даты — пересчитываем график (только если нет оплаченных платежей)
-    if (!(initialData.id && hasPaidPayments)) {
-      setFormData(prev => ({
-        ...prev,
-        paymentDate: dateVal,
-        paymentDay: dateVal ? new Date(dateVal).getDate().toString() : ''
-      }));
-    }
+    setFormData(prev => ({
+      ...prev,
+      paymentDate: dateVal,
+      paymentDay: dateVal ? new Date(dateVal).getDate().toString() : ''
+    }));
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -440,6 +462,28 @@ const regeneratePaymentPlan = (
         );
       } else {
         setDuplicateWarning(null);
+      }
+    }
+
+    // 🔒 ЗАЩИТА ИСТОРИИ ПЛАТЕЖЕЙ (только при редактировании рассрочки с уже оплаченными платежами)
+    if (formData.id && mode === 'INSTALLMENT' && preservedPaymentsInfo.count > 0) {
+      const newInstallments = Number(formData.installments);
+      if (newInstallments < preservedPaymentsInfo.count) {
+        alert(
+          `Нельзя установить срок меньше ${preservedPaymentsInfo.count} мес. — столько платежей по этому договору уже зафиксировано как оплаченные.`
+        );
+        return;
+      }
+
+      const newDownPayment = Number(formData.downPayment);
+      const newRemaining = calculatedValues.totalAmount - newDownPayment - preservedPaymentsInfo.amount;
+      if (newRemaining < 0) {
+        alert(
+          `Новая цена слишком мала: по договору уже получено ${preservedPaymentsInfo.amount.toLocaleString('ru-RU')} ₽ платежами` +
+          (newDownPayment > 0 ? ` + первый взнос ${newDownPayment.toLocaleString('ru-RU')} ₽` : '') +
+          `. Итоговая цена не может быть меньше этой суммы.`
+        );
+        return;
       }
     }
 
@@ -508,30 +552,46 @@ const regeneratePaymentPlan = (
      // 🔥 КЛЮЧЕВОЙ МОМЕНТ: Генерация/обновление paymentPlan
 let paymentPlan: Payment[] = [];
 
-if (initialData.id && initialData.paymentPlan) {
-  // 🔹 При редактировании: пересчитываем ТОЛЬКО если нет реальных платежей И изменилась дата
-  const dateChanged = formData.paymentDate !== initialData.paymentDate;
+if (mode === 'CASH') {
+  // Наличные — графика платежей нет вообще
+  paymentPlan = [];
+} else if (initialData.id && initialData.paymentPlan) {
+  // 🔹 При редактировании: пересчитываем график, если изменилось хоть одно поле,
+  // влияющее на суммы/сроки платежей. Уже оплаченные/реальные платежи (isPaid/isRealPayment)
+  // ВСЕГДА сохраняются как есть — regeneratePaymentPlan трогает только будущие записи.
+  // Сравниваем с impliedOriginalPaymentDate, а не initialData.paymentDate — это поле
+  // не персистится в Sale (только paymentDay), поэтому initialData.paymentDate всегда undefined.
+  const scheduleAffectingFieldsChanged =
+    formData.paymentDate !== impliedOriginalPaymentDate ||
+    Number(formData.installments) !== Number(initialData.installments) ||
+    Number(formData.downPayment) !== Number(initialData.downPayment) ||
+    calculatedValues.totalAmount !== Number(initialData.totalAmount);
 
-  // 🔹 hasRealPayments = есть фактически полученные деньги (isRealPayment === true)
-  // 🔹 hasPaidPayments = есть любые отмеченные как оплаченные (для обратной совместимости)
-  const shouldRegenerate = !hasRealPayments && !hasPaidPayments && dateChanged;
-
-  if (shouldRegenerate) {
-    // Пересчитываем весь график с новой датой
+  if (scheduleAffectingFieldsChanged) {
     paymentPlan = regeneratePaymentPlan(
-      { ...formData, remainingAmount: calculatedValues.remainingAmount },
+      {
+        ...formData,
+        totalAmount: calculatedValues.totalAmount,
+        installments: Number(formData.installments),
+        downPayment: Number(formData.downPayment)
+      },
       formData.paymentDate,
       initialData.paymentPlan
     );
   } else {
-    // 🔥 Сохраняем оригинальный план (защита данных!)
+    // Ничего не изменилось — сохраняем оригинальный план как есть.
     // Клонируем, чтобы избежать мутаций исходного объекта
     paymentPlan = initialData.paymentPlan.map((p: Payment) => ({ ...p }));
   }
 } else {
-  // Для новых договоров — полная генерация
-  paymentPlan = mode === 'CASH' ? [] : regeneratePaymentPlan(
-    { ...formData, remainingAmount: calculatedValues.remainingAmount },
+  // Для новых договоров рассрочки — полная генерация
+  paymentPlan = regeneratePaymentPlan(
+    {
+      ...formData,
+      totalAmount: calculatedValues.totalAmount,
+      installments: Number(formData.installments),
+      downPayment: Number(formData.downPayment)
+    },
     formData.paymentDate
   );
 }
@@ -981,16 +1041,25 @@ if (initialData.id && initialData.paymentPlan) {
 
       {/* 🔹 Индикатор режима редактирования */}
       {formData.id && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2">
+        <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-300 px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2">
           <span>✏️</span>
-          Вы редактируете существующий договор. {hasPaidPayments ? 'Поля заблокированы, так как есть оплаченные платежи.' : 'Изменение даты первого платежа пересчитает график будущих платежей.'}
+          {preservedPaymentsInfo.count > 0
+            ? `Вы редактируете договор. Уже оплаченные платежи (${preservedPaymentsInfo.count}) не будут изменены — при смене суммы/срока/даты пересчитается только оставшийся график.`
+            : 'Вы редактируете договор. При изменении суммы, срока или даты график платежей будет пересчитан заново.'}
         </div>
       )}
 
       <div className="flex bg-white dark:bg-slate-800 p-1 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">
-        <button onClick={() => updateMode('INSTALLMENT')} className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${mode === 'INSTALLMENT' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Рассрочка</button>
-        <button onClick={() => updateMode('CASH')} className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${mode === 'CASH' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>Наличные</button>
+        <button type="button" onClick={() => !formData.id && updateMode('INSTALLMENT')} disabled={!!formData.id}
+                className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${mode === 'INSTALLMENT' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'} ${formData.id ? 'cursor-not-allowed opacity-70' : ''}`}>Рассрочка</button>
+        <button type="button" onClick={() => !formData.id && updateMode('CASH')} disabled={!!formData.id}
+                className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${mode === 'CASH' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'} ${formData.id ? 'cursor-not-allowed opacity-70' : ''}`}>Наличные</button>
       </div>
+      {formData.id && (
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-2">
+            Тип сделки (рассрочка/наличные) нельзя изменить после создания договора
+          </p>
+      )}
 
       <form onSubmit={handleFormSubmit} className="space-y-4">
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
@@ -998,37 +1067,23 @@ if (initialData.id && initialData.paymentPlan) {
             <div className="w-40">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Дата продажи</label>
               <input type="date" required
-                     className={`w-full p-2 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600 focus:border-indigo-500'}`}
+                     className="w-full p-2 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm border-slate-300 dark:border-slate-600 focus:border-indigo-500"
                      value={formData.startDate}
-                     onChange={e => setFormData({...formData, startDate: e.target.value})}
-                     disabled={!!formData.id}/>
+                     onChange={e => setFormData({...formData, startDate: e.target.value})}/>
             </div>
             {mode === 'INSTALLMENT' && (
                 <div className="w-40">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                     Первый платеж
-                    {formData.id && hasPaidPayments && (
-                        <span className="ml-1 text-[10px] text-amber-600 dark:text-amber-400 font-normal">🔒 Заблокировано</span>
-                    )}
                   </label>
                   <input type="date" required
-                         className={`w-full p-2 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm ${
-                             formData.id && hasPaidPayments
-                                 ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed'
-                                 : 'border-slate-300 dark:border-slate-600 focus:border-indigo-500'
-                         }`}
+                         className="w-full p-2 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm border-slate-300 dark:border-slate-600 focus:border-indigo-500"
                          value={formData.paymentDate}
-                         onChange={handlePaymentDateChange}
-                         disabled={formData.id && hasPaidPayments}/>
+                         onChange={handlePaymentDateChange}/>
                   {/* 🔹 Подсказка */}
-                  {formData.id && !hasPaidPayments && (
+                  {formData.id && (
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
-                        💡 Изменение даты пересчитает график будущих платежей
-                      </p>
-                  )}
-                  {formData.id && hasRealPayments && (
-                      <p className="text-[10px] text-amber-600 mt-1">
-                        ⚠️ График заблокирован: есть оплаченные платежи
+                        💡 Изменение даты пересчитает график будущих (ещё не оплаченных) платежей
                       </p>
                   )}
                 </div>
@@ -1039,8 +1094,7 @@ if (initialData.id && initialData.paymentPlan) {
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Клиент</label>
           <div onClick={() => onSelectCustomer({...formData, mode})}
-               className={`w-full p-3 border rounded-lg cursor-pointer flex justify-between items-center ${formData.customerId ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' : 'bg-slate-50 dark:bg-slate-700/50 border-dashed border-slate-300 dark:border-slate-600'} ${formData.id ? 'cursor-not-allowed opacity-60' : ''}`}
-               style={{pointerEvents: formData.id ? 'none' : 'auto'}}>
+               className={`w-full p-3 border rounded-lg cursor-pointer flex justify-between items-center ${formData.customerId ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' : 'bg-slate-50 dark:bg-slate-700/50 border-dashed border-slate-300 dark:border-slate-600'}`}>
             <div className="flex items-center gap-2">
               {formData.customerId && <div className="text-indigo-600 dark:text-indigo-400">{ICONS.Customers}</div>}
               <span
@@ -1056,11 +1110,10 @@ if (initialData.id && initialData.paymentPlan) {
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Товар</label>
           <input type="text"
-                 className={`w-full p-3 border rounded-lg outline-none text-slate-900 dark:text-white placeholder:text-slate-400 bg-white dark:bg-slate-900 ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
+                 className="w-full p-3 border rounded-lg outline-none text-slate-900 dark:text-white placeholder:text-slate-400 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
                  placeholder="Введите название товара..."
                  value={formData.productName}
-                 onChange={(e) => handleProductChange(e.target.value)}
-                 disabled={!!formData.id}/>
+                 onChange={(e) => handleProductChange(e.target.value)}/>
           {showSuggestions && suggestions.length > 0 && (
               <div
                   className="absolute left-4 right-4 top-[72px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
@@ -1079,10 +1132,9 @@ if (initialData.id && initialData.paymentPlan) {
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Касса (Приход)</label>
           <select required
-                  className={`w-full p-3 bg-white dark:bg-slate-900 border rounded-lg outline-none text-slate-900 dark:text-white ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
+                  className="w-full p-3 bg-white dark:bg-slate-900 border rounded-lg outline-none text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
                   value={formData.accountId}
-                  onChange={e => setFormData({...formData, accountId: e.target.value})}
-                  disabled={!!formData.id}>
+                  onChange={e => setFormData({...formData, accountId: e.target.value})}>
             {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
@@ -1095,14 +1147,13 @@ if (initialData.id && initialData.paymentPlan) {
               <input
                   type="number"
                   min="0"
-                  className={`w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
+                  className="w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
                   value={formData.buyPrice === 0 ? '' : formData.buyPrice}
                   onChange={e => {
                     setFormData({...formData, buyPrice: e.target.value});
                     setIsPriceManual(false);
                   }}
-                  placeholder="0"
-                  disabled={!!formData.id}/>
+                  placeholder="0"/>
             </div>
             {mode === 'INSTALLMENT' && (
                 <div>
@@ -1110,14 +1161,18 @@ if (initialData.id && initialData.paymentPlan) {
                   <input
                       type="number"
                       min="0"
-                      className={`w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
+                      className="w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
                       value={formData.interestRate === 0 ? '' : formData.interestRate}
                       onChange={e => {
                         setFormData({...formData, interestRate: e.target.value});
                         setIsPriceManual(false);
                       }}
-                      placeholder="0"
-                      disabled={!!formData.id}/>
+                      placeholder="0"/>
+                  {formData.id && (
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                        Справочно: не пересчитывает цену автоматически при редактировании
+                      </p>
+                  )}
                 </div>
             )}
           </div>
@@ -1134,23 +1189,18 @@ if (initialData.id && initialData.paymentPlan) {
                   className={`w-full p-3 border rounded-lg outline-none font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-900 transition-all ${
                       isPriceManual && !formData.id
                           ? 'border-indigo-400 dark:border-indigo-500 ring-2 ring-indigo-100 dark:ring-indigo-900/40'
-                          : formData.id
-                              ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed'
-                              : 'border-slate-300 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/40'
+                          : 'border-slate-300 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/40'
                   }`}
                   value={formData.price === 0 ? '' : formData.price}
                   onChange={e => {
-                    if (!formData.id) {
-                      const val = e.target.value;
-                      setFormData({
-                        ...formData,
-                        price: val === '' ? 0 : Number(val)
-                      });
-                      setIsPriceManual(true);
-                    }
+                    const val = e.target.value;
+                    setFormData({
+                      ...formData,
+                      price: val === '' ? 0 : Number(val)
+                    });
+                    setIsPriceManual(true);
                   }}
                   placeholder="0"
-                  disabled={!!formData.id}
               />
               {mode === 'INSTALLMENT' && !formData.id && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase">
@@ -1174,11 +1224,15 @@ if (initialData.id && initialData.paymentPlan) {
                       type="number"
                       min="1"
                       max="24"
-                      className={`w-full p-3 border rounded-lg outline-none text-slate-900 dark:text-white bg-white dark:bg-slate-900 ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
+                      className="w-full p-3 border rounded-lg outline-none text-slate-900 dark:text-white bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
                       value={formData.installments === 0 ? '' : formData.installments}
                       onChange={e => setFormData({...formData, installments: e.target.value})}
-                      placeholder="0"
-                      disabled={!!formData.id}/>
+                      placeholder="0"/>
+                  {formData.id && preservedPaymentsInfo.count > 0 && (
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                        Не меньше {preservedPaymentsInfo.count} (уже оплачено)
+                      </p>
+                  )}
                 </div>
 
                 {/* 🔹 Первый взнос + чекбокс в одну строку */}
@@ -1192,19 +1246,15 @@ if (initialData.id && initialData.paymentPlan) {
                         className={`w-full p-3 pr-12 border rounded-lg outline-none text-slate-900 dark:text-white bg-white dark:bg-slate-900 transition-all ${
                             downPaymentFromMarkup && !formData.id
                                 ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-900/20 ring-2 ring-emerald-100 dark:ring-emerald-900/40'
-                                : formData.id
-                                    ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed'
-                                    : 'border-slate-300 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/40'
+                                : 'border-slate-300 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/40'
                         }`}
                         value={formData.downPayment === 0 ? '' : formData.downPayment}
                         onChange={e => {
-                          if (!formData.id) {
-                            setFormData({...formData, downPayment: e.target.value});
-                            if (downPaymentFromMarkup) setDownPaymentFromMarkup(false);
-                          }
+                          setFormData({...formData, downPayment: e.target.value});
+                          if (downPaymentFromMarkup) setDownPaymentFromMarkup(false);
                         }}
                         placeholder="0"
-                        disabled={downPaymentFromMarkup || !!formData.id}
+                        disabled={downPaymentFromMarkup}
                     />
                     {downPaymentFromMarkup && !formData.id && (
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500">
@@ -1252,16 +1302,14 @@ if (initialData.id && initialData.paymentPlan) {
           <div className="grid grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">ФИО Поручителя</label><input
                 type="text"
-                className={`w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
+                className="w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
                 value={formData.guarantorName}
-                onChange={e => setFormData({...formData, guarantorName: e.target.value})}
-                disabled={!!formData.id}/></div>
+                onChange={e => setFormData({...formData, guarantorName: e.target.value})}/></div>
             <div><label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Телефон поручителя</label><input
                 type="text"
-                className={`w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white ${formData.id ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
+                className="w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
                 value={formData.guarantorPhone}
-                onChange={e => setFormData({...formData, guarantorPhone: e.target.value})}
-                disabled={!!formData.id}/></div>
+                onChange={e => setFormData({...formData, guarantorPhone: e.target.value})}/></div>
           </div>
         </div>
 
@@ -1276,23 +1324,22 @@ if (initialData.id && initialData.paymentPlan) {
                     className="text-slate-500 dark:text-slate-400">Чистая прибыль</span><span
                     className="font-medium text-emerald-600 dark:text-emerald-400">+{Math.round(calculatedValues.totalAmount - Number(formData.buyPrice)).toLocaleString()} ₽</span>
                 </div>
-                <div className="flex flex-col gap-2 text-sm pt-3 border-t border-indigo-100 dark:border-indigo-900/50">
-                  <span className="text-slate-500 dark:text-slate-400 font-medium">Округление платежа (до 100 ₽)</span>
-                  <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
-                    <button type="button" onClick={() => setRoundingMode('NONE')}
-                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'NONE' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
-                            disabled={!!formData.id}>Нет
-                    </button>
-                    <button type="button" onClick={() => setRoundingMode('DOWN')}
-                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'DOWN' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
-                            disabled={!!formData.id}>Вниз
-                    </button>
-                    <button type="button" onClick={() => setRoundingMode('UP')}
-                            className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'UP' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
-                            disabled={!!formData.id}>Вверх
-                    </button>
-                  </div>
-                </div>
+                {!formData.id && (
+                    <div className="flex flex-col gap-2 text-sm pt-3 border-t border-indigo-100 dark:border-indigo-900/50">
+                      <span className="text-slate-500 dark:text-slate-400 font-medium">Округление платежа (до 100 ₽)</span>
+                      <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
+                        <button type="button" onClick={() => setRoundingMode('NONE')}
+                                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'NONE' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Нет
+                        </button>
+                        <button type="button" onClick={() => setRoundingMode('DOWN')}
+                                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'DOWN' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Вниз
+                        </button>
+                        <button type="button" onClick={() => setRoundingMode('UP')}
+                                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'UP' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Вверх
+                        </button>
+                      </div>
+                    </div>
+                )}
                 <div className="flex justify-between text-sm pt-3 border-t border-indigo-100 dark:border-indigo-900/50"><span
                     className="text-indigo-800 dark:text-indigo-300 font-semibold">Платёж в месяц</span><span
                     className="text-indigo-800 dark:text-indigo-300 font-bold">{calculatedValues.monthlyPayment.toLocaleString(undefined, {maximumFractionDigits: 0})} ₽</span>

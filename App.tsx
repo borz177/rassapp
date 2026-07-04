@@ -1162,24 +1162,38 @@ const handleSaveSale = async (data: any): Promise<any> => {
     // 🔹 4. Обновление стейта (работает и онлайн, и офлайн)
     updateList(setSales, savedSale);
 
-    // 🔹 🔑 🔑 5. СОЗДАЁМ РАСХОД ЗАКУПА — ОБЯЗАТЕЛЬНО И ОНЛАЙН, И ОФЛАЙН!
-    if (existingSaleIndex < 0 && Number(data.buyPrice) > 0) {
+    // 🔹 🔑 🔑 5. СОЗДАЁМ / СИНХРОНИЗИРУЕМ РАСХОД ЗАКУПА — ОБЯЗАТЕЛЬНО И ОНЛАЙН, И ОФЛАЙН!
+    // При редактировании закупочная цена могла измениться — держим связанный расход в актуальном состоянии,
+    // иначе учёт себестоимости/прибыли разойдётся с фактическими данными договора.
+    {
+      const buyPriceExpenseId = `exp_sale_${saleId}`;
+      const linkedExpense = expenses.find(e => e.id === buyPriceExpenseId);
+      const newBuyPrice = Number(data.buyPrice);
+
       try {
-        const buyPriceExpense: Expense = {
-          id: `exp_sale_${saleId}`,
-          userId: ownerId,
-          accountId: data.accountId,
-          title: `Закуп: ${data.productName}`,
-          amount: Number(data.buyPrice),
-          category: 'Себестоимость',
-          date: data.startDate,
-          isRefund: false
-        };
-        const savedExpense = await api.saveItem('expenses', buyPriceExpense);
-        updateList(setExpenses, savedExpense);
-       
+        if (newBuyPrice > 0) {
+          if (!linkedExpense || linkedExpense.amount !== newBuyPrice || linkedExpense.title !== `Закуп: ${data.productName}`) {
+            const buyPriceExpense: Expense = {
+              ...linkedExpense,
+              id: buyPriceExpenseId,
+              userId: ownerId,
+              accountId: data.accountId,
+              title: `Закуп: ${data.productName}`,
+              amount: newBuyPrice,
+              category: 'Себестоимость',
+              date: linkedExpense?.date || data.startDate,
+              isRefund: false
+            };
+            const savedExpense = await api.saveItem('expenses', buyPriceExpense);
+            updateList(setExpenses, savedExpense);
+          }
+        } else if (linkedExpense) {
+          // Закуп обнулили при редактировании — убираем связанный расход
+          await api.deleteItem('expenses', buyPriceExpenseId);
+          setExpenses(prev => prev.filter(e => e.id !== buyPriceExpenseId));
+        }
       } catch (e: any) {
-        console.warn('⚠️ Расход закупа не создан (будет создан при синхронизации):', e.message);
+        console.warn('⚠️ Расход закупа не синхронизирован (будет учтён при синхронизации):', e.message);
         // 🔹 НЕ прерываем выполнение — договор уже сохранён
       }
     }
