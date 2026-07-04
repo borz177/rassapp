@@ -159,6 +159,11 @@ const preservedPaymentsInfo = useMemo(() => {
   };
 }, [initialData.paymentPlan]);
 
+// 🔒 Если по договору уже есть хотя бы один платёж от клиента — блокируем поля,
+// от которых зависит расчёт суммы/графика (закуп, наценка, цена, срок, первый взнос).
+// Остальное (товар, касса, поручитель, клиент, даты) остаётся редактируемым всегда.
+const isFinancialLocked = !!formData.id && preservedPaymentsInfo.count > 0;
+
 // 🔹 Sale не хранит paymentDate как поле — только paymentDay. Чтобы понять, действительно
 // ли пользователь поменял дату первого платежа (а не просто открыл форму редактирования),
 // сравниваем с датой, которая была бы посчитана автоматически из исходных paymentDay/startDate
@@ -1049,7 +1054,7 @@ if (mode === 'CASH') {
         <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-300 px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2">
           <span>✏️</span>
           {preservedPaymentsInfo.count > 0
-            ? `Вы редактируете договор. Уже оплаченные платежи (${preservedPaymentsInfo.count}) не будут изменены — при смене суммы/срока/даты пересчитается только оставшийся график.`
+            ? `Вы редактируете договор. По нему уже есть платежи (${preservedPaymentsInfo.count}) от клиента, поэтому закуп, наценка, цена, срок и первый взнос заблокированы. Остальное (товар, касса, поручитель, даты) можно менять.`
             : 'Вы редактируете договор. При изменении суммы, срока или даты график платежей будет пересчитан заново.'}
         </div>
       )}
@@ -1152,13 +1157,15 @@ if (mode === 'CASH') {
               <input
                   type="number"
                   min="0"
-                  className="w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
+                  className={`w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white ${isFinancialLocked ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
                   value={formData.buyPrice === 0 ? '' : formData.buyPrice}
                   onChange={e => {
+                    if (isFinancialLocked) return;
                     setFormData({...formData, buyPrice: e.target.value});
                     setIsPriceManual(false);
                   }}
-                  placeholder="0"/>
+                  placeholder="0"
+                  disabled={isFinancialLocked}/>
             </div>
             {mode === 'INSTALLMENT' && (
                 <div>
@@ -1166,14 +1173,16 @@ if (mode === 'CASH') {
                   <input
                       type="number"
                       min="0"
-                      className="w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
+                      className={`w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white ${isFinancialLocked ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
                       value={formData.interestRate === 0 ? '' : formData.interestRate}
                       onChange={e => {
+                        if (isFinancialLocked) return;
                         setFormData({...formData, interestRate: e.target.value});
                         setIsPriceManual(false);
                       }}
-                      placeholder="0"/>
-                  {formData.id && (
+                      placeholder="0"
+                      disabled={isFinancialLocked}/>
+                  {formData.id && !isFinancialLocked && (
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
                         Справочно: не пересчитывает цену автоматически при редактировании
                       </p>
@@ -1192,12 +1201,15 @@ if (mode === 'CASH') {
                   type="number"
                   min="0"
                   className={`w-full p-3 border rounded-lg outline-none font-bold text-slate-900 dark:text-white bg-white dark:bg-slate-900 transition-all ${
-                      isPriceManual && !formData.id
-                          ? 'border-indigo-400 dark:border-indigo-500 ring-2 ring-indigo-100 dark:ring-indigo-900/40'
-                          : 'border-slate-300 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/40'
+                      isFinancialLocked
+                          ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed'
+                          : isPriceManual && !formData.id
+                              ? 'border-indigo-400 dark:border-indigo-500 ring-2 ring-indigo-100 dark:ring-indigo-900/40'
+                              : 'border-slate-300 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/40'
                   }`}
                   value={formData.price === 0 ? '' : formData.price}
                   onChange={e => {
+                    if (isFinancialLocked) return;
                     const val = e.target.value;
                     setFormData({
                       ...formData,
@@ -1206,6 +1218,7 @@ if (mode === 'CASH') {
                     setIsPriceManual(true);
                   }}
                   placeholder="0"
+                  disabled={isFinancialLocked}
               />
               {mode === 'INSTALLMENT' && !formData.id && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase">
@@ -1229,13 +1242,14 @@ if (mode === 'CASH') {
                       type="number"
                       min="1"
                       max="24"
-                      className="w-full p-3 border rounded-lg outline-none text-slate-900 dark:text-white bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                      className={`w-full p-3 border rounded-lg outline-none text-slate-900 dark:text-white bg-white dark:bg-slate-900 ${isFinancialLocked ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
                       value={formData.installments === 0 ? '' : formData.installments}
-                      onChange={e => setFormData({...formData, installments: e.target.value})}
-                      placeholder="0"/>
-                  {formData.id && preservedPaymentsInfo.count > 0 && (
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
-                        Не меньше {preservedPaymentsInfo.count} (уже оплачено)
+                      onChange={e => !isFinancialLocked && setFormData({...formData, installments: e.target.value})}
+                      placeholder="0"
+                      disabled={isFinancialLocked}/>
+                  {isFinancialLocked && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
+                        🔒 Заблокировано: по договору уже есть платёж от клиента
                       </p>
                   )}
                 </div>
@@ -1249,17 +1263,20 @@ if (mode === 'CASH') {
                         min="0"
                         max={calculatedValues.totalAmount}
                         className={`w-full p-3 pr-12 border rounded-lg outline-none text-slate-900 dark:text-white bg-white dark:bg-slate-900 transition-all ${
-                            downPaymentFromMarkup && !formData.id
-                                ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-900/20 ring-2 ring-emerald-100 dark:ring-emerald-900/40'
-                                : 'border-slate-300 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/40'
+                            isFinancialLocked
+                                ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed'
+                                : downPaymentFromMarkup && !formData.id
+                                    ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-900/20 ring-2 ring-emerald-100 dark:ring-emerald-900/40'
+                                    : 'border-slate-300 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/40'
                         }`}
                         value={formData.downPayment === 0 ? '' : formData.downPayment}
                         onChange={e => {
+                          if (isFinancialLocked) return;
                           setFormData({...formData, downPayment: e.target.value});
                           if (downPaymentFromMarkup) setDownPaymentFromMarkup(false);
                         }}
                         placeholder="0"
-                        disabled={downPaymentFromMarkup}
+                        disabled={downPaymentFromMarkup || isFinancialLocked}
                     />
                     {downPaymentFromMarkup && !formData.id && (
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500">

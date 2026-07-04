@@ -1172,7 +1172,12 @@ const handleSaveSale = async (data: any): Promise<any> => {
 
       try {
         if (newBuyPrice > 0) {
-          if (!linkedExpense || linkedExpense.amount !== newBuyPrice || linkedExpense.title !== `Закуп: ${data.productName}`) {
+          if (
+            !linkedExpense ||
+            linkedExpense.amount !== newBuyPrice ||
+            linkedExpense.title !== `Закуп: ${data.productName}` ||
+            linkedExpense.accountId !== data.accountId
+          ) {
             const buyPriceExpense: Expense = {
               ...linkedExpense,
               id: buyPriceExpenseId,
@@ -2133,8 +2138,11 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
   const handleEditPayment = async (saleId: string, paymentId: string, newDate: string) => { if (isEmployee && !user?.permissions?.canEdit) { alert("Нет прав на редактирование"); return; } const sale = sales.find(s => s.id === saleId); if (sale) { const updatedSale = { ...sale, paymentPlan: sale.paymentPlan.map(p => p.id === paymentId ? { ...p, date: newDate } : p) }; const saved = await api.saveItem('sales', updatedSale); updateList(setSales, saved); } };
   const handleInitiateDashboardPayment = (sale: Sale, amount: number) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount }); setCurrentView('CREATE_INCOME'); };
   const handleInitiateCustomerPayment = (sale: Sale, payment: Payment) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount: payment.amount }); setCurrentView('CREATE_INCOME'); };
-  const openSelection = (view: ViewState, currentData: any) => { setDraftSaleData(currentData); setPreviousView(currentView); setCurrentView(view); };
-  const handleSelection = (key: 'customerId', id: string) => { setDraftSaleData({ ...draftSaleData, [key]: id }); setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE'); };
+  // 🔒 При открытии выбора (клиента и т.п.) форма <NewSale> размонтируется, а её initialData —
+  // editingSale || draftSaleData. Если не синхронизировать editingSale тоже, все несохранённые
+  // правки (и сам выбор) при возврате в форму терялись бы, т.к. editingSale имеет приоритет.
+  const openSelection = (view: ViewState, currentData: any) => { setDraftSaleData(currentData); if (editingSale) setEditingSale(currentData); setPreviousView(currentView); setCurrentView(view); };
+  const handleSelection = (key: 'customerId', id: string) => { setDraftSaleData({ ...draftSaleData, [key]: id }); if (editingSale) setEditingSale({ ...editingSale, [key]: id }); setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE'); };
 const handleQuickAddCustomer = async (data: {
   name: string;
   phone: string;
