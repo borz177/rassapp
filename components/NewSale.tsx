@@ -323,7 +323,11 @@ const regeneratePaymentPlan = (
       totalAmount = Number(formData.price) || baseCalculatedPrice;
     }
 
-    let remainingAmount = totalAmount - downPayment;
+    // 🔥 ВАЖНО: при редактировании вычитаем уже фактически полученные платежи по графику
+    // (preservedPaymentsInfo.amount), иначе remainingAmount ("долг клиента") будет пересчитан
+    // так, как будто эти платежи никогда не приходили — именно так терялась информация
+    // об уже принятых оплатах при сохранении любого редактирования договора.
+    let remainingAmount = totalAmount - downPayment - (initialData.id ? preservedPaymentsInfo.amount : 0);
     let monthlyPayment = installments > 0 ? remainingAmount / installments : 0;
 
     // 🔹 Применяем округление к ежемесячному платежу
@@ -346,7 +350,8 @@ const regeneratePaymentPlan = (
     mode,
     baseCalculatedPrice,
     initialData.id,
-    initialData.totalAmount
+    initialData.totalAmount,
+    preservedPaymentsInfo.amount
   ]);
 
   useEffect(() => {
