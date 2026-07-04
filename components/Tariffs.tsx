@@ -69,7 +69,9 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
       const data = await api.createPayment({
           amount: amount,
           description: `Оплата тарифа ${name} на ${duration} мес.`,
-          returnUrl: 'https://rassrochka.pro',// Redirect back to this page
+          // 🔹 Маркер ?payment=success — по нему App.tsx понимает, что нужно сразу
+          // проверить подписку на сервере, не дожидаясь фоновой синхронизации.
+          returnUrl: 'https://rassrochka.pro/?payment=success',
           plan: planKey,
           months: duration
       });

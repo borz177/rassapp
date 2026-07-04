@@ -149,6 +149,9 @@ const [sessionHandlers, setSessionHandlers] = useState<{
   onCancel: () => void;
 } | null>(null);
 
+// 🔹 Возврат из оплаты тарифа (?payment=success): статус активной проверки подписки
+const [paymentReturnStatus, setPaymentReturnStatus] = useState<'checking' | 'success' | 'timeout' | null>(null);
+
   const [myProfitPeriod, setMyProfitPeriod] = useState(() => {
     const today = new Date().toISOString().split('T')[0];
     return { start: '2023-01-01', end: today };
@@ -365,6 +368,45 @@ const handleSync = async () => {
 };
 
 
+// 🔹 Возврат из оплаты тарифа: YooKassa обрабатывает платёж и шлёт webhook серверу
+// АСИНХРОННО, независимо от редиректа пользователя обратно в приложение — поэтому
+// подписка на сервере может обновиться на 1-20 секунд позже, чем открылась эта страница.
+// Активно опрашиваем /api/auth/me, пока не увидим изменение, вместо того чтобы ждать
+// фоновую синхронизацию (которая может сработать через несколько минут).
+// Вынесено на уровень компонента, т.к. вызывается и при старте, и кнопкой "Проверить снова".
+const checkPaymentReturn = async () => {
+  setPaymentReturnStatus('checking');
+
+  let previousExpiresAt: string | undefined;
+  try {
+    const cached = localStorage.getItem('user');
+    if (cached) previousExpiresAt = JSON.parse(cached)?.subscription?.expiresAt;
+  } catch (e) {}
+
+  const maxAttempts = 10; // ~20 секунд суммарно
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const freshUser = await api.getMe();
+      if (freshUser?.subscription?.expiresAt && freshUser.subscription.expiresAt !== previousExpiresAt) {
+        setUser(prev => {
+          const merged = { ...(prev || freshUser), ...freshUser };
+          localStorage.setItem('user', JSON.stringify(merged));
+          return merged;
+        });
+        setPaymentReturnStatus('success');
+        return;
+      }
+    } catch (e) {
+      console.warn('⚠️ Проверка оплаты тарифа: попытка не удалась, повторяем...', e);
+    }
+    if (attempt < maxAttempts - 1) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }
+
+  setPaymentReturnStatus('timeout');
+};
+
 useEffect(() => {
   setShowSplash(true);
   enablePersistentStorage();
@@ -410,6 +452,13 @@ useEffect(() => {
         setIsLoading(false);
         setShowSplash(false);
         return;
+    }
+
+    // 1.5 Возврат из оплаты тарифа (?payment=success из returnUrl ЮKassa)
+    if (searchParams.get('payment') === 'success') {
+        // Убираем маркер из URL сразу, чтобы обновление страницы не запускало проверку повторно
+        window.history.replaceState({}, '', window.location.pathname);
+        checkPaymentReturn();
     }
 
     // 2. Читаем локального пользователя
@@ -3148,6 +3197,86 @@ if (!user && !showSplash) {
                 Войти снова
             </button>
         </div>
+    </div>
+  </div>
+)}
+
+{paymentReturnStatus && (
+  <div
+    className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+    onClick={() => paymentReturnStatus !== 'checking' && setPaymentReturnStatus(null)}
+  >
+    <div
+      className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-5 animate-scale-in text-center"
+      onClick={e => e.stopPropagation()}
+    >
+      {paymentReturnStatus === 'checking' && (
+        <>
+          <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mx-auto">
+            <svg className="animate-spin h-8 w-8" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Проверяем оплату…</h3>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">
+              Платёжная система подтверждает операцию — это займёт до минуты.
+            </p>
+          </div>
+        </>
+      )}
+
+      {paymentReturnStatus === 'success' && (
+        <>
+          <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl">
+            🎉
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Оплата прошла успешно!</h3>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">
+              {user?.subscription
+                ? `Тариф "${{ TRIAL: 'Пробный', START: 'Старт', STANDARD: 'Стандарт', BUSINESS: 'Бизнес' }[user.subscription.plan] || user.subscription.plan}" активирован до ${new Date(user.subscription.expiresAt).toLocaleDateString('ru-RU')}.`
+                : 'Ваш тариф обновлён.'}
+            </p>
+          </div>
+          <button
+            onClick={() => setPaymentReturnStatus(null)}
+            className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30 transition-all hover:scale-105 active:scale-95"
+          >
+            Отлично
+          </button>
+        </>
+      )}
+
+      {paymentReturnStatus === 'timeout' && (
+        <>
+          <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto text-3xl">
+            ⏳
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Платёж обрабатывается</h3>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">
+              Оплата принята, но подтверждение от платёжной системы ещё не пришло. Обычно это занимает пару минут —
+              тариф обновится автоматически, либо проверьте ещё раз.
+            </p>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button
+              onClick={() => setPaymentReturnStatus(null)}
+              className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+            >
+              Закрыть
+            </button>
+            <button
+              onClick={checkPaymentReturn}
+              className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30 transition-all"
+            >
+              Проверить снова
+            </button>
+          </div>
+        </>
+      )}
     </div>
   </div>
 )}
