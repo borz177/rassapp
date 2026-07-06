@@ -70,7 +70,7 @@ export default defineConfig(({ mode }) => {
                   maxEntries: 100,
                   maxAgeSeconds: 60 * 60 * 24 * 7 // 1 week
                 },
-                networkTimeoutSeconds: 3
+                networkTimeoutSeconds: 2
               }
             },
             {

@@ -1,4 +1,10 @@
-require('dotenv').config({ path: '/var/www/env/rassapp.env' });
+// В проде переменные лежат в /var/www/env/rassapp.env; локально (Windows/dev) такого пути нет —
+// в этом случае просто откатываемся к обычному поиску .env рядом с проектом (server/.env).
+require('dotenv').config(
+  require('fs').existsSync('/var/www/env/rassapp.env')
+    ? { path: '/var/www/env/rassapp.env' }
+    : {}
+);
 // FORCE TIMEZONE TO MOSCOW
 process.env.TZ = 'Europe/Moscow';
 
@@ -44,7 +50,7 @@ app.use((req, res, next) => {
 
 
 // ✅ БЕЛЫЙ СПИСОК ТИПОВ ДАННЫХ (защита от инъекций)
-const VALID_DATA_TYPES = ['customers', 'products', 'sales', 'expenses', 'accounts', 'investors', 'partnerships', 'settings'];
+const VALID_DATA_TYPES = ['customers', 'products', 'sales', 'expenses', 'accounts', 'investors', 'partnerships', 'suppliers', 'settings'];
 
 // ✅ ХЕЛПЕР: Определение целевого пользователя для загрузки данных
 const getTargetUserId = (user) => {
@@ -59,10 +65,11 @@ const getTargetUserId = (user) => {
 
 // ✅ КОНФИГУРАЦИЯ ЛИМИТОВ ТАРИФОВ
 const PLAN_LIMITS = {
-  TRIAL:    { contracts: 10,  investors: 0, employees: 0, whatsapp: false, ai: true  },
-  START:    { contracts: 100, investors: 1, employees: 0, whatsapp: false, ai: false },
-  STANDARD: { contracts: 500, investors: 5, employees: 0, whatsapp: true,  ai: false },
-  BUSINESS: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true  },
+  TRIAL:        { contracts: 10,  investors: 0,  employees: 0,  whatsapp: false, ai: true,  suppliers: false },
+  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false },
+  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false },
+  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: false },
+  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: true  },
 };
 
 
@@ -177,7 +184,7 @@ const uploadDir = '/var/www/rassapp/server/uploads/documents';
 const upload = multer({
   // 🔹 Временное хранение в памяти для обработки
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB до сжатия
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
     const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
@@ -204,6 +211,35 @@ const canAccessUserData = (currentUser, targetUserId) => {
   if (currentUser.role === 'employee' && targetUserId === currentUser.managerId) return true;
   if (currentUser.role === 'investor' && targetUserId === currentUser.id) return true;
   return false;
+};
+
+// ✅ Проверка доступа к платному модулю (например "suppliers" — модуль "Партнеры", тариф BUSINESS_PRO)
+const checkFeatureAccess = async (userId, featureKey) => {
+  try {
+    const userResult = await pool.query(`SELECT role, subscription FROM users WHERE id = $1`, [userId]);
+    if (userResult.rows.length === 0) {
+      return { allowed: false, msg: 'Пользователь не найден' };
+    }
+    const user = userResult.rows[0];
+    if (user.role === 'admin' || user.role === 'employee') {
+      return { allowed: true };
+    }
+    const subscription = typeof user.subscription === 'string'
+      ? JSON.parse(user.subscription)
+      : user.subscription;
+    const limits = PLAN_LIMITS?.[subscription?.plan];
+    if (!limits?.[featureKey]) {
+      return {
+        allowed: false,
+        msg: 'Модуль «Партнеры» доступен только на тарифе Бизнес Pro.',
+        hint: 'Оформите тариф Бизнес Pro для работы с поставщиками.'
+      };
+    }
+    return { allowed: true };
+  } catch (e) {
+    console.error('❌ checkFeatureAccess error:', e);
+    return { allowed: false, msg: 'Ошибка проверки доступа' };
+  }
 };
 
 // ✅ ПРОДАКШЕН-ВЕРСИЯ: checkContractLimit
@@ -1804,7 +1840,7 @@ app.get('/api/data', auth, async (req, res) => {
 
     const result = {
       customers: [], products: [], sales: [], expenses: [],
-      accounts: [], investors: [], partnerships: [], settings: null
+      accounts: [], investors: [], partnerships: [], suppliers: [], settings: null
     };
 
     itemsResult.rows.forEach(row => {
@@ -1904,6 +1940,14 @@ app.post('/api/data/:type', auth, async (req, res) => {
 
     if (!canAccessUserData(req.user, targetUserId)) {
       return res.status(403).json({ error: 'Доступ запрещён' });
+    }
+
+    // 🔒 Модуль "Партнеры" (поставщики) — только тариф BUSINESS_PRO
+    if (type === 'suppliers' || (type === 'sales' && itemData.supplierId) || (type === 'expenses' && itemData.supplierId)) {
+      const featureAccess = await checkFeatureAccess(targetUserId, 'suppliers');
+      if (!featureAccess.allowed) {
+        return res.status(403).json({ msg: featureAccess.msg, hint: featureAccess.hint });
+      }
     }
 
     // 🔥 Проверка лимита договоров

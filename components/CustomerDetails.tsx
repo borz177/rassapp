@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User} from '../types';
+import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier} from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate } from '../src/utils';
 import { offlineStorage } from '../services/offlineStorage';
@@ -19,6 +19,8 @@ interface CustomerDetailsProps {
   initialSaleId?: string | null;
   onDeleteCustomer?: (customerId: string) => void;
   user?: User | null;
+  suppliers?: Supplier[];
+  onPaySupplier?: (sale: Sale) => void;
 }
 
 const compressImage = (file: File, maxWidth = 1920): Promise<Blob> => {
@@ -488,8 +490,9 @@ const DocumentsModal = ({
 const CustomerDetails: React.FC<CustomerDetailsProps> = ({
     customer, sales, accounts, investors, appSettings, onBack,
     onInitiatePayment, onUndoPayment, onEditPayment, onUpdateCustomer,
-    initialSaleId, onDeleteCustomer, user
+    initialSaleId, onDeleteCustomer, user, suppliers, onPaySupplier
 }) => {
+    const supplierList: Supplier[] = suppliers || [];
     const isEmployee = user?.role === 'employee';
     const [activeTab, setActiveTab] = useState<'INFO' | 'INSTALLMENTS'>('INFO');
     const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
@@ -768,6 +771,28 @@ ${customer.name}!
                         <span className="text-slate-500 dark:text-slate-400">Цена закупа</span>
                         <span className="font-medium text-slate-800 dark:text-white">{formatCurrency(selectedSale.buyPrice, appSettings.showCents)} ₽</span>
                     </div>
+                    {selectedSale.supplierId && (
+                        <div className="border-b border-slate-50 dark:border-slate-700 pb-2 space-y-2">
+                            <div className="flex justify-between">
+                                <span className="text-slate-500 dark:text-slate-400">Поставщик</span>
+                                <span className="font-medium text-slate-800 dark:text-white">{supplierList.find(s => s.id === selectedSale.supplierId)?.name || '—'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-500 dark:text-slate-400">Долг поставщику</span>
+                                <span className={`font-medium ${selectedSale.isPartnerDebtPaid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {selectedSale.isPartnerDebtPaid ? 'Оплачено' : `${formatCurrency(selectedSale.buyPrice - (selectedSale.partnerDebtPaidAmount || 0), appSettings.showCents)} ₽`}
+                                </span>
+                            </div>
+                            {!selectedSale.isPartnerDebtPaid && onPaySupplier && (
+                                <button
+                                    onClick={() => onPaySupplier(selectedSale)}
+                                    className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-bold"
+                                >
+                                    Оплатить поставщику
+                                </button>
+                            )}
+                        </div>
+                    )}
                     <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2">
                         <span className="text-slate-500 dark:text-slate-400">Цена в рассрочку</span>
                         <span className="font-medium text-slate-800 dark:text-white">{formatCurrency(selectedSale.totalAmount, appSettings.showCents)} ₽</span>

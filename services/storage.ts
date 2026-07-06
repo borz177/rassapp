@@ -172,7 +172,7 @@ export const savePartnerships = (userId: string, data: Partnership[]) => saveUse
 
 export const getAppSettings = (): AppSettings => {
     const saved = localStorage.getItem(STORAGE_KEYS.APP_SETTINGS);
-    const defaults: AppSettings = { companyName: 'FinUchet', showCents: true };
+    const defaults: AppSettings = { companyName: 'FinUchet', showCents: true, markupFromNetBuyPrice: false };
     return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
 };
 

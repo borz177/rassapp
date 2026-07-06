@@ -10,12 +10,19 @@ lerna-debug.log*
 
 CLAUDE.md
 
+dev-dist
 # Node
 node_modules
 dist
 dist-ssr
 .vite
 *.local
+
+# Env / secrets
+.env
+.env.*
+server/.env
+server/.env.*
 
 # Electron build
 release

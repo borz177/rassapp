@@ -11,11 +11,13 @@ const PLAN_LIMITS: Record<SubscriptionPlan, {
   employees: number;
   whatsapp: boolean;
   ai: boolean;
+  suppliers: boolean;
 }> = {
-  TRIAL: { contracts: 10, investors: 0, employees: 0, whatsapp: false, ai: true },
-  START: { contracts: 100, investors: 1, employees: 0, whatsapp: false, ai: false },
-  STANDARD: { contracts: 500, investors: 5, employees: 2, whatsapp: true, ai: false },
-  BUSINESS: { contracts: -1, investors: -1, employees: -1, whatsapp: true, ai: true }, // -1 = безлимит
+  TRIAL: { contracts: 10, investors: 0, employees: 0, whatsapp: false, ai: true, suppliers: false },
+  START: { contracts: 100, investors: 1, employees: 0, whatsapp: false, ai: false, suppliers: false },
+  STANDARD: { contracts: 500, investors: 5, employees: 0, whatsapp: true, ai: false, suppliers: false },
+  BUSINESS: { contracts: -1, investors: -1, employees: -1, whatsapp: true, ai: true, suppliers: false }, // -1 = безлимит
+  BUSINESS_PRO: { contracts: -1, investors: -1, employees: -1, whatsapp: true, ai: true, suppliers: true },
 };
 
 type SubscriptionFilter = 'all' | 'active' | 'expired' | 'none';
@@ -223,12 +225,14 @@ const handleResetUserPassword = async (user: User) => {
             START: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
             STANDARD: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
             BUSINESS: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
+            BUSINESS_PRO: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
         };
         const labels: Record<SubscriptionPlan, string> = {
             TRIAL: '🧪 Тест',
             START: '🚀 Старт',
             STANDARD: '⭐ Стандарт',
             BUSINESS: '💼 Бизнес',
+            BUSINESS_PRO: '👑 Бизнес Pro',
         };
         return <span className={`px-2 py-1 rounded text-xs font-bold ${styles[plan]}`}>{labels[plan]}</span>;
     };
@@ -242,6 +246,7 @@ const handleResetUserPassword = async (user: User) => {
             START: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
             STANDARD: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
             BUSINESS: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
+            BUSINESS_PRO: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
         };
         return styles[user.subscription.plan] || 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400';
     };
@@ -523,7 +528,7 @@ const getContractUsage = (user: User): {
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Тарифный план</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {(['TRIAL', 'START', 'STANDARD', 'BUSINESS'] as SubscriptionPlan[]).map((p) => {
+                                    {(['TRIAL', 'START', 'STANDARD', 'BUSINESS', 'BUSINESS_PRO'] as SubscriptionPlan[]).map((p) => {
                                         const limits = PLAN_LIMITS[p];
                                         return (
                                             <button
@@ -535,7 +540,7 @@ const getContractUsage = (user: User): {
                                                         : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                                                 }`}
                                             >
-                                                <div className="font-bold text-slate-800 dark:text-white">{p === 'TRIAL' ? '🧪 TRIAL' : p === 'START' ? '🚀 START' : p === 'STANDARD' ? '⭐ STANDARD' : '💼 BUSINESS'}</div>
+                                                <div className="font-bold text-slate-800 dark:text-white">{p === 'TRIAL' ? '🧪 TRIAL' : p === 'START' ? '🚀 START' : p === 'STANDARD' ? '⭐ STANDARD' : p === 'BUSINESS' ? '💼 BUSINESS' : '👑 BUSINESS PRO'}</div>
                                                 <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                                                     Договоры: {limits.contracts === -1 ? '∞' : limits.contracts}<br/>
                                                     Инвесторы: {limits.investors === -1 ? '∞' : limits.investors}

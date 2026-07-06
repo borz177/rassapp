@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import CashRegister from './components/CashRegister';
@@ -19,13 +19,23 @@ import Settings from './components/Settings';
 import Reports from './components/Reports';
 import Profile from './components/Profile';
 import Partners from './components/Partners';
+import Suppliers from './components/Suppliers';
+import SupplierDetails from './components/SupplierDetails';
 import InvestorDashboard from './components/InvestorDashboard';
 import Tariffs from './components/Tariffs';
-import AdminPanel from './components/AdminPanel';
-import Integrations from './components/Integrations';
-import Calculator from './components/Calculator';
 import Auth from './components/Auth';
-import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan } from './types';
+// 🔹 Редко открываемые/тяжёлые экраны — грузим отдельными чанками по требованию,
+// чтобы не тащить их в основной бандл (особенно заметно на медленном соединении/VPN).
+const AdminPanel = lazy(() => import('./components/AdminPanel'));
+const AdminSupportPanel = lazy(() => import('./components/AdminSupportPanel'));
+const Integrations = lazy(() => import('./components/Integrations'));
+const Calculator = lazy(() => import('./components/Calculator'));
+const LazyFallback: React.FC = () => (
+  <div className="flex items-center justify-center py-20">
+    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+  </div>
+);
+import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier } from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
 import { api } from './services/api';
 import { ICONS } from './constants';
@@ -33,7 +43,6 @@ import SplashScreen from "./components/SplashScreen"
 
 import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
-import AdminSupportPanel from './components/AdminSupportPanel';
 import { formatCurrency, formatDate } from './src/utils';
 import { useSwipeable } from "react-swipeable"
 
@@ -77,15 +86,6 @@ async function setupNativeApp() {
 
 
 
-// 🔹 Хелпер для создания таймаутов (чтобы код не зависал навсегда)
-// 🔥 ИСПРАВЛЕНО: добавлена запятая после <T,>, чтобы TSX не путал с HTML-тегом
-const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
-    return Promise.race([
-        promise,
-        new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Timeout ${ms}ms`)), ms))
-    ]);
-};
-
 const App: React.FC = () => {
     const path = window.location.pathname
 const isLanding = path === "/"
@@ -110,6 +110,7 @@ const isLanding = path === "/"
   const [investors, setInvestors] = useState<Investor[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>({ companyName: 'FinUchet' });
 
   const [whatsappRefreshKey, setWhatsAppRefreshKey] = useState<number>(0);
@@ -120,6 +121,8 @@ const isLanding = path === "/"
   const [previousView, setPreviousView] = useState<ViewState>('DASHBOARD');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [selectedInvestorId, setSelectedInvestorId] = useState<string | null>(null);
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
+  const [draftExpenseData, setDraftExpenseData] = useState<any>(null);
   const [operationsAccountId, setOperationsAccountId] = useState<string | null>(null);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [initialSaleIdForDetails, setInitialSaleIdForDetails] = useState<string | null>(null);
@@ -350,6 +353,7 @@ const handleSync = async () => {
         if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors'));
         if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
         if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
+        if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers'));
 
         if (freshData.settings) {
           setAppSettings(freshData.settings);
@@ -539,6 +543,7 @@ useEffect(() => {
                 if (cachedData.accounts) setAccounts(cachedData.accounts);
                 if (cachedData.investors) setInvestors(cachedData.investors);
                 if (cachedData.partnerships) setPartnerships(cachedData.partnerships);
+                if (cachedData.suppliers) setSuppliers(cachedData.suppliers);
                 if (cachedData.employees) setEmployees(cachedData.employees);
                 if (cachedData.settings) setAppSettings(cachedData.settings);
             }
@@ -584,6 +589,7 @@ useEffect(() => {
               if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors'));
               if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
               if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
+              if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers'));
 
               if (freshData.settings) {
                 setAppSettings(freshData.settings);
@@ -764,6 +770,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
     if (data.accounts?.length > 0 || accounts.length === 0) setAccounts(data.accounts || []);
     if (data.investors?.length > 0 || investors.length === 0) setInvestors(data.investors || []);
     if (data.partnerships?.length > 0 || partnerships.length === 0) setPartnerships(data.partnerships || []);
+    if (data.suppliers?.length > 0 || suppliers.length === 0) setSuppliers(data.suppliers || []);
     if (data.employees?.length > 0 || employees.length === 0) setEmployees(data.employees || []);
 
     let loadedSettings = data.settings || getAppSettings();
@@ -804,14 +811,14 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 };
 
   // ... (Access checks and calculation logic remain the same)
-  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES'): boolean => {
+  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS'): boolean => {
     if (!user) return false;
     if (isEmployee || isInvestor || user.role === 'admin') return true;
-    
+
     const sub = user.subscription || { plan: 'TRIAL', expiresAt: new Date(0).toISOString() };
     const isExpired = new Date() > new Date(sub.expiresAt);
     if (isExpired && feature === 'WRITE') return false;
-    
+
     const plan = sub.plan;
     switch(feature) {
         case 'WRITE': return !isExpired;
@@ -819,7 +826,8 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         case 'AI': return plan === 'BUSINESS' || plan === 'TRIAL';
         case 'WHATSAPP': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'TRIAL';
         // 🔥 ИСПРАВЛЕНО: TRIAL имеет лимит 0, поэтому разрешаем только STANDARD и BUSINESS
-        case 'EMPLOYEES': return plan === 'BUSINESS'; 
+        case 'EMPLOYEES': return plan === 'BUSINESS';
+        case 'SUPPLIERS': return plan === 'BUSINESS_PRO';
         default: return true;
     }
 };
@@ -1151,6 +1159,11 @@ const filterDataForEmployeeClient = (data: any, allowedIds: string[]) => {
 const handleSaveSale = async (data: any): Promise<any> => {
   if (!user) return;
 
+  // 🔒 Собирается внутри try — храним ссылку здесь, чтобы offline-фолбэк в catch
+  // мог переиспользовать уже готовую запись (правильный id, график платежей, статус),
+  // а не собирать параллельную с другим id, рассинхронизированную с очередью в api.saveItem.
+  let saleToSave: any = null;
+
   try {
     // 🔹 1. ПРОВЕРКА ЛИМИТА ПЕРЕД СОХРАНЕНИЕМ
     const limitCheck = await api.checkLocalContractLimit(sales);
@@ -1180,6 +1193,9 @@ const handleSaveSale = async (data: any): Promise<any> => {
       id: saleId,
       userId: ownerId,
       createdByUserId: data.createdByUserId || user.id, // Сохраняем создателя при редактировании, ставим текущего при создании
+      supplierId: data.supplierId || undefined,
+      partnerDebtPaidAmount: data.partnerDebtPaidAmount || 0,
+      isPartnerDebtPaid: !!data.isPartnerDebtPaid,
       paymentDay: preferredDay,
       paymentPlan: data.type === 'CASH'
         ? []
@@ -1198,7 +1214,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
     };
 
     const existingSaleIndex = sales.findIndex(s => s.id === data.id);
-    const saleToSave = existingSaleIndex >= 0
+    saleToSave = existingSaleIndex >= 0
       ? { ...sales[existingSaleIndex], ...saleData }
       : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
 
@@ -1220,7 +1236,14 @@ const handleSaveSale = async (data: any): Promise<any> => {
       const newBuyPrice = Number(data.buyPrice);
 
       try {
-        if (newBuyPrice > 0) {
+        if (data.supplierId) {
+          // 🔒 Выбран поставщик — деньги за закуп НЕ списываем со счёта, заводится долг (Sale.supplierId/partnerDebtPaidAmount).
+          // Если ранее (до выбора поставщика) уже был обычный расход закупа — убираем его, чтобы не задвоить списание.
+          if (linkedExpense) {
+            await api.deleteItem('expenses', buyPriceExpenseId);
+            setExpenses(prev => prev.filter(e => e.id !== buyPriceExpenseId));
+          }
+        } else if (newBuyPrice > 0) {
           if (
             !linkedExpense ||
             linkedExpense.amount !== newBuyPrice ||
@@ -1320,11 +1343,17 @@ const handleSaveSale = async (data: any): Promise<any> => {
         'warning'
       );
 
-      const tempSale = { ...data, id: `temp_${Date.now()}`, _isOffline: true };
+      // 🔒 Переиспользуем уже собранную saleToSave (тот же id, график платежей, статус) —
+      // именно этот id уже мог быть положен в офлайн-очередь внутри api.saveItem
+      // (сетевая ошибка или истёкшая сессия), поэтому здесь нельзя фабриковать новый id,
+      // иначе локальное состояние и очередь синхронизации разъедутся, а запись потеряется.
+      const tempSale = saleToSave
+        ? { ...saleToSave, _isOffline: true }
+        : { ...data, id: `temp_${Date.now()}`, _isOffline: true };
       updateList(setSales, tempSale);
-      
-      // 🔹 🔑 СОЗДАЁМ РАСХОД ЗАКУПА ЛОКАЛЬНО
-      if (Number(data.buyPrice) > 0) {
+
+      // 🔹 🔑 СОЗДАЁМ РАСХОД ЗАКУПА ЛОКАЛЬНО (только если поставщик не выбран — иначе это долг, а не списание)
+      if (!data.supplierId && Number(data.buyPrice) > 0) {
         const buyPriceExpense: Expense = {
           id: `exp_sale_${tempSale.id}`,
           userId: isEmployee && user.managerId ? user.managerId : user.id,
@@ -1390,6 +1419,11 @@ const handleDeleteSale = async (saleId: string) => {
 
   if (installmentAmount > 0) {
     alert(`❌ Нельзя удалить договор с платежами по графику.\nОплачено по графику: ${formatCurrency(installmentAmount, appSettings?.showCents)} ₽`);
+    return;
+  }
+
+  if (sale.supplierId && !sale.isPartnerDebtPaid && (sale.partnerDebtPaidAmount || 0) > 0) {
+    alert(`❌ Нельзя удалить договор с частично оплаченным долгом поставщику.\nОплачено поставщику: ${formatCurrency(sale.partnerDebtPaidAmount || 0, appSettings?.showCents)} ₽`);
     return;
   }
 
@@ -1577,7 +1611,7 @@ const handleIncomeSubmit = async (data: any) => {
             }
         }
     }
-};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: crypto.randomUUID(), userId: ownerId, createdByUserId: user.id, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } setCurrentView('OPERATIONS'); };
+};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: crypto.randomUUID(), userId: ownerId, createdByUserId: user.id, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, investorId: data.investorId, supplierId: data.supplierId, saleId: data.saleId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } if (data.category === 'Оплата партнёру' && data.saleId) { const sale = sales.find(s => s.id === data.saleId); if (sale) { const newPaid = (sale.partnerDebtPaidAmount || 0) + Number(data.amount); const updatedSale = { ...sale, partnerDebtPaidAmount: newPaid, isPartnerDebtPaid: newPaid >= sale.buyPrice }; const savedSale = await api.saveItem('sales', updatedSale); updateList(setSales, savedSale); } } setDraftExpenseData(null); setCurrentView('OPERATIONS'); };
  const handleAddEmployee = async (data: any) => {
   if (!user || !isManager) return;
 
@@ -2271,6 +2305,42 @@ const handleQuickAddCustomer = async (data: {
   const handleSelectCustomer = (id: string) => { setSelectedCustomerId(id); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
   const handleSelectInvestor = (investor: Investor) => { setSelectedInvestorId(investor.id); setCurrentView('INVESTOR_DETAILS'); };
   const handleAddPartnership = async (name: string, members: string[]) => { if (!user) return; const newAccountId = `acc_part_${Date.now()}`; const newAccount: Account = { id: newAccountId, userId: user.id, name: `Счет: ${name}`, type: 'CUSTOM' }; const newPartnership: Partnership = { id: `part_${Date.now()}`, userId: user.id, name, accountId: newAccountId, partnerIds: members, createdAt: new Date().toISOString() }; const savedAcc = await api.saveItem('accounts', newAccount); updateList(setAccounts, savedAcc); const savedPart = await api.saveItem('partnerships', newPartnership); updateList(setPartnerships, savedPart); };
+  const handleSelectSupplier = (supplier: Supplier) => { setSelectedSupplierId(supplier.id); setCurrentView('SUPPLIER_DETAILS'); };
+  const handleViewSupplierContract = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView('SUPPLIER_DETAILS'); setCurrentView('CUSTOMER_DETAILS'); };
+  const handleAddSupplier = async (data: { name: string; phone?: string; email?: string; notes?: string }) => {
+    if (!user) return;
+    if (!checkAccess('SUPPLIERS')) { showUpgradeAlert("Модуль «Партнеры» доступен только на тарифе Бизнес Pro."); return; }
+    const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+    const newSupplier: Supplier = { id: crypto.randomUUID(), userId: ownerId, createdByUserId: user.id, name: data.name, phone: data.phone, email: data.email, notes: data.notes, createdAt: new Date().toISOString() };
+    const saved = await api.saveItem('suppliers', newSupplier);
+    updateList(setSuppliers, saved);
+  };
+  const handleUpdateSupplier = async (supplier: Supplier) => {
+    const saved = await api.saveItem('suppliers', supplier);
+    updateList(setSuppliers, saved);
+  };
+  const handleDeleteSupplier = async (id: string) => {
+    try {
+      await api.deleteItem('suppliers', id);
+      removeFromList(setSuppliers, id);
+    } catch (error: any) {
+      console.error('❌ Ошибка удаления поставщика:', error);
+      showNotificationModal('❌ Ошибка удаления', error.message || 'Не удалось удалить поставщика.', 'error');
+    }
+  };
+  const handlePaySupplier = (sale: Sale) => {
+    const remaining = sale.buyPrice - (sale.partnerDebtPaidAmount || 0);
+    setDraftExpenseData({
+      accountId: sale.accountId,
+      supplierId: sale.supplierId,
+      saleId: sale.id,
+      category: 'Оплата партнёру',
+      title: `Оплата поставщику: ${sale.productName}`,
+      amount: remaining,
+      maxAmount: remaining,
+    });
+    setCurrentView('CREATE_EXPENSE');
+  };
 const handleUpdateProfile = async (data: any) => {
     if (!user) return;
 
@@ -2356,53 +2426,58 @@ const contractCounts = useMemo(() => {
 
       if (!window.confirm("Вы уверены, что хотите удалить эту операцию?")) return;
 
-      if (op.type === 'EXPENSE') {
-          await api.deleteItem('expenses', op.id);
-          removeFromList(setExpenses, op.id);
-      } else if (op.type === 'INCOME') {
-          const sale = sales.find(s => s.id === op.raw.id);
-          if (!sale) return;
+      try {
+        if (op.type === 'EXPENSE') {
+            await api.deleteItem('expenses', op.id);
+            removeFromList(setExpenses, op.id);
+        } else if (op.type === 'INCOME') {
+            const sale = sales.find(s => s.id === op.raw.id);
+            if (!sale) return;
 
-          if (op.id === sale.id) {
-             // CASH Sale
-             await api.deleteItem('sales', sale.id);
-             removeFromList(setSales, sale.id);
-             // Also delete associated expense if any
-             await api.deleteItem('expenses', `exp_sale_${sale.id}`);
-             setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${sale.id}`));
-             // Restore stock
-             if (sale.productId) {
-                 const prod = products.find(p => p.id === sale.productId);
-                 if(prod) {
-                     const updatedProd = { ...prod, stock: prod.stock + 1 };
-                     const savedProd = await api.saveItem('products', updatedProd);
-                     updateList(setProducts, savedProd);
-                 }
-             }
-          } else if (op.id.endsWith('_dp')) {
-              // Down Payment
-              const updatedSale = {
-                  ...sale,
-                  downPayment: 0,
-                  remainingAmount: sale.remainingAmount + op.amount,
-                  status: 'ACTIVE' as const
-              };
-              const saved = await api.saveItem('sales', updatedSale);
-              updateList(setSales, saved);
-          } else {
-              // Installment Payment
-              const payment = sale.paymentPlan.find(p => p.id === op.id);
-              if (payment) {
-                  const updatedSale = {
-                      ...sale,
-                      remainingAmount: sale.remainingAmount + payment.amount,
-                      paymentPlan: sale.paymentPlan.filter(p => p.id !== op.id),
-                      status: 'ACTIVE' as const
-                  };
-                  const saved = await api.saveItem('sales', updatedSale);
-                  updateList(setSales, saved);
-              }
-          }
+            if (op.id === sale.id) {
+               // CASH Sale
+               await api.deleteItem('sales', sale.id);
+               removeFromList(setSales, sale.id);
+               // Also delete associated expense if any
+               await api.deleteItem('expenses', `exp_sale_${sale.id}`);
+               setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${sale.id}`));
+               // Restore stock
+               if (sale.productId) {
+                   const prod = products.find(p => p.id === sale.productId);
+                   if(prod) {
+                       const updatedProd = { ...prod, stock: prod.stock + 1 };
+                       const savedProd = await api.saveItem('products', updatedProd);
+                       updateList(setProducts, savedProd);
+                   }
+               }
+            } else if (op.id.endsWith('_dp')) {
+                // Down Payment
+                const updatedSale = {
+                    ...sale,
+                    downPayment: 0,
+                    remainingAmount: sale.remainingAmount + op.amount,
+                    status: 'ACTIVE' as const
+                };
+                const saved = await api.saveItem('sales', updatedSale);
+                updateList(setSales, saved);
+            } else {
+                // Installment Payment
+                const payment = sale.paymentPlan.find(p => p.id === op.id);
+                if (payment) {
+                    const updatedSale = {
+                        ...sale,
+                        remainingAmount: sale.remainingAmount + payment.amount,
+                        paymentPlan: sale.paymentPlan.filter(p => p.id !== op.id),
+                        status: 'ACTIVE' as const
+                    };
+                    const saved = await api.saveItem('sales', updatedSale);
+                    updateList(setSales, saved);
+                }
+            }
+        }
+      } catch (error: any) {
+        console.error('❌ Ошибка удаления операции:', error);
+        showNotificationModal('❌ Ошибка удаления', error.message || 'Не удалось удалить операцию.', 'error');
       }
   };
 
@@ -2489,11 +2564,13 @@ const handleUpdateSettings = async (newSettings: AppSettings) => {
 
 if (isPublicMode) {
     return (
-        <Calculator
-            isPublic={true}
-            appSettings={appSettings}
-            userPhone={user?.phone}
-        />
+        <Suspense fallback={<LazyFallback />}>
+            <Calculator
+                isPublic={true}
+                appSettings={appSettings}
+                userPhone={user?.phone}
+            />
+        </Suspense>
     );
 }
 
@@ -2671,6 +2748,30 @@ if (!user && !showSplash) {
                       appSettings={appSettings}
                   />
               )}
+              {currentView === 'SUPPLIERS' && (
+                  <Suppliers
+                      suppliers={suppliers}
+                      sales={sales}
+                      showCents={appSettings.showCents}
+                      onAddSupplier={handleAddSupplier}
+                      onUpdateSupplier={handleUpdateSupplier}
+                      onDeleteSupplier={handleDeleteSupplier}
+                      onViewDetails={handleSelectSupplier}
+                  />
+              )}
+              {currentView === 'SUPPLIER_DETAILS' && selectedSupplierId && (
+                  <SupplierDetails
+                      supplier={suppliers.find(s => s.id === selectedSupplierId)!}
+                      sales={sales}
+                      expenses={expenses}
+                      customers={customers}
+                      showCents={appSettings.showCents}
+                      appSettings={appSettings}
+                      onBack={() => setCurrentView('SUPPLIERS')}
+                      onPaySupplier={handlePaySupplier}
+                      onViewContract={handleViewSupplierContract}
+                  />
+              )}
               {currentView === 'CUSTOMERS' && (
                   <Customers
                       customers={customers}
@@ -2692,6 +2793,7 @@ if (!user && !showSplash) {
                                    accounts={accounts} investors={investors} onBack={() => setCurrentView(previousView)}
                                    onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment}
                                    onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer}
+                                   suppliers={suppliers} onPaySupplier={handlePaySupplier}
                                    initialSaleId={initialSaleIdForDetails} appSettings={appSettings} user={user}/>}
               {currentView === 'MANAGE_PRODUCTS' &&
                   <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct}
@@ -2719,11 +2821,12 @@ if (!user && !showSplash) {
                              onSelectCustomer={() => openSelection('SELECT_CUSTOMER', draftSaleData)}
                              appSettings={appSettings} user={user}/>}
               {currentView === 'CREATE_EXPENSE' &&
-                  <NewExpense investors={investors} accounts={accounts} expenses={expenses}  onClose={() => setCurrentView('DASHBOARD')}
+                  <NewExpense investors={investors} accounts={accounts} expenses={expenses} suppliers={suppliers} sales={sales}
+                              showSupplierCategory={checkAccess('SUPPLIERS')} initialData={draftExpenseData} onClose={() => { setCurrentView('DASHBOARD'); setDraftExpenseData(null); }}
                               onSubmit={handleExpenseSubmit} appSettings={appSettings} employees={employees} />}
               {currentView === 'CREATE_SALE' &&
                   <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products}
-                           accounts={accounts} onClose={() => {
+                           accounts={accounts} suppliers={suppliers} showSupplierField={checkAccess('SUPPLIERS')} onClose={() => {
                       setCurrentView('DASHBOARD');
                       setEditingSale(null);
                   }} onSelectCustomer={(data) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} onShowNotification={showNotificationModal}
@@ -2744,20 +2847,25 @@ if (!user && !showSplash) {
               {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings}
                                                        onNavigate={setCurrentView} onImportData={handleImportData} currentUserId={user.id} user={user}/>}
 
-              {currentView === 'INTEGRATIONS' &&
+              {currentView === 'INTEGRATIONS' && (
+                <Suspense fallback={<LazyFallback />}>
                   <Integrations appSettings={appSettings} onUpdateSettings={handleUpdateSettings}
                                 onBack={() => setCurrentView('SETTINGS')}
                                 whatsappRefreshKey={whatsappRefreshKey}  // ← Обязательно!
                                 onSettingsChanged={() => {
 
-                                }}/>}
+                                }}/>
+                </Suspense>
+              )}
               {currentView === 'CALCULATOR' && (
+                <Suspense fallback={<LazyFallback />}>
                   <Calculator
                       appSettings={appSettings}
                       userPhone={user?.phone}
                       onBack={() => setCurrentView('SETTINGS')}
                       onSaveSettings={handleUpdateSettings}
                   />
+                </Suspense>
               )}
 
              {currentView === 'PROFILE' && user && (
@@ -2785,11 +2893,17 @@ if (!user && !showSplash) {
       )
     )}
 
-    {currentView === 'ADMIN_PANEL' && <AdminPanel/>}
+    {currentView === 'ADMIN_PANEL' && (
+      <Suspense fallback={<LazyFallback />}>
+        <AdminPanel/>
+      </Suspense>
+    )}
 
     {/* 🔹 АДМИН ПАНЕЛЬ ПОДДЕРЖКИ */}
     {currentView === 'ADMIN_SUPPORT' && user?.role === 'admin' && (
-      <AdminSupportPanel onBack={() => setCurrentView('ADMIN_PANEL')} />
+      <Suspense fallback={<LazyFallback />}>
+        <AdminSupportPanel onBack={() => setCurrentView('ADMIN_PANEL')} />
+      </Suspense>
     )}
 
     {/* 🔹 МОДАЛЬНОЕ ОКНО ЧАТА ПОДДЕРЖКИ */}
@@ -3006,6 +3120,22 @@ if (!user && !showSplash) {
               <div className="flex items-center gap-3">
                 <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 p-2 rounded-lg">{ICONS.Employees}</div>
                 <span className="font-semibold text-slate-800 dark:text-white">Сотрудники</span>
+              </div>
+              <span className="text-slate-400 dark:text-slate-500">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </span>
+            </button>
+          )}
+
+          {/* Партнеры (поставщики) — только тариф Бизнес Pro */}
+          {user.role === 'manager' && checkAccess('SUPPLIERS') && (
+            <button onClick={() => setCurrentView('SUPPLIERS')}
+                    className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
+              <div className="flex items-center gap-3">
+                <div className="bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 p-2 rounded-lg">{ICONS.Suppliers}</div>
+                <span className="font-semibold text-slate-800 dark:text-white">Партнеры</span>
               </div>
               <span className="text-slate-400 dark:text-slate-500">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

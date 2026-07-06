@@ -1,11 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Account, Investor, Expense, User } from '../types';
+import { Account, Investor, Expense, User, Supplier, Sale } from '../types';
 import { ICONS } from '../constants';
 
 interface NewExpenseProps {
   investors: Investor[];
   accounts: Account[];
   expenses?: Expense[]; // ← Добавлено для проверки дубликатов
+  employees?: User[];
+  suppliers?: Supplier[];
+  sales?: Sale[];
+  showSupplierCategory?: boolean;
+  appSettings?: any;
+  initialData?: {
+    accountId?: string;
+    supplierId?: string;
+    saleId?: string;
+    category?: string;
+    title?: string;
+    amount?: number;
+    maxAmount?: number;
+  } | null;
   onClose: () => void;
   onSubmit: (data: any) => void;
 }
@@ -37,17 +51,22 @@ const checkDuplicateExpense = (
   });
 };
 
-const NewExpense: React.FC<NewExpenseProps> = ({ 
-  investors, accounts, expenses, employees, onClose, onSubmit 
+const NewExpense: React.FC<NewExpenseProps> = ({
+  investors, accounts, expenses, employees, suppliers, sales, showSupplierCategory, initialData, onClose, onSubmit
 }) => {
+  const employeeList: User[] = employees || [];
+  const supplierList: Supplier[] = suppliers || [];
+  const saleList: Sale[] = sales || [];
+  const isSupplierPayment = !!initialData?.saleId;
+
   const [sourceType, setSourceType] = useState<'INVESTOR' | 'OTHER'>('OTHER');
-  
+
   // Form States
   const [selectedInvestorId, setSelectedInvestorId] = useState('');
-  const [sourceAccountId, setSourceAccountId] = useState('');
-  const [amount, setAmount] = useState('');
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('General');
+  const [sourceAccountId, setSourceAccountId] = useState(initialData?.accountId || '');
+  const [amount, setAmount] = useState(initialData?.amount ? String(initialData.amount) : '');
+  const [title, setTitle] = useState(initialData?.title || '');
+  const [category, setCategory] = useState(initialData?.category || 'General');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [payoutType, setPayoutType] = useState<'INVESTMENT' | 'PROFIT' | null>(null);
   const [managerPayoutSource, setManagerPayoutSource] = useState<'CAPITAL' | 'PROFIT' | null>(null);
@@ -57,10 +76,19 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [pendingExpenseData, setPendingExpenseData] = useState<any>(null);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');  
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [selectedSupplierId, setSelectedSupplierId] = useState('');
+  const [selectedDebtSaleId, setSelectedDebtSaleId] = useState('');
 
   const selectedInvestor = investors.find(i => i.id === selectedInvestorId);
   const selectedAccount = accounts.find(a => a.id === sourceAccountId);
+
+  // Открытые (непогашенные) долги выбранного поставщика — для опциональной привязки оплаты к конкретному договору
+  const supplierOpenDebts = selectedSupplierId
+    ? saleList.filter(s => s.supplierId === selectedSupplierId && !s.isPartnerDebtPaid && (s.buyPrice - (s.partnerDebtPaidAmount || 0)) > 0)
+    : [];
+  const selectedDebtSale = supplierOpenDebts.find(s => s.id === selectedDebtSaleId);
+  const selectedDebtRemaining = selectedDebtSale ? selectedDebtSale.buyPrice - (selectedDebtSale.partnerDebtPaidAmount || 0) : null;
 
   // Auto-fill Account logic when Investor changes
   useEffect(() => {
@@ -96,7 +124,24 @@ const NewExpense: React.FC<NewExpenseProps> = ({
       if (category !== 'Salary') {
           setSelectedEmployeeId('');
       }
+      // Сбрасываем поставщика/договор, если категория не "Партнер"
+      if (category !== 'Оплата партнёру') {
+          setSelectedSupplierId('');
+          setSelectedDebtSaleId('');
+      }
   }, [category]);
+
+  // Сбрасываем выбранный договор при смене поставщика
+  useEffect(() => {
+      setSelectedDebtSaleId('');
+  }, [selectedSupplierId]);
+
+  // Автоподстановка суммы остатком долга при выборе конкретного договора
+  useEffect(() => {
+      if (selectedDebtSale) {
+          setAmount(String(selectedDebtSale.buyPrice - (selectedDebtSale.partnerDebtPaidAmount || 0)));
+      }
+  }, [selectedDebtSaleId]);
 
   useEffect(() => {
     if (sourceType === 'INVESTOR' && investors.length === 0) {
@@ -115,6 +160,30 @@ const NewExpense: React.FC<NewExpenseProps> = ({
     const numAmount = Number(amount);
     if (numAmount <= 0) {
         alert("Введите сумму больше нуля");
+        return;
+    }
+
+    // 🔒 Оплата поставщику — отдельный упрощённый флоу (частичная оплата долга по конкретному договору)
+    if (isSupplierPayment) {
+        if (initialData?.maxAmount != null && numAmount > initialData.maxAmount + 0.01) {
+            alert(`Сумма не может превышать остаток долга: ${initialData.maxAmount} ₽`);
+            return;
+        }
+        if (!sourceAccountId) {
+            alert("Выберите счёт списания");
+            return;
+        }
+        const supplierExpenseData = {
+            amount: numAmount,
+            date: new Date().toISOString(),
+            accountId: sourceAccountId,
+            title: initialData?.title || 'Оплата поставщику',
+            category: 'Оплата партнёру',
+            supplierId: initialData?.supplierId,
+            saleId: initialData?.saleId,
+        };
+        setPendingExpenseData(supplierExpenseData);
+        setShowConfirmModal(true);
         return;
     }
 
@@ -172,36 +241,59 @@ const NewExpense: React.FC<NewExpenseProps> = ({
             payoutType: payoutType
         };
         } else {
-        if (!title && category !== 'Моя выплата' && category !== 'Salary' || !sourceAccountId) {
+        if (!title && category !== 'Моя выплата' && category !== 'Salary' && category !== 'Оплата партнёру' || !sourceAccountId) {
             alert("Заполните название и выберите счет");
             return;
         }
-        
+
         // 🔥 НОВОЕ: Проверка сотрудника для зарплаты
         if (category === 'Salary' && !selectedEmployeeId) {
             alert("Выберите сотрудника для выплаты зарплаты");
             return;
         }
 
-        const selectedEmployee = employees.find(e => e.id === selectedEmployeeId);
-        
+        // 🔒 Партнер: обязателен выбор поставщика; если выбран конкретный договор — сумма не может превышать остаток долга
+        if (category === 'Оплата партнёру') {
+            if (!selectedSupplierId) {
+                alert("Выберите поставщика");
+                return;
+            }
+            if (selectedDebtRemaining != null && numAmount > selectedDebtRemaining + 0.01) {
+                alert(`Сумма не может превышать остаток долга: ${selectedDebtRemaining} ₽`);
+                return;
+            }
+        }
+
+        const selectedEmployee = employeeList.find(e => e.id === selectedEmployeeId);
+        const selectedSupplierForExpense = supplierList.find(s => s.id === selectedSupplierId);
+
         expenseData = {
             ...commonData,
             type: 'OTHER_EXPENSE',
             accountId: sourceAccountId,
-            title: category === 'Моя выплата' 
-                ? 'Выплата менеджеру' 
-                : category === 'Salary' 
+            title: category === 'Моя выплата'
+                ? 'Выплата менеджеру'
+                : category === 'Salary'
                     ? `Зарплата: ${selectedEmployee?.name || 'Сотрудник'}`
-                    : title,
+                    : category === 'Оплата партнёру'
+                        ? `Оплата поставщику: ${selectedSupplierForExpense?.name || 'Партнер'}`
+                        : title,
             category: category,
         };
-        
+
         // 🔥 Сохраняем ID сотрудника в расходе
         if (category === 'Salary' && selectedEmployeeId) {
             expenseData.employeeId = selectedEmployeeId;
         }
-        
+
+        // 🔥 Сохраняем ID поставщика и (опционально) договора, долг по которому гасится
+        if (category === 'Оплата партнёру' && selectedSupplierId) {
+            expenseData.supplierId = selectedSupplierId;
+            if (selectedDebtSaleId) {
+                expenseData.saleId = selectedDebtSaleId;
+            }
+        }
+
         if (category === 'Моя выплата') {
             if (!managerPayoutSource) {
                 alert("Выберите источник списания для выплаты.");
@@ -261,7 +353,17 @@ const NewExpense: React.FC<NewExpenseProps> = ({
           <h2 className="text-xl font-bold text-slate-800 dark:text-white">Оформление расхода</h2>
       </div>
 
+      {isSupplierPayment && (
+          <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 rounded-xl p-4 space-y-1">
+              <p className="font-bold text-amber-800 dark:text-amber-300">{initialData?.title}</p>
+              <p className="text-sm text-amber-700 dark:text-amber-400">
+                  Остаток долга: {initialData?.maxAmount?.toLocaleString('ru-RU')} ₽. Можно оплатить частично.
+              </p>
+          </div>
+      )}
+
       {/* Switcher */}
+      {!isSupplierPayment && (
       <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-xl">
         <button
             onClick={() => { setSourceType('OTHER'); setAmount(''); }}
@@ -282,10 +384,23 @@ const NewExpense: React.FC<NewExpenseProps> = ({
             </button>
         )}
       </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {isSupplierPayment && (
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Списать со счета</label>
+                <select
+                    className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
+                    value={sourceAccountId}
+                    onChange={e => setSourceAccountId(e.target.value)}
+                >
+                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+            </div>
+        )}
         {/* INVESTOR FORM */}
-        {sourceType === 'INVESTOR' && (
+        {!isSupplierPayment && sourceType === 'INVESTOR' && (
             <div className="space-y-4 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in">
                 <div>
                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Выберите инвестора</label>
@@ -325,9 +440,9 @@ const NewExpense: React.FC<NewExpenseProps> = ({
         )}
 
         {/* OTHER FORM */}
-        {sourceType === 'OTHER' && (
+        {!isSupplierPayment && sourceType === 'OTHER' && (
             <div className="space-y-4 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in">
-                {category !== 'Моя выплата' && (
+                {category !== 'Моя выплата' && category !== 'Оплата партнёру' && (
                     <div>
                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Название / Назначение</label>
                          <input
@@ -352,16 +467,65 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                          <option value="Marketing">Маркетинг</option>
                          <option value="Taxes">Налоги</option>
                          <option value="Equipment">Оборудование</option>
+                         {showSupplierCategory && <option value="Оплата партнёру">Партнер</option>}
                      </select>
                  </div>
 
+                {category === 'Оплата партнёру' && (
+                     <div className="bg-amber-50 dark:bg-amber-900/30 p-4 rounded-xl border border-amber-200 dark:border-amber-900/50 animate-fade-in space-y-3">
+                         <label className="block text-sm font-bold text-amber-800 dark:text-amber-300 mb-1 flex items-center gap-2">
+                             🤝 Поставщик
+                         </label>
+                         {supplierList.length === 0 ? (
+                             <p className="text-sm text-amber-700 dark:text-amber-400 bg-white dark:bg-slate-800 p-3 rounded-lg border border-amber-100 dark:border-amber-900/50">
+                                 ⚠️ Нет поставщиков. Добавьте их в разделе «Партнеры».
+                             </p>
+                         ) : (
+                             <>
+                                 <select
+                                    className="w-full p-3 border border-amber-200 dark:border-amber-800 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-300"
+                                    value={selectedSupplierId}
+                                    onChange={e => setSelectedSupplierId(e.target.value)}
+                                 >
+                                     <option value="">-- Выберите поставщика --</option>
+                                     {supplierList.map(s => (
+                                         <option key={s.id} value={s.id}>{s.name}</option>
+                                     ))}
+                                 </select>
+
+                                 {selectedSupplierId && supplierOpenDebts.length > 0 && (
+                                     <div>
+                                         <label className="block text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">Погасить долг по договору (опционально)</label>
+                                         <select
+                                            className="w-full p-3 border border-amber-200 dark:border-amber-800 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-300"
+                                            value={selectedDebtSaleId}
+                                            onChange={e => setSelectedDebtSaleId(e.target.value)}
+                                         >
+                                             <option value="">Без привязки к договору</option>
+                                             {supplierOpenDebts.map(s => (
+                                                 <option key={s.id} value={s.id}>
+                                                     {s.productName} — остаток {(s.buyPrice - (s.partnerDebtPaidAmount || 0)).toLocaleString('ru-RU')} ₽
+                                                 </option>
+                                             ))}
+                                         </select>
+                                         {selectedDebtSale && (
+                                             <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                                                 Сумма ограничена остатком долга: {selectedDebtRemaining?.toLocaleString('ru-RU')} ₽ (можно оплатить частично).
+                                             </p>
+                                         )}
+                                     </div>
+                                 )}
+                             </>
+                         )}
+                     </div>
+                 )}
 
                 {category === 'Salary' && (
                      <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-xl border border-blue-200 dark:border-blue-900/50 animate-fade-in">
                          <label className="block text-sm font-bold text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-2">
                              👤 Кому выплачиваем зарплату
                          </label>
-                         {employees.length === 0 ? (
+                         {employeeList.length === 0 ? (
                              <p className="text-sm text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-800 p-3 rounded-lg border border-blue-100 dark:border-blue-900/50">
                                  ⚠️ Нет активных сотрудников. Создайте их в разделе «Сотрудники».
                              </p>
@@ -372,7 +536,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                                 onChange={e => setSelectedEmployeeId(e.target.value)}
                              >
                                  <option value="">-- Выберите сотрудника --</option>
-                                 {employees.map(emp => (
+                                 {employeeList.map(emp => (
                                      <option key={emp.id} value={emp.id}>
                                          {emp.name} ({emp.email})
                                      </option>
@@ -501,7 +665,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
               <div className="flex justify-between">
                 <span className="text-slate-500 dark:text-slate-400">Тип:</span>
                 <span className="font-bold text-slate-800 dark:text-white">
-                  {pendingExpenseData.type === 'INVESTOR_WITHDRAWAL' ? 'Выплата инвестору' : 'Общий расход'}
+                  {pendingExpenseData.type === 'INVESTOR_WITHDRAWAL' ? 'Выплата инвестору' : pendingExpenseData.category === 'Оплата партнёру' ? 'Оплата поставщику' : 'Общий расход'}
                 </span>
               </div>
 
@@ -518,7 +682,17 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                 <div className="flex justify-between">
                   <span className="text-slate-500 dark:text-slate-400">Сотрудник:</span>
                   <span className="font-medium text-blue-600 dark:text-blue-400">
-                    👤 {employees.find(e => e.id === pendingExpenseData.employeeId)?.name}
+                    👤 {employeeList.find(e => e.id === pendingExpenseData.employeeId)?.name}
+                  </span>
+                </div>
+              )}
+
+              {pendingExpenseData.supplierId && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500 dark:text-slate-400">Поставщик:</span>
+                  <span className="font-medium text-amber-600 dark:text-amber-400">
+                    🤝 {supplierList.find(s => s.id === pendingExpenseData.supplierId)?.name}
+                    {pendingExpenseData.saleId ? ' (погашение долга)' : ''}
                   </span>
                 </div>
               )}

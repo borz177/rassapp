@@ -101,7 +101,7 @@ const Investors: React.FC<InvestorsProps> = ({
         {!isAdding && (
             <button
                 onClick={(e) => { e.stopPropagation(); setIsAdding(true); }}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg shadow-indigo-200"
+                className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium"
             >
                 {ICONS.AddSmall} Добавить
             </button>

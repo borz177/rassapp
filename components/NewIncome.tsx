@@ -3,8 +3,6 @@ import { Customer, Account, Investor, Sale, User } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 interface NewIncomeProps {
   initialData?: any;
@@ -189,6 +187,10 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
+    const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+      import('jspdf'),
+      import('html2canvas')
+    ]);
     const clonedElement = contractRef.current.cloneNode(true) as HTMLDivElement;
     clonedElement.style.position = 'fixed';
     clonedElement.style.left = '0';

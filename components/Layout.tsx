@@ -25,7 +25,8 @@ const PLAN_NAMES: Record<SubscriptionPlan, string> = {
     'TRIAL': 'Пробный',
     'START': 'Старт',
     'STANDARD': 'Стандарт',
-    'BUSINESS': 'Бизнес'
+    'BUSINESS': 'Бизнес',
+    'BUSINESS_PRO': 'Бизнес Pro'
 };
 
 const Layout: React.FC<LayoutProps> = ({
@@ -164,6 +165,7 @@ const counts = useMemo(() => {
     { id: 'CUSTOMERS' as const, label: 'Клиенты', icon: ICONS.Customers, visible: !isInvestor },
     { id: 'INVESTORS' as const, label: 'Инвесторы', icon: ICONS.Users, visible: !isInvestor },
     { id: 'EMPLOYEES' as const, label: 'Сотрудники', icon: ICONS.Employees, visible: !isInvestor && (user?.role === 'manager' || user?.role === 'admin') },
+    { id: 'SUPPLIERS' as const, label: 'Партнеры', icon: ICONS.Suppliers, visible: !isInvestor && (user?.role === 'manager' || user?.role === 'admin') && (user?.role === 'admin' || user?.subscription?.plan === 'BUSINESS_PRO') },
     { id: 'TARIFFS' as const, label: 'Тарифы', icon: ICONS.Tariffs, visible: !isInvestor },
     { id: 'SETTINGS' as const, label: 'Настройки', icon: ICONS.Settings, visible: !isInvestor },
     { id: 'ADMIN_PANEL' as const, label: 'Админ панель', icon: ICONS.Crown, visible: user?.role === 'admin' },
@@ -407,6 +409,7 @@ const counts = useMemo(() => {
                     currentView === 'MORE' || currentView === 'PROFILE' ||
                     currentView === 'CONTRACTS' || currentView === 'INVESTORS' ||
                     currentView === 'EMPLOYEES' || currentView === 'SETTINGS' ||
+                    currentView === 'SUPPLIERS' || currentView === 'SUPPLIER_DETAILS' ||
                     currentView === 'TARIFFS' || currentView === 'ADMIN_PANEL'
                         ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
                 }`}

@@ -4,10 +4,11 @@ import { api } from '../services/api';
 import { SubscriptionPlan, User } from '../types';
 
 // ← Добавьте этот маппинг, если его нет в файле
-const PLAN_NAMES: { START: string; BUSINESS: string; STANDARD: string } = {
+const PLAN_NAMES: { START: string; BUSINESS: string; STANDARD: string; BUSINESS_PRO: string } = {
   START: 'Старт',
   STANDARD: 'Стандарт',
-  BUSINESS: 'Бизнес'
+  BUSINESS: 'Бизнес',
+  BUSINESS_PRO: 'Бизнес Pro'
 };
 
 interface TariffsProps {
@@ -61,7 +62,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
     const { name, monthlyPrice } = confirmData;
     setLoading(name);
 
-    const planKey: SubscriptionPlan = name === 'Старт' ? 'START' : name === 'Стандарт' ? 'STANDARD' : 'BUSINESS';
+    const planKey: SubscriptionPlan = name === 'Старт' ? 'START' : name === 'Стандарт' ? 'STANDARD' : name === 'Бизнес Pro' ? 'BUSINESS_PRO' : 'BUSINESS';
     const amount = monthlyPrice * duration;
 
     try {
@@ -138,6 +139,21 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
       textColor: "text-white",
       btnColor: "bg-white text-slate-900",
       highlight: false
+    },
+    {
+      name: "Бизнес Pro",
+      key: "BUSINESS_PRO",
+      basePrice: 2990,
+      features: [
+        "Все функции Бизнес",
+        "Модуль «Партнеры» (поставщики)",
+        "Учёт долгов по закупу",
+        "Частичная оплата поставщикам"
+      ],
+      color: "bg-gradient-to-br from-amber-600 to-amber-500 text-white",
+      textColor: "text-white",
+      btnColor: "bg-white text-amber-700",
+      highlight: false
     }
   ];
 
@@ -207,7 +223,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
       </div>
 
       {/* Plans Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto px-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto px-2">
         {plans.map((plan) => {
   const monthlyPrice = calculatePrice(plan.basePrice);
   const totalPrice = monthlyPrice * duration;
@@ -264,10 +280,10 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
       <ul className="space-y-3 mb-8 flex-1">
         {plan.features.map((feature, idx) => (
           <li key={idx} className="flex items-start gap-2 text-sm">
-            <span className={plan.name === 'Бизнес' ? 'text-emerald-400' : 'text-emerald-600'}>
+            <span className={plan.name === 'Бизнес' || plan.name === 'Бизнес Pro' ? 'text-white' : 'text-emerald-600'}>
               {ICONS.Check}
             </span>
-            <span className={`${plan.name === 'Бизнес' ? 'text-slate-300' : 'text-slate-600 dark:text-slate-300'}`}>
+            <span className={`${plan.name === 'Бизнес' ? 'text-slate-300' : plan.name === 'Бизнес Pro' ? 'text-amber-50' : 'text-slate-600 dark:text-slate-300'}`}>
               {feature}
             </span>
           </li>

@@ -1214,9 +1214,6 @@ const getPaymentsByDate = useMemo(() => {
         paymentDate.setHours(0, 0, 0, 0);
         const dateKey = paymentDate.toDateString();
 
-        // 🔍 ВРЕМЕННЫЙ ЛОГ — удали после диагностики
-        console.log(`[Calendar] ${dateKey}: sale=${sale.id} product="${sale.productName}" actualDue=${actualDue}`);
-
         const current = map.get(dateKey) || 0;
         map.set(dateKey, current + actualDue);
       }

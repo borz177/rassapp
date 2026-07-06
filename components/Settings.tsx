@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
 import { AppSettings, ViewState, User } from '../types';
 import { ICONS, APP_VERSION, THEMES } from '../constants';
 import { PrivacyPolicy, DataProcessingAgreement } from './LegalDocs';
 import { api } from '../services/api';
-import DataImport from './DataImport';
-import DataExport from './DataExport';
 import { useTheme, ThemeMode } from '../src/theme/ThemeContext';
+
+// 🔹 Тянут xlsx — грузим только когда реально открыли импорт/экспорт
+const DataImport = lazy(() => import('./DataImport'));
+const DataExport = lazy(() => import('./DataExport'));
 
 interface SettingsProps {
   appSettings: AppSettings;
@@ -230,6 +232,21 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                       className="sr-only peer"
                       checked={appSettings.showCents ?? false}
                       onChange={(e) => onUpdateSettings({ ...appSettings, showCents: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-slate-200 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+              </label>
+          </div>
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+              <div>
+                  <p className="font-medium text-slate-700 dark:text-slate-300">Наценка от суммы за вычетом взноса</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Начислять % не на весь закуп, а только на часть, которая идёт в рассрочку (закуп − взнос)</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={appSettings.markupFromNetBuyPrice ?? false}
+                      onChange={(e) => onUpdateSettings({ ...appSettings, markupFromNetBuyPrice: e.target.checked })}
                   />
                   <div className="w-11 h-6 bg-slate-200 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
               </label>
@@ -480,22 +497,26 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
 
       {/* 👇 МОДАЛКА ЭКСПОРТА */}
       {showExportModal && (
-        <DataExport onClose={() => setShowExportModal(false)} />
+        <Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div></div>}>
+          <DataExport onClose={() => setShowExportModal(false)} />
+        </Suspense>
       )}
 
       {/* МОДАЛКА ИМПОРТА */}
       {showImportModal && (
-        <DataImport
-            onClose={() => setShowImportModal(false)}
-            onImportSuccess={() => {
-                setTimeout(() => {
-                    setShowImportModal(false);
-                    alert("✅ Данные успешно импортированы! Страница будет перезагружена.");
-                    window.location.reload();
-                }, 5000);
-            }}
-            currentUserId={currentUserId}
-        />
+        <Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div></div>}>
+          <DataImport
+              onClose={() => setShowImportModal(false)}
+              onImportSuccess={() => {
+                  setTimeout(() => {
+                      setShowImportModal(false);
+                      alert("✅ Данные успешно импортированы! Страница будет перезагружена.");
+                      window.location.reload();
+                  }, 5000);
+              }}
+              currentUserId={currentUserId}
+          />
+        </Suspense>
       )}
 
       {/* 🆕 МОДАЛКА ОБНОВЛЕНИЯ ПРИЛОЖЕНИЯ */}

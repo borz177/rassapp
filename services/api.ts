@@ -25,7 +25,7 @@ let isSyncing = false;
 
 let lastSyncAttempt = 0;
 
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 8000;
 const fetchWithAuth = async (
   url: string,
   options: RequestInit & { timeout?: number } = {}
@@ -526,6 +526,14 @@ export const api = {
 
         } catch (error: any) {
   if (error.message === 'TOKEN_EXPIRED') {
+    // 🔒 Сессия истекла посреди сохранения — кладём в очередь, чтобы данные применились
+    // после повторного входа, а не пропали при жёстком редиректе на /login.
+    console.warn("📦 Queuing for offline sync (session expired mid-save)");
+    await offlineStorage.addToQueue({
+      type: 'saveItem',
+      collection: type,
+      payload: item
+    });
     throw error;
   }
 
@@ -599,16 +607,39 @@ export const api = {
     return { success: true };
   } catch (error: any) {
     if (error.message === 'TOKEN_EXPIRED') {
+      // 🔒 Сессия истекла посреди удаления — кладём в очередь, как и при сохранении,
+      // чтобы действие пользователя не потерялось при жёстком редиректе на /login.
+      await offlineStorage.addToQueue({
+        type: 'deleteItem',
+        collection: type,
+        itemId: id
+      });
       throw error;
     }
-    
+
+    // 🔥 Отличаем реальный сетевой обрыв от настоящего отказа сервера (например,
+    // "нельзя удалить поставщика с непогашенным долгом") — раньше сюда попадала
+    // ЛЮБАЯ ошибка и молча уходила в офлайн-очередь, из-за чего легитимный отказ
+    // сервера через 5 неудачных попыток синхронизации тихо исчезал без следа.
+    const isNetworkError =
+      error.message?.includes('Failed to fetch') ||
+      error.message?.includes('TIMEOUT') ||
+      error.name === 'AbortError' ||
+      !navigator.onLine ||
+      (error.name === 'TypeError' && error.message?.includes('fetch'));
+
+    if (!isNetworkError) {
+      console.error("❌ Delete rejected by server (not queued):", error.message || error);
+      throw error;
+    }
+
     console.warn("Offline mode: queuing delete", error);
     await offlineStorage.addToQueue({
       type: 'deleteItem',
       collection: type,
       itemId: id
     });
-    
+
     // 🔑 Возвращаем статус, что удаление в офлайн-режиме
     return { success: true, isOffline: true };
   }

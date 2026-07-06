@@ -1,10 +1,8 @@
 import React, {useState, useMemo, useEffect, useRef} from 'react';
-import { Customer, Product, Account, AppSettings, Sale, Payment } from '../types';
+import { Customer, Product, Account, AppSettings, Sale, Payment, Supplier } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
-import jsPDF from "jspdf";
-import html2canvas from 'html2canvas';
 import { api } from '../services/api';
 import { getSellerPhone } from '../src/utils'; 
 
@@ -14,6 +12,8 @@ interface NewSaleProps {
   products: Product[];
   accounts: Account[];
   sales: Sale[];
+  suppliers?: Supplier[];
+  showSupplierField?: boolean;
   onClose: () => void;
   onSelectCustomer: (currentData: any) => void;
   onSubmit: (data: any) => Promise<any>;
@@ -68,9 +68,10 @@ const checkDuplicateSale = (
 };
 
 const NewSale: React.FC<NewSaleProps> = ({
-  initialData, customers, products, accounts, sales,
+  initialData, customers, products, accounts, sales, suppliers, showSupplierField,
   onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user,
 }) => {
+  const supplierList: Supplier[] = suppliers || [];
   const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(initialData.type || 'INSTALLMENT');
   const [roundingMode, setRoundingMode] = useState<'NONE' | 'DOWN' | 'UP'>(
     initialData.roundingMode || 'NONE'
@@ -113,6 +114,9 @@ const NewSale: React.FC<NewSaleProps> = ({
       guarantorName: '',
       guarantorPhone: '',
       roundingMode: 'NONE' as 'NONE' | 'DOWN' | 'UP',
+      supplierId: '',
+      partnerDebtPaidAmount: 0,
+      isPartnerDebtPaid: false,
     };
 
     const merged = { ...defaultData, ...initialData };
@@ -162,7 +166,7 @@ const preservedPaymentsInfo = useMemo(() => {
 // 🔒 Если по договору уже есть хотя бы один платёж от клиента — блокируем поля,
 // от которых зависит расчёт суммы/графика (закуп, наценка, цена, срок, первый взнос).
 // Остальное (товар, касса, поручитель, клиент, даты) остаётся редактируемым всегда.
-const isFinancialLocked = !!formData.id && preservedPaymentsInfo.count > 0;
+const isFinancialLocked = !!formData.id && (preservedPaymentsInfo.count > 0 || (formData.partnerDebtPaidAmount || 0) > 0);
 
 // 🔹 Sale не хранит paymentDate как поле — только paymentDay. Чтобы понять, действительно
 // ли пользователь поменял дату первого платежа (а не просто открыл форму редактирования),
@@ -266,12 +270,14 @@ const regeneratePaymentPlan = (
       if (isPriceManual) return;
 
       const bp = Number(formData.buyPrice);
+      const dp = Number(formData.downPayment) || 0;
       const rate = Number(formData.interestRate);
-      const calculatedPrice = Math.round(bp + (bp * (rate / 100)));
+      const markupBase = appSettings.markupFromNetBuyPrice ? Math.max(0, bp - dp) : bp;
+      const calculatedPrice = Math.round(bp + (markupBase * (rate / 100)));
 
       setFormData(prev => ({ ...prev, price: calculatedPrice }));
     }
-  }, [formData.buyPrice, formData.interestRate, mode, initialData.id, isPriceManual]);
+  }, [formData.buyPrice, formData.downPayment, formData.interestRate, mode, initialData.id, isPriceManual]);
 
   useEffect(() => {
     if (mode === 'INSTALLMENT' && downPaymentFromMarkup && Number(formData.buyPrice) > 0) {
@@ -302,9 +308,11 @@ const regeneratePaymentPlan = (
   // 🔹 1. Базовая цена (Закуп + Наценка)
   const baseCalculatedPrice = useMemo(() => {
     const bp = Number(formData.buyPrice) || 0;
+    const dp = Number(formData.downPayment) || 0;
     const rate = Number(formData.interestRate) || 0;
-    return Math.round(bp + (bp * (rate / 100)));
-  }, [formData.buyPrice, formData.interestRate]);
+    const markupBase = appSettings.markupFromNetBuyPrice ? Math.max(0, bp - dp) : bp;
+    return Math.round(bp + (markupBase * (rate / 100)));
+  }, [formData.buyPrice, formData.downPayment, formData.interestRate, appSettings.markupFromNetBuyPrice]);
 
   // 🔹 2. Расчёт итоговых значений с учётом округления
   const calculatedValues = useMemo(() => {
@@ -762,8 +770,15 @@ if (mode === 'CASH') {
   };
 
   // === generatePDFBlob using html2canvas ===
+  // 🔹 jsPDF/html2canvas грузятся динамически — они нужны только для этого экспорта
+  // (WhatsApp-отправка PDF), не для основного создания договора, и не должны попадать
+  // в главный бандл.
   const generatePDFBlob = async (): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
+    const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+      import('jspdf'),
+      import('html2canvas')
+    ]);
     const element = contractRef.current;
     const originalStyle = {
       display: element.style.display,
@@ -1148,6 +1163,25 @@ if (mode === 'CASH') {
             {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
+
+        {showSupplierField && (
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Поставщик (Партнер)</label>
+            <select
+                className={`w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white ${isFinancialLocked ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
+                value={formData.supplierId || ''}
+                disabled={isFinancialLocked}
+                onChange={e => { if (isFinancialLocked) return; setFormData({...formData, supplierId: e.target.value || undefined}); }}>
+              <option value="">Без поставщика (списать закуп сразу)</option>
+              {supplierList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            {formData.supplierId && (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                Закуп не будет списан со счёта — заведётся долг перед поставщиком, оплатить можно из деталей договора.
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
           {/* 🔹 Закуп и Наценка */}

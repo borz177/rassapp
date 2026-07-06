@@ -5,7 +5,7 @@ export enum PaymentStatus {
   OVERDUE = 'OVERDUE'
 }
 
-export type SubscriptionPlan = 'TRIAL' | 'START' | 'STANDARD' | 'BUSINESS';
+export type SubscriptionPlan = 'TRIAL' | 'START' | 'STANDARD' | 'BUSINESS' | 'BUSINESS_PRO';
 
 export interface UserSubscription {
   plan: SubscriptionPlan;
@@ -108,6 +108,19 @@ export interface Partnership {
   createdAt: string;
 }
 
+// Поставщик (модуль "Партнеры", тариф BUSINESS_PRO). Не путать с Partnership выше —
+// это отдельная сущность для учёта закупа/долгов по нему, не связанная с совместными счетами.
+export interface Supplier {
+  id: string;
+  userId: string; // Owner (Manager)
+  createdByUserId?: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  createdAt: string;
+}
+
 
 export interface CustomerDocument {
   id: string;
@@ -194,6 +207,10 @@ export interface Expense {
   investorId?: string;
   employeeId?: string;
 
+  // 🔹 Оплата поставщику (модуль "Партнеры")
+  supplierId?: string;
+  saleId?: string; // договор, долг по которому гасит этот расход
+
 }
 
 export interface Sale {
@@ -219,6 +236,11 @@ export interface Sale {
   paymentPlan: Payment[];
   notes?: string;
   price?: number;
+
+  // 🔹 Долг перед поставщиком (модуль "Партнеры")
+  supplierId?: string;
+  partnerDebtPaidAmount?: number; // сколько уже оплачено поставщику по этому договору
+  isPartnerDebtPaid?: boolean; // true когда partnerDebtPaidAmount >= buyPrice
 }
 
 export interface TermRate {
@@ -239,6 +261,7 @@ export interface AppSettings {
   calculator?: CalculatorSettings;
   theme?: 'PURPLE' | 'BLUE' | 'GREEN' | 'BLACK';
   showCents?: boolean;
+  markupFromNetBuyPrice?: boolean;
 }
 
 
@@ -274,6 +297,8 @@ export type ViewState =
   | 'REPORTS'
   | 'PROFILE'
   | 'PARTNERS'
+  | 'SUPPLIERS'
+  | 'SUPPLIER_DETAILS'
   | 'TARIFFS'
   | 'ADMIN_SUPPORT'
   | 'ADMIN_PANEL';
