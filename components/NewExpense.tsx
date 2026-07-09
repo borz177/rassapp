@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Account, Investor, Expense, User, Supplier, Sale } from '../types';
 import { ICONS } from '../constants';
+import { getInvestorAccount } from '../src/utils';
 
 interface NewExpenseProps {
   investors: Investor[];
@@ -93,7 +94,10 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   // Auto-fill Account logic when Investor changes
   useEffect(() => {
       if (selectedInvestor) {
-          const invAccount = accounts.find(a => a.ownerId === selectedInvestor.id);
+          // 🔒 getInvestorAccount учитывает и обычный счёт (ownerId), и общий пул (poolMemberIds) —
+          // раньше здесь был accounts.find(a => a.ownerId === ...), из-за чего выплата/списание
+          // для инвестора из общего пула не находило счёт вообще.
+          const invAccount = getInvestorAccount(selectedInvestor.id, accounts);
           if (invAccount) {
               setSourceAccountId(invAccount.id);
           }
@@ -103,7 +107,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   // Default account
   useEffect(() => {
       if (accounts.length > 0 && !sourceAccountId) {
-          const mainAccount = accounts.find(a => a.type === 'MAIN') || accounts[0];
+          const mainAccount = accounts.find(a => a.isMain || a.type === 'MAIN') || accounts[0];
           setSourceAccountId(mainAccount.id);
       }
   }, [accounts, sourceAccountId]);

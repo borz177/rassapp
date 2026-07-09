@@ -86,7 +86,7 @@ const NewSale: React.FC<NewSaleProps> = ({
   const [isPriceManual, setIsPriceManual] = useState(false);
 
   const contractRef = useRef<HTMLDivElement>(null);
-  const mainAccount = accounts.find(a => a.type === 'MAIN');
+  const mainAccount = accounts.find(a => a.isMain || a.type === 'MAIN');
   const appSettings = getAppSettings();
 
   const isSubscriptionExpired = useMemo(() => {

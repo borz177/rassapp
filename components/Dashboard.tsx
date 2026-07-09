@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, AppSettings, Investor} from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent } from '../src/utils';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import {createPortal} from "react-dom";
 
@@ -874,14 +874,7 @@ const currentMonthName = useMemo(() => {
         const profitMargin = totalSaleProfit / sale.totalAmount;
 
         const account = accounts?.find(a => a?.id === sale.accountId);
-        let managerShare = 1;
-
-        if (account?.ownerId && investors?.length) {
-            const investor = investors.find(i => i?.id === account.ownerId);
-            if (investor) {
-                managerShare = (100 - investor.profitPercentage) / 100;
-            }
-        }
+        const managerShare = getManagerSharePercent(account, investors || []) / 100;
 
         // 🔧 Считаем ФАКТИЧЕСКИ оплачено
         const collectedPayments = sale.downPayment + sale.paymentPlan

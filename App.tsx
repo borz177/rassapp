@@ -43,7 +43,7 @@ import SplashScreen from "./components/SplashScreen"
 
 import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
-import { formatCurrency, formatDate } from './src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getInvestorCapitalShare } from './src/utils';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
@@ -698,7 +698,7 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v11';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v12';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -811,7 +811,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 };
 
   // ... (Access checks and calculation logic remain the same)
-  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS'): boolean => {
+  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS'): boolean => {
     if (!user) return false;
     if (isEmployee || isInvestor || user.role === 'admin') return true;
 
@@ -828,6 +828,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         // 🔥 ИСПРАВЛЕНО: TRIAL имеет лимит 0, поэтому разрешаем только STANDARD и BUSINESS
         case 'EMPLOYEES': return plan === 'BUSINESS';
         case 'SUPPLIERS': return plan === 'BUSINESS_PRO';
+        case 'INVESTOR_POOLS': return plan === 'BUSINESS_PRO';
         default: return true;
     }
 };
@@ -880,14 +881,7 @@ const dashboardStats = useMemo(() => {
         if (saleProfit <= 0) return;
 
         const account = accounts.find(a => a.id === sale.accountId);
-        let managerProfitShare = 1;
-
-        if (account && account.ownerId) {
-            const investor = investors.find(i => i.id === account.ownerId);
-            if (investor) {
-                managerProfitShare = (100 - investor.profitPercentage) / 100;
-            }
-        }
+        const managerProfitShare = getManagerSharePercent(account, investors) / 100;
 
         totalProfit += saleProfit * managerProfitShare;
     });
@@ -909,14 +903,6 @@ const dashboardStats = useMemo(() => {
 
         const profitMargin = totalSaleProfit / sale.totalAmount;
         const account = accounts.find(a => a.id === sale.accountId);
-        let managerProfitShare = 1;
-
-        if (account && account.ownerId) {
-            const investor = investors.find(i => i.id === account.ownerId);
-            if (investor) {
-                managerProfitShare = (100 - investor.profitPercentage) / 100;
-            }
-        }
 
         // Collect all REAL money movements
         const allPayments = [
@@ -927,6 +913,9 @@ const dashboardStats = useMemo(() => {
         allPayments.forEach(p => {
             const paymentDate = new Date(p.date);
             if (paymentDate >= startDate && paymentDate <= endDate && p.amount > 0) {
+                // 🔒 Доля считается на дату КОНКРЕТНОГО платежа — если инвестор вступил в пул
+                // позже, к более ранним платежам его доля не применяется (см. getManagerSharePercent).
+                const managerProfitShare = getManagerSharePercent(account, investors, p.date) / 100;
                 const profitFromPayment = p.amount * profitMargin;
                 periodProfit += profitFromPayment * managerProfitShare;
             }
@@ -943,12 +932,10 @@ const dashboardStats = useMemo(() => {
 
     let filteredSales = sales;
     if (investorId !== 'ALL') {
-        const investorAccount = accounts.find(a => a.ownerId === investorId);
-        if (investorAccount) {
-            filteredSales = sales.filter(s => s.accountId === investorAccount.id);
-        } else {
-            filteredSales = sales.filter(s => accounts.find(a => a.id === s.accountId)?.ownerId === investorId);
-        }
+        filteredSales = sales.filter(s => {
+            const acc = accounts.find(a => a.id === s.accountId);
+            return !!acc && isAccountForInvestor(acc, investorId);
+        });
     }
 
     let customerPaymentsInPeriod = 0;
@@ -979,17 +966,20 @@ const dashboardStats = useMemo(() => {
         if (saleProfit <= 0) return;
 
         const account = accounts.find(a => a.id === sale.accountId);
-        if (account?.ownerId) {
-            const investor = investors.find(i => i.id === account.ownerId);
-            if (investor) {
-                const investorShare = saleProfit * (investor.profitPercentage / 100);
-                expectedInvestorProfit += investorShare;
-                expectedManagerProfit += saleProfit - investorShare;
-            } else {
-                expectedManagerProfit += saleProfit;
-            }
+        const shares = getAccountShares(account, investors);
+        const totalInvestorShare = shares.reduce((sum, m) => sum + saleProfit * (m.percentage / 100), 0);
+
+        if (investorId === 'ALL') {
+            expectedInvestorProfit += totalInvestorShare;
+            expectedManagerProfit += saleProfit - totalInvestorShare;
         } else {
-            expectedManagerProfit += saleProfit;
+            // 🔒 При фильтре по одному инвестору пула — берём только ЕГО долю, а не всех
+            // участников пула сразу (иначе "Прибыль инвесторов" показывала бы весь пул).
+            const mine = shares.find(m => m.investor.id === investorId);
+            const myInvestorShare = mine ? saleProfit * (mine.percentage / 100) : 0;
+            const myCapitalShare = getInvestorCapitalShare(account, investorId, investors);
+            expectedInvestorProfit += myInvestorShare;
+            expectedManagerProfit += saleProfit * myCapitalShare - myInvestorShare;
         }
     });
 
@@ -1003,14 +993,6 @@ const dashboardStats = useMemo(() => {
         const profitMargin = totalSaleProfit / sale.totalAmount;
         const account = accounts.find(a => a.id === sale.accountId);
 
-        let managerProfitSharePercent = 1.0;
-        if (account?.ownerId) {
-            const investor = investors.find(i => i.id === account.ownerId);
-            if (investor) {
-                managerProfitSharePercent = (100 - investor.profitPercentage) / 100;
-            }
-        }
-
         const paymentsInPeriod = [
             { date: sale.startDate, amount: sale.downPayment, isRealPayment: true },
             ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false) // Exclude plan items
@@ -1020,9 +1002,22 @@ const dashboardStats = useMemo(() => {
         });
 
         paymentsInPeriod.forEach(p => {
+            // 🔒 Доля — на дату этого платежа (см. комментарий в realizedPeriodProfit выше).
             const profitFromPayment = p.amount * profitMargin;
-            realizedManagerProfit += profitFromPayment * managerProfitSharePercent;
-            realizedInvestorProfit += profitFromPayment * (1 - managerProfitSharePercent);
+
+            if (investorId === 'ALL') {
+                const managerProfitSharePercent = getManagerSharePercent(account, investors, p.date) / 100;
+                realizedManagerProfit += profitFromPayment * managerProfitSharePercent;
+                realizedInvestorProfit += profitFromPayment * (1 - managerProfitSharePercent);
+            } else {
+                // 🔒 Как и в expected-блоке выше — только доля ЭТОГО инвестора, не всего пула.
+                const shares = getAccountShares(account, investors, p.date);
+                const mine = shares.find(m => m.investor.id === investorId);
+                const myInvestorShare = mine ? profitFromPayment * (mine.percentage / 100) : 0;
+                const myCapitalShare = getInvestorCapitalShare(account, investorId, investors, p.date);
+                realizedInvestorProfit += myInvestorShare;
+                realizedManagerProfit += profitFromPayment * myCapitalShare - myInvestorShare;
+            }
         });
     });
 
@@ -1667,11 +1662,13 @@ const handleIncomeSubmit = async (data: any) => {
 const handleAddInvestor = async (
   name: string,
   phone: string,
-  email: string,
-  pass: string,
+  email: string, // может быть пустым — тогда инвестор создаётся без логина в приложение
+  pass: string,  // может быть пустым — тогда инвестор создаётся без логина в приложение
   amount: number, // теперь может быть 0
   profitPercentage: number,
-  permissions: InvestorPermissions
+  permissions: InvestorPermissions,
+  poolChoice?: { mode: 'EXISTING'; accountId: string } | { mode: 'NEW'; name: string },
+  joinedDate?: string
 ) => {
   if (!user || !isManager) return;
 
@@ -1680,26 +1677,31 @@ const handleAddInvestor = async (
     return;
   }
 
+  if (poolChoice && !checkAccess('INVESTOR_POOLS')) {
+    showUpgradeAlert("Общий инвестиционный пул доступен только на тарифе Бизнес Pro.");
+    return;
+  }
+
   try {
-    // 1. Создаём пользователя
-    const newInvestorUser = await api.createSubUser({
-      name,
-      email,
-      password: pass,
-      role: 'investor',
-      phone,
-      permissions
-    });
+    const hasLogin = !!(email && email.trim() && pass && pass.trim());
+
+    // 1. Создаём пользователя ТОЛЬКО если заданы email и пароль — иначе это "пассивный"
+    // инвестор без доступа в приложение (просто учёт доли в прибыли). Его id остаётся
+    // с префиксом inv_ (не u_inv_) — тем самым уже существующая логика "активации" в
+    // handleUpdateInvestor сама заведёт ему логин позже, если email/пароль укажут при редактировании.
+    const investorId = hasLogin
+      ? (await api.createSubUser({ name, email, password: pass, role: 'investor', phone, permissions })).id
+      : `inv_${Date.now()}`;
 
     // 2. Создаём запись инвестора
     const newInvestor: Investor = {
-      id: newInvestorUser.id,
+      id: investorId,
       userId: user.id,
       name,
       phone,
       email,
       initialAmount: amount, // может быть 0
-      joinedDate: new Date().toISOString(),
+      joinedDate: joinedDate || new Date().toISOString(),
       profitPercentage,
       permissions
     };
@@ -1707,18 +1709,37 @@ const handleAddInvestor = async (
     const savedInv = await api.saveItem('investors', newInvestor);
     updateList(setInvestors, savedInv);
 
-    // 3. Создаём счёт инвестора
-    const newAccount: Account = {
-      id: `acc_${newInvestorUser.id}`,
-      userId: user.id,
-      name: `Счет: ${name}`,
-      type: 'INVESTOR',
-      ownerId: newInvestorUser.id,
-      currency: 'RUB',
-      isArchived: false
-    };
+    // 3. Счёт инвестора — свой отдельный (по умолчанию) или общий пул (BUSINESS_PRO)
+    let targetAccount: Account;
+    if (poolChoice?.mode === 'NEW') {
+      targetAccount = {
+        id: `pool_${Date.now()}`,
+        userId: user.id,
+        name: poolChoice.name,
+        type: 'POOL',
+        poolMemberIds: [investorId],
+        currency: 'RUB',
+        isArchived: false
+      };
+    } else if (poolChoice?.mode === 'EXISTING') {
+      const existingPool = accounts.find(a => a.id === poolChoice.accountId);
+      targetAccount = {
+        ...(existingPool as Account),
+        poolMemberIds: [...((existingPool?.poolMemberIds) || []), investorId]
+      };
+    } else {
+      targetAccount = {
+        id: `acc_${investorId}`,
+        userId: user.id,
+        name: `Счет: ${name}`,
+        type: 'INVESTOR',
+        ownerId: investorId,
+        currency: 'RUB',
+        isArchived: false
+      };
+    }
 
-    const savedAcc = await api.saveItem('accounts', newAccount);
+    const savedAcc = await api.saveItem('accounts', targetAccount);
     updateList(setAccounts, savedAcc);
 
     // 4. 🔹 Создаём транзакцию депозита ТОЛЬКО если сумма > 0
@@ -1727,10 +1748,10 @@ const handleAddInvestor = async (
         id: `dep_${Date.now()}`,
         userId: user.id,
         type: 'CASH',
-        customerId: `system_deposit_${newInvestorUser.id}`,
+        customerId: `system_deposit_${investorId}`,
         productName: 'Начальный депозит',
         buyPrice: 0,
-        accountId: newAccount.id,
+        accountId: savedAcc.id,
         totalAmount: amount,
         downPayment: amount,
         remainingAmount: 0,
@@ -1745,8 +1766,8 @@ const handleAddInvestor = async (
       updateList(setSales, savedTx);
     }
 
-    alert("✅ Инвестор создан!");
-    return newInvestorUser;
+    alert(hasLogin ? "✅ Инвестор создан!" : "✅ Инвестор создан (без доступа в приложение — логин можно добавить позже при редактировании).");
+    return savedInv;
 
   } catch(e: any) {
     if (e.message?.includes('Email уже занят') || e.message?.includes('already exists')) {
@@ -1775,7 +1796,10 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
 
     if (needsActivation && !updated.id.startsWith('u_inv_') && !updated.id.startsWith('u_emp_')) {
       const oldInvestorId = updated.id;
-      const oldAccount = accounts.find(a => a.ownerId === oldInvestorId);
+      // 🔒 getInvestorAccount учитывает и обычный счёт (ownerId), и общий пул (poolMemberIds) —
+      // раньше здесь был accounts.find(a => a.ownerId === ...), из-за чего активация логина
+      // инвестору из общего пула не находила счёт (депозит не писался) и не обновляла poolMemberIds.
+      const oldAccount = getInvestorAccount(oldInvestorId, accounts);
 
       // 🔹 🔥 ОДНО ОБЪЯВЛЕНИЕ tempPassword
       const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
@@ -1857,13 +1881,20 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
         updateList(setSales, depositTransaction, undefined, 'sales');
       }
 
-      // 🔹 6. Обновляем счёт: меняем ownerId
+      // 🔹 6. Обновляем счёт: у обычного счёта меняем ownerId; у общего пула — заменяем СТАРЫЙ id
+      // инвестора на НОВЫЙ внутри poolMemberIds (сам счёт общий на нескольких инвесторов,
+      // поэтому его ownerId/name не трогаем — иначе счёт "уехал" бы от остальных участников пула).
       if (oldAccount) {
-        const updatedAccount = {
-          ...oldAccount,
-          ownerId: newUser.id,
-          name: `Счет: ${updated.name}`
-        };
+        const updatedAccount = oldAccount.type === 'POOL'
+          ? {
+              ...oldAccount,
+              poolMemberIds: (oldAccount.poolMemberIds || []).map(id => id === oldInvestorId ? newUser.id : id)
+            }
+          : {
+              ...oldAccount,
+              ownerId: newUser.id,
+              name: `Счет: ${updated.name}`
+            };
         const savedAccount = await api.saveItem('accounts', updatedAccount);
         setAccounts(prev => {
           const withoutOld = prev.filter(a => a.id !== oldAccount.id);
@@ -1933,9 +1964,14 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
     // 2. ✅ Обновляем UI напрямую (без хелпера)
     setInvestors(prev => prev.filter(inv => inv.id !== id));
 
-    // 3. Удаляем связанный счёт
-    const acc = accounts.find(a => a.ownerId === id);
-    if (acc) {
+    // 3. Счёт: если это общий пул — убираем инвестора из участников, счёт не трогаем
+    // (другие инвесторы пула им пользуются); если это его отдельный счёт — удаляем как раньше.
+    const acc = getInvestorAccount(id, accounts);
+    if (acc?.type === 'POOL') {
+      const updatedPool = { ...acc, poolMemberIds: (acc.poolMemberIds || []).filter(memberId => memberId !== id) };
+      const savedPool = await api.saveItem('accounts', updatedPool);
+      updateList(setAccounts, savedPool);
+    } else if (acc) {
       await api.deleteItem('accounts', acc.id);
       setAccounts(prev => prev.filter(a => a.id !== acc.id));
     }
@@ -2119,7 +2155,29 @@ const handleUpdateCustomer = async (updated: Customer) => {
     }
 };
 const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', partners?: string[]) => { if (user && isManager) { const newAcc = { id: `acc_${Date.now()}`, userId: user.id, name, type, partners }; const saved = await api.saveItem('accounts', newAcc); updateList(setAccounts, saved); } };
-  const handleSetMainAccount = async (accountId: string) => { if (user && isManager) { const updatedAccounts = accounts.map(acc => { if (acc.id === accountId) { return { ...acc, type: 'MAIN' as const }; } if (acc.type === 'MAIN') { return { ...acc, type: 'CUSTOM' as const }; } return acc; }); setAccounts(updatedAccounts); for(const acc of updatedAccounts) await api.saveItem('accounts', acc); } };
+  const handleSetMainAccount = async (accountId: string) => {
+    if (!user || !isManager) return;
+    // 🔒 Раньше выбранному счёту принудительно ставился type: 'MAIN', что затирало его
+    // реальный тип (INVESTOR/POOL/SHARED) — для пула это ломало распределение прибыли
+    // и делало его "невидимым" для инвесторов (getAccountShares/getInvestorAccount
+    // проверяют именно type). Теперь "основной" — отдельный флаг isMain, type не трогаем.
+    const updatedAccounts = accounts.map(acc => {
+      if (acc.id === accountId) {
+        return { ...acc, isMain: true };
+      }
+      if (acc.isMain) {
+        return { ...acc, isMain: false };
+      }
+      if (acc.type === 'MAIN') {
+        // Единственный случай, где "основной" исторически был закодирован в type —
+        // снимаем его, чтобы не было двух счетов с type === 'MAIN' одновременно.
+        return { ...acc, type: 'CUSTOM' as const };
+      }
+      return acc;
+    });
+    setAccounts(updatedAccounts);
+    for (const acc of updatedAccounts) await api.saveItem('accounts', acc);
+  };
 
   const handleImportData = async (data: {
       customers: Customer[];
@@ -2646,19 +2704,19 @@ if (!user && !showSplash) {
       );
     }
 
-    // 🔹 ОТЛАДКА: Проверяем фильтрацию
-    const filteredAccounts = accounts.filter(a => a.ownerId === activeInvestor.id);
+    // 🔹 Счета, где этот инвестор участвует — свой отдельный или как участник общего пула
+    const filteredAccounts = accounts.filter(a => isAccountForInvestor(a, activeInvestor.id));
 
 
     return (
       <InvestorDashboard
         sales={sales.filter(s => {
           const acc = accounts.find(a => a.id === s.accountId);
-          return acc?.ownerId === activeInvestor.id;
+          return !!acc && isAccountForInvestor(acc, activeInvestor.id);
         })}
         expenses={expenses.filter(e => {
           const acc = accounts.find(a => a.id === e.accountId);
-          return acc?.ownerId === activeInvestor.id;
+          return !!acc && isAccountForInvestor(acc, activeInvestor.id);
         })}
         accounts={filteredAccounts}
         investor={activeInvestor}
@@ -2692,6 +2750,8 @@ if (!user && !showSplash) {
         })
       : expenses}
     investors={investors}
+    customers={customers}
+    onSelectCustomer={handleSelectCustomer}
     onAddAccount={handleAddAccount}
     onAction={handleAction}
     onSelectAccount={handleSelectAccountForOperations}
@@ -2726,14 +2786,17 @@ if (!user && !showSplash) {
                       appSettings={appSettings}
                   />
               )}
-              {currentView === 'INVESTORS' && <Investors investors={investors} onAddInvestor={handleAddInvestor}
+              {currentView === 'INVESTORS' && <Investors investors={investors} accounts={accounts}
+                                                         showPools={checkAccess('INVESTOR_POOLS')}
+                                                         onAddInvestor={handleAddInvestor}
                                                          onUpdateInvestor={handleUpdateInvestor}
                                                          onDeleteInvestor={handleDeleteInvestor}
                                                          onViewDetails={handleSelectInvestor}
                                                          appSettings={appSettings}/>}
               {currentView === 'INVESTOR_DETAILS' && selectedInvestorId &&
                   <InvestorDetails investor={investors.find(i => i.id === selectedInvestorId)!}
-                                   account={accounts.find(a => a.ownerId === selectedInvestorId)} sales={sales}
+                                   investors={investors}
+                                   account={getInvestorAccount(selectedInvestorId, accounts)} sales={sales}
                                    expenses={expenses} onBack={() => setCurrentView('INVESTORS')}
                                    appSettings={appSettings}/>}
               {currentView === 'PARTNERS' && (
@@ -2872,9 +2935,10 @@ if (!user && !showSplash) {
       isInvestor && activeInvestor ? (
         <InvestorDetails
           investor={activeInvestor}
-          account={accounts.find(a => a.ownerId === user.id)}
-          sales={sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id)}
-          expenses={expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id)}
+          investors={investors}
+          account={getInvestorAccount(user.id, accounts)}
+          sales={sales.filter(s => s.accountId === getInvestorAccount(user.id, accounts)?.id)}
+          expenses={expenses.filter(e => e.accountId === getInvestorAccount(user.id, accounts)?.id)}
           onBack={() => setCurrentView('DASHBOARD')}
           appSettings={appSettings}
         />
@@ -3515,26 +3579,47 @@ if (!user && !showSplash) {
     onClick={() => setShowTemplateUpdateModal(false)}
   >
     <div
-      className="bg-white w-full max-w-xs rounded-2xl shadow-xl p-6 text-center animate-scale-in"
+      className="bg-white dark:bg-slate-800 w-full max-w-xs rounded-2xl shadow-xl p-6 text-center animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
-      <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center text-2xl">
-        ⚙️
+      <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-2xl">
+        🎉
       </div>
 
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">
-        Ведутся технические работы
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+        Что нового
       </h3>
-      
-      <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-        Возможны кратковременные сбои.
+
+      <p className="text-sm text-gray-500 dark:text-slate-400 mb-4 leading-relaxed">
+        Добавили новые возможности для работы с партнёрами,инвесторами и доработали редактирование договора
       </p>
+
+      <div className="space-y-3 text-left mb-6">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 shrink-0 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-lg">
+            🤝
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Модуль «Партнёры»</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">Учёт долгов по закупу у поставщиков и частичная оплата им</p>
+          </div>
+        </div>
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 shrink-0 rounded-xl bg-fuchsia-100 dark:bg-fuchsia-900/30 flex items-center justify-center text-lg">
+            👥
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Общая касса</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">Несколько инвесторов на одном счёте с автоматическим распределением прибыли по вложению и проценту каждого</p>
+          </div>
+        </div>
+      </div>
 
       <button
         onClick={() => setShowTemplateUpdateModal(false)}
-        className="w-full py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 active:scale-[0.98] transition-all"
+        className="w-full py-2.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-medium rounded-lg hover:bg-gray-800 dark:hover:bg-slate-100 active:scale-[0.98] transition-all"
       >
-        Хорошо
+        Понятно
       </button>
     </div>
   </div>

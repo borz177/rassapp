@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Investor, AppSettings, Sale, Expense, Account, Customer } from '../types';
-import { formatCurrency } from '../src/utils';
+import { formatCurrency, isAccountForInvestor, getAccountShares } from '../src/utils';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -153,7 +153,7 @@ const Reports: React.FC<ReportsProps> = ({
         if (filters.investorId !== 'ALL') {
             filteredSales = sales.filter(s => {
                 const acc = accounts.find(a => a.id === s.accountId);
-                return acc?.ownerId === filters.investorId;
+                return !!acc && isAccountForInvestor(acc, filters.investorId);
             });
         }
 
@@ -203,7 +203,7 @@ const Reports: React.FC<ReportsProps> = ({
                     return e.investorId === filters.investorId;
                 }
                 const acc = (accounts as Account[]).find((a: Account) => a.id === e.accountId);
-                return acc?.ownerId === filters.investorId;
+                return !!acc && isAccountForInvestor(acc, filters.investorId);
             }
             return true;
         });
@@ -232,26 +232,34 @@ const Reports: React.FC<ReportsProps> = ({
         return investors.map((inv, idx) => {
             const investorSales = sales.filter(s => {
                 const acc = accounts.find(a => a.id === s.accountId);
-                return acc?.ownerId === inv.id;
+                return !!acc && isAccountForInvestor(acc, inv.id);
             }).filter(s => s.status === 'ACTIVE' || s.status === 'COMPLETED');
 
+            // 🔒 Доля инвестора в пуле считается по вложенной сумме и может зависеть от даты
+            // (см. getAccountShares) — для будущей/ожидаемой прибыли берём текущий состав пула,
+            // для уже полученных платежей — состав пула на дату конкретного платежа.
             let expectedProfit = 0;
             investorSales.forEach(sale => {
                 if (sale.buyPrice <= 0) return;
                 const saleProfit = sale.totalAmount - sale.buyPrice;
-                if (saleProfit > 0) expectedProfit += saleProfit * (inv.profitPercentage / 100);
+                if (saleProfit <= 0) return;
+                const acc = accounts.find(a => a.id === sale.accountId);
+                const myShare = getAccountShares(acc, investors).find(m => m.investor.id === inv.id);
+                if (myShare) expectedProfit += saleProfit * (myShare.percentage / 100);
             });
 
             let realizedProfit = 0;
             investorSales.forEach(sale => {
                 if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
                 const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
+                const acc = accounts.find(a => a.id === sale.accountId);
                 const paymentsInPeriod = [
                     { date: sale.startDate, amount: sale.downPayment },
                     ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
                 ].filter(p => { const d = new Date(p.date); return d >= startDate && d <= endDate; });
                 paymentsInPeriod.forEach(p => {
-                    realizedProfit += p.amount * profitMargin * (inv.profitPercentage / 100);
+                    const myShare = getAccountShares(acc, investors, p.date).find(m => m.investor.id === inv.id);
+                    if (myShare) realizedProfit += p.amount * profitMargin * (myShare.percentage / 100);
                 });
             });
 
@@ -291,7 +299,7 @@ const Reports: React.FC<ReportsProps> = ({
         endDate.setHours(23, 59, 59, 999);
         const typedSales = sales as Sale[];
         const filteredSales = filters.investorId !== 'ALL'
-            ? typedSales.filter((s: Sale) => { const acc = (accounts as Account[]).find((a: Account) => a.id === s.accountId); return (acc as any)?.ownerId === filters.investorId; })
+            ? typedSales.filter((s: Sale) => { const acc = (accounts as Account[]).find((a: Account) => a.id === s.accountId); return !!acc && isAccountForInvestor(acc, filters.investorId); })
             : typedSales;
         const items: { date: string; productName: string; customerId: string; amount: number; label: string }[] = [];
         filteredSales.forEach((sale: Sale) => {
@@ -339,7 +347,7 @@ const Reports: React.FC<ReportsProps> = ({
                 e.payoutType !== 'PROFIT' && e.payoutType !== 'INVESTMENT')) return false;
             if (filters.investorId !== 'ALL') {
                 const acc = (accounts as Account[]).find((a: Account) => a.id === e.accountId);
-                return acc?.ownerId === filters.investorId;
+                return !!acc && isAccountForInvestor(acc, filters.investorId);
             }
             return true;
         }).sort((a: Expense, b: Expense) => b.date.localeCompare(a.date));
@@ -357,7 +365,7 @@ const Reports: React.FC<ReportsProps> = ({
                 if (s.status === 'COMPLETED' || s.remainingAmount <= 0) return false;
                 if (filters.investorId !== 'ALL') {
                     const acc = (accounts as Account[]).find((a: Account) => a.id === s.accountId);
-                    return acc?.ownerId === filters.investorId;
+                    return !!acc && isAccountForInvestor(acc, filters.investorId);
                 }
                 return true;
             })

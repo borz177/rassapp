@@ -3,6 +3,7 @@ import { Customer, Account, Investor, Sale, User } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
+import { getInvestorAccount } from '../src/utils';
 
 interface NewIncomeProps {
   initialData?: any;
@@ -102,7 +103,10 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   useEffect(() => {
     if (selectedInvestor) {
-      const invAccount = accounts.find(a => a.ownerId === selectedInvestor.id);
+      // 🔒 getInvestorAccount учитывает и обычный счёт (ownerId), и общий пул (poolMemberIds) —
+      // раньше здесь был accounts.find(a => a.ownerId === ...), из-за чего для инвестора из
+      // общего пула счёт не находился вообще и приход денег было невозможно оформить.
+      const invAccount = getInvestorAccount(selectedInvestor.id, accounts);
       if (invAccount) setTargetAccountId(invAccount.id);
     }
   }, [selectedInvestor, accounts]);

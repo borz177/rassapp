@@ -696,8 +696,13 @@ ${customer.name}!
             .filter(p => (p as any).discountAmount > 0)
             .reduce((sum, p) => sum + ((p as any).discountAmount || 0), 0);
 
+        // 🔒 Тот же фильтр, что и у paidPayments (isPaid && isRealPayment !== false) — раньше здесь
+        // была строгая проверка isRealPayment === true, из-за чего "Оплачено клиентом" не учитывала
+        // платежи графика, помеченные оплаченными без явного isRealPayment (например, при импорте
+        // Excel), хотя remainingAmount (см. NewSale.tsx preservedPaymentsInfo) их уже учитывает —
+        // из-за этого расхождения "Остаток долга" + "Оплачено клиентом" не сходилось с общей суммой.
         const totalRealPaid = selectedSale.paymentPlan
-            .filter(p => p.isRealPayment === true)
+            .filter(p => p.isPaid && p.isRealPayment !== false)
             .reduce((sum, p) => sum + p.amount, 0);
 
         const isClosed = selectedSale.status === 'COMPLETED' || selectedSale.remainingAmount <= 0;

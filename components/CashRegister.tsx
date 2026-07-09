@@ -1,18 +1,20 @@
 import React, { useMemo, useState } from 'react';
-import { Sale, Account, Expense, Investor, AppSettings } from '../types';
+import { Sale, Account, Expense, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares } from '../src/utils';
 
 interface CashRegisterProps {
   accounts: Account[];
   sales: Sale[];
   expenses: Expense[];
   investors: Investor[];
+  customers: Customer[];
   onAddAccount: (name: string, type: Account['type'], partners?: string[]) => void;
   onAction: (action: string) => void;
   onSelectAccount: (accountId: string) => void;
   onSetMainAccount: (accountId: string) => void;
   onUpdateAccount?: (account: Account) => void;
+  onSelectCustomer?: (customerId: string) => void;
   isManager: boolean;
   totalExpectedProfit: number;
   realizedPeriodProfit: number;
@@ -297,6 +299,7 @@ const AccountActionModal = ({
             case 'INVESTOR': return 'from-purple-500 to-purple-600';
             case 'CUSTOM': return 'from-emerald-500 to-emerald-600';
             case 'SHARED': return 'from-amber-500 to-amber-600';
+            case 'POOL': return 'from-fuchsia-500 to-fuchsia-600';
             default: return 'from-slate-500 to-slate-600';
         }
     };
@@ -307,6 +310,7 @@ const AccountActionModal = ({
             case 'INVESTOR': return '📈';
             case 'CUSTOM': return '💼';
             case 'SHARED': return ICONS.Users;
+            case 'POOL': return ICONS.Users;
             default: return '💳';
         }
     };
@@ -326,7 +330,8 @@ const AccountActionModal = ({
                             <p className="text-xs text-slate-500 dark:text-slate-400">
                                 {account.type === 'MAIN' ? 'Основной счет' :
                                  account.type === 'INVESTOR' ? 'Счет инвестора' :
-                                 account.type === 'SHARED' ? 'Общий счет' : 'Дополнительный счет'}
+                                 account.type === 'SHARED' ? 'Общий счет' :
+                                 account.type === 'POOL' ? 'Инвестиционный пул' : 'Дополнительный счет'}
                             </p>
                             <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-1">
                                 {formatCurrency(balance, appSettings.showCents)} ₽
@@ -363,7 +368,7 @@ const AccountActionModal = ({
                             </button>
                         )}
 
-                        {isManager && account.type !== 'MAIN' && (
+                        {isManager && account.type !== 'MAIN' && !account.isMain && (
                             <button
                                 onClick={() => { onSetMain(account.id); onClose(); }}
                                 className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-xl flex items-center gap-3 transition-all group"
@@ -393,8 +398,8 @@ const AccountActionModal = ({
 };
 
 const CashRegister: React.FC<CashRegisterProps> = ({
-    accounts, sales, expenses, investors, onAddAccount, onAction, onSelectAccount, onSetMainAccount, onUpdateAccount,
-    isManager, myProfitPeriod, setMyProfitPeriod, appSettings
+    accounts, sales, expenses, investors, customers, onAddAccount, onAction, onSelectAccount, onSetMainAccount, onUpdateAccount,
+    onSelectCustomer, isManager, myProfitPeriod, setMyProfitPeriod, appSettings
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -406,6 +411,7 @@ const [showProfitDetails, setShowProfitDetails] = useState(false);
 const [showInvestorProfitDetails, setShowInvestorProfitDetails] = useState(false);
 const [profitDetailsTab, setProfitDetailsTab] = useState<'accruals' | 'payouts'>('accruals');
 const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL');
+const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('ALL');
 
 // ... (остальной код без изменений до блока "Моя прибыль") ...
  const accountBalances = useMemo(() => {
@@ -453,14 +459,7 @@ const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL'
             const profitMargin = sale.totalAmount > 0 ? totalSaleProfit / sale.totalAmount : 0;
 
             const account = accounts.find(a => a.id === sale.accountId);
-            let managerProfitShare = 1;
-
-            if (account && account.ownerId) {
-                const investor = investors.find(i => i.id === account.ownerId);
-                if (investor) {
-                    managerProfitShare = (100 - investor.profitPercentage) / 100;
-                }
-            }
+            const managerProfitShare = getManagerSharePercent(account, investors) / 100;
 
             // 🔧 Только от остатка долга, как у инвестора!
             totalProfit += sale.remainingAmount * profitMargin * managerProfitShare;
@@ -472,22 +471,16 @@ const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL'
 
   // 🔹 Прибыль менеджера (полученная и выплаты)
   const { managerProfitAccruals, managerProfitPayouts, totalManagerProfitEarned, totalManagerProfitWithdrawn } = useMemo(() => {
-    const accruals: {id: string, date: string, amount: number, source: string}[] = [];
+    const accruals: {id: string, date: string, amount: number, customerId: string, customerName: string, productName: string}[] = [];
     sales.forEach(sale => {
         if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
         if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
         const totalSaleProfit = Number(sale.totalAmount) - Number(sale.buyPrice);
         const profitMargin = totalSaleProfit / Number(sale.totalAmount);
         const account = accounts.find(a => a.id === sale.accountId);
-        let managerProfitSharePercent = 1.0;
-        if (account?.ownerId) {
-            const investor = investors.find(i => i.id === account.ownerId);
-            if (investor) {
-                managerProfitSharePercent = (100 - investor.profitPercentage) / 100;
-            }
-        } else if (account?.type === 'SHARED') {
-            return;
-        }
+        // SHARED-счета считаются отдельно (по внесённому капиталу), а не по фиксированному %.
+        if (account?.type === 'SHARED') return;
+        const customerName = customers.find(c => c.id === sale.customerId)?.name || 'Неизвестно';
         const allPayments = [
             { date: sale.startDate, amount: Number(sale.downPayment), id: `${sale.id}_dp`, isRealPayment: true },
             ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
@@ -499,6 +492,9 @@ const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL'
                 const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
                 endDate.setHours(23, 59, 59, 999);
                 if (pDate >= startDate && pDate <= endDate) {
+                    // 🔒 Доля — на дату этого платежа, чтобы новый участник пула не получил
+                    // задним числом долю от прибыли, полученной до его вступления.
+                    const managerProfitSharePercent = getManagerSharePercent(account, investors, p.date) / 100;
                     const profitFromPayment = p.amount * profitMargin;
                     const managerShare = profitFromPayment * managerProfitSharePercent;
                     if(managerShare > 0) {
@@ -506,7 +502,9 @@ const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL'
                             id: p.id,
                             date: p.date,
                             amount: managerShare,
-                            source: `Платеж по "${sale.productName}"`
+                            customerId: sale.customerId,
+                            customerName,
+                            productName: sale.productName
                         });
                     }
                 }
@@ -531,33 +529,33 @@ const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL'
         totalManagerProfitEarned: totalEarned,
         totalManagerProfitWithdrawn: totalWithdrawn
     };
-  }, [sales, expenses, accounts, investors, profitFilterAccountId, myProfitPeriod]);
+  }, [sales, expenses, accounts, investors, customers, profitFilterAccountId, myProfitPeriod]);
 
   const managerProfitBalance = totalManagerProfitEarned - totalManagerProfitWithdrawn;
 
 
 
 
-// 🔹 Добавьте новый useMemo для начислений инвестора (после investorProfitStats)
+// 🔹 Начисления инвестора(ов) — работает и для одиночного счёта инвестора, и для общего пула
+// (тогда прибыль с одного платежа распределяется на несколько начислений, по одному на каждого
+// участника пула, с его долей — см. getAccountShares).
 const investorProfitAccruals = useMemo(() => {
-    const accruals: {id: string, date: string, amount: number, source: string}[] = [];
+    const accruals: {id: string, date: string, amount: number, customerId: string, customerName: string, productName: string, investorId: string, investorName: string}[] = [];
 
     sales.forEach(sale => {
         if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
         if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
 
         const account = accounts.find(a => a.id === sale.accountId);
-        if (!account?.ownerId) return;
+        if (!account) return;
+        if (account.type === 'SHARED') return;
 
-        const investor = investors.find(i => i.id === account.ownerId);
-        if (!investor) return;
-
+        const customerName = customers.find(c => c.id === sale.customerId)?.name || 'Неизвестно';
         const totalSaleProfit = Number(sale.totalAmount) - Number(sale.buyPrice);
         const profitMargin = totalSaleProfit / Number(sale.totalAmount);
-        const investorShare = investor.profitPercentage / 100;
 
         const allPayments = [
-            { date: sale.startDate, amount: Number(sale.downPayment), id: `${sale.id}_dp`, isRealPayment: true },
+            { date: sale.startDate, amount: Number(sale.downPayment), id: `${sale.id}_dp` },
             ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
         ];
 
@@ -570,27 +568,36 @@ const investorProfitAccruals = useMemo(() => {
 
                 if (pDate >= startDate && pDate <= endDate) {
                     const profitFromPayment = p.amount * profitMargin;
-                    const investorAmount = profitFromPayment * investorShare;
-                    if (investorAmount > 0) {
-                        accruals.push({
-                            id: p.id,
-                            date: p.date,
-                            amount: investorAmount,
-                            source: `Платеж по "${sale.productName}"`
-                        });
-                    }
+                    const shares = getAccountShares(account, investors, p.date);
+                    shares.forEach(({ investor, percentage }) => {
+                        const investorAmount = profitFromPayment * (percentage / 100);
+                        if (investorAmount > 0) {
+                            accruals.push({
+                                id: `${p.id}_${investor.id}`,
+                                date: p.date,
+                                amount: investorAmount,
+                                customerId: sale.customerId,
+                                customerName,
+                                productName: sale.productName,
+                                investorId: investor.id,
+                                investorName: investor.name
+                            });
+                        }
+                    });
                 }
             }
         });
     });
 
-    return accruals.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-}, [sales, accounts, investors, profitFilterAccountId, myProfitPeriod]);
+    const filtered = profitFilterInvestorId === 'ALL' ? accruals : accruals.filter(a => a.investorId === profitFilterInvestorId);
+    return filtered.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}, [sales, accounts, investors, customers, profitFilterAccountId, profitFilterInvestorId, myProfitPeriod]);
 
 // 🔹 Выплаты инвестора
 const investorProfitPayouts = useMemo(() => {
     return expenses
         .filter(e => e.investorId && e.payoutType === 'PROFIT' && (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
+        .filter(e => profitFilterInvestorId === 'ALL' || e.investorId === profitFilterInvestorId)
         .filter(e => {
             const eDate = new Date(e.date);
             const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
@@ -599,85 +606,102 @@ const investorProfitPayouts = useMemo(() => {
             return eDate >= startDate && eDate <= endDate;
         })
         .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-}, [expenses, profitFilterAccountId, myProfitPeriod]);
+}, [expenses, profitFilterAccountId, profitFilterInvestorId, myProfitPeriod]);
 
 
 
-  // 🔹🔹🔹 НОВЫЙ БЛОК: Прибыль инвестора 🔹🔹🔹
-  const investorProfitStats = useMemo(() => {
-    const accountsWithInvestors = accounts.filter(acc =>
-        acc.ownerId && investors.some(i => i.id === acc.ownerId)
-    );
-    if (accountsWithInvestors.length === 0) return null;
-
-    let expectedProfit = 0;
-    let receivedProfit = 0;
-    let totalWithdrawn = 0;
-
-    // 🔧 Даты периода для фильтрации
+  // 🔹🔹🔹 БЛОК: Прибыль инвестора(ов), в разбивке по каждому инвестору 🔹🔹🔹
+  // Работает единообразно и для обычного счёта (один владелец), и для общего пула
+  // (несколько инвесторов через getAccountShares) — раньше здесь проверялся только
+  // account.ownerId, поэтому при выборе счёта-пула блок был пуст.
+  const investorProfitBreakdown = useMemo(() => {
     const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
     const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
     endDate.setHours(23, 59, 59, 999);
+
+    const map = new Map<string, { investor: Investor; expectedProfit: number; receivedProfit: number; totalWithdrawn: number }>();
+    const ensure = (investor: Investor) => {
+        let entry = map.get(investor.id);
+        if (!entry) {
+            entry = { investor, expectedProfit: 0, receivedProfit: 0, totalWithdrawn: 0 };
+            map.set(investor.id, entry);
+        }
+        return entry;
+    };
 
     sales.forEach(sale => {
         if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
         if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
 
         const account = accounts.find(a => a.id === sale.accountId);
-        if (!account?.ownerId) return;
-
-        const investor = investors.find(i => i.id === account.ownerId);
-        if (!investor) return;
+        if (!account || account.type === 'SHARED') return;
 
         const totalSaleProfit = sale.totalAmount - sale.buyPrice;
         const profitMargin = sale.totalAmount > 0 ? totalSaleProfit / sale.totalAmount : 0;
-        const investorShare = investor.profitPercentage / 100;
 
-        // Ожидаемая прибыль: от остатка (ACTIVE/DRAFT)
+        // Ожидаемая прибыль: от остатка (ACTIVE/DRAFT), доли на сегодня
         if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
-            expectedProfit += sale.remainingAmount * profitMargin * investorShare;
-        }
-
-        // 🔧 Полученная прибыль: только платежи в выбранном периоде
-        let periodCollected = 0;
-
-        // Взнос
-        const saleDate = new Date(sale.startDate);
-        if (saleDate >= startDate && saleDate <= endDate) {
-            periodCollected += Number(sale.downPayment);
-        }
-
-        // Платежи по плану
-        sale.paymentPlan
-            .filter(p => p.isPaid && p.isRealPayment !== false)
-            .forEach(p => {
-                const pDate = new Date(p.date);
-                if (pDate >= startDate && pDate <= endDate) {
-                    periodCollected += Number(p.amount);
-                }
+            getAccountShares(account, investors).forEach(({ investor, percentage }) => {
+                ensure(investor).expectedProfit += sale.remainingAmount * profitMargin * (percentage / 100);
             });
+        }
 
-        receivedProfit += periodCollected * profitMargin * investorShare;
+        // 🔧 Полученная прибыль: платежи в выбранном периоде, доли — на дату каждого платежа
+        const allPayments = [
+            { date: sale.startDate, amount: Number(sale.downPayment) },
+            ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
+        ];
+        allPayments.forEach(p => {
+            if (p.amount <= 0) return;
+            const pDate = new Date(p.date);
+            if (pDate < startDate || pDate > endDate) return;
+            const profitFromPayment = p.amount * profitMargin;
+            getAccountShares(account, investors, p.date).forEach(({ investor, percentage }) => {
+                ensure(investor).receivedProfit += profitFromPayment * (percentage / 100);
+            });
+        });
     });
 
-    // Выплаты инвестору (уже фильтруются по периоду — ок)
-    const investorWithdrawals = expenses
+    // Выплаты инвесторам (уже фильтруются по периоду — ок)
+    expenses
         .filter(e => e.investorId && e.payoutType === 'PROFIT' &&
                     (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
         .filter(e => {
             const eDate = new Date(e.date);
             return eDate >= startDate && eDate <= endDate;
+        })
+        .forEach(e => {
+            const investor = investors.find(i => i.id === e.investorId);
+            if (!investor) return;
+            ensure(investor).totalWithdrawn += Number(e.amount);
         });
 
-    totalWithdrawn = investorWithdrawals.reduce((sum, e) => sum + Number(e.amount), 0);
-
-    return {
-        expectedProfit: Math.round(expectedProfit * 100) / 100,
-        receivedProfit: Math.round(receivedProfit * 100) / 100,
-        totalWithdrawn: Math.round(totalWithdrawn * 100) / 100,
-        balance: Math.round((receivedProfit - totalWithdrawn) * 100) / 100
-    };
+    return Array.from(map.values())
+        .map(m => ({
+            investor: m.investor,
+            expectedProfit: Math.round(m.expectedProfit * 100) / 100,
+            receivedProfit: Math.round(m.receivedProfit * 100) / 100,
+            totalWithdrawn: Math.round(m.totalWithdrawn * 100) / 100,
+            balance: Math.round((m.receivedProfit - m.totalWithdrawn) * 100) / 100
+        }))
+        .sort((a, b) => b.receivedProfit - a.receivedProfit);
 }, [sales, accounts, investors, expenses, profitFilterAccountId, myProfitPeriod]);
+
+  // Если выбран конкретный инвестор — показываем только его цифры, иначе сумму по всем.
+  const investorProfitStats = useMemo(() => {
+    const relevant = profitFilterInvestorId === 'ALL'
+        ? investorProfitBreakdown
+        : investorProfitBreakdown.filter(m => m.investor.id === profitFilterInvestorId);
+    if (relevant.length === 0) return null;
+    const sum = (key: 'expectedProfit' | 'receivedProfit' | 'totalWithdrawn' | 'balance') =>
+        Math.round(relevant.reduce((s, m) => s + m[key], 0) * 100) / 100;
+    return {
+        expectedProfit: sum('expectedProfit'),
+        receivedProfit: sum('receivedProfit'),
+        totalWithdrawn: sum('totalWithdrawn'),
+        balance: sum('balance')
+    };
+}, [investorProfitBreakdown, profitFilterInvestorId]);
 
   const handleCreateAccount = (name: string, type: Account['type'], partners?: string[]) => {
       onAddAccount(name, type, partners);
@@ -690,6 +714,7 @@ const investorProfitPayouts = useMemo(() => {
           case 'INVESTOR': return 'Счет инвестора';
           case 'CUSTOM': return 'Дополнительный';
           case 'SHARED': return 'Общий счет';
+          case 'POOL': return 'Инвестпул';
           default: return 'Счет';
       }
   }
@@ -700,6 +725,7 @@ const investorProfitPayouts = useMemo(() => {
           case 'INVESTOR': return 'from-purple-500 to-purple-600';
           case 'CUSTOM': return 'from-emerald-500 to-emerald-600';
           case 'SHARED': return 'from-amber-500 to-amber-600';
+          case 'POOL': return 'from-fuchsia-500 to-fuchsia-600';
           default: return 'from-slate-500 to-slate-600';
       }
   }
@@ -767,9 +793,14 @@ const investorProfitPayouts = useMemo(() => {
               <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${getAccountTypeColor(acc.type)}`}></div>
               <div className="relative p-4 sm:p-6">
                 <div className="flex items-start justify-between mb-3 sm:mb-4">
-                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-bold bg-gradient-to-r ${getAccountTypeColor(acc.type)} text-white shadow-sm`}>
-                    {acc.type === 'SHARED' && <span className="text-[10px] sm:text-xs">{ICONS.Users}</span>}
-                    <span className="truncate max-w-[80px] sm:max-w-none">{getAccountTypeLabel(acc.type)}</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-bold bg-gradient-to-r ${getAccountTypeColor(acc.type)} text-white shadow-sm`}>
+                      {acc.type === 'SHARED' && <span className="text-[10px] sm:text-xs">{ICONS.Users}</span>}
+                      <span className="truncate max-w-[80px] sm:max-w-none">{getAccountTypeLabel(acc.type)}</span>
+                    </div>
+                    {acc.isMain && acc.type !== 'MAIN' && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] sm:text-xs font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">⭐ Основной</span>
+                    )}
                   </div>
                   <button onClick={(e) => handleMenuClick(e, acc)} className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg sm:rounded-xl transition-all z-10" aria-label="Действия со счетом">{ICONS.More}</button>
                 </div>
@@ -799,6 +830,20 @@ const investorProfitPayouts = useMemo(() => {
                       <span className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500">{acc.partners.length} участников</span>
                     </div>
                   )}
+                  {acc.type === 'POOL' && (
+                    <div className="space-y-1.5">
+                      {getAccountShares(acc, investors).map(({ investor, percentage }) => (
+                        <div key={investor.id} className="flex items-center justify-between text-[11px] sm:text-xs">
+                          <span className="text-slate-600 dark:text-slate-300 truncate">{investor.name}</span>
+                          <span className="font-bold text-fuchsia-600 dark:text-fuchsia-400 shrink-0 ml-2">{Math.round(percentage)}%</span>
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between text-[11px] sm:text-xs pt-1 border-t border-slate-100 dark:border-slate-700">
+                        <span className="text-slate-400 dark:text-slate-500">Ваша доля (менеджер)</span>
+                        <span className="font-bold text-slate-500 dark:text-slate-400">{Math.round(getManagerSharePercent(acc, investors))}%</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -821,7 +866,7 @@ const investorProfitPayouts = useMemo(() => {
                     <select
                         className="w-full p-2.5 sm:p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-300 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
                         value={profitFilterAccountId}
-                        onChange={e => setProfitFilterAccountId(e.target.value)}
+                        onChange={e => { setProfitFilterAccountId(e.target.value); setProfitFilterInvestorId('ALL'); }}
                     >
                         <option value="ALL">Все счета</option>
                         {accounts.filter(a => a.type !== 'SHARED').map(acc => (
@@ -829,6 +874,21 @@ const investorProfitPayouts = useMemo(() => {
                         ))}
                     </select>
                 </div>
+                {investorProfitBreakdown.length > 1 && (
+                    <div>
+                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5 block">Фильтр по инвестору</label>
+                        <select
+                            className="w-full p-2.5 sm:p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-300 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                            value={profitFilterInvestorId}
+                            onChange={e => setProfitFilterInvestorId(e.target.value)}
+                        >
+                            <option value="ALL">Все инвесторы</option>
+                            {investorProfitBreakdown.map(m => (
+                                <option key={m.investor.id} value={m.investor.id}>{m.investor.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 <div className="grid grid-cols-1 gap-3">
                     <div>
                         <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5 block">Начало</label>
@@ -965,7 +1025,8 @@ const investorProfitPayouts = useMemo(() => {
             </h3>
         </div>
 
-        {/* Сетка: 2 карточки в ряд */}
+        {/* Сетка: 2 карточки в ряд — при выбранном конкретном инвесторе (см. фильтр выше) показывает его личные цифры,
+            при "Все инвесторы" — сумму по всем участникам счёта/пула. */}
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
 
             {/* 1. Ожидаемая прибыль инвестора */}
@@ -1053,42 +1114,44 @@ const investorProfitPayouts = useMemo(() => {
       )}
 
 
-{/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли менеджера */}
+{/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли менеджера — на мобильных выезжает снизу, как модалка
+    "Получено прибыли" на главном экране (Dashboard.tsx, ProfitDetailsModal) */}
 {showProfitDetails && (
     <div
-        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in"
+        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
         onClick={() => setShowProfitDetails(false)}
     >
         <div
-            className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-white/20 dark:border-slate-700/50 animate-slide-up"
+            className="bg-white dark:bg-slate-800 w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col animate-slide-up-sheet"
             onClick={e => e.stopPropagation()}
         >
             {/* Header */}
-            <div className="p-6 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white">
-                <div className="flex items-center justify-between">
+            <div className="px-4 py-3 flex items-center justify-between shrink-0 bg-gradient-to-r from-emerald-500 to-emerald-600">
+                <div className="flex items-center gap-3">
+                    <div className="text-white bg-white/20 p-2 rounded-xl">
+                        {ICONS.TrendingUp}
+                    </div>
                     <div>
-                        <h2 className="text-2xl font-bold">Моя прибыль</h2>
-                        <p className="text-emerald-100 text-sm mt-1">
+                        <h3 className="text-base font-bold text-white">Моя прибыль</h3>
+                        <p className="text-emerald-100 text-xs">
                             Баланс: <span className="font-bold text-white">{formatCurrency(managerProfitBalance, appSettings.showCents)} ₽</span>
                         </p>
                     </div>
-                    <button
-                        onClick={() => setShowProfitDetails(false)}
-                        className="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-all"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
                 </div>
+                <button onClick={() => setShowProfitDetails(false)} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
             </div>
 
             {/* Tabs */}
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700">
+            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 shrink-0">
                 <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-xl">
                     <button
                         onClick={() => setProfitDetailsTab('accruals')}
-                        className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
+                        className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
                             profitDetailsTab === 'accruals'
                                 ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
                                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
@@ -1098,7 +1161,7 @@ const investorProfitPayouts = useMemo(() => {
                     </button>
                     <button
                         onClick={() => setProfitDetailsTab('payouts')}
-                        className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
+                        className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
                             profitDetailsTab === 'payouts'
                                 ? 'bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 shadow-sm'
                                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
@@ -1110,93 +1173,100 @@ const investorProfitPayouts = useMemo(() => {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
                 {profitDetailsTab === 'accruals' && (
-                    <div className="space-y-3">
-                        {managerProfitAccruals.length === 0 ? (
-                            <div className="text-center py-16">
-                                <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                    <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
-                                </div>
-                                <p className="text-slate-500 dark:text-slate-400 font-medium">Нет начислений за этот период</p>
+                    managerProfitAccruals.length === 0 ? (
+                        <div className="text-center py-16">
+                            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
                             </div>
-                        ) : (
-                            managerProfitAccruals.map(p => (
-                                <div key={p.id} className="bg-emerald-50 dark:bg-emerald-900/30 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/50 hover:border-emerald-200 transition-all">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <p className="font-bold text-slate-800 dark:text-white">{p.source}</p>
-                                        <span className="font-bold text-emerald-600 dark:text-emerald-400">+{formatCurrency(p.amount, appSettings.showCents)} ₽</span>
+                            <p className="text-slate-500 dark:text-slate-400 font-medium">Нет начислений за этот период</p>
+                        </div>
+                    ) : (
+                        managerProfitAccruals.map(p => (
+                            <div
+                                key={p.id}
+                                onClick={() => { if (onSelectCustomer) { onSelectCustomer(p.customerId); setShowProfitDetails(false); } }}
+                                className={`bg-white dark:bg-slate-800 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/50 transition-all ${onSelectCustomer ? 'cursor-pointer hover:shadow-md' : ''}`}
+                            >
+                                <div className="flex justify-between items-start">
+                                    <div className="min-w-0 flex-1">
+                                        <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{p.customerName}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{p.productName}</p>
                                     </div>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">{formatDate(p.date)}</p>
+                                    <div className="text-right ml-3 shrink-0">
+                                        <p className="font-bold text-sm text-emerald-600 dark:text-emerald-400">+{formatCurrency(p.amount, appSettings.showCents)} ₽</p>
+                                        <p className="text-[10px] text-slate-400">{formatDate(p.date)}</p>
+                                    </div>
                                 </div>
-                            ))
-                        )}
-                    </div>
+                            </div>
+                        ))
+                    )
                 )}
 
                 {profitDetailsTab === 'payouts' && (
-                    <div className="space-y-3">
-                        {managerProfitPayouts.length === 0 ? (
-                            <div className="text-center py-16">
-                                <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                    <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
-                                </div>
-                                <p className="text-slate-500 dark:text-slate-400 font-medium">Нет выплат за этот период</p>
+                    managerProfitPayouts.length === 0 ? (
+                        <div className="text-center py-16">
+                            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
                             </div>
-                        ) : (
-                            managerProfitPayouts.map(e => (
-                                <div key={e.id} className="bg-rose-50 dark:bg-rose-900/30 p-4 rounded-2xl border border-rose-100 dark:border-rose-900/50 hover:border-rose-200 transition-all">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <p className="font-bold text-slate-800 dark:text-white">{e.title}</p>
-                                        <span className="font-bold text-rose-600 dark:text-rose-400">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
-                                    </div>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">{formatDate(e.date)}</p>
+                            <p className="text-slate-500 dark:text-slate-400 font-medium">Нет выплат за этот период</p>
+                        </div>
+                    ) : (
+                        managerProfitPayouts.map(e => (
+                            <div key={e.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-rose-100 dark:border-rose-900/50">
+                                <div className="flex justify-between items-start">
+                                    <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{e.title}</p>
+                                    <span className="font-bold text-sm text-rose-600 dark:text-rose-400 ml-3 shrink-0">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
                                 </div>
-                            ))
-                        )}
-                    </div>
+                                <p className="text-[10px] text-slate-400 mt-0.5">{formatDate(e.date)}</p>
+                            </div>
+                        ))
+                    )
                 )}
             </div>
         </div>
     </div>
 )}
 
-{/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли инвестора */}
+{/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли инвестора — на мобильных выезжает снизу, как модалка
+    "Получено прибыли" на главном экране (Dashboard.tsx, ProfitDetailsModal) */}
 {showInvestorProfitDetails && investorProfitStats && (
     <div
-        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-purple-900/80 backdrop-blur-sm animate-fade-in"
+        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
         onClick={() => setShowInvestorProfitDetails(false)}
     >
         <div
-            className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] border border-white/20 dark:border-slate-700/50 animate-slide-up"
+            className="bg-white dark:bg-slate-800 w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col animate-slide-up-sheet"
             onClick={e => e.stopPropagation()}
         >
             {/* Header */}
-            <div className="p-6 bg-gradient-to-r from-purple-500 to-purple-600 text-white">
-                <div className="flex items-center justify-between">
+            <div className="px-4 py-3 flex items-center justify-between shrink-0 bg-gradient-to-r from-purple-500 to-purple-600">
+                <div className="flex items-center gap-3">
+                    <div className="text-white bg-white/20 p-2 rounded-xl">
+                        {ICONS.Users}
+                    </div>
                     <div>
-                        <h2 className="text-2xl font-bold">Прибыль инвестора</h2>
-                        <p className="text-purple-100 text-sm mt-1">
+                        <h3 className="text-base font-bold text-white">Прибыль инвестора</h3>
+                        <p className="text-purple-100 text-xs">
                             Баланс: <span className="font-bold text-white">{formatCurrency(investorProfitStats.balance, appSettings.showCents)} ₽</span>
                         </p>
                     </div>
-                    <button
-                        onClick={() => setShowInvestorProfitDetails(false)}
-                        className="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-all"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
                 </div>
+                <button onClick={() => setShowInvestorProfitDetails(false)} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
             </div>
 
             {/* Tabs */}
-            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700">
+            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 shrink-0">
                 <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-xl">
                     <button
                         onClick={() => setProfitDetailsTab('accruals')}
-                        className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
+                        className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
                             profitDetailsTab === 'accruals'
                                 ? 'bg-white dark:bg-slate-800 text-purple-600 dark:text-purple-400 shadow-sm'
                                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
@@ -1206,7 +1276,7 @@ const investorProfitPayouts = useMemo(() => {
                     </button>
                     <button
                         onClick={() => setProfitDetailsTab('payouts')}
-                        className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${
+                        className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
                             profitDetailsTab === 'payouts'
                                 ? 'bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 shadow-sm'
                                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
@@ -1218,57 +1288,69 @@ const investorProfitPayouts = useMemo(() => {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
                 {profitDetailsTab === 'accruals' && (
-                    <div className="space-y-3">
-                        {investorProfitAccruals.length === 0 ? (
-                            <div className="text-center py-16">
-                                <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                    <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
-                                </div>
-                                <p className="text-slate-500 dark:text-slate-400 font-medium">Нет начислений за этот период</p>
+                    investorProfitAccruals.length === 0 ? (
+                        <div className="text-center py-16">
+                            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
                             </div>
-                        ) : (
-                            investorProfitAccruals.map(p => (
-                                <div key={p.id} className="bg-purple-50 dark:bg-purple-900/30 p-4 rounded-2xl border border-purple-100 dark:border-purple-900/50 hover:border-purple-200 transition-all">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <p className="font-bold text-slate-800 dark:text-white">{p.source}</p>
-                                        <span className="font-bold text-purple-600 dark:text-purple-400">+{formatCurrency(p.amount, appSettings.showCents)} ₽</span>
+                            <p className="text-slate-500 dark:text-slate-400 font-medium">Нет начислений за этот период</p>
+                        </div>
+                    ) : (
+                        investorProfitAccruals.map(p => (
+                            <div
+                                key={p.id}
+                                onClick={() => { if (onSelectCustomer) { onSelectCustomer(p.customerId); setShowInvestorProfitDetails(false); } }}
+                                className={`bg-white dark:bg-slate-800 p-3 rounded-xl border border-purple-100 dark:border-purple-900/50 transition-all ${onSelectCustomer ? 'cursor-pointer hover:shadow-md' : ''}`}
+                            >
+                                <div className="flex justify-between items-start">
+                                    <div className="min-w-0 flex-1">
+                                        <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{p.customerName}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                            {p.productName}
+                                            {profitFilterInvestorId === 'ALL' && investorProfitBreakdown.length > 1 && (
+                                                <span className="ml-1.5 px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded text-[9px] font-bold">
+                                                    {p.investorName}
+                                                </span>
+                                            )}
+                                        </p>
                                     </div>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">{formatDate(p.date)}</p>
+                                    <div className="text-right ml-3 shrink-0">
+                                        <p className="font-bold text-sm text-purple-600 dark:text-purple-400">+{formatCurrency(p.amount, appSettings.showCents)} ₽</p>
+                                        <p className="text-[10px] text-slate-400">{formatDate(p.date)}</p>
+                                    </div>
                                 </div>
-                            ))
-                        )}
-                    </div>
+                            </div>
+                        ))
+                    )
                 )}
 
                 {profitDetailsTab === 'payouts' && (
-                    <div className="space-y-3">
-                        {investorProfitPayouts.length === 0 ? (
-                            <div className="text-center py-16">
-                                <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                    <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
-                                </div>
-                                <p className="text-slate-500 dark:text-slate-400 font-medium">Нет выплат инвестору за этот период</p>
+                    investorProfitPayouts.length === 0 ? (
+                        <div className="text-center py-16">
+                            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
                             </div>
-                        ) : (
-                            investorProfitPayouts.map(e => {
-                                const investor = investors.find(i => i.id === e.investorId);
-                                return (
-                                    <div key={e.id} className="bg-rose-50 dark:bg-rose-900/30 p-4 rounded-2xl border border-rose-100 dark:border-rose-900/50 hover:border-rose-200 transition-all">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div>
-                                                <p className="font-bold text-slate-800 dark:text-white">{e.title}</p>
-                                                <p className="text-xs text-slate-500 dark:text-slate-400">{investor?.name || 'Инвестор'}</p>
-                                            </div>
-                                            <span className="font-bold text-rose-600 dark:text-rose-400">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
+                            <p className="text-slate-500 dark:text-slate-400 font-medium">Нет выплат инвестору за этот период</p>
+                        </div>
+                    ) : (
+                        investorProfitPayouts.map(e => {
+                            const investor = investors.find(i => i.id === e.investorId);
+                            return (
+                                <div key={e.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-rose-100 dark:border-rose-900/50">
+                                    <div className="flex justify-between items-start">
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{e.title}</p>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{investor?.name || 'Инвестор'}</p>
                                         </div>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">{formatDate(e.date)}</p>
+                                        <span className="font-bold text-sm text-rose-600 dark:text-rose-400 ml-3 shrink-0">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
                                     </div>
-                                );
-                            })
-                        )}
-                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">{formatDate(e.date)}</p>
+                                </div>
+                            );
+                        })
+                    )
                 )}
             </div>
         </div>

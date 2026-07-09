@@ -77,6 +77,9 @@ export interface Investor {
   email: string; // Login email
   phone: string;
   joinedDate: string;
+  // Дата выхода из общего пула (type === 'POOL'). Не влияет на историю ДО этой даты —
+  // см. getAccountShares/getInvestorCapitalShare в src/utils.ts.
+  leftPoolDate?: string;
   // This now represents the current investment balance, not just the initial deposit.
   initialAmount: number;
   profitPercentage: number;
@@ -90,9 +93,11 @@ export interface Account {
   id: string;
   userId: string; // Owner (Manager)
   name: string;
-  type: 'MAIN' | 'INVESTOR' | 'CUSTOM' | 'SHARED';
+  type: 'MAIN' | 'INVESTOR' | 'CUSTOM' | 'SHARED' | 'POOL';
   ownerId?: string; // If type is INVESTOR, points to Investor User ID
   partners?: string[]; // IDs of Investors for SHARED accounts
+  poolMemberIds?: string[]; // IDs of Investors sharing this account (type === 'POOL', BUSINESS_PRO). Each member's share of pool profit = (their initialAmount / total pool capital) × their own Investor.profitPercentage; manager gets the remainder.
+  isMain?: boolean; // "Сделать основным" — отмечает счёт основным БЕЗ изменения его структурного type (INVESTOR/POOL/SHARED/CUSTOM)
   balance?: number;
   currency?: string;
   isArchived?: boolean;

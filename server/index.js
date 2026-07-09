@@ -65,11 +65,11 @@ const getTargetUserId = (user) => {
 
 // ✅ КОНФИГУРАЦИЯ ЛИМИТОВ ТАРИФОВ
 const PLAN_LIMITS = {
-  TRIAL:        { contracts: 10,  investors: 0,  employees: 0,  whatsapp: false, ai: true,  suppliers: false },
-  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false },
-  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false },
-  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: false },
-  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: true  },
+  TRIAL:        { contracts: 10,  investors: 0,  employees: 0,  whatsapp: false, ai: true,  suppliers: false, investorPools: false },
+  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false },
+  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false },
+  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: false, investorPools: false },
+  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: true,  investorPools: true  },
 };
 
 
@@ -214,6 +214,10 @@ const canAccessUserData = (currentUser, targetUserId) => {
 };
 
 // ✅ Проверка доступа к платному модулю (например "suppliers" — модуль "Партнеры", тариф BUSINESS_PRO)
+const FEATURE_DENIED_MESSAGES = {
+  suppliers: { msg: 'Модуль «Партнеры» доступен только на тарифе Бизнес Pro.', hint: 'Оформите тариф Бизнес Pro для работы с поставщиками.' },
+  investorPools: { msg: 'Общий инвестиционный пул доступен только на тарифе Бизнес Pro.', hint: 'Оформите тариф Бизнес Pro для распределения дохода между инвесторами в одном пуле.' },
+};
 const checkFeatureAccess = async (userId, featureKey) => {
   try {
     const userResult = await pool.query(`SELECT role, subscription FROM users WHERE id = $1`, [userId]);
@@ -229,11 +233,8 @@ const checkFeatureAccess = async (userId, featureKey) => {
       : user.subscription;
     const limits = PLAN_LIMITS?.[subscription?.plan];
     if (!limits?.[featureKey]) {
-      return {
-        allowed: false,
-        msg: 'Модуль «Партнеры» доступен только на тарифе Бизнес Pro.',
-        hint: 'Оформите тариф Бизнес Pro для работы с поставщиками.'
-      };
+      const denied = FEATURE_DENIED_MESSAGES[featureKey] || FEATURE_DENIED_MESSAGES.suppliers;
+      return { allowed: false, ...denied };
     }
     return { allowed: true };
   } catch (e) {
@@ -1945,6 +1946,17 @@ app.post('/api/data/:type', auth, async (req, res) => {
     // 🔒 Модуль "Партнеры" (поставщики) — только тариф BUSINESS_PRO
     if (type === 'suppliers' || (type === 'sales' && itemData.supplierId) || (type === 'expenses' && itemData.supplierId)) {
       const featureAccess = await checkFeatureAccess(targetUserId, 'suppliers');
+      if (!featureAccess.allowed) {
+        return res.status(403).json({ msg: featureAccess.msg, hint: featureAccess.hint });
+      }
+    }
+
+    // 🔒 Общий инвестиционный пул (Account.type === 'POOL') — только тариф BUSINESS_PRO.
+    // Проценты участников пула независимы друг от друга (каждый применяется только к части
+    // прибыли, приходящейся на капитал именно этого инвестора — см. getAccountShares в
+    // src/utils.ts), поэтому проверять их сумму на превышение 100% не нужно.
+    if (type === 'accounts' && itemData.type === 'POOL') {
+      const featureAccess = await checkFeatureAccess(targetUserId, 'investorPools');
       if (!featureAccess.allowed) {
         return res.status(403).json({ msg: featureAccess.msg, hint: featureAccess.hint });
       }

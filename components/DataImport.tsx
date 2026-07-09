@@ -220,7 +220,7 @@ const duplicatesFound: DuplicateInfo[] = [];
 
                     // 2. Инвестор и Счет (исправленная логика с разными типами тире)
                     let accountId = '';
-                    const mainAccount = accounts.find(a => a.type === 'MAIN');
+                    const mainAccount = accounts.find(a => a.isMain || a.type === 'MAIN');
 
                     // Проверка на пустой инвестор (учитываем разные типы тире)
                     const trimmedInvestor = investorName ? investorName.trim() : '';
@@ -595,6 +595,10 @@ for (const row of paymentsData) {
                                 const debt = targetPlan.amount;
                                 if (amountLeft >= debt - 0.01) {
                                     targetPlan.isPaid = true;
+                                    // 🔒 Без этого флага платёж считался бы "оплаченным" при пересчёте остатка
+                                    // долга (NewSale.tsx), но не попадал бы в "Оплачено клиентом" на
+                                    // CustomerDetails.tsx (там раньше был строгий фильтр) — суммы расходились.
+                                    targetPlan.isRealPayment = true;
                                     targetPlan.actualDate = realPay.date;
                                     if (!targetPlan.note?.includes('Оплачено')) {
                                         targetPlan.note = `Оплачено ${new Date(realPay.date).toLocaleDateString()}`;

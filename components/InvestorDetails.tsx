@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { Investor, Sale, Expense, Account, Payment, AppSettings } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency } from '../src/utils';
+import { formatCurrency, getAccountShares } from '../src/utils';
 
 interface InvestorDetailsProps {
   investor: Investor;
+  investors: Investor[];
   account?: Account;
   sales: Sale[];
   expenses: Expense[];
@@ -12,7 +13,14 @@ interface InvestorDetailsProps {
   onBack: () => void;
 }
 
-const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, account, sales, expenses, appSettings, onBack }) => {
+const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, investors, account, sales, expenses, appSettings, onBack }) => {
+  // 🔒 Актуальная (на сегодня) доля этого инвестора в счёте. Для обычного счёта —
+  // это его profitPercentage, как и раньше. Для общего пула — доля считается
+  // автоматически по вложенной сумме (см. getAccountShares), а не задаётся вручную.
+  const currentSharePercent = useMemo(() => {
+    const share = getAccountShares(account, investors).find(m => m.investor.id === investor.id);
+    return share ? share.percentage : 0;
+  }, [account, investors, investor.id]);
   const [activeTab, setActiveTab] = useState<'INFO' | 'HISTORY'>('INFO');
   const [expandedOpId, setExpandedOpId] = useState<string | null>(null);
 
@@ -36,16 +44,20 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, account, sa
   const history = useMemo(() => {
     if (!account) return [];
 
+    // 🔒 В общем пуле sales/expenses счёта относятся ко всем участникам — оставляем только
+    // депозиты/выплаты именно этого инвестора (депозит помечается customerId при создании).
     const depositOps = sales
-      .filter(s => s.accountId === account.id && (s.productName === 'Начальный депозит' || s.productName === 'Депозит инвестора'))
+      .filter(s => s.accountId === account.id
+        && (s.productName === 'Начальный депозит' || s.productName === 'Депозит инвестора')
+        && (s.customerId === `system_deposit_${investor.id}` || !s.customerId?.startsWith('system_deposit_')))
       .map(s => ({
         id: s.id, date: s.startDate, amount: s.totalAmount, title: s.productName,
         description: `Поступление от ${investor.name}`, type: 'INCOME', details: s
       }));
 
     const withdrawalOps = expenses
-    .filter(e => e.accountId === account.id && (
-        e.category === 'Выплата инвестору' || 
+    .filter(e => e.accountId === account.id && (!e.investorId || e.investorId === investor.id) && (
+        e.category === 'Выплата инвестору' ||
         e.category === 'Investment Return'  // ← Поддержка старых данных
     ))
     .map(e => ({
@@ -72,9 +84,8 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, account, sa
       return total;
   }, [sales, expenses, account]);
 
-  // В InvestorDetails.tsx заменить expectedTotalProfit:
-const expectedTotalProfit = useMemo(() => {
-    if (!account || !investor.profitPercentage) return 0;
+  const expectedTotalProfit = useMemo(() => {
+    if (!account || currentSharePercent <= 0) return 0;
 
     const activeSales = sales.filter(s =>
         s.accountId === account.id &&
@@ -84,9 +95,9 @@ const expectedTotalProfit = useMemo(() => {
 
     return activeSales.reduce((sum, sale) => {
         const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
-        return sum + (sale.remainingAmount * profitMargin * investor.profitPercentage / 100);
+        return sum + (sale.remainingAmount * profitMargin * currentSharePercent / 100);
     }, 0);
-}, [sales, account, investor]);
+}, [sales, account, currentSharePercent]);
 
   const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
       if (!account) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, profitAccruals: [] };
@@ -107,7 +118,12 @@ const expectedTotalProfit = useMemo(() => {
 
           allPayments.forEach(p => {
               if (p.amount > 0) {
-                  const profitFromPayment = p.amount * profitMargin;
+                  // 🔒 Доля на дату КОНКРЕТНОГО платежа — если инвестор вступил в пул позже,
+                  // к более ранним платежам его доля не применяется (не задним числом).
+                  const share = getAccountShares(account, investors, p.date).find(m => m.investor.id === investor.id);
+                  const myPercent = share ? share.percentage : 0;
+                  if (myPercent <= 0) return;
+                  const profitFromPayment = p.amount * profitMargin * myPercent / 100;
                   profitSum += profitFromPayment;
                   accruals.push({
                       id: p.id,
@@ -119,29 +135,34 @@ const expectedTotalProfit = useMemo(() => {
           });
       });
 
-      const withdrawnSum = expenses.filter(e => e.accountId === account.id && e.payoutType === 'PROFIT').reduce((sum, e) => sum + e.amount, 0);
+      // 🔒 В общем пуле expenses счёта содержат выплаты ВСЕМ участникам — берём только выплаты этому инвестору.
+      const withdrawnSum = expenses
+        .filter(e => e.accountId === account.id && e.payoutType === 'PROFIT' && (!e.investorId || e.investorId === investor.id))
+        .reduce((sum, e) => sum + e.amount, 0);
 
       return { totalProfitEarned: profitSum, totalProfitWithdrawn: withdrawnSum, profitAccruals: accruals.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()) };
-  }, [sales, expenses, account]);
+  }, [sales, expenses, account, investor.id, investors]);
 
   const periodProfit = useMemo(() => {
-    if (!account || !investor.profitPercentage || profitAccruals.length === 0) return 0;
+    if (!account || profitAccruals.length === 0) return 0;
     const startDate = new Date(period.start);
     const endDate = new Date(period.end);
     endDate.setHours(23, 59, 59, 999);
 
+    // 🔒 profitAccruals уже содержит долю ЭТОГО инвестора (посчитанную по дате каждого платежа) —
+    // повторно умножать на процент больше не нужно.
     return profitAccruals
       .filter(p => {
           const pDate = new Date(p.date);
           return pDate >= startDate && pDate <= endDate;
       })
-      .reduce((sum, p) => sum + p.amount, 0) * (investor.profitPercentage / 100);
-  }, [period, profitAccruals, investor, account]);
+      .reduce((sum, p) => sum + p.amount, 0);
+  }, [period, profitAccruals, account]);
 
   const profitWithdrawals = useMemo(() => {
-      return expenses.filter(e => e.accountId === account?.id && e.payoutType === 'PROFIT')
+      return expenses.filter(e => e.accountId === account?.id && e.payoutType === 'PROFIT' && (!e.investorId || e.investorId === investor.id))
                      .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [expenses, account]);
+  }, [expenses, account, investor.id]);
 
   return (
     <div className="space-y-4 animate-fade-in pb-20">
@@ -160,14 +181,14 @@ const expectedTotalProfit = useMemo(() => {
                       <div><label className="text-xs text-slate-400 uppercase">Телефон</label><p className="font-medium text-slate-800 dark:text-white">{investor.phone || '-'}</p></div>
                       <div><label className="text-xs text-slate-400 uppercase">Дата регистрации</label><p className="font-medium text-slate-800 dark:text-white">{new Date(investor.joinedDate).toLocaleDateString()}</p></div>
                       <div><label className="text-xs text-slate-400 uppercase">Баланс инвестиций</label><p className="font-semibold text-slate-700 dark:text-slate-300">{formatCurrency(investor.initialAmount, appSettings.showCents)} ₽</p></div>
-                      <div><label className="text-xs text-slate-400 uppercase">Процент прибыли</label><p className="font-semibold text-indigo-600 dark:text-indigo-400">{investor.profitPercentage}%</p></div>
+                      <div><label className="text-xs text-slate-400 uppercase">{account?.type === 'POOL' ? 'Доля в пуле (по вложению)' : 'Процент прибыли'}</label><p className="font-semibold text-indigo-600 dark:text-indigo-400">{Math.round(currentSharePercent * 10) / 10}%</p></div>
                   </div>
-                  <div className="pt-2"><label className="text-xs text-slate-400 uppercase">Текущий баланс счета</label><p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{formatCurrency(balance, appSettings.showCents)} ₽</p></div>
+                  <div className="pt-2"><label className="text-xs text-slate-400 uppercase">{account?.type === 'POOL' ? 'Баланс пула (общий)' : 'Текущий баланс счета'}</label><p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{formatCurrency(balance, appSettings.showCents)} ₽</p>{account?.type === 'POOL' && <p className="text-xs text-slate-400 mt-1">Общая касса пула — включает деньги всех участников</p>}</div>
                </div>
 
                 <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-100 dark:border-slate-700"><h3 className="font-bold text-sm text-slate-800 dark:text-white mb-1">Ожидаемая прибыль</h3><p className="text-xs text-slate-500 dark:text-slate-400 mb-2">С активных договоров</p><p className="text-2xl font-bold text-indigo-800 dark:text-indigo-400">{formatCurrency(expectedTotalProfit, appSettings.showCents)} ₽</p></div>
-                    <div onClick={() => setShowProfitDetails(true)} className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-100 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700"><h3 className="font-bold text-sm text-slate-800 dark:text-white mb-1">Полученная прибыль</h3><p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Общий баланс</p><p className="text-2xl font-bold text-emerald-800 dark:text-emerald-400">{formatCurrency(totalProfitEarned * (investor.profitPercentage/100) - totalProfitWithdrawn, appSettings.showCents)} ₽</p></div>
+                    <div onClick={() => setShowProfitDetails(true)} className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-100 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700"><h3 className="font-bold text-sm text-slate-800 dark:text-white mb-1">Полученная прибыль</h3><p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Общий баланс</p><p className="text-2xl font-bold text-emerald-800 dark:text-emerald-400">{formatCurrency(totalProfitEarned - totalProfitWithdrawn, appSettings.showCents)} ₽</p></div>
                 </div>
 
                <div className="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 space-y-4">
@@ -191,7 +212,7 @@ const expectedTotalProfit = useMemo(() => {
       {showProfitDetails && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowProfitDetails(false)}>
               <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
-                  <div className="p-5 border-b border-slate-200 dark:border-slate-700"><h3 className="text-lg font-bold text-slate-800 dark:text-white">Детализация прибыли</h3><p className="text-sm text-slate-500 dark:text-slate-400">Общий баланс: <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(totalProfitEarned * (investor.profitPercentage/100) - totalProfitWithdrawn, appSettings.showCents)} ₽</span></p></div>
+                  <div className="p-5 border-b border-slate-200 dark:border-slate-700"><h3 className="text-lg font-bold text-slate-800 dark:text-white">Детализация прибыли</h3><p className="text-sm text-slate-500 dark:text-slate-400">Общий баланс: <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(totalProfitEarned - totalProfitWithdrawn, appSettings.showCents)} ₽</span></p></div>
 
                   <div className="flex border-b border-slate-200 dark:border-slate-700 px-2">
                       <button onClick={() => setProfitDetailsTab('accruals')} className={`flex-1 py-3 text-sm font-semibold transition-colors ${profitDetailsTab === 'accruals' ? 'text-emerald-600 dark:text-emerald-400 border-b-2 border-emerald-600' : 'text-slate-500 dark:text-slate-400'}`}>Начисления</button>
@@ -204,7 +225,7 @@ const expectedTotalProfit = useMemo(() => {
                               {profitAccruals.length === 0 ? <p className="text-center text-slate-400 py-4">Начислений нет</p> : profitAccruals.map(p => (
                                   <div key={p.id} className="flex justify-between items-center text-sm p-2 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg">
                                       <div className="flex flex-col"><span className="text-slate-800 dark:text-white">{p.source}</span><span className="text-xs text-slate-400">{new Date(p.date).toLocaleDateString()}</span></div>
-                                      <span className="font-bold text-emerald-600 dark:text-emerald-400">+{formatCurrency(p.amount * (investor.profitPercentage/100), appSettings.showCents)} ₽</span>
+                                      <span className="font-bold text-emerald-600 dark:text-emerald-400">+{formatCurrency(p.amount, appSettings.showCents)} ₽</span>
                                   </div>
                               ))}
                           </div>

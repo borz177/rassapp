@@ -23,6 +23,11 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
     return accounts.map(acc => acc.id);
   }, [accounts]);
 
+  // 🔒 Если хотя бы один из счетов — общий пул, "баланс" ниже — это общая касса пула
+  // (деньги всех участников), а не личные деньги именно этого инвестора. Прибыль
+  // (availableToWithdraw) при этом всё равно считается корректно — только его доля.
+  const isPoolAccount = useMemo(() => accounts.some(acc => acc.type === 'POOL'), [accounts]);
+
     const investorSales = useMemo(() => {
     if (investorAccountIds.length === 0) return [];
     return sales.filter(s =>
@@ -123,8 +128,10 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
       });
     });
 
+    // 🔒 В общем пуле expenses содержат выводы ВСЕХ участников — считаем только выводы этого инвестора,
+    // иначе вывод одного участника ошибочно уменьшал бы "доступно к выводу" у другого.
     const withdrawnSum = investorExpenses
-      .filter(e => e.payoutType === 'PROFIT')
+      .filter(e => e.payoutType === 'PROFIT' && (!e.investorId || e.investorId === investor.id))
       .reduce((sum, e) => sum + e.amount, 0);
 
     return {
@@ -363,9 +370,11 @@ const expectedTotalProfit = useMemo(() => {
             {/* 🔹 Баланс и доступно к выводу */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 p-6 rounded-2xl text-white shadow-lg">
-                <p className="text-indigo-100 text-sm mb-1">Текущий баланс счета</p>
+                <p className="text-indigo-100 text-sm mb-1">{isPoolAccount ? 'Баланс пула (общий)' : 'Текущий баланс счета'}</p>
                 <p className="text-3xl font-bold">{formatCurrency(balance, appSettings.showCents)} ₽</p>
-               
+                {isPoolAccount && (
+                  <p className="text-xs text-indigo-200 mt-2">Общая касса пула — включает деньги всех участников, ваша доля — в блоке «Прибыль»</p>
+                )}
               </div>
 
               <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 rounded-2xl text-white shadow-lg">
