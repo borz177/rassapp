@@ -59,3 +59,11 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Локальный дрейф зависимостей (см. "Known environment gap" в CLAUDE.md) — эти файлы уже
+# закоммичены в истории, поэтому .gitignore сам по себе НЕ спрячет их изменения от `git add -A`.
+# Дополнительно применён `git update-index --skip-worktree` на эти 4 файла — см. пояснение в чате.
+package.json
+package-lock.json
+server/package.json
+server/package-lock.json
