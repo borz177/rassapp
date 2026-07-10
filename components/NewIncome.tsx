@@ -195,6 +195,9 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       import('jspdf'),
       import('html2canvas')
     ]);
+    // 🔒 Повторная проверка после await: если за время загрузки чанков форма всё же
+    // размонтировалась — бросаем понятную ошибку вместо краша на cloneNode.
+    if (!contractRef.current) throw new Error("Contract element not found");
     const clonedElement = contractRef.current.cloneNode(true) as HTMLDivElement;
     clonedElement.style.position = 'fixed';
     clonedElement.style.left = '0';
@@ -291,8 +294,11 @@ const commonData = {
 };
 
       if (sourceType === 'CUSTOMER') {
-        onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
-
+        // 🔒 Сначала генерируем и отправляем PDF, ПОКА форма ещё на экране (contractRef смонтирован).
+        // onSubmit ниже переключает экран на CUSTOMER_DETAILS и размонтирует эту форму — если вызвать
+        // его раньше, то за время await import('jspdf'/'html2canvas') React успевал размонтировать
+        // компонент, и contractRef.current становился null прямо перед cloneNode (краш "null is not
+        // an object (evaluating '...current.cloneNode')").
         if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
           try {
             const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
@@ -312,6 +318,8 @@ const commonData = {
             alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
           }
         }
+
+        onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
       } else if (sourceType === 'INVESTOR') {
         onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
       } else {
