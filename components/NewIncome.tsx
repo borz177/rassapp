@@ -43,6 +43,11 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [sendHistory, setSendHistory] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // 🔒 Отдельно от isSubmitting (тот уже true с момента открытия модалки подтверждения) —
+  // именно этот флаг отражает, что handleConfirm сейчас реально выполняется (генерация PDF,
+  // отправка в WhatsApp, onSubmit), и используется, чтобы заблокировать повторный клик
+  // "Зачислить"/"Отмена" во время этого окна — иначе второй клик создавал дубликат платежа.
+  const [isConfirming, setIsConfirming] = useState(false);
 
   const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
   const [discountValue, setDiscountValue] = useState('');
@@ -262,6 +267,8 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   };
 
   const handleConfirm = async () => {
+    if (isConfirming) return;
+    setIsConfirming(true);
     try {
       const numAmount = Number(amount);
       let finalDate = date;
@@ -328,6 +335,7 @@ const commonData = {
     } finally {
       setShowConfirmModal(false);
       setIsSubmitting(false);
+      setIsConfirming(false);
     }
   };
 
@@ -764,7 +772,7 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
       {showConfirmModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-          onClick={handleCancel}
+          onClick={() => { if (!isConfirming) handleCancel(); }}
         >
           <div
             className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
@@ -822,15 +830,33 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
             <div className="flex gap-3 pt-2">
               <button
                 onClick={handleCancel}
-                className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
+                disabled={isConfirming}
+                className={`flex-1 py-3 rounded-xl font-bold transition-colors ${
+                  isConfirming
+                    ? 'bg-slate-50 dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                    : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                }`}
               >
                 Отмена
               </button>
               <button
                 onClick={handleConfirm}
-                className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200"
+                disabled={isConfirming}
+                className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg shadow-emerald-200 transition-colors ${
+                  isConfirming ? 'bg-emerald-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
               >
-                Зачислить
+                {/* 🔒 Пока идёт генерация/отправка PDF, кнопка заблокирована — иначе повторный клик
+                    во время await запускает handleConfirm второй раз и создаёт дубликат платежа. */}
+                {isConfirming ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    Обработка...
+                  </span>
+                ) : 'Зачислить'}
               </button>
             </div>
           </div>
