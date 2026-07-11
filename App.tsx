@@ -705,7 +705,7 @@ useEffect(() => {
   const now = Date.now();
 
   if (!lastShown || now - Number(lastShown) >= FIVE_HOURS) {
-    setShowTemplateUpdateModal(true);
+    setShowTemplateUpdateModal(false);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
