@@ -21,6 +21,43 @@ const PLAN_LIMITS: Record<SubscriptionPlan, {
 };
 
 type SubscriptionFilter = 'all' | 'active' | 'expired' | 'none';
+type DurationUnit = 'days' | 'months';
+
+// 🔹 Иконки и подписи для событий журнала (вкладка "Логи")
+const AUDIT_ACTION_ICONS: Record<string, React.ReactNode> = {
+    SET_SUBSCRIPTION: ICONS.Crown,
+    GENERATE_API_KEY: ICONS.Key,
+    BLOCK_USER: ICONS.ShieldAlert,
+    UNBLOCK_USER: ICONS.CheckCircle,
+    RESET_PASSWORD: ICONS.Settings,
+};
+
+const formatAuditAction = (entry: { action: string; details: any }): string => {
+    const { action, details } = entry;
+    switch (action) {
+        case 'SET_SUBSCRIPTION': {
+            if (!details) return 'изменил тариф';
+            const period = details.unit === 'unlimited' ? 'бессрочно' : `${details.amount} ${details.unit === 'days' ? 'дн.' : 'мес.'}`;
+            return `установил тариф ${details.plan} на ${period}`;
+        }
+        case 'GENERATE_API_KEY': return 'перегенерировал API-ключ';
+        case 'BLOCK_USER': return 'заблокировал пользователя';
+        case 'UNBLOCK_USER': return 'разблокировал пользователя';
+        case 'RESET_PASSWORD': return 'сбросил пароль';
+        default: return action;
+    }
+};
+
+interface AuditLogEntry {
+    id: string;
+    action: string;
+    details: any;
+    createdAt: string;
+    adminName: string;
+    adminEmail?: string;
+    targetName?: string;
+    targetEmail?: string;
+}
 
 const AdminPanel: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
@@ -32,7 +69,9 @@ const AdminPanel: React.FC = () => {
     // Modal State
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [plan, setPlan] = useState<SubscriptionPlan>('STANDARD');
-    const [months, setMonths] = useState(1);
+    const [durationUnit, setDurationUnit] = useState<DurationUnit>('months');
+    const [durationAmount, setDurationAmount] = useState(1);
+    const [isUnlimited, setIsUnlimited] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [isCustom, setIsCustom] = useState(false);
@@ -47,12 +86,39 @@ const AdminPanel: React.FC = () => {
         totalUsers: number;
         activeSubscriptions: number;
         totalContracts: number;
-    }>({ totalUsers: 0, activeSubscriptions: 0, totalContracts: 0 });
+        planBreakdown: Record<string, number>;
+        expiringSoon: number;
+        newUsersLast7Days: number;
+    }>({ totalUsers: 0, activeSubscriptions: 0, totalContracts: 0, planBreakdown: {}, expiringSoon: 0, newUsersLast7Days: 0 });
+
+    // Журнал действий
+    const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
+    const [auditLoading, setAuditLoading] = useState(false);
+    const [auditLoaded, setAuditLoaded] = useState(false);
 
     useEffect(() => {
         loadUsers();
         loadSystemStats();
     }, []);
+
+    useEffect(() => {
+        if (activeTab === 'logs' && !auditLoaded) {
+            loadAuditLog();
+        }
+    }, [activeTab, auditLoaded]);
+
+    const loadAuditLog = async () => {
+        setAuditLoading(true);
+        try {
+            const data = await api.adminGetAuditLog(150);
+            setAuditLog(data);
+            setAuditLoaded(true);
+        } catch (err) {
+            console.error('Failed to load audit log:', err);
+        } finally {
+            setAuditLoading(false);
+        }
+    };
 
   const loadSystemStats = async () => {
     try {
@@ -61,7 +127,7 @@ const AdminPanel: React.FC = () => {
     } catch (err) {
         console.error('Failed to load stats:', err);
         // Устанавливаем дефолтные значения
-        setSystemStats({ totalUsers: 0, activeSubscriptions: 0, totalContracts: 0 });
+        setSystemStats({ totalUsers: 0, activeSubscriptions: 0, totalContracts: 0, planBreakdown: {}, expiringSoon: 0, newUsersLast7Days: 0 });
     }
 };
 
@@ -93,7 +159,9 @@ const AdminPanel: React.FC = () => {
     const handleOpenModal = (user: User) => {
         setSelectedUser(user);
         setPlan(user.subscription?.plan || 'START');
-        setMonths(1);
+        setDurationUnit('months');
+        setDurationAmount(1);
+        setIsUnlimited(false);
         setInputValue('');
         setIsCustom(false);
         setValidationError(null);
@@ -123,7 +191,7 @@ const AdminPanel: React.FC = () => {
 
         setActionLoading(true);
         try {
-            await api.adminSetSubscription(selectedUser.id, plan, months);
+            await api.adminSetSubscription(selectedUser.id, plan, { unit: durationUnit, amount: durationAmount, unlimited: isUnlimited });
             alert("✅ Тариф обновлен!");
             setSelectedUser(null);
             loadUsers();
@@ -219,6 +287,15 @@ const handleResetUserPassword = async (user: User) => {
         });
     }, [users, searchTerm, subscriptionFilter]);
 
+    // 🔹 Подписки, истекающие в ближайшие 3 дня (для вкладки "Статистика")
+    const expiringSoonUsers = useMemo(() => {
+        const now = new Date();
+        const soon = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+        return users
+            .filter(u => u.subscription && new Date(u.subscription.expiresAt) >= now && new Date(u.subscription.expiresAt) <= soon)
+            .sort((a, b) => new Date(a.subscription!.expiresAt).getTime() - new Date(b.subscription!.expiresAt).getTime());
+    }, [users]);
+
     const getPlanBadge = (plan: SubscriptionPlan) => {
         const styles: Record<SubscriptionPlan, string> = {
             TRIAL: 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300',
@@ -293,21 +370,48 @@ const getContractUsage = (user: User): {
             </header>
 
             {/* System Stats Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                     <div className="text-sm text-slate-500 dark:text-slate-400">Всего пользователей</div>
                     <div className="text-2xl font-bold text-slate-800 dark:text-white">{systemStats.totalUsers}</div>
                 </div>
-               {/* <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="text-sm text-slate-500">Активные подписки</div>
-                    <div className="text-2xl font-bold text-emerald-600">{systemStats.activeSubscriptions}</div>
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <div className="text-sm text-slate-500 dark:text-slate-400">Активные подписки</div>
+                    <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{systemStats.activeSubscriptions}</div>
                 </div>
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="text-sm text-slate-500">Всего договоров</div>
-                    <div className="text-2xl font-bold text-indigo-600">{systemStats.totalContracts}</div>
-                </div>*/}
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <div className="text-sm text-slate-500 dark:text-slate-400">Всего договоров</div>
+                    <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{systemStats.totalContracts}</div>
+                </div>
+                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <div className="text-sm text-slate-500 dark:text-slate-400">Истекают ≤3 дн.</div>
+                    <div className={`text-2xl font-bold ${systemStats.expiringSoon > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-white'}`}>{systemStats.expiringSoon}</div>
+                </div>
             </div>
 
+            {/* Tabs */}
+            <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
+                {([
+                    { id: 'users', label: '👥 Пользователи' },
+                    { id: 'stats', label: '📊 Статистика' },
+                    { id: 'logs', label: '📜 Логи' },
+                ] as const).map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`px-4 py-2.5 text-sm font-bold border-b-2 -mb-px transition ${
+                            activeTab === tab.id
+                                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            {activeTab === 'users' && (
+            <>
             {/* Search & Filter */}
             <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-3">
                 <div className="relative">
@@ -502,6 +606,116 @@ const getContractUsage = (user: User): {
                     </button>
                 </div>
             )}
+            </>
+            )}
+
+            {activeTab === 'stats' && (
+                <div className="space-y-4">
+                    <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                        <h3 className="font-bold text-slate-800 dark:text-white mb-4">Распределение по тарифам</h3>
+                        {Object.keys(systemStats.planBreakdown).length === 0 ? (
+                            <p className="text-sm text-slate-400">Нет активных подписок</p>
+                        ) : (
+                            <div className="space-y-3">
+                                {(['TRIAL', 'START', 'STANDARD', 'BUSINESS', 'BUSINESS_PRO'] as SubscriptionPlan[])
+                                    .filter(p => systemStats.planBreakdown[p])
+                                    .map(p => {
+                                        const count = systemStats.planBreakdown[p] || 0;
+                                        const max: number = (['TRIAL', 'START', 'STANDARD', 'BUSINESS', 'BUSINESS_PRO'] as SubscriptionPlan[])
+                                            .reduce((m, key) => Math.max(m, systemStats.planBreakdown[key] || 0), 1);
+                                        return (
+                                            <div key={p}>
+                                                <div className="flex justify-between text-xs mb-1">
+                                                    <span className="font-medium text-slate-600 dark:text-slate-300">{p}</span>
+                                                    <span className="text-slate-500 dark:text-slate-400">{count}</span>
+                                                </div>
+                                                <div className="h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${(count / max) * 100}%` }} />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                            <div className="text-sm text-slate-500 dark:text-slate-400 mb-1">Новых пользователей за 7 дней</div>
+                            <div className="text-3xl font-bold text-slate-800 dark:text-white">{systemStats.newUsersLast7Days}</div>
+                        </div>
+                        <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                            <div className="text-sm text-slate-500 dark:text-slate-400 mb-1">Подписки, истекающие в ближайшие 3 дня</div>
+                            <div className={`text-3xl font-bold ${systemStats.expiringSoon > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-white'}`}>{systemStats.expiringSoon}</div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                        <h3 className="font-bold text-slate-800 dark:text-white mb-4">Скоро истекают</h3>
+                        {expiringSoonUsers.length === 0 ? (
+                            <p className="text-sm text-slate-400">Нет подписок, истекающих в ближайшие 3 дня</p>
+                        ) : (
+                            <div className="divide-y divide-slate-100 dark:divide-slate-700">
+                                {expiringSoonUsers.map(u => (
+                                    <div key={u.id} className="py-2.5 flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="font-medium text-sm text-slate-800 dark:text-white truncate">{u.name}</div>
+                                            <div className="text-xs text-slate-400 truncate">{u.email}</div>
+                                        </div>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            {u.subscription && getPlanBadge(u.subscription.plan)}
+                                            <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                                                до {new Date(u.subscription!.expiresAt).toLocaleDateString('ru-RU')}
+                                            </span>
+                                            <button onClick={() => handleOpenModal(u)} className="text-xs px-2 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">Продлить</button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'logs' && (
+                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <div className="p-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-700">
+                        <h3 className="font-bold text-slate-800 dark:text-white">Журнал действий администратора</h3>
+                        <button onClick={loadAuditLog} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition" title="Обновить">
+                            {ICONS.Refresh}
+                        </button>
+                    </div>
+                    {auditLoading ? (
+                        <div className="text-center py-10">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-3"></div>
+                            <span className="text-slate-500 dark:text-slate-400">Загрузка журнала...</span>
+                        </div>
+                    ) : auditLog.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400 text-sm">Действий пока не зафиксировано</div>
+                    ) : (
+                        <div className="divide-y divide-slate-100 dark:divide-slate-700 max-h-[70vh] overflow-y-auto">
+                            {auditLog.map(entry => (
+                                <div key={entry.id} className="p-4 flex items-start gap-3">
+                                    <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 flex-shrink-0">
+                                        {AUDIT_ACTION_ICONS[entry.action] || ICONS.History}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm text-slate-800 dark:text-white">
+                                            <span className="font-bold">{entry.adminName}</span> — {formatAuditAction(entry)}
+                                        </p>
+                                        {entry.targetName && (
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                                                Пользователь: {entry.targetName} {entry.targetEmail ? `(${entry.targetEmail})` : ''}
+                                            </p>
+                                        )}
+                                        <p className="text-xs text-slate-400 mt-0.5">{new Date(entry.createdAt).toLocaleString('ru-RU')}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* 🔹 Modal: Управление тарифом */}
             {selectedUser && (
@@ -554,26 +768,54 @@ const getContractUsage = (user: User): {
                             {/* Period Selection */}
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Срок действия</label>
+
+                                {/* Unit switcher: дни / месяцы */}
+                                <div className="inline-flex mb-3 bg-slate-100 dark:bg-slate-900 rounded-lg p-1">
+                                    <button
+                                        onClick={() => { setDurationUnit('days'); setDurationAmount(7); setInputValue(''); setIsCustom(false); setIsUnlimited(false); }}
+                                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition ${
+                                            durationUnit === 'days' && !isUnlimited ? 'bg-white dark:bg-slate-700 shadow text-slate-800 dark:text-white' : 'text-slate-500 dark:text-slate-400'
+                                        }`}
+                                    >
+                                        Дни
+                                    </button>
+                                    <button
+                                        onClick={() => { setDurationUnit('months'); setDurationAmount(1); setInputValue(''); setIsCustom(false); setIsUnlimited(false); }}
+                                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition ${
+                                            durationUnit === 'months' && !isUnlimited ? 'bg-white dark:bg-slate-700 shadow text-slate-800 dark:text-white' : 'text-slate-500 dark:text-slate-400'
+                                        }`}
+                                    >
+                                        Месяцы
+                                    </button>
+                                </div>
+
                                 <div className="flex flex-wrap gap-2 mb-3">
-                                    {[1, 3, 6, 12].map(m => (
-                                        <button key={m} onClick={() => { setMonths(m); setInputValue(''); setIsCustom(false); }}
+                                    {(durationUnit === 'days' ? [3, 7, 14, 30, 90] : [1, 3, 6, 12]).map(v => (
+                                        <button key={v} onClick={() => { setDurationAmount(v); setInputValue(''); setIsCustom(false); setIsUnlimited(false); }}
                                             className={`px-4 py-2 text-sm font-medium rounded-lg border transition ${
-                                                months === m && !isCustom ? 'bg-slate-800 text-white border-slate-800' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
+                                                durationAmount === v && !isCustom && !isUnlimited ? 'bg-slate-800 text-white border-slate-800' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'
                                             }`}>
-                                            {m} мес.
+                                            {v} {durationUnit === 'days' ? 'дн.' : 'мес.'}
                                         </button>
                                     ))}
-                                    <button onClick={() => { setMonths(999); setInputValue(''); setIsCustom(false); }}
+                                    <button onClick={() => { setIsUnlimited(true); setInputValue(''); setIsCustom(false); }}
                                         className={`px-4 py-2 text-sm font-medium rounded-lg border transition ${
-                                            months === 999 && !isCustom ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50 hover:border-emerald-400 dark:hover:border-emerald-700'
+                                            isUnlimited ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50 hover:border-emerald-400 dark:hover:border-emerald-700'
                                         }`} title="Бессрочно">∞</button>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <input type="number" min="1" max="120" value={isCustom ? inputValue : ''}
-                                        onChange={(e) => { setInputValue(e.target.value); setIsCustom(true); const v = parseInt(e.target.value); if (v > 0) setMonths(Math.min(v, 120)); }}
-                                        placeholder="Свой срок" disabled={months === 999}
+                                    <input type="number" min="1" max={durationUnit === 'days' ? 3650 : 120} value={isCustom ? inputValue : ''}
+                                        onChange={(e) => {
+                                            setInputValue(e.target.value);
+                                            setIsCustom(true);
+                                            setIsUnlimited(false);
+                                            const v = parseInt(e.target.value);
+                                            const max = durationUnit === 'days' ? 3650 : 120;
+                                            if (v > 0) setDurationAmount(Math.min(v, max));
+                                        }}
+                                        placeholder="Свой срок" disabled={isUnlimited}
                                         className="flex-1 px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none focus:border-indigo-500 disabled:bg-slate-50 dark:disabled:bg-slate-800"/>
-                                    <span className="text-sm text-slate-500 dark:text-slate-400">{months === 999 ? '∞' : 'мес.'}</span>
+                                    <span className="text-sm text-slate-500 dark:text-slate-400">{isUnlimited ? '∞' : durationUnit === 'days' ? 'дн.' : 'мес.'}</span>
                                 </div>
                             </div>
 
@@ -582,7 +824,12 @@ const getContractUsage = (user: User): {
                                 <div className="flex items-center gap-2 text-sm">
                                     <span className="text-slate-500 dark:text-slate-400">📅 Будет действовать до:</span>
                                     <span className="font-bold text-slate-800 dark:text-white">
-                                        {months === 999 ? 'Не ограничено' : new Date(Date.now() + months * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('ru-RU')}
+                                        {isUnlimited ? 'Не ограничено' : (() => {
+                                            const d = new Date();
+                                            if (durationUnit === 'days') d.setDate(d.getDate() + durationAmount);
+                                            else d.setMonth(d.getMonth() + durationAmount);
+                                            return d.toLocaleDateString('ru-RU');
+                                        })()}
                                     </span>
                                 </div>
                             </div>

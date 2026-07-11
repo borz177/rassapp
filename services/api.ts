@@ -767,13 +767,17 @@ export const api = {
         return res.json();
     },
 
-    adminSetSubscription: async (userId: string, plan: SubscriptionPlan, months: number): Promise<any> => {
+    adminSetSubscription: async (
+        userId: string,
+        plan: SubscriptionPlan,
+        duration: { unit: 'days' | 'months'; amount: number; unlimited?: boolean }
+    ): Promise<any> => {
         const res = await fetchWithAuth(`${API_URL}/admin/set-subscription`, {
             method: 'POST',
-            body: JSON.stringify({ userId, plan, months })
+            body: JSON.stringify({ userId, plan, unit: duration.unit, amount: duration.amount, unlimited: !!duration.unlimited })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error('Failed to set subscription');
+        if (!res.ok) throw new Error(data.msg || 'Failed to set subscription');
         return data.subscription;
     },
 
@@ -895,9 +899,27 @@ export const api = {
       totalUsers: number;
       activeSubscriptions: number;
       totalContracts: number;
+      planBreakdown: Record<string, number>;
+      expiringSoon: number;
+      newUsersLast7Days: number;
     }> => {
       const res = await fetchWithAuth(`${API_URL}/admin/stats`);
       if (!res.ok) throw new Error('Failed to fetch stats');
+      return res.json();
+    },
+
+    adminGetAuditLog: async (limit = 100): Promise<Array<{
+      id: string;
+      action: string;
+      details: any;
+      createdAt: string;
+      adminName: string;
+      adminEmail?: string;
+      targetName?: string;
+      targetEmail?: string;
+    }>> => {
+      const res = await fetchWithAuth(`${API_URL}/admin/audit-log?limit=${limit}`);
+      if (!res.ok) throw new Error('Failed to fetch audit log');
       return res.json();
     },
 

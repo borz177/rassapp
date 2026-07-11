@@ -524,6 +524,9 @@ const initDB = async () => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='full_access_investor_ids') THEN
           ALTER TABLE users ADD COLUMN full_access_investor_ids JSONB;
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='blocked') THEN
+          ALTER TABLE users ADD COLUMN blocked BOOLEAN DEFAULT FALSE;
+        END IF;
       END $$;
     `);
 
@@ -633,7 +636,19 @@ await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_messages_is_read ON sup
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_is_active ON broadcast_messages(is_active);`);
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_target_role ON broadcast_messages(target_role);`);
 
-
+// === ЖУРНАЛ ДЕЙСТВИЙ АДМИНА ===
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS admin_audit_log (
+    id TEXT PRIMARY KEY,
+    admin_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target_user_id TEXT,
+    details JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created_at ON admin_audit_log(created_at DESC);`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_admin_audit_log_target_user_id ON admin_audit_log(target_user_id);`);
 
     initSuperAdmin();
 
@@ -694,6 +709,18 @@ const adminAuth = (req, res, next) => {
       res.status(403).json({ msg: 'Access denied: Admins only' });
     }
   });
+};
+
+// ✅ Журнал действий администратора (используется вкладкой "Логи" в Админ-панели)
+const logAdminAction = async (adminId, action, targetUserId, details) => {
+  try {
+    await pool.query(
+      `INSERT INTO admin_audit_log (id, admin_id, action, target_user_id, details) VALUES ($1, $2, $3, $4, $5)`,
+      [`log_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, adminId, action, targetUserId || null, details ? JSON.stringify(details) : null]
+    );
+  } catch (e) {
+    console.error('❌ Failed to write admin audit log:', e);
+  }
 };
 
 // --- HELPER FUNCTIONS ---
@@ -1670,6 +1697,10 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ msg: 'Неверные учетные данные' });
 
+        if (user.blocked) {
+            return res.status(403).json({ msg: 'Аккаунт заблокирован. Обратитесь в поддержку.', code: 'BLOCKED' });
+        }
+
         // 🔥 Подставляем подписку владельца для сотрудника
         let subscription = user.subscription;
         if (user.role === 'employee' && user.manager_id) {
@@ -1708,11 +1739,15 @@ app.get('/api/auth/me', auth, async (req, res) => {
     try {
         // 🔥 ДОБАВИЛИ permissions и allowed_investor_ids в SELECT
         const result = await pool.query(
-            'SELECT id, name, email, phone, role, manager_id, subscription, whatsapp_settings, api_key, permissions, allowed_investor_ids, full_access_investor_ids FROM users WHERE id = $1',
+            'SELECT id, name, email, phone, role, manager_id, subscription, whatsapp_settings, api_key, permissions, allowed_investor_ids, full_access_investor_ids, blocked FROM users WHERE id = $1',
             [req.user.id]
         );
         if (result.rows.length === 0) return res.status(404).json({ msg: 'User not found' });
         const user = result.rows[0];
+
+        if (user.blocked) {
+            return res.status(403).json({ msg: 'Аккаунт заблокирован. Обратитесь в поддержку.', code: 'BLOCKED' });
+        }
 
         // 🔥 НАСЛЕДОВАНИЕ ТАРИФА: Если это сотрудник, подставляем подписку менеджера
         let subscription = user.subscription;
@@ -2460,8 +2495,8 @@ app.post('/api/users/manage', auth, async (req, res) => {
 app.get('/api/admin/users', adminAuth, async (req, res) => {
   try {
     const query = `
-      SELECT 
-        u.id, u.name, u.email, u.role, u.phone, u.subscription, u.created_at, u.api_key,
+      SELECT
+        u.id, u.name, u.email, u.role, u.phone, u.subscription, u.created_at, u.api_key, u.blocked,
         (SELECT COUNT(*) FROM data_items WHERE user_id = u.id AND type = 'sales') as sales_count
       FROM users u
       ORDER BY u.created_at DESC
@@ -2477,7 +2512,8 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
       subscription: r.subscription,
       salesCount: parseInt(r.sales_count || '0'),
       createdAt: r.created_at,
-      apiKey: r.api_key
+      apiKey: r.api_key,
+      blocked: !!r.blocked
     }));
 
     res.json(users);
@@ -2488,18 +2524,36 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
 });
 
 app.post('/api/admin/set-subscription', adminAuth, async (req, res) => {
-  const { userId, plan, months } = req.body;
-  
+  // 🔹 unit: 'days' | 'months' (по умолчанию 'months' для обратной совместимости).
+  //    unlimited: true — выставляет срок на 50 лет вперёд вместо расчёта по unit/amount.
+  const { userId, plan, months, unit, amount, unlimited } = req.body;
+
+  if (!userId || !plan) {
+    return res.status(400).json({ msg: 'userId и plan обязательны' });
+  }
+
   try {
     const expiresAt = new Date();
-    expiresAt.setMonth(expiresAt.getMonth() + Number(months));
-    
+    const resolvedUnit = unit || 'months';
+    const resolvedAmount = Number(amount ?? months);
+
+    if (unlimited) {
+      expiresAt.setFullYear(expiresAt.getFullYear() + 50);
+    } else if (!Number.isFinite(resolvedAmount) || resolvedAmount <= 0) {
+      return res.status(400).json({ msg: 'Некорректный срок действия' });
+    } else if (resolvedUnit === 'days') {
+      expiresAt.setDate(expiresAt.getDate() + resolvedAmount);
+    } else {
+      expiresAt.setMonth(expiresAt.getMonth() + resolvedAmount);
+    }
+
     const subscription = {
       plan,
       expiresAt: expiresAt.toISOString()
     };
-    
-    await pool.query('UPDATE users SET subscription = $1 WHERE id = $2', [JSON.stringify(subscription), userId]);
+
+    await pool.query('UPDATE users SET subscription = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(subscription), userId]);
+    logAdminAction(req.user.id, 'SET_SUBSCRIPTION', userId, { plan, unit: unlimited ? 'unlimited' : resolvedUnit, amount: unlimited ? null : resolvedAmount, expiresAt: subscription.expiresAt });
     res.json({ success: true, subscription });
   } catch (e) {
     console.error("Admin set sub error", e);
@@ -2512,6 +2566,7 @@ app.post('/api/admin/generate-user-api-key', adminAuth, async (req, res) => {
   try {
     const newKey = `sk_${uuidv4().replace(/-/g, '')}`;
     await pool.query('UPDATE users SET api_key = $1 WHERE id = $2', [newKey, userId]);
+    logAdminAction(req.user.id, 'GENERATE_API_KEY', userId, null);
     res.json({ apiKey: newKey });
   } catch (err) {
     console.error("Admin Generate API Key Error:", err);
@@ -2531,8 +2586,8 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
 
     // Активные подписки
     const activeSubs = await pool.query(
-      `SELECT COUNT(*) as count FROM users 
-       WHERE subscription IS NOT NULL 
+      `SELECT COUNT(*) as count FROM users
+       WHERE subscription IS NOT NULL
        AND (subscription->>'expiresAt')::timestamp > NOW()`
     );
 
@@ -2541,13 +2596,71 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
       `SELECT COUNT(*) as count FROM data_items WHERE type = 'sales'`
     );
 
+    // 🔹 Разбивка по тарифам (среди пользователей с активной подпиской)
+    const planBreakdownResult = await pool.query(
+      `SELECT subscription->>'plan' as plan, COUNT(*) as count FROM users
+       WHERE role != 'admin' AND subscription IS NOT NULL
+       AND (subscription->>'expiresAt')::timestamp > NOW()
+       GROUP BY subscription->>'plan'`
+    );
+
+    // 🔹 Подписки, истекающие в ближайшие 3 дня
+    const expiringSoon = await pool.query(
+      `SELECT COUNT(*) as count FROM users
+       WHERE role != 'admin' AND subscription IS NOT NULL
+       AND (subscription->>'expiresAt')::timestamp BETWEEN NOW() AND NOW() + INTERVAL '3 days'`
+    );
+
+    // 🔹 Новые пользователи за последние 7 дней
+    const newUsers = await pool.query(
+      `SELECT COUNT(*) as count FROM users WHERE role != 'admin' AND created_at > NOW() - INTERVAL '7 days'`
+    );
+
     res.json({
       totalUsers: parseInt(usersCount.rows[0].count),
       activeSubscriptions: parseInt(activeSubs.rows[0].count),
-      totalContracts: parseInt(contractsCount.rows[0].count)
+      totalContracts: parseInt(contractsCount.rows[0].count),
+      planBreakdown: planBreakdownResult.rows.reduce((acc, r) => {
+        if (r.plan) acc[r.plan] = parseInt(r.count);
+        return acc;
+      }, {}),
+      expiringSoon: parseInt(expiringSoon.rows[0].count),
+      newUsersLast7Days: parseInt(newUsers.rows[0].count)
     });
   } catch (err) {
     console.error('Admin stats error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// === АДМИН: ЖУРНАЛ ДЕЙСТВИЙ ===
+app.get('/api/admin/audit-log', adminAuth, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 100, 300);
+    const result = await pool.query(
+      `SELECT
+         l.id, l.action, l.details, l.created_at,
+         admin_u.name as admin_name, admin_u.email as admin_email,
+         target_u.name as target_name, target_u.email as target_email
+       FROM admin_audit_log l
+       LEFT JOIN users admin_u ON admin_u.id = l.admin_id
+       LEFT JOIN users target_u ON target_u.id = l.target_user_id
+       ORDER BY l.created_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+    res.json(result.rows.map(r => ({
+      id: r.id,
+      action: r.action,
+      details: r.details,
+      createdAt: r.created_at,
+      adminName: r.admin_name || 'Неизвестно',
+      adminEmail: r.admin_email,
+      targetName: r.target_name,
+      targetEmail: r.target_email
+    })));
+  } catch (err) {
+    console.error('Admin audit log error:', err);
     res.status(500).json({ msg: 'Server error' });
   }
 });
@@ -2576,6 +2689,7 @@ app.patch('/api/admin/users/:userId/status', adminAuth, async (req, res) => {
       [blocked, userId]
     );
 
+    logAdminAction(req.user.id, blocked ? 'BLOCK_USER' : 'UNBLOCK_USER', userId, null);
     res.json({ success: true });
   } catch (err) {
     console.error('Update user status error:', err);
@@ -2601,6 +2715,7 @@ app.post('/api/admin/users/:userId/reset-password', adminAuth, async (req, res) 
       [hashedPassword, userId]
     );
 
+    logAdminAction(req.user.id, 'RESET_PASSWORD', userId, null);
     res.json({ success: true });
   } catch (err) {
     console.error('Reset password error:', err);
