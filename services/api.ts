@@ -558,7 +558,8 @@ export const api = {
           TRIAL: { contracts: 10 },
           START: { contracts: 100 },
           STANDARD: { contracts: 500 },
-          BUSINESS: { contracts: -1 }
+          BUSINESS: { contracts: -1 },
+          BUSINESS_PRO: { contracts: -1 }
         };
         const limit = LIMITS[user.subscription?.plan]?.contracts ?? 0;
         if (user.role !== 'admin' && limit !== -1) {
@@ -957,7 +958,8 @@ export const api = {
           TRIAL: { contracts: 10 },
           START: { contracts: 100 },
           STANDARD: { contracts: 500 },
-          BUSINESS: { contracts: -1 }
+          BUSINESS: { contracts: -1 },
+          BUSINESS_PRO: { contracts: -1 }
         };
 
         const limit = LIMITS[plan]?.contracts ?? 0;
