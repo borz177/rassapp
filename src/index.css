@@ -255,6 +255,41 @@ input, textarea, [contenteditable] {
   animation: fade-out 0.25s ease forwards;
 }
 
+/* ============================================
+   PAGE PUSH — mobile-app style push navigation
+   ============================================ */
+.page-push-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  transition: transform 0.26s cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+}
+
+.page-push-back-btn {
+  position: sticky;
+  top: max(0.75rem, env(safe-area-inset-top, 0px));
+  left: 0.75rem;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin: 0.75rem 0 0 0.75rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.85);
+  color: #334155;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(6px);
+}
+.dark .page-push-back-btn {
+  background: rgba(30, 41, 59, 0.85);
+  color: #e2e8f0;
+}
+
 
 
 

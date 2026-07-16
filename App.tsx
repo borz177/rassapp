@@ -24,6 +24,7 @@ import SupplierDetails from './components/SupplierDetails';
 import InvestorDashboard from './components/InvestorDashboard';
 import Tariffs from './components/Tariffs';
 import Auth from './components/Auth';
+import PagePush from './components/transitions/PagePush';
 // 🔹 Редко открываемые/тяжёлые экраны — грузим отдельными чанками по требованию,
 // чтобы не тащить их в основной бандл (особенно заметно на медленном соединении/VPN).
 const AdminPanel = lazy(() => import('./components/AdminPanel'));
@@ -85,6 +86,13 @@ async function setupNativeApp() {
 }
 
 
+
+// Views pushed on top of the mobile "Еще" menu — kept stacked over MORE (which stays mounted
+// underneath, gated on previousView === 'MORE') so swiping back reveals the real menu, not blank space.
+const MORE_PUSH_VIEWS = new Set<ViewState>([
+  'PROFILE', 'SETTINGS', 'EMPLOYEES', 'SUPPLIERS', 'TARIFFS', 'ADMIN_PANEL',
+  'REPORTS', 'CONTRACTS', 'INVESTORS', 'CASH_REGISTER',
+]);
 
 const App: React.FC = () => {
     const path = window.location.pathname
@@ -2732,6 +2740,7 @@ if (!user && !showSplash) {
   })()
 )}
               {currentView === 'CASH_REGISTER' && (
+  <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
   <CashRegister
     // 🔹 Фильтрация данных для инвестора
     accounts={isInvestor && user
@@ -2769,8 +2778,10 @@ if (!user && !showSplash) {
     setMyProfitPeriod={setMyProfitPeriod}
     appSettings={appSettings}
   />
+  </PagePush>
 )}
               {currentView === 'CONTRACTS' && (
+                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                   <Contracts
                       sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
                       customers={customers}
@@ -2785,20 +2796,30 @@ if (!user && !showSplash) {
                       employees={employees}
                       appSettings={appSettings}
                   />
+                  </PagePush>
               )}
-              {currentView === 'INVESTORS' && <Investors investors={investors} accounts={accounts}
+              {currentView === 'INVESTORS' && (
+                <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+                  <Investors investors={investors} accounts={accounts}
                                                          showPools={checkAccess('INVESTOR_POOLS')}
                                                          onAddInvestor={handleAddInvestor}
                                                          onUpdateInvestor={handleUpdateInvestor}
                                                          onDeleteInvestor={handleDeleteInvestor}
                                                          onViewDetails={handleSelectInvestor}
-                                                         appSettings={appSettings}/>}
-              {currentView === 'INVESTOR_DETAILS' && selectedInvestorId &&
-                  <InvestorDetails investor={investors.find(i => i.id === selectedInvestorId)!}
+                                                         appSettings={appSettings}/>
+                </PagePush>
+              )}
+              {currentView === 'INVESTOR_DETAILS' && selectedInvestorId && (
+                  <PagePush onClose={() => setCurrentView('INVESTORS')}>
+                    {(requestClose: () => void) => (
+                      <InvestorDetails investor={investors.find((i: Investor) => i.id === selectedInvestorId)!}
                                    investors={investors}
                                    account={getInvestorAccount(selectedInvestorId, accounts)} sales={sales}
-                                   expenses={expenses} onBack={() => setCurrentView('INVESTORS')}
-                                   appSettings={appSettings}/>}
+                                   expenses={expenses} onBack={requestClose}
+                                   appSettings={appSettings}/>
+                    )}
+                  </PagePush>
+              )}
               {currentView === 'PARTNERS' && (
                   <Partners
                       partnerships={partnerships}
@@ -2812,6 +2833,7 @@ if (!user && !showSplash) {
                   />
               )}
               {currentView === 'SUPPLIERS' && (
+                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                   <Suppliers
                       suppliers={suppliers}
                       sales={sales}
@@ -2821,21 +2843,26 @@ if (!user && !showSplash) {
                       onDeleteSupplier={handleDeleteSupplier}
                       onViewDetails={handleSelectSupplier}
                   />
+                  </PagePush>
               )}
               {currentView === 'SUPPLIER_DETAILS' && selectedSupplierId && (
-                  <SupplierDetails
-                      supplier={suppliers.find(s => s.id === selectedSupplierId)!}
+                  <PagePush onClose={() => setCurrentView('SUPPLIERS')}>
+                    {(requestClose: () => void) => (
+                      <SupplierDetails
+                      supplier={suppliers.find((s: Supplier) => s.id === selectedSupplierId)!}
                       sales={sales}
                       expenses={expenses}
                       customers={customers}
                       showCents={appSettings.showCents}
                       appSettings={appSettings}
-                      onBack={() => setCurrentView('SUPPLIERS')}
+                      onBack={requestClose}
                       onPaySupplier={handlePaySupplier}
                       onViewContract={handleViewSupplierContract}
-                  />
+                      />
+                    )}
+                  </PagePush>
               )}
-              {currentView === 'CUSTOMERS' && (
+              {(currentView === 'CUSTOMERS' || (currentView === 'CUSTOMER_DETAILS' && previousView === 'CUSTOMERS')) && (
                   <Customers
                       customers={customers}
                       accounts={accounts}
@@ -2852,12 +2879,16 @@ if (!user && !showSplash) {
                   />
               )}
               {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId &&
-                  <CustomerDetails customer={customers.find(c => c.id === selectedCustomerId)!} sales={sales}
-                                   accounts={accounts} investors={investors} onBack={() => setCurrentView(previousView)}
-                                   onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment}
-                                   onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer}
-                                   suppliers={suppliers} onPaySupplier={handlePaySupplier}
-                                   initialSaleId={initialSaleIdForDetails} appSettings={appSettings} user={user}/>}
+                  <PagePush onClose={() => setCurrentView(previousView)}>
+                    {(requestClose: () => void) => (
+                      <CustomerDetails customer={customers.find((c: Customer) => c.id === selectedCustomerId)!} sales={sales}
+                                       accounts={accounts} investors={investors} onBack={requestClose}
+                                       onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment}
+                                       onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer}
+                                       suppliers={suppliers} onPaySupplier={handlePaySupplier}
+                                       initialSaleId={initialSaleIdForDetails} appSettings={appSettings} user={user}/>
+                    )}
+                  </PagePush>}
               {currentView === 'MANAGE_PRODUCTS' &&
                   <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct}
                             onDeleteProduct={handleDeleteProduct} appSettings={appSettings}/>}
@@ -2874,9 +2905,12 @@ if (!user && !showSplash) {
                       appSettings={appSettings}
                   />
               )}
-              {currentView === 'REPORTS' && reportData &&
-                  <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters}
-                           data={reportData} appSettings={appSettings} sales={sales} expenses={expenses} accounts={accounts} customers={customers}/>}
+              {currentView === 'REPORTS' && reportData && (
+                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+                    <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters}
+                           data={reportData} appSettings={appSettings} sales={sales} expenses={expenses} accounts={accounts} customers={customers}/>
+                  </PagePush>
+              )}
 
               {currentView === 'CREATE_INCOME' &&
                   <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts}
@@ -2901,73 +2935,102 @@ if (!user && !showSplash) {
               }))} onSelect={(id) => handleSelection('customerId', id)}
                                                                    onCancel={() => setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE')}
                                                                    onAddNew={handleQuickAddCustomer}/>}
-              {currentView === 'EMPLOYEES' &&
-                  <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee}
+              {currentView === 'EMPLOYEES' && (
+                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+                    <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee}
                              onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee}
-                             appSettings={appSettings}/>}
-              {currentView === 'TARIFFS' && <Tariffs user={user}/>}
+                             appSettings={appSettings}/>
+                  </PagePush>
+              )}
+              {currentView === 'TARIFFS' && (
+                <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+                  <Tariffs user={user}/>
+                </PagePush>
+              )}
 
-              {currentView === 'SETTINGS' && <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings}
-                                                       onNavigate={setCurrentView} onImportData={handleImportData} currentUserId={user.id} user={user}/>}
+              {currentView === 'SETTINGS' && (
+                <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+                  <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings}
+                                                       onNavigate={(v: ViewState) => { setPreviousView('SETTINGS'); setCurrentView(v); }} onImportData={handleImportData} currentUserId={user.id} user={user}/>
+                </PagePush>
+              )}
 
               {currentView === 'INTEGRATIONS' && (
-                <Suspense fallback={<LazyFallback />}>
-                  <Integrations appSettings={appSettings} onUpdateSettings={handleUpdateSettings}
-                                onBack={() => setCurrentView('SETTINGS')}
-                                whatsappRefreshKey={whatsappRefreshKey}  // ← Обязательно!
-                                onSettingsChanged={() => {
+                <PagePush onClose={() => setCurrentView('SETTINGS')}>
+                  {(requestClose: () => void) => (
+                    <Suspense fallback={<LazyFallback />}>
+                      <Integrations appSettings={appSettings} onUpdateSettings={handleUpdateSettings}
+                                    onBack={requestClose}
+                                    whatsappRefreshKey={whatsappRefreshKey}  // ← Обязательно!
+                                    onSettingsChanged={() => {
 
-                                }}/>
-                </Suspense>
+                                    }}/>
+                    </Suspense>
+                  )}
+                </PagePush>
               )}
               {currentView === 'CALCULATOR' && (
-                <Suspense fallback={<LazyFallback />}>
-                  <Calculator
-                      appSettings={appSettings}
-                      userPhone={user?.phone}
-                      onBack={() => setCurrentView('SETTINGS')}
-                      onSaveSettings={handleUpdateSettings}
-                  />
-                </Suspense>
+                <PagePush onClose={() => setCurrentView('SETTINGS')}>
+                  {(requestClose: () => void) => (
+                    <Suspense fallback={<LazyFallback />}>
+                      <Calculator
+                          appSettings={appSettings}
+                          userPhone={user?.phone}
+                          onBack={requestClose}
+                          onSaveSettings={handleUpdateSettings}
+                      />
+                    </Suspense>
+                  )}
+                </PagePush>
               )}
 
              {currentView === 'PROFILE' && user && (
-      isInvestor && activeInvestor ? (
-        <InvestorDetails
-          investor={activeInvestor}
-          investors={investors}
-          account={getInvestorAccount(user.id, accounts)}
-          sales={sales.filter(s => s.accountId === getInvestorAccount(user.id, accounts)?.id)}
-          expenses={expenses.filter(e => e.accountId === getInvestorAccount(user.id, accounts)?.id)}
-          onBack={() => setCurrentView('DASHBOARD')}
-          appSettings={appSettings}
-        />
-      ) : (
-        <Profile
-          user={user}
-          onUpdateProfile={handleUpdateProfile}
-          onBack={() => setCurrentView('MORE')}
-          onLogout={() => {
-            localStorage.removeItem('user');
-            localStorage.removeItem('token');
-            setUser(null);
-          }}
+      <PagePush onClose={() => setCurrentView(isInvestor ? 'DASHBOARD' : 'MORE')}>
+        {(requestClose: () => void) => (
+          isInvestor && activeInvestor ? (
+            <InvestorDetails
+              investor={activeInvestor}
+              investors={investors}
+              account={getInvestorAccount(user.id, accounts)}
+              sales={sales.filter((s: Sale) => s.accountId === getInvestorAccount(user.id, accounts)?.id)}
+              expenses={expenses.filter((e: Expense) => e.accountId === getInvestorAccount(user.id, accounts)?.id)}
+              onBack={requestClose}
+              appSettings={appSettings}
+            />
+          ) : (
+            <Profile
+              user={user}
+              onUpdateProfile={handleUpdateProfile}
+              onBack={requestClose}
+              onLogout={() => {
+                localStorage.removeItem('user');
+                localStorage.removeItem('token');
+                setUser(null);
+              }}
 
-        />
-      )
+            />
+          )
+        )}
+      </PagePush>
     )}
 
     {currentView === 'ADMIN_PANEL' && (
-      <Suspense fallback={<LazyFallback />}>
-        <AdminPanel/>
-      </Suspense>
+      <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+        <Suspense fallback={<LazyFallback />}>
+          <AdminPanel/>
+        </Suspense>
+      </PagePush>
     )}
 
     {/* 🔹 АДМИН ПАНЕЛЬ ПОДДЕРЖКИ */}
     {currentView === 'ADMIN_SUPPORT' && user?.role === 'admin' && (
-      <Suspense fallback={<LazyFallback />}>
-        <AdminSupportPanel onBack={() => setCurrentView('ADMIN_PANEL')} />
-      </Suspense>
+      <PagePush onClose={() => setCurrentView('ADMIN_PANEL')}>
+        {(requestClose: () => void) => (
+          <Suspense fallback={<LazyFallback />}>
+            <AdminSupportPanel onBack={requestClose} />
+          </Suspense>
+        )}
+      </PagePush>
     )}
 
     {/* 🔹 МОДАЛЬНОЕ ОКНО ЧАТА ПОДДЕРЖКИ */}
@@ -2980,12 +3043,12 @@ if (!user && !showSplash) {
     )}
 
     {/* ==================== МОБИЛЬНОЕ МЕНЮ "ЕЩЁ" ==================== */}
-    {currentView === 'MORE' && !isInvestor && (
+    {(currentView === 'MORE' || (previousView === 'MORE' && MORE_PUSH_VIEWS.has(currentView))) && !isInvestor && (
       <div className="space-y-4 animate-fade-in pb-20">
 
    {/* Профиль */}
 <button
-  onClick={() => setCurrentView('PROFILE')}
+  onClick={() => { setPreviousView('MORE'); setCurrentView('PROFILE'); }}
   className="group w-full bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm hover:bg-white/90 dark:hover:bg-slate-800/90
              text-slate-800 dark:text-white p-6 rounded-2xl flex items-center gap-4
              transition-all duration-300 hover:shadow-xl
@@ -3028,7 +3091,7 @@ if (!user && !showSplash) {
                 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50'
                 : 'bg-[var(--color-primary-100)] text-[var(--color-primary-700)] border border-[var(--color-primary-200)]'
             }`}
-          onClick={(e) => { e.stopPropagation(); setCurrentView('TARIFFS'); }}
+          onClick={(e) => { e.stopPropagation(); setPreviousView('MORE'); setCurrentView('TARIFFS'); }}
           title="Управление подпиской"
         >
           <span className="font-semibold">{subStatus.planName}</span>
@@ -3089,7 +3152,7 @@ if (!user && !showSplash) {
             </button>
             {moreExpandedSection === 'CASH' && (
               <div className="bg-slate-50 dark:bg-slate-700/50 border-t border-slate-100 dark:border-slate-700 p-2 space-y-1">
-                <button onClick={() => setCurrentView('CASH_REGISTER')}
+                <button onClick={() => { setPreviousView('MORE'); setCurrentView('CASH_REGISTER'); }}
                         className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <span className="opacity-70">{ICONS.Wallet}</span> Счета
                 </button>
@@ -3129,17 +3192,17 @@ if (!user && !showSplash) {
                         className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <span className="opacity-70">{ICONS.AddSmall}</span> Оформить
                 </button>
-                <button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('ACTIVE'); }}
+                <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('ACTIVE'); }}
                         className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Check}</span> Активные</div>
                   {contractCounts.active > 0 && <span className="text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-semibold px-2 py-0.5 rounded-full">{contractCounts.active}</span>}
                 </button>
-                <button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('OVERDUE'); }}
+                <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('OVERDUE'); }}
                         className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Alert}</span> Просроченные</div>
                   {contractCounts.overdue > 0 && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold px-2 py-0.5 rounded-full">{contractCounts.overdue}</span>}
                 </button>
-                <button onClick={() => { setCurrentView('CONTRACTS'); setActiveContractTab('ARCHIVE'); }}
+                <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('ARCHIVE'); }}
                         className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Clock}</span> Архив</div>
                   {contractCounts.archive > 0 && <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold px-2 py-0.5 rounded-full">{contractCounts.archive}</span>}
@@ -3149,7 +3212,7 @@ if (!user && !showSplash) {
           </div>
 
           {/* Отчеты */}
-          <button onClick={() => setCurrentView('REPORTS')}
+          <button onClick={() => { setPreviousView('MORE'); setCurrentView('REPORTS'); }}
                   className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
             <div className="flex items-center gap-3">
               <div className="bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 p-2 rounded-lg">{ICONS.Dashboard}</div>
@@ -3164,7 +3227,7 @@ if (!user && !showSplash) {
 
 
           {/* Инвесторы */}
-          <button onClick={() => setCurrentView('INVESTORS')}
+          <button onClick={() => { setPreviousView('MORE'); setCurrentView('INVESTORS'); }}
                   className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
             <div className="flex items-center gap-3">
               <div className="bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 p-2 rounded-lg">{ICONS.Users}</div>
@@ -3179,7 +3242,7 @@ if (!user && !showSplash) {
 
           {/* Сотрудники (только менеджер) */}
           {user.role === 'manager' && (
-            <button onClick={() => setCurrentView('EMPLOYEES')}
+            <button onClick={() => { setPreviousView('MORE'); setCurrentView('EMPLOYEES'); }}
                     className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
               <div className="flex items-center gap-3">
                 <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 p-2 rounded-lg">{ICONS.Employees}</div>
@@ -3195,7 +3258,7 @@ if (!user && !showSplash) {
 
           {/* Партнеры (поставщики) — только тариф Бизнес Pro */}
           {user.role === 'manager' && checkAccess('SUPPLIERS') && (
-            <button onClick={() => setCurrentView('SUPPLIERS')}
+            <button onClick={() => { setPreviousView('MORE'); setCurrentView('SUPPLIERS'); }}
                     className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
               <div className="flex items-center gap-3">
                 <div className="bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 p-2 rounded-lg">{ICONS.Suppliers}</div>
@@ -3210,7 +3273,7 @@ if (!user && !showSplash) {
           )}
 
           {/* Тарифы */}
-          <button onClick={() => setCurrentView('TARIFFS')}
+          <button onClick={() => { setPreviousView('MORE'); setCurrentView('TARIFFS'); }}
                   className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
             <div className="flex items-center gap-3">
               <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 p-2 rounded-lg">{ICONS.Tariffs}</div>
@@ -3225,7 +3288,7 @@ if (!user && !showSplash) {
 
           {/* Админ панель (только админ) */}
           {user.role === 'admin' && (
-            <button onClick={() => setCurrentView('ADMIN_PANEL')}
+            <button onClick={() => { setPreviousView('MORE'); setCurrentView('ADMIN_PANEL'); }}
                     className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
               <div className="flex items-center gap-3">
                 <div className="bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-2 rounded-lg">{ICONS.Crown}</div>
@@ -3279,7 +3342,7 @@ if (!user && !showSplash) {
 </button>)}
 
           {/* Настройки */}
-          <button onClick={() => setCurrentView('SETTINGS')}
+          <button onClick={() => { setPreviousView('MORE'); setCurrentView('SETTINGS'); }}
                   className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
             <div className="flex items-center gap-3">
               <div className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 p-2 rounded-lg">{ICONS.Settings}</div>
