@@ -725,7 +725,7 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v13';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v14';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -733,6 +733,7 @@ useEffect(() => {
 
   if (!lastShown || now - Number(lastShown) >= FIVE_HOURS) {
     setShowTemplateUpdateModal(true);
+    localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
 
@@ -3650,7 +3651,7 @@ if (!user && !showSplash) {
 {showTemplateUpdateModal && (
   <div
     className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
-    onClick={() => { setShowTemplateUpdateModal(false); localStorage.setItem('template_update_notice_last_shown_v12', String(Date.now())); }}
+    onClick={() => setShowTemplateUpdateModal(false)}
   >
     <div
       className="bg-white dark:bg-slate-800 w-full max-w-xs rounded-2xl shadow-xl p-6 text-center animate-scale-in"
@@ -3710,7 +3711,7 @@ if (!user && !showSplash) {
       </div>
 
       <button
-        onClick={() => { setShowTemplateUpdateModal(false); localStorage.setItem('template_update_notice_last_shown_v12', String(Date.now())); }}
+        onClick={() => setShowTemplateUpdateModal(false)}
         className="w-full py-2.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-medium rounded-lg hover:bg-gray-800 dark:hover:bg-slate-100 active:scale-[0.98] transition-all"
       >
         Понятно
