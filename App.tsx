@@ -732,7 +732,7 @@ useEffect(() => {
   const now = Date.now();
 
   if (!lastShown || now - Number(lastShown) >= FIVE_HOURS) {
-    setShowTemplateUpdateModal(false);
+    setShowTemplateUpdateModal(true);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
@@ -3648,8 +3648,6 @@ if (!user && !showSplash) {
 
 
 
-
-
 {showTemplateUpdateModal && (
   <div
     className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
@@ -3668,26 +3666,46 @@ if (!user && !showSplash) {
       </h3>
 
       <p className="text-sm text-gray-500 dark:text-slate-400 mb-4 leading-relaxed">
-        Добавили новые возможности для работы с партнёрами,инвесторами и доработали редактирование договора
+        Доработали отчёты, добавили плавные анимации и расширили контроль за работой сотрудников
       </p>
 
       <div className="space-y-3 text-left mb-6">
+        {/* Отчёты */}
         <div className="flex items-start gap-3">
           <div className="w-9 h-9 shrink-0 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-lg">
-            🤝
+            📊
           </div>
           <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">Модуль «Партнёры»</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">Учёт долгов по закупу у поставщиков и частичная оплата им</p>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Умные отчёты</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
+              Новые карточки «Закуп» и «Продажи» с выбором периода — смотрите динамику за день, неделю или месяц
+            </p>
           </div>
         </div>
+
+        {/* Анимации */}
         <div className="flex items-start gap-3">
           <div className="w-9 h-9 shrink-0 rounded-xl bg-fuchsia-100 dark:bg-fuchsia-900/30 flex items-center justify-center text-lg">
+            ✨
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Плавные переходы</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
+              Добавили красивые анимации между страницами — интерфейс стал живее и приятнее в работе
+            </p>
+          </div>
+        </div>
+
+        {/* Сотрудники */}
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 shrink-0 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-lg">
             👥
           </div>
           <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">Общая касса</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">Несколько инвесторов на одном счёте с автоматическим распределением прибыли по вложению и проценту каждого</p>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Активность сотрудников</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
+              Владелец видит всю ленту действий: сколько договоров оформил сотрудник, сколько платежей занёс и что сделал за день
+            </p>
           </div>
         </div>
       </div>
