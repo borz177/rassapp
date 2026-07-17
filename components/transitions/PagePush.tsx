@@ -99,8 +99,24 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, cl
       setClosing(true);
     } else {
       setLiveTransform(0, true);
+      // Once the snap-back settles, drop the inline transform entirely (see note below) —
+      // otherwise it lingers and the page-push-back-into-idle bug below re-triggers.
+      window.setTimeout(() => {
+        const el = rootRef.current;
+        if (el) {
+          el.style.transform = '';
+          el.style.transition = '';
+        }
+      }, CLOSE_DURATION);
     }
   };
+
+  // A CSS `transform` on this element (even a no-op translateX(0)) makes it the containing
+  // block for any `position: fixed` descendant (e.g. modals rendered inside a pushed page),
+  // so those would anchor to this scrolling layer instead of the viewport and appear
+  // scrolled off-screen. Only set `transform` while actually animating/dragging; once the
+  // page has settled, drop it so fixed-position children behave normally again.
+  const idle = entered && !closing;
 
   return (
     <div
@@ -110,7 +126,7 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, cl
       onTouchEnd={onTouchEnd}
       onTouchCancel={onTouchEnd}
       className={`page-push-layer bg-slate-50 dark:bg-slate-900 ${className}`}
-      style={{ transform: closing ? 'translateX(100%)' : entered ? 'translateX(0)' : 'translateX(100%)' }}
+      style={idle ? undefined : { transform: 'translateX(100%)' }}
     >
       {showBackButton && (
         <button onClick={requestClose} aria-label="Назад" className="page-push-back-btn">
@@ -119,7 +135,7 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, cl
           </svg>
         </button>
       )}
-      <div className="page-push-scroll">{typeof children === 'function' ? children(requestClose) : children}</div>
+      <div className="page-push-scroll max-w-7xl mx-auto p-4 md:p-10">{typeof children === 'function' ? children(requestClose) : children}</div>
     </div>
   );
 };

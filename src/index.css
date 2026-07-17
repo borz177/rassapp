@@ -259,13 +259,22 @@ input, textarea, [contenteditable] {
    PAGE PUSH — mobile-app style push navigation
    ============================================ */
 .page-push-layer {
-  position: absolute;
-  inset: 0;
+  position: fixed;
+  top: 4rem; /* below the mobile top header (h-16) */
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 30;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   transition: transform 0.26s cubic-bezier(0.32, 0.72, 0, 1);
   will-change: transform;
+}
+@media (min-width: 768px) {
+  .page-push-layer {
+    top: 0;
+    left: 16rem; /* desktop sidebar width (w-64) */
+  }
 }
 
 .page-push-back-btn {
