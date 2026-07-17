@@ -277,6 +277,12 @@ input, textarea, [contenteditable] {
   .page-push-layer {
     top: 0;
     left: 16rem; /* desktop sidebar width (w-64) */
+    /* Desktop already has a persistent sidebar for navigation, so the mobile-style push
+       animation and floating back arrow are unnecessary there — the page just appears
+       instantly. This is a pure CSS override; the underlying push/swipe/close logic in
+       PagePush.tsx is untouched and still runs exactly the same (harmlessly, since no
+       touch events fire on desktop anyway), so nothing about the mobile behavior changes. */
+    transition-duration: 0s;
   }
 }
 
@@ -300,6 +306,13 @@ input, textarea, [contenteditable] {
 .dark .page-push-back-btn {
   background: rgba(30, 41, 59, 0.85);
   color: #e2e8f0;
+}
+/* Desktop has a persistent sidebar for navigation, so the floating back arrow is redundant
+   there. Placed after the base rule (equal specificity) so it actually wins the cascade. */
+@media (min-width: 768px) {
+  .page-push-back-btn {
+    display: none;
+  }
 }
 
 /* Guarantees every pushed page clears the fixed mobile bottom nav, regardless of whether the
