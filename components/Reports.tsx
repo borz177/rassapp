@@ -423,15 +423,19 @@ const Reports: React.FC<ReportsProps> = ({
     const efficiencyColor: KpiColor = efficiency >= 80 ? 'emerald' : efficiency >= 50 ? 'amber' : 'red';
     const efficiencyLabel = efficiency >= 80 ? 'Отлично' : efficiency >= 50 ? 'Норма' : 'Низкая';
 
-    // Закуп и продажи — договоры, открытые в периоде (Вариант A: по startDate)
+    // Закуп и продажи — договоры типа INSTALLMENT, открытые в периоде (как на дашборде)
+    // Исключаем system_* и инвестор-клиентов (та же логика что totalBuyCost / installmentSalesTotal на дашборде)
     const salesStats = useMemo(() => {
         const startDate = new Date(filters.period.start);
         const endDate = new Date(filters.period.end);
         endDate.setHours(23, 59, 59, 999);
+        const investorIds = new Set((investors as Investor[]).map((i: Investor) => i.id));
         const periodSales = (sales as Sale[]).filter((s: Sale) => {
             const sDate = new Date(s.startDate);
             if (!(sDate >= startDate && sDate <= endDate)) return false;
             if (s.status === 'DEFAULTED') return false;
+            if (s.customerId.startsWith('system_') || investorIds.has(s.customerId)) return false;
+            if (s.type !== 'INSTALLMENT') return false;
             if (filters.accountId !== 'ALL') return s.accountId === filters.accountId;
             return true;
         });
@@ -439,7 +443,7 @@ const Reports: React.FC<ReportsProps> = ({
         const totalSaleAmount = periodSales.reduce((sum: number, s: Sale) => sum + s.totalAmount, 0);
         const grossProfit = totalSaleAmount - totalBuyPrice;
         return { totalBuyPrice, totalSaleAmount, grossProfit, count: periodSales.length };
-    }, [sales, filters]);
+    }, [sales, investors, filters]);
 
     // CSV Export
     const exportCSV = (opts: typeof exportOptions) => {
@@ -786,12 +790,12 @@ const Reports: React.FC<ReportsProps> = ({
                                     <div className="bg-gradient-to-br from-rose-50 to-white dark:from-rose-900/20 dark:to-slate-800 p-4 rounded-xl border border-rose-100 dark:border-rose-900/30">
                                         <p className="text-xs font-medium text-rose-600 dark:text-rose-400 mb-1">Закуп (себестоимость)</p>
                                         <p className="text-xl font-bold text-rose-700 dark:text-rose-300">{formatCurrency(salesStats.totalBuyPrice, appSettings.showCents)} ₽</p>
-                                        <p className="text-xs text-rose-400 mt-1">сумма buyPrice новых договоров</p>
+                                        
                                     </div>
                                     <div className="bg-gradient-to-br from-violet-50 to-white dark:from-violet-900/20 dark:to-slate-800 p-4 rounded-xl border border-violet-100 dark:border-violet-900/30">
                                         <p className="text-xs font-medium text-violet-600 dark:text-violet-400 mb-1">Продажи (сумма контрактов)</p>
                                         <p className="text-xl font-bold text-violet-700 dark:text-violet-300">{formatCurrency(salesStats.totalSaleAmount, appSettings.showCents)} ₽</p>
-                                        <p className="text-xs text-violet-400 mt-1">totalAmount всех новых договоров</p>
+                                        
                                     </div>
                                     <div className={`bg-gradient-to-br p-4 rounded-xl border ${salesStats.grossProfit >= 0 ? 'from-emerald-50 to-white dark:from-emerald-900/20 dark:to-slate-800 border-emerald-100 dark:border-emerald-900/30' : 'from-red-50 to-white dark:from-red-900/20 dark:to-slate-800 border-red-100 dark:border-red-900/30'}`}>
                                         <p className={`text-xs font-medium mb-1 ${salesStats.grossProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>Валовая прибыль</p>
@@ -1111,7 +1115,7 @@ const Reports: React.FC<ReportsProps> = ({
             {/* Export Options Modal */}
             {(exportModal || closingModal === 'export') && (
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                    className="fixed inset-0 z-[200] flex items-center justify-center p-4"
                     onClick={closeExportModal}
                 >
                     <div className={`absolute inset-0 bg-black/50 backdrop-blur-sm ${closingModal === 'export' ? 'animate-fade-out' : ''}`} />
@@ -1214,7 +1218,7 @@ const Reports: React.FC<ReportsProps> = ({
             {/* Expense Detail Modal — Telegram style bottom sheet */}
             {(activeModal || closingModal === 'active') && (
                 <div
-                    className="fixed inset-0 z-110 flex items-end justify-center"
+                    className="fixed inset-0 z-[200] flex items-end justify-center"
                     onClick={closeActiveModal}
                 >
                     {/* Backdrop */}
