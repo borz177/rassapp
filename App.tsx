@@ -45,7 +45,7 @@ import SplashScreen from "./components/SplashScreen"
 
 import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getInvestorCapitalShare } from './src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor } from './src/utils';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
@@ -174,7 +174,7 @@ const [paymentReturnStatus, setPaymentReturnStatus] = useState<'checking' | 'suc
   });
 
   const [reportFilters, setReportFilters] = useState({
-      investorId: 'ALL',
+      accountId: 'ALL',
       period: myProfitPeriod
   });
 
@@ -952,27 +952,21 @@ const dashboardStats = useMemo(() => {
   }, [sales, accounts, investors, myProfitPeriod, isManager]);
   const reportData = useMemo(() => {
     if (!isManager) return null;
-    const { investorId, period } = reportFilters;
+    const { accountId, period } = reportFilters;
     const startDate = new Date(period.start);
     const endDate = new Date(period.end);
     endDate.setHours(23, 59, 59, 999);
 
-    let filteredSales = sales;
-    if (investorId !== 'ALL') {
-        filteredSales = sales.filter(s => {
-            const acc = accounts.find(a => a.id === s.accountId);
-            return !!acc && isAccountForInvestor(acc, investorId);
-        });
-    }
+    const filteredSales = accountId === 'ALL'
+        ? sales
+        : sales.filter(s => s.accountId === accountId);
 
     let customerPaymentsInPeriod = 0;
-
     filteredSales.forEach(sale => {
         const allPayments = [
-            { date: sale.startDate, amount: sale.downPayment, isRealPayment: true },
-            ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false) // Exclude plan items
+            { date: sale.startDate, amount: sale.downPayment },
+            ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
         ];
-
         allPayments.forEach(p => {
             const paymentDate = new Date(p.date);
             if (paymentDate >= startDate && paymentDate <= endDate) {
@@ -983,78 +977,38 @@ const dashboardStats = useMemo(() => {
 
     let expectedManagerProfit = 0;
     let expectedInvestorProfit = 0;
-
-    // Expected profit should include both ACTIVE and COMPLETED sales
-    const salesForExpectation = (investorId === 'ALL' ? sales : filteredSales)
-        .filter(s => (s.status === 'ACTIVE' || s.status === 'COMPLETED') && s.buyPrice > 0);
-
-    salesForExpectation.forEach(sale => {
-        const saleProfit = sale.totalAmount - sale.buyPrice;
-        if (saleProfit <= 0) return;
-
-        const account = accounts.find(a => a.id === sale.accountId);
-        const shares = getAccountShares(account, investors);
-        const totalInvestorShare = shares.reduce((sum, m) => sum + saleProfit * (m.percentage / 100), 0);
-
-        if (investorId === 'ALL') {
+    filteredSales
+        .filter(s => (s.status === 'ACTIVE' || s.status === 'COMPLETED') && s.buyPrice > 0)
+        .forEach(sale => {
+            const saleProfit = sale.totalAmount - sale.buyPrice;
+            if (saleProfit <= 0) return;
+            const account = accounts.find(a => a.id === sale.accountId);
+            const shares = getAccountShares(account, investors);
+            const totalInvestorShare = shares.reduce((sum, m) => sum + saleProfit * (m.percentage / 100), 0);
             expectedInvestorProfit += totalInvestorShare;
             expectedManagerProfit += saleProfit - totalInvestorShare;
-        } else {
-            // 🔒 При фильтре по одному инвестору пула — берём только ЕГО долю, а не всех
-            // участников пула сразу (иначе "Прибыль инвесторов" показывала бы весь пул).
-            const mine = shares.find(m => m.investor.id === investorId);
-            const myInvestorShare = mine ? saleProfit * (mine.percentage / 100) : 0;
-            const myCapitalShare = getInvestorCapitalShare(account, investorId, investors);
-            expectedInvestorProfit += myInvestorShare;
-            expectedManagerProfit += saleProfit * myCapitalShare - myInvestorShare;
-        }
-    });
+        });
 
     let realizedManagerProfit = 0;
     let realizedInvestorProfit = 0;
-
     filteredSales.forEach(sale => {
         if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
-
-        const totalSaleProfit = sale.totalAmount - sale.buyPrice;
-        const profitMargin = totalSaleProfit / sale.totalAmount;
+        const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
         const account = accounts.find(a => a.id === sale.accountId);
-
         const paymentsInPeriod = [
-            { date: sale.startDate, amount: sale.downPayment, isRealPayment: true },
-            ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false) // Exclude plan items
-        ].filter(p => {
-            const pDate = new Date(p.date);
-            return pDate >= startDate && pDate <= endDate;
-        });
+            { date: sale.startDate, amount: sale.downPayment },
+            ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
+        ].filter(p => { const d = new Date(p.date); return d >= startDate && d <= endDate; });
 
         paymentsInPeriod.forEach(p => {
-            // 🔒 Доля — на дату этого платежа (см. комментарий в realizedPeriodProfit выше).
             const profitFromPayment = p.amount * profitMargin;
-
-            if (investorId === 'ALL') {
-                const managerProfitSharePercent = getManagerSharePercent(account, investors, p.date) / 100;
-                realizedManagerProfit += profitFromPayment * managerProfitSharePercent;
-                realizedInvestorProfit += profitFromPayment * (1 - managerProfitSharePercent);
-            } else {
-                // 🔒 Как и в expected-блоке выше — только доля ЭТОГО инвестора, не всего пула.
-                const shares = getAccountShares(account, investors, p.date);
-                const mine = shares.find(m => m.investor.id === investorId);
-                const myInvestorShare = mine ? profitFromPayment * (mine.percentage / 100) : 0;
-                const myCapitalShare = getInvestorCapitalShare(account, investorId, investors, p.date);
-                realizedInvestorProfit += myInvestorShare;
-                realizedManagerProfit += profitFromPayment * myCapitalShare - myInvestorShare;
-            }
+            const managerPct = getManagerSharePercent(account, investors, p.date) / 100;
+            realizedManagerProfit += profitFromPayment * managerPct;
+            realizedInvestorProfit += profitFromPayment * (1 - managerPct);
         });
     });
 
-    return {
-        customerPaymentsInPeriod,
-        expectedManagerProfit,
-        expectedInvestorProfit,
-        realizedManagerProfit,
-        realizedInvestorProfit,
-    };
+    return { customerPaymentsInPeriod, expectedManagerProfit, expectedInvestorProfit, realizedManagerProfit, realizedInvestorProfit };
   }, [reportFilters, sales, accounts, investors, isManager]);
 
   const handleAuthSuccess = async (loggedInUser: User) => {

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Investor, AppSettings, Sale, Expense, Account, Customer } from '../types';
-import { formatCurrency, isAccountForInvestor, getAccountShares } from '../src/utils';
+import { formatCurrency, getAccountShares } from '../src/utils';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -8,7 +8,7 @@ import {
 } from 'recharts';
 
 interface ReportFilters {
-    investorId: string;
+    accountId: string;
     period: { start: string; end: string; };
 }
 
@@ -123,7 +123,7 @@ const Reports: React.FC<ReportsProps> = ({
     sales = [], expenses = [], accounts = [], customers = []
 }) => {
     const hasInvestors = investors.length > 0;
-    const showInvestorBreakdown = filters.investorId === 'ALL' && investors.length > 1;
+    const showInvestorBreakdown = filters.accountId === 'ALL' && investors.length > 1;
 
     const handlePeriodInput = (field: 'start' | 'end', value: string) => {
         onFiltersChange(prev => ({ ...prev, period: { ...prev.period, [field]: value } }));
@@ -150,11 +150,8 @@ const Reports: React.FC<ReportsProps> = ({
         const useMonthly = diffDays > 90;
 
         let filteredSales = sales;
-        if (filters.investorId !== 'ALL') {
-            filteredSales = sales.filter(s => {
-                const acc = accounts.find(a => a.id === s.accountId);
-                return !!acc && isAccountForInvestor(acc, filters.investorId);
-            });
+        if (filters.accountId !== 'ALL') {
+            filteredSales = sales.filter(s => s.accountId === filters.accountId);
         }
 
         const buckets: Record<string, number> = {};
@@ -198,13 +195,7 @@ const Reports: React.FC<ReportsProps> = ({
         const periodExpenses = (expenses as Expense[]).filter((e: Expense) => {
             const eDate = new Date(e.date);
             if (!(eDate >= startDate && eDate <= endDate && !e.isRefund)) return false;
-            if (filters.investorId !== 'ALL') {
-                if (e.payoutType === 'PROFIT' || e.payoutType === 'INVESTMENT') {
-                    return e.investorId === filters.investorId;
-                }
-                const acc = (accounts as Account[]).find((a: Account) => a.id === e.accountId);
-                return !!acc && isAccountForInvestor(acc, filters.investorId);
-            }
+            if (filters.accountId !== 'ALL') return e.accountId === filters.accountId;
             return true;
         });
         if (!periodExpenses.length) return null;
@@ -298,8 +289,8 @@ const Reports: React.FC<ReportsProps> = ({
         const endDate = new Date(filters.period.end);
         endDate.setHours(23, 59, 59, 999);
         const typedSales = sales as Sale[];
-        const filteredSales = filters.investorId !== 'ALL'
-            ? typedSales.filter((s: Sale) => { const acc = (accounts as Account[]).find((a: Account) => a.id === s.accountId); return !!acc && isAccountForInvestor(acc, filters.investorId); })
+        const filteredSales = filters.accountId !== 'ALL'
+            ? typedSales.filter((s: Sale) => s.accountId === filters.accountId)
             : typedSales;
         const items: { date: string; productName: string; customerId: string; amount: number; label: string }[] = [];
         filteredSales.forEach((sale: Sale) => {
@@ -328,7 +319,7 @@ const Reports: React.FC<ReportsProps> = ({
             const eDate = new Date(e.date);
             if (!(eDate >= startDate && eDate <= endDate && !e.isRefund &&
                 (e.payoutType === 'PROFIT' || e.payoutType === 'INVESTMENT'))) return false;
-            if (filters.investorId !== 'ALL') return e.investorId === filters.investorId;
+            if (filters.accountId !== 'ALL') return e.accountId === filters.accountId;
             return true;
         }).sort((a: Expense, b: Expense) => b.date.localeCompare(a.date))
             .map((e: Expense) => ({ ...e, investorName: (investors as Investor[]).find((i: Investor) => i.id === e.investorId)?.name }));
@@ -345,10 +336,7 @@ const Reports: React.FC<ReportsProps> = ({
             const eDate = new Date(e.date);
             if (!(eDate >= startDate && eDate <= endDate && !e.isRefund &&
                 e.payoutType !== 'PROFIT' && e.payoutType !== 'INVESTMENT')) return false;
-            if (filters.investorId !== 'ALL') {
-                const acc = (accounts as Account[]).find((a: Account) => a.id === e.accountId);
-                return !!acc && isAccountForInvestor(acc, filters.investorId);
-            }
+            if (filters.accountId !== 'ALL') return e.accountId === filters.accountId;
             return true;
         }).sort((a: Expense, b: Expense) => b.date.localeCompare(a.date));
     }, [expenses, accounts, filters]);
@@ -363,10 +351,7 @@ const Reports: React.FC<ReportsProps> = ({
         (sales as Sale[])
             .filter((s: Sale) => {
                 if (s.status === 'COMPLETED' || s.remainingAmount <= 0) return false;
-                if (filters.investorId !== 'ALL') {
-                    const acc = (accounts as Account[]).find((a: Account) => a.id === s.accountId);
-                    return !!acc && isAccountForInvestor(acc, filters.investorId);
-                }
+                if (filters.accountId !== 'ALL') return s.accountId === filters.accountId;
                 return true;
             })
             .forEach((sale: Sale) => {
@@ -438,18 +423,36 @@ const Reports: React.FC<ReportsProps> = ({
     const efficiencyColor: KpiColor = efficiency >= 80 ? 'emerald' : efficiency >= 50 ? 'amber' : 'red';
     const efficiencyLabel = efficiency >= 80 ? 'Отлично' : efficiency >= 50 ? 'Норма' : 'Низкая';
 
+    // Закуп и продажи — договоры, открытые в периоде (Вариант A: по startDate)
+    const salesStats = useMemo(() => {
+        const startDate = new Date(filters.period.start);
+        const endDate = new Date(filters.period.end);
+        endDate.setHours(23, 59, 59, 999);
+        const periodSales = (sales as Sale[]).filter((s: Sale) => {
+            const sDate = new Date(s.startDate);
+            if (!(sDate >= startDate && sDate <= endDate)) return false;
+            if (s.status === 'DEFAULTED') return false;
+            if (filters.accountId !== 'ALL') return s.accountId === filters.accountId;
+            return true;
+        });
+        const totalBuyPrice = periodSales.reduce((sum: number, s: Sale) => sum + (s.buyPrice || 0), 0);
+        const totalSaleAmount = periodSales.reduce((sum: number, s: Sale) => sum + s.totalAmount, 0);
+        const grossProfit = totalSaleAmount - totalBuyPrice;
+        return { totalBuyPrice, totalSaleAmount, grossProfit, count: periodSales.length };
+    }, [sales, filters]);
+
     // CSV Export
     const exportCSV = (opts: typeof exportOptions) => {
         const sep = ';';
-        const selectedInvestorName = filters.investorId === 'ALL'
-            ? 'Все инвесторы'
-            : investors.find(i => i.id === filters.investorId)?.name || filters.investorId;
+        const selectedAccountName = filters.accountId === 'ALL'
+            ? 'Все счета'
+            : (accounts as Account[]).find((a: Account) => a.id === filters.accountId)?.name || filters.accountId;
 
         const lines: string[] = [
             `Финансовый отчёт${sep}${sep}`,
             `Компания${sep}${appSettings.companyName || '—'}${sep}`,
             `Период${sep}${filters.period.start} — ${filters.period.end}${sep}`,
-            `Инвестор${sep}${selectedInvestorName}${sep}`,
+            `Счёт${sep}${selectedAccountName}${sep}`,
             `${sep}${sep}`,
             `ОСНОВНЫЕ ПОКАЗАТЕЛИ${sep}${sep}`,
             `Показатель${sep}Сумма (₽)${sep}`,
@@ -523,9 +526,9 @@ const Reports: React.FC<ReportsProps> = ({
 
     // PDF Export (formatted print window)
     const exportPDF = (opts: typeof exportOptions) => {
-        const selectedInvestorName = filters.investorId === 'ALL'
-            ? 'Все инвесторы'
-            : investors.find(i => i.id === filters.investorId)?.name || filters.investorId;
+        const selectedAccountName = filters.accountId === 'ALL'
+            ? 'Все счета'
+            : (accounts as Account[]).find((a: Account) => a.id === filters.accountId)?.name || filters.accountId;
         const fmt = (n: number) => formatCurrency(n, appSettings.showCents) + ' ₽';
         const companyName = appSettings.companyName || '';
 
@@ -627,7 +630,7 @@ const Reports: React.FC<ReportsProps> = ({
         </div>
         ${companyName ? `<div class="company">${companyName}</div>` : ''}
         <h1>Финансовый отчёт</h1>
-        <div class="subtitle">Период: <strong>${filters.period.start} — ${filters.period.end}</strong> · Инвестор: <strong>${selectedInvestorName}</strong></div>
+        <div class="subtitle">Период: <strong>${filters.period.start} — ${filters.period.end}</strong> · Счёт: <strong>${selectedAccountName}</strong></div>
         <h2>Ключевые показатели</h2>
         <div class="kpi-grid">
             <div class="kpi"><div class="kpi-label">Поступления</div><div class="kpi-value">${fmt(data.customerPaymentsInPeriod)}</div></div>
@@ -709,16 +712,20 @@ const Reports: React.FC<ReportsProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-1.5">
                             <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></span>Инвестор
+                                <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></span>Счёт
                             </label>
                             <div className="relative">
                                 <select
                                     className="w-full p-3 bg-white dark:bg-slate-900 dark:text-white border border-slate-200 dark:border-slate-600 rounded-xl outline-none text-sm appearance-none cursor-pointer hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
-                                    value={filters.investorId}
-                                    onChange={e => onFiltersChange(prev => ({ ...prev, investorId: e.target.value }))}
+                                    value={filters.accountId}
+                                    onChange={e => onFiltersChange(prev => ({ ...prev, accountId: e.target.value }))}
                                 >
-                                    <option value="ALL">Все инвесторы</option>
-                                    {investors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
+                                    <option value="ALL">Все счета</option>
+                                    {(accounts as Account[]).filter((a: Account) => !a.isArchived).map((a: Account) => (
+                                        <option key={a.id} value={a.id}>
+                                            {a.name}{a.type === 'INVESTOR' ? ' 👤' : a.type === 'SHARED' ? ' 🤝' : ''}
+                                        </option>
+                                    ))}
                                 </select>
                                 <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none text-xs">▼</div>
                             </div>
@@ -766,6 +773,36 @@ const Reports: React.FC<ReportsProps> = ({
                                 badge={efficiencyLabel} color={efficiencyColor} subtext="план / факт"
                             />
                         </div>
+
+                        {/* Закуп и Продажи — договоры, открытые в периоде */}
+                        {salesStats.count > 0 && (
+                            <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-5 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <span className="w-1 h-5 bg-violet-500 rounded-full"></span>
+                                    <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Договоры за период</h4>
+                                    <span className="ml-auto text-xs font-medium text-slate-500 bg-slate-100 dark:bg-slate-700 dark:text-slate-400 px-3 py-1 rounded-full">{salesStats.count} договоров</span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div className="bg-gradient-to-br from-rose-50 to-white dark:from-rose-900/20 dark:to-slate-800 p-4 rounded-xl border border-rose-100 dark:border-rose-900/30">
+                                        <p className="text-xs font-medium text-rose-600 dark:text-rose-400 mb-1">Закуп (себестоимость)</p>
+                                        <p className="text-xl font-bold text-rose-700 dark:text-rose-300">{formatCurrency(salesStats.totalBuyPrice, appSettings.showCents)} ₽</p>
+                                        <p className="text-xs text-rose-400 mt-1">сумма buyPrice новых договоров</p>
+                                    </div>
+                                    <div className="bg-gradient-to-br from-violet-50 to-white dark:from-violet-900/20 dark:to-slate-800 p-4 rounded-xl border border-violet-100 dark:border-violet-900/30">
+                                        <p className="text-xs font-medium text-violet-600 dark:text-violet-400 mb-1">Продажи (сумма контрактов)</p>
+                                        <p className="text-xl font-bold text-violet-700 dark:text-violet-300">{formatCurrency(salesStats.totalSaleAmount, appSettings.showCents)} ₽</p>
+                                        <p className="text-xs text-violet-400 mt-1">totalAmount всех новых договоров</p>
+                                    </div>
+                                    <div className={`bg-gradient-to-br p-4 rounded-xl border ${salesStats.grossProfit >= 0 ? 'from-emerald-50 to-white dark:from-emerald-900/20 dark:to-slate-800 border-emerald-100 dark:border-emerald-900/30' : 'from-red-50 to-white dark:from-red-900/20 dark:to-slate-800 border-red-100 dark:border-red-900/30'}`}>
+                                        <p className={`text-xs font-medium mb-1 ${salesStats.grossProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>Валовая прибыль</p>
+                                        <p className={`text-xl font-bold ${salesStats.grossProfit >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>{formatCurrency(salesStats.grossProfit, appSettings.showCents)} ₽</p>
+                                        <p className={`text-xs mt-1 ${salesStats.grossProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {salesStats.totalSaleAmount > 0 ? Math.round((salesStats.grossProfit / salesStats.totalSaleAmount) * 100) : 0}% маржа
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Payment timeline — area chart */}
                         {paymentTimeline.length > 1 && (

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier} from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate } from '../src/utils';
@@ -80,9 +81,9 @@ const EditCustomerModal = ({
         onClose();
     };
 
-    return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-    <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+    return createPortal(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+    <div className="bg-white dark:bg-slate-800 w-full h-full sm:h-auto sm:max-w-sm sm:rounded-2xl shadow-xl flex flex-col sm:max-h-[90vh]" onClick={e => e.stopPropagation()}>
         {/* 🔹 Заголовок — всегда виден сверху */}
         <div className="p-5 pb-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
             <h3 className="text-lg font-bold text-slate-800 dark:text-white">Редактировать клиента</h3>
@@ -153,7 +154,8 @@ const EditCustomerModal = ({
             </div>
         </div>
     </div>
-</div>
+</div>,
+        document.body
     );
 };
 
@@ -322,15 +324,14 @@ const DocumentsModal = ({
         ? { transform: `translateY(${dragY}px)`, transition: isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.32,0.72,0,1)' }
         : {};
 
-    return (
+    return createPortal(
         <>
             <div
-                className={`fixed inset-0 z-100 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+                className={`fixed inset-0 z-[200] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
                 onClick={handleClose}
             >
                 <div
-                    ref={sheetRef}
-                    className={`bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-xl p-5 pt-2 max-h-[88vh] overflow-y-auto overscroll-contain ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+                    className={`bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-xl flex flex-col max-h-[85vh] overflow-hidden ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
                     style={sheetStyle}
                     onClick={e => e.stopPropagation()}
                     onTouchStart={handleTouchStart}
@@ -338,15 +339,16 @@ const DocumentsModal = ({
                     onTouchEnd={handleTouchEnd}
                 >
                     {/* 🔹 Ручка как в Telegram — основная зона захвата для свайпа */}
-                    <div className="flex justify-center pb-3 -mx-5 sticky top-0 bg-white dark:bg-slate-800 sm:hidden cursor-grab active:cursor-grabbing">
-                        <div className="w-10 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full mt-2"/>
+                    <div className="flex-shrink-0 flex justify-center pb-1 pt-2 sm:hidden cursor-grab active:cursor-grabbing">
+                        <div className="w-10 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full"/>
                     </div>
 
-                    <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4 sticky top-0 bg-white dark:bg-slate-800 pb-2 z-10 flex items-center justify-between">
+                    <h3 className="flex-shrink-0 text-lg font-bold text-slate-800 dark:text-white px-5 pt-2 sm:pt-5 pb-2 flex items-center justify-between">
                         <span>📎 Документы</span>
                         <span className="text-sm font-normal text-slate-400 dark:text-slate-500">{customer.documents?.length || 0} шт.</span>
                     </h3>
 
+                    <div ref={sheetRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 pb-4">
                     {!isOnline && (
                         <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 rounded-xl flex items-start gap-2">
                             <span className="text-amber-600 dark:text-amber-400 mt-0.5">⚠️</span>
@@ -447,15 +449,16 @@ const DocumentsModal = ({
                             </div>
                         </details>
                     </div>
+                    </div>
 
-                    <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 sticky bottom-0 bg-white dark:bg-slate-800">
+                    <div className="flex-shrink-0 flex gap-3 px-5 py-4 border-t border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800">
                         <button type="button" onClick={handleClose} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold">Закрыть</button>
                     </div>
                 </div>
             </div>
 
             {selectedDocument && selectedDocument.fileType === 'image' && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedDocument(null)}>
+                <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedDocument(null)}>
                     <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
                         <button onClick={() => setSelectedDocument(null)} className="absolute -top-12 right-0 text-white/80 hover:text-white p-2">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -483,7 +486,8 @@ const DocumentsModal = ({
                     </div>
                 </div>
             )}
-        </>
+        </>,
+        document.body
     );
 };
 
@@ -956,8 +960,8 @@ ${customer.name}!
                     )}
                 </div>
 
-                {editingPayment && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+                {editingPayment && createPortal(
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
                         <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-2xl shadow-xl">
                             <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">Изменить дату платежа</h3>
                             <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Сумма: {formatCurrency(editingPayment.amount, appSettings.showCents)} ₽</p>
@@ -967,10 +971,11 @@ ${customer.name}!
                                 <button onClick={saveEdit} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
                             </div>
                         </div>
-                    </div>
+                    </div>,
+                    document.body
                 )}
-                {deletingPaymentId && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+                {deletingPaymentId && createPortal(
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
                         <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-2xl shadow-xl">
                             <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-4">{ICONS.Delete}</div>
                             <h3 className="text-lg font-bold text-slate-800 dark:text-white text-center mb-2">Отменить платеж?</h3>
@@ -980,7 +985,8 @@ ${customer.name}!
                                 <button onClick={confirmDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold">Да, отменить</button>
                             </div>
                         </div>
-                    </div>
+                    </div>,
+                    document.body
                 )}
             </div>
         );
@@ -1171,8 +1177,8 @@ ${customer.name}!
                     isOnline={navigator.onLine}
                 />
             )}
-            {showDeleteModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+            {showDeleteModal && createPortal(
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
                     <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-2xl shadow-xl animate-scale-in">
                         <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-4">{ICONS.Delete}</div>
                         <h3 className="text-lg font-bold text-slate-800 dark:text-white text-center mb-2">Удалить клиента?</h3>
@@ -1182,10 +1188,11 @@ ${customer.name}!
                             <button onClick={confirmDeleteCustomer} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition shadow-lg shadow-red-200 dark:shadow-red-900/30">Да, удалить</button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
-            {showBlockedDeleteModal && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => setShowBlockedDeleteModal(false)}>
+            {showBlockedDeleteModal && createPortal(
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={() => setShowBlockedDeleteModal(false)}>
                     <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-2xl shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
                         <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
                             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1221,7 +1228,8 @@ ${customer.name}!
                             <button onClick={() => setShowBlockedDeleteModal(false)} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">Понятно</button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
