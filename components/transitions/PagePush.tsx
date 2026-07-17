@@ -32,6 +32,9 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, cl
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  // Synchronous guard (unlike the `closing` state, which only updates on the next render) so a
+  // rapid second gesture during the close animation can never restart/interfere with it.
+  const closingRef = useRef(false);
   const drag = useRef<DragState>({ startX: 0, startY: 0, startT: 0, active: false, deciding: false, locked: false });
 
   useEffect(() => {
@@ -46,17 +49,46 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, cl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [closing]);
 
-  const requestClose = () => setClosing(true);
+  const requestClose = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setClosing(true);
+  };
 
-  const setLiveTransform = (px: number, animate: boolean) => {
+  // Clamps to [0, width] every time — the page can never be dragged past fully-open or
+  // fully-closed, regardless of how far or fast the finger keeps moving.
+  const setLiveTransform = (px: number, width: number, animate: boolean) => {
     const el = rootRef.current;
     if (!el) return;
+    const clamped = Math.max(0, Math.min(px, width));
+    el.style.willChange = 'transform';
     el.style.transition = animate ? '' : 'none';
-    el.style.transform = `translateX(${px}px)`;
+    el.style.transform = `translateX(${clamped}px)`;
+  };
+
+  // `transform` (and `will-change: transform`) makes this element the containing block for any
+  // `position: fixed` descendant (e.g. a modal rendered inside this pushed page), which would
+  // anchor it to this scrolling layer instead of the viewport. Drop both once an in-progress
+  // drag/animation has settled back to idle so fixed-position children behave normally again.
+  const clearInlineTransform = () => {
+    const el = rootRef.current;
+    if (el && !closingRef.current) {
+      el.style.transform = '';
+      el.style.transition = '';
+      el.style.willChange = '';
+    }
+  };
+
+  const resetDrag = () => {
+    drag.current.active = false;
+    drag.current.deciding = false;
+    drag.current.locked = false;
   };
 
   const onTouchStart = (e: React.TouchEvent) => {
-    if (closing) return;
+    if (closingRef.current) return;
+    if (drag.current.active) return; // a gesture is already being tracked — ignore stray extra touchstarts
+    if (e.touches.length !== 1) return; // ignore multi-touch (pinch etc.)
     const t = e.touches[0];
     if (t.clientX > EDGE_ZONE) return;
     drag.current = { startX: t.clientX, startY: t.clientY, startT: Date.now(), active: true, deciding: true, locked: false };
@@ -64,7 +96,19 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, cl
 
   const onTouchMove = (e: React.TouchEvent) => {
     const s = drag.current;
-    if (!s.active) return;
+    if (!s.active || closingRef.current) return;
+    if (e.touches.length !== 1) {
+      // A second finger joined mid-drag — abandon the gesture and snap back rather than
+      // leaving the page stranded mid-way with no active touch left to finish the drag.
+      const wasLocked = s.locked;
+      resetDrag();
+      if (wasLocked) {
+        const width = rootRef.current?.offsetWidth || window.innerWidth;
+        setLiveTransform(0, width, true);
+        window.setTimeout(clearInlineTransform, CLOSE_DURATION);
+      }
+      return;
+    }
     const t = e.touches[0];
     const dx = t.clientX - s.startX;
     const dy = t.clientY - s.startY;
@@ -79,43 +123,45 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, cl
     }
     if (!s.locked) return;
     const width = rootRef.current?.offsetWidth || window.innerWidth;
-    setLiveTransform(Math.max(0, Math.min(dx, width)), false);
+    setLiveTransform(dx, width, false);
+  };
+
+  const finishDrag = (clientX: number, startT: number, startX: number, commitEligible: boolean) => {
+    const width = rootRef.current?.offsetWidth || window.innerWidth;
+    const dx = Math.max(0, Math.min(clientX - startX, width));
+    const dt = Math.max(1, Date.now() - startT);
+    const velocity = dx / dt;
+    if (commitEligible && (dx > width * COMMIT_RATIO || velocity > VELOCITY_COMMIT)) {
+      setLiveTransform(width, width, true);
+      closingRef.current = true;
+      setClosing(true);
+    } else {
+      setLiveTransform(0, width, true);
+      window.setTimeout(clearInlineTransform, CLOSE_DURATION);
+    }
   };
 
   const onTouchEnd = (e: React.TouchEvent) => {
     const s = drag.current;
-    if (!s.active || !s.locked) {
-      s.active = false;
-      return;
-    }
+    const wasLocked = s.active && s.locked;
+    const { startX, startT } = s;
     s.active = false;
-    const width = rootRef.current?.offsetWidth || window.innerWidth;
+    if (!wasLocked || closingRef.current) return;
     const t = e.changedTouches[0];
-    const dx = Math.max(0, t.clientX - s.startX);
-    const dt = Math.max(1, Date.now() - s.startT);
-    const velocity = dx / dt;
-    if (dx > width * COMMIT_RATIO || velocity > VELOCITY_COMMIT) {
-      setLiveTransform(width, true);
-      setClosing(true);
-    } else {
-      setLiveTransform(0, true);
-      // Once the snap-back settles, drop the inline transform entirely (see note below) —
-      // otherwise it lingers and the page-push-back-into-idle bug below re-triggers.
-      window.setTimeout(() => {
-        const el = rootRef.current;
-        if (el) {
-          el.style.transform = '';
-          el.style.transition = '';
-        }
-      }, CLOSE_DURATION);
-    }
+    finishDrag(t.clientX, startT, startX, true);
   };
 
-  // A CSS `transform` on this element (even a no-op translateX(0)) makes it the containing
-  // block for any `position: fixed` descendant (e.g. modals rendered inside a pushed page),
-  // so those would anchor to this scrolling layer instead of the viewport and appear
-  // scrolled off-screen. Only set `transform` while actually animating/dragging; once the
-  // page has settled, drop it so fixed-position children behave normally again.
+  const onTouchCancel = () => {
+    const s = drag.current;
+    const wasLocked = s.active && s.locked;
+    s.active = false;
+    // A cancelled gesture (e.g. the OS took over) never commits a close — always snap back.
+    if (!wasLocked || closingRef.current) return;
+    const width = rootRef.current?.offsetWidth || window.innerWidth;
+    setLiveTransform(0, width, true);
+    window.setTimeout(clearInlineTransform, CLOSE_DURATION);
+  };
+
   const idle = entered && !closing;
 
   return (
@@ -124,9 +170,9 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, cl
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
-      onTouchCancel={onTouchEnd}
+      onTouchCancel={onTouchCancel}
       className={`page-push-layer bg-slate-50 dark:bg-slate-900 ${className}`}
-      style={idle ? undefined : { transform: 'translateX(100%)' }}
+      style={idle ? undefined : { transform: 'translateX(100%)', willChange: 'transform' }}
     >
       {showBackButton && (
         <button onClick={requestClose} aria-label="Назад" className="page-push-back-btn">

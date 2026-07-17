@@ -268,7 +268,10 @@ input, textarea, [contenteditable] {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   transition: transform 0.26s cubic-bezier(0.32, 0.72, 0, 1);
-  will-change: transform;
+  /* No `will-change: transform` here on purpose — like an actual `transform`, it permanently
+     makes this element the containing block for any `position: fixed` descendant (e.g. modals
+     rendered inside a pushed page), which would anchor them to this scrolling layer instead of
+     the viewport. It's applied inline, only while actually animating — see PagePush.tsx. */
 }
 @media (min-width: 768px) {
   .page-push-layer {
@@ -297,6 +300,14 @@ input, textarea, [contenteditable] {
 .dark .page-push-back-btn {
   background: rgba(30, 41, 59, 0.85);
   color: #e2e8f0;
+}
+
+/* Guarantees every pushed page clears the fixed mobile bottom nav, regardless of whether the
+   page's own content remembers to reserve space for it. */
+@media (max-width: 767px) {
+  .page-push-scroll {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 
