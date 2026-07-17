@@ -15,6 +15,7 @@ interface LayoutProps {
   user: User | null;
   activeInvestor?: Investor | null;
   onNavigateToProfile: () => void;
+  onGoToCustomers?: () => void;
   isOnline?: boolean;
   isSyncing?: boolean;
   supportButton?: React.ReactNode;
@@ -41,6 +42,7 @@ const Layout: React.FC<LayoutProps> = ({
   user,
   activeInvestor,
   onNavigateToProfile,
+  onGoToCustomers,
   isOnline = true,
   isSyncing = false,
   supportButton, // 🔹 Добавили сюда
@@ -327,7 +329,7 @@ const counts = useMemo(() => {
 
       {/* Main Content Area - Updated margins and centering */}
       <main className="flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50 dark:bg-slate-900 mobile-main-offset">
-        <div className="relative w-full max-w-7xl mx-auto h-full">
+        <div className="relative w-full max-w-7xl mx-auto flex-1 min-h-0">
             {children}
         </div>
       </main>
@@ -391,7 +393,7 @@ const counts = useMemo(() => {
 
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
             {!isInvestor && (
-              <button onClick={() => setView('CUSTOMERS')} className={`flex flex-col items-center p-2 ${currentView === 'CUSTOMERS' || currentView === 'CUSTOMER_DETAILS' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`}>
+              <button onClick={() => (onGoToCustomers ? onGoToCustomers() : setView('CUSTOMERS'))} className={`flex flex-col items-center p-2 ${currentView === 'CUSTOMERS' || currentView === 'CUSTOMER_DETAILS' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`}>
                   {ICONS.Customers}
                   <span className="text-[10px] mt-1 font-medium">Клиенты</span>
               </button>

@@ -1,14 +1,9 @@
 import React, { useState, useMemo } from 'react'; // Добавили useMemo
-import { Customer, Sale, Account, Investor, Payment, AppSettings } from '../types';
+import { Customer } from '../types';
 import { ICONS } from '../constants';
-import CustomerDetails from './CustomerDetails';
 
 interface CustomersProps {
   customers: Customer[];
-  accounts: Account[];
-  investors: Investor[];
-  sales: Sale[];
-  appSettings: AppSettings;
   onAddCustomer: (data: {
     name: string;
     phone: string;
@@ -18,30 +13,15 @@ interface CustomersProps {
     passportNumber?: string;
     passportIssuedBy?: string;
   }) => Promise<Customer>;
-  onSelectCustomer: (id: string) => void; 
-  onInitiatePayment: (sale: Sale, payment: Payment) => void;
-  onUndoPayment: (saleId: string, paymentId: string) => void;
-  onEditPayment: (saleId: string, paymentId: string, newDate: string) => void;
-  onUpdateCustomer: (customer: Customer) => void;
-  onDeleteCustomer: (customerId: string) => void;
+  onSelectCustomer: (id: string) => void;
 }
 
 const Customers: React.FC<CustomersProps> = ({
   customers,
-  accounts,
-  investors,
-  sales,
-  appSettings,
   onAddCustomer,
   onSelectCustomer,
-  onInitiatePayment,
-  onUndoPayment,
-  onEditPayment,
-  onUpdateCustomer,
-  onDeleteCustomer
 }) => {
   const [isAdding, setIsAdding] = useState(false);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newAddress, setNewAddress] = useState('');
@@ -60,27 +40,6 @@ const [newPassportIssuedBy, setNewPassportIssuedBy] = useState('');
       )
       .sort((a, b) => a.name.localeCompare(b.name)); // Сортировка по алфавиту
   }, [customers, searchTerm]);
-
-  if (selectedCustomerId) {
-    const customer = customers.find(c => c.id === selectedCustomerId);
-    if (customer) {
-      return (
-        <CustomerDetails
-          customer={customer}
-          sales={sales}
-          accounts={accounts}
-          investors={investors}
-          appSettings={appSettings}
-          onBack={() => setSelectedCustomerId(null)}
-          onInitiatePayment={onInitiatePayment}
-          onUndoPayment={onUndoPayment}
-          onEditPayment={onEditPayment}
-          onUpdateCustomer={onUpdateCustomer}
-          onDeleteCustomer={onDeleteCustomer}
-        />
-      );
-    }
-  }
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -278,7 +237,7 @@ const handleSubmit = async (e: React.FormEvent) => {
         {sortedFilteredCustomers.map(c => (
           <div
             key={c.id}
-            onClick={() => setSelectedCustomerId(c.id)}
+            onClick={() => onSelectCustomer(c.id)}
             className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm flex items-center gap-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
           >
             <div className="w-12 h-12 rounded-full bg-slate-200 dark:bg-slate-700 flex-shrink-0 overflow-hidden">

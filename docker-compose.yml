@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: finuchet-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: finuchet
+    ports:
+      - "5434:5432"
+    volumes:
+      - finuchet-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  finuchet-postgres-data:

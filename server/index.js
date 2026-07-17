@@ -132,9 +132,10 @@ const filterDataForEmployee = (dataByType, allowedInvestorIds, fullAccessInvesto
     filtered.sales = (filtered.sales || []).filter(canSeeRecord);
     filtered.expenses = (filtered.expenses || []).filter(canSeeRecord);
 
-    // 4. 🔥 КЛИЕНТЫ: Показываем только тех, у кого есть продажи на разрешенных счетах
+    // 4. 🔥 КЛИЕНТЫ: те, у кого есть продажи на разрешенных счетах, + клиенты, которых сотрудник
+    // сам добавил (иначе только что созданный клиент без договора «пропадает» из списка).
     const allowedCustomerIds = new Set(filtered.sales.map(s => s.customerId));
-    filtered.customers = (filtered.customers || []).filter(cust => allowedCustomerIds.has(cust.id));
+    filtered.customers = (filtered.customers || []).filter(cust => allowedCustomerIds.has(cust.id) || cust.createdByUserId === employeeId);
 
     return filtered;
 };
@@ -3596,3 +3597,4 @@ const startServer = async () => {
 };
 
 startServer();
+

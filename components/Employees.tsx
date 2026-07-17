@@ -9,10 +9,11 @@ interface EmployeesProps {
   onAddEmployee: (data: any) => void;
   onUpdateEmployee: (data: User) => void;
   onDeleteEmployee: (id: string) => void;
+  onSelectActivity: (id: string) => void;
 }
 
-const Employees: React.FC<EmployeesProps> = ({ 
-    employees, investors, onAddEmployee, onUpdateEmployee, onDeleteEmployee 
+const Employees: React.FC<EmployeesProps> = ({
+    employees, investors, onAddEmployee, onUpdateEmployee, onDeleteEmployee, onSelectActivity
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -320,6 +321,9 @@ const handleSubmit = (e: React.FormEvent) => {
                           </span>
                       )}
                       <div className="flex gap-2">
+                          <button onClick={() => onSelectActivity(emp.id)} title="Активность" className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded">
+                              {ICONS.Stats}
+                          </button>
                           <button onClick={() => handleStartEdit(emp)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded">
                               {ICONS.Edit}
                           </button>

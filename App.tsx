@@ -14,6 +14,7 @@ import Customers from './components/Customers';
 import CustomerDetails from './components/CustomerDetails';
 import InvestorDetails from './components/InvestorDetails';
 import Employees from './components/Employees';
+import EmployeeActivity from './components/EmployeeActivity';
 import Operations from './components/Operations';
 import Settings from './components/Settings';
 import Reports from './components/Reports';
@@ -91,7 +92,7 @@ async function setupNativeApp() {
 // underneath, gated on previousView === 'MORE') so swiping back reveals the real menu, not blank space.
 const MORE_PUSH_VIEWS = new Set<ViewState>([
   'PROFILE', 'SETTINGS', 'EMPLOYEES', 'SUPPLIERS', 'TARIFFS', 'ADMIN_PANEL',
-  'REPORTS', 'CONTRACTS', 'INVESTORS', 'CASH_REGISTER',
+  'REPORTS', 'CONTRACTS', 'INVESTORS',
 ]);
 
 const App: React.FC = () => {
@@ -127,8 +128,12 @@ const isLanding = path === "/"
   // Drafts & Temporary State
   const [draftSaleData, setDraftSaleData] = useState<any>({});
   const [previousView, setPreviousView] = useState<ViewState>('DASHBOARD');
+  // Remembers whether a customer's details were left open, so tapping the "Клиенты" tab
+  // again (from elsewhere in the app) resumes there instead of resetting to the list.
+  const [customersSubView, setCustomersSubView] = useState<'LIST' | 'DETAILS'>('LIST');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [selectedInvestorId, setSelectedInvestorId] = useState<string | null>(null);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [draftExpenseData, setDraftExpenseData] = useState<any>(null);
   const [operationsAccountId, setOperationsAccountId] = useState<string | null>(null);
@@ -643,6 +648,16 @@ useEffect(() => {
 // 🔥 Мгновенная и полная фильтрация стейта для сотрудника
 // По умолчанию сотрудник видит только СВОИ записи (createdByUserId), кроме счетов/инвесторов
 // из fullAccessInvestorIds — там менеджер разрешил видеть ВСЕ записи.
+// Заменяет состояние только если набор id реально изменился — иначе setState создаёт
+// новый массив с тем же содержимым каждый рендер, и раз accounts/sales есть в deps
+// этого же эффекта, это уходит в бесконечный цикл ("Maximum update depth exceeded").
+const replaceIfIdsChanged = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, next: T[]) => {
+    setter(prev => {
+        if (prev.length === next.length && prev.every((p, i) => p.id === next[i].id)) return prev;
+        return next;
+    });
+};
+
 useEffect(() => {
     if (user?.role === 'employee') {
         const allowedIds = user.allowedInvestorIds || [];
@@ -654,16 +669,17 @@ useEffect(() => {
         const fullAccessInvestorIdSet = new Set(safeFullAccessIds.filter(id => id !== 'MAIN_ACCOUNT'));
 
         // 1. Инвесторы
-        setInvestors(prev => prev.filter(inv => investorIds.includes(inv.id)));
+        const filteredInvestors: Investor[] = investors.filter((inv: Investor) => investorIds.includes(inv.id));
+        replaceIfIdsChanged(setInvestors, filteredInvestors);
 
         // 2. Счета
-        const filteredAccounts = accounts.filter(acc => {
+        const filteredAccounts: Account[] = accounts.filter((acc: Account) => {
             const isMainAccount = !acc.ownerId || acc.type === 'MAIN';
             if (isMainAccount && hasMainAccess) return true;
             if (acc.ownerId && investorIds.includes(acc.ownerId)) return true;
             return false;
         });
-        setAccounts(filteredAccounts);
+        replaceIfIdsChanged(setAccounts, filteredAccounts);
 
         const allowedAccountIds = new Set(filteredAccounts.map(acc => acc.id));
         const fullAccessAccountIds = new Set(
@@ -683,13 +699,16 @@ useEffect(() => {
         };
 
         // 3. Продажи и расходы
-        const filteredSales = sales.filter(canSeeRecord);
-        setSales(filteredSales);
-        setExpenses(prev => prev.filter(canSeeRecord));
+        const filteredSales: Sale[] = sales.filter(canSeeRecord);
+        replaceIfIdsChanged(setSales, filteredSales);
+        const filteredExpenses: Expense[] = expenses.filter(canSeeRecord);
+        replaceIfIdsChanged(setExpenses, filteredExpenses);
 
-        // 4. 🔥 КЛИЕНТЫ: Оставляем только тех, кто есть в отфильтрованных продажах
-        const allowedCustomerIds = new Set(filteredSales.map(s => s.customerId));
-        setCustomers(prev => prev.filter(c => allowedCustomerIds.has(c.id)));
+        // 4. 🔥 КЛИЕНТЫ: те, кто есть в отфильтрованных продажах, + клиенты, которых сотрудник
+        // сам добавил (иначе только что созданный клиент без договора «пропадает» из списка).
+        const allowedCustomerIds = new Set(filteredSales.map((s: Sale) => s.customerId));
+        const filteredCustomers: Customer[] = customers.filter((c: Customer) => allowedCustomerIds.has(c.id) || c.createdByUserId === user.id);
+        replaceIfIdsChanged(setCustomers, filteredCustomers);
     }
 }, [user, accounts, sales]);
 
@@ -1535,6 +1554,7 @@ const handleIncomeSubmit = async (data: any) => {
                     actualDate: data.actualDate,
                     isPaid: true,
                     isRealPayment: true,
+                    recordedByUserId: user.id,
                     // 🆕 Метаданные скидки — для истории и отчётов
                     discountAmount: discountAmount,
                     discountPercent: discountPercent,
@@ -1551,7 +1571,8 @@ const handleIncomeSubmit = async (data: any) => {
                     date: data.date,
                     actualDate: data.actualDate,
                     isPaid: true,
-                    isRealPayment: true
+                    isRealPayment: true,
+                    recordedByUserId: user.id
                 });
 
                 if (updatedSale.remainingAmount === 0) {
@@ -2096,6 +2117,7 @@ const handleAddCustomer = async (data: {
       documents: any[];
       photo: string;
       userId: string;
+      createdByUserId: string;
       passportSeries: string;
       createdAt: string;
       trustScore: number;
@@ -2108,6 +2130,7 @@ const handleAddCustomer = async (data: {
   } = {
     id: crypto.randomUUID(),
     userId: ownerId,
+    createdByUserId: user.id,
 
     // Обязательные поля
     name: data.name.trim(),
@@ -2369,7 +2392,29 @@ const handleQuickAddCustomer = async (data: {
   return saved;
 };  const handleSelectAccountForOperations = (accountId: string) => { setOperationsAccountId(accountId); setCurrentView('OPERATIONS'); };
   const handleSelectCustomer = (id: string) => { setSelectedCustomerId(id); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
+  // Resume into the customer's details if one was left open when the user tapped away to
+  // another tab; tapping "Клиенты" while already in this section resets to the list.
+  const handleGoToCustomersTab = () => {
+    if (currentView === 'CUSTOMERS' || currentView === 'CUSTOMER_DETAILS') {
+      setCurrentView('CUSTOMERS');
+      return;
+    }
+    if (customersSubView === 'DETAILS' && selectedCustomerId && customers.some((c: Customer) => c.id === selectedCustomerId)) {
+      setPreviousView('CUSTOMERS');
+      setCurrentView('CUSTOMER_DETAILS');
+    } else {
+      setCurrentView('CUSTOMERS');
+    }
+  };
+  useEffect(() => {
+    if (currentView === 'CUSTOMER_DETAILS' && previousView === 'CUSTOMERS') {
+      setCustomersSubView('DETAILS');
+    } else if (currentView === 'CUSTOMERS') {
+      setCustomersSubView('LIST');
+    }
+  }, [currentView, previousView]);
   const handleSelectInvestor = (investor: Investor) => { setSelectedInvestorId(investor.id); setCurrentView('INVESTOR_DETAILS'); };
+  const handleSelectEmployeeActivity = (id: string) => { setSelectedEmployeeId(id); setCurrentView('EMPLOYEE_ACTIVITY'); };
   const handleAddPartnership = async (name: string, members: string[]) => { if (!user) return; const newAccountId = `acc_part_${Date.now()}`; const newAccount: Account = { id: newAccountId, userId: user.id, name: `Счет: ${name}`, type: 'CUSTOM' }; const newPartnership: Partnership = { id: `part_${Date.now()}`, userId: user.id, name, accountId: newAccountId, partnerIds: members, createdAt: new Date().toISOString() }; const savedAcc = await api.saveItem('accounts', newAccount); updateList(setAccounts, savedAcc); const savedPart = await api.saveItem('partnerships', newPartnership); updateList(setPartnerships, savedPart); };
   const handleSelectSupplier = (supplier: Supplier) => { setSelectedSupplierId(supplier.id); setCurrentView('SUPPLIER_DETAILS'); };
   const handleViewSupplierContract = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView('SUPPLIER_DETAILS'); setCurrentView('CUSTOMER_DETAILS'); };
@@ -2675,6 +2720,7 @@ if (!user && !showSplash) {
     user={user}
     activeInvestor={activeInvestor}
     onNavigateToProfile={() => setCurrentView('PROFILE')}
+    onGoToCustomers={handleGoToCustomersTab}
     isOnline={isOnline}
     isSyncing={isSyncing}
     supportUnreadCount={supportUnreadCount}
@@ -2740,7 +2786,6 @@ if (!user && !showSplash) {
   })()
 )}
               {currentView === 'CASH_REGISTER' && (
-  <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
   <CashRegister
     // 🔹 Фильтрация данных для инвестора
     accounts={isInvestor && user
@@ -2778,7 +2823,6 @@ if (!user && !showSplash) {
     setMyProfitPeriod={setMyProfitPeriod}
     appSettings={appSettings}
   />
-  </PagePush>
 )}
               {currentView === 'CONTRACTS' && (
                   <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
@@ -2798,7 +2842,7 @@ if (!user && !showSplash) {
                   />
                   </PagePush>
               )}
-              {currentView === 'INVESTORS' && (
+              {(currentView === 'INVESTORS' || currentView === 'INVESTOR_DETAILS') && (
                 <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                   <Investors investors={investors} accounts={accounts}
                                                          showPools={checkAccess('INVESTOR_POOLS')}
@@ -2865,17 +2909,8 @@ if (!user && !showSplash) {
               {(currentView === 'CUSTOMERS' || (currentView === 'CUSTOMER_DETAILS' && previousView === 'CUSTOMERS')) && (
                   <Customers
                       customers={customers}
-                      accounts={accounts}
-                      investors={investors}
-                      sales={sales}
                       onAddCustomer={handleAddCustomer}
                       onSelectCustomer={handleSelectCustomer}
-                      onInitiatePayment={handleInitiateCustomerPayment}
-                      onUndoPayment={handleUndoPayment}
-                      onEditPayment={handleEditPayment}
-                      onUpdateCustomer={handleUpdateCustomer}
-                      onDeleteCustomer={handleDeleteCustomer}
-                      appSettings={appSettings}
                   />
               )}
               {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId &&
@@ -2885,6 +2920,7 @@ if (!user && !showSplash) {
                                        accounts={accounts} investors={investors} onBack={requestClose}
                                        onInitiatePayment={handleInitiateCustomerPayment} onUndoPayment={handleUndoPayment}
                                        onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer}
+                                       onDeleteCustomer={handleDeleteCustomer}
                                        suppliers={suppliers} onPaySupplier={handlePaySupplier}
                                        initialSaleId={initialSaleIdForDetails} appSettings={appSettings} user={user}/>
                     )}
@@ -2893,7 +2929,8 @@ if (!user && !showSplash) {
                   <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct}
                             onDeleteProduct={handleDeleteProduct} appSettings={appSettings}/>}
               {currentView === 'OPERATIONS' && (
-                  <Operations
+                  <PagePush onClose={() => setCurrentView(previousView)}>
+                    <Operations
                       sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
                       expenses={isInvestor ? expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id) : expenses}
                       accounts={accounts}
@@ -2903,7 +2940,8 @@ if (!user && !showSplash) {
                       employees={employees}
                       accountBalances={accountBalances}
                       appSettings={appSettings}
-                  />
+                    />
+                  </PagePush>
               )}
               {currentView === 'REPORTS' && reportData && (
                   <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
@@ -2912,22 +2950,35 @@ if (!user && !showSplash) {
                   </PagePush>
               )}
 
-              {currentView === 'CREATE_INCOME' &&
-                  <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts}
-                             sales={sales} onClose={() => setCurrentView('DASHBOARD')} onSubmit={handleIncomeSubmit}
+              {currentView === 'CREATE_INCOME' && (
+                  <PagePush onClose={() => setCurrentView('DASHBOARD')}>
+                    {(requestClose: () => void) => (
+                      <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts}
+                             sales={sales} onClose={requestClose} onSubmit={handleIncomeSubmit}
                              onSelectCustomer={() => openSelection('SELECT_CUSTOMER', draftSaleData)}
-                             appSettings={appSettings} user={user}/>}
-              {currentView === 'CREATE_EXPENSE' &&
-                  <NewExpense investors={investors} accounts={accounts} expenses={expenses} suppliers={suppliers} sales={sales}
-                              showSupplierCategory={checkAccess('SUPPLIERS')} initialData={draftExpenseData} onClose={() => { setCurrentView('DASHBOARD'); setDraftExpenseData(null); }}
-                              onSubmit={handleExpenseSubmit} appSettings={appSettings} employees={employees} />}
-              {currentView === 'CREATE_SALE' &&
-                  <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products}
-                           accounts={accounts} suppliers={suppliers} showSupplierField={checkAccess('SUPPLIERS')} onClose={() => {
-                      setCurrentView('DASHBOARD');
-                      setEditingSale(null);
-                  }} onSelectCustomer={(data) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} onShowNotification={showNotificationModal}
-                           appSettings={appSettings} />}
+                             appSettings={appSettings} user={user}/>
+                    )}
+                  </PagePush>
+              )}
+              {currentView === 'CREATE_EXPENSE' && (
+                  <PagePush onClose={() => { setCurrentView('DASHBOARD'); setDraftExpenseData(null); }}>
+                    {(requestClose: () => void) => (
+                      <NewExpense investors={investors} accounts={accounts} expenses={expenses} suppliers={suppliers} sales={sales}
+                              showSupplierCategory={checkAccess('SUPPLIERS')} initialData={draftExpenseData} onClose={requestClose}
+                              onSubmit={handleExpenseSubmit} appSettings={appSettings} employees={employees} />
+                    )}
+                  </PagePush>
+              )}
+              {currentView === 'CREATE_SALE' && (
+                  <PagePush onClose={() => { setCurrentView('DASHBOARD'); setEditingSale(null); }}>
+                    {(requestClose: () => void) => (
+                      <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products}
+                           accounts={accounts} suppliers={suppliers} showSupplierField={checkAccess('SUPPLIERS')} onClose={requestClose}
+                           onSelectCustomer={(data: any) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} onShowNotification={showNotificationModal}
+                           appSettings={appSettings} />
+                    )}
+                  </PagePush>
+              )}
               {currentView === 'SELECT_CUSTOMER' && <SelectionList title="Выберите клиента" items={customers.map(c => ({
                   id: c.id,
                   title: c.name,
@@ -2935,13 +2986,22 @@ if (!user && !showSplash) {
               }))} onSelect={(id) => handleSelection('customerId', id)}
                                                                    onCancel={() => setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE')}
                                                                    onAddNew={handleQuickAddCustomer}/>}
-              {currentView === 'EMPLOYEES' && (
+              {(currentView === 'EMPLOYEES' || currentView === 'EMPLOYEE_ACTIVITY') && (
                   <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                     <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee}
                              onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee}
+                             onSelectActivity={handleSelectEmployeeActivity}
                              appSettings={appSettings}/>
                   </PagePush>
               )}
+              {currentView === 'EMPLOYEE_ACTIVITY' && selectedEmployeeId && (() => {
+                  const emp = employees.find((e: User) => e.id === selectedEmployeeId);
+                  return emp ? (
+                      <PagePush onClose={() => setCurrentView('EMPLOYEES')} showBackButton>
+                        <EmployeeActivity employee={emp} sales={sales} expenses={expenses} customers={customers}/>
+                      </PagePush>
+                  ) : null;
+              })()}
               {currentView === 'TARIFFS' && (
                 <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                   <Tariffs user={user}/>
@@ -3152,7 +3212,7 @@ if (!user && !showSplash) {
             </button>
             {moreExpandedSection === 'CASH' && (
               <div className="bg-slate-50 dark:bg-slate-700/50 border-t border-slate-100 dark:border-slate-700 p-2 space-y-1">
-                <button onClick={() => { setPreviousView('MORE'); setCurrentView('CASH_REGISTER'); }}
+                <button onClick={() => setCurrentView('CASH_REGISTER')}
                         className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <span className="opacity-70">{ICONS.Wallet}</span> Счета
                 </button>

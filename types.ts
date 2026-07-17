@@ -144,6 +144,8 @@ export interface CustomerDocument {
 export interface Customer {
   id: string;
   userId: string; // Owner
+  createdByUserId?: string; // Actual creator (manager or employee id) — for audit/visibility
+  createdAt?: string; // ISO String
   name: string;
   phone: string;
   email: string;
@@ -182,6 +184,7 @@ export interface Payment {
   note?: string;
   isRealPayment?: boolean;
   importedAt?: string;
+  recordedByUserId?: string; // Who actually logged this payment (manager or employee id) — for audit/visibility
 }
 
 export interface Expense {
@@ -289,6 +292,7 @@ export type ViewState =
   | 'OPERATIONS'
   | 'INVESTORS'
   | 'INVESTOR_DETAILS'
+  | 'EMPLOYEE_ACTIVITY'
   | 'AI_ASSISTANT'
   | 'CONTRACTS'
   | 'CREATE_SALE'
