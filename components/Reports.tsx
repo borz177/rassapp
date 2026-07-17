@@ -223,7 +223,7 @@ const Reports: React.FC<ReportsProps> = ({
         return investors.map((inv, idx) => {
             const investorSales = sales.filter(s => {
                 const acc = accounts.find(a => a.id === s.accountId);
-                return !!acc && isAccountForInvestor(acc, inv.id);
+                return !!acc && (acc.ownerId === inv.id || (acc.partners || []).includes(inv.id));
             }).filter(s => s.status === 'ACTIVE' || s.status === 'COMPLETED');
 
             // 🔒 Доля инвестора в пуле считается по вложенной сумме и может зависеть от даты
