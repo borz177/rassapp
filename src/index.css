@@ -199,6 +199,10 @@
   .mobile-main-offset {
     /* 🔥 ИСПРАВЛЕНО: высота меню = 4rem (h-16) + safe-area, а не 5.5rem */
     margin-bottom: calc(4rem + env(safe-area-inset-bottom, 0px)) !important;
+    /* Верхний хедер (.safe-area-top) растёт на высоту статус-бара/чёлки —
+       контент должен растягивать отступ на ту же величину, иначе на Android
+       он оказывается под хедером (Дашборд, Касса, Клиенты и т.д.). */
+    margin-top: calc(4rem + env(safe-area-inset-top, 0px)) !important;
   }
 }
 
@@ -260,7 +264,7 @@ input, textarea, [contenteditable] {
    ============================================ */
 .page-push-layer {
   position: fixed;
-  top: 4rem; /* below the mobile top header (h-16) */
+  top: calc(4rem + env(safe-area-inset-top, 0px)); /* below the mobile top header (h-16 + safe area) */
   left: 0;
   right: 0;
   bottom: 0;
