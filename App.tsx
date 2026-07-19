@@ -187,7 +187,6 @@ const showNotificationModal = (
 
     const isNative =
   navigator.userAgent.includes("Electron") ||
-  navigator.userAgent.includes("Android") ||
   navigator.userAgent.includes("wv")
 
 
