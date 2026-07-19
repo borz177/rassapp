@@ -425,8 +425,8 @@ useEffect(() => {
             // 🔥 2. ОБЕРТЫВАЕМ StatusBar В ТАЙМАУТЫ (2 секунды)
             // Если плагин зависнет, мы просто пропустим этот шаг и пойдем дальше
             await withTimeout(StatusBar.setOverlaysWebView({ overlay: false }), 2000).catch(() => {});
-            await withTimeout(StatusBar.setStyle({ style: 'DARK' }), 2000).catch(() => {});
-            await withTimeout(StatusBar.setBackgroundColor({ color: '#ffffff' }), 2000).catch(() => {});
+            await withTimeout(StatusBar.setStyle({ style: resolvedTheme === 'dark' ? Style.Light : Style.Dark }), 2000).catch(() => {});
+            await withTimeout(StatusBar.setBackgroundColor({ color: resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff' }), 2000).catch(() => {});
         }
     } catch (e) {
         console.warn('StatusBar init skipped (web/timeout)');
@@ -678,7 +678,10 @@ useEffect(() => {
 
 useEffect(() => {
   if (Capacitor.isNativePlatform()) {
+    // Иконки и фон статус-бара должны меняться вместе — иначе при переключении темы
+    // фон остаётся белым (со старта), а иконки становятся светлыми и пропадают на нём.
     StatusBar.setStyle({ style: resolvedTheme === 'dark' ? Style.Light : Style.Dark }).catch(() => {});
+    StatusBar.setBackgroundColor({ color: resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff' }).catch(() => {});
   }
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff');
