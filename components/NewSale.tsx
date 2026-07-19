@@ -1459,11 +1459,20 @@ if (mode === 'CASH') {
                 </div>
               </div>
               <div className="flex gap-3 pt-2">
-                <button onClick={() => setShowConfirmModal(false)}
-                        className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300">Отмена
+                <button onClick={() => setShowConfirmModal(false)} disabled={isSubmitting}
+                        className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50">Отмена
                 </button>
-                <button onClick={handleConfirm}
-                        className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Подтвердить
+                <button onClick={handleConfirm} disabled={isSubmitting}
+                        className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                  {isSubmitting ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                      </svg>
+                      Сохранение...
+                    </>
+                  ) : 'Подтвердить'}
                 </button>
               </div>
             </div>

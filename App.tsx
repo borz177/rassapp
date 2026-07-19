@@ -1535,18 +1535,25 @@ const handleIncomeSubmit = async (data: any) => {
             }
 
              updateList(setSales, updatedSale);
-            
+
             // ✅ МГНОВЕННЫЙ ПЕРЕХОД к деталям договора
             setSelectedCustomerId(sale.customerId);
             setInitialSaleIdForDetails(saleId);
             setPreviousView(currentView);
             setCurrentView('CUSTOMER_DETAILS');
 
-            // 🔥 Сохранение на сервер делаем В ФОНЕ (не блокируем UI)
-            api.saveItem('sales', updatedSale).catch(err => {
+            // 🔹 Сохраняем на сервер (или в офлайн-очередь — api.saveItem сам это делает
+            // и не бросает ошибку в этом случае). Синхронизируем стейт с ответом сервера,
+            // а если сохранение реально упало — откатываем локальное изменение и сообщаем
+            // пользователю, чтобы платёж не "терялся" молча.
+            try {
+                const savedSale = await api.saveItem('sales', updatedSale);
+                updateList(setSales, savedSale);
+            } catch (err: any) {
                 console.error('❌ Ошибка сохранения платежа:', err);
-                // В случае ошибки — можно показать уведомление
-            });
+                updateList(setSales, sale);
+                alert(`❌ Не удалось сохранить платёж. Попробуйте ещё раз.\n${err?.message || ''}`);
+            }
 
             return;
         }
