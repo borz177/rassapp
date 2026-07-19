@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import CashRegister from './components/CashRegister';
@@ -54,6 +54,8 @@ import { withTimeout } from './src/timeout';
 import { offlineStorage } from "./services/offlineStorage";
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
+import { triggerPagePushBack } from './components/transitions/PagePush';
 import { useTheme } from './src/theme/ThemeContext';
 
 async function enablePersistentStorage() {
@@ -168,6 +170,7 @@ const [notificationData, setNotificationData] = useState<{
   type: 'success' | 'error' | 'warning';
   actionLabel?: string;
   onAction?: () => void;
+  cancelLabel?: string;
 } | null>(null);
 
 
@@ -177,9 +180,10 @@ const showNotificationModal = (
   message: string,
   type: 'success' | 'error' | 'warning',
   actionLabel?: string,
-  onAction?: () => void
+  onAction?: () => void,
+  cancelLabel?: string
 ) => {
-  setNotificationData({ title, message, type, actionLabel, onAction });
+  setNotificationData({ title, message, type, actionLabel, onAction, cancelLabel });
   setShowNotification(true);
 };
 
@@ -607,6 +611,69 @@ useEffect(() => {
   };
 
   initApp();
+}, []);
+
+// 🔹 Аппаратная кнопка/жест "Назад" на Android: по умолчанию Capacitor выходит из приложения
+// сразу, с любого экрана, т.к. в SPA нет истории браузера, по которой можно было бы "откатиться".
+// Здесь мы сами решаем, что делать — сначала закрываем открытые модалки, затем "выехавшую"
+// страницу (тем же способом, что и её кнопка/свайп "Назад"), затем возвращаемся на главную
+// вкладку, и только если деваться больше некуда — спрашиваем подтверждение выхода.
+// Слушатель регистрируется один раз при монтировании; актуальное состояние читается из рефа,
+// чтобы не пересоздавать нативный listener на каждый чих (currentView меняется очень часто).
+const backHandlerStateRef = useRef({
+  showSessionExpiredModal, showSupportChat, showNotification,
+  showTemplateUpdateModal, showBlockedDeleteModal, showDeleteConfirm, currentView
+});
+useEffect(() => {
+  backHandlerStateRef.current = {
+    showSessionExpiredModal, showSupportChat, showNotification,
+    showTemplateUpdateModal, showBlockedDeleteModal, showDeleteConfirm, currentView
+  };
+});
+
+useEffect(() => {
+  if (!Capacitor.isNativePlatform()) return;
+
+  let listenerHandle: { remove: () => void } | undefined;
+  let cancelled = false;
+
+  CapacitorApp.addListener('backButton', () => {
+    const s = backHandlerStateRef.current;
+
+    // Модалка истёкшей сессии не должна закрываться назад — это принудительный ре-логин.
+    if (s.showSessionExpiredModal) return;
+
+    if (s.showSupportChat) { setShowSupportChat(false); return; }
+    if (s.showNotification) { setShowNotification(false); return; }
+    if (s.showTemplateUpdateModal) { setShowTemplateUpdateModal(false); return; }
+    if (s.showBlockedDeleteModal) { setShowBlockedDeleteModal(null); return; }
+    if (s.showDeleteConfirm) { setShowDeleteConfirm(null); return; }
+
+    if (triggerPagePushBack()) return;
+
+    const tabRoots: ViewState[] = ['DASHBOARD', 'CASH_REGISTER', 'CUSTOMERS', 'MORE'];
+    if (tabRoots.includes(s.currentView) && s.currentView !== 'DASHBOARD') {
+      setCurrentView('DASHBOARD');
+      return;
+    }
+
+    showNotificationModal(
+      'Выход из приложения',
+      'Вы уверены, что хотите выйти?',
+      'warning',
+      'Да, выйти',
+      () => { CapacitorApp.exitApp(); },
+      'Отмена'
+    );
+  }).then(h => {
+    if (cancelled) h.remove();
+    else listenerHandle = h;
+  });
+
+  return () => {
+    cancelled = true;
+    listenerHandle?.remove();
+  };
 }, []);
 
 useEffect(() => {
@@ -3627,6 +3694,7 @@ if (!user && !showSplash) {
     type={notificationData.type}
     actionLabel={notificationData.actionLabel}
     onAction={notificationData.onAction}
+    cancelLabel={notificationData.cancelLabel}
   />
 )}
 

@@ -11,6 +11,7 @@ export interface NotificationModalProps {
   type?: NotificationType;
   actionLabel?: string;
   onAction?: () => void;
+  cancelLabel?: string;
   showClose?: boolean;
 }
 
@@ -22,6 +23,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   type = 'info',
   actionLabel,
   onAction,
+  cancelLabel,
   showClose = true
 }) => {
   // Закрытие по Escape
@@ -128,7 +130,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
               actionLabel ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600' : `${style.button} text-white`
             }`}
           >
-            {actionLabel ? 'Закрыть' : 'Понятно'}
+            {actionLabel ? (cancelLabel || 'Закрыть') : 'Понятно'}
           </button>
         </div>
       </div>

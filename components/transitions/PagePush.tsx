@@ -9,6 +9,20 @@ interface PagePushProps {
   children: React.ReactNode | ((requestClose: () => void) => React.ReactNode);
 }
 
+// 🔹 В любой момент реально смонтирован максимум один PagePush (текущий `currentView` рендерит
+// либо обычный экран, либо один "выехавший" поверх него) — поэтому достаточно единственного
+// слота, а не полноценного стека. Используется хендлером аппаратной кнопки/жеста "Назад" на
+// Android (см. App.tsx), чтобы он закрывал текущую выехавшую страницу тем же способом, что и
+// свайп/кнопка "Назад" на экране, а не сразу выходил из приложения.
+let activeRequestClose: (() => void) | null = null;
+export function triggerPagePushBack(): boolean {
+  if (activeRequestClose) {
+    activeRequestClose();
+    return true;
+  }
+  return false;
+}
+
 const CLOSE_DURATION = 260;
 const EDGE_ZONE = 28; // px from the left edge where a back-swipe can start
 const COMMIT_RATIO = 0.33; // fraction of width dragged to commit the close
@@ -54,6 +68,14 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, cl
     closingRef.current = true;
     setClosing(true);
   };
+
+  useEffect(() => {
+    activeRequestClose = requestClose;
+    return () => {
+      if (activeRequestClose === requestClose) activeRequestClose = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Clamps to [0, width] every time — the page can never be dragged past fully-open or
   // fully-closed, regardless of how far or fast the finger keeps moving.
