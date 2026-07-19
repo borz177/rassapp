@@ -1,19 +1,21 @@
 import React, { useMemo, useState } from 'react';
-import { Sale, Expense, Account, Investor, AppSettings } from '../types';
+import { Sale, Expense, Account, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate } from '../src/utils';
+import Contracts from './Contracts';
 
 interface InvestorDashboardProps {
   sales: Sale[];
   expenses: Expense[];
   accounts: Account[];
+  customers: Customer[];
   investor: Investor;
   appSettings: AppSettings;
   onLogout: () => void;
 }
 
 const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
-  sales, expenses, accounts, investor, appSettings, onLogout
+  sales, expenses, accounts, customers, investor, appSettings, onLogout
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'contracts'>('overview');
   const [contractTab, setContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
@@ -184,52 +186,8 @@ const expectedTotalProfit = useMemo(() => {
 
 
 
-  // 🔹 СЧЁТЧИКИ И ФИЛЬТРАЦИЯ ДОГОВОРОВ (как в Contracts у менеджера)
-  const { contractCounts, filteredSales } = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    let active = 0, overdue = 0, archive = 0;
-
-    // 🔧 Функция расчёта реальной просрочки
-    const calculateSaleOverdue = (sale: Sale) => {
-      let expectedTotal = sale.downPayment;
-      sale.paymentPlan.forEach(p => {
-        if (!p.isRealPayment && new Date(p.date) < today) {
-          expectedTotal += p.amount;
-        }
-      });
-      const totalPaid = sale.totalAmount - sale.remainingAmount;
-      const overdueAmount = expectedTotal - totalPaid;
-      return Math.max(0, overdueAmount);
-    };
-
-    // 🔹 Распределяем договоры по категориям
-    const categorized = investorSales.map(sale => {
-      if (sale.status === 'COMPLETED' || sale.remainingAmount === 0) {
-        return { sale, category: 'ARCHIVE' as const };
-      }
-      const overdueAmount = calculateSaleOverdue(sale);
-      if (overdueAmount > 0) {
-        return { sale, category: 'OVERDUE' as const };
-      }
-      return { sale, category: 'ACTIVE' as const };
-    });
-
-    // 🔹 Считаем счётчики
-    categorized.forEach(c => {
-      if (c.category === 'ARCHIVE') archive++;
-      else if (c.category === 'OVERDUE') overdue++;
-      else active++;
-    });
-
-    // 🔹 Фильтруем по выбранной вкладке
-    const filtered = categorized
-      .filter(c => c.category === contractTab)
-      .map(c => c.sale)
-      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
-
-    return { contractCounts: { active, overdue, archive }, filteredSales: filtered };
-  }, [investorSales, contractTab]);
+  // 🔹 Категоризация/просрочка/поиск для вкладки "Мои договоры" теперь считает
+  // сам <Contracts/> (см. ниже) — та же логика, что и у менеджера, без дублирования.
 
   
 
@@ -419,122 +377,43 @@ const expectedTotalProfit = useMemo(() => {
 
                 {/* 🔹 Вкладка: Договоры */}
         {activeTab === 'contracts' && (
-          <div className="space-y-4 animate-in fade-in duration-500">
-            
-            {/* 🔹 ФИЛЬТРЫ-КНОПКИ С СЧЁТЧИКАМИ */}
+          <div className="animate-in fade-in duration-500 space-y-4">
+            {/* 🔹 Contracts сам не рисует переключатель вкладок — ждёт его от родителя
+                (у менеджера это делает боковое меню). Здесь — свой лёгкий переключатель. */}
             <div className="flex gap-2 p-1 bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-2xl shadow-sm border border-white dark:border-slate-700">
-              <button
-                onClick={() => setContractTab('ACTIVE')}
-                className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 ${
-                  contractTab === 'ACTIVE'
-                    ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-200'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600'
-                }`}
-              >
-                Активные
-                {contractCounts.active > 0 && (
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                    contractTab === 'ACTIVE' ? 'bg-white/20 text-white' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
-                  }`}>
-                    {contractCounts.active}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => setContractTab('OVERDUE')}
-                className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 ${
-                  contractTab === 'OVERDUE'
-                    ? 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-md shadow-red-200'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-red-600'
-                }`}
-              >
-                Просроченные
-                {contractCounts.overdue > 0 && (
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                    contractTab === 'OVERDUE' ? 'bg-white/20 text-white' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-                  }`}>
-                    {contractCounts.overdue}
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => setContractTab('ARCHIVE')}
-                className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 ${
-                  contractTab === 'ARCHIVE'
-                    ? 'bg-gradient-to-r from-slate-600 to-slate-500 text-white shadow-md shadow-slate-200'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                Архив
-                {contractCounts.archive > 0 && (
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                    contractTab === 'ARCHIVE' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                  }`}>
-                    {contractCounts.archive}
-                  </span>
-                )}
-              </button>
+              {([
+                { key: 'ACTIVE', label: 'Активные', activeClasses: 'from-indigo-600 to-indigo-500 shadow-indigo-200', hoverClass: 'hover:text-indigo-600' },
+                { key: 'OVERDUE', label: 'Просроченные', activeClasses: 'from-red-600 to-red-500 shadow-red-200', hoverClass: 'hover:text-red-600' },
+                { key: 'ARCHIVE', label: 'Архив', activeClasses: 'from-slate-600 to-slate-500 shadow-slate-200', hoverClass: 'hover:text-slate-600' },
+              ] as const).map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setContractTab(tab.key)}
+                  className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition-all duration-300 ${
+                    contractTab === tab.key
+                      ? `bg-gradient-to-r ${tab.activeClasses} text-white shadow-md`
+                      : `text-slate-500 dark:text-slate-400 ${tab.hoverClass}`
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
-            {/* 🔹 Список договоров (теперь отфильтрованный) */}
-            {filteredSales.length === 0 ? (
-              <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 text-slate-400">
-                {contractTab === 'ACTIVE' && 'Нет активных договоров'}
-                {contractTab === 'OVERDUE' && 'Нет просроченных договоров 🎉'}
-                {contractTab === 'ARCHIVE' && 'Архив пуст'}
-              </div>
-            ) : (
-              <div className="grid gap-3">
-                {filteredSales.map(sale => {
-                  const progress = sale.totalAmount > 0
-                    ? ((sale.totalAmount - sale.remainingAmount) / sale.totalAmount) * 100
-                    : 0;
-
-                  return (
-                    <div key={sale.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-all">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <p className="font-bold text-lg text-slate-800 dark:text-white">{sale.productName}</p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{formatDate(sale.startDate)} • {sale.installments} мес.</p>
-                        </div>
-                        <span className={`text-xs px-3 py-1.5 rounded-full font-bold ${
-                          sale.remainingAmount === 0
-                            ? 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                            : sale.status === 'ACTIVE'
-                            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                            : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                        }`}>
-                          {sale.remainingAmount === 0 ? 'ЗАКРЫТО' : sale.status}
-                        </span>
-                      </div>
-
-                      <div className="space-y-2 mb-4">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-slate-500 dark:text-slate-400">Сумма:</span>
-                          <span className="font-medium dark:text-slate-200">{formatCurrency(sale.totalAmount, appSettings.showCents)} ₽</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-slate-500 dark:text-slate-400">Остаток:</span>
-                          <span className="font-bold text-amber-600 dark:text-amber-400">{formatCurrency(sale.remainingAmount, appSettings.showCents)} ₽</span>
-                        </div>
-                        <div className="flex justify-between text-sm text-emerald-600 dark:text-emerald-400">
-                          <span>Ваша доля:</span>
-                          <span className="font-bold">{investor.profitPercentage}%</span>
-                        </div>
-                      </div>
-
-                      <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2">
-                        <div
-                          className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-2 rounded-full transition-all"
-                          style={{ width: `${progress}%` }}
-                        ></div>
-                      </div>
-                      <p className="text-xs text-slate-400 mt-1 text-right">{Math.round(progress)}% оплачено</p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            {/* 🔹 Тот же компонент, что и у менеджера: карточки, клик — открывает
+                информацию о договоре, сумма просрочки сверху на вкладке "Просроченные". */}
+            <Contracts
+              sales={investorSales}
+              customers={customers}
+              accounts={accounts}
+              activeTab={contractTab}
+              onTabChange={setContractTab}
+              onViewSchedule={() => {}}
+              onEditSale={() => {}}
+              onDeleteSale={() => {}}
+              readOnly
+              appSettings={appSettings}
+            />
           </div>
         )}
       </div>

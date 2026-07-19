@@ -30,13 +30,15 @@ const ContractInfoModal = ({
   customer,
   onClose,
   appSettings,
-  activeTab
+  activeTab,
+  readOnly
 }: {
   sale: Sale,
   customer?: Customer,
   onClose: () => void,
   appSettings?: AppSettings,
-  activeTab?: 'ACTIVE' | 'OVERDUE' | 'ARCHIVE'
+  activeTab?: 'ACTIVE' | 'OVERDUE' | 'ARCHIVE',
+  readOnly?: boolean
 }) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -175,7 +177,7 @@ const handleSendReminder = async () => {
           </div>
 
           {/* 🔔 Кнопка «Напомнить» в шапке */}
-          {activeTab === 'OVERDUE' && (
+          {activeTab === 'OVERDUE' && !readOnly && (
     <button
       onClick={(e) => { e.stopPropagation(); setShowConfirmReminder(true); }}
       className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 rounded-xl text-white transition-colors active:scale-95 flex items-center gap-1.5 text-xs font-bold shadow-sm"
@@ -870,28 +872,30 @@ useEffect(() => {
               <h2 className="text-lg font-bold text-slate-800 dark:text-white">Просроченные договоры</h2>
               <p className="text-slate-500 dark:text-slate-400 text-xs">Всего: {filteredList.length}</p>
             </div>
-            <div className="flex items-center gap-2">
-              {/* 🔔 КНОПКА "НАПОМНИТЬ ВСЕМ" */}
-              <button
-                  onClick={() => setShowConfirmRemindAll(true)}
-                  disabled={filteredList.length === 0 || isSendingAll}
-                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
-              >
-                {isSendingAll ? (
-                    <>
-                      <span
-                          className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                      {sentStats ? `${sentStats.sent}/${sentStats.total}` : 'Отправка...'}
-                    </>
-                ) : (
-                    <>
-                      <Phone size={14} className="rotate-90"/>
-                      Напомнить всем
-                    </>
-                )}
-              </button>
+            {!readOnly && (
+              <div className="flex items-center gap-2">
+                {/* 🔔 КНОПКА "НАПОМНИТЬ ВСЕМ" */}
+                <button
+                    onClick={() => setShowConfirmRemindAll(true)}
+                    disabled={filteredList.length === 0 || isSendingAll}
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                >
+                  {isSendingAll ? (
+                      <>
+                        <span
+                            className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                        {sentStats ? `${sentStats.sent}/${sentStats.total}` : 'Отправка...'}
+                      </>
+                  ) : (
+                      <>
+                        <Phone size={14} className="rotate-90"/>
+                        Напомнить всем
+                      </>
+                  )}
+                </button>
 
-            </div>
+              </div>
+            )}
 
           </div>
           <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-900/50">
@@ -961,7 +965,7 @@ useEffect(() => {
             <div
               key={sale.id}
               className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-3.5 border border-slate-100 dark:border-slate-700 hover:border-blue-200 dark:hover:border-blue-800 hover:shadow transition-all cursor-pointer"
-              onClick={() => !readOnly && setSelectedSaleForInfo(sale)}
+              onClick={() => setSelectedSaleForInfo(sale)}
             >
               <div className="flex items-start justify-between mb-2.5">
                 <div className="flex items-center gap-2">
@@ -1099,11 +1103,15 @@ useEffect(() => {
       {/* Модалка информации */}
       {selectedSaleForInfo && (
         <ContractInfoModal
-          sale={selectedSaleForInfo}
+          // 🔒 Берём свежую запись из sales по id, а не сохранённый в state снимок —
+          // иначе модалка может показывать устаревшие данные, если платёж провели
+          // с другого экрана, пока эта модалка уже была открыта.
+          sale={sales.find(s => s.id === selectedSaleForInfo.id) || selectedSaleForInfo}
           customer={customers.find(c => c.id === selectedSaleForInfo.customerId)}
           onClose={() => setSelectedSaleForInfo(null)}
           appSettings={appSettings}
           activeTab={activeTab}
+          readOnly={readOnly}
         />
       )}
     </div>

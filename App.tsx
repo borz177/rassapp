@@ -2810,6 +2810,7 @@ if (!user && !showSplash) {
           return !!acc && isAccountForInvestor(acc, activeInvestor.id);
         })}
         accounts={filteredAccounts}
+        customers={customers}
         investor={activeInvestor}
         appSettings={appSettings}
         onLogout={() => {
