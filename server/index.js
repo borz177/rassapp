@@ -404,6 +404,13 @@ app.use(cors({
 
 
 
+// ✅ Файлы для скачивания (APK/EXE) отдаются отсюда, а не из public/downloads.
+// Раньше они лежали в public/, которую Vite бандлит в dist/, а Capacitor копирует
+// в саму Android-сборку — из-за этого APK на каждом релизе упаковывал сам себя
+// (и все предыдущие версии) как «веб-ресурс», раздуваясь без предела. Эта папка
+// вне пайплайна Vite/Capacitor — сборки её больше не увидят.
+app.use('/downloads', express.static(path.join(__dirname, 'downloads')));
+
 app.use(express.json({
   limit: '15mb',
   type: (req) => {
@@ -1944,6 +1951,20 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
+  });
+});
+
+// ✅ Версия Android-приложения (APK), которую нужно предлагать пользователям для установки.
+// Увеличивать при каждом релизе, требующем обновления APK (изменения на нативном уровне —
+// новые Capacitor-плагины, права и т.п.), синхронно с versionCode в android/app/build.gradle.
+// Обычные правки веб-кода сами подхватываются WebView с каждым открытием приложения — версию
+// бампать для них не нужно.
+const LATEST_ANDROID_VERSION_CODE = 2;
+
+app.get('/api/app-version', (req, res) => {
+  res.json({
+    androidVersionCode: LATEST_ANDROID_VERSION_CODE,
+    apkUrl: '/downloads/finuchet.apk'
   });
 });
 

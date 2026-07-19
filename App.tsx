@@ -167,7 +167,7 @@ const [showNotification, setShowNotification] = useState(false);
 const [notificationData, setNotificationData] = useState<{
   title: string;
   message: string;
-  type: 'success' | 'error' | 'warning';
+  type: 'success' | 'error' | 'warning' | 'info';
   actionLabel?: string;
   onAction?: () => void;
   cancelLabel?: string;
@@ -178,7 +178,7 @@ const [notificationData, setNotificationData] = useState<{
 const showNotificationModal = (
   title: string,
   message: string,
-  type: 'success' | 'error' | 'warning',
+  type: 'success' | 'error' | 'warning' | 'info',
   actionLabel?: string,
   onAction?: () => void,
   cancelLabel?: string
@@ -674,6 +674,32 @@ useEffect(() => {
     cancelled = true;
     listenerHandle?.remove();
   };
+}, []);
+
+// 🔹 Установленный APK (нативная оболочка) не обновляется сам по себе, в отличие от веб-кода,
+// который WebView каждый раз подтягивает свежим с сервера — поэтому проверяем именно нативную
+// versionCode и, если на сервере опубликована более новая, предлагаем скачать новый APK.
+useEffect(() => {
+  if (!Capacitor.isNativePlatform()) return;
+  (async () => {
+    try {
+      const [info, latest] = await Promise.all([CapacitorApp.getInfo(), api.getAppVersion()]);
+      const installedCode = parseInt(info.build, 10); // на Android AppInfo.build === versionCode
+      if (!Number.isFinite(installedCode) || latest.androidVersionCode <= installedCode) return;
+
+      const apkUrl = new URL(latest.apkUrl, window.location.origin).toString();
+      showNotificationModal(
+        '📲 Доступно обновление',
+        'Вышла новая версия приложения. Рекомендуем обновиться, чтобы получить последние исправления.',
+        'info',
+        'Скачать обновление',
+        () => { window.open(apkUrl, '_system'); },
+        'Позже'
+      );
+    } catch (e) {
+      console.warn('⚠️ Проверка версии приложения не удалась:', e);
+    }
+  })();
 }, []);
 
 useEffect(() => {

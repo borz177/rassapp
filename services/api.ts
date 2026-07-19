@@ -813,6 +813,14 @@ export const api = {
         return data;
     },
 
+    // 🔥 ПУБЛИЧНЫЙ — используется на нативном Android, чтобы предложить обновить APK,
+    // если установленная версия отстала от опубликованной на сервере.
+    getAppVersion: async (): Promise<{ androidVersionCode: number; apkUrl: string }> => {
+        const res = await fetch(`${API_URL}/app-version`);
+        if (!res.ok) throw new Error('Failed to fetch app version');
+        return res.json();
+    },
+
     // === УНИВЕРСАЛЬНЫЕ HTTP МЕТОДЫ (используют fetchWithAuth) ===
     get: async <T>(url: string, params?: Record<string, any>): Promise<T> => {
         const queryString = params ? '?' + new URLSearchParams(params).toString() : '';
