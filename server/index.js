@@ -2273,12 +2273,24 @@ app.post('/api/data/:type', auth, async (req, res) => {
     if (type === 'sales' && saleNotifyContext) {
       const { action, existingSale: oldSale } = saleNotifyContext;
       const amountStr = (n) => Number(n || 0).toLocaleString('ru-RU');
+
+      // 🔹 У Sale нет поля customerName (только customerId) — раньше текст уведомления
+      // всегда падал в дефолт "клиентом"/"клиента". Подтягиваем реальное имя.
+      let customerName = null;
+      if (itemData.customerId) {
+        const customerRes = await pool.query(
+          `SELECT data->>'name' as name FROM data_items WHERE id = $1 AND type = 'customers'`,
+          [itemData.customerId]
+        );
+        customerName = customerRes.rows[0]?.name || null;
+      }
+
       if (action === 'create') {
         await createNotification(
           targetUserId,
           'NEW_CONTRACT',
           'Новый договор',
-          `Оформлен договор с ${itemData.customerName || 'клиентом'} на сумму ${amountStr(itemData.totalAmount)} ₽`,
+          `Оформлен договор с ${customerName || 'клиентом'} на сумму ${amountStr(itemData.totalAmount)} ₽`,
           { saleId: itemData.id }
         );
       } else if (oldSale) {
@@ -2291,7 +2303,7 @@ app.post('/api/data/:type', auth, async (req, res) => {
             targetUserId,
             'PAYMENT',
             'Новый платёж',
-            `Зачислен платёж ${amountStr(p.amount)} ₽ от ${itemData.customerName || 'клиента'}`,
+            `Зачислен платёж ${amountStr(p.amount)} ₽ от ${customerName || 'клиента'}`,
             { saleId: itemData.id, amount: p.amount }
           );
         }
@@ -2300,7 +2312,7 @@ app.post('/api/data/:type', auth, async (req, res) => {
             targetUserId,
             'CONTRACT_CLOSED',
             'Договор закрыт',
-            `Договор с ${itemData.customerName || 'клиентом'} полностью оплачен`,
+            `Договор с ${customerName || 'клиентом'} полностью оплачен`,
             { saleId: itemData.id }
           );
         }
