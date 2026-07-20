@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Investor, AppSettings, Sale, Expense, Account, Customer } from '../types';
-import { formatCurrency, getAccountShares } from '../src/utils';
+import { formatCurrency, getAccountShares, escapeHtml } from '../src/utils';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -543,7 +543,7 @@ const Reports: React.FC<ReportsProps> = ({
                 <tr><th>Инвестор</th><th>Капитал</th><th>Доля</th><th>% прибыли</th><th>Ожидается</th><th>Получено</th><th>Контрактов</th></tr>
                 ${accurateInvestorBreakdown.map(({ inv, share, expectedProfit, realizedProfit, salesCount }) => `
                 <tr>
-                    <td><strong>${inv.name}</strong></td>
+                    <td><strong>${escapeHtml(inv.name)}</strong></td>
                     <td>${fmt(inv.initialAmount)}</td>
                     <td>${share}%</td>
                     <td>${inv.profitPercentage}%</td>
@@ -632,9 +632,9 @@ const Reports: React.FC<ReportsProps> = ({
             <button class="btn btn-print" onclick="window.print()">🖨️ Сохранить PDF</button>
             <button class="btn btn-close" onclick="window.close()">✕ Закрыть</button>
         </div>
-        ${companyName ? `<div class="company">${companyName}</div>` : ''}
+        ${companyName ? `<div class="company">${escapeHtml(companyName)}</div>` : ''}
         <h1>Финансовый отчёт</h1>
-        <div class="subtitle">Период: <strong>${filters.period.start} — ${filters.period.end}</strong> · Счёт: <strong>${selectedAccountName}</strong></div>
+        <div class="subtitle">Период: <strong>${filters.period.start} — ${filters.period.end}</strong> · Счёт: <strong>${escapeHtml(selectedAccountName)}</strong></div>
         <h2>Ключевые показатели</h2>
         <div class="kpi-grid">
             <div class="kpi"><div class="kpi-label">Поступления</div><div class="kpi-value">${fmt(data.customerPaymentsInPeriod)}</div></div>

@@ -4,7 +4,7 @@ import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
 import { api } from '../services/api';
-import { getSellerPhone } from '../src/utils'; 
+import { getSellerPhone, escapeHtml } from '../src/utils'; 
 
 interface NewSaleProps {
   initialData: any;
@@ -995,17 +995,17 @@ if (mode === 'CASH') {
         <div class="content-wrapper">
           <div class="section">
             <div class="field-row">
-              <span><span class="field-label">Продавец:</span> ${companyName}</span>
-              <span>Тел: ${formatPhone(sellerPhone)}</span>
+              <span><span class="field-label">Продавец:</span> ${escapeHtml(companyName)}</span>
+              <span>Тел: ${escapeHtml(formatPhone(sellerPhone))}</span>
             </div>
             <div class="field-row">
-              <span><span class="field-label">Покупатель:</span> ${customer?.name || '__________________'}</span>
-              <span>Тел: ${customer?.phone || '+7 (___) ___-__-__'}</span>
+              <span><span class="field-label">Покупатель:</span> ${customer?.name ? escapeHtml(customer.name) : '__________________'}</span>
+              <span>Тел: ${customer?.phone ? escapeHtml(customer.phone) : '+7 (___) ___-__-__'}</span>
             </div>
-            ${hasGuarantor ? `<div class="field-row"><span><span class="field-label">Поручитель:</span> ${sale.guarantorName}</span><span>Тел: ${sale.guarantorPhone || ''}</span></div>` : ''}
+            ${hasGuarantor ? `<div class="field-row"><span><span class="field-label">Поручитель:</span> ${escapeHtml(sale.guarantorName)}</span><span>Тел: ${escapeHtml(sale.guarantorPhone || '')}</span></div>` : ''}
           </div>
           <div class="section">
-            <div><span class="field-label">Товар:</span> ${sale.productName}</div>
+            <div><span class="field-label">Товар:</span> ${escapeHtml(sale.productName)}</div>
             <div style="display: flex; justify-content: space-between; margin-top: 10px;">
               <span><span class="field-label">Срок рассрочки:</span> ${sale.installments} мес.</span>
               <span><span class="field-label">Стоимость:</span> ${sale.totalAmount.toLocaleString()} ₽</span>

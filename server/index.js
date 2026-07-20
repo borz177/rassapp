@@ -812,8 +812,12 @@ await pool.query(`CREATE INDEX IF NOT EXISTS idx_admin_audit_log_target_user_id 
 };
 
 const initSuperAdmin = async () => {
-  const adminEmail = process.env.SUPER_ADMIN_EMAIL || 'borz017795@gmail.com';
-  const adminPass = process.env.SUPER_ADMIN_PASSWORD || 'admin123';
+  const adminEmail = process.env.SUPER_ADMIN_EMAIL;
+  const adminPass = process.env.SUPER_ADMIN_PASSWORD;
+  if (!adminEmail || !adminPass) {
+    console.error('❌ SUPER_ADMIN_EMAIL и SUPER_ADMIN_PASSWORD должны быть заданы в .env');
+    return;
+  }
   try {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(adminPass, salt);
@@ -1768,6 +1772,12 @@ app.post('/api/auth/send-code', sendCodeLimiter, async (req, res) => {
 app.post('/api/auth/register', registerLimiter, async (req, res) => {
   const { name, email, password, code, role, managerId, permissions, allowedInvestorIds } = req.body;
   const normalizedEmail = email.toLowerCase().trim();
+
+  // Whitelist допустимых ролей: sub-пользователи (investor/employee) требуют managerId,
+  // самостоятельная регистрация — всегда 'manager'.
+  const SUB_USER_ROLES = ['investor', 'employee'];
+  const safeRole = managerId && SUB_USER_ROLES.includes(role) ? role : 'manager';
+
   try {
     // 1. Verify Code
     const codeCheck = await pool.query('SELECT * FROM verification_codes WHERE email = $1', [normalizedEmail]);
@@ -1781,20 +1791,20 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
     if (record.code !== code) {
       return res.status(400).json({ msg: 'Неверный код' });
     }
-    
+
     // 2. Check User Existence
     const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [normalizedEmail]);
     if (userCheck.rows.length > 0) {
       return res.status(400).json({ msg: 'Пользователь уже существует' });
     }
-    
-    const id = role === 'manager' ? `u_${Date.now()}` : (role === 'investor' ? `u_inv_${Date.now()}` : `u_emp_${Date.now()}`);
+
+    const id = safeRole === 'investor' ? `u_inv_${Date.now()}` : (safeRole === 'employee' ? `u_emp_${Date.now()}` : `u_${Date.now()}`);
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    
+
     // Initial Subscription (3 Days Trial) for Managers
     let subscription = null;
-    if (!role || role === 'manager' || role === 'admin') {
+    if (safeRole === 'manager') {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 3);
       subscription = {
@@ -1812,7 +1822,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
         name,
         normalizedEmail,
         hashedPassword,
-        role || 'manager',
+        safeRole,
         managerId || null,
         JSON.stringify(permissions || {}),
         JSON.stringify(allowedInvestorIds || []),
@@ -1824,7 +1834,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
       await pool.query('DELETE FROM verification_codes WHERE email = $1', [normalizedEmail]);
     
     // Create default account for managers
-    if (!role || role === 'manager' || role === 'admin') {
+    if (safeRole === 'manager') {
       const accId = `acc_main_${id}`;
       const accData = { id: accId, userId: id, name: 'Основной счет', type: 'MAIN' };
       await pool.query(
@@ -1885,12 +1895,13 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
         if (result.rows.length === 0) return res.status(400).json({ msg: 'Неверные учетные данные' });
         
         const user = result.rows[0];
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) return res.status(400).json({ msg: 'Неверные учетные данные' });
 
         if (user.blocked) {
             return res.status(403).json({ msg: 'Аккаунт заблокирован. Обратитесь в поддержку.', code: 'BLOCKED' });
         }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) return res.status(400).json({ msg: 'Неверные учетные данные' });
 
         // 🔥 Подставляем подписку владельца для сотрудника
         let subscription = user.subscription;
@@ -1983,12 +1994,20 @@ app.post('/api/user/whatsapp', auth, async (req, res) => {
   }
 });
 
-// Subscription Management
+// Subscription Management (только admin — обновление через UI не поддерживается, используется webhook)
 app.post('/api/user/subscription', auth, async (req, res) => {
   const { plan, months } = req.body;
-  
-  if (req.user.role !== 'manager' && req.user.role !== 'admin') {
-    return res.status(403).json({ msg: 'Only managers can subscribe' });
+
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ msg: 'Forbidden' });
+  }
+
+  const VALID_PLANS = ['TRIAL', 'START', 'STANDARD', 'BUSINESS'];
+  if (!VALID_PLANS.includes(plan)) {
+    return res.status(400).json({ msg: 'Invalid plan' });
+  }
+  if (!months || months < 1 || months > 24) {
+    return res.status(400).json({ msg: 'Invalid months (1–24)' });
   }
   
   try {
@@ -2468,8 +2487,11 @@ app.post('/api/upload/document', auth, upload.single('file'), async (req, res) =
 
 // 🔹 Отдача файлов (защищённая)
 app.get('/uploads/documents/:filename', auth, (req, res) => {
-  const filename = req.params.filename;
+  const filename = path.basename(req.params.filename); // защита от path traversal
   const filePath = path.join(uploadDir, filename);
+  if (!filePath.startsWith(uploadDir)) {
+    return res.status(400).json({ error: 'Недопустимый путь' });
+  }
 
   if (!filename.includes(req.user.id) && req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Доступ запрещён' });
@@ -2715,7 +2737,11 @@ app.post('/api/users/manage', auth, async (req, res) => {
     if (password && password.trim().length > 0) {
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(password, salt);
-      await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, id]);
+      // Менять пароль можно только своему пользователю или самому себе
+      await pool.query(
+        'UPDATE users SET password = $1 WHERE id = $2 AND (manager_id = $3 OR id = $3)',
+        [hashedPassword, id, req.user.id]
+      );
     }
 
     // 🔥 ПОЛУЧАЕМ ОБНОВЛЁННОГО ПОЛЬЗОВАТЕЛЯ С СЕРВЕРА
@@ -3056,19 +3082,21 @@ app.post('/api/payment/create', auth, async (req, res) => {
 // --- WEBHOOK HANDLER ---
 app.post('/api/payment/webhook', async (req, res) => {
   try {
-    // 🔍 YooKassa отправляет подпись в заголовке content-sha256 (не notification-signature)
+    // 🔍 YooKassa отправляет подпись в заголовке content-sha256
     const signature = req.headers['content-sha256'];
 
-    // Если подпись есть — проверяем её
-    if (signature) {
-      // YooKassa использует обычный SHA256, а не HMAC с секретом
-      const bodyString = JSON.stringify(req.body);
-      const expected = crypto.createHash('sha256').update(bodyString).digest('hex');
+    // Подпись обязательна — запрос без неё отклоняем
+    if (!signature) {
+      console.warn('⚠️ Webhook missing signature');
+      return res.status(401).send('Missing signature');
+    }
 
-      if (signature.toLowerCase() !== expected.toLowerCase()) {
-        console.warn('⚠️ Webhook signature mismatch');
-        return res.status(401).send('Invalid signature');
-      }
+    const bodyString = JSON.stringify(req.body);
+    const expected = crypto.createHash('sha256').update(bodyString).digest('hex');
+
+    if (signature.toLowerCase() !== expected.toLowerCase()) {
+      console.warn('⚠️ Webhook signature mismatch');
+      return res.status(401).send('Invalid signature');
     }
 
     // ✅ Основная логика (ваш код без изменений)

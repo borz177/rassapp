@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, User, AppSettings } from '../types';
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
-import { formatCurrency, formatDate } from '../src/utils';
+import { formatCurrency, formatDate, escapeHtml } from '../src/utils';
 import { createPortal } from 'react-dom';
 import { api } from '../services/api';
 
@@ -611,21 +611,21 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
     <div class="content-wrapper">
         <div class="section">
             <div class="field-row">
-                <span><span class="field-label">Продавец:</span> ${companyName}</span>
-                <span>Тел: ${formatPhone(sellerPhone)}</span>
+                <span><span class="field-label">Продавец:</span> ${escapeHtml(companyName)}</span>
+                <span>Тел: ${escapeHtml(formatPhone(sellerPhone))}</span>
             </div>
             <div class="field-row">
-                <span><span class="field-label">Покупатель:</span> ${customer?.name || '__________________'}</span>
-                <span>Тел: ${formatPhone(customer.phone)}</span>
+                <span><span class="field-label">Покупатель:</span> ${customer?.name ? escapeHtml(customer.name) : '__________________'}</span>
+                <span>Тел: ${escapeHtml(formatPhone(customer.phone))}</span>
             </div>
             ${hasGuarantor ? `
             <div class="field-row">
-                <span><span class="field-label">Поручитель:</span> ${sale.guarantorName}</span>
-                <span>Тел: ${formatPhone(sale.guarantorPhone)}</span>
+                <span><span class="field-label">Поручитель:</span> ${escapeHtml(sale.guarantorName)}</span>
+                <span>Тел: ${escapeHtml(formatPhone(sale.guarantorPhone))}</span>
             </div>` : ''}
         </div>
         <div class="section">
-            <div><span class="field-label">Товар:</span> ${sale.productName}</div>
+            <div><span class="field-label">Товар:</span> ${escapeHtml(sale.productName)}</div>
             <div style="display: flex; justify-content: space-between; margin-top: 10px;">
                 <span><span class="field-label">Срок рассрочки:</span> ${sale.installments} мес.</span>
                 <span><span class="field-label">Стоимость:</span> ${formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</span>

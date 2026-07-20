@@ -1,5 +1,13 @@
 import { Account, Investor } from '../types';
 
+export const escapeHtml = (str: unknown): string =>
+  String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
 // Участвовал ли инвестор в пуле на момент cutoff — учитывает и вступление (joinedDate),
 // и выход (leftPoolDate, если задан). Общая точка для getAccountShares/getInvestorCapitalShare,
 // чтобы условие не разъезжалось между ними.

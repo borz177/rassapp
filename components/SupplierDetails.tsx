@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Customer, Expense, Sale, Supplier } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency } from '../src/utils';
+import { formatCurrency, escapeHtml } from '../src/utils';
 
 interface SupplierDetailsProps {
   supplier: Supplier;
@@ -100,7 +100,7 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
       <body>
         <button class="no-print" onclick="window.close()">✕ Закрыть</button>
         <h1>Акт сверки взаимных расчётов</h1>
-        <div class="subtitle">${companyName} — ${supplier.name}</div>
+        <div class="subtitle">${escapeHtml(companyName)} — ${escapeHtml(supplier.name)}</div>
         <div class="header-info">
           <span>Период: ${periodStart} — ${periodEnd}</span>
           <span>Договоров: ${supplierSales.length}</span>
