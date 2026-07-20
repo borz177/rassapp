@@ -248,6 +248,18 @@ input, textarea, [contenteditable] {
   from { opacity: 1; }
   to   { opacity: 0; }
 }
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes dialog-out {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to   { opacity: 0; transform: scale(0.95) translateY(8px); }
+}
 
 .animate-slide-up-sheet {
   animation: slide-up-sheet 0.32s cubic-bezier(0.32, 0.72, 0, 1) forwards;
@@ -257,6 +269,15 @@ input, textarea, [contenteditable] {
 }
 .animate-fade-out {
   animation: fade-out 0.25s ease forwards;
+}
+.animate-modal-fade-in {
+  animation: modal-fade-in 0.2s ease forwards;
+}
+.animate-dialog-in {
+  animation: dialog-in 0.22s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+.animate-dialog-out {
+  animation: dialog-out 0.18s ease forwards;
 }
 
 /* ============================================

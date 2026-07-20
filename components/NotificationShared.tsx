@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ICONS } from '../constants';
 import { AppNotification, NotificationType } from '../types';
 
@@ -47,10 +47,25 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
   // Рассылки от администратора архивировать нельзя — у них нет этого понятия на сервере
   const canArchive = onArchiveToggle && notification.type !== 'ADMIN_BROADCAST';
 
+  // 180мс = длительность animate-dialog-out — даём анимации закрытия доиграть перед
+  // тем, как реально снять модалку с рендера (или дёрнуть архивирование у родителя).
+  const [isClosing, setIsClosing] = useState(false);
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(onClose, 180);
+  };
+  const handleArchiveClick = () => {
+    setIsClosing(true);
+    setTimeout(() => onArchiveToggle!(notification), 180);
+  };
+
   return (
-    <div className="fixed inset-0 z-[70] bg-black bg-opacity-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div
+      className={`fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 ${isClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
+      onClick={handleClose}
+    >
       <div
-        className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-5"
+        className={`bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-5 ${isClosing ? 'animate-dialog-out' : 'animate-dialog-in'}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-3">
@@ -59,7 +74,7 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
             <p className={`text-xs font-semibold uppercase ${meta.text}`}>{meta.label}</p>
             <h3 className="font-bold text-slate-800 dark:text-white mt-0.5">{notification.title}</h3>
           </div>
-          <button onClick={onClose} className="p-1.5 -mr-1 -mt-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400">
+          <button onClick={handleClose} className="p-1.5 -mr-1 -mt-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400">
             {ICONS.Close}
           </button>
         </div>
@@ -74,7 +89,7 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
 
         {canArchive && (
           <button
-            onClick={() => onArchiveToggle!(notification)}
+            onClick={handleArchiveClick}
             className="w-full mt-4 py-2.5 rounded-xl text-sm font-medium border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center gap-2"
           >
             {notification.isArchived ? (

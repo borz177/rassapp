@@ -17,6 +17,14 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
   const [isLoading, setIsLoading] = useState(true);
   const [detailNotif, setDetailNotif] = useState<AppNotification | null>(null);
 
+  // Даём закрывающей анимации доиграть (280мс = длительность animate-slide-down-sheet)
+  // перед тем как реально снять панель с рендера.
+  const [isClosing, setIsClosing] = useState(false);
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(onClose, 280);
+  };
+
   const loadData = async () => {
     try {
       const res = await api.getNotifications();
@@ -89,11 +97,18 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-[60]">
-      <div className="bg-white dark:bg-slate-800 w-full sm:w-[440px] h-[85vh] sm:h-[640px] rounded-t-2xl sm:rounded-2xl flex flex-col shadow-2xl">
+    <div
+      className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[60] ${isClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
+      onClick={handleClose}
+    >
+      <div
+        className={`bg-white dark:bg-slate-800 w-full sm:w-[440px] h-[85vh] sm:h-[640px] rounded-t-3xl sm:rounded-3xl flex flex-col shadow-2xl ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="p-4 border-b dark:border-slate-700 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 p-2 rounded-lg">{ICONS.Bell}</div>
             <h2 className="text-lg font-bold text-slate-800 dark:text-white">Уведомления</h2>
             {unreadCount > 0 && (
               <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
@@ -107,7 +122,7 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
                 Прочитать все
               </button>
             )}
-            <button onClick={onClose} className="p-2 -mr-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-500 dark:text-slate-400">
+            <button onClick={handleClose} className="p-2 -mr-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-500 dark:text-slate-400">
               {ICONS.Close}
             </button>
           </div>
