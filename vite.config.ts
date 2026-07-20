@@ -62,6 +62,7 @@ export default defineConfig(({ mode }) => {
     '**/electron.cjs'
   ],
           navigateFallback: '/index.html',
+          navigateFallbackDenylist: [/^\/downloads\//],
           runtimeCaching: [
             {
               urlPattern: ({ url }) => url.pathname.startsWith('/api'),

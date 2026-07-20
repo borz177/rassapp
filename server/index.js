@@ -494,7 +494,17 @@ app.use(cors({
 // в саму Android-сборку — из-за этого APK на каждом релизе упаковывал сам себя
 // (и все предыдущие версии) как «веб-ресурс», раздуваясь без предела. Эта папка
 // вне пайплайна Vite/Capacitor — сборки её больше не увидят.
-app.use('/downloads', express.static(path.join(__dirname, 'downloads')));
+app.use('/downloads', express.static(path.join(__dirname, 'downloads'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.apk')) {
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filePath)}"`);
+    } else if (filePath.endsWith('.exe')) {
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filePath)}"`);
+    }
+  }
+}));
 
 app.use(express.json({
   limit: '15mb',
