@@ -3025,7 +3025,7 @@ if (!user && !showSplash) {
                       customers={customers}
                       initialAccountId={operationsAccountId}
                       onDelete={handleDeleteOperation}
-                      employees={employees}
+                      employees={isInvestor ? [] : employees}
                       accountBalances={accountBalances}
                       appSettings={appSettings}
                     />

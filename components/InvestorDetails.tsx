@@ -75,12 +75,12 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, investors, 
 
   const balance = useMemo(() => {
       if(!account) return 0;
-      let total = 0;
+      let total = account.initialBalance || 0;
       sales.filter(s => s.accountId === account.id).forEach(s => {
           total += s.downPayment;
           s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false).forEach(p => total += p.amount);
       });
-      expenses.filter(e => e.accountId === account.id).forEach(e => total -= e.amount);
+      expenses.filter(e => e.accountId === account.id && e.isRefund !== true).forEach(e => total -= e.amount);
       return total;
   }, [sales, expenses, account]);
 
