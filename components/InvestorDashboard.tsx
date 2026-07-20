@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Sale, Expense, Account, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate } from '../src/utils';
@@ -15,12 +16,34 @@ interface InvestorDashboardProps {
   onLogout: () => void;
 }
 
+// 🔹 Пресеты периода для графика динамики прибыли — тот же подход, что и у менеджера
+// в Reports.tsx (там не экспортирован, поэтому лёгкая копия здесь, а не общий импорт).
+type PeriodPreset = 'week' | 'month' | 'quarter' | 'year' | 'all';
+const PERIOD_PRESET_LABELS: Record<PeriodPreset, string> = {
+  week: '7 дней', month: 'Месяц', quarter: 'Квартал', year: 'Год', all: 'Всё время',
+};
+const MONTH_NAMES_SHORT = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+function getPeriodDates(preset: PeriodPreset): { start: string; end: string } {
+  const today = new Date();
+  const fmt = (d: Date) => d.toISOString().split('T')[0];
+  const todayStr = fmt(today);
+  switch (preset) {
+    case 'week': { const d = new Date(today); d.setDate(today.getDate() - 7); return { start: fmt(d), end: todayStr }; }
+    case 'month': return { start: fmt(new Date(today.getFullYear(), today.getMonth(), 1)), end: todayStr };
+    case 'quarter': { const d = new Date(today); d.setMonth(today.getMonth() - 3); return { start: fmt(d), end: todayStr }; }
+    case 'year': { const d = new Date(today); d.setFullYear(today.getFullYear() - 1); return { start: fmt(d), end: todayStr }; }
+    case 'all': return { start: '2020-01-01', end: todayStr };
+  }
+}
+
 const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
   sales, expenses, accounts, customers, investor, appSettings, onLogout
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'contracts'>('overview');
   const [contractTab, setContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
   const [showPayoutsModal, setShowPayoutsModal] = useState(false);
+  const [showAccrualsModal, setShowAccrualsModal] = useState(false);
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('month');
 
    // 🔹 ВСЕ аккаунты инвестора (уже переданы в props как accounts)
   const investorAccountIds = useMemo(() => {
@@ -144,6 +167,54 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
       .filter(e => e.payoutType === 'PROFIT' && (!e.investorId || e.investorId === investor.id))
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [investorExpenses, investor.id]);
+
+  // 🔹 Выбранный период для графика/деталей прибыли
+  const periodRange = useMemo(() => getPeriodDates(periodPreset), [periodPreset]);
+
+  // 🔹 profitAccruals уже посчитан выше (по каждому платежу клиента) — здесь просто
+  // фильтруем по периоду и переводим из валовой прибыли в долю ЭТОГО инвестора.
+  const accrualsInPeriod = useMemo(() => {
+    const start = new Date(periodRange.start);
+    const end = new Date(periodRange.end);
+    end.setHours(23, 59, 59, 999);
+    const share = investor.profitPercentage / 100;
+    return profitAccruals
+      .filter(a => { const d = new Date(a.date); return d >= start && d <= end; })
+      .map(a => ({ ...a, amount: a.amount * share }));
+  }, [profitAccruals, periodRange, investor.profitPercentage]);
+
+  const periodProfitTotal = useMemo(
+    () => accrualsInPeriod.reduce((sum, a) => sum + a.amount, 0),
+    [accrualsInPeriod]
+  );
+
+  // 🔹 Данные для графика — группировка по дням, а на длинных периодах (>90 дней) по месяцам,
+  // тот же порог, что и в Reports.tsx у менеджера.
+  const profitChartData = useMemo(() => {
+    if (accrualsInPeriod.length === 0) return [];
+    const start = new Date(periodRange.start);
+    const end = new Date(periodRange.end);
+    const diffDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const useMonthly = diffDays > 90;
+
+    const buckets: Record<string, number> = {};
+    accrualsInPeriod.forEach(a => {
+      const d = new Date(a.date);
+      const key = useMonthly
+        ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        : a.date.substring(0, 10);
+      buckets[key] = (buckets[key] || 0) + a.amount;
+    });
+
+    return Object.entries(buckets)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, amount]) => {
+        const label = useMonthly
+          ? `${MONTH_NAMES_SHORT[parseInt(key.split('-')[1]) - 1]} ${key.split('-')[0]}`
+          : key.substring(5).replace('-', '.');
+        return { key, label, amount };
+      });
+  }, [accrualsInPeriod, periodRange]);
 
   // 🔹 Ожидаемая прибыль: Как в InvestorDetails
   // 🔹 Ожидаемая прибыль: от остатка долга по АКТИВНЫМ сделкам
@@ -377,6 +448,80 @@ const expectedTotalProfit = useMemo(() => {
               </button>
             </div>
 
+            {/* 🔹 Динамика прибыли */}
+            <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                  <span className="w-1 h-5 bg-emerald-500 rounded-full"></span>
+                  Динамика прибыли
+                </h3>
+                <button
+                  onClick={() => setShowAccrualsModal(true)}
+                  className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 flex items-center gap-1 self-start sm:self-auto"
+                >
+                  Откуда прибыль <span aria-hidden>→</span>
+                </button>
+              </div>
+
+              {/* Пресеты периода */}
+              <div className="flex flex-wrap gap-2 mb-5">
+                {(Object.keys(PERIOD_PRESET_LABELS) as PeriodPreset[]).map(preset => (
+                  <button
+                    key={preset}
+                    onClick={() => setPeriodPreset(preset)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 ${
+                      periodPreset === preset
+                        ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-md shadow-emerald-200 dark:shadow-emerald-900/30 scale-105'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                    }`}
+                  >
+                    {PERIOD_PRESET_LABELS[preset]}
+                  </button>
+                ))}
+              </div>
+
+              {profitChartData.length === 0 ? (
+                <div className="text-center py-10 text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900 rounded-xl">
+                  Нет начислений прибыли за выбранный период
+                </div>
+              ) : (
+                <>
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={profitChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="investorProfitGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10B981" stopOpacity={0.25} />
+                            <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 11, fill: '#94a3b8' }}
+                          axisLine={false} tickLine={false}
+                          interval="preserveStartEnd"
+                        />
+                        <YAxis hide />
+                        <Tooltip
+                          formatter={(value: any) => [`${formatCurrency(Number(value), appSettings.showCents)} ₽`, 'Прибыль']}
+                          contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                          labelStyle={{ color: '#64748b', fontWeight: 600, marginBottom: 4 }}
+                        />
+                        <Area type="monotone" dataKey="amount" stroke="#10B981" strokeWidth={2.5}
+                          fill="url(#investorProfitGradient)" dot={{ r: 3, fill: '#10B981', strokeWidth: 0 }}
+                          activeDot={{ r: 5, fill: '#10B981', strokeWidth: 2, stroke: '#fff' }}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-3 text-center">
+                    Прибыль за период: <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(periodProfitTotal, appSettings.showCents)} ₽</span>
+                  </p>
+                </>
+              )}
+            </div>
+
             {/* 🔹 Последние договоры */}
             <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700">
               <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
@@ -503,6 +648,68 @@ const expectedTotalProfit = useMemo(() => {
             <div className="p-4 border-t border-slate-100 dark:border-slate-700 shrink-0">
               <button
                 onClick={() => setShowPayoutsModal(false)}
+                className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 🔹 Модалка: откуда прибыль (детализация начислений за выбранный период) */}
+      {showAccrualsModal && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+          onClick={() => setShowAccrualsModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-800 w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 bg-gradient-to-r from-emerald-600 to-emerald-500 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-white">Откуда прибыль</h3>
+                <p className="text-xs text-emerald-100 mt-0.5">
+                  {PERIOD_PRESET_LABELS[periodPreset]} · начислено {formatCurrency(periodProfitTotal, appSettings.showCents)} ₽
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAccrualsModal(false)}
+                className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
+                aria-label="Закрыть"
+              >
+                {ICONS.Close}
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {accrualsInPeriod.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 dark:text-slate-500">
+                  <div className="text-4xl mb-2">📈</div>
+                  <p className="text-sm">Начислений за этот период не было</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {accrualsInPeriod.map(accrual => (
+                    <div key={accrual.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-xl">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-slate-800 dark:text-white truncate">{accrual.source}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{formatDate(accrual.date)}</p>
+                      </div>
+                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 shrink-0 ml-3">
+                        +{formatCurrency(accrual.amount, appSettings.showCents)} ₽
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 dark:border-slate-700 shrink-0">
+              <button
+                onClick={() => setShowAccrualsModal(false)}
                 className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
               >
                 Закрыть
