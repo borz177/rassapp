@@ -3,14 +3,22 @@ require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 
 const { Pool } = require('pg');
 const axios = require('axios');
-const webpush = require('web-push');
 
 const GREEN_API_BASE_URL = 'https://api.green-api.com';
 const LOG_PREFIX = '[WHATSAPP REMINDERS]';
 
+// 🔔 Необязательная фича — если пакет ещё не установлен (npm install в server/ не выполнен
+// после деплоя), это не должно ронять весь cron-скрипт (иначе перестанут уходить и обычные
+// WhatsApp-напоминания, никак не связанные с push).
+let webpush = null;
+try {
+  webpush = require('web-push');
+} catch (e) {
+  console.warn(`${LOG_PREFIX} ⚠️ Пакет web-push не установлен — push-уведомления отключены`);
+}
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
-const PUSH_ENABLED = !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+const PUSH_ENABLED = !!(webpush && VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
 if (PUSH_ENABLED) {
   webpush.setVapidDetails('mailto:support@rassrochka.pro', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 }

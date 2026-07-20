@@ -26,16 +26,24 @@ const rateLimit = require('express-rate-limit');
 const fs = require('fs');
 const fsPromises = fs.promises;
 const sharp = require('sharp');
-const webpush = require('web-push');
 
-// 🔔 Push-уведомления на устройство (Web Push). Без ключей — молча выключены, чтобы
-// не ронять сервер там, где VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY ещё не добавлены в env.
+// 🔔 Push-уведомления на устройство (Web Push) — необязательная фича, и пакет, и ключи могут
+// отсутствовать (например, сразу после деплоя нового кода до `npm install` на сервере).
+// require() и настройка обёрнуты так, чтобы это НИКОГДА не роняло весь бэкенд — раньше
+// отсутствующий пакет валил весь процесс на старте (MODULE_NOT_FOUND), из-за чего переставали
+// работать вообще все эндпоинты, включая регистрацию/логин, до ручного npm install.
+let webpush = null;
+try {
+  webpush = require('web-push');
+} catch (e) {
+  console.warn('⚠️ Пакет web-push не установлен (npm install в server/) — push-уведомления отключены');
+}
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
-const PUSH_ENABLED = !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+const PUSH_ENABLED = !!(webpush && VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
 if (PUSH_ENABLED) {
   webpush.setVapidDetails('mailto:support@rassrochka.pro', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-} else {
+} else if (webpush) {
   console.warn('⚠️ VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY не заданы — push-уведомления отключены');
 }
 
@@ -438,13 +446,24 @@ const checkContractLimit = async (userId, action = 'create', itemData = null) =>
 
 
 
-const sensitiveLimiter = rateLimit({
+// 🔹 Раньше один и тот же лимитер (5 запросов/15 мин) висел сразу на send-code, register
+// и reset-password — то есть делил ОДИН общий счётчик на все три. Обычный сценарий
+// регистрации (запросить код → код не пришёл/устарел → переотправить → пару раз ошибиться
+// при вводе) легко съедал весь лимит за пару минут, и пользователь упирался в 429 без
+// возможности вообще завершить регистрацию. Плюс тело ответа лимитера отдавало { error: ... },
+// а фронтенд везде читает { msg: ... } — из-за этого вместо "Слишком много попыток" человек
+// видел безликую "Ошибка регистрации" и не понимал, в чём дело.
+// Теперь у каждого шага свой счётчик и разумный запас на опечатки/повторную отправку кода.
+const makeAuthLimiter = (max) => rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: { error: 'Слишком много запросов' },
+  max,
+  message: { msg: 'Слишком много попыток. Попробуйте снова через 15 минут.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
+const sendCodeLimiter = makeAuthLimiter(8);
+const registerLimiter = makeAuthLimiter(10);
+const resetPasswordLimiter = makeAuthLimiter(10);
 
 
 
@@ -1649,7 +1668,7 @@ app.post(
 );
 
 // Send Verification Code
-app.post('/api/auth/send-code', sensitiveLimiter, async (req, res) => {
+app.post('/api/auth/send-code', sendCodeLimiter, async (req, res) => {
   const { email, type } = req.body;
 
   const normalizedEmail = email.toLowerCase().trim();
@@ -1665,7 +1684,9 @@ app.post('/api/auth/send-code', sensitiveLimiter, async (req, res) => {
     }
 
     const code = generateCode();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    // 🔹 Было 10 минут — часть реальных ошибок регистрации оказалась "Код истёк" из-за
+    // задержки доставки письма (почтовые провайдеры/мобильные сети). 15 минут даёт запас.
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
    await pool.query(`
       INSERT INTO verification_codes (email, code, expires_at, attempts)
@@ -1707,7 +1728,7 @@ app.post('/api/auth/send-code', sensitiveLimiter, async (req, res) => {
         <div style="font-size:28px;font-weight:700;color:#1e293b;letter-spacing:6px;font-family:monospace">
           ${code}
         </div>
-        <div style="color:#64748b;font-size:13px;margin-top:8px">⏱ Действителен 10 минут</div>
+        <div style="color:#64748b;font-size:13px;margin-top:8px">⏱ Действителен 15 минут</div>
       </div>
       
       <p style="margin:0;color:#64748b;font-size:14px">
@@ -1731,7 +1752,7 @@ app.post('/api/auth/send-code', sensitiveLimiter, async (req, res) => {
     `;
 
     // Текстовая версия для фолбэка
-    const text = `Ваш код подтверждения для FinUchet: ${code}. Код действителен 10 минут.`;
+    const text = `Ваш код подтверждения для FinUchet: ${code}. Код действителен 15 минут.`;
 
     // 📧 Отправка с поддержкой HTML
     await sendEmail(normalizedEmail, subject, text, html);
@@ -1744,7 +1765,7 @@ app.post('/api/auth/send-code', sensitiveLimiter, async (req, res) => {
   }
 });
 
-app.post('/api/auth/register', sensitiveLimiter, async (req, res) => {
+app.post('/api/auth/register', registerLimiter, async (req, res) => {
   const { name, email, password, code, role, managerId, permissions, allowedInvestorIds } = req.body;
   const normalizedEmail = email.toLowerCase().trim();
   try {
@@ -1820,7 +1841,7 @@ app.post('/api/auth/register', sensitiveLimiter, async (req, res) => {
   }
 });
 
-app.post('/api/auth/reset-password', sensitiveLimiter, async (req, res) => {
+app.post('/api/auth/reset-password', resetPasswordLimiter, async (req, res) => {
   const { email, code, newPassword } = req.body;
   const normalizedEmail = email.toLowerCase().trim();
   try {
