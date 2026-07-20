@@ -1,4 +1,4 @@
-import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings } from "../types";
+import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification } from "../types";
 import { offlineStorage } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
 // Helper to determine the API URL dynamically
@@ -859,7 +859,41 @@ export const api = {
         return json;
     },
 
+    getNotifications: async (cursor?: string): Promise<{ items: AppNotification[]; nextCursor: string | null }> => {
+        return api.get('/notifications', cursor ? { cursor } : undefined);
+    },
+
+    getUnreadNotificationCount: async (): Promise<number> => {
+        const data = await api.get<{ count: number }>('/notifications/unread-count');
+        return data.count;
+    },
+
+    markNotificationRead: async (id: string): Promise<{ success: boolean }> => {
+        return api.post(`/notifications/${id}/read`);
+    },
+
+    markAllNotificationsRead: async (): Promise<{ success: boolean }> => {
+        return api.post('/notifications/read-all');
+    },
+
+    getPushPublicKey: async (): Promise<{ publicKey: string | null }> => {
+        return api.get('/push/public-key');
+    },
+
+    subscribePush: async (subscription: PushSubscriptionJSON): Promise<{ success: boolean }> => {
+        return api.post('/push/subscribe', subscription);
+    },
+
+    unsubscribePush: async (endpoint: string): Promise<{ success: boolean }> => {
+        return api.post('/push/unsubscribe', { endpoint });
+    },
+
+    getPushSubscriptions: async (): Promise<{ id: string; userAgent?: string; createdAt: string }[]> => {
+        return api.get('/push/subscriptions');
+    },
+
     sendOverdueReminder: async (payload: {
+      customerId: string;
       phone: string;
       customerName: string;
       productName: string;

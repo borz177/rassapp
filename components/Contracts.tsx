@@ -139,6 +139,7 @@ const handleSendReminder = async () => {
     const totalToPay = monthlyPayment + realOverdueAmount;
 
     await api.sendOverdueReminder({
+  customerId: customer.id,
   phone: customer.phone,
   customerName: customer.name,
   productName: sale.productName,

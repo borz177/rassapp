@@ -262,6 +262,27 @@ export interface CalculatorSettings {
     termRates?: TermRate[]; // Array of specific rates for specific terms
 }
 
+export interface NotificationEventToggles {
+  payment: boolean;
+  newContract: boolean;
+  contractClosed: boolean;
+  expense: boolean;
+  whatsappSent: boolean;
+  adminBroadcast: boolean;
+}
+
+export interface NotificationSettings {
+  enabled: boolean;
+  pushEnabled?: boolean;
+  events: NotificationEventToggles;
+}
+
+export interface PushSubscriptionInfo {
+  id: string;
+  userAgent?: string;
+  createdAt: string;
+}
+
 export interface AppSettings {
   companyName: string;
   sellerPhone?: string;
@@ -270,6 +291,25 @@ export interface AppSettings {
   theme?: 'PURPLE' | 'BLUE' | 'GREEN' | 'BLACK';
   showCents?: boolean;
   markupFromNetBuyPrice?: boolean;
+  notifications?: NotificationSettings;
+}
+
+export type NotificationType =
+  | 'PAYMENT'
+  | 'NEW_CONTRACT'
+  | 'CONTRACT_CLOSED'
+  | 'EXPENSE'
+  | 'WHATSAPP_SENT'
+  | 'ADMIN_BROADCAST';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body?: string;
+  data?: { saleId?: string; customerId?: string; expenseId?: string; amount?: number; [key: string]: any } | null;
+  isRead: boolean;
+  createdAt: string;
 }
 
 
@@ -310,4 +350,5 @@ export type ViewState =
   | 'SUPPLIER_DETAILS'
   | 'TARIFFS'
   | 'ADMIN_SUPPORT'
-  | 'ADMIN_PANEL';
+  | 'ADMIN_PANEL'
+  | 'NOTIFICATIONS';

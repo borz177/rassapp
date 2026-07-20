@@ -45,6 +45,8 @@ import SplashScreen from "./components/SplashScreen"
 
 import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
+import NotificationsPanel from './components/NotificationsPanel';
+import NotificationsPage from './components/NotificationsPage';
 import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor } from './src/utils';
 import { useSwipeable } from "react-swipeable"
 
@@ -128,6 +130,9 @@ const isLanding = path === "/"
 
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [showSupportChat, setShowSupportChat] = useState(false);
+
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showTemplateUpdateModal, setShowTemplateUpdateModal] = useState(false);
@@ -914,7 +919,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 };
 
   // ... (Access checks and calculation logic remain the same)
-  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS'): boolean => {
+  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS'): boolean => {
     if (!user) return false;
     if (isEmployee || isInvestor || user.role === 'admin') return true;
 
@@ -932,10 +937,36 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         case 'EMPLOYEES': return plan === 'BUSINESS';
         case 'SUPPLIERS': return plan === 'BUSINESS_PRO';
         case 'INVESTOR_POOLS': return plan === 'BUSINESS_PRO';
+        case 'NOTIFICATIONS': return plan !== 'START';
         default: return true;
     }
 };
   const showUpgradeAlert = (reason: string) => { if(window.confirm(`${reason} Оформите подписку для доступа.`)) { setCurrentView('TARIFFS'); } };
+
+  // 🔔 Опрос счётчика непрочитанных уведомлений (тариф Стандарт+) — раз в 45 сек
+  useEffect(() => {
+    if (!user || !checkAccess('NOTIFICATIONS')) {
+      setUnreadNotifCount(0);
+      return;
+    }
+
+    let cancelled = false;
+    const loadUnread = async () => {
+      try {
+        const count = await api.getUnreadNotificationCount();
+        if (!cancelled) setUnreadNotifCount(count);
+      } catch (error) {
+        console.error('Failed to load unread notifications count:', error);
+      }
+    };
+
+    loadUnread();
+    const interval = setInterval(loadUnread, 45000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [user, user?.subscription?.plan]);
 
   // ... (Stats calculations omitted for brevity as they are unchanged) ...
 const dashboardStats = useMemo(() => {
@@ -2761,6 +2792,9 @@ if (!user && !showSplash) {
     isOnline={isOnline}
     isSyncing={isSyncing}
     supportUnreadCount={supportUnreadCount}
+    unreadNotifCount={unreadNotifCount}
+    onOpenNotifications={() => setShowNotificationsPanel(true)}
+    showNotificationsBell={checkAccess('NOTIFICATIONS')}
     // 🔹 Кнопка поддержки для десктопа (плавающая)
     supportButton={
       <SupportButton
@@ -3138,6 +3172,25 @@ if (!user && !showSplash) {
         onClose={() => setShowSupportChat(false)}
         onUnreadChange={setSupportUnreadCount}
       />
+    )}
+
+    {/* 🔔 ПАНЕЛЬ УВЕДОМЛЕНИЙ */}
+    {showNotificationsPanel && user && (
+      <NotificationsPanel
+        onClose={() => setShowNotificationsPanel(false)}
+        onUnreadChange={setUnreadNotifCount}
+        onOpenSettings={() => { setShowNotificationsPanel(false); setCurrentView('SETTINGS'); }}
+        onOpenAll={() => { setShowNotificationsPanel(false); setPreviousView(currentView); setCurrentView('NOTIFICATIONS'); }}
+      />
+    )}
+
+    {/* 🔔 СТРАНИЦА "ВСЕ УВЕДОМЛЕНИЯ" */}
+    {currentView === 'NOTIFICATIONS' && user && (
+      <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+        {(requestClose: () => void) => (
+          <NotificationsPage onBack={requestClose} onUnreadChange={setUnreadNotifCount} />
+        )}
+      </PagePush>
     )}
 
     {/* ==================== МОБИЛЬНОЕ МЕНЮ "ЕЩЁ" ==================== */}

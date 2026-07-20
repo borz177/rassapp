@@ -20,6 +20,9 @@ interface LayoutProps {
   isSyncing?: boolean;
   supportButton?: React.ReactNode;
   supportUnreadCount?: number;
+  unreadNotifCount?: number;
+  onOpenNotifications?: () => void;
+  showNotificationsBell?: boolean;
 }
 
 const PLAN_NAMES: Record<SubscriptionPlan, string> = {
@@ -47,6 +50,9 @@ const Layout: React.FC<LayoutProps> = ({
   isSyncing = false,
   supportButton, // 🔹 Добавили сюда
   supportUnreadCount = 0,
+  unreadNotifCount = 0,
+  onOpenNotifications,
+  showNotificationsBell = false,
 }) => {  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
@@ -293,15 +299,45 @@ const counts = useMemo(() => {
         </span>
       )}
     </div>
+    {showNotificationsBell && (
+      <button
+        onClick={onOpenNotifications}
+        className="relative p-2 -mr-1 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 shrink-0"
+        aria-label="Уведомления"
+      >
+        {ICONS.Bell}
+        {unreadNotifCount > 0 && (
+          <span className="absolute top-0.5 right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+            {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+          </span>
+        )}
+      </button>
+    )}
   </div>
 </header>
 
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto z-20">
         <div className="p-6 border-b border-slate-800">
-          <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-            {appSettings.companyName}
-          </h1>
+          <div className="flex items-center justify-between gap-2">
+            <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+              {appSettings.companyName}
+            </h1>
+            {showNotificationsBell && (
+              <button
+                onClick={onOpenNotifications}
+                className="relative p-2 rounded-full text-slate-400 hover:bg-slate-800 hover:text-white shrink-0"
+                aria-label="Уведомления"
+              >
+                {ICONS.Bell}
+                {unreadNotifCount > 0 && (
+                  <span className="absolute top-0.5 right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+                    {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
           <div className="mt-2 flex gap-2">
               {/*{!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}*/}
               {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}

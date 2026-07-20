@@ -3,9 +3,17 @@ require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 
 const { Pool } = require('pg');
 const axios = require('axios');
+const webpush = require('web-push');
 
 const GREEN_API_BASE_URL = 'https://api.green-api.com';
 const LOG_PREFIX = '[WHATSAPP REMINDERS]';
+
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+const PUSH_ENABLED = !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+if (PUSH_ENABLED) {
+  webpush.setVapidDetails('mailto:support@rassrochka.pro', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
 
 // 🔹 Шаблоны по умолчанию (копия из фронтенда)
 const DEFAULT_TEMPLATES = {
@@ -17,6 +25,59 @@ const DEFAULT_TEMPLATES = {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
+
+// 🔹 Push всем подпискам пользователя (та же логика, что в server/index.js)
+async function sendPushToUser(userId, title, body) {
+  if (!PUSH_ENABLED) return;
+  try {
+    const subsResult = await pool.query(
+      `SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1`,
+      [userId]
+    );
+    const payload = JSON.stringify({ title, body });
+    for (const sub of subsResult.rows) {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload
+        );
+      } catch (err) {
+        if (err.statusCode === 404 || err.statusCode === 410) {
+          await pool.query(`DELETE FROM push_subscriptions WHERE id = $1`, [sub.id]);
+        } else {
+          console.error(`${LOG_PREFIX} ❌ web-push send error:`, err.message);
+        }
+      }
+    }
+  } catch (e) {
+    console.error(`${LOG_PREFIX} ❌ sendPushToUser error:`, e.message);
+  }
+}
+
+// 🔹 Уведомление в приложении об отправленном напоминании (учитывает тумблер пользователя)
+async function createWhatsAppSentNotification(userId, title, body, data) {
+  try {
+    const settingsResult = await pool.query(
+      `SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'settings'`,
+      [`settings_${userId}`, userId]
+    );
+    const notifSettings = settingsResult.rows[0]?.data?.notifications;
+    if (notifSettings?.enabled === false) return;
+    if (notifSettings?.events?.whatsappSent === false) return;
+
+    const id = `notif_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    await pool.query(
+      `INSERT INTO notifications (id, user_id, type, title, body, data) VALUES ($1, $2, 'WHATSAPP_SENT', $3, $4, $5)`,
+      [id, userId, title, body, data ? JSON.stringify(data) : null]
+    );
+
+    if (notifSettings?.pushEnabled !== false) {
+      await sendPushToUser(userId, title, body);
+    }
+  } catch (e) {
+    console.error(`${LOG_PREFIX} ❌ createWhatsAppSentNotification error:`, e.message);
+  }
+}
 
 async function sendWhatsAppMessage(idInstance, apiTokenInstance, phone, message) {
   if (!phone || !message) return false;
@@ -251,6 +312,9 @@ async function processRemindersForUser(user) {
 
     const customer = customers.find(c => c.id === sale.customerId);
     if (!customer || !customer.phone) continue;
+    // ✅ Уважаем тумблер "Разрешить WhatsApp-уведомления" на карточке клиента —
+    // раньше эта автоматическая рассылка его вообще не проверяла.
+    if (customer.allowWhatsappNotification === false) continue;
 
     const paymentStates = calculateSalePaymentStates(sale);
 
@@ -372,6 +436,12 @@ async function processRemindersForUser(user) {
 
   if (sentCount > 0) {
     console.log(`${LOG_PREFIX} 📊 Отправлено объединённых сообщений: ${sentCount}`);
+    await createWhatsAppSentNotification(
+      id,
+      'Напоминания отправлены',
+      `Автоматически отправлено WhatsApp-напоминаний: ${sentCount}`,
+      { sent: sentCount }
+    );
   }
 }
 

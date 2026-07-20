@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
-import { AppSettings, ViewState, User } from '../types';
+import { AppSettings, ViewState, User, NotificationSettings, NotificationEventToggles } from '../types';
 import { ICONS, APP_VERSION, THEMES } from '../constants';
 import { PrivacyPolicy, DataProcessingAgreement } from './LegalDocs';
 import { api } from '../services/api';
@@ -25,8 +25,127 @@ const APPEARANCE_OPTIONS: { key: ThemeMode; label: string; icon: React.ReactNode
   { key: 'system', label: 'Системная', icon: <Monitor size={20} /> },
 ];
 
+const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  enabled: true,
+  events: {
+    payment: true,
+    newContract: true,
+    contractClosed: true,
+    expense: true,
+    whatsappSent: true,
+    adminBroadcast: true,
+  },
+};
+
+const NOTIFICATION_EVENT_ROWS: { key: keyof NotificationEventToggles; label: string; icon: React.ReactNode }[] = [
+  { key: 'payment', label: 'Платёж', icon: ICONS.Income },
+  { key: 'newContract', label: 'Новый договор', icon: ICONS.File },
+  { key: 'contractClosed', label: 'Договор закрыт', icon: ICONS.CheckCircle },
+  { key: 'expense', label: 'Расход', icon: ICONS.Expense },
+  { key: 'whatsappSent', label: 'WhatsApp-напоминания', icon: ICONS.Chat },
+  { key: 'adminBroadcast', label: 'От администратора', icon: ICONS.Megaphone },
+];
+
+// 🔔 VAPID-ключ сервера приходит в urlsafe-base64 — pushManager.subscribe() ждёт Uint8Array
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
 const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNavigate, onSettingsChanged, currentUserId, user }) => {
   const isEmployee = user?.role === 'employee';
+  const hasNotificationsAccess = user?.role === 'admin' || user?.role === 'employee' || user?.role === 'investor'
+    || user?.subscription?.plan !== 'START';
+  const notifSettings = appSettings.notifications || DEFAULT_NOTIFICATION_SETTINGS;
+  const updateNotifSettings = (patch: Partial<NotificationSettings>) => {
+    onUpdateSettings({ ...appSettings, notifications: { ...notifSettings, ...patch } });
+  };
+  const updateNotifEvent = (key: keyof NotificationEventToggles, value: boolean) => {
+    onUpdateSettings({ ...appSettings, notifications: { ...notifSettings, events: { ...notifSettings.events, [key]: value } } });
+  };
+
+  // 🔔📱 Push-уведомления на устройство
+  const [pushDeviceCount, setPushDeviceCount] = useState<number | null>(null);
+  const [isCurrentDeviceSubscribed, setIsCurrentDeviceSubscribed] = useState(false);
+  const [isPushBusy, setIsPushBusy] = useState(false);
+
+  useEffect(() => {
+    if (!hasNotificationsAccess) return;
+    (async () => {
+      try {
+        const subs = await api.getPushSubscriptions();
+        setPushDeviceCount(subs.length);
+      } catch (e) { /* тихо игнорируем — не критично для остальной страницы */ }
+      try {
+        if ('serviceWorker' in navigator && 'PushManager' in window) {
+          const reg = await navigator.serviceWorker.ready;
+          const sub = await reg.pushManager.getSubscription();
+          setIsCurrentDeviceSubscribed(!!sub);
+        }
+      } catch (e) { /* браузер без поддержки push — просто не показываем состояние */ }
+    })();
+  }, [hasNotificationsAccess]);
+
+  const handleSubscribeDevice = async () => {
+    if (isPushBusy) return;
+    setIsPushBusy(true);
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        alert('Этот браузер не поддерживает push-уведомления');
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        alert('Разрешение на уведомления не выдано');
+        return;
+      }
+      const { publicKey } = await api.getPushPublicKey();
+      if (!publicKey) {
+        alert('Push-уведомления временно недоступны на сервере');
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+      await api.subscribePush(sub.toJSON() as PushSubscriptionJSON);
+      setIsCurrentDeviceSubscribed(true);
+      setPushDeviceCount(prev => (prev ?? 0) + 1);
+    } catch (e) {
+      console.error('Push subscribe error:', e);
+      alert('Не удалось подписать устройство на push-уведомления');
+    } finally {
+      setIsPushBusy(false);
+    }
+  };
+
+  const handleUnsubscribeDevice = async () => {
+    if (isPushBusy) return;
+    setIsPushBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await api.unsubscribePush(sub.endpoint);
+        await sub.unsubscribe();
+      }
+      setIsCurrentDeviceSubscribed(false);
+      setPushDeviceCount(prev => Math.max(0, (prev ?? 1) - 1));
+    } catch (e) {
+      console.error('Push unsubscribe error:', e);
+      alert('Не удалось отписать устройство');
+    } finally {
+      setIsPushBusy(false);
+    }
+  };
+
   const [companyName, setCompanyName] = useState(appSettings.companyName);
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
 
@@ -252,6 +371,125 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
               </label>
           </div>
       </div>
+
+      {/* Notifications — доступно только владельцу тенанта (менеджер/админ): у сотрудников и
+          инвесторов тумблеры сохранялись бы под их собственным settings-id и не влияли бы на
+          реальную рассылку событий, которая всегда идёт от имени менеджера */}
+      {(user?.role === 'manager' || user?.role === 'admin') && (
+      <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+          <div className="flex items-center justify-between mb-1">
+              <h3 className="text-lg font-semibold text-slate-800 dark:text-white">Уведомления</h3>
+              {!hasNotificationsAccess && (
+                  <span className="flex items-center gap-1 text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-full">
+                      {ICONS.Crown} Стандарт+
+                  </span>
+              )}
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+              Платежи, новые и закрытые договоры, расходы, отправленные WhatsApp-напоминания и сообщения администрации.
+          </p>
+
+          {!hasNotificationsAccess ? (
+              <div className="flex items-center justify-between gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-dashed border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center gap-3">
+                      <div className="bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 p-2 rounded-lg">{ICONS.Crown}</div>
+                      <div>
+                          <p className="font-medium text-slate-700 dark:text-slate-300 text-sm">Доступно с тарифа Стандарт</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Оформите тариф, чтобы получать уведомления о событиях</p>
+                      </div>
+                  </div>
+                  <button
+                      onClick={() => onNavigate('TARIFFS')}
+                      className="shrink-0 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+                  >
+                      Тарифы
+                  </button>
+              </div>
+          ) : (
+              <>
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-700">
+                      <div>
+                          <p className="font-medium text-slate-700 dark:text-slate-300">Уведомления в приложении</p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">Показывать колокольчик и ленту уведомлений</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={notifSettings.enabled}
+                              onChange={(e) => updateNotifSettings({ enabled: e.target.checked })}
+                          />
+                          <div className="w-11 h-6 bg-slate-200 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                      </label>
+                  </div>
+
+                  <div className={`mt-4 space-y-3 ${!notifSettings.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase">Какие события присылать</p>
+                      {NOTIFICATION_EVENT_ROWS.map(row => (
+                          <div key={row.key} className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                                  <span className="text-slate-400 dark:text-slate-500">{row.icon}</span>
+                                  {row.label}
+                              </div>
+                              <label className="relative inline-flex items-center cursor-pointer">
+                                  <input
+                                      type="checkbox"
+                                      className="sr-only peer"
+                                      checked={notifSettings.events[row.key]}
+                                      onChange={(e) => updateNotifEvent(row.key, e.target.checked)}
+                                  />
+                                  <div className="w-11 h-6 bg-slate-200 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                              </label>
+                          </div>
+                      ))}
+                  </div>
+
+                  <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-100 dark:border-slate-700">
+                      <div>
+                          <p className="font-medium text-slate-700 dark:text-slate-300">Push-уведомления на устройстве</p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">Приходят, даже когда вкладка закрыта — если приложение установлено как PWA</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+                          <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={notifSettings.pushEnabled ?? true}
+                              onChange={(e) => updateNotifSettings({ pushEnabled: e.target.checked })}
+                          />
+                          <div className="w-11 h-6 bg-slate-200 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                      </label>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/40">
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                          {pushDeviceCount === null
+                              ? 'Загрузка...'
+                              : pushDeviceCount === 0
+                                  ? 'На этом аккаунте пока нет устройств, подписанных на push'
+                                  : `Подписано устройств: ${pushDeviceCount}`}
+                      </p>
+                      {isCurrentDeviceSubscribed ? (
+                          <button
+                              onClick={handleUnsubscribeDevice}
+                              disabled={isPushBusy}
+                              className="shrink-0 px-3 py-2 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-lg text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50"
+                          >
+                              Отписать это устройство
+                          </button>
+                      ) : (
+                          <button
+                              onClick={handleSubscribeDevice}
+                              disabled={isPushBusy}
+                              className="shrink-0 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1.5"
+                          >
+                              {ICONS.Bell} Подписать это устройство
+                          </button>
+                      )}
+                  </div>
+              </>
+          )}
+      </div>
+      )}
 
       {/* Appearance / Dark Mode Selection */}
       <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">

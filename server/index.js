@@ -26,6 +26,18 @@ const rateLimit = require('express-rate-limit');
 const fs = require('fs');
 const fsPromises = fs.promises;
 const sharp = require('sharp');
+const webpush = require('web-push');
+
+// 🔔 Push-уведомления на устройство (Web Push). Без ключей — молча выключены, чтобы
+// не ронять сервер там, где VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY ещё не добавлены в env.
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+const PUSH_ENABLED = !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+if (PUSH_ENABLED) {
+  webpush.setVapidDetails('mailto:support@rassrochka.pro', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+} else {
+  console.warn('⚠️ VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY не заданы — push-уведомления отключены');
+}
 
 
 const app = express();
@@ -65,11 +77,11 @@ const getTargetUserId = (user) => {
 
 // ✅ КОНФИГУРАЦИЯ ЛИМИТОВ ТАРИФОВ
 const PLAN_LIMITS = {
-  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: true,  suppliers: false, investorPools: false },
-  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false },
-  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false },
-  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: false, investorPools: false },
-  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: true,  investorPools: true  },
+  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: true,  suppliers: false, investorPools: false, notifications: true  },
+  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false },
+  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true  },
+  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: false, investorPools: false, notifications: true  },
+  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: true,  investorPools: true,  notifications: true  },
 };
 
 
@@ -218,6 +230,7 @@ const canAccessUserData = (currentUser, targetUserId) => {
 const FEATURE_DENIED_MESSAGES = {
   suppliers: { msg: 'Модуль «Партнеры» доступен только на тарифе Бизнес Pro.', hint: 'Оформите тариф Бизнес Pro для работы с поставщиками.' },
   investorPools: { msg: 'Общий инвестиционный пул доступен только на тарифе Бизнес Pro.', hint: 'Оформите тариф Бизнес Pro для распределения дохода между инвесторами в одном пуле.' },
+  notifications: { msg: 'Уведомления доступны начиная с тарифа Стандарт.', hint: 'Оформите тариф Стандарт для доступа к уведомлениям о событиях.' },
 };
 const checkFeatureAccess = async (userId, featureKey) => {
   try {
@@ -241,6 +254,78 @@ const checkFeatureAccess = async (userId, featureKey) => {
   } catch (e) {
     console.error('❌ checkFeatureAccess error:', e);
     return { allowed: false, msg: 'Ошибка проверки доступа' };
+  }
+};
+
+// ✅ УВЕДОМЛЕНИЯ: дефолтные настройки + создание записи (с учётом тумблеров пользователя)
+const NOTIFICATION_DEFAULT_SETTINGS = {
+  enabled: true,
+  events: {
+    payment: true,
+    newContract: true,
+    contractClosed: true,
+    expense: true,
+    whatsappSent: true,
+    adminBroadcast: true,
+  },
+};
+const NOTIFICATION_EVENT_TOGGLE_KEYS = {
+  PAYMENT: 'payment',
+  NEW_CONTRACT: 'newContract',
+  CONTRACT_CLOSED: 'contractClosed',
+  EXPENSE: 'expense',
+  WHATSAPP_SENT: 'whatsappSent',
+};
+// 🔔 Отправка Web Push всем подпискам пользователя (с автоочисткой протухших подписок)
+const sendPushToUser = async (userId, title, body) => {
+  if (!PUSH_ENABLED) return;
+  try {
+    const subsResult = await pool.query(
+      `SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1`,
+      [userId]
+    );
+    const payload = JSON.stringify({ title, body });
+    for (const sub of subsResult.rows) {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload
+        );
+      } catch (err) {
+        if (err.statusCode === 404 || err.statusCode === 410) {
+          await pool.query(`DELETE FROM push_subscriptions WHERE id = $1`, [sub.id]);
+        } else {
+          console.error('❌ web-push send error:', err.message);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('❌ sendPushToUser error:', e);
+  }
+};
+
+const createNotification = async (userId, type, title, body, data = null) => {
+  try {
+    const settingsResult = await pool.query(
+      `SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'settings'`,
+      [`settings_${userId}`, userId]
+    );
+    const notifSettings = settingsResult.rows[0]?.data?.notifications || NOTIFICATION_DEFAULT_SETTINGS;
+    if (notifSettings.enabled === false) return;
+    const eventKey = NOTIFICATION_EVENT_TOGGLE_KEYS[type];
+    if (eventKey && notifSettings.events?.[eventKey] === false) return;
+
+    const id = `notif_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    await pool.query(
+      `INSERT INTO notifications (id, user_id, type, title, body, data) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, userId, type, title, body, data ? JSON.stringify(data) : null]
+    );
+
+    if (notifSettings.pushEnabled !== false) {
+      await sendPushToUser(userId, title, body);
+    }
+  } catch (e) {
+    console.error('❌ createNotification error:', e);
   }
 };
 
@@ -644,6 +729,36 @@ await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_messages_is_read ON sup
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_is_active ON broadcast_messages(is_active);`);
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_target_role ON broadcast_messages(target_role);`);
 
+// Уведомления (события: платёж, договор, расход, whatsapp и т.д.)
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT,
+    data JSONB,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, is_read);`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);`);
+
+// Push-подписки устройств (Web Push)
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON push_subscriptions(user_id);`);
+
 // === ЖУРНАЛ ДЕЙСТВИЙ АДМИНА ===
 await pool.query(`
   CREATE TABLE IF NOT EXISTS admin_audit_log (
@@ -906,6 +1021,7 @@ const massReminderLimiter = rateLimit({
 app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, async (req, res) => {
   try {
     const {
+      customerId,
       phone,
       customerName,
       productName,
@@ -921,6 +1037,20 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, asyn
     // 🔹 1. Валидация
     if (!phone || !customerName || overdueAmount === undefined) {
       return res.status(400).json({ error: 'Missing required fields: phone, customerName, overdueAmount' });
+    }
+
+    // ✅ Уважаем тумблер "Разрешить WhatsApp-уведомления" на карточке клиента —
+    // раньше этот эндпоинт слепо отправлял всё, что пришло от фронтенда, не сверяясь
+    // с клиентом в базе вообще.
+    if (customerId) {
+      const customerRes = await pool.query(
+        `SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'customers'`,
+        [customerId, userId]
+      );
+      const customerData = customerRes.rows[0]?.data;
+      if (customerData?.allowWhatsappNotification === false) {
+        return res.status(403).json({ error: 'Клиент отключил WhatsApp-уведомления', code: 'NOTIFICATIONS_DISABLED' });
+      }
     }
 
     // 🔹 2. Получаем настройки пользователя
@@ -1001,6 +1131,13 @@ const sent = await sendGreenApiMessage(
 
 if (sent) {
   console.log(`✅ Reminder sent to ${customerName} (${phone}) by user ${userId}`);
+  await createNotification(
+    userId,
+    'WHATSAPP_SENT',
+    'Напоминание отправлено',
+    `WhatsApp-напоминание отправлено клиенту ${customerName}`,
+    { customerId: customerId || null }
+  );
   return res.json({ success: true, message: 'Reminder sent successfully' });
 } else {
   return res.status(502).json({ error: 'Failed to send via Green API' });
@@ -1078,7 +1215,10 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
         );
         const customer = customers.find(c => c.id === sale.customerId);
 
-        if (customer && customer.phone) {
+        // ✅ Уважаем тумблер "Разрешить WhatsApp-уведомления" на карточке клиента —
+        // раньше этот флаг нигде не проверялся, поэтому массовая рассылка писала
+        // даже тем, кто явно отключил уведомления.
+        if (customer && customer.phone && customer.allowWhatsappNotification !== false) {
           // 🔹 НОВОЕ: считаем фиксированный ежемесячный платёж из графика
           const monthlyPayment = (sale.paymentPlan || [])
             .filter(p => !p.isRealPayment)
@@ -1166,6 +1306,16 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
   }
 }
 
+
+    if (results.sent > 0) {
+      await createNotification(
+        userId,
+        'WHATSAPP_SENT',
+        'Напоминания отправлены',
+        `Отправлено WhatsApp-напоминаний: ${results.sent} из ${results.total}`,
+        { sent: results.sent, total: results.total }
+      );
+    }
 
     return res.json({ success: true, results });
 
@@ -2019,13 +2169,25 @@ app.post('/api/data/:type', auth, async (req, res) => {
       }
     }
 
+    // 🔔 Контекст для уведомлений о событиях (новый договор / платёж / закрытие / расход)
+    let saleNotifyContext = null;
+    let expenseIsNew = false;
+    if (type === 'expenses') {
+      const existsExpense = await pool.query(
+        `SELECT 1 FROM data_items WHERE id = $1 AND type = 'expenses'`,
+        [itemData.id]
+      );
+      expenseIsNew = existsExpense.rows.length === 0;
+    }
+
     // 🔥 Проверка лимита договоров
     if (type === 'sales' && itemData.status !== 'DELETED') {
       const exists = await pool.query(
-        `SELECT 1 FROM data_items WHERE id = $1 AND type = 'sales'`,
+        `SELECT data FROM data_items WHERE id = $1 AND type = 'sales'`,
         [itemData.id]
       );
       const action = exists.rows.length > 0 ? 'update' : 'create';
+      saleNotifyContext = { action, existingSale: exists.rows[0]?.data || null };
 
       const limitCheck = await checkContractLimit(targetUserId, action, itemData);
       if (!limitCheck.allowed) {
@@ -2094,6 +2256,52 @@ app.post('/api/data/:type', auth, async (req, res) => {
       'SELECT data, updated_at FROM data_items WHERE id = $1',
       [id]
     );
+
+    // 🔔 Уведомления о событиях (ошибки внутри createNotification не пробрасываются наружу)
+    if (type === 'sales' && saleNotifyContext) {
+      const { action, existingSale: oldSale } = saleNotifyContext;
+      const amountStr = (n) => Number(n || 0).toLocaleString('ru-RU');
+      if (action === 'create') {
+        await createNotification(
+          targetUserId,
+          'NEW_CONTRACT',
+          'Новый договор',
+          `Оформлен договор с ${itemData.customerName || 'клиентом'} на сумму ${amountStr(itemData.totalAmount)} ₽`,
+          { saleId: itemData.id }
+        );
+      } else if (oldSale) {
+        const newPaidPayments = (itemData.paymentPlan || []).filter(newP => {
+          const wasAlreadyPaid = (oldSale.paymentPlan || []).some(oldP => oldP.id === newP.id && oldP.isPaid);
+          return newP.isPaid && newP.isRealPayment !== false && !wasAlreadyPaid;
+        });
+        for (const p of newPaidPayments) {
+          await createNotification(
+            targetUserId,
+            'PAYMENT',
+            'Новый платёж',
+            `Зачислен платёж ${amountStr(p.amount)} ₽ от ${itemData.customerName || 'клиента'}`,
+            { saleId: itemData.id, amount: p.amount }
+          );
+        }
+        if (oldSale.status !== 'COMPLETED' && itemData.status === 'COMPLETED') {
+          await createNotification(
+            targetUserId,
+            'CONTRACT_CLOSED',
+            'Договор закрыт',
+            `Договор с ${itemData.customerName || 'клиентом'} полностью оплачен`,
+            { saleId: itemData.id }
+          );
+        }
+      }
+    } else if (type === 'expenses' && expenseIsNew) {
+      await createNotification(
+        targetUserId,
+        'EXPENSE',
+        'Новый расход',
+        `${itemData.title || 'Расход'}: ${Number(itemData.amount || 0).toLocaleString('ru-RU')} ₽`,
+        { expenseId: itemData.id }
+      );
+    }
 
     res.json(savedResult.rows[0]?.data || itemData);
   } catch (err) {
@@ -3090,6 +3298,231 @@ app.post('/api/support/broadcast/:broadcastId/read', auth, async (req, res) => {
   }
 });
 
+// === 🔔 УВЕДОМЛЕНИЯ (платёж, договор, расход, whatsapp, рассылки) — тариф Стандарт+ ===
+
+// Лента уведомлений (свои события + рассылки от администратора)
+app.get('/api/notifications', auth, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req.user);
+    const featureAccess = await checkFeatureAccess(targetUserId, 'notifications');
+    if (!featureAccess.allowed) {
+      return res.status(403).json({ msg: featureAccess.msg, hint: featureAccess.hint });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+    const cursor = req.query.cursor;
+
+    const params = [targetUserId];
+    let cursorClause = '';
+    if (cursor) {
+      params.push(cursor);
+      cursorClause = `AND created_at < $${params.length}`;
+    }
+    params.push(limit);
+
+    const notifResult = await pool.query(
+      `SELECT id, type, title, body, data, is_read, created_at FROM notifications
+       WHERE user_id = $1 ${cursorClause}
+       ORDER BY created_at DESC LIMIT $${params.length}`,
+      params
+    );
+
+    let broadcastItems = [];
+    if (req.user.role !== 'admin') {
+      const broadcastResult = await pool.query(`
+        SELECT id, title, message, created_at, read_by_users FROM broadcast_messages
+        WHERE is_active = TRUE AND (target_role IS NULL OR target_role = $1)
+        ORDER BY created_at DESC LIMIT 50
+      `, [req.user.role]);
+      broadcastItems = broadcastResult.rows.map(b => ({
+        id: `broadcast_${b.id}`,
+        type: 'ADMIN_BROADCAST',
+        title: b.title,
+        body: b.message,
+        data: null,
+        is_read: (b.read_by_users || []).includes(req.user.id),
+        created_at: b.created_at,
+      }));
+    }
+
+    const merged = [...notifResult.rows, ...broadcastItems]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, limit);
+
+    res.json({
+      items: merged.map(n => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        body: n.body,
+        data: n.data,
+        isRead: n.is_read,
+        createdAt: n.created_at,
+      })),
+      nextCursor: merged.length === limit ? merged[merged.length - 1].created_at : null,
+    });
+  } catch (err) {
+    console.error('GET /api/notifications error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Счётчик непрочитанных — для бейджа на колокольчике, лёгкий и опрашивается часто
+app.get('/api/notifications/unread-count', auth, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req.user);
+    const featureAccess = await checkFeatureAccess(targetUserId, 'notifications');
+    if (!featureAccess.allowed) {
+      return res.json({ count: 0 });
+    }
+
+    const notifResult = await pool.query(
+      `SELECT COUNT(*) as count FROM notifications WHERE user_id = $1 AND is_read = FALSE`,
+      [targetUserId]
+    );
+
+    let broadcastCount = 0;
+    if (req.user.role !== 'admin') {
+      const broadcastResult = await pool.query(`
+        SELECT COUNT(*) as count FROM broadcast_messages
+        WHERE is_active = TRUE AND (target_role IS NULL OR target_role = $1)
+        AND NOT (read_by_users @> $2::jsonb)
+      `, [req.user.role, JSON.stringify([req.user.id])]);
+      broadcastCount = parseInt(broadcastResult.rows[0].count, 10);
+    }
+
+    res.json({ count: parseInt(notifResult.rows[0].count, 10) + broadcastCount });
+  } catch (err) {
+    console.error('GET /api/notifications/unread-count error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Отметить одно уведомление прочитанным (поддерживает и broadcast_* id)
+app.post('/api/notifications/:id/read', auth, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req.user);
+    const { id } = req.params;
+
+    if (id.startsWith('broadcast_')) {
+      const broadcastId = id.slice('broadcast_'.length);
+      await pool.query(`
+        UPDATE broadcast_messages SET read_by_users = read_by_users || $1::jsonb
+        WHERE id = $2 AND NOT (read_by_users @> $1::jsonb)
+      `, [JSON.stringify([req.user.id]), broadcastId]);
+    } else {
+      await pool.query(
+        `UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = $2`,
+        [id, targetUserId]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/notifications/:id/read error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Отметить все уведомления прочитанными (свои события + рассылки)
+app.post('/api/notifications/read-all', auth, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req.user);
+
+    await pool.query(
+      `UPDATE notifications SET is_read = TRUE WHERE user_id = $1 AND is_read = FALSE`,
+      [targetUserId]
+    );
+
+    if (req.user.role !== 'admin') {
+      await pool.query(`
+        UPDATE broadcast_messages SET read_by_users = read_by_users || $1::jsonb
+        WHERE is_active = TRUE AND (target_role IS NULL OR target_role = $2)
+        AND NOT (read_by_users @> $1::jsonb)
+      `, [JSON.stringify([req.user.id]), req.user.role]);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/notifications/read-all error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// === 🔔📱 PUSH-УВЕДОМЛЕНИЯ НА УСТРОЙСТВО (Web Push) ===
+
+// Публичный VAPID-ключ — нужен браузеру для pushManager.subscribe()
+app.get('/api/push/public-key', auth, async (req, res) => {
+  res.json({ publicKey: PUSH_ENABLED ? VAPID_PUBLIC_KEY : null });
+});
+
+// Подписать текущее устройство
+app.post('/api/push/subscribe', auth, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req.user);
+    const { endpoint, keys } = req.body;
+
+    if (!endpoint || !keys?.p256dh || !keys?.auth) {
+      return res.status(400).json({ msg: 'Некорректные данные подписки' });
+    }
+
+    const featureAccess = await checkFeatureAccess(targetUserId, 'notifications');
+    if (!featureAccess.allowed) {
+      return res.status(403).json({ msg: featureAccess.msg, hint: featureAccess.hint });
+    }
+
+    const id = `push_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    await pool.query(`
+      INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, user_agent)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (endpoint) DO UPDATE SET
+        user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth, user_agent = EXCLUDED.user_agent
+    `, [id, targetUserId, endpoint, keys.p256dh, keys.auth, req.headers['user-agent'] || null]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/push/subscribe error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Отписать устройство
+app.post('/api/push/unsubscribe', auth, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req.user);
+    const { endpoint } = req.body;
+    if (!endpoint) return res.status(400).json({ msg: 'Отсутствует endpoint' });
+
+    await pool.query(
+      `DELETE FROM push_subscriptions WHERE endpoint = $1 AND user_id = $2`,
+      [endpoint, targetUserId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/push/unsubscribe error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Список подписанных устройств — для отображения в Настройках
+app.get('/api/push/subscriptions', auth, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req.user);
+    const result = await pool.query(
+      `SELECT id, endpoint, user_agent, created_at FROM push_subscriptions WHERE user_id = $1 ORDER BY created_at DESC`,
+      [targetUserId]
+    );
+    res.json(result.rows.map(r => ({
+      id: r.id,
+      endpoint: r.endpoint,
+      userAgent: r.user_agent,
+      createdAt: r.created_at,
+    })));
+  } catch (err) {
+    console.error('GET /api/push/subscriptions error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
 
 // === 👑 АДМИНСКИЕ РОУТЫ ===
 
