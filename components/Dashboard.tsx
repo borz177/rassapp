@@ -313,9 +313,14 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
     const total = items.reduce((sum, item) => sum + item.amount, 0);
     return {
         installmentTotal: Math.round(total * 100) / 100,
-        downPaymentTotal: 0 // 🔹 Больше не используется, но оставили для совместимости
+        downPaymentTotal: 0
     };
 }, [items]);
+
+  const uniqueCustomerCount = new Set<string>(
+    (items as any[]).map((item: any) => item.sale?.customerId || '')
+  ).size;
+
   const title = type === 'expected' ? 'Ожидаемые платежи' : 'Полученные платежи';
   const emptyText = type === 'expected'
     ? 'Нет ожидаемых платежей в этом месяце'
@@ -349,7 +354,17 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
 
        {/* Итого */}
 <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
-  <span className="text-sm text-slate-500 dark:text-slate-400">Итого</span>
+  <div className="flex items-center gap-2">
+    <span className="text-sm text-slate-500 dark:text-slate-400">Итого</span>
+    {uniqueCustomerCount > 0 && (
+      <span className="inline-flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 px-2 py-0.5 rounded-full text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+        <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        {uniqueCustomerCount}
+      </span>
+    )}
+  </div>
   <span className="text-lg font-bold text-slate-800 dark:text-white">
     {formatCurrency(installmentTotal, appSettings.showCents)} ₽
   </span>
@@ -571,6 +586,11 @@ const ProfitDetailsModal = ({
   }, [sales, customers, investors, type, monthStart, monthEnd, selectedAccountId]);
 
   const totalProfit = items.reduce((sum, item) => sum + item.profitAmount, 0);
+
+  const uniqueCustomerCountProfit = new Set<string>(
+    (items as any[]).map((item: any) => item.customerId || '')
+  ).size;
+
   const title = type === 'expected' ? 'Ожидаемая прибыль' : 'Получено прибыли';
   const emptyText = type === 'expected'
     ? 'Нет ожидаемой прибыли в этом месяце'
@@ -644,7 +664,17 @@ const ProfitDetailsModal = ({
 
         {/* Итого */}
         <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
-          <span className="text-sm text-slate-500 dark:text-slate-400">Итого прибыль</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-500 dark:text-slate-400">Итого прибыль</span>
+            {uniqueCustomerCountProfit > 0 && (
+              <span className="inline-flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 px-2 py-0.5 rounded-full text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                {uniqueCustomerCountProfit}
+              </span>
+            )}
+          </div>
           <span className="text-lg font-bold text-slate-800 dark:text-white">
             {formatCurrency(totalProfit, appSettings.showCents)} ₽
           </span>

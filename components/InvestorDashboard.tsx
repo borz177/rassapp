@@ -72,33 +72,25 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
     let totalCollected = 0;
     let totalOutstanding = 0;
     let totalSalesAmount = 0;
+    let totalBuyCost = 0;
 
-    // 🔥 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: УБИРАЕМ ФИЛЬТР ПО СТАТУСУ!
-    // Раньше здесь было: s.status === 'ACTIVE' || s.status === 'COMPLETED' ...
-    // Из-за этого договоры со статусом 'DEFAULTED' (Просрочен) выпадали из расчётов,
-    // и долг клиентов (totalOutstanding) и сумма продаж (totalSalesAmount) занижались.
-    // Теперь учитываются ВСЕ продажи инвестора (кроме системных, которые отфильтрованы выше).
-    
     investorSales.forEach(sale => {
-      // 📊 Продажи: общая сумма договоров
-        if (sale.type === 'INSTALLMENT') {
+      if (sale.type === 'INSTALLMENT') {
         totalSalesAmount += Number(sale.totalAmount) || 0;
+        totalBuyCost += Number(sale.buyPrice) || 0;
       }
 
-      // 💰 Собрано: фактически поступившие платежи
       totalCollected += Number(sale.downPayment) || 0;
       sale.paymentPlan
         .filter(p => p.isPaid && p.isRealPayment !== false)
         .forEach(p => totalCollected += Number(p.amount) || 0);
 
-      // 💸 Долг: остаток к оплате
       totalOutstanding += Number(sale.remainingAmount) || 0;
     });
 
-    // 🔄 Оборот: деньги на счёте + долг клиентов
     const workingCapital = balance + totalOutstanding;
 
-    return { totalCollected, totalOutstanding, totalSalesAmount, workingCapital };
+    return { totalCollected, totalOutstanding, totalSalesAmount, totalBuyCost, workingCapital };
   }, [investorSales, balance]);
   // 🔹 ПРИБЫЛЬ: Как в InvestorDetails
 const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
@@ -292,21 +284,41 @@ const expectedTotalProfit = useMemo(() => {
                 </p>
               </div>
 
-              {/* 4. Продажи */}
-              <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-indigo-200">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-4">
+              {/* 4. Закуп */}
+              <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(100,116,139,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-slate-200 flex flex-col relative overflow-hidden cursor-default">
+                <div className="absolute -right-6 -top-6 w-24 h-24 bg-slate-50 dark:bg-slate-700/50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 mb-4 z-10 relative group-hover:bg-slate-500 group-hover:text-white transition-colors duration-300 shadow-sm">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                   </svg>
                 </div>
-                <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">Продажи</p>
-                <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white">
-                  {formatCurrency(stats.totalSalesAmount, appSettings.showCents)}
-                  <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
-                </p>
+                <div className="z-10 relative mt-auto">
+                  <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Закуп</p>
+                  <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
+                    {formatCurrency(stats.totalBuyCost, appSettings.showCents)}
+                    <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                  </p>
+                </div>
               </div>
 
-              {/* 5. Ожидаемая прибыль */}
+              {/* 5. Продажи */}
+              <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 flex flex-col relative overflow-hidden cursor-default">
+                <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 dark:bg-indigo-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-4 z-10 relative group-hover:bg-indigo-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                  </svg>
+                </div>
+                <div className="z-10 relative mt-auto">
+                  <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Продажи</p>
+                  <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
+                    {formatCurrency(stats.totalSalesAmount, appSettings.showCents)}
+                    <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* 6. Ожидаемая прибыль */}
               <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-indigo-200">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-4">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -320,7 +332,7 @@ const expectedTotalProfit = useMemo(() => {
                 </p>
               </div>
 
-              {/* 6. Получено прибыли */}
+              {/* 7. Получено прибыли */}
               <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-emerald-200">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
