@@ -309,6 +309,7 @@ export interface AppNotification {
   body?: string;
   data?: { saleId?: string; customerId?: string; expenseId?: string; amount?: number; [key: string]: any } | null;
   isRead: boolean;
+  isArchived?: boolean;
   createdAt: string;
 }
 

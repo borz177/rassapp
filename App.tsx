@@ -267,6 +267,11 @@ useEffect(() => {
       return;
     }
 
+    // 🔔 Дожать уведомления, которые были отмечены прочитанными офлайн/при плохой связи —
+    // иначе сервер по-прежнему считает их непрочитанными, и после реального восстановления
+    // сети счётчик и статус "прочитано" откатываются назад.
+    api.flushPendingNotificationReads().catch(() => {});
+
     await handleSync();
   };
 
@@ -943,7 +948,10 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 };
   const showUpgradeAlert = (reason: string) => { if(window.confirm(`${reason} Оформите подписку для доступа.`)) { setCurrentView('TARIFFS'); } };
 
-  // 🔔 Опрос счётчика непрочитанных уведомлений (тариф Стандарт+) — раз в 45 сек
+  // 🔔 Опрос счётчика непрочитанных уведомлений (тариф Стандарт+) — раз в 45 сек +
+  // немедленное обновление при возврате в приложение (мобильные браузеры сильно тормозят
+  // фоновые setInterval, когда вкладка свёрнута/экран заблокирован — без этого счётчик
+  // выглядел "живым" только пока открыта сама панель уведомлений)
   useEffect(() => {
     if (!user || !checkAccess('NOTIFICATIONS')) {
       setUnreadNotifCount(0);
@@ -953,6 +961,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
     let cancelled = false;
     const loadUnread = async () => {
       try {
+        await api.flushPendingNotificationReads();
         const count = await api.getUnreadNotificationCount();
         if (!cancelled) setUnreadNotifCount(count);
       } catch (error) {
@@ -962,9 +971,16 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 
     loadUnread();
     const interval = setInterval(loadUnread, 45000);
+
+    const onVisible = () => { if (document.visibilityState === 'visible') loadUnread(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', loadUnread);
+
     return () => {
       cancelled = true;
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', loadUnread);
     };
   }, [user, user?.subscription?.plan]);
 

@@ -9,17 +9,32 @@ interface NotificationsPageProps {
   onUnreadChange: (count: number) => void;
 }
 
+type ReadFilter = 'all' | 'unread' | 'archived';
+
 const NotificationsPage: React.FC<NotificationsPageProps> = ({ onBack, onUnreadChange }) => {
   const [items, setItems] = useState<AppNotification[]>([]);
-  const [readFilter, setReadFilter] = useState<'all' | 'unread'>('all');
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [readFilter, setReadFilter] = useState<ReadFilter>('all');
   const [typeFilter, setTypeFilter] = useState<NotificationType | 'all'>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [detailNotif, setDetailNotif] = useState<AppNotification | null>(null);
 
+  const isArchivedView = readFilter === 'archived';
+
+  const loadUnreadCount = async () => {
+    try {
+      const count = await api.getUnreadNotificationCount();
+      setUnreadCount(count);
+      onUnreadChange(count);
+    } catch (error) {
+      console.error('Failed to load unread notifications count:', error);
+    }
+  };
+
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const res = await api.getNotifications();
+      const res = await api.getNotifications({ archived: isArchivedView });
       setItems(res.items);
     } catch (error) {
       console.error('Failed to load notifications:', error);
@@ -29,14 +44,15 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onBack, onUnreadC
   };
 
   useEffect(() => {
-    loadData();
+    loadUnreadCount();
   }, []);
 
-  const unreadCount = useMemo(() => items.filter(n => !n.isRead).length, [items]);
-
+  // Перезапрашиваем только при переходе между архивом и обычной лентой — Все/Непрочитанные
+  // фильтруются на клиенте из уже загрученного списка.
   useEffect(() => {
-    onUnreadChange(unreadCount);
-  }, [unreadCount]);
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isArchivedView]);
 
   const visibleItems = useMemo(() => {
     return items
@@ -62,6 +78,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onBack, onUnreadC
     } catch (error) {
       console.error('Failed to mark notification read:', error);
     }
+    loadUnreadCount();
   };
 
   const openNotification = (notif: AppNotification) => {
@@ -76,6 +93,24 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onBack, onUnreadC
     } catch (error) {
       console.error('Failed to mark all notifications read:', error);
     }
+    loadUnreadCount();
+  };
+
+  // Архивирование убирает уведомление из текущего списка (не важно, какая сейчас вкладка —
+  // после архивации оно пропадёт из Всех/Непрочитанных, после восстановления — из Архива)
+  const handleArchiveToggle = async (notif: AppNotification) => {
+    setItems(prev => prev.filter(n => n.id !== notif.id));
+    setDetailNotif(null);
+    try {
+      if (notif.isArchived) {
+        await api.unarchiveNotification(notif.id);
+      } else {
+        await api.archiveNotification(notif.id);
+      }
+    } catch (error) {
+      console.error('Failed to toggle archive:', error);
+    }
+    loadUnreadCount();
   };
 
   return (
@@ -83,7 +118,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onBack, onUnreadC
       <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 bg-slate-50 dark:bg-slate-900 sticky top-0 z-10 pt-2">
         <button onClick={onBack} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">{ICONS.Back}</button>
         <h2 className="text-xl font-bold text-slate-800 dark:text-white flex-1">Все уведомления</h2>
-        {unreadCount > 0 && (
+        {!isArchivedView && unreadCount > 0 && (
           <button
             onClick={markAllRead}
             className="text-sm font-medium text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900/50 px-3 py-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
@@ -95,17 +130,21 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onBack, onUnreadC
 
       {/* Read-state tabs */}
       <div className="flex gap-2">
-        {(['all', 'unread'] as const).map(tab => (
+        {([
+          { key: 'all' as const, label: 'Все' },
+          { key: 'unread' as const, label: `Непрочитанные${unreadCount > 0 ? ` (${unreadCount})` : ''}` },
+          { key: 'archived' as const, label: 'Архив', icon: ICONS.Archive },
+        ]).map(tab => (
           <button
-            key={tab}
-            onClick={() => setReadFilter(tab)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              readFilter === tab
+            key={tab.key}
+            onClick={() => setReadFilter(tab.key)}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 ${
+              readFilter === tab.key
                 ? 'bg-indigo-600 text-white'
                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
             }`}
           >
-            {tab === 'all' ? 'Все' : `Непрочитанные${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
+            {'icon' in tab && tab.icon} {tab.label}
           </button>
         ))}
       </div>
@@ -133,8 +172,8 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onBack, onUnreadC
           <div className="text-center text-slate-400 dark:text-slate-500 py-16 text-sm">Загрузка...</div>
         ) : groups.length === 0 ? (
           <div className="text-center text-slate-400 dark:text-slate-500 py-16">
-            <div className="flex justify-center mb-2 opacity-50">{ICONS.Bell}</div>
-            <p className="text-sm">Ничего не найдено по этому фильтру</p>
+            <div className="flex justify-center mb-2 opacity-50">{isArchivedView ? ICONS.Archive : ICONS.Bell}</div>
+            <p className="text-sm">{isArchivedView ? 'Архив пуст' : 'Ничего не найдено по этому фильтру'}</p>
           </div>
         ) : (
           groups.map(([label, groupItems]) => (
@@ -148,7 +187,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onBack, onUnreadC
                       key={notif.id}
                       onClick={() => openNotification(notif)}
                       className={`w-full text-left flex items-start gap-3 p-3 rounded-xl border transition-colors bg-white dark:bg-slate-800 ${
-                        notif.isRead
+                        notif.isRead || isArchivedView
                           ? 'border-slate-100 dark:border-slate-700'
                           : 'border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-900/10'
                       }`}
@@ -157,7 +196,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onBack, onUnreadC
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <p className="font-semibold text-sm text-slate-800 dark:text-white truncate">{notif.title}</p>
-                          {!notif.isRead && <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />}
+                          {!notif.isRead && !isArchivedView && <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />}
                         </div>
                         {notif.body && (
                           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{notif.body}</p>
@@ -176,7 +215,11 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onBack, onUnreadC
       </div>
 
       {detailNotif && (
-        <NotificationDetailModal notification={detailNotif} onClose={() => setDetailNotif(null)} />
+        <NotificationDetailModal
+          notification={detailNotif}
+          onClose={() => setDetailNotif(null)}
+          onArchiveToggle={handleArchiveToggle}
+        />
       )}
     </div>
   );

@@ -46,6 +46,40 @@ const NOTIFICATION_EVENT_ROWS: { key: keyof NotificationEventToggles; label: str
   { key: 'adminBroadcast', label: 'От администратора', icon: ICONS.Megaphone },
 ];
 
+// 🔹 Свёрнутая по умолчанию карточка настроек — раскрывается по клику на шапку. Название
+// компании остаётся открытой картой (задаётся через defaultOpen на месте использования),
+// все остальные сворачиваются, чтобы страница не выглядела "россыпью" из полутора десятков
+// одинаковых блоков.
+const SettingsAccordion: React.FC<{
+  title: string;
+  subtitle?: string;
+  badge?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}> = ({ title, subtitle, badge, defaultOpen = false, children }) => {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+      <button
+        onClick={() => setIsOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-3 p-5 text-left"
+      >
+        <div className="min-w-0">
+          <h3 className="text-lg font-semibold text-slate-800 dark:text-white truncate">{title}</h3>
+          {subtitle && <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5 truncate">{subtitle}</p>}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {badge}
+          <span className={`text-slate-400 dark:text-slate-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </div>
+      </button>
+      {isOpen && <div className="px-5 pb-5 animate-fade-in">{children}</div>}
+    </div>
+  );
+};
+
 // 🔔 VAPID-ключ сервера приходит в urlsafe-base64 — pushManager.subscribe() ждёт Uint8Array
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -316,10 +350,8 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
         </button>
       </header>
 
-      {/* Company Name */}
-      <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-        <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-1">Название компании</h3>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Отображается в заголовке и в сообщениях.</p>
+      {/* Company Name — единственная карточка, открытая по умолчанию */}
+      <SettingsAccordion title="Название компании" subtitle="Отображается в заголовке и в сообщениях." defaultOpen>
         <div className="flex gap-2">
             <input
                 type="text"
@@ -335,11 +367,10 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                 OK
             </button>
         </div>
-      </div>
+      </SettingsAccordion>
 
       {/* Display Settings */}
-      <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-1">Отображение</h3>
+      <SettingsAccordion title="Отображение">
           <div className="flex items-center justify-between">
               <div>
                   <p className="font-medium text-slate-700 dark:text-slate-300">Показывать копейки</p>
@@ -370,25 +401,21 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                   <div className="w-11 h-6 bg-slate-200 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
               </label>
           </div>
-      </div>
+      </SettingsAccordion>
 
       {/* Notifications — доступно только владельцу тенанта (менеджер/админ): у сотрудников и
           инвесторов тумблеры сохранялись бы под их собственным settings-id и не влияли бы на
           реальную рассылку событий, которая всегда идёт от имени менеджера */}
       {(user?.role === 'manager' || user?.role === 'admin') && (
-      <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-          <div className="flex items-center justify-between mb-1">
-              <h3 className="text-lg font-semibold text-slate-800 dark:text-white">Уведомления</h3>
-              {!hasNotificationsAccess && (
-                  <span className="flex items-center gap-1 text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-full">
-                      {ICONS.Crown} Стандарт+
-                  </span>
-              )}
-          </div>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-              Платежи, новые и закрытые договоры, расходы, отправленные WhatsApp-напоминания и сообщения администрации.
-          </p>
-
+      <SettingsAccordion
+          title="Уведомления"
+          subtitle="Платежи, договоры, расходы, WhatsApp, администрация."
+          badge={!hasNotificationsAccess && (
+              <span className="flex items-center gap-1 text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-full">
+                  {ICONS.Crown} Стандарт+
+              </span>
+          )}
+      >
           {!hasNotificationsAccess ? (
               <div className="flex items-center justify-between gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-dashed border-slate-200 dark:border-slate-700">
                   <div className="flex items-center gap-3">
@@ -488,13 +515,11 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                   </div>
               </>
           )}
-      </div>
+      </SettingsAccordion>
       )}
 
       {/* Appearance / Dark Mode Selection */}
-      <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-1">Тема оформления</h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Светлая, тёмная или автоматически по системе.</p>
+      <SettingsAccordion title="Тема оформления" subtitle="Светлая, тёмная или автоматически по системе.">
           <div className="grid grid-cols-3 gap-3">
               {APPEARANCE_OPTIONS.map((option) => (
                   <button
@@ -517,12 +542,10 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                   </button>
               ))}
           </div>
-      </div>
+      </SettingsAccordion>
 
       {/* Theme Selection */}
-      <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-1">Цветовая тема</h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Выберите основной цвет приложения.</p>
+      <SettingsAccordion title="Цветовая тема" subtitle="Выберите основной цвет приложения.">
           <div className="grid grid-cols-2 gap-3">
               {(Object.keys(THEMES) as Array<keyof typeof THEMES>).map((themeKey) => (
                   <button
@@ -546,9 +569,9 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                   </button>
               ))}
           </div>
-      </div>
+      </SettingsAccordion>
 
-      {/* Tools & Integrations */}
+      {/* Tools & Integrations — быстрые переходы, не карточки-аккордеоны */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {!isEmployee && (
               <button
@@ -582,10 +605,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
 
       {/* 👇 ОБЪЕДИНЁННЫЙ БЛОК: Работа с данными (Экспорт + Импорт) */}
        {!isEmployee && (
-      <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-1">Работа с данными</h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Выгружайте данные в Excel или загружайте из файла.</p>
-
+      <SettingsAccordion title="Работа с данными" subtitle="Выгружайте данные в Excel или загружайте из файла.">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {/* Кнопка ЭКСПОРТА */}
               <button
@@ -620,13 +640,11 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
               </button>
           </div>
 
-
-      </div>
+      </SettingsAccordion>
        )}
 
       {/* Legal Information Section */}
-      <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-2">Правовая информация</h3>
+      <SettingsAccordion title="Правовая информация">
           <div className="space-y-2">
               <button
                   onClick={() => setLegalView('AGREEMENT')}
@@ -648,20 +666,18 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                   </span>
               </button>
           </div>
-      </div>
+      </SettingsAccordion>
 
             {/* 🔥 СКРЫВАЕМ УПРАВЛЕНИЕ ДАННЫМИ ОТ СОТРУДНИКОВ */}
       {!isEmployee && (
-          <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-              <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-1">Управление данными</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Сброс всех данных приложения. Используйте с осторожностью.</p>
+          <SettingsAccordion title="Управление данными" subtitle="Сброс всех данных приложения. Используйте с осторожностью.">
               <button
                   onClick={() => setShowClearModal(true)}
                   className="w-full py-3 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold rounded-xl hover:bg-red-100 dark:hover:bg-red-900/50 border border-red-100 dark:border-red-900/50 flex items-center justify-center gap-2 transition-colors"
               >
                   {ICONS.Delete} Сбросить все данные
               </button>
-          </div>
+          </SettingsAccordion>
       )}
 
       {/* Clear Data Modal */}

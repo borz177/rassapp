@@ -38,11 +38,15 @@ export const groupLabel = (dateStr: string): string => {
 interface NotificationDetailModalProps {
   notification: AppNotification;
   onClose: () => void;
+  onArchiveToggle?: (notification: AppNotification) => void;
 }
 
 // z-[70] — выше и панели/страницы уведомлений (z-[60]), и мобильной нижней навигации (z-50)
-export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = ({ notification, onClose }) => {
+export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = ({ notification, onClose, onArchiveToggle }) => {
   const meta = TYPE_META[notification.type] || TYPE_META.ADMIN_BROADCAST;
+  // Рассылки от администратора архивировать нельзя — у них нет этого понятия на сервере
+  const canArchive = onArchiveToggle && notification.type !== 'ADMIN_BROADCAST';
+
   return (
     <div className="fixed inset-0 z-[70] bg-black bg-opacity-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
@@ -67,6 +71,19 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
             day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
           })}
         </p>
+
+        {canArchive && (
+          <button
+            onClick={() => onArchiveToggle!(notification)}
+            className="w-full mt-4 py-2.5 rounded-xl text-sm font-medium border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center gap-2"
+          >
+            {notification.isArchived ? (
+              <>{ICONS.Unarchive} Восстановить из архива</>
+            ) : (
+              <>{ICONS.Archive} Архивировать</>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

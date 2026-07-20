@@ -744,6 +744,8 @@ await pool.query(`
 `);
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, is_read);`);
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);`);
+await pool.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE;`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user_archived ON notifications(user_id, is_archived);`);
 
 // Push-подписки устройств (Web Push)
 await pool.query(`
@@ -3311,6 +3313,7 @@ app.get('/api/notifications', auth, async (req, res) => {
 
     const limit = Math.min(parseInt(req.query.limit) || 30, 100);
     const cursor = req.query.cursor;
+    const archived = req.query.archived === 'true';
 
     const params = [targetUserId];
     let cursorClause = '';
@@ -3322,13 +3325,15 @@ app.get('/api/notifications', auth, async (req, res) => {
 
     const notifResult = await pool.query(
       `SELECT id, type, title, body, data, is_read, created_at FROM notifications
-       WHERE user_id = $1 ${cursorClause}
+       WHERE user_id = $1 AND is_archived = ${archived ? 'TRUE' : 'FALSE'} ${cursorClause}
        ORDER BY created_at DESC LIMIT $${params.length}`,
       params
     );
 
+    // Рассылки от администратора не архивируются — у архива своего смысла для них нет,
+    // поэтому они попадают только в обычную (неархивную) ленту.
     let broadcastItems = [];
-    if (req.user.role !== 'admin') {
+    if (!archived && req.user.role !== 'admin') {
       const broadcastResult = await pool.query(`
         SELECT id, title, message, created_at, read_by_users FROM broadcast_messages
         WHERE is_active = TRUE AND (target_role IS NULL OR target_role = $1)
@@ -3357,6 +3362,7 @@ app.get('/api/notifications', auth, async (req, res) => {
         body: n.body,
         data: n.data,
         isRead: n.is_read,
+        isArchived: !!n.is_archived,
         createdAt: n.created_at,
       })),
       nextCursor: merged.length === limit ? merged[merged.length - 1].created_at : null,
@@ -3377,7 +3383,7 @@ app.get('/api/notifications/unread-count', auth, async (req, res) => {
     }
 
     const notifResult = await pool.query(
-      `SELECT COUNT(*) as count FROM notifications WHERE user_id = $1 AND is_read = FALSE`,
+      `SELECT COUNT(*) as count FROM notifications WHERE user_id = $1 AND is_read = FALSE AND is_archived = FALSE`,
       [targetUserId]
     );
 
@@ -3445,6 +3451,46 @@ app.post('/api/notifications/read-all', auth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('POST /api/notifications/read-all error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Архивировать уведомление (рассылки не архивируются — у них нет этого понятия)
+app.post('/api/notifications/:id/archive', auth, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req.user);
+    const { id } = req.params;
+    if (id.startsWith('broadcast_')) {
+      return res.status(400).json({ msg: 'Рассылки нельзя архивировать' });
+    }
+
+    await pool.query(
+      `UPDATE notifications SET is_archived = TRUE WHERE id = $1 AND user_id = $2`,
+      [id, targetUserId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/notifications/:id/archive error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Вернуть уведомление из архива
+app.post('/api/notifications/:id/unarchive', auth, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req.user);
+    const { id } = req.params;
+    if (id.startsWith('broadcast_')) {
+      return res.status(400).json({ msg: 'Рассылки нельзя архивировать' });
+    }
+
+    await pool.query(
+      `UPDATE notifications SET is_archived = FALSE WHERE id = $1 AND user_id = $2`,
+      [id, targetUserId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/notifications/:id/unarchive error:', err);
     res.status(500).json({ msg: 'Server error' });
   }
 });

@@ -25,6 +25,21 @@ let isSyncing = false;
 
 let lastSyncAttempt = 0;
 
+// 🔔 Офлайн-очередь для "отметить прочитанным" — без неё пометка, сделанная при плохой связи,
+// молча терялась: UI уже показывал "прочитано", а сервер — нет, и после восстановления сети
+// следующий опрос счётчика откатывал уведомление обратно в непрочитанные.
+const PENDING_NOTIF_READS_KEY = 'finuchet_pending_notif_reads';
+const PENDING_NOTIF_READ_ALL_KEY = 'finuchet_pending_notif_read_all';
+
+const getPendingNotifReads = (): string[] => {
+    try { return JSON.parse(localStorage.getItem(PENDING_NOTIF_READS_KEY) || '[]'); } catch { return []; }
+};
+const addPendingNotifRead = (id: string) => {
+    const set = new Set(getPendingNotifReads());
+    set.add(id);
+    localStorage.setItem(PENDING_NOTIF_READS_KEY, JSON.stringify([...set]));
+};
+
 const DEFAULT_TIMEOUT_MS = 8000;
 const fetchWithAuth = async (
   url: string,
@@ -859,8 +874,11 @@ export const api = {
         return json;
     },
 
-    getNotifications: async (cursor?: string): Promise<{ items: AppNotification[]; nextCursor: string | null }> => {
-        return api.get('/notifications', cursor ? { cursor } : undefined);
+    getNotifications: async (opts?: { cursor?: string; archived?: boolean }): Promise<{ items: AppNotification[]; nextCursor: string | null }> => {
+        const params: Record<string, string> = {};
+        if (opts?.cursor) params.cursor = opts.cursor;
+        if (opts?.archived) params.archived = 'true';
+        return api.get('/notifications', Object.keys(params).length ? params : undefined);
     },
 
     getUnreadNotificationCount: async (): Promise<number> => {
@@ -869,11 +887,63 @@ export const api = {
     },
 
     markNotificationRead: async (id: string): Promise<{ success: boolean }> => {
-        return api.post(`/notifications/${id}/read`);
+        try {
+            return await api.post(`/notifications/${id}/read`);
+        } catch (error) {
+            // Скорее всего офлайн/таймаут — не теряем действие, дожмём при следующем подключении
+            addPendingNotifRead(id);
+            throw error;
+        }
     },
 
     markAllNotificationsRead: async (): Promise<{ success: boolean }> => {
-        return api.post('/notifications/read-all');
+        try {
+            return await api.post('/notifications/read-all');
+        } catch (error) {
+            localStorage.setItem(PENDING_NOTIF_READ_ALL_KEY, 'true');
+            throw error;
+        }
+    },
+
+    // Дожимает пропущенные из-за офлайна пометки "прочитано" — безопасно звать часто
+    // (при пустой очереди ничего не делает и не бросает ошибок).
+    flushPendingNotificationReads: async (): Promise<void> => {
+        const readAllPending = localStorage.getItem(PENDING_NOTIF_READ_ALL_KEY) === 'true';
+        if (readAllPending) {
+            try {
+                await api.post('/notifications/read-all');
+                localStorage.removeItem(PENDING_NOTIF_READ_ALL_KEY);
+                localStorage.removeItem(PENDING_NOTIF_READS_KEY);
+            } catch {
+                // всё ещё офлайн — попробуем в следующий раз
+            }
+            return;
+        }
+
+        const pending = getPendingNotifReads();
+        if (pending.length === 0) return;
+
+        const stillFailed: string[] = [];
+        for (const id of pending) {
+            try {
+                await api.post(`/notifications/${id}/read`);
+            } catch {
+                stillFailed.push(id);
+            }
+        }
+        if (stillFailed.length > 0) {
+            localStorage.setItem(PENDING_NOTIF_READS_KEY, JSON.stringify(stillFailed));
+        } else {
+            localStorage.removeItem(PENDING_NOTIF_READS_KEY);
+        }
+    },
+
+    archiveNotification: async (id: string): Promise<{ success: boolean }> => {
+        return api.post(`/notifications/${id}/archive`);
+    },
+
+    unarchiveNotification: async (id: string): Promise<{ success: boolean }> => {
+        return api.post(`/notifications/${id}/unarchive`);
     },
 
     getPushPublicKey: async (): Promise<{ publicKey: string | null }> => {

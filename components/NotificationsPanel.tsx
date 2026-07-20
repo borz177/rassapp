@@ -77,6 +77,17 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
     }
   };
 
+  // Панель показывает только неархивную ленту — заархивированное уведомление просто исчезает из списка
+  const handleArchiveToggle = async (notif: AppNotification) => {
+    setItems(prev => prev.filter(n => n.id !== notif.id));
+    setDetailNotif(null);
+    try {
+      await api.archiveNotification(notif.id);
+    } catch (error) {
+      console.error('Failed to archive notification:', error);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-[60]">
       <div className="bg-white dark:bg-slate-800 w-full sm:w-[440px] h-[85vh] sm:h-[640px] rounded-t-2xl sm:rounded-2xl flex flex-col shadow-2xl">
@@ -186,7 +197,11 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
       </div>
 
       {detailNotif && (
-        <NotificationDetailModal notification={detailNotif} onClose={() => setDetailNotif(null)} />
+        <NotificationDetailModal
+          notification={detailNotif}
+          onClose={() => setDetailNotif(null)}
+          onArchiveToggle={handleArchiveToggle}
+        />
       )}
     </div>
   );
