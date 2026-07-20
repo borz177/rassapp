@@ -341,21 +341,7 @@ const expectedTotalProfit = useMemo(() => {
                 </p>
               </div>
 
-              {/* 3. В обороте */}
-              <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-blue-200">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4">
-                  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                  </svg>
-                </div>
-                <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">В обороте</p>
-                <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white">
-                  {formatCurrency(stats.workingCapital, appSettings.showCents)}
-                  <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
-                </p>
-              </div>
-
-              {/* 4. Закуп */}
+              {/* 3. Закуп */}
               <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(100,116,139,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-slate-200 flex flex-col relative overflow-hidden cursor-default">
                 <div className="absolute -right-6 -top-6 w-24 h-24 bg-slate-50 dark:bg-slate-700/50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 mb-4 z-10 relative group-hover:bg-slate-500 group-hover:text-white transition-colors duration-300 shadow-sm">
@@ -372,7 +358,7 @@ const expectedTotalProfit = useMemo(() => {
                 </div>
               </div>
 
-              {/* 5. Продажи */}
+              {/* 4. Продажи */}
               <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 flex flex-col relative overflow-hidden cursor-default">
                 <div className="absolute -right-6 -top-6 w-24 h-24 bg-indigo-50 dark:bg-indigo-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-4 z-10 relative group-hover:bg-indigo-500 group-hover:text-white transition-colors duration-300 shadow-sm">
@@ -389,7 +375,7 @@ const expectedTotalProfit = useMemo(() => {
                 </div>
               </div>
 
-              {/* 6. Ожидаемая прибыль */}
+              {/* 5. Ожидаемая прибыль */}
               <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-indigo-200">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-4">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -403,7 +389,7 @@ const expectedTotalProfit = useMemo(() => {
                 </p>
               </div>
 
-              {/* 7. Получено прибыли */}
+              {/* 6. Получено прибыли */}
               <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-emerald-200">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4">
                   <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -416,22 +402,44 @@ const expectedTotalProfit = useMemo(() => {
                   <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
                 </p>
               </div>
+
+              {/* 7. В обороте — перенесено сюда, в пару с "Доступно к выводу" (карточка 8) */}
+              <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-blue-200">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                  </svg>
+                </div>
+                <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">В обороте</p>
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white">
+                  {formatCurrency(stats.workingCapital, appSettings.showCents)}
+                  <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
+                </p>
+              </div>
+
+              {/* 8. Доступно к выводу — напротив "В обороте" */}
+              <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-emerald-200">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8c-1.657 0-3-.895-3-2s1.343-2 3-2 3 .895 3 2-1.343 2-3 2m0 8c-1.657 0-3-.895-3-2s1.343-2 3-2 3 .895 3 2-1.343 2-3 2M12 6V4m0 16v-2" />
+                  </svg>
+                </div>
+                <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">Доступно к выводу</p>
+                <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white">
+                  {formatCurrency(availableToWithdraw, appSettings.showCents)}
+                  <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
+                </p>
+              </div>
             </div>
 
-            {/* 🔹 Баланс, доступно к выводу и выплаты */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* 🔹 Баланс и выплаты (карточка "Прибыль/Доступно к выводу" переехала в сетку выше) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 p-6 rounded-2xl text-white shadow-lg">
                 <p className="text-indigo-100 text-sm mb-1">{isPoolAccount ? 'Баланс пула (общий)' : 'Текущий баланс счета'}</p>
                 <p className="text-3xl font-bold">{formatCurrency(balance, appSettings.showCents)} ₽</p>
                 {isPoolAccount && (
-                  <p className="text-xs text-indigo-200 mt-2">Общая касса пула — включает деньги всех участников, ваша доля — в блоке «Прибыль»</p>
+                  <p className="text-xs text-indigo-200 mt-2">Общая касса пула — включает деньги всех участников, ваша доля — в блоке «Доступно к выводу»</p>
                 )}
-              </div>
-
-              <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 rounded-2xl text-white shadow-lg">
-                <p className="text-emerald-100 text-sm mb-1">Прибыль</p>
-                <p className="text-3xl font-bold">{formatCurrency(availableToWithdraw, appSettings.showCents)} ₽</p>
-                <p className="text-xs text-emerald-200 mt-2">Доступно к выводу</p>
               </div>
 
               {/* 🔹 Мои выплаты — клик открывает историю */}
