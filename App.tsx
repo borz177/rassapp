@@ -811,7 +811,7 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v14';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v15';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -3801,7 +3801,6 @@ if (!user && !showSplash) {
 
 
 
-
 {showTemplateUpdateModal && (
   <div
     className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
@@ -3820,45 +3819,54 @@ if (!user && !showSplash) {
       </h3>
 
       <p className="text-sm text-gray-500 dark:text-slate-400 mb-4 leading-relaxed">
-        Доработали отчёты, добавили плавные анимации и расширили контроль за работой сотрудников
+        Добавили систему уведомлений — включайте только то, что важно именно вам
       </p>
 
       <div className="space-y-3 text-left mb-6">
-        {/* Отчёты */}
+        {/* Уведомления */}
         <div className="flex items-start gap-3">
           <div className="w-9 h-9 shrink-0 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-lg">
-            📊
+            🔔
           </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">Умные отчёты</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
-              Новые карточки «Закуп» и «Продажи» с выбором периода — смотрите динамику за день, неделю или месяц
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Включайте уведомления</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug mb-2">
+              Выбирайте, о чём хотите узнавать:
             </p>
+            <ul className="space-y-1.5 text-xs text-gray-600 dark:text-slate-300">
+              <li className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                Новый платёж
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                Новый расход
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                Новый договор
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                Отправка сообщения в WhatsApp
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                Сообщение от администратора
+              </li>
+            </ul>
           </div>
         </div>
 
-        {/* Анимации */}
+        {/* Push на телефон */}
         <div className="flex items-start gap-3">
           <div className="w-9 h-9 shrink-0 rounded-xl bg-fuchsia-100 dark:bg-fuchsia-900/30 flex items-center justify-center text-lg">
-            ✨
+            📱
           </div>
           <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">Плавные переходы</p>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Push на телефон</p>
             <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
-              Добавили красивые анимации между страницами — интерфейс стал живее и приятнее в работе
-            </p>
-          </div>
-        </div>
-
-        {/* Сотрудники */}
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 shrink-0 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-lg">
-            👥
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">Активность сотрудников</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
-              Владелец видит всю ленту действий: сколько договоров оформил сотрудник, сколько платежей занёс и что сделал за день
+              Включите Push-уведомления — важные события будут приходить прямо на экран, даже если приложение закрыто
             </p>
           </div>
         </div>
