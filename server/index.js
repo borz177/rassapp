@@ -1474,7 +1474,21 @@ app.post(
 
       const activeSales = salesResult.rows.map(r => r.data);
 
-      // Проверка: нет договоров
+      const formatMoney = (amount) => Number(amount).toLocaleString('ru-RU').replace(',', ' ');
+      const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+
+      // Проверка команд — теперь идёт ПЕРВОЙ: раньше бот отвечал "у вас нет
+      // активных договоров" на ЛЮБОЕ входящее сообщение (если нет команды —
+      // тоже), просто не чаще раза в сутки. Теперь бот вообще не реагирует на
+      // произвольный текст — только на распознанные команды ниже.
+      let command = null;
+      if (text.includes('история') || text.includes('остаток') || text.includes('долг')) command = 'history';
+      else if (text.includes('условия')) command = 'conditions';
+
+      if (!command) return;
+
+      // Проверка: нет договоров (тоже не чаще раза в сутки, но теперь только
+      // в ответ на распознанную команду, а не на любое слово)
       if (activeSales.length === 0) {
         const now = Date.now();
         const lastMsg = customerData.lastNoContractsMessage || 0;
@@ -1487,15 +1501,7 @@ app.post(
         return;
       }
 
-      const formatMoney = (amount) => Number(amount).toLocaleString('ru-RU').replace(',', ' ');
-      const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
-
-      // Проверка команд
-      let command = null;
-      if (text.includes('история') || text.includes('остаток') || text.includes('долг')) command = 'history';
-      else if (text.includes('условия')) command = 'conditions';
-
-      if (command) {
+      {
           if (customerData.lastCommandTime === undefined) {
     customerData.lastCommandTime = null;
   }
