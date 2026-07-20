@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Sale, Expense, Account, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate } from '../src/utils';
@@ -19,6 +20,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'contracts'>('overview');
   const [contractTab, setContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
+  const [showPayoutsModal, setShowPayoutsModal] = useState(false);
 
    // 🔹 ВСЕ аккаунты инвестора (уже переданы в props как accounts)
   const investorAccountIds = useMemo(() => {
@@ -142,6 +144,14 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
       profitAccruals: accruals.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     };
   }, [investorSales, investorExpenses, investorAccountIds]);
+
+  // 🔹 История выплат этому инвестору — тот же фильтр, что и для withdrawnSum выше,
+  // но со списком отдельных операций (для модалки "Мои выплаты"), а не только суммой.
+  const myPayouts = useMemo(() => {
+    return investorExpenses
+      .filter(e => e.payoutType === 'PROFIT' && (!e.investorId || e.investorId === investor.id))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [investorExpenses, investor.id]);
 
   // 🔹 Ожидаемая прибыль: Как в InvestorDetails
   // 🔹 Ожидаемая прибыль: от остатка долга по АКТИВНЫМ сделкам
@@ -325,8 +335,8 @@ const expectedTotalProfit = useMemo(() => {
               </div>
             </div>
 
-            {/* 🔹 Баланс и доступно к выводу */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* 🔹 Баланс, доступно к выводу и выплаты */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 p-6 rounded-2xl text-white shadow-lg">
                 <p className="text-indigo-100 text-sm mb-1">{isPoolAccount ? 'Баланс пула (общий)' : 'Текущий баланс счета'}</p>
                 <p className="text-3xl font-bold">{formatCurrency(balance, appSettings.showCents)} ₽</p>
@@ -340,6 +350,19 @@ const expectedTotalProfit = useMemo(() => {
                 <p className="text-3xl font-bold">{formatCurrency(availableToWithdraw, appSettings.showCents)} ₽</p>
                 <p className="text-xs text-emerald-200 mt-2">Доступно к выводу</p>
               </div>
+
+              {/* 🔹 Мои выплаты — клик открывает историю */}
+              <button
+                onClick={() => setShowPayoutsModal(true)}
+                className="text-left bg-gradient-to-br from-violet-500 to-purple-600 p-6 rounded-2xl text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
+              >
+                <p className="text-violet-100 text-sm mb-1">Мои выплаты</p>
+                <p className="text-3xl font-bold">{formatCurrency(totalProfitWithdrawn, appSettings.showCents)} ₽</p>
+                <p className="text-xs text-violet-200 mt-2 flex items-center gap-1">
+                  {myPayouts.length > 0 ? `${myPayouts.length} ${myPayouts.length === 1 ? 'выплата' : 'выплат'} · история` : 'Выплат пока не было'}
+                  <span aria-hidden>→</span>
+                </p>
+              </button>
             </div>
 
             {/* 🔹 Последние договоры */}
@@ -417,6 +440,66 @@ const expectedTotalProfit = useMemo(() => {
           </div>
         )}
       </div>
+
+      {/* 🔹 Модалка: история выплат */}
+      {showPayoutsModal && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+          onClick={() => setShowPayoutsModal(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-800 w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 bg-gradient-to-r from-violet-600 to-purple-600 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-white">Мои выплаты</h3>
+                <p className="text-xs text-violet-100 mt-0.5">Всего получено: {formatCurrency(totalProfitWithdrawn, appSettings.showCents)} ₽</p>
+              </div>
+              <button
+                onClick={() => setShowPayoutsModal(false)}
+                className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
+                aria-label="Закрыть"
+              >
+                {ICONS.Close}
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {myPayouts.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 dark:text-slate-500">
+                  <div className="text-4xl mb-2">💸</div>
+                  <p className="text-sm">Выплат пока не было</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {myPayouts.map(payout => (
+                    <div key={payout.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-xl">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-slate-800 dark:text-white truncate">{payout.title || 'Выплата прибыли'}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{formatDate(payout.date)}</p>
+                      </div>
+                      <span className="text-sm font-bold text-violet-600 dark:text-violet-400 shrink-0 ml-3">
+                        −{formatCurrency(payout.amount, appSettings.showCents)} ₽
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 dark:border-slate-700 shrink-0">
+              <button
+                onClick={() => setShowPayoutsModal(false)}
+                className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

@@ -566,12 +566,6 @@ for (const row of paymentsData) {
     addLog(`✅ Платеж ${amount.toLocaleString('ru-RU')} ₽ → Продажа от ${new Date(selectedSale.startDate).toLocaleDateString('ru-RU')} (ожидалось ${(selectedSale.installments > 0 ? ((selectedSale.totalAmount - selectedSale.downPayment) / selectedSale.installments).toFixed(0) : 'N/A')} ₽)`);
 }
 
-                for (const salesList of processedSalesMap.values()) {
-                    for (const sale of salesList) {
-                        await api.saveItem('sales', sale);
-                    }
-                }
-
                 addLog(`✅ Этап 2 завершён: Платежей=${realPaymentsCount}, Дублей=${skippedDuplicates}`);
 
                 // === ЭТАП 3: Распределение платежей (Waterfall) ===
@@ -595,10 +589,6 @@ for (const row of paymentsData) {
                                 const debt = targetPlan.amount;
                                 if (amountLeft >= debt - 0.01) {
                                     targetPlan.isPaid = true;
-                                    // 🔒 Без этого флага платёж считался бы "оплаченным" при пересчёте остатка
-                                    // долга (NewSale.tsx), но не попадал бы в "Оплачено клиентом" на
-                                    // CustomerDetails.tsx (там раньше был строгий фильтр) — суммы расходились.
-                                    targetPlan.isRealPayment = true;
                                     targetPlan.actualDate = realPay.date;
                                     if (!targetPlan.note?.includes('Оплачено')) {
                                         targetPlan.note = `Оплачено ${new Date(realPay.date).toLocaleDateString()}`;
