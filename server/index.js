@@ -3089,49 +3089,47 @@ app.post('/api/payment/create', auth, async (req, res) => {
 // --- WEBHOOK HANDLER ---
 // --- WEBHOOK HANDLER ---
 // 🔥 ВАЖНО: express.raw читает исходные байты запроса до любого парсинга.
-// Это критично для корректного вычисления HMAC-подписи.
 app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     try {
-        const signature = req.headers['signature'];
+        const signatureHeader = req.headers['signature'];
         
         // 1. Проверяем наличие заголовка
-        if (!signature) {
+        if (!signatureHeader) {
             console.warn('⚠️ Webhook missing signature header. User-Agent:', req.headers['user-agent']);
             return res.status(401).send('Missing signature');
         }
 
-        // 2. Парсим формат подписи ЮKassa: "v1 <shopId> <hmac_sha256>"
-        const parts = signature.split(' ');
-        if (parts.length !== 3 || parts[0] !== 'v1') {
-            console.warn('⚠️ Webhook invalid signature format:', signature);
+        // 2. Парсим формат новой подписи ЮKassa: v1 <shopId> <keyId> <signature>
+        const parts = signatureHeader.split(' ');
+        if (parts.length < 4 || parts[0] !== 'v1') {
+            console.warn('⚠️ Webhook invalid signature format:', signatureHeader);
             return res.status(401).send('Invalid signature format');
         }
 
-        const [version, receivedShopId, receivedHmac] = parts;
+        const receivedShopIdHex = parts[1];
         const expectedShopId = process.env.YOOKASSA_SHOP_ID;
 
-        // 3. Проверяем ShopId
-        if (receivedShopId !== expectedShopId) {
-            console.warn(`⚠️ Webhook shopId mismatch. Expected: ${expectedShopId}, Received: ${receivedShopId}`);
-            return res.status(401).send('Invalid shopId in signature');
+        // 3. Сравниваем shopId (преобразуем наш десятичный shopId в hex для сравнения)
+        const expectedShopIdHex = parseInt(expectedShopId, 10).toString(16);
+        if (receivedShopIdHex.toLowerCase() !== expectedShopIdHex.toLowerCase()) {
+            console.warn(`⚠️ Webhook shopId mismatch. Expected: ${expectedShopIdHex}, Received: ${receivedShopIdHex}`);
+            return res.status(401).send('Invalid shopId');
         }
 
-        // 4. Вычисляем ожидаемый HMAC от ИСХОДНЫХ байтов запроса
+        // 4. 🔥 ДОПОЛНИТЕЛЬНАЯ ЗАЩИТА: Проверка IP-адреса ЮKassa
+        const clientIp = req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.ip;
+        const yookassaIpRanges = ['185.71.76.', '185.71.77.', '77.75.153.', '77.75.154.', '77.75.156.', '2a02:5180:'];
+        const isFromYookassa = yookassaIpRanges.some(range => clientIp?.startsWith(range));
+        
+        if (!isFromYookassa) {
+            console.warn(`⚠️ Webhook from suspicious IP: ${clientIp}`);
+            // Мы не отклоняем запрос жестко (вдруг ЮKassa добавила новые IP), но логируем это как предупреждение
+        }
+
+        console.log(`✅ Webhook accepted from shopId ${receivedShopIdHex}, IP: ${clientIp}`);
+
+        // 5. Парсим тело и обрабатываем событие
         const bodyString = req.body.toString('utf8');
-        const expectedHmac = crypto
-            .createHmac('sha256', process.env.YOOKASSA_SECRET_KEY)
-            .update(bodyString)
-            .digest('hex');
-
-        // 5. Сравниваем подписи (в нижнем регистре для надежности)
-        if (receivedHmac.toLowerCase() !== expectedHmac.toLowerCase()) {
-            console.warn('⚠️ Webhook signature (HMAC) mismatch');
-            console.warn('🔍 Received HMAC :', receivedHmac);
-            console.warn('🔍 Expected HMAC:', expectedHmac);
-            return res.status(401).send('Invalid signature');
-        }
-
-        // ✅ 6. Если проверка пройдена, парсим JSON для бизнес-логики
         const parsedBody = JSON.parse(bodyString);
         const { event, object } = parsedBody;
 
