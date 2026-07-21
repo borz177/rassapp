@@ -3049,6 +3049,7 @@ app.post('/api/payment/create', auth, async (req, res) => {
   }
   
   try {
+    console.log('🔍 ВСЕ ЗАГОЛОВКИ WEBHOOK:', JSON.stringify(req.headers, null, 2));
     const idempotenceKey = uuidv4();
     const response = await axios.post('https://api.yookassa.ru/v3/payments', {
       amount: {
