@@ -43,7 +43,10 @@ export const getAccountShares = (
       .map(id => investors.find(i => i.id === id))
       .filter((i): i is Investor => !!i && isPoolMemberActiveAt(i, cutoff));
     const totalCapital = members.reduce((sum, inv) => sum + (Number(inv.initialAmount) || 0), 0);
-    if (totalCapital <= 0) return [];
+    if (totalCapital <= 0) {
+      // Суммы не заданы — используем profitPercentage как фиксированный процент напрямую
+      return members.map(investor => ({ investor, percentage: investor.profitPercentage || 0 }));
+    }
     return members.map(investor => {
       const capitalShare = (Number(investor.initialAmount) || 0) / totalCapital; // 0..1
       return { investor, percentage: capitalShare * (investor.profitPercentage || 0) };

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Investor, AppSettings, Sale, Expense, Account, Customer } from '../types';
-import { formatCurrency, getAccountShares, escapeHtml } from '../src/utils';
+import { formatCurrency, getAccountShares, escapeHtml, isAccountForInvestor } from '../src/utils';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -223,7 +223,7 @@ const Reports: React.FC<ReportsProps> = ({
         return investors.map((inv, idx) => {
             const investorSales = sales.filter(s => {
                 const acc = accounts.find(a => a.id === s.accountId);
-                return !!acc && (acc.ownerId === inv.id || (acc.partners || []).includes(inv.id));
+                return !!acc && (isAccountForInvestor(acc, inv.id) || (acc.partners || []).includes(inv.id));
             }).filter(s => s.status === 'ACTIVE' || s.status === 'COMPLETED');
 
             // 🔒 Доля инвестора в пуле считается по вложенной сумме и может зависеть от даты

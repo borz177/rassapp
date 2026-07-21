@@ -2878,20 +2878,19 @@ if (!user && !showSplash) {
 )}
               {currentView === 'CASH_REGISTER' && (
   <CashRegister
-    // 🔹 Фильтрация данных для инвестора
     accounts={isInvestor && user
-      ? accounts.filter(a => a.ownerId === user.id)
+      ? accounts.filter(a => isAccountForInvestor(a, user.id))
       : accounts}
     sales={isInvestor && user
       ? sales.filter(s => {
           const acc = accounts.find(a => a.id === s.accountId);
-          return acc?.ownerId === user.id;
+          return !!acc && isAccountForInvestor(acc, user.id);
         })
       : sales}
     expenses={isInvestor && user
       ? expenses.filter(e => {
           const acc = accounts.find(a => a.id === e.accountId);
-          return acc?.ownerId === user.id;
+          return !!acc && isAccountForInvestor(acc, user.id);
         })
       : expenses}
     investors={investors}
