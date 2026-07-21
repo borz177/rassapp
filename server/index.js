@@ -3049,7 +3049,7 @@ app.post('/api/payment/create', auth, async (req, res) => {
   }
   
   try {
-    console.log('🔍 ВСЕ ЗАГОЛОВКИ WEBHOOK:', JSON.stringify(req.headers, null, 2));
+    
     const idempotenceKey = uuidv4();
     const response = await axios.post('https://api.yookassa.ru/v3/payments', {
       amount: {
@@ -3089,6 +3089,7 @@ app.post('/api/payment/create', auth, async (req, res) => {
 // --- WEBHOOK HANDLER ---
 app.post('/api/payment/webhook', async (req, res) => {
   try {
+    console.log('🔍 ВСЕ ЗАГОЛОВКИ WEBHOOK:', JSON.stringify(req.headers, null, 2));
     // 🔍 YooKassa отправляет подпись в заголовке content-sha256
     const signature = req.headers['content-sha256'];
 
