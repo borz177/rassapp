@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Investor, AppSettings, Sale, Expense, Account, Customer } from '../types';
-import { formatCurrency, getAccountShares, escapeHtml, isAccountForInvestor } from '../src/utils';
+import { formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor } from '../src/utils';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -445,6 +445,63 @@ const Reports: React.FC<ReportsProps> = ({
         return { totalBuyPrice, totalSaleAmount, grossProfit, count: periodSales.length };
     }, [sales, investors, filters]);
 
+    // Pool profit distribution — shown when a POOL account is selected
+    const poolDistribution = useMemo(() => {
+        if (filters.accountId === 'ALL') return null;
+        const account = (accounts as Account[]).find(a => a.id === filters.accountId);
+        if (!account || account.type !== 'POOL') return null;
+
+        const startDate = new Date(filters.period.start);
+        const endDate = new Date(filters.period.end);
+        endDate.setHours(23, 59, 59, 999);
+
+        type Row = { label: string; isManager: boolean; sharePercent: number; received: number; expected: number };
+        const rows = new Map<string, Row>();
+        const MGR = '__mgr__';
+
+        const ensure = (key: string, init: () => Row) => {
+            if (!rows.has(key)) rows.set(key, init());
+            return rows.get(key)!;
+        };
+
+        const accountSales = (sales as Sale[]).filter(s =>
+            s.accountId === account.id && s.buyPrice > 0 && s.totalAmount > s.buyPrice
+        );
+
+        accountSales.forEach(sale => {
+            const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
+            const allPayments = [
+                { date: sale.startDate, amount: sale.downPayment },
+                ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
+            ];
+            allPayments.forEach(p => {
+                if (p.amount <= 0) return;
+                const pDate = new Date(p.date);
+                if (pDate < startDate || pDate > endDate) return;
+                const profitFromPayment = p.amount * profitMargin;
+                const mgrPct = getManagerSharePercent(account, investors as Investor[], p.date) / 100;
+                ensure(MGR, () => ({ label: 'Менеджер', isManager: true, sharePercent: getManagerSharePercent(account, investors as Investor[]), received: 0, expected: 0 })).received += profitFromPayment * mgrPct;
+                getAccountShares(account, investors as Investor[], p.date).forEach(({ investor, percentage }) => {
+                    ensure(investor.id, () => ({ label: investor.name, isManager: false, sharePercent: percentage, received: 0, expected: 0 })).received += profitFromPayment * (percentage / 100);
+                });
+            });
+            if ((sale.status === 'ACTIVE' || sale.status === 'DRAFT') && sale.remainingAmount > 0) {
+                const gross = sale.remainingAmount * profitMargin;
+                const mgrPct = getManagerSharePercent(account, investors as Investor[]) / 100;
+                ensure(MGR, () => ({ label: 'Менеджер', isManager: true, sharePercent: getManagerSharePercent(account, investors as Investor[]), received: 0, expected: 0 })).expected += gross * mgrPct;
+                getAccountShares(account, investors as Investor[]).forEach(({ investor, percentage }) => {
+                    ensure(investor.id, () => ({ label: investor.name, isManager: false, sharePercent: percentage, received: 0, expected: 0 })).expected += gross * (percentage / 100);
+                });
+            }
+        });
+
+        if (rows.size === 0) return null;
+        const list = Array.from(rows.values()).sort((a, b) => Number(b.isManager) - Number(a.isManager));
+        const totalReceived = list.reduce((s, r) => s + r.received, 0);
+        const totalExpected = list.reduce((s, r) => s + r.expected, 0);
+        return { account, rows: list, totalReceived, totalExpected };
+    }, [filters.accountId, filters.period, accounts, sales, investors]);
+
     // CSV Export
     const exportCSV = (opts: typeof exportOptions) => {
         const sep = ';';
@@ -777,6 +834,70 @@ const Reports: React.FC<ReportsProps> = ({
                                 badge={efficiencyLabel} color={efficiencyColor} subtext="план / факт"
                             />
                         </div>
+
+                        {/* Pool profit distribution card */}
+                        {poolDistribution && (
+                            <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-lg border border-fuchsia-100 dark:border-fuchsia-900/40 overflow-hidden">
+                                {/* Header */}
+                                <div className="bg-gradient-to-r from-fuchsia-600 to-purple-600 px-5 py-4 flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-white text-lg">🏦</div>
+                                    <div>
+                                        <p className="text-white font-bold text-base leading-tight">{poolDistribution.account.name}</p>
+                                        <p className="text-fuchsia-200 text-xs mt-0.5">Распределение прибыли по участникам</p>
+                                    </div>
+                                </div>
+
+                                <div className="p-5 space-y-3">
+                                    {poolDistribution.rows.map((row, idx) => {
+                                        const rowColors = row.isManager
+                                            ? { dot: 'bg-emerald-500', bar: 'bg-emerald-500', badge: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400', label: 'text-emerald-700 dark:text-emerald-400' }
+                                            : { dot: ['bg-indigo-500','bg-purple-500','bg-pink-500','bg-amber-500','bg-cyan-500'][idx % 5], bar: ['bg-indigo-500','bg-purple-500','bg-pink-500','bg-amber-500','bg-cyan-500'][idx % 5], badge: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400', label: 'text-indigo-700 dark:text-indigo-400' };
+                                        const total = row.received + row.expected;
+                                        const pct = total > 0 ? Math.round((row.received / total) * 100) : 0;
+                                        return (
+                                            <div key={row.isManager ? '__mgr__' : String(idx)} className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        <div className={`w-8 h-8 rounded-full ${rowColors.dot} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                                                            {row.label.charAt(0).toUpperCase()}
+                                                        </div>
+                                                        <span className="font-semibold text-sm text-slate-800 dark:text-white truncate">{row.label}</span>
+                                                    </div>
+                                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full shrink-0 ml-2 ${rowColors.badge}`}>
+                                                        {Math.round(row.sharePercent)}%
+                                                    </span>
+                                                </div>
+                                                {/* Progress bar: received vs total */}
+                                                <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-2">
+                                                    <div className={`h-full ${rowColors.bar} rounded-full transition-all duration-700`} style={{ width: `${pct}%` }} />
+                                                </div>
+                                                <div className="flex justify-between text-xs">
+                                                    <span className="text-slate-500 dark:text-slate-400">
+                                                        Получено: <span className={`font-bold ${rowColors.label}`}>{formatCurrency(row.received, appSettings.showCents)} ₽</span>
+                                                    </span>
+                                                    <span className="text-slate-400 dark:text-slate-500">
+                                                        Ожидается: <span className="font-semibold text-slate-600 dark:text-slate-300">{formatCurrency(row.expected, appSettings.showCents)} ₽</span>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+
+                                    {/* Total row */}
+                                    <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-700 text-sm">
+                                        <span className="font-semibold text-slate-600 dark:text-slate-300">Итого по пулу</span>
+                                        <div className="flex gap-4 text-xs">
+                                            <span className="text-slate-500 dark:text-slate-400">
+                                                Получено: <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(poolDistribution.totalReceived, appSettings.showCents)} ₽</span>
+                                            </span>
+                                            <span className="text-slate-400 dark:text-slate-500">
+                                                Ожидается: <span className="font-semibold text-slate-600 dark:text-slate-300">{formatCurrency(poolDistribution.totalExpected, appSettings.showCents)} ₽</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Закуп и Продажи — договоры, открытые в периоде */}
                         {salesStats.count > 0 && (

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Investor, Sale, Expense, Account, Payment, AppSettings } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, getAccountShares } from '../src/utils';
+import { formatCurrency, getAccountShares, getManagerSharePercent } from '../src/utils';
 
 interface InvestorDetailsProps {
   investor: Investor;
@@ -12,6 +12,14 @@ interface InvestorDetailsProps {
   appSettings: AppSettings;
   onBack: () => void;
 }
+
+const POOL_MEMBER_PALETTE = [
+  { bar: 'bg-sky-500', text: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-900/30' },
+  { bar: 'bg-amber-500', text: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30' },
+  { bar: 'bg-rose-500', text: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-900/30' },
+  { bar: 'bg-teal-500', text: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-900/30' },
+  { bar: 'bg-violet-500', text: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50 dark:bg-violet-900/30' },
+];
 
 const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, investors, account, sales, expenses, appSettings, onBack }) => {
   // 🔒 Актуальная (на сегодня) доля этого инвестора в счёте. Для обычного счёта —
@@ -164,6 +172,23 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, investors, 
                      .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [expenses, account, investor.id]);
 
+  const poolComposition = useMemo(() => {
+    if (!account || account.type !== 'POOL') return null;
+    const members = (account.poolMemberIds || [])
+      .map(id => investors.find(i => i.id === id))
+      .filter((i): i is Investor => !!i);
+    const totalCapital = members.reduce((sum, m) => sum + (Number(m.initialAmount) || 0), 0);
+    const mgrPercent = getManagerSharePercent(account, investors);
+    const rows = members.map((m, idx) => {
+      const capitalShare = totalCapital > 0 ? (Number(m.initialAmount) || 0) / totalCapital * 100 : 0;
+      const profitShare = getAccountShares(account, investors).find(s => s.investor.id === m.id)?.percentage ?? 0;
+      const isActive = !m.leftPoolDate || new Date(m.leftPoolDate) > new Date();
+      return { investor: m, capitalShare, profitShare, isActive, palette: POOL_MEMBER_PALETTE[idx % POOL_MEMBER_PALETTE.length] };
+    });
+    const myCapitalShare = totalCapital > 0 ? (Number(investor.initialAmount) || 0) / totalCapital * 100 : 0;
+    return { rows, totalCapital, mgrPercent, myCapitalShare };
+  }, [account, investors, investor.id, investor.initialAmount]);
+
   return (
     <div className="space-y-4 animate-fade-in pb-20">
       <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 bg-white dark:bg-slate-900 sticky top-0 z-10 pt-2">
@@ -176,15 +201,66 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, investors, 
       {activeTab === 'INFO' && (
           <div className="space-y-4 pt-2">
                <div className="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 space-y-4">
-                  <div className="flex items-center gap-4 border-b border-slate-50 dark:border-slate-700 pb-4"><div className="w-16 h-16 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center text-2xl font-bold">{investor.name.charAt(0)}</div><div><h3 className="font-bold text-lg text-slate-800 dark:text-white">{investor.name}</h3><p className="text-slate-500 dark:text-slate-400">{investor.email}</p></div></div>
+                  <div className="flex items-center gap-4 border-b border-slate-50 dark:border-slate-700 pb-4"><div className="w-16 h-16 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center text-2xl font-bold">{investor.name.charAt(0)}</div><div><h3 className="font-bold text-lg text-slate-800 dark:text-white">{investor.name}</h3><p className="text-slate-500 dark:text-slate-400">{investor.email}</p>{account?.type === 'POOL' && (investor.leftPoolDate && new Date(investor.leftPoolDate) <= new Date() ? <span className="inline-flex items-center gap-1 text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full mt-1">Вышел из пула · {new Date(investor.leftPoolDate).toLocaleDateString()}</span> : <span className="inline-flex items-center gap-1 text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full mt-1">● Активный участник пула</span>)}</div></div>
                   <div className="grid grid-cols-2 gap-4">
                       <div><label className="text-xs text-slate-400 uppercase">Телефон</label><p className="font-medium text-slate-800 dark:text-white">{investor.phone || '-'}</p></div>
                       <div><label className="text-xs text-slate-400 uppercase">Дата регистрации</label><p className="font-medium text-slate-800 dark:text-white">{new Date(investor.joinedDate).toLocaleDateString()}</p></div>
-                      <div><label className="text-xs text-slate-400 uppercase">Баланс инвестиций</label><p className="font-semibold text-slate-700 dark:text-slate-300">{formatCurrency(investor.initialAmount, appSettings.showCents)} ₽</p></div>
-                      <div><label className="text-xs text-slate-400 uppercase">{account?.type === 'POOL' ? 'Доля в пуле (по вложению)' : 'Процент прибыли'}</label><p className="font-semibold text-indigo-600 dark:text-indigo-400">{Math.round(currentSharePercent * 10) / 10}%</p></div>
+                      <div><label className="text-xs text-slate-400 uppercase">{account?.type === 'POOL' ? 'Вложено в пул' : 'Баланс инвестиций'}</label><p className="font-semibold text-slate-700 dark:text-slate-300">{formatCurrency(investor.initialAmount, appSettings.showCents)} ₽</p></div>
+                      <div><label className="text-xs text-slate-400 uppercase">Доля прибыли</label><p className="font-semibold text-indigo-600 dark:text-indigo-400">{Math.round(currentSharePercent * 10) / 10}%</p></div>
+                      {account?.type === 'POOL' && poolComposition && <div><label className="text-xs text-slate-400 uppercase">Доля капитала</label><p className="font-semibold text-purple-600 dark:text-purple-400">{Math.round(poolComposition.myCapitalShare * 10) / 10}%</p></div>}
+                      {investor.leftPoolDate && <div><label className="text-xs text-slate-400 uppercase">Дата выхода из пула</label><p className="font-semibold text-slate-700 dark:text-slate-300">{new Date(investor.leftPoolDate).toLocaleDateString()}</p></div>}
                   </div>
-                  <div className="pt-2"><label className="text-xs text-slate-400 uppercase">{account?.type === 'POOL' ? 'Баланс пула (общий)' : 'Текущий баланс счета'}</label><p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{formatCurrency(balance, appSettings.showCents)} ₽</p>{account?.type === 'POOL' && <p className="text-xs text-slate-400 mt-1">Общая касса пула — включает деньги всех участников</p>}</div>
+                  <div className="pt-2"><label className="text-xs text-slate-400 uppercase">{account?.type === 'POOL' ? 'Баланс пула (общий)' : 'Текущий баланс счета'}</label><p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{formatCurrency(balance, appSettings.showCents)} ₽</p>{account?.type === 'POOL' && poolComposition && poolComposition.myCapitalShare > 0 && <p className="text-sm font-semibold text-purple-600 dark:text-purple-400 mt-1">Ваша доля: ~{formatCurrency(balance * poolComposition.myCapitalShare / 100, appSettings.showCents)} ₽</p>}{account?.type === 'POOL' && <p className="text-xs text-slate-400 mt-1">Общая касса пула — включает деньги всех участников</p>}</div>
                </div>
+
+               {account?.type === 'POOL' && poolComposition && (
+                   <div className="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 space-y-3">
+                       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+                           <div>
+                               <h3 className="font-bold text-slate-800 dark:text-white">Состав пула</h3>
+                               <p className="text-xs text-slate-400 mt-0.5">Общий капитал: {formatCurrency(poolComposition.totalCapital, appSettings.showCents)} ₽</p>
+                           </div>
+                           <span className="text-xs font-semibold bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-700 dark:text-fuchsia-400 px-2 py-1 rounded-full">{poolComposition.rows.length} участн.</span>
+                       </div>
+                       <div className="flex items-center gap-3 py-1">
+                           <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0">М</div>
+                           <div className="flex-1 min-w-0">
+                               <div className="flex items-center justify-between mb-1">
+                                   <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Менеджер</span>
+                                   <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{Math.round(poolComposition.mgrPercent * 10) / 10}% приб.</span>
+                               </div>
+                               <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
+                                   <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${Math.min(poolComposition.mgrPercent, 100)}%` }} />
+                               </div>
+                           </div>
+                       </div>
+                       {poolComposition.rows.map(({ investor: m, capitalShare, profitShare, isActive, palette }) => (
+                           <div key={m.id} className={`flex items-center gap-3 py-1 rounded-xl transition-colors ${m.id === investor.id ? 'bg-slate-50 dark:bg-slate-700/50 -mx-2 px-2' : ''}`}>
+                               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${palette.bg} ${palette.text}`}>{m.name.charAt(0)}</div>
+                               <div className="flex-1 min-w-0">
+                                   <div className="flex items-center justify-between mb-1">
+                                       <div className="flex items-center gap-1.5 min-w-0">
+                                           <span className={`text-sm truncate ${m.id === investor.id ? 'font-bold text-slate-900 dark:text-white' : 'font-medium text-slate-700 dark:text-slate-300'}`}>{m.name}</span>
+                                           {m.id === investor.id && <span className="text-xs bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded-full shrink-0">вы</span>}
+                                           {!isActive && <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 px-1.5 py-0.5 rounded-full shrink-0">вышел</span>}
+                                       </div>
+                                       <div className="flex items-center gap-3 ml-2 shrink-0">
+                                           <span className="text-xs text-slate-400">{Math.round(capitalShare * 10) / 10}% кап.</span>
+                                           <span className={`text-sm font-bold ${palette.text}`}>{Math.round(profitShare * 10) / 10}% приб.</span>
+                                       </div>
+                                   </div>
+                                   <div className="flex items-center gap-2">
+                                       <div className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
+                                           <div className={`${palette.bar} h-1.5 rounded-full`} style={{ width: `${Math.min(capitalShare, 100)}%` }} />
+                                       </div>
+                                       <span className="text-xs text-slate-400 shrink-0">{formatCurrency(m.initialAmount, false)} ₽</span>
+                                   </div>
+                               </div>
+                           </div>
+                       ))}
+                       <p className="text-xs text-slate-400 text-center border-t border-slate-100 dark:border-slate-700 pt-2">Доля прибыли = (капитал / общий) × личный %</p>
+                   </div>
+               )}
 
                 <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-100 dark:border-slate-700"><h3 className="font-bold text-sm text-slate-800 dark:text-white mb-1">Ожидаемая прибыль</h3><p className="text-xs text-slate-500 dark:text-slate-400 mb-2">С активных договоров</p><p className="text-2xl font-bold text-indigo-800 dark:text-indigo-400">{formatCurrency(expectedTotalProfit, appSettings.showCents)} ₽</p></div>
