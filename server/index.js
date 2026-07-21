@@ -528,7 +528,7 @@ app.use('/downloads', express.static(path.join(__dirname, 'downloads'), {
 app.use(express.json({
   limit: '15mb',
   type: (req) => {
-    if (req.url.startsWith('/api/payments/webhook')) return false;
+    if (req.url.startsWith('/api/payment/webhook')) return false;
     if (req.url.startsWith('/api/upload-image')) return false;
     if (req.url.startsWith('/api/upload')) return false;
     if (req.url.startsWith('/api/integrations/whatsapp/webhook')) return false;
