@@ -11,7 +11,7 @@ interface InvestorsProps {
   investors: Investor[];
   accounts?: Account[];
   showPools?: boolean;
-  onAddInvestor: (name: string, phone: string, email: string, password: string, amount: number, profitPercentage: number, permissions: InvestorPermissions, poolChoice?: InvestorPoolChoice, joinedDate?: string) => void;
+  onAddInvestor: (name: string, phone: string, email: string, password: string, amount: number, profitPercentage: number, permissions: InvestorPermissions, poolChoice?: InvestorPoolChoice, joinedDate?: string, leftPoolDate?: string) => void;
   onUpdateInvestor?: (investor: Investor, password?: string) => void;
   onDeleteInvestor?: (id: string) => void;
   onViewDetails?: (investor: Investor) => void;
@@ -167,7 +167,8 @@ const Investors: React.FC<InvestorsProps> = ({
     const joinedDateIso = toJoinedDateIso(formJoinedDate);
 
     // 🔹 Сумма теперь необязательна, по умолчанию 0
-    onAddInvestor(formName, formPhone, formEmail, formPassword, Number(formAmount) || 0, Number(formProfitPercentage), formPermissions, poolChoice, joinedDateIso);
+    const leftPoolDateIso = formLeftPoolDate ? new Date(formLeftPoolDate).toISOString() : undefined;
+    onAddInvestor(formName, formPhone, formEmail, formPassword, Number(formAmount) || 0, Number(formProfitPercentage), formPermissions, poolChoice, joinedDateIso, leftPoolDateIso);
 }
         resetForm();
     }
@@ -277,6 +278,20 @@ const Investors: React.FC<InvestorsProps> = ({
                           required
                       />
                   </div>
+                  {!editingId && poolMode !== 'OWN' && (
+                      <div>
+                          <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Дата выхода из пула (необязательно)</label>
+                          <input
+                              type="date"
+                              className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
+                              value={formLeftPoolDate}
+                              onChange={e => setFormLeftPoolDate(e.target.value)}
+                          />
+                          <p className="text-xs text-slate-400 mt-1">
+                              Оставьте пустым, если инвестор ещё активен.
+                          </p>
+                      </div>
+                  )}
                   {editingId && isEditingPoolMember && (
                       <div>
                           <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Дата выхода из пула (необязательно)</label>

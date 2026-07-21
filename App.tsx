@@ -1775,13 +1775,14 @@ const handleIncomeSubmit = async (data: any) => {
 const handleAddInvestor = async (
   name: string,
   phone: string,
-  email: string, // может быть пустым — тогда инвестор создаётся без логина в приложение
-  pass: string,  // может быть пустым — тогда инвестор создаётся без логина в приложение
-  amount: number, // теперь может быть 0
+  email: string,
+  pass: string,
+  amount: number,
   profitPercentage: number,
   permissions: InvestorPermissions,
   poolChoice?: { mode: 'EXISTING'; accountId: string } | { mode: 'NEW'; name: string },
-  joinedDate?: string
+  joinedDate?: string,
+  leftPoolDate?: string
 ) => {
   if (!user || !isManager) return;
 
@@ -1813,8 +1814,9 @@ const handleAddInvestor = async (
       name,
       phone,
       email,
-      initialAmount: amount, // может быть 0
+      initialAmount: amount,
       joinedDate: joinedDate || new Date().toISOString(),
+      leftPoolDate: leftPoolDate || undefined,
       profitPercentage,
       permissions
     };
@@ -2862,6 +2864,7 @@ if (!user && !showSplash) {
         accounts={filteredAccounts}
         customers={customers}
         investor={activeInvestor}
+        investors={investors}
         appSettings={appSettings}
         onLogout={() => {
           localStorage.removeItem('token');

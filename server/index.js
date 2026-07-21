@@ -3091,65 +3091,64 @@ app.post('/api/payment/create', auth, async (req, res) => {
 // 🔥 ВАЖНО: express.raw читает исходные байты запроса до любого парсинга.
 app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     try {
-        const signatureHeader = req.headers['signature'];
-        
-        // 1. Проверяем наличие заголовка
-        if (!signatureHeader) {
-            console.warn('⚠️ Webhook missing signature header. User-Agent:', req.headers['user-agent']);
-            return res.status(401).send('Missing signature');
-        }
-
-        // 2. Парсим формат новой подписи ЮKassa: v1 <shopId> <keyId> <signature>
-        const parts = signatureHeader.split(' ');
-        if (parts.length < 4 || parts[0] !== 'v1') {
-            console.warn('⚠️ Webhook invalid signature format:', signatureHeader);
-            return res.status(401).send('Invalid signature format');
-        }
-
-        const receivedShopIdHex = parts[1];
-        const expectedShopId = process.env.YOOKASSA_SHOP_ID;
-
-        // 3. Сравниваем shopId (преобразуем наш десятичный shopId в hex для сравнения)
-        const expectedShopIdHex = parseInt(expectedShopId, 10).toString(16);
-        if (receivedShopIdHex.toLowerCase() !== expectedShopIdHex.toLowerCase()) {
-            console.warn(`⚠️ Webhook shopId mismatch. Expected: ${expectedShopIdHex}, Received: ${receivedShopIdHex}`);
-            return res.status(401).send('Invalid shopId');
-        }
-
-        // 4. 🔥 ДОПОЛНИТЕЛЬНАЯ ЗАЩИТА: Проверка IP-адреса ЮKassa
+        // 🔒 ЮKassa НЕ подписывает вебхуки заголовком "signature" в формате
+        // "v1 <shopId> <keyId> <sig>" — прежняя проверка была построена на неверном
+        // предположении об их API и реально ни разу не проходила: по логам продакшена
+        // 100% реальных вызовов (с IP из диапазонов ЮKassa 77.75.153.*/77.75.154.* и т.п.)
+        // получали 401 "Invalid shopId", то есть подписка НИКОГДА не обновлялась после
+        // оплаты — платёж проходил у ЮKassa, а наш сервер отбрасывал уведомление об этом
+        // до того, как код апдейта подписки вообще успевал выполниться.
+        //
+        // Официально рекомендуемая ЮKassa защита в отсутствие крипто-подписи — сверка
+        // по IP (это уже было, но раньше только предупреждало, а не блокировало) плюс
+        // переспрос статуса платежа через их же API своим авторизованным запросом —
+        // тело вебхука само по себе не источник истины, доверяем только ответу ЮKassa.
         const clientIp = req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.ip;
         const yookassaIpRanges = ['185.71.76.', '185.71.77.', '77.75.153.', '77.75.154.', '77.75.156.', '2a02:5180:'];
         const isFromYookassa = yookassaIpRanges.some(range => clientIp?.startsWith(range));
-        
+
         if (!isFromYookassa) {
-            console.warn(`⚠️ Webhook from suspicious IP: ${clientIp}`);
-            // Мы не отклоняем запрос жестко (вдруг ЮKassa добавила новые IP), но логируем это как предупреждение
+            console.warn(`⚠️ Webhook отклонён: IP вне диапазона ЮKassa: ${clientIp}`);
+            return res.status(403).send('Forbidden');
         }
 
-        console.log(`✅ Webhook accepted from shopId ${receivedShopIdHex}, IP: ${clientIp}`);
-
-        // 5. Парсим тело и обрабатываем событие
         const bodyString = req.body.toString('utf8');
         const parsedBody = JSON.parse(bodyString);
         const { event, object } = parsedBody;
 
-        if (event === 'payment.succeeded' && object?.status === 'succeeded') {
-            const { userId, plan, months } = object.metadata || {};
-            if (userId && plan && months) {
-                const userResult = await pool.query('SELECT subscription FROM users WHERE id = $1', [userId]);
-                let currentSub = userResult.rows[0]?.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
-                let newExpiresAt = new Date(currentSub.expiresAt);
-                if (newExpiresAt < new Date()) newExpiresAt = new Date();
-                newExpiresAt.setMonth(newExpiresAt.getMonth() + Number(months));
-                
-                await pool.query(
-                    'UPDATE users SET subscription = $1, updated_at = NOW() WHERE id = $2',
-                    [JSON.stringify({ plan, expiresAt: newExpiresAt.toISOString() }), userId]
-                );
-                console.log(`✅ Subscription updated for user ${userId} to ${plan} for ${months} months`);
+        if (event === 'payment.succeeded' && object?.id) {
+            const shopId = process.env.YOOKASSA_SHOP_ID;
+            const secretKey = process.env.YOOKASSA_SECRET_KEY;
+
+            // 🔒 Переспрашиваем реальный статус платежа у ЮKassa своим Basic Auth
+            // запросом, а не доверяем напрямую телу вебхука (его теоретически можно
+            // подделать, зная только IP-диапазон, но не секретный ключ магазина).
+            const verifyResp = await axios.get(`https://api.yookassa.ru/v3/payments/${object.id}`, {
+                headers: { 'Authorization': 'Basic ' + Buffer.from(`${shopId}:${secretKey}`).toString('base64') }
+            });
+
+            if (verifyResp.data?.status === 'succeeded') {
+                const { userId, plan, months } = verifyResp.data.metadata || {};
+                if (userId && plan && months) {
+                    const userResult = await pool.query('SELECT subscription FROM users WHERE id = $1', [userId]);
+                    let currentSub = userResult.rows[0]?.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
+                    let newExpiresAt = new Date(currentSub.expiresAt);
+                    if (newExpiresAt < new Date()) newExpiresAt = new Date();
+                    newExpiresAt.setMonth(newExpiresAt.getMonth() + Number(months));
+
+                    await pool.query(
+                        'UPDATE users SET subscription = $1, updated_at = NOW() WHERE id = $2',
+                        [JSON.stringify({ plan, expiresAt: newExpiresAt.toISOString() }), userId]
+                    );
+                    console.log(`✅ Subscription updated for user ${userId} to ${plan} for ${months} months`);
+                } else {
+                    console.warn('⚠️ Webhook payment.succeeded без userId/plan/months в metadata:', verifyResp.data?.metadata);
+                }
+            } else {
+                console.warn(`⚠️ Webhook сообщил payment.succeeded, но проверка статуса в ЮKassa вернула: ${verifyResp.data?.status}`);
             }
         }
-        
+
         // Всегда отвечаем 200 OK, чтобы ЮKassa не повторяла запрос
         res.status(200).send('OK');
     } catch (err) {

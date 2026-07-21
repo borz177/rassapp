@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Sale, Expense, Account, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate } from '../src/utils';
+import { formatCurrency, formatDate, getAccountShares } from '../src/utils';
 import Contracts from './Contracts';
 
 interface InvestorDashboardProps {
@@ -12,6 +12,7 @@ interface InvestorDashboardProps {
   accounts: Account[];
   customers: Customer[];
   investor: Investor;
+  investors: Investor[];
   appSettings: AppSettings;
   onLogout: () => void;
 }
@@ -37,7 +38,7 @@ function getPeriodDates(preset: PeriodPreset): { start: string; end: string } {
 }
 
 const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
-  sales, expenses, accounts, customers, investor, appSettings, onLogout
+  sales, expenses, accounts, customers, investor, investors, appSettings, onLogout
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'contracts'>('overview');
   const [contractTab, setContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
@@ -135,7 +136,11 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
 
       allPayments.forEach(p => {
         if (p.amount > 0) {
-          const profitFromPayment = p.amount * profitMargin;
+          const account = accounts.find(a => a.id === sale.accountId);
+          const share = getAccountShares(account, investors, p.date).find(m => m.investor.id === investor.id);
+          const myPercent = share ? share.percentage : 0;
+          if (myPercent <= 0) return;
+          const profitFromPayment = p.amount * profitMargin * myPercent / 100;
           profitSum += profitFromPayment;
           accruals.push({
             id: p.id,
@@ -158,7 +163,7 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
       totalProfitWithdrawn: withdrawnSum,
       profitAccruals: accruals.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     };
-  }, [investorSales, investorExpenses, investorAccountIds]);
+  }, [investorSales, investorExpenses, investorAccountIds, accounts, investors, investor.id]);
 
   // 🔹 История выплат этому инвестору — тот же фильтр, что и для withdrawnSum выше,
   // но со списком отдельных операций (для модалки "Мои выплаты"), а не только суммой.
@@ -177,11 +182,9 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
     const start = new Date(periodRange.start);
     const end = new Date(periodRange.end);
     end.setHours(23, 59, 59, 999);
-    const share = investor.profitPercentage / 100;
     return profitAccruals
-      .filter(a => { const d = new Date(a.date); return d >= start && d <= end; })
-      .map(a => ({ ...a, amount: a.amount * share }));
-  }, [profitAccruals, periodRange, investor.profitPercentage]);
+      .filter(a => { const d = new Date(a.date); return d >= start && d <= end; });
+  }, [profitAccruals, periodRange]);
 
   const periodProfitTotal = useMemo(
     () => accrualsInPeriod.reduce((sum, a) => sum + a.amount, 0),
@@ -230,24 +233,18 @@ const expectedTotalProfit = useMemo(() => {
   );
 
   return activeSales.reduce((sum, sale) => {
-    // 🔧 Маржа прибыли: доля прибыли в каждом рубле выручки
     const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
-
-    // 🔧 Прибыль, которая ещё может быть получена с остатка долга
     const grossProfitFromRemaining = sale.remainingAmount * profitMargin;
-
-    // 🔧 Доля инвестора в этой потенциальной прибыли
-    const investorShare = grossProfitFromRemaining * (investor.profitPercentage / 100);
-
-    return sum + investorShare;
+    const account = accounts.find(a => a.id === sale.accountId);
+    const share = getAccountShares(account, investors).find(m => m.investor.id === investor.id);
+    const myPercent = share ? share.percentage : 0;
+    return sum + grossProfitFromRemaining * myPercent / 100;
   }, 0);
-}, [investorSales, investorAccountIds, investor.profitPercentage]);
+}, [investorSales, investorAccountIds, investor.id, accounts, investors]);
 
-  // 🔹 Доступно к выводу
   const availableToWithdraw = useMemo(() => {
-    const profitShare = totalProfitEarned * (investor.profitPercentage / 100);
-    return Math.max(0, profitShare - totalProfitWithdrawn);
-  }, [totalProfitEarned, totalProfitWithdrawn, investor.profitPercentage]);
+    return Math.max(0, totalProfitEarned - totalProfitWithdrawn);
+  }, [totalProfitEarned, totalProfitWithdrawn]);
 
   // 🔹 Последние 5 договоров
   const lastFiveSales = useMemo(() => {
@@ -398,7 +395,7 @@ const expectedTotalProfit = useMemo(() => {
                 </div>
                 <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase mb-1">Получено прибыли</p>
                 <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white">
-                  {formatCurrency(totalProfitEarned * (investor.profitPercentage / 100), appSettings.showCents)}
+                  {formatCurrency(totalProfitEarned, appSettings.showCents)}
                   <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
                 </p>
               </div>
