@@ -3087,53 +3087,77 @@ app.post('/api/payment/create', auth, async (req, res) => {
 });
 
 // --- WEBHOOK HANDLER ---
-app.post('/api/payment/webhook', async (req, res) => {
-  try {
-    console.log('🔍 ВСЕ ЗАГОЛОВКИ WEBHOOK:', JSON.stringify(req.headers, null, 2));
-    // 🔍 YooKassa отправляет подпись в заголовке content-sha256
-    const signature = req.headers['content-sha256'];
+// --- WEBHOOK HANDLER ---
+// 🔥 ВАЖНО: express.raw читает исходные байты запроса до любого парсинга.
+// Это критично для корректного вычисления HMAC-подписи.
+app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    try {
+        const signature = req.headers['signature'];
+        
+        // 1. Проверяем наличие заголовка
+        if (!signature) {
+            console.warn('⚠️ Webhook missing signature header. User-Agent:', req.headers['user-agent']);
+            return res.status(401).send('Missing signature');
+        }
 
-    // Подпись обязательна — запрос без неё отклоняем
-    if (!signature) {
-      console.warn('⚠️ Webhook missing signature');
-      return res.status(401).send('Missing signature');
+        // 2. Парсим формат подписи ЮKassa: "v1 <shopId> <hmac_sha256>"
+        const parts = signature.split(' ');
+        if (parts.length !== 3 || parts[0] !== 'v1') {
+            console.warn('⚠️ Webhook invalid signature format:', signature);
+            return res.status(401).send('Invalid signature format');
+        }
+
+        const [version, receivedShopId, receivedHmac] = parts;
+        const expectedShopId = process.env.YOOKASSA_SHOP_ID;
+
+        // 3. Проверяем ShopId
+        if (receivedShopId !== expectedShopId) {
+            console.warn(`⚠️ Webhook shopId mismatch. Expected: ${expectedShopId}, Received: ${receivedShopId}`);
+            return res.status(401).send('Invalid shopId in signature');
+        }
+
+        // 4. Вычисляем ожидаемый HMAC от ИСХОДНЫХ байтов запроса
+        const bodyString = req.body.toString('utf8');
+        const expectedHmac = crypto
+            .createHmac('sha256', process.env.YOOKASSA_SECRET_KEY)
+            .update(bodyString)
+            .digest('hex');
+
+        // 5. Сравниваем подписи (в нижнем регистре для надежности)
+        if (receivedHmac.toLowerCase() !== expectedHmac.toLowerCase()) {
+            console.warn('⚠️ Webhook signature (HMAC) mismatch');
+            console.warn('🔍 Received HMAC :', receivedHmac);
+            console.warn('🔍 Expected HMAC:', expectedHmac);
+            return res.status(401).send('Invalid signature');
+        }
+
+        // ✅ 6. Если проверка пройдена, парсим JSON для бизнес-логики
+        const parsedBody = JSON.parse(bodyString);
+        const { event, object } = parsedBody;
+
+        if (event === 'payment.succeeded' && object?.status === 'succeeded') {
+            const { userId, plan, months } = object.metadata || {};
+            if (userId && plan && months) {
+                const userResult = await pool.query('SELECT subscription FROM users WHERE id = $1', [userId]);
+                let currentSub = userResult.rows[0]?.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
+                let newExpiresAt = new Date(currentSub.expiresAt);
+                if (newExpiresAt < new Date()) newExpiresAt = new Date();
+                newExpiresAt.setMonth(newExpiresAt.getMonth() + Number(months));
+                
+                await pool.query(
+                    'UPDATE users SET subscription = $1, updated_at = NOW() WHERE id = $2',
+                    [JSON.stringify({ plan, expiresAt: newExpiresAt.toISOString() }), userId]
+                );
+                console.log(`✅ Subscription updated for user ${userId} to ${plan} for ${months} months`);
+            }
+        }
+        
+        // Всегда отвечаем 200 OK, чтобы ЮKassa не повторяла запрос
+        res.status(200).send('OK');
+    } catch (err) {
+        console.error('[WEBHOOK] Critical error:', err);
+        res.status(500).send('Server Error');
     }
-
-    const bodyString = JSON.stringify(req.body);
-    const expected = crypto.createHash('sha256').update(bodyString).digest('hex');
-
-    if (signature.toLowerCase() !== expected.toLowerCase()) {
-      console.warn('⚠️ Webhook signature mismatch');
-      return res.status(401).send('Invalid signature');
-    }
-
-    // ✅ Основная логика (ваш код без изменений)
-    const { event, object } = req.body;
-
-    if (event === 'payment.succeeded' && object?.status === 'succeeded') {
-      const { userId, plan, months } = object.metadata || {};
-
-      if (userId && plan && months) {
-        const userResult = await pool.query('SELECT subscription FROM users WHERE id = $1', [userId]);
-        let currentSub = userResult.rows[0]?.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
-
-        let newExpiresAt = new Date(currentSub.expiresAt);
-        if (newExpiresAt < new Date()) newExpiresAt = new Date();
-
-        newExpiresAt.setMonth(newExpiresAt.getMonth() + Number(months));
-
-        await pool.query(
-          'UPDATE users SET subscription = $1, updated_at = NOW() WHERE id = $2',
-          [JSON.stringify({ plan, expiresAt: newExpiresAt.toISOString() }), userId]
-        );
-      }
-    }
-
-    res.status(200).send('OK');
-  } catch (err) {
-    console.error('[WEBHOOK] Critical error:', err);
-    res.status(500).send('Server Error');
-  }
 });
 
 // --- API KEY ROUTES ---
