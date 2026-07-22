@@ -811,7 +811,7 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v16';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v17';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -822,6 +822,14 @@ useEffect(() => {
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
+
+
+
+
+
+
+
+
 
 
 
@@ -3807,32 +3815,73 @@ if (!user && !showSplash) {
 
 
 
-  {showTemplateUpdateModal && (
+{showTemplateUpdateModal && (
   <div
     className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
     onClick={() => setShowTemplateUpdateModal(false)}
   >
     <div
-      className="bg-white w-full max-w-xs rounded-2xl shadow-xl p-6 text-center animate-scale-in"
+      className="bg-white dark:bg-slate-800 w-full max-w-xs rounded-2xl shadow-xl p-6 text-center animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
-      <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center text-2xl">
-        ⚙️
+      <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-2xl">
+        🎉
       </div>
 
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">
-        Ведутся технические работы
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+        Что нового
       </h3>
-      
-      <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-        Возможны кратковременные сбои.
+
+      <p className="text-sm text-gray-500 dark:text-slate-400 mb-4 leading-relaxed">
+        Доработали раздел инвесторов — теперь работать с ними стало ещё удобнее
       </p>
+
+      <div className="space-y-3 text-left mb-6">
+        {/* Страница инвестора */}
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 shrink-0 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-lg">
+            👤
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Страница инвестора</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
+              Во вкладке «Все операции» теперь отображается всё, что касается именно этого инвестора — платежи, договоры и движения средств в одном месте
+            </p>
+          </div>
+        </div>
+
+        {/* Карточка Выплачено */}
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 shrink-0 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-lg">
+            💰
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Карточка «Выплачено»</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
+              Добавили отдельную карточку с общей суммой выплат — сразу видно, сколько уже выплачено инвесторам
+            </p>
+          </div>
+        </div>
+
+        {/* Распределение убытка */}
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 shrink-0 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-lg">
+            📉
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Распределение убытка</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
+              В общем пуле инвесторов появилась возможность распределить убыток между участниками — честно и прозрачно
+            </p>
+          </div>
+        </div>
+      </div>
 
       <button
         onClick={() => setShowTemplateUpdateModal(false)}
-        className="w-full py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 active:scale-[0.98] transition-all"
+        className="w-full py-2.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-medium rounded-lg hover:bg-gray-800 dark:hover:bg-slate-100 active:scale-[0.98] transition-all"
       >
-        Хорошо
+        Понятно
       </button>
     </div>
   </div>
