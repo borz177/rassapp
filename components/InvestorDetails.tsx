@@ -174,20 +174,24 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({ investor, investors, 
 
   const poolComposition = useMemo(() => {
     if (!account || account.type !== 'POOL') return null;
-    const members = (account.poolMemberIds || [])
+    const allMembers = (account.poolMemberIds || [])
       .map(id => investors.find(i => i.id === id))
       .filter((i): i is Investor => !!i);
-    const totalCapital = members.reduce((sum, m) => sum + (Number(m.initialAmount) || 0), 0);
+    const now = new Date();
+    const activeMembers = allMembers.filter(m => !m.leftPoolDate || new Date(m.leftPoolDate) > now);
+    // Капитал считается ТОЛЬКО по активным участникам — вышедшие уже забрали свои деньги
+    const totalCapital = activeMembers.reduce((sum, m) => sum + (Number(m.initialAmount) || 0), 0);
     const mgrPercent = getManagerSharePercent(account, investors);
-    const rows = members.map((m, idx) => {
-      const capitalShare = totalCapital > 0 ? (Number(m.initialAmount) || 0) / totalCapital * 100 : 0;
+    const rows = allMembers.map((m, idx) => {
+      const isActive = !m.leftPoolDate || new Date(m.leftPoolDate) > now;
+      const capitalShare = (isActive && totalCapital > 0) ? (Number(m.initialAmount) || 0) / totalCapital * 100 : 0;
       const profitShare = getAccountShares(account, investors).find(s => s.investor.id === m.id)?.percentage ?? 0;
-      const isActive = !m.leftPoolDate || new Date(m.leftPoolDate) > new Date();
       return { investor: m, capitalShare, profitShare, isActive, palette: POOL_MEMBER_PALETTE[idx % POOL_MEMBER_PALETTE.length] };
     });
-    const myCapitalShare = totalCapital > 0 ? (Number(investor.initialAmount) || 0) / totalCapital * 100 : 0;
+    const myIsActive = !investor.leftPoolDate || new Date(investor.leftPoolDate) > now;
+    const myCapitalShare = (myIsActive && totalCapital > 0) ? (Number(investor.initialAmount) || 0) / totalCapital * 100 : 0;
     return { rows, totalCapital, mgrPercent, myCapitalShare };
-  }, [account, investors, investor.id, investor.initialAmount]);
+  }, [account, investors, investor.id, investor.initialAmount, investor.leftPoolDate]);
 
   return (
     <div className="space-y-4 animate-fade-in pb-20">

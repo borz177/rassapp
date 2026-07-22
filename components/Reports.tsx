@@ -496,6 +496,16 @@ const Reports: React.FC<ReportsProps> = ({
         });
 
         if (rows.size === 0) return null;
+
+        // Обновляем sharePercent до актуальных (текущих) долей — ensure() мог записать
+        // историческое значение из первого попавшегося платежа, а не нынешнее.
+        const MGR_ROW = rows.get(MGR);
+        if (MGR_ROW) MGR_ROW.sharePercent = getManagerSharePercent(account, investors as Investor[]);
+        getAccountShares(account, investors as Investor[]).forEach(({ investor, percentage }) => {
+            const row = rows.get(investor.id);
+            if (row) row.sharePercent = percentage;
+        });
+
         const list = Array.from(rows.values()).sort((a, b) => Number(b.isManager) - Number(a.isManager));
         const totalReceived = list.reduce((s, r) => s + r.received, 0);
         const totalExpected = list.reduce((s, r) => s + r.expected, 0);
