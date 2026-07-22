@@ -70,6 +70,16 @@ export interface InvestorPermissions {
   canViewHistory: boolean;
 }
 
+// Один период участия инвестора в пуле (поддержка повторного входа).
+// Если поле investmentPeriods задано — используется вместо устаревших joinedDate/leftPoolDate/initialAmount.
+export interface InvestmentPeriod {
+  id: string;
+  joinedDate: string;
+  leftPoolDate?: string;
+  initialAmount: number;
+  note?: string;
+}
+
 export interface Investor {
   id: string; // This will match the User.id
   userId: string; // The Manager's ID
@@ -87,6 +97,19 @@ export interface Investor {
   notes?: string;
   color?: string;
   allowedInvestorIds?: string[];
+  // Список периодов инвестирования (при повторных входах в пул).
+  // Если задан — перекрывает joinedDate/leftPoolDate/initialAmount для расчётов.
+  investmentPeriods?: InvestmentPeriod[];
+}
+
+// Убыток пула — по принципу аль-гунм биль-гурм (الغنم بالغرم).
+// Распределяется пропорционально КАПИТАЛУ (не проценту прибыли — см. getCapitalShares в utils.ts).
+export interface LossEvent {
+  id: string;
+  date: string;
+  amount: number;       // Полная сумма убытка для пула
+  description: string;
+  saleId?: string;      // Ссылка на проблемный договор (необязательно)
 }
 
 export interface Account {
@@ -102,6 +125,7 @@ export interface Account {
   currency?: string;
   isArchived?: boolean;
   initialBalance?: number;
+  lossEvents?: LossEvent[]; // Убытки пула (Исламские финансы: мушарака/мудараба)
 }
 
 export interface Partnership {

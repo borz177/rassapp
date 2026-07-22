@@ -811,7 +811,7 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v15';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v16';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -2949,8 +2949,11 @@ if (!user && !showSplash) {
                       <InvestorDetails investor={investors.find((i: Investor) => i.id === selectedInvestorId)!}
                                    investors={investors}
                                    account={getInvestorAccount(selectedInvestorId, accounts)} sales={sales}
-                                   expenses={expenses} onBack={requestClose}
-                                   appSettings={appSettings}/>
+                                   expenses={expenses} customers={customers} onBack={requestClose}
+                                   appSettings={appSettings}
+                                   onUpdateInvestor={handleUpdateInvestor}
+                                   onDeleteInvestor={(id) => { handleDeleteInvestor(id); requestClose(); }}
+                                   onUpdateAccount={handleUpdateAccount}/>
                     )}
                   </PagePush>
               )}
@@ -3144,6 +3147,7 @@ if (!user && !showSplash) {
               account={getInvestorAccount(user.id, accounts)}
               sales={sales.filter((s: Sale) => s.accountId === getInvestorAccount(user.id, accounts)?.id)}
               expenses={expenses.filter((e: Expense) => e.accountId === getInvestorAccount(user.id, accounts)?.id)}
+              customers={customers}
               onBack={requestClose}
               appSettings={appSettings}
             />
@@ -3803,88 +3807,36 @@ if (!user && !showSplash) {
 
 
 
-{showTemplateUpdateModal && (
+  {showTemplateUpdateModal && (
   <div
     className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
     onClick={() => setShowTemplateUpdateModal(false)}
   >
     <div
-      className="bg-white dark:bg-slate-800 w-full max-w-xs rounded-2xl shadow-xl p-6 text-center animate-scale-in"
+      className="bg-white w-full max-w-xs rounded-2xl shadow-xl p-6 text-center animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
-      <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-2xl">
-        🎉
+      <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center text-2xl">
+        ⚙️
       </div>
 
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-        Что нового
+      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        Ведутся технические работы
       </h3>
-
-      <p className="text-sm text-gray-500 dark:text-slate-400 mb-4 leading-relaxed">
-        Добавили систему уведомлений — включайте только то, что важно именно вам
+      
+      <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+        Возможны кратковременные сбои.
       </p>
-
-      <div className="space-y-3 text-left mb-6">
-        {/* Уведомления */}
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 shrink-0 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-lg">
-            🔔
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">Включайте уведомления</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug mb-2">
-              Выбирайте, о чём хотите узнавать:
-            </p>
-            <ul className="space-y-1.5 text-xs text-gray-600 dark:text-slate-300">
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                Новый платёж
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                Новый расход
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                Новый договор
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                Отправка сообщения в WhatsApp
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                Сообщение от администратора
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        {/* Push на телефон */}
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 shrink-0 rounded-xl bg-fuchsia-100 dark:bg-fuchsia-900/30 flex items-center justify-center text-lg">
-            📱
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">Push на телефон</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
-              Включите Push-уведомления — важные события будут приходить прямо на экран, даже если приложение закрыто
-            </p>
-          </div>
-        </div>
-      </div>
 
       <button
         onClick={() => setShowTemplateUpdateModal(false)}
-        className="w-full py-2.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-medium rounded-lg hover:bg-gray-800 dark:hover:bg-slate-100 active:scale-[0.98] transition-all"
+        className="w-full py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 active:scale-[0.98] transition-all"
       >
-        Понятно
+        Хорошо
       </button>
     </div>
   </div>
 )}
-
-
 
 
   </Layout>

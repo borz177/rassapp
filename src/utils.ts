@@ -1,4 +1,4 @@
-import { Account, Investor } from '../types';
+import { Account, Investor, InvestmentPeriod } from '../types';
 
 export const escapeHtml = (str: unknown): string =>
   String(str ?? '')
@@ -8,13 +8,52 @@ export const escapeHtml = (str: unknown): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
-// Участвовал ли инвестор в пуле на момент cutoff — учитывает и вступление (joinedDate),
-// и выход (leftPoolDate, если задан). Общая точка для getAccountShares/getInvestorCapitalShare,
-// чтобы условие не разъезжалось между ними.
+// Участвовал ли инвестор в пуле на момент cutoff.
+// Если задан investmentPeriods — проверяем по списку периодов (поддержка повторного входа).
+// Иначе — legacy-поведение: один joinedDate / leftPoolDate.
 const isPoolMemberActiveAt = (investor: Investor, cutoff: number): boolean => {
+  if (investor.investmentPeriods && investor.investmentPeriods.length > 0) {
+    return investor.investmentPeriods.some(p => {
+      const joined = new Date(p.joinedDate).getTime();
+      const left = p.leftPoolDate ? new Date(p.leftPoolDate).getTime() : Infinity;
+      return joined <= cutoff && cutoff < left;
+    });
+  }
   if (new Date(investor.joinedDate).getTime() > cutoff) return false;
   if (investor.leftPoolDate && new Date(investor.leftPoolDate).getTime() <= cutoff) return false;
   return true;
+};
+
+// Сумма вложения инвестора на момент cutoff — из активного периода.
+// Нужна при поддержке нескольких периодов (разные суммы в разные периоды).
+const getInvestorAmountAt = (investor: Investor, cutoff: number): number => {
+  if (investor.investmentPeriods && investor.investmentPeriods.length > 0) {
+    const active = investor.investmentPeriods.find(p => {
+      const joined = new Date(p.joinedDate).getTime();
+      const left = p.leftPoolDate ? new Date(p.leftPoolDate).getTime() : Infinity;
+      return joined <= cutoff && cutoff < left;
+    });
+    return active ? active.initialAmount : 0;
+  }
+  return investor.initialAmount;
+};
+
+// Возвращает активный период инвестора на момент cutoff (или undefined).
+export const getActivePeriodAt = (investor: Investor, cutoff: number): InvestmentPeriod | null => {
+  if (investor.investmentPeriods && investor.investmentPeriods.length > 0) {
+    return investor.investmentPeriods.find(p => {
+      const joined = new Date(p.joinedDate).getTime();
+      const left = p.leftPoolDate ? new Date(p.leftPoolDate).getTime() : Infinity;
+      return joined <= cutoff && cutoff < left;
+    }) ?? null;
+  }
+  const legacy: InvestmentPeriod = {
+    id: 'legacy',
+    joinedDate: investor.joinedDate,
+    leftPoolDate: investor.leftPoolDate,
+    initialAmount: investor.initialAmount,
+  };
+  return isPoolMemberActiveAt(investor, cutoff) ? legacy : null;
 };
 
 // 🔒 Единая точка расчёта долей прибыли по счёту.
@@ -42,13 +81,13 @@ export const getAccountShares = (
     const members = (account.poolMemberIds || [])
       .map(id => investors.find(i => i.id === id))
       .filter((i): i is Investor => !!i && isPoolMemberActiveAt(i, cutoff));
-    const totalCapital = members.reduce((sum, inv) => sum + (Number(inv.initialAmount) || 0), 0);
+    const totalCapital = members.reduce((sum, inv) => sum + getInvestorAmountAt(inv, cutoff), 0);
     if (totalCapital <= 0) {
       // Суммы не заданы — используем profitPercentage как фиксированный процент напрямую
       return members.map(investor => ({ investor, percentage: investor.profitPercentage || 0 }));
     }
     return members.map(investor => {
-      const capitalShare = (Number(investor.initialAmount) || 0) / totalCapital; // 0..1
+      const capitalShare = getInvestorAmountAt(investor, cutoff) / totalCapital; // 0..1
       return { investor, percentage: capitalShare * (investor.profitPercentage || 0) };
     });
   }
@@ -83,10 +122,10 @@ export const getInvestorCapitalShare = (
     const members = (account.poolMemberIds || [])
       .map(id => investors.find(i => i.id === id))
       .filter((i): i is Investor => !!i && isPoolMemberActiveAt(i, cutoff));
-    const totalCapital = members.reduce((sum, inv) => sum + (Number(inv.initialAmount) || 0), 0);
+    const totalCapital = members.reduce((sum, inv) => sum + getInvestorAmountAt(inv, cutoff), 0);
     if (totalCapital <= 0) return 0;
     const investor = members.find(i => i.id === investorId);
-    return investor ? (Number(investor.initialAmount) || 0) / totalCapital : 0;
+    return investor ? getInvestorAmountAt(investor, cutoff) / totalCapital : 0;
   }
   return account.ownerId === investorId ? 1 : 0;
 };
@@ -127,6 +166,34 @@ export const getSellerPhone = (user: any): string => {
          appSettings?.sellerPhone || 
          appSettings?.companyPhone || 
          "+7 (___) ___-__-__";
+};
+
+// Распределение УБЫТКА пула по принципу аль-гунм биль-гурм (الغنم بالغرم).
+// В отличие от getAccountShares, здесь учитывается только КАПИТАЛ (без profitPercentage),
+// т.к. по нормам мудараба/мушарака убыток несут вкладчики пропорционально капиталу.
+// Менеджер (мудариб) несёт убыток трудом/временем — финансово не входит в расчёт.
+export const getCapitalShares = (
+  account: Account | undefined,
+  investors: Investor[],
+  asOfDate?: string | number | Date
+): { investor: Investor; percentage: number }[] => {
+  if (!account || account.type !== 'POOL') {
+    if (account?.ownerId) {
+      const inv = investors.find(i => i.id === account.ownerId);
+      return inv ? [{ investor: inv, percentage: 100 }] : [];
+    }
+    return [];
+  }
+  const cutoff = asOfDate ? new Date(asOfDate).getTime() : Date.now();
+  const members = (account.poolMemberIds || [])
+    .map(id => investors.find(i => i.id === id))
+    .filter((i): i is Investor => !!i && isPoolMemberActiveAt(i, cutoff));
+  const totalCapital = members.reduce((sum, inv) => sum + getInvestorAmountAt(inv, cutoff), 0);
+  if (totalCapital <= 0) return [];
+  return members.map(investor => ({
+    investor,
+    percentage: getInvestorAmountAt(investor, cutoff) / totalCapital * 100,
+  }));
 };
 
 // Добавьте эту функцию внутри компонента или вынесите в utils

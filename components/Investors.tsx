@@ -23,7 +23,7 @@ const Investors: React.FC<InvestorsProps> = ({
   const accounts: Account[] = accountsProp || [];
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   // Form State
   const [formName, setFormName] = useState('');
@@ -75,7 +75,6 @@ const Investors: React.FC<InvestorsProps> = ({
       setFormLeftPoolDate('');
       setEditingId(null);
       setIsAdding(false);
-      setActiveMenuId(null);
   };
 
   const handleStartEdit = (inv: Investor) => {
@@ -90,7 +89,6 @@ const Investors: React.FC<InvestorsProps> = ({
       setFormLeftPoolDate((inv.leftPoolDate || '').split('T')[0]);
       setEditingId(inv.id);
       setIsAdding(true);
-      setActiveMenuId(null);
   };
 
   // 🔹 <input type="date"> не содержит времени — при сохранении превращается в полночь. Если выбрана
@@ -178,11 +176,10 @@ const Investors: React.FC<InvestorsProps> = ({
       if(window.confirm("Удалить инвестора?")) {
           onDeleteInvestor?.(id);
       }
-      setActiveMenuId(null);
   }
 
   return (
-    <div className="space-y-6 pb-20" onClick={() => setActiveMenuId(null)}>
+    <div className="space-y-6 pb-20">
       <header className="flex justify-between items-center">
         <div>
             <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Инвесторы</h2>
@@ -197,6 +194,24 @@ const Investors: React.FC<InvestorsProps> = ({
             </button>
         )}
       </header>
+
+      {!isAdding && investors.length > 0 && (
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input
+            type="text"
+            placeholder="Поиск по имени, email, телефону…"
+            className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-700 dark:text-white placeholder-slate-400 outline-none focus:border-indigo-400 dark:focus:border-indigo-500 transition-colors"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          )}
+        </div>
+      )}
 
       {isAdding && (
           <form onSubmit={handleSubmit} onClick={e => e.stopPropagation()} className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4 animate-fade-in">
@@ -416,68 +431,51 @@ const Investors: React.FC<InvestorsProps> = ({
         {investors.length === 0 && !isAdding && (
             <div className="text-center py-8 text-slate-400">Нет инвесторов</div>
         )}
-        {investors.map(inv => {
+        {investors.length > 0 && search && investors.filter(inv => {
+            const q = search.toLowerCase();
+            return inv.name.toLowerCase().includes(q) || (inv.email || '').toLowerCase().includes(q) || (inv.phone || '').toLowerCase().includes(q);
+        }).length === 0 && (
+            <div className="text-center py-8 text-slate-400">Ничего не найдено по «{search}»</div>
+        )}
+        {investors.filter(inv => {
+            if (!search) return true;
+            const q = search.toLowerCase();
+            return inv.name.toLowerCase().includes(q) || (inv.email || '').toLowerCase().includes(q) || (inv.phone || '').toLowerCase().includes(q);
+        }).map(inv => {
             const acc = getInvestorAccount(inv.id, accounts);
             const isPoolMember = acc?.type === 'POOL';
             return (
-            <div key={inv.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative">
+            <div key={inv.id}
+                onClick={() => onViewDetails?.(inv)}
+                className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md transition-all active:scale-[0.99]">
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center font-bold text-lg">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center font-bold text-lg shrink-0">
                             {inv.name.charAt(0)}
                         </div>
-                        <div>
-                            <h3 className="font-bold text-slate-800 dark:text-white">{inv.name}</h3>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">{inv.email}</p>
-                            {isPoolMember && (
-                                <span className="inline-block mt-1 text-[10px] font-bold text-fuchsia-600 dark:text-fuchsia-400 bg-fuchsia-50 dark:bg-fuchsia-900/30 px-2 py-0.5 rounded-full">Пул: {acc!.name}</span>
-                            )}
-                            {isPoolMember && inv.leftPoolDate && (
-                                <span className="inline-block mt-1 ml-1 text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">Вышел из пула: {formatDate(inv.leftPoolDate)}</span>
-                            )}
+                        <div className="min-w-0">
+                            <h3 className="font-bold text-slate-800 dark:text-white truncate">{inv.name}</h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{inv.email}</p>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                                {isPoolMember && (
+                                    <span className="text-[10px] font-bold text-fuchsia-600 dark:text-fuchsia-400 bg-fuchsia-50 dark:bg-fuchsia-900/30 px-2 py-0.5 rounded-full">Пул: {acc!.name}</span>
+                                )}
+                                {isPoolMember && inv.leftPoolDate && (
+                                    new Date(inv.leftPoolDate) <= new Date()
+                                        ? <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">Вышел: {formatDate(inv.leftPoolDate)}</span>
+                                        : <span className="text-[10px] font-bold text-sky-700 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/20 px-2 py-0.5 rounded-full">Выйдет: {formatDate(inv.leftPoolDate)}</span>
+                                )}
+                            </div>
                         </div>
                     </div>
-
-                    <div className="flex items-center gap-3">
-                        <div className="text-right mr-2 hidden sm:block">
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <div className="text-right">
                             <p className="text-xs text-slate-400">Процент</p>
                             <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{inv.profitPercentage}%</p>
                         </div>
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveMenuId(activeMenuId === inv.id ? null : inv.id);
-                            }}
-                            className="p-2 text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                        >
-                            {ICONS.More}
-                        </button>
+                        <svg className="text-slate-300 dark:text-slate-600 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg>
                     </div>
                 </div>
-
-                {/* Dropdown Menu */}
-                {activeMenuId === inv.id && (
-                    <div className="absolute right-4 top-14 bg-white dark:bg-slate-800 shadow-xl border border-slate-100 dark:border-slate-700 rounded-xl z-20 w-40 overflow-hidden animate-fade-in">
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onViewDetails?.(inv); }}
-                            className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
-                        >
-                            <span className="text-indigo-500">{ICONS.File}</span> Инфо
-                        </button>
-                        <button
-                            onClick={(e) => { e.stopPropagation(); handleStartEdit(inv); }}
-                            className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"
-                        >
-                            <span className="text-slate-500">{ICONS.Edit}</span> Изменить
-                        </button>
-                        <button
-                            onClick={(e) => { e.stopPropagation(); handleDelete(inv.id); }}
-                            className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                        >
-                            <span>{ICONS.Delete}</span> Удалить
-                        </button>
-                    </div>
-                )}
             </div>
             );
         })}
