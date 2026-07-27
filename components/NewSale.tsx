@@ -277,7 +277,7 @@ const regeneratePaymentPlan = (
 
       setFormData(prev => ({ ...prev, price: calculatedPrice }));
     }
-  }, [formData.buyPrice, formData.downPayment, formData.interestRate, mode, initialData.id, isPriceManual]);
+  }, [formData.buyPrice, formData.downPayment, formData.interestRate, mode, initialData.id, isPriceManual, appSettings.markupFromNetBuyPrice]);
 
   useEffect(() => {
     if (mode === 'INSTALLMENT' && downPaymentFromMarkup && Number(formData.buyPrice) > 0) {
