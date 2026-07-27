@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/services/api';
 import { Customer, Sale, Account, Investor, Payment } from '../types';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 declare const XLSX: any;
 
@@ -229,9 +232,29 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                 ? `Export_All_Time_${new Date().toISOString().slice(0, 10)}.xlsx`
                 : `Export_${startDate}_to_${endDate}.xlsx`;
 
-            XLSX_LIB.writeFile(wb, fileName);
-
-            addLog(`✅ Файл "${fileName}" успешно скачан!`);
+            // 🔹 В нативном Android/iOS-приложении (Capacitor WebView) обычный браузерный
+            // download через <a download> / blob-ссылку не срабатывает — WebView не умеет
+            // сохранять его на устройство. Поэтому пишем файл через Filesystem-плагин и
+            // открываем системный диалог "Поделиться/Сохранить".
+            if (Capacitor.isNativePlatform()) {
+                addLog("📱 Сохранение файла на устройство...");
+                const base64Data: string = XLSX_LIB.write(wb, { type: 'base64', bookType: 'xlsx' });
+                const saved = await Filesystem.writeFile({
+                    path: fileName,
+                    data: base64Data,
+                    directory: Directory.Cache,
+                });
+                await Share.share({
+                    title: fileName,
+                    text: 'Экспорт данных FinUchet',
+                    url: saved.uri,
+                    dialogTitle: 'Сохранить или отправить файл',
+                });
+                addLog(`✅ Файл "${fileName}" готов — выберите, куда сохранить или кому отправить.`);
+            } else {
+                XLSX_LIB.writeFile(wb, fileName);
+                addLog(`✅ Файл "${fileName}" успешно скачан!`);
+            }
 
         } catch (error: any) {
             console.error("Export error:", error);

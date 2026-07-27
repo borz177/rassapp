@@ -76,20 +76,6 @@ export default defineConfig(({ mode }) => {
                 networkTimeoutSeconds: 2
               }
             },
-            {
-              urlPattern: /^https:\/\/cdn\.sheetjs\.com\/.*/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'sheetjs-cache',
-                expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
-                },
-                cacheableResponse: {
-                  statuses: [0, 200]
-                }
-              }
-            }
           ]
         }
       })
@@ -106,22 +92,15 @@ export default defineConfig(({ mode }) => {
       }
     },
 
-    // 🔹 Исключаем xlsx из предсборки
-    optimizeDeps: {
-      exclude: ['xlsx']
-    },
-
     // 🔹 Настройки сборки
+    // xlsx больше не помечен как external/CDN-глобал: раньше сборка полагалась на то, что
+    // cdn.sheetjs.com успеет загрузиться в рантайме (см. index.html), а если сеть блокировала
+    // или тормозила этот CDN — DataExport падал с "не удалось загрузить библиотеку", хотя пакет
+    // уже установлен в node_modules. Раз DataExport.tsx использует `await import('xlsx')`,
+    // Vite/Rollup и так вынесет его в отдельный чанк по требованию (та же лень загрузки без
+    // раздувания основного бандла) — просто из собственного бандла, а не с внешнего CDN.
     build: {
-      chunkSizeWarningLimit: 1000,
-      rollupOptions: {
-        external: ['xlsx'], // Используется как внешняя библиотека (CDN)
-        output: {
-          globals: {
-            xlsx: 'XLSX' // Глобальная переменная из CDN
-          }
-        }
-      }
+      chunkSizeWarningLimit: 1000
     }
   };
 });
