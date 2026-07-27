@@ -26,6 +26,7 @@ interface NewSaleProps {
     onAction?: () => void
   ) => void;
   user?: any;
+  appSettings?: AppSettings; 
 }
 
 // Форматирует любой российский номер в вид +7 (XXX) XXX-XX-XX
@@ -69,7 +70,7 @@ const checkDuplicateSale = (
 
 const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales, suppliers, showSupplierField,
-  onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user,
+  onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user, propAppSettings, 
 }) => {
   const supplierList: Supplier[] = suppliers || [];
   const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(initialData.type || 'INSTALLMENT');
@@ -87,7 +88,7 @@ const NewSale: React.FC<NewSaleProps> = ({
 
   const contractRef = useRef<HTMLDivElement>(null);
   const mainAccount = accounts.find(a => a.isMain || a.type === 'MAIN');
-  const appSettings = getAppSettings();
+   const appSettings = propAppSettings || getAppSettings();
 
   const isSubscriptionExpired = useMemo(() => {
     if (!user?.subscription) return false;
