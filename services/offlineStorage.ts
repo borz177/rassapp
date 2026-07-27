@@ -18,6 +18,9 @@ interface SyncItem {
   retryCount?: number;
   dependsOn?: string[];
   error?: string;
+  // Сервер явно и стабильно отклонил элемент (не сетевая ошибка) — дальше ретраить бессмысленно,
+  // но элемент НЕ удаляется из очереди, чтобы данные не пропадали молча (см. sync() в api.ts).
+  failed?: boolean;
 }
 
 interface CacheItem {

@@ -883,15 +883,19 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
       return;
     }
 
-    // Обновляем стейт только если пришли реальные данные
-    if (data.customers?.length > 0 || customers.length === 0) setCustomers(data.customers || []);
-    if (data.products?.length > 0 || products.length === 0) setProducts(data.products || []);
-    if (data.sales?.length > 0 || sales.length === 0) setSales(data.sales || []);
-    if (data.expenses?.length > 0 || expenses.length === 0) setExpenses(data.expenses || []);
-    if (data.accounts?.length > 0 || accounts.length === 0) setAccounts(data.accounts || []);
-    if (data.investors?.length > 0 || investors.length === 0) setInvestors(data.investors || []);
-    if (data.partnerships?.length > 0 || partnerships.length === 0) setPartnerships(data.partnerships || []);
-    if (data.suppliers?.length > 0 || suppliers.length === 0) setSuppliers(data.suppliers || []);
+    // 🔹 Слияние вместо слепой перезаписи (та же mergeServerData, что и в handleSync и в
+    // фоновом обновлении после логина): fetchAllData() при сетевой ошибке/таймауте (плохая
+    // связь, VPN) подставляет устаревший кэш из IndexedDB — прямая перезапись стирала из UI
+    // записи, которых не было в этом устаревшем снимке, даже если они целы на сервере
+    // (например, договор пропадал после действия с инвестором на плохой связи).
+    if (data.customers) setCustomers(prev => mergeServerData(prev, data.customers, 'customers'));
+    if (data.products) setProducts(prev => mergeServerData(prev, data.products, 'products'));
+    if (data.sales) setSales(prev => mergeServerData(prev, data.sales, 'sales'));
+    if (data.expenses) setExpenses(prev => mergeServerData(prev, data.expenses, 'expenses'));
+    if (data.accounts) setAccounts(prev => mergeServerData(prev, data.accounts, 'accounts'));
+    if (data.investors) setInvestors(prev => mergeServerData(prev, data.investors, 'investors'));
+    if (data.partnerships) setPartnerships(prev => mergeServerData(prev, data.partnerships, 'partnerships'));
+    if (data.suppliers) setSuppliers(prev => mergeServerData(prev, data.suppliers, 'suppliers'));
     if (data.employees?.length > 0 || employees.length === 0) setEmployees(data.employees || []);
 
     let loadedSettings = data.settings || getAppSettings();

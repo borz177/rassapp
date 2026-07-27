@@ -209,12 +209,21 @@ export const api = {
             res.status, errorText);
 
           item.retryCount = (item.retryCount || 0) + 1;
-          if (item.retryCount > 5) {
-            console.error(`❌ Dropping item ${item.id} after ${item.retryCount} retries`);
-            await offlineStorage.removeFromQueue(item.id);
-          } else {
-            await offlineStorage.updateQueueItem(item);
+          item.error = errorText || `HTTP ${res.status}`;
+          // 5xx/408/429 — сервер временно недоступен/перегружен, это неотличимо от плохой
+          // связи и МОЖЕТ получиться позже — такие элементы ретраим бесконечно, не удаляя.
+          const isRetryableStatus = res.status >= 500 || res.status === 408 || res.status === 429;
+          if (!isRetryableStatus && item.retryCount > 5) {
+            // Сервер стабильно и явно отклоняет запрос (валидация/конфликт/права) — дальше
+            // ретраить бессмысленно. Но элемент НЕ удаляется из очереди: раньше он тихо
+            // выбрасывался из syncQueue, из-за чего несинхронизированный договор при
+            // следующей перезагрузке приложения пропадал без следа и без предупреждения.
+            // Помеченный failed элемент остаётся в очереди (виден в getQueue()) и
+            // продолжает подмешиваться в данные при их чтении (см. fetchAllData ниже
+            // и загрузку кэша в App.tsx), поэтому запись не исчезает из интерфейса.
+            item.failed = true;
           }
+          await offlineStorage.updateQueueItem(item);
           return false;
         }
       } catch (error) {
@@ -223,37 +232,39 @@ export const api = {
         }
         console.error(`Failed to sync item ${item.id}`, error);
         item.retryCount = (item.retryCount || 0) + 1;
-        if (item.retryCount <= 5) {
-          await offlineStorage.updateQueueItem(item);
-        } else {
-          await offlineStorage.removeFromQueue(item.id);
-        }
+        item.error = error instanceof Error ? error.message : String(error);
+        // Сюда попадают таймауты, обрывы соединения, "Failed to fetch" и т.п. — то есть
+        // именно офлайн/плохая связь/VPN. Сервер здесь ничего не отклонял, поэтому нельзя
+        // считать это окончательным провалом: элемент никогда не удаляется по числу попыток,
+        // иначе договор, так и не добравшийся до сервера, терялся бы безвозвратно.
+        await offlineStorage.updateQueueItem(item);
         return false;
       }
     };
 
     const baseCollections = ['customers', 'accounts', 'investors', 'products'];
+    const pending = queue.filter(item => !item.failed);
 
     // 1. Базовые сущности (SAVE)
-    for (const item of queue) {
+    for (const item of pending) {
       if (item.type === 'saveItem' && baseCollections.includes(item.collection!)) {
         await processItem(item);
       }
     }
     // 2. Базовые сущности (DELETE)
-    for (const item of queue) {
+    for (const item of pending) {
       if (item.type === 'deleteItem' && baseCollections.includes(item.collection!)) {
         await processItem(item);
       }
     }
     // 3. Зависимые сущности (SAVE)
-    for (const item of queue) {
+    for (const item of pending) {
       if (item.type === 'saveItem' && !baseCollections.includes(item.collection!)) {
         await processItem(item);
       }
     }
     // 4. Зависимые сущности (DELETE)
-    for (const item of queue) {
+    for (const item of pending) {
       if (item.type === 'deleteItem' && !baseCollections.includes(item.collection!)) {
         await processItem(item);
       }
