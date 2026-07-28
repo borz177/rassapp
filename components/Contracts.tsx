@@ -352,6 +352,9 @@ const Contracts: React.FC<ContractsProps> = ({
   const [showConfirmRemindAll, setShowConfirmRemindAll] = useState(false);
 const [isSendingAll, setIsSendingAll] = useState(false);
 const [sentStats, setSentStats] = useState<{ sent: number; total: number } | null>(null);
+// 🔒 Массовая рассылка похожих сообщений подряд — то, за что WhatsApp банит номера/аккаунты.
+// Требуем осознанное подтверждение риска, а не просто текст предупреждения, который легко пропустить.
+const [riskAcknowledged, setRiskAcknowledged] = useState(false);
 
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Неизвестно';
 
@@ -904,7 +907,7 @@ useEffect(() => {
               <div className="flex items-center gap-2">
                 {/* 🔔 КНОПКА "НАПОМНИТЬ ВСЕМ" */}
                 <button
-                    onClick={() => setShowConfirmRemindAll(true)}
+                    onClick={() => { setRiskAcknowledged(false); setShowConfirmRemindAll(true); }}
                     disabled={filteredList.length === 0 || isSendingAll}
                     className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
                 >
@@ -1093,12 +1096,34 @@ useEffect(() => {
         Будет отправлено <b>{filteredList.length}</b> напоминаний в WhatsApp о просроченной задолженности.
       </p>
 
-      <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 rounded-xl p-3 mb-4">
+      <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 rounded-xl p-3 mb-3">
         <p className="text-[11px] text-amber-800 dark:text-amber-300">
           💡 Отправка займёт около {Math.ceil(filteredList.length * 0.3 / 60)} мин.
           Между сообщениями будет пауза 300ms.
         </p>
       </div>
+
+      {/* ⚠️ Риск блокировки WhatsApp при массовой рассылке похожих сообщений */}
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 rounded-xl p-3 mb-3">
+        <p className="text-[11px] text-red-700 dark:text-red-400 leading-relaxed">
+          ⚠️ <b>Риск блокировки номера в WhatsApp.</b> Рассылка большого числа однотипных сообщений подряд
+          похожа на спам-рассылку, и WhatsApp может временно или насовсем заблокировать номер/аккаунт —
+          особенно если получатели пожалуются или не отвечают. Рекомендуем не рассылать слишком часто
+          и по возможности разбивать большие списки на части.
+        </p>
+      </div>
+
+      <label className="flex items-start gap-2.5 mb-4 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={riskAcknowledged}
+          onChange={e => setRiskAcknowledged(e.target.checked)}
+          className="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500 shrink-0"
+        />
+        <span className="text-[11px] text-slate-600 dark:text-slate-300">
+          Я понимаю риск блокировки WhatsApp и хочу продолжить
+        </span>
+      </label>
 
       <div className="flex gap-2.5">
         <button
@@ -1110,8 +1135,8 @@ useEffect(() => {
         </button>
         <button
           onClick={handleRemindAll}
-          disabled={isSendingAll}
-          className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          disabled={isSendingAll || !riskAcknowledged}
+          className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isSendingAll ? (
             <>
