@@ -7,7 +7,7 @@ import "./SplashScreen.css"
 export default function SplashScreen({ closing = false }: { closing?: boolean }) {
   return (
     <div className={`splash${closing ? ' closing' : ''}`}>
-      <img src="/icon-192.png" className="logo" alt="App Logo" />
+      <img src="/splash.png" className="logo" alt="App Logo" />
     </div>
   )
 }

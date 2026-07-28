@@ -495,17 +495,29 @@ const checkPaymentReturn = async () => {
   setPaymentReturnStatus('timeout');
 };
 
-// 🔒 Единая точка скрытия сплеша — сначала плавно затухает (350мс, см. .closing в
-// SplashScreen.css), и только потом реально размонтируется. Раньше splash пропадал одним
-// кадром (React hard-return), что рядом со статическим #static-splash (у которого есть свой
-// плавный fade в index.html) выглядело как рывок/мерцание при переходе к приложению.
+// 🔒 Момент реального появления сплеша (мгновение монтирования App) — от него отсчитываем
+// минимальное время показа ниже, чтобы на быстром соединении/из кэша сплеш не мелькал долями
+// секунды (именно резкое почти-мгновенное появление-и-исчезновение и воспринимается как "мерцание",
+// а не сама анимация перехода).
+const splashShownAtRef = useRef<number>(Date.now());
+const MIN_SPLASH_VISIBLE_MS = 700;
+
+// 🔒 Единая точка скрытия сплеша — если он был на экране меньше MIN_SPLASH_VISIBLE_MS (данные
+// загрузились почти мгновенно, например из офлайн-кэша), сначала досиживаем оставшееся время,
+// и только потом плавно затухаем (350мс, см. .closing в SplashScreen.css) и реально
+// размонтируем. На медленном соединении, где загрузка и так дольше этого порога, задержки нет —
+// hideSplash сработает сразу, как раньше.
 const hideSplash = () => {
-  setIsLoading(false);
-  setSplashClosing(true);
+  const elapsed = Date.now() - splashShownAtRef.current;
+  const remaining = Math.max(0, MIN_SPLASH_VISIBLE_MS - elapsed);
   setTimeout(() => {
-    setShowSplash(false);
-    setSplashClosing(false);
-  }, 350);
+    setIsLoading(false);
+    setSplashClosing(true);
+    setTimeout(() => {
+      setShowSplash(false);
+      setSplashClosing(false);
+    }, 350);
+  }, remaining);
 };
 
 useEffect(() => {
