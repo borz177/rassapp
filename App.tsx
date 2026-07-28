@@ -89,6 +89,14 @@ const isLanding = path === "/"
   const [isPublicMode, setIsPublicMode] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
+  // 🔒 Синхронный guard от параллельных handleSync(): событие 'online' и стартовый
+  // setTimeout(handleSync, 1000) вызывают handleSync() напрямую, без проверки isSyncing
+  // (в отличие от 5-минутного интервала — см. ниже). React-стейт isSyncing тут не подходит:
+  // event-хендлеры объявлены один раз в useEffect([]) и видели бы устаревшее значение.
+  // Несколько одновременных handleSync() гоняют собственные fetchAllData()+setSales(merge...),
+  // что расширяет окно гонки, в которой свежая правка платежа может быть затёрта устаревшими
+  // данными с сервера.
+  const isSyncingRef = React.useRef(false);
 
   // App State
   const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
@@ -226,8 +234,70 @@ const mergeServerData = <T extends { id: string }>(
     const updated = current.map(item => freshMap.has(item.id) ? freshMap.get(item.id)! : item);
     updated.forEach(item => freshMap.delete(item.id));
     const newItems = Array.from(freshMap.values());
-    
+
     return [...updated, ...newItems];
+};
+
+// 🔒 Единая функция приведения графика платежей (paymentPlan) и remainingAmount к согласованному
+// виду. Раньше "остаток долга" и "график платежей" считались и обновлялись независимо друг от
+// друга в трёх разных местах (handleSaveSale, handleIncomeSubmit, handleUndoPayment) — при
+// офлайн-сохранении, гонке с фоновой синхронизацией или редактировании договора без явного
+// изменения полей графика эти два числа расходились: то плановый платёж не создавался вообще
+// (paymentPlan короче, чем installments), то remainingAmount не совпадал с суммой того, что
+// реально показывает график. Теперь ЛЮБОЕ сохранение договора проходит через эту функцию —
+// несогласованное состояние просто не может быть записано, независимо от причины.
+const reconcileSalePaymentPlan = (sale: Sale): Sale => {
+    if (sale.type !== 'INSTALLMENT' || !Array.isArray(sale.paymentPlan)) return sale;
+
+    const realPaidEntries = sale.paymentPlan.filter((p: Payment) => p.isPaid && p.isRealPayment !== false);
+    const totalRealPaid = realPaidEntries.reduce((sum: number, p: Payment) => sum + p.amount, 0);
+    // 🆕 Скидка при полном погашении (handleIncomeSubmit) "гасит" долг без реальных денег —
+    // считаем её наравне с реальной оплатой, иначе остаток долга не дойдёт до нуля.
+    const totalDiscounts = realPaidEntries.reduce((sum: number, p: Payment) => sum + ((p as any).discountAmount || 0), 0);
+
+    let scheduled = sale.paymentPlan
+        .filter((p: Payment) => p.isRealPayment !== true)
+        .sort((a: Payment, b: Payment) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const totalScheduledAmount = scheduled.reduce((sum: number, p: Payment) => sum + p.amount, 0);
+    const totalDue = Math.max(0, sale.totalAmount - sale.downPayment);
+    const missingAmount = Math.round((totalDue - totalScheduledAmount) * 100) / 100;
+
+    // 🔒 Если суммы плановых слотов не хватает до полной суммы договора (пропущенный слот при
+    // генерации/редактировании графика) — добавляем недостающий плановый платёж, а не оставляем
+    // часть долга без единой строки в графике.
+    if (missingAmount > 0.01) {
+        const lastDate = scheduled.length > 0 ? new Date(scheduled[scheduled.length - 1].date) : new Date(sale.startDate);
+        const newDate = new Date(lastDate);
+        newDate.setMonth(newDate.getMonth() + 1);
+        scheduled = [...scheduled, {
+            id: `pay_reconcile_${Date.now()}_${scheduled.length}`,
+            saleId: sale.id,
+            date: newDate.toISOString(),
+            amount: missingAmount,
+            isPaid: false,
+            isRealPayment: false
+        }];
+    }
+
+    // 🔹 Пересчитываем isPaid плановых слотов от факта реальных платежей (по датам, от раннего
+    // к позднему) — не доверяем унаследованным флагам: они могут "зависнуть" в isPaid:true после
+    // удаления покрывавшего их реального платежа (см. handleUndoPayment).
+    let surplus = totalRealPaid + totalDiscounts;
+    const reconciledScheduled = scheduled.map((p: Payment) => {
+        const covered = surplus >= p.amount - 0.01;
+        if (covered) surplus = Math.max(0, surplus - p.amount);
+        return { ...p, isPaid: covered };
+    });
+
+    const realPayments = sale.paymentPlan.filter((p: Payment) => p.isRealPayment === true);
+    const correctRemaining = Math.max(0, Math.round((totalDue - totalRealPaid - totalDiscounts) * 100) / 100);
+
+    return {
+        ...sale,
+        paymentPlan: [...reconciledScheduled, ...realPayments],
+        remainingAmount: correctRemaining
+    };
 };
 
 
@@ -338,6 +408,11 @@ useEffect(() => {
 // 🔹 В App.tsx — исправленная часть handleSync
 const handleSync = async () => {
   if (!navigator.onLine) return;
+  if (isSyncingRef.current) {
+    console.log('⏳ handleSync уже выполняется, пропускаем повторный вызов');
+    return;
+  }
+  isSyncingRef.current = true;
   setIsSyncing(true);
 
   try {
@@ -373,6 +448,7 @@ const handleSync = async () => {
   } catch (e) {
     console.error("❌ Sync failed", e);
   } finally {
+    isSyncingRef.current = false;
     setIsSyncing(false);
   }
 };
@@ -948,10 +1024,13 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
     switch(feature) {
         case 'WRITE': return !isExpired;
         case 'INVESTORS': return (plan === 'START' && investors.length < 1) || (plan === 'STANDARD' && investors.length < 5) || true;
-        case 'AI': return plan === 'BUSINESS' || plan === 'TRIAL';
-        case 'WHATSAPP': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'TRIAL';
-        // 🔥 ИСПРАВЛЕНО: TRIAL имеет лимит 0, поэтому разрешаем только STANDARD и BUSINESS
-        case 'EMPLOYEES': return plan === 'BUSINESS';
+        // 🔒 BUSINESS_PRO — надстройка над BUSINESS (см. server/index.js PLAN_LIMITS: у обоих
+        // ai/whatsapp/employees одинаково включены), поэтому везде, где разрешён BUSINESS,
+        // должен быть разрешён и BUSINESS_PRO — иначе BUSINESS_PRO ошибочно лишался этих функций.
+        case 'AI': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO' || plan === 'TRIAL';
+        case 'WHATSAPP': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'BUSINESS_PRO' || plan === 'TRIAL';
+        // 🔥 ИСПРАВЛЕНО: TRIAL имеет лимит 0, поэтому разрешаем только STANDARD и BUSINESS(_PRO)
+        case 'EMPLOYEES': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
         case 'SUPPLIERS': return plan === 'BUSINESS_PRO';
         case 'INVESTOR_POOLS': return plan === 'BUSINESS_PRO';
         case 'NOTIFICATIONS': return plan !== 'START';
@@ -1329,6 +1408,12 @@ const handleSaveSale = async (data: any): Promise<any> => {
       ? { ...sales[existingSaleIndex], ...saleData }
       : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
 
+    // 🔒 Гарантируем, что график платежей полностью покрывает сумму договора и remainingAmount
+    // ей соответствует — даже если форма (или офлайн-сохранение) сгенерировали неполный график.
+    if (saleToSave.type === 'INSTALLMENT') {
+      saleToSave = reconcileSalePaymentPlan(saleToSave);
+    }
+
     // 🔹 3. Сохранение на сервер (или в очередь офлайн)
     const savedSale = await api.saveItem('sales', saleToSave);
     
@@ -1631,10 +1716,6 @@ const handleIncomeSubmit = async (data: any) => {
 
             // 🆕 ЛОГИКА СО СКИДКОЙ: полное погашение с дисконтом
             if (discountAmount > 0) {
-                // Обнуляем остаток долга ПОЛНОСТЬЮ
-                updatedSale.remainingAmount = 0;
-                updatedSale.status = 'COMPLETED';
-
                 updatedSale.paymentPlan.push({
                     id: `paid_${Date.now()}`,
                     saleId: sale.id,
@@ -1648,11 +1729,10 @@ const handleIncomeSubmit = async (data: any) => {
                     discountAmount: discountAmount,
                     discountPercent: discountPercent,
                     note: `Полное погашение со скидкой ${discountPercent.toFixed(1)}% (−${discountAmount} ₽)`
-                });
-            } 
+                } as any);
+            }
             // 🟢 ОБЫЧНАЯ ЛОГИКА: стандартное погашение без скидки
             else {
-                updatedSale.remainingAmount = Math.max(0, updatedSale.remainingAmount - amount);
                 updatedSale.paymentPlan.push({
                     id: `paid_${Date.now()}`,
                     saleId: sale.id,
@@ -1663,13 +1743,15 @@ const handleIncomeSubmit = async (data: any) => {
                     isRealPayment: true,
                     recordedByUserId: user.id
                 });
-
-                if (updatedSale.remainingAmount === 0) {
-                    updatedSale.status = 'COMPLETED';
-                }
             }
 
-             updateList(setSales, updatedSale);
+            // 🔒 remainingAmount и isPaid плановых слотов пересчитываются здесь же, единым
+            // способом (reconcileSalePaymentPlan) — раньше remainingAmount выставлялся вручную
+            // отдельно от факта в paymentPlan, и эти два числа могли разойтись.
+            const reconciledSale = reconcileSalePaymentPlan(updatedSale);
+            const finalSale = { ...reconciledSale, status: reconciledSale.remainingAmount <= 0 ? 'COMPLETED' as const : updatedSale.status };
+
+             updateList(setSales, finalSale);
 
             // ✅ МГНОВЕННЫЙ ПЕРЕХОД к деталям договора
             setSelectedCustomerId(sale.customerId);
@@ -1682,9 +1764,18 @@ const handleIncomeSubmit = async (data: any) => {
             // а если сохранение реально упало — откатываем локальное изменение и сообщаем
             // пользователю, чтобы платёж не "терялся" молча.
             try {
-                const savedSale = await api.saveItem('sales', updatedSale);
+                const savedSale = await api.saveItem('sales', finalSale);
                 updateList(setSales, savedSale);
             } catch (err: any) {
+                // 🔒 При TOKEN_EXPIRED api.saveItem УЖЕ положил платёж в офлайн-очередь
+                // (services/api.ts) и лишь после этого пробрасывает ошибку — платёж не
+                // потерян и досинхронизируется после повторного входа. Раньше это тоже
+                // считалось провалом: локальное изменение откатывалось, а пользователь
+                // видел "не удалось сохранить" про платёж, который на самом деле сохранён.
+                if (err?.message === 'TOKEN_EXPIRED') {
+                    console.warn('⚠️ Сессия истекла во время сохранения платежа — платёж в офлайн-очереди, будет применён после входа');
+                    return;
+                }
                 console.error('❌ Ошибка сохранения платежа:', err);
                 updateList(setSales, sale);
                 alert(`❌ Не удалось сохранить платёж. Попробуйте ещё раз.\n${err?.message || ''}`);
@@ -2372,40 +2463,67 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
       }
   };
   const handleUpdateAccount = async (updatedAccount: Account) => { if (user && isManager) { const saved = await api.saveItem('accounts', updatedAccount); updateList(setAccounts, saved); } };
-  const handleUndoPayment = async (saleId: string, paymentId: string) => { 
-    if (isEmployee && !user?.permissions?.canDelete) { 
-        alert("Нет прав на удаление"); 
-        return; 
-    } 
-    
-    const sale = sales.find(s => s.id === saleId); 
-    if(sale) { 
-        const payment = sale.paymentPlan.find(p => p.id === paymentId); 
+  const handleUndoPayment = async (saleId: string, paymentId: string) => {
+    if (isEmployee && !user?.permissions?.canDelete) {
+        alert("Нет прав на удаление");
+        return;
+    }
+
+    const sale = sales.find(s => s.id === saleId);
+    if(sale) {
+        const payment = sale.paymentPlan.find(p => p.id === paymentId);
         if (payment) {
-            // 🆕 Получаем сумму скидки (если была)
+            // 🆕 Получаем сумму скидки (если была) — только для текста уведомления ниже.
             const discountAmount = (payment as any).discountAmount || 0;
-            
-            // 🔥 ВАЖНО: Восстанавливаем долг = сумма платежа + сумма скидки
             const amountToRestore = payment.amount + discountAmount;
-            
-            const updatedSale = { 
-                ...sale, 
-                remainingAmount: sale.remainingAmount + amountToRestore,
-                paymentPlan: sale.paymentPlan.filter(p => p.id !== paymentId), 
-                status: 'ACTIVE' as const 
-            }; 
-            
-            const saved = await api.saveItem('sales', updatedSale); 
-            updateList(setSales, saved);
-            
-            //  Показываем уведомление о восстановленной сумме
-            if (discountAmount > 0) {
-                alert(`✅ Платёж отменён!\nВосстановлено: ${payment.amount} ₽ + скидка ${discountAmount} ₽ = ${amountToRestore} ₽`);
+
+            const planWithoutPayment: Payment[] = sale.paymentPlan.filter((p: Payment) => p.id !== paymentId);
+
+            // 🔒 remainingAmount и isPaid плановых платежей пересчитываются единой функцией
+            // (reconcileSalePaymentPlan) от факта оставшихся реальных платежей — а не вручную
+            // прибавлением суммы. Раньше плановый платёж, однажды помеченный isPaid: true
+            // (например, при импорте из Excel — DataImport.tsx), навсегда оставался "закрытым"
+            // в графике, даже если реальный платёж, который его закрыл, был удалён — деньги
+            // возвращались в remainingAmount, а в "Графике платежей" эта сумма нигде не появлялась.
+            const updatedSale = {
+                ...reconcileSalePaymentPlan({ ...sale, paymentPlan: planWithoutPayment }),
+                status: 'ACTIVE' as const
+            };
+
+            try {
+                const saved = await api.saveItem('sales', updatedSale);
+                updateList(setSales, saved);
+
+                //  Показываем уведомление о восстановленной сумме
+                if (discountAmount > 0) {
+                    alert(`✅ Платёж отменён!\nВосстановлено: ${payment.amount} ₽ + скидка ${discountAmount} ₽ = ${amountToRestore} ₽`);
+                }
+            } catch (error: any) {
+                // 🔒 Раньше ошибка сохранения (не сетевая — те api.saveItem сама ставит в
+                // офлайн-очередь и не бросает) проходила молча: пользователь видел, что платёж
+                // как будто отменился, а на самом деле ничего не сохранилось.
+                console.error('❌ Ошибка отмены платежа:', error);
+                alert(`Не удалось отменить платёж: ${error.message || 'неизвестная ошибка'}`);
             }
-        } 
-    } 
+        }
+    }
 };
-  const handleEditPayment = async (saleId: string, paymentId: string, newDate: string) => { if (isEmployee && !user?.permissions?.canEdit) { alert("Нет прав на редактирование"); return; } const sale = sales.find(s => s.id === saleId); if (sale) { const updatedSale = { ...sale, paymentPlan: sale.paymentPlan.map(p => p.id === paymentId ? { ...p, date: newDate } : p) }; const saved = await api.saveItem('sales', updatedSale); updateList(setSales, saved); } };
+  const handleEditPayment = async (saleId: string, paymentId: string, newDate: string) => {
+    if (isEmployee && !user?.permissions?.canEdit) { alert("Нет прав на редактирование"); return; }
+    const sale = sales.find((s: Sale) => s.id === saleId);
+    if (sale) {
+        const updatedSale = reconcileSalePaymentPlan({ ...sale, paymentPlan: sale.paymentPlan.map((p: Payment) => p.id === paymentId ? { ...p, date: newDate } : p) });
+        try {
+            const saved = await api.saveItem('sales', updatedSale);
+            updateList(setSales, saved);
+        } catch (error: any) {
+            // 🔒 Раньше ошибка сохранения (не сетевая) проходила молча — правка даты
+            // как будто применилась на экране, а на сервер не попала.
+            console.error('❌ Ошибка сохранения даты платежа:', error);
+            alert(`Не удалось изменить дату платежа: ${error.message || 'неизвестная ошибка'}`);
+        }
+    }
+  };
   const handleInitiateDashboardPayment = (sale: Sale, amount: number) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount }); setCurrentView('CREATE_INCOME'); };
   const handleInitiateCustomerPayment = (sale: Sale, payment: Payment) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount: payment.amount }); setCurrentView('CREATE_INCOME'); };
   // 🔒 При открытии выбора (клиента и т.п.) форма <NewSale> размонтируется, а её initialData —
@@ -2957,16 +3075,25 @@ if (!user && !showSplash) {
               )}
               {currentView === 'INVESTOR_DETAILS' && selectedInvestorId && (
                   <PagePush onClose={() => setCurrentView('INVESTORS')}>
-                    {(requestClose: () => void) => (
-                      <InvestorDetails investor={investors.find((i: Investor) => i.id === selectedInvestorId)!}
-                                   investors={investors}
-                                   account={getInvestorAccount(selectedInvestorId, accounts)} sales={sales}
-                                   expenses={expenses} customers={customers} onBack={requestClose}
-                                   appSettings={appSettings}
-                                   onUpdateInvestor={handleUpdateInvestor}
-                                   onDeleteInvestor={(id) => { handleDeleteInvestor(id); requestClose(); }}
-                                   onUpdateAccount={handleUpdateAccount}/>
-                    )}
+                    {(requestClose: () => void) => {
+                      // Удаление инвестора обновляет `investors` асинхронно (после ответа сервера),
+                      // а PagePush ещё какое-то время держит этот экран смонтированным для анимации
+                      // закрытия. Если стейт обновился раньше, чем анимация успела закрыться,
+                      // .find() вернёт undefined — без этой проверки `!` ниже не спасает от падения
+                      // в рантайме (только заглушает TypeScript) и роняет всё приложение в белый экран.
+                      const selectedInvestor = investors.find((i: Investor) => i.id === selectedInvestorId);
+                      if (!selectedInvestor) return null;
+                      return (
+                        <InvestorDetails investor={selectedInvestor}
+                                     investors={investors}
+                                     account={getInvestorAccount(selectedInvestorId, accounts)} sales={sales}
+                                     expenses={expenses} customers={customers} onBack={requestClose}
+                                     appSettings={appSettings}
+                                     onUpdateInvestor={handleUpdateInvestor}
+                                     onDeleteInvestor={(id: string) => { handleDeleteInvestor(id); requestClose(); }}
+                                     onUpdateAccount={handleUpdateAccount}/>
+                      );
+                    }}
                   </PagePush>
               )}
               {currentView === 'PARTNERS' && (
