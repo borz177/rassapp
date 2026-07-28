@@ -134,7 +134,9 @@ const isLanding = path === "/"
 
   const [moreExpandedSection, setMoreExpandedSection] = useState<string | null>(null);
 
-  const [loadingProgress, setLoadingProgress] = useState(0)
+  // 🔒 Отдельно от showSplash/isLoading — управляет только плавным затуханием сплеша перед
+  // размонтированием (350мс), чтобы переход к приложению не был резким обрывом кадра.
+  const [splashClosing, setSplashClosing] = useState(false);
 
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [showSupportChat, setShowSupportChat] = useState(false);
@@ -493,6 +495,19 @@ const checkPaymentReturn = async () => {
   setPaymentReturnStatus('timeout');
 };
 
+// 🔒 Единая точка скрытия сплеша — сначала плавно затухает (350мс, см. .closing в
+// SplashScreen.css), и только потом реально размонтируется. Раньше splash пропадал одним
+// кадром (React hard-return), что рядом со статическим #static-splash (у которого есть свой
+// плавный fade в index.html) выглядело как рывок/мерцание при переходе к приложению.
+const hideSplash = () => {
+  setIsLoading(false);
+  setSplashClosing(true);
+  setTimeout(() => {
+    setShowSplash(false);
+    setSplashClosing(false);
+  }, 350);
+};
+
 useEffect(() => {
   setShowSplash(true);
   enablePersistentStorage();
@@ -502,9 +517,8 @@ useEffect(() => {
     // Если что-то зависнет (StatusBar, IndexedDB, сеть), мы всё равно покажем приложение через 5 секунд
     const initTimeout = setTimeout(() => {
         console.error('⚠️ initApp завис! Принудительно показываем интерфейс.');
-        setIsLoading(false);
-        setShowSplash(false);
-    }, 5000); 
+        hideSplash();
+    }, 5000);
 
     try {
         if (window.Capacitor && window.Capacitor.isNativePlatform()) {
@@ -534,8 +548,7 @@ useEffect(() => {
     ) {
         clearTimeout(initTimeout); // Снимаем страховку
         setIsPublicMode(true);
-        setIsLoading(false);
-        setShowSplash(false);
+        hideSplash();
         return;
     }
 
@@ -635,8 +648,7 @@ useEffect(() => {
 
     // 4. 🔥 МГНОВЕННО показываем приложение пользователю (не ждем сервер!)
     clearTimeout(initTimeout); // 🔥 Снимаем страховку, так как мы успешно дошли до конца
-    setIsLoading(false);
-    setTimeout(() => setShowSplash(false), 400); // Плавное появление
+    hideSplash();
 
 
     // 5. 🔥 ФОНОВАЯ СИНХРОНИЗАЦИЯ (запускается, но НЕ блокирует интерфейс)
@@ -688,8 +700,7 @@ useEffect(() => {
     // 6. Если нет ни токена, ни пользователя
     if (!token && !localUser) {
       setUser(null);
-      setIsLoading(false);
-      setShowSplash(false);
+      hideSplash();
     }
 
     // 7. Настройки (на всякий случай, если кэш пуст)
@@ -2903,7 +2914,7 @@ if (isPublicMode) {
 
 // 2. Загрузка (проверка сессии, подгрузка данных)
 if (showSplash || isLoading) {
-  return <SplashScreen progress={isLoading ? loadingProgress : 100} />
+  return <SplashScreen closing={splashClosing} />
 }
 // 🔹 ПРОВЕРКА АВТОРИЗАЦИИ (перед Layout!)
 if (!user && !showSplash) {

@@ -508,25 +508,33 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
 
     if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }
 
-    const paidPlan = sale.paymentPlan
-        .filter(p => p.isRealPayment && p.isPaid)
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // 🔒 Одна таблица "График платежей": КАЖДЫЙ реальный платёж (в т.ч. частичный) — своя строка
+    // на СВОЮ дату с фактической суммой; плановые месяцы графика, которые ещё не покрыты реальными
+    // платежами, — строки-плейсхолдеры даты без суммы (деньги для них уже посчитаны на датах
+    // соответствующих реальных платежей, показывать их ещё раз на дату месяца было бы задвоением).
+    // Месяцы, УЖЕ полностью покрытые реальными платежами (isPaid === true — см.
+    // reconcileSalePaymentPlan в App.tsx), в списке не показываем вовсе — реальные платежи,
+    // которые их покрыли, уже видны своими строками выше по датам.
+    // "Остаток" — НАКОПИТЕЛЬНЫЙ остаток долга по договору, уменьшается только на реальных платежах.
+    let currentDebt = sale.totalAmount - sale.downPayment;
+    const scheduleRows = (sale.paymentPlan || [])
+        .filter(p => p.isRealPayment === true || !p.isPaid)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .map(p => {
+            const isRealMoney = p.isRealPayment === true;
+            const paid = isRealMoney ? p.amount : 0;
+            if (isRealMoney) currentDebt -= paid;
+            return { date: p.date, paid, remaining: Math.max(0, currentDebt) };
+        });
 
-    let rows = '';
-
-    if (paidPlan.length > 0) {
-        let currentDebt = sale.totalAmount - sale.downPayment;
-        rows = paidPlan.map((p, index) => {
-            currentDebt -= p.amount;
-            return `<tr>
+    const scheduleRowsHtml = scheduleRows.length > 0
+        ? scheduleRows.map((p, index) => `<tr>
                 <td style="text-align:center">${index + 1}</td>
                 <td style="text-align:center">${formatDate(p.date)}</td>
-                <td style="text-align:center">${formatCurrency(p.amount, appSettings?.showCents)} ₽</td>
-                <td style="text-align:center">${formatCurrency(Math.max(0, currentDebt), appSettings?.showCents)} ₽</td>
-            </tr>`;
-        }).join('');
-    } else {
-        rows = Array.from({ length: sale.installments || 1 }).map((_, i) =>
+                <td style="text-align:center">${p.paid > 0.01 ? `${formatCurrency(p.paid, appSettings?.showCents)} ₽` : ''}</td>
+                <td style="text-align:center">${p.paid > 0.01 ? `${formatCurrency(p.remaining, appSettings?.showCents)} ₽` : ''}</td>
+            </tr>`).join('')
+        : Array.from({ length: sale.installments || 1 }).map((_, i) =>
             `<tr>
                 <td style="text-align:center">${i + 1}</td>
                 <td style="text-align:center;height:30px"></td>
@@ -534,7 +542,6 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
                 <td style="text-align:center"></td>
             </tr>`
         ).join('');
-    }
 
     const htmlContent = `<!DOCTYPE html>
 <html>
@@ -640,11 +647,11 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
                 <tr>
                     <th style="width: 10%;">№</th>
                     <th style="width: 30%;">Дата</th>
-                    <th style="width: 25%;">Сумма</th>
-                    <th style="width: 35%;">Остаток долга</th>
+                    <th style="width: 30%;">Оплачено</th>
+                    <th style="width: 30%;">Остаток</th>
                 </tr>
             </thead>
-            <tbody>${rows}</tbody>
+            <tbody>${scheduleRowsHtml}</tbody>
         </table>
         <div style="margin: 25px 0; font-size: 11pt; line-height: 1.4;">
             Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку на указанных выше условиях.

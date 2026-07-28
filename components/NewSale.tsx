@@ -4,7 +4,7 @@ import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
 import { api } from '../services/api';
-import { getSellerPhone, escapeHtml } from '../src/utils'; 
+import { getSellerPhone, escapeHtml, formatDate } from '../src/utils';
 
 interface NewSaleProps {
   initialData: any;
@@ -690,6 +690,23 @@ if (mode === 'CASH') {
       signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
     };
 
+    // 🔒 Та же модель графика, что и в печати договора (Contracts.tsx) и в чеке прихода
+    // (NewIncome.tsx): каждый реальный (в т.ч. частичный) платёж — своя строка с датой и суммой;
+    // ещё не покрытые месяцы графика — строки-плейсхолдеры только с датой, без суммы; месяцы,
+    // уже полностью покрытые (isPaid === true), не показываются — их деньги видны в датах
+    // соответствующих реальных платежей. Раньше здесь были всегда пустые строки без дат вообще.
+    let currentDebt = sale.totalAmount - sale.downPayment;
+    const scheduleRows = (sale.paymentPlan || [])
+        .filter(p => p.isRealPayment === true || !p.isPaid)
+        .slice()
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .map(p => {
+            const isRealMoney = p.isRealPayment === true;
+            const paid = isRealMoney ? p.amount : 0;
+            if (isRealMoney) currentDebt -= paid;
+            return { date: new Date(p.date), paid, remaining: Math.max(0, currentDebt) };
+        });
+
     return (
       <div ref={contractRef} style={styles.page}>
         <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
@@ -733,7 +750,14 @@ if (mode === 'CASH') {
               </tr>
             </thead>
             <tbody>
-              {Array.from({ length: sale.installments || 1 }).map((_, index) => (
+              {scheduleRows.length > 0 ? scheduleRows.map((p, index) => (
+                <tr key={index}>
+                  <td style={styles.td}>{index + 1}</td>
+                  <td style={styles.td}>{p.date.toLocaleDateString()}</td>
+                  <td style={styles.td}>{p.paid > 0.01 ? `${p.paid.toLocaleString()} ₽` : ''}</td>
+                  <td style={styles.td}>{p.paid > 0.01 ? `${p.remaining.toLocaleString()} ₽` : ''}</td>
+                </tr>
+              )) : Array.from({ length: sale.installments || 1 }).map((_, index) => (
                 <tr key={index}>
                   <td style={styles.td}>{index + 1}</td>
                   <td style={styles.td}></td>
@@ -911,7 +935,33 @@ if (mode === 'CASH') {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }
 
-    const rows = Array.from({ length: sale.installments || 1 }).map((_, index) => `
+    // 🔒 Та же модель графика, что и в печати договора (Contracts.tsx), чеке прихода (NewIncome.tsx)
+    // и PDF-отправке (renderContractContent выше): каждый реальный (в т.ч. частичный) платёж —
+    // своя строка с датой и суммой; ещё не покрытые месяцы графика — только дата, без суммы;
+    // уже полностью покрытые месяцы не показываются отдельно (их деньги видны в датах реальных
+    // платежей). Раньше здесь были всегда пустые строки без единой даты.
+    let printCurrentDebt = sale.totalAmount - sale.downPayment;
+    const printScheduleRows = (sale.paymentPlan || [])
+        .filter(p => p.isRealPayment === true || !p.isPaid)
+        .slice()
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .map(p => {
+            const isRealMoney = p.isRealPayment === true;
+            const paid = isRealMoney ? p.amount : 0;
+            if (isRealMoney) printCurrentDebt -= paid;
+            return { date: p.date, paid, remaining: Math.max(0, printCurrentDebt) };
+        });
+
+    const rows = printScheduleRows.length > 0
+        ? printScheduleRows.map((p, index) => `
+      <tr>
+        <td style="text-align: center;">${index + 1}</td>
+        <td style="text-align: center;">${formatDate(p.date)}</td>
+        <td style="text-align: center;">${p.paid > 0.01 ? `${p.paid.toLocaleString()} ₽` : ''}</td>
+        <td style="text-align: center;">${p.paid > 0.01 ? `${p.remaining.toLocaleString()} ₽` : ''}</td>
+      </tr>
+    `).join('')
+        : Array.from({ length: sale.installments || 1 }).map((_, index) => `
       <tr>
         <td style="text-align: center;">${index + 1}</td>
         <td style="text-align: center; height: 30px;"></td>

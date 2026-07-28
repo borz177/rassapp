@@ -355,11 +355,11 @@ const commonData = {
  
  
 
-   // Берём только РЕАЛЬНЫЕ оплаченные платежи из истории
-const existingPayments = (selectedSale.paymentPlan || [])
+   // Берём только РЕАЛЬНЫЕ оплаченные платежи из истории — каждый (в т.ч. частичный) своей строкой.
+const existingPayments: { date: Date; amount: number; discountAmount: number; isSchedule?: false }[] = (selectedSale.paymentPlan || [])
     .filter(p => p.isRealPayment && p.isPaid)
-    .map(p => ({ 
-        date: new Date(p.date), 
+    .map(p => ({
+        date: new Date(p.date),
         amount: p.amount,
         discountAmount: (p as any).discountAmount || 0  // 🆕 Добавляем скидку
     }))
@@ -372,13 +372,21 @@ const currentPaymentAlreadyExists = existingPayments.some(
 );
 
 if (!currentPaymentAlreadyExists) {
-    existingPayments.push({ 
-        date: new Date(date), 
+    existingPayments.push({
+        date: new Date(date),
         amount: Number(amount),
         discountAmount: 0  // Текущий платёж пока без скидки
     });
     existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
+
+// 🔒 Плановые месяцы графика, ещё НЕ покрытые реальными платежами (isPaid === false) — строки-
+// плейсхолдеры даты без суммы. Месяцы, уже полностью покрытые (isPaid === true, см.
+// reconcileSalePaymentPlan в App.tsx), не показываем — их деньги уже видны в existingPayments выше.
+const scheduleDates = (selectedSale.paymentPlan || [])
+    .filter(p => p.isRealPayment !== true && !p.isPaid)
+    .map(p => new Date(p.date))
+    .sort((a, b) => a.getTime() - b.getTime());
 
 // 🔹 РАСЧЁТ С УЧЁТОМ СКИДОК
 const totalPaid = existingPayments.reduce((sum, p) => sum + p.amount, 0);
@@ -416,6 +424,13 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
     };
 
     let currentDebt = selectedSale.totalAmount - selectedSale.downPayment;
+
+    // 🔒 Объединяем реальные платежи (с суммой) и ещё не покрытые месяцы графика (только дата,
+    // без суммы) в один список по датам — та же модель, что и в печати договора (Contracts.tsx).
+    const tableRows: { date: Date; amount: number | null; discountAmount: number }[] = [
+        ...existingPayments.map(p => ({ date: p.date, amount: p.amount, discountAmount: p.discountAmount })),
+        ...scheduleDates.map(d => ({ date: d, amount: null, discountAmount: 0 }))
+    ].sort((a, b) => a.date.getTime() - b.date.getTime());
 
     return (
       <div ref={contractRef} style={styles.page}>
@@ -486,20 +501,21 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
               </tr>
             </thead>
             <tbody>
-              {existingPayments.map((p, index) => {
-                currentDebt -= p.amount;
+              {tableRows.map((p, index) => {
+                const hasAmount = p.amount !== null;
+                if (hasAmount) currentDebt -= p.amount as number;
                 const displayDebt = Math.max(0, currentDebt);
                 return (
                   <tr key={index}>
                     <td style={styles.td}>{index + 1}</td>
                     <td style={styles.td}>{p.date.toLocaleDateString()}</td>
                     <td style={styles.td}>
-    <div>{formatNum(p.amount)} ₽</div>
+    {hasAmount && <div>{formatNum(p.amount as number)} ₽</div>}
     {/* 🆕 Показываем скидку, если она была */}
     {p.discountAmount > 0 && (
-        <div style={{ 
-            fontSize: '9pt', 
-            color: '#d97706', 
+        <div style={{
+            fontSize: '9pt',
+            color: '#d97706',
             fontStyle: 'italic',
             marginTop: '2px'
         }}>
@@ -507,7 +523,7 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
         </div>
     )}
 </td>
-                    <td style={styles.td}>{formatNum(displayDebt)} ₽</td>
+                    <td style={styles.td}>{hasAmount ? `${formatNum(displayDebt)} ₽` : ''}</td>
                   </tr>
                 );
               })}
