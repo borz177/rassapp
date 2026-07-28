@@ -8,7 +8,7 @@ interface LayoutProps {
   currentView: ViewState;
   setView: (view: ViewState) => void;
   onAction: (action: string) => void;
-  onContractTabChange?: (tab: 'ACTIVE' | 'OVERDUE' | 'ARCHIVE') => void;
+  onContractTabChange?: (tab: 'ALL' | 'ACTIVE' | 'OVERDUE' | 'ARCHIVE') => void;
   sales?: Sale[];
   appSettings: AppSettings;
   customers: Customer[];
@@ -133,7 +133,7 @@ const counts = useMemo(() => {
       }
     });
 
-    return { active, overdue, archive };
+    return { all: actualSales.length, active, overdue, archive };
 }, [sales, customers]);
 
   // Desktop Sidebar Items
@@ -161,6 +161,7 @@ const counts = useMemo(() => {
         { label: 'Активные', tab: 'ACTIVE', icon: ICONS.Check, count: counts.active, visible: true },
         { label: 'Просроченные', tab: 'OVERDUE', icon: ICONS.Alert, count: counts.overdue, visible: true },
         { label: 'Архив', tab: 'ARCHIVE', icon: ICONS.Clock, count: counts.archive, visible: true },
+        { label: 'Все', tab: 'ALL', icon: ICONS.List, count: counts.all, visible: true },
       ]
     },
     {

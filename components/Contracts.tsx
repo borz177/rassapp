@@ -10,8 +10,8 @@ interface ContractsProps {
   sales: Sale[];
   customers: Customer[];
   accounts: Account[];
-  activeTab: 'ACTIVE' | 'OVERDUE' | 'ARCHIVE';
-  onTabChange: (tab: 'ACTIVE' | 'OVERDUE' | 'ARCHIVE') => void;
+  activeTab: 'ALL' | 'ACTIVE' | 'OVERDUE' | 'ARCHIVE';
+  onTabChange: (tab: 'ALL' | 'ACTIVE' | 'OVERDUE' | 'ARCHIVE') => void;
   onViewSchedule: (sale: Sale) => void;
   onEditSale: (sale: Sale) => void;
   onDeleteSale: (saleId: string) => void;
@@ -37,7 +37,7 @@ const ContractInfoModal = ({
   customer?: Customer,
   onClose: () => void,
   appSettings?: AppSettings,
-  activeTab?: 'ACTIVE' | 'OVERDUE' | 'ARCHIVE',
+  activeTab?: 'ALL' | 'ACTIVE' | 'OVERDUE' | 'ARCHIVE',
   readOnly?: boolean
 }) => {
   const today = new Date();
@@ -177,8 +177,9 @@ const handleSendReminder = async () => {
             <h3 className="text-base font-bold text-white">Информация о договоре</h3>
           </div>
 
-          {/* 🔔 Кнопка «Напомнить» в шапке */}
-          {activeTab === 'OVERDUE' && !readOnly && (
+          {/* 🔔 Кнопка «Напомнить» в шапке — по реальной просрочке договора, а не по вкладке,
+              с которой открыли карточку (актуально и для вкладки «Все») */}
+          {realOverdueAmount > 0 && !readOnly && (
     <button
       onClick={(e) => { e.stopPropagation(); setShowConfirmReminder(true); }}
       className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 rounded-xl text-white transition-colors active:scale-95 flex items-center gap-1.5 text-xs font-bold shadow-sm"
@@ -203,8 +204,8 @@ const handleSendReminder = async () => {
             <InfoItem label="След. платеж" value={nextPaymentDate} color="text-indigo-600 dark:text-indigo-400" small />
           </div>
 
-          {/* Блок просрочки */}
-          {activeTab !== 'ACTIVE' && realOverdueAmount > 0 && (
+          {/* Блок просрочки — тоже по факту, а не по вкладке */}
+          {realOverdueAmount > 0 && (
             <div className="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/30 dark:to-orange-900/30 p-3 rounded-xl border border-red-100 dark:border-red-900/50">
               <div className="flex justify-between items-center">
                 <label className="text-[11px] text-red-600 dark:text-red-400 font-medium">Просрочка</label>
@@ -217,7 +218,7 @@ const handleSendReminder = async () => {
             </div>
           )}
 
-          {activeTab === 'ACTIVE' && (
+          {realOverdueAmount <= 0 && (
             <div className="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
               <div className="flex justify-between items-center">
                 <label className="text-[11px] text-slate-600 dark:text-slate-300">Остаток</label>
@@ -381,7 +382,10 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
       else active.push(sale);
     });
 
-    let list = activeTab === 'ACTIVE' ? active : activeTab === 'OVERDUE' ? overdue : archive;
+    let list = activeTab === 'ACTIVE' ? active
+      : activeTab === 'OVERDUE' ? overdue
+      : activeTab === 'ARCHIVE' ? archive
+      : actualSales; // 'ALL' — все три категории разом (actualSales уже их полная сумма)
 
     if (searchTerm) {
       const lowerTerm = searchTerm.toLowerCase();
@@ -403,6 +407,7 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
 
   const getTabTitle = () => {
     switch(activeTab) {
+      case 'ALL': return 'Все договоры';
       case 'ACTIVE': return 'Активные договоры';
       case 'OVERDUE': return 'Просроченные';
       case 'ARCHIVE': return 'Архив';

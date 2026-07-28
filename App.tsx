@@ -101,7 +101,7 @@ const isLanding = path === "/"
   // App State
   const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
 
-  const [activeContractTab, setActiveContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
+  const [activeContractTab, setActiveContractTab] = useState<'ALL' | 'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -2755,7 +2755,7 @@ const contractCounts = useMemo(() => {
       active++;
     }
   });
-  return { active, overdue, archive };
+  return { all: actualSales.length, active, overdue, archive };
 }, [sales, customers]);  const toggleMoreSection = (section: string) => { setMoreExpandedSection(moreExpandedSection === section ? null : section); };
 
   const handleDeleteOperation = async (op: any) => {
@@ -3517,6 +3517,11 @@ if (!user && !showSplash) {
                 <button onClick={() => handleAction('CREATE_SALE')}
                         className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <span className="opacity-70">{ICONS.AddSmall}</span> Оформить
+                </button>
+                <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('ALL'); }}
+                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.List}</span> Все</div>
+                  {contractCounts.all > 0 && <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold px-2 py-0.5 rounded-full">{contractCounts.all}</span>}
                 </button>
                 <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('ACTIVE'); }}
                         className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
