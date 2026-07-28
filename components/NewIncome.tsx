@@ -380,13 +380,23 @@ if (!currentPaymentAlreadyExists) {
     existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
-// 🔒 Плановые месяцы графика, ещё НЕ покрытые реальными платежами (isPaid === false) — строки-
-// плейсхолдеры даты без суммы. Месяцы, уже полностью покрытые (isPaid === true, см.
-// reconcileSalePaymentPlan в App.tsx), не показываем — их деньги уже видны в existingPayments выше.
+// 🔒 Плановые месяцы графика, ещё НЕ покрытые реальными платежами — строки-плейсхолдеры даты
+// без суммы. Покрытие пересчитываем от ОБЩЕЙ суммы реальных платежей (surplus), а не доверяем
+// сохранённому флагу isPaid планового слота — он бывает неактуален (платёж добавлен без
+// пересчёта reconcileSalePaymentPlan), из-за чего рядом с уже оплаченной датой оставался
+// "призрачный" пустой дубль той же даты.
+let scheduleSurplus = existingPayments.reduce((sum, p) => sum + p.amount, 0);
 const scheduleDates = (selectedSale.paymentPlan || [])
-    .filter(p => p.isRealPayment !== true && !p.isPaid)
-    .map(p => new Date(p.date))
-    .sort((a, b) => a.getTime() - b.getTime());
+    .filter(p => p.isRealPayment !== true)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .filter(p => {
+        if (scheduleSurplus >= p.amount - 0.01) {
+            scheduleSurplus -= p.amount;
+            return false;
+        }
+        return true;
+    })
+    .map(p => new Date(p.date));
 
 // 🔹 РАСЧЁТ С УЧЁТОМ СКИДОК
 const totalPaid = existingPayments.reduce((sum, p) => sum + p.amount, 0);

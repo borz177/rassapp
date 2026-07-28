@@ -3,7 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover" />
-    <meta name="theme-color" content="#ffffff" />
+    <!-- 🔒 Тот же цвет, что и фон сплеш-экрана ниже (#static-splash/.splash) — статус-бар/чёлка
+         должны совпадать со сплешем с самого первого кадра. Реальный цвет темы приложения
+         (светлая/тёмная) App.tsx подставит сам, но только ПОСЛЕ того, как сплеш скроется —
+         см. useEffect на resolvedTheme, ждущий showSplash===false. -->
+    <meta name="theme-color" content="#1e3a8a" />
     <meta name="description" content="Manage installments with AI" />
 
     <script>
@@ -11,9 +15,10 @@
         try {
           var mode = localStorage.getItem('finuchet_theme_mode') || 'system';
           var isDark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          // 🔒 Класс .dark ставим сразу (нужен для стилей самого приложения без FOUC),
+          // но theme-color НЕ трогаем здесь — он должен остаться цветом сплеша до его скрытия.
           if (isDark) {
             document.documentElement.classList.add('dark');
-            document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0b0f1a');
           }
         } catch (e) {}
       })();

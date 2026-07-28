@@ -692,19 +692,33 @@ if (mode === 'CASH') {
 
     // 🔒 Та же модель графика, что и в печати договора (Contracts.tsx) и в чеке прихода
     // (NewIncome.tsx): каждый реальный (в т.ч. частичный) платёж — своя строка с датой и суммой;
-    // ещё не покрытые месяцы графика — строки-плейсхолдеры только с датой, без суммы; месяцы,
-    // уже полностью покрытые (isPaid === true), не показываются — их деньги видны в датах
-    // соответствующих реальных платежей. Раньше здесь были всегда пустые строки без дат вообще.
+    // ещё не покрытые месяцы графика — строки-плейсхолдеры только с датой, без суммы. Покрытие
+    // пересчитываем от ОБЩЕЙ суммы реальных платежей (surplus), а не доверяем сохранённому флагу
+    // isPaid планового слота — он бывает неактуален, из-за чего рядом с уже оплаченной датой
+    // оставался "призрачный" пустой дубль той же даты. Раньше здесь были всегда пустые строки
+    // без дат вообще.
+    const realPaymentsForSchedule = (sale.paymentPlan || []).filter(p => p.isRealPayment === true);
+    let scheduleSurplus = realPaymentsForSchedule.reduce((sum, p) => sum + p.amount, 0);
+    const uncoveredScheduled = (sale.paymentPlan || [])
+        .filter(p => p.isRealPayment !== true)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .filter(p => {
+            if (scheduleSurplus >= p.amount - 0.01) {
+                scheduleSurplus -= p.amount;
+                return false;
+            }
+            return true;
+        });
+
     let currentDebt = sale.totalAmount - sale.downPayment;
-    const scheduleRows = (sale.paymentPlan || [])
-        .filter(p => p.isRealPayment === true || !p.isPaid)
-        .slice()
+    const scheduleRows = [
+        ...realPaymentsForSchedule.map(p => ({ date: p.date, paid: p.amount })),
+        ...uncoveredScheduled.map(p => ({ date: p.date, paid: 0 }))
+    ]
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
         .map(p => {
-            const isRealMoney = p.isRealPayment === true;
-            const paid = isRealMoney ? p.amount : 0;
-            if (isRealMoney) currentDebt -= paid;
-            return { date: new Date(p.date), paid, remaining: Math.max(0, currentDebt) };
+            if (p.paid > 0) currentDebt -= p.paid;
+            return { date: new Date(p.date), paid: p.paid, remaining: Math.max(0, currentDebt) };
         });
 
     return (
@@ -937,19 +951,33 @@ if (mode === 'CASH') {
 
     // 🔒 Та же модель графика, что и в печати договора (Contracts.tsx), чеке прихода (NewIncome.tsx)
     // и PDF-отправке (renderContractContent выше): каждый реальный (в т.ч. частичный) платёж —
-    // своя строка с датой и суммой; ещё не покрытые месяцы графика — только дата, без суммы;
-    // уже полностью покрытые месяцы не показываются отдельно (их деньги видны в датах реальных
-    // платежей). Раньше здесь были всегда пустые строки без единой даты.
+    // своя строка с датой и суммой; ещё не покрытые месяцы графика — только дата, без суммы.
+    // Покрытие пересчитываем от ОБЩЕЙ суммы реальных платежей (surplus), а не доверяем сохранённому
+    // флагу isPaid планового слота — он бывает неактуален, из-за чего рядом с уже оплаченной датой
+    // оставался "призрачный" пустой дубль той же даты. Раньше здесь были всегда пустые строки без
+    // единой даты.
+    const printRealPayments = (sale.paymentPlan || []).filter(p => p.isRealPayment === true);
+    let printSurplus = printRealPayments.reduce((sum, p) => sum + p.amount, 0);
+    const printUncoveredScheduled = (sale.paymentPlan || [])
+        .filter(p => p.isRealPayment !== true)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .filter(p => {
+            if (printSurplus >= p.amount - 0.01) {
+                printSurplus -= p.amount;
+                return false;
+            }
+            return true;
+        });
+
     let printCurrentDebt = sale.totalAmount - sale.downPayment;
-    const printScheduleRows = (sale.paymentPlan || [])
-        .filter(p => p.isRealPayment === true || !p.isPaid)
-        .slice()
+    const printScheduleRows = [
+        ...printRealPayments.map(p => ({ date: p.date, paid: p.amount })),
+        ...printUncoveredScheduled.map(p => ({ date: p.date, paid: 0 }))
+    ]
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
         .map(p => {
-            const isRealMoney = p.isRealPayment === true;
-            const paid = isRealMoney ? p.amount : 0;
-            if (isRealMoney) printCurrentDebt -= paid;
-            return { date: p.date, paid, remaining: Math.max(0, printCurrentDebt) };
+            if (p.paid > 0) printCurrentDebt -= p.paid;
+            return { date: p.date, paid: p.paid, remaining: Math.max(0, printCurrentDebt) };
         });
 
     const rows = printScheduleRows.length > 0

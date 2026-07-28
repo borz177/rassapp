@@ -512,19 +512,34 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
     // на СВОЮ дату с фактической суммой; плановые месяцы графика, которые ещё не покрыты реальными
     // платежами, — строки-плейсхолдеры даты без суммы (деньги для них уже посчитаны на датах
     // соответствующих реальных платежей, показывать их ещё раз на дату месяца было бы задвоением).
-    // Месяцы, УЖЕ полностью покрытые реальными платежами (isPaid === true — см.
-    // reconcileSalePaymentPlan в App.tsx), в списке не показываем вовсе — реальные платежи,
-    // которые их покрыли, уже видны своими строками выше по датам.
+    // 🔒 ВАЖНО: покрытие планового месяца пересчитываем от ОБЩЕЙ суммы реальных платежей (surplus),
+    // а не доверяем сохранённому флагу isPaid планового слота — на практике он бывает неактуален
+    // (например, платёж импортирован/добавлен без пересчёта reconcileSalePaymentPlan), из-за чего
+    // рядом с уже оплаченной датой оставался "призрачный" пустой дубль той же даты.
     // "Остаток" — НАКОПИТЕЛЬНЫЙ остаток долга по договору, уменьшается только на реальных платежах.
+    const realPayments = (sale.paymentPlan || []).filter(p => p.isRealPayment === true);
+    let surplus = realPayments.reduce((sum, p) => sum + p.amount, 0);
+
+    const uncoveredScheduled = (sale.paymentPlan || [])
+        .filter(p => p.isRealPayment !== true)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .filter(p => {
+            if (surplus >= p.amount - 0.01) {
+                surplus -= p.amount; // покрыт целиком реальными деньгами — не показываем как отдельную строку
+                return false;
+            }
+            return true;
+        });
+
     let currentDebt = sale.totalAmount - sale.downPayment;
-    const scheduleRows = (sale.paymentPlan || [])
-        .filter(p => p.isRealPayment === true || !p.isPaid)
+    const scheduleRows = [
+        ...realPayments.map(p => ({ date: p.date, paid: p.amount })),
+        ...uncoveredScheduled.map(p => ({ date: p.date, paid: 0 }))
+    ]
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
         .map(p => {
-            const isRealMoney = p.isRealPayment === true;
-            const paid = isRealMoney ? p.amount : 0;
-            if (isRealMoney) currentDebt -= paid;
-            return { date: p.date, paid, remaining: Math.max(0, currentDebt) };
+            if (p.paid > 0) currentDebt -= p.paid;
+            return { date: p.date, paid: p.paid, remaining: Math.max(0, currentDebt) };
         });
 
     const scheduleRowsHtml = scheduleRows.length > 0
