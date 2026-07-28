@@ -815,16 +815,24 @@ useEffect(() => {
   // в белый/тёмный ДО того, как сам сплеш пропадёт — видимая нестыковка цвета сверху экрана.
   if (showSplash) return;
 
-  if (Capacitor.isNativePlatform()) {
-    // Иконки и фон статус-бара должны меняться вместе — иначе при переключении темы
-    // фон остаётся белым (со старта), а иконки становятся светлыми и пропадают на нём.
-    // 🔥 Названия у плагина обратные интуиции: Style.Dark = светлые иконки (для тёмного
-    // фона), Style.Light = тёмные иконки (для светлого фона) — см. definitions.d.ts.
-    StatusBar.setStyle({ style: resolvedTheme === 'dark' ? Style.Dark : Style.Light }).catch(() => {});
-    StatusBar.setBackgroundColor({ color: resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff' }).catch(() => {});
-  }
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff');
+  // 🔒 Небольшая задержка ПОСЛЕ скрытия сплеша (а не в тот же тик) — на реальных мобильных
+  // браузерах перекраска чёлки/адресной строки под новый theme-color иногда стартует чуть
+  // раньше, чем кадр с исчезающим сплешем реально отрисуется, из-за чего цвет мог "мигнуть"
+  // ещё до того, как сплеш визуально пропал с экрана.
+  const applyRealTheme = setTimeout(() => {
+    if (Capacitor.isNativePlatform()) {
+      // Иконки и фон статус-бара должны меняться вместе — иначе при переключении темы
+      // фон остаётся белым (со старта), а иконки становятся светлыми и пропадают на нём.
+      // 🔥 Названия у плагина обратные интуиции: Style.Dark = светлые иконки (для тёмного
+      // фона), Style.Light = тёмные иконки (для светлого фона) — см. definitions.d.ts.
+      StatusBar.setStyle({ style: resolvedTheme === 'dark' ? Style.Dark : Style.Light }).catch(() => {});
+      StatusBar.setBackgroundColor({ color: resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff' }).catch(() => {});
+    }
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff');
+  }, 150);
+
+  return () => clearTimeout(applyRealTheme);
 }, [resolvedTheme, showSplash]);
 
 
