@@ -527,15 +527,9 @@ useEffect(() => {
         if (window.Capacitor && window.Capacitor.isNativePlatform()) {
             // 🔥 2. ОБЕРТЫВАЕМ StatusBar В ТАЙМАУТЫ (2 секунды)
             // Если плагин зависнет, мы просто пропустим этот шаг и пойдем дальше
-            // 🔒 Пока виден сплеш — статус-бар должен быть ТЕМ ЖЕ цветом, что и сплеш (#1e3a8a),
-            // а не цветом реальной темы приложения. Раньше здесь сразу ставился цвет темы —
-            // из-за этого чёлка/статус-бар мгновенно становились белыми/тёмными, а сплеш под
-            // ними ещё секунду-другую оставался тёмно-синим — видимая нестыковка цвета сверху
-            // экрана. Настоящую тему теперь применяет useEffect на resolvedTheme, но только
-            // после того, как сплеш реально скрылся (см. проверку showSplash там).
             await withTimeout(StatusBar.setOverlaysWebView({ overlay: false }), 2000).catch(() => {});
-            await withTimeout(StatusBar.setStyle({ style: Style.Dark }), 2000).catch(() => {});
-            await withTimeout(StatusBar.setBackgroundColor({ color: '#1e3a8a' }), 2000).catch(() => {});
+            await withTimeout(StatusBar.setStyle({ style: resolvedTheme === 'dark' ? Style.Dark : Style.Light }), 2000).catch(() => {});
+            await withTimeout(StatusBar.setBackgroundColor({ color: resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff' }), 2000).catch(() => {});
         }
     } catch (e) {
         console.warn('StatusBar init skipped (web/timeout)');
@@ -809,31 +803,17 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-  // 🔒 Пока сплеш на экране, статус-бар/чёлка нарочно держатся цветом сплеша (#1e3a8a) —
-  // см. initApp выше и статический #static-splash в index.html. Реальную тему приложения
-  // применяем только после того, как сплеш реально скрылся, иначе чёлка перекрашивается
-  // в белый/тёмный ДО того, как сам сплеш пропадёт — видимая нестыковка цвета сверху экрана.
-  if (showSplash) return;
-
-  // 🔒 Небольшая задержка ПОСЛЕ скрытия сплеша (а не в тот же тик) — на реальных мобильных
-  // браузерах перекраска чёлки/адресной строки под новый theme-color иногда стартует чуть
-  // раньше, чем кадр с исчезающим сплешем реально отрисуется, из-за чего цвет мог "мигнуть"
-  // ещё до того, как сплеш визуально пропал с экрана.
-  const applyRealTheme = setTimeout(() => {
-    if (Capacitor.isNativePlatform()) {
-      // Иконки и фон статус-бара должны меняться вместе — иначе при переключении темы
-      // фон остаётся белым (со старта), а иконки становятся светлыми и пропадают на нём.
-      // 🔥 Названия у плагина обратные интуиции: Style.Dark = светлые иконки (для тёмного
-      // фона), Style.Light = тёмные иконки (для светлого фона) — см. definitions.d.ts.
-      StatusBar.setStyle({ style: resolvedTheme === 'dark' ? Style.Dark : Style.Light }).catch(() => {});
-      StatusBar.setBackgroundColor({ color: resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff' }).catch(() => {});
-    }
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff');
-  }, 150);
-
-  return () => clearTimeout(applyRealTheme);
-}, [resolvedTheme, showSplash]);
+  if (Capacitor.isNativePlatform()) {
+    // Иконки и фон статус-бара должны меняться вместе — иначе при переключении темы
+    // фон остаётся белым (со старта), а иконки становятся светлыми и пропадают на нём.
+    // 🔥 Названия у плагина обратные интуиции: Style.Dark = светлые иконки (для тёмного
+    // фона), Style.Light = тёмные иконки (для светлого фона) — см. definitions.d.ts.
+    StatusBar.setStyle({ style: resolvedTheme === 'dark' ? Style.Dark : Style.Light }).catch(() => {});
+    StatusBar.setBackgroundColor({ color: resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff' }).catch(() => {});
+  }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff');
+}, [resolvedTheme]);
 
 
 
