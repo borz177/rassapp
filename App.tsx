@@ -901,14 +901,14 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v17';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v19';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
   const now = Date.now();
 
   if (!lastShown || now - Number(lastShown) >= FIVE_HOURS) {
-    setShowTemplateUpdateModal(false);
+    setShowTemplateUpdateModal(true);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
@@ -3518,11 +3518,6 @@ if (!user && !showSplash) {
                         className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <span className="opacity-70">{ICONS.AddSmall}</span> Оформить
                 </button>
-                <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('ALL'); }}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.List}</span> Все</div>
-                  {contractCounts.all > 0 && <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold px-2 py-0.5 rounded-full">{contractCounts.all}</span>}
-                </button>
                 <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('ACTIVE'); }}
                         className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Check}</span> Активные</div>
@@ -3537,6 +3532,11 @@ if (!user && !showSplash) {
                         className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Clock}</span> Архив</div>
                   {contractCounts.archive > 0 && <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold px-2 py-0.5 rounded-full">{contractCounts.archive}</span>}
+                </button>
+                <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('ALL'); }}
+                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.List}</span> Все</div>
+                  {contractCounts.all > 0 && <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold px-2 py-0.5 rounded-full">{contractCounts.all}</span>}
                 </button>
               </div>
             )}
@@ -3967,76 +3967,79 @@ if (!user && !showSplash) {
 
 {showTemplateUpdateModal && (
   <div
-    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-gradient-to-br from-purple-900/60 via-blue-900/60 to-indigo-900/60 backdrop-blur-md animate-fade-in"
     onClick={() => setShowTemplateUpdateModal(false)}
   >
     <div
-      className="bg-white dark:bg-slate-800 w-full max-w-xs rounded-2xl shadow-xl p-6 text-center animate-scale-in"
+      className="relative bg-gradient-to-br from-white via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-indigo-950 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
-      <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-2xl">
-        🎉
+      {/* Декоративные элементы */}
+      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-400/20 to-purple-400/20 rounded-full blur-3xl"></div>
+      <div className="absolute bottom-0 left-0 w-40 h-40 bg-gradient-to-tr from-indigo-400/20 to-pink-400/20 rounded-full blur-3xl"></div>
+
+      <div className="relative p-8">
+        {/* Заголовок */}
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg shadow-blue-500/30 mb-4">
+            <span className="text-3xl">🚀</span>
+          </div>
+          <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent mb-2">
+            Обновление
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-slate-400">
+            Улучшили работу с договорами
+          </p>
+        </div>
+
+        {/* Карточки обновлений */}
+        <div className="space-y-4 mb-6">
+          {/* График платежей */}
+          <div className="group relative bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-4 border border-blue-100 dark:border-blue-900/50 hover:border-blue-300 dark:hover:border-blue-700 transition-all hover:shadow-lg hover:shadow-blue-500/10">
+            <div className="flex items-start gap-4">
+              <div className="shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-2xl shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform">
+                📅
+              </div>
+              <div className="flex-1">
+                <p className="text-base font-bold text-gray-900 dark:text-white mb-1">
+                  График платежей
+                </p>
+                <p className="text-sm text-gray-600 dark:text-slate-400 leading-relaxed">
+                  Теперь в договоре отображается наглядный график — клиент сразу видит все даты платежей
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Все договоры */}
+          <div className="group relative bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-4 border border-emerald-100 dark:border-emerald-900/50 hover:border-emerald-300 dark:hover:border-emerald-700 transition-all hover:shadow-lg hover:shadow-emerald-500/10">
+            <div className="flex items-start gap-4">
+              <div className="shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-2xl shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform">
+                📂
+              </div>
+              <div className="flex-1">
+                <p className="text-base font-bold text-gray-900 dark:text-white mb-1">
+                  Кнопка «Все договоры»
+                </p>
+                <p className="text-sm text-gray-600 dark:text-slate-400 leading-relaxed">
+                  Добавили быстрый доступ ко всем договорам — не нужно переключаться между вкладками
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Кнопка */}
+        <button
+          onClick={() => setShowTemplateUpdateModal(false)}
+          className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 active:scale-[0.98] transition-all"
+        >
+          Отлично!
+        </button>
       </div>
-
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-        Что нового
-      </h3>
-
-      <p className="text-sm text-gray-500 dark:text-slate-400 mb-4 leading-relaxed">
-        Доработали раздел инвесторов — теперь работать с ними стало ещё удобнее
-      </p>
-
-      <div className="space-y-3 text-left mb-6">
-        {/* Страница инвестора */}
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 shrink-0 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-lg">
-            👤
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">Страница инвестора</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
-              Во вкладке «Все операции» теперь отображается всё, что касается именно этого инвестора — платежи, договоры и движения средств в одном месте
-            </p>
-          </div>
-        </div>
-
-        {/* Карточка Выплачено */}
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 shrink-0 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-lg">
-            💰
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">Карточка «Выплачено»</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
-              Добавили отдельную карточку с общей суммой выплат — сразу видно, сколько уже выплачено инвесторам
-            </p>
-          </div>
-        </div>
-
-        {/* Распределение убытка */}
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 shrink-0 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-lg">
-            📉
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">Распределение убытка</p>
-            <p className="text-xs text-gray-500 dark:text-slate-400 leading-snug">
-              В общем пуле инвесторов появилась возможность распределить убыток между участниками — честно и прозрачно
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <button
-        onClick={() => setShowTemplateUpdateModal(false)}
-        className="w-full py-2.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-medium rounded-lg hover:bg-gray-800 dark:hover:bg-slate-100 active:scale-[0.98] transition-all"
-      >
-        Понятно
-      </button>
     </div>
   </div>
 )}
-
 
   </Layout>
 );
