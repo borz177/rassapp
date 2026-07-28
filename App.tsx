@@ -134,10 +134,6 @@ const isLanding = path === "/"
 
   const [moreExpandedSection, setMoreExpandedSection] = useState<string | null>(null);
 
-  // 🔒 Отдельно от showSplash/isLoading — управляет только плавным затуханием сплеша перед
-  // размонтированием (350мс), чтобы переход к приложению не был резким обрывом кадра.
-  const [splashClosing, setSplashClosing] = useState(false);
-
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [showSupportChat, setShowSupportChat] = useState(false);
 
@@ -503,20 +499,15 @@ const splashShownAtRef = useRef<number>(Date.now());
 const MIN_SPLASH_VISIBLE_MS = 700;
 
 // 🔒 Единая точка скрытия сплеша — если он был на экране меньше MIN_SPLASH_VISIBLE_MS (данные
-// загрузились почти мгновенно, например из офлайн-кэша), сначала досиживаем оставшееся время,
-// и только потом плавно затухаем (350мс, см. .closing в SplashScreen.css) и реально
-// размонтируем. На медленном соединении, где загрузка и так дольше этого порога, задержки нет —
-// hideSplash сработает сразу, как раньше.
+// загрузились почти мгновенно, например из офлайн-кэша), сначала досиживаем оставшееся время.
+// На медленном соединении, где загрузка и так дольше этого порога, задержки нет — hideSplash
+// сработает сразу.
 const hideSplash = () => {
   const elapsed = Date.now() - splashShownAtRef.current;
   const remaining = Math.max(0, MIN_SPLASH_VISIBLE_MS - elapsed);
   setTimeout(() => {
     setIsLoading(false);
-    setSplashClosing(true);
-    setTimeout(() => {
-      setShowSplash(false);
-      setSplashClosing(false);
-    }, 350);
+    setShowSplash(false);
   }, remaining);
 };
 
@@ -2926,7 +2917,7 @@ if (isPublicMode) {
 
 // 2. Загрузка (проверка сессии, подгрузка данных)
 if (showSplash || isLoading) {
-  return <SplashScreen closing={splashClosing} />
+  return <SplashScreen />
 }
 // 🔹 ПРОВЕРКА АВТОРИЗАЦИИ (перед Layout!)
 if (!user && !showSplash) {
