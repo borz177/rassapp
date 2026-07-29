@@ -279,29 +279,77 @@ const reconcileSalePaymentPlan = (sale: Sale): Sale => {
     // считаем её наравне с реальной оплатой, иначе остаток долга не дойдёт до нуля.
     const totalDiscounts = realPaidEntries.reduce((sum: number, p: Payment) => sum + ((p as any).discountAmount || 0), 0);
 
-    let scheduled = sale.paymentPlan
-        .filter((p: Payment) => p.isRealPayment !== true)
-        .sort((a: Payment, b: Payment) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    const totalScheduledAmount = scheduled.reduce((sum: number, p: Payment) => sum + p.amount, 0);
+    const existingScheduled = sale.paymentPlan.filter((p: Payment) => p.isRealPayment !== true);
     const totalDue = Math.max(0, sale.totalAmount - sale.downPayment);
-    const missingAmount = Math.round((totalDue - totalScheduledAmount) * 100) / 100;
+    const installments = Math.max(1, sale.installments || existingScheduled.length || 1);
+    const monthlyAmount = Math.round((totalDue / installments) * 100) / 100;
 
-    // 🔒 Если суммы плановых слотов не хватает до полной суммы договора (пропущенный слот при
-    // генерации/редактировании графика) — добавляем недостающий плановый платёж, а не оставляем
-    // часть долга без единой строки в графике.
-    if (missingAmount > 0.01) {
-        const lastDate = scheduled.length > 0 ? new Date(scheduled[scheduled.length - 1].date) : new Date(sale.startDate);
-        const newDate = new Date(lastDate);
-        newDate.setMonth(newDate.getMonth() + 1);
-        scheduled = [...scheduled, {
-            id: `pay_reconcile_${Date.now()}_${scheduled.length}`,
-            saleId: sale.id,
-            date: newDate.toISOString(),
-            amount: missingAmount,
-            isPaid: false,
-            isRealPayment: false
-        }];
+    // 🔒 Определяем, каким КАЛЕНДАРНЫМ месяцам вообще должны соответствовать плановые слоты
+    // (от даты первого платежа — startDate+1 месяц, день = paymentDay — и дальше по одному
+    // месяцу на installment), и для каждого либо берём существующую запись за этот месяц
+    // (сохраняя её id/isPaid/note как есть), либо создаём новую. Раньше недостающий платёж
+    // просто добавлялся ПОСЛЕ последней записи в массиве — если реально пропущенные месяцы
+    // были более РАННИМИ (а не последними), новый слот вставал не на своё место (например,
+    // "довесок" за первые 9 месяцев уезжал на 9 месяцев ВПЕРЁД относительно последних трёх
+    // уже существовавших) и график показывал совсем не те даты, что нужно.
+    let firstPaymentDate: Date | null = new Date(sale.startDate);
+    if (isNaN(firstPaymentDate.getTime())) {
+        firstPaymentDate = null;
+    } else {
+        firstPaymentDate.setMonth(firstPaymentDate.getMonth() + 1);
+        if (sale.paymentDay) firstPaymentDate.setDate(sale.paymentDay);
+    }
+
+    let scheduled: Payment[];
+    if (firstPaymentDate) {
+        const usedExistingIds = new Set<string>();
+        const rebuilt: Payment[] = [];
+        for (let i = 0; i < installments; i++) {
+            const slotDate = new Date(firstPaymentDate);
+            slotDate.setMonth(slotDate.getMonth() + i);
+            const slotMonthKey = slotDate.toISOString().slice(0, 7);
+            const match = existingScheduled.find(p => {
+                if (usedExistingIds.has(p.id)) return false;
+                const d = new Date(p.date);
+                return !isNaN(d.getTime()) && d.toISOString().slice(0, 7) === slotMonthKey;
+            });
+            if (match) {
+                usedExistingIds.add(match.id);
+                rebuilt.push(match);
+            } else {
+                rebuilt.push({
+                    id: `pay_reconcile_${Date.now()}_${i}`,
+                    saleId: sale.id,
+                    date: slotDate.toISOString(),
+                    amount: monthlyAmount,
+                    isPaid: false,
+                    isRealPayment: false
+                });
+            }
+        }
+        // Существующие плановые записи, не попавшие ни в один расчётный месяц (не должно
+        // происходить в норме) — не теряем их, дописываем как есть.
+        const leftover = existingScheduled.filter(p => !usedExistingIds.has(p.id));
+        scheduled = [...rebuilt, ...leftover].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    } else {
+        // 🔙 Не удалось разобрать startDate — подстраховка: старое поведение (докинуть
+        // недостающую сумму одним слотом после последней записи), лучше грубо, чем никак.
+        scheduled = existingScheduled.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const totalScheduledAmount = scheduled.reduce((sum, p) => sum + p.amount, 0);
+        const missingAmount = Math.round((totalDue - totalScheduledAmount) * 100) / 100;
+        if (missingAmount > 0.01) {
+            const lastDate = scheduled.length > 0 ? new Date(scheduled[scheduled.length - 1].date) : new Date();
+            const newDate = new Date(lastDate);
+            newDate.setMonth(newDate.getMonth() + 1);
+            scheduled = [...scheduled, {
+                id: `pay_reconcile_${Date.now()}_${scheduled.length}`,
+                saleId: sale.id,
+                date: newDate.toISOString(),
+                amount: missingAmount,
+                isPaid: false,
+                isRealPayment: false
+            }];
+        }
     }
 
     // 🔹 Пересчитываем isPaid плановых слотов от факта реальных платежей (по датам, от раннего
