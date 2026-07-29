@@ -208,6 +208,16 @@ const showNotificationModal = (
 
 
 
+ // 🔒 Метки времени последних ЛОКАЛЬНЫХ записей (см. updateList ниже) — id → когда записали.
+// Решает гонку, описанную в комментарии isSyncingRef выше в другом разрезе: даже ОДИН
+// handleSync(), запущенный ДО локальной правки (например, удаления платежа) и завершившийся
+// ПОСЛЕ неё, до этой правки вернул бы устаревшую версию записи с сервера и мог затереть её
+// через mergeServerData — платёж, который пользователь только что удалил, "внезапно"
+// появлялся бы обратно после фоновой синхронизации. isSyncingRef защищает только от
+// параллельных ДРУГ ДРУГУ handleSync(), но не от этого — синхронизация тут всего одна.
+const recentLocalWritesRef = React.useRef<Map<string, number>>(new Map());
+const RECENT_WRITE_GUARD_MS = 10000;
+
  // 🔹 Вспомогательная функция для "умного" слияния данных (исправленная версия)
 // 🔹 Улучшенная версия с защитой от потери данных
 const mergeServerData = <T extends { id: string }>(
@@ -229,9 +239,25 @@ const mergeServerData = <T extends { id: string }>(
     }
 
     const freshMap = new Map<string, T>(fresh.map(item => [item.id, item]));
-    const updated = current.map(item => freshMap.has(item.id) ? freshMap.get(item.id)! : item);
+    const now = Date.now();
+    const updated = current.map(item => {
+        if (!freshMap.has(item.id)) return item;
+        // 🔒 Эту запись только что записали локально (см. updateList) — сервер мог ответить
+        // данными, полученными ДО этой записи (гонка с фоновым handleSync, см. комментарий
+        // у recentLocalWritesRef выше). Доверяем локальной версии ещё RECENT_WRITE_GUARD_MS,
+        // а не слепо перезаписываем тем, что вернул fetchAllData.
+        const writtenAt = recentLocalWritesRef.current.get(item.id);
+        if (writtenAt && now - writtenAt < RECENT_WRITE_GUARD_MS) return item;
+        return freshMap.get(item.id)!;
+    });
     updated.forEach(item => freshMap.delete(item.id));
-    const newItems = Array.from(freshMap.values());
+    // 🔒 То же самое для настоящих удалений (removeFromList) — если запись только что удалили
+    // локально, но сервер в этом ответе (запрошенном ДО удаления) её ещё вернул, не добавляем
+    // её обратно как "новую".
+    const newItems = Array.from(freshMap.values()).filter(item => {
+        const writtenAt = recentLocalWritesRef.current.get(item.id);
+        return !(writtenAt && now - writtenAt < RECENT_WRITE_GUARD_MS);
+    });
 
     return [...updated, ...newItems];
 };
@@ -1266,6 +1292,10 @@ const updateList = <T extends { id: string }>(
   oldId?: string,           // ← Старый ID, если он менялся (для замены)
   storageKey?: string       // ← Ключ localStorage для отладки (опционально)
 ) => {
+  // 🔒 Отмечаем момент локальной записи — mergeServerData на RECENT_WRITE_GUARD_MS доверяет
+  // этой версии больше, чем тому, что вернёт следующий handleSync (см. комментарий там же).
+  if (item?.id) recentLocalWritesRef.current.set(item.id, Date.now());
+
   setter(prev => {
     // 🔹 Защита от невалидных данных
     if (!item?.id) {
@@ -1321,7 +1351,12 @@ const updateList = <T extends { id: string }>(
     return newList;
   });
 };
-const removeFromList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, id: string) => { setter(prev => prev.filter(i => i.id !== id)); };
+const removeFromList = <T extends { id: string }>(setter: React.Dispatch<React.SetStateAction<T[]>>, id: string) => {
+  // 🔒 Та же защита, что и в updateList — иначе фоновая синхронизация, стартовавшая ДО
+  // удаления, могла бы "воскресить" только что удалённую запись (см. mergeServerData).
+  recentLocalWritesRef.current.set(id, Date.now());
+  setter(prev => prev.filter(i => i.id !== id));
+};
 
 // 🔹 Фильтрация данных для сотрудника по разрешённым инвесторам
 const filterDataForEmployeeClient = (data: any, allowedIds: string[]) => {

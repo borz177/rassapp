@@ -8,19 +8,28 @@ export const escapeHtml = (str: unknown): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
+// Нормализует дату/время к UTC-полуночи того же календарного дня.
+// Нужно потому что joinedDate хранится с реальным временем создания (напр. 10:48 UTC),
+// а ev.date / cutoff всегда полночь UTC. Без нормализации инвестор, вошедший в 10:48,
+// «не видит» убытков того же дня (00:00 < 10:48 → joined > cutoff → excluded).
+const dayMs = (d: string | number | Date): number => {
+  const dt = new Date(d);
+  return Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+};
+
 // Участвовал ли инвестор в пуле на момент cutoff.
 // Если задан investmentPeriods — проверяем по списку периодов (поддержка повторного входа).
 // Иначе — legacy-поведение: один joinedDate / leftPoolDate.
 const isPoolMemberActiveAt = (investor: Investor, cutoff: number): boolean => {
   if (investor.investmentPeriods && investor.investmentPeriods.length > 0) {
     return investor.investmentPeriods.some(p => {
-      const joined = new Date(p.joinedDate).getTime();
-      const left = p.leftPoolDate ? new Date(p.leftPoolDate).getTime() : Infinity;
+      const joined = dayMs(p.joinedDate);
+      const left = p.leftPoolDate ? dayMs(p.leftPoolDate) : Infinity;
       return joined <= cutoff && cutoff < left;
     });
   }
-  if (new Date(investor.joinedDate).getTime() > cutoff) return false;
-  if (investor.leftPoolDate && new Date(investor.leftPoolDate).getTime() <= cutoff) return false;
+  if (dayMs(investor.joinedDate) > cutoff) return false;
+  if (investor.leftPoolDate && dayMs(investor.leftPoolDate) <= cutoff) return false;
   return true;
 };
 
@@ -29,8 +38,8 @@ const isPoolMemberActiveAt = (investor: Investor, cutoff: number): boolean => {
 const getInvestorAmountAt = (investor: Investor, cutoff: number): number => {
   if (investor.investmentPeriods && investor.investmentPeriods.length > 0) {
     const active = investor.investmentPeriods.find(p => {
-      const joined = new Date(p.joinedDate).getTime();
-      const left = p.leftPoolDate ? new Date(p.leftPoolDate).getTime() : Infinity;
+      const joined = dayMs(p.joinedDate);
+      const left = p.leftPoolDate ? dayMs(p.leftPoolDate) : Infinity;
       return joined <= cutoff && cutoff < left;
     });
     return active ? active.initialAmount : 0;
@@ -42,8 +51,8 @@ const getInvestorAmountAt = (investor: Investor, cutoff: number): number => {
 export const getActivePeriodAt = (investor: Investor, cutoff: number): InvestmentPeriod | null => {
   if (investor.investmentPeriods && investor.investmentPeriods.length > 0) {
     return investor.investmentPeriods.find(p => {
-      const joined = new Date(p.joinedDate).getTime();
-      const left = p.leftPoolDate ? new Date(p.leftPoolDate).getTime() : Infinity;
+      const joined = dayMs(p.joinedDate);
+      const left = p.leftPoolDate ? dayMs(p.leftPoolDate) : Infinity;
       return joined <= cutoff && cutoff < left;
     }) ?? null;
   }
