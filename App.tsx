@@ -992,7 +992,7 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v19';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v20';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -4072,74 +4072,67 @@ if (!user && !showSplash) {
 
 {showTemplateUpdateModal && (
   <div
-    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-gradient-to-br from-purple-900/60 via-blue-900/60 to-indigo-900/60 backdrop-blur-md animate-fade-in"
+    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
     onClick={() => setShowTemplateUpdateModal(false)}
   >
     <div
-      className="relative bg-gradient-to-br from-white via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-indigo-950 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-scale-in"
+      className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
-      {/* Декоративные элементы */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-400/20 to-purple-400/20 rounded-full blur-3xl"></div>
-      <div className="absolute bottom-0 left-0 w-40 h-40 bg-gradient-to-tr from-indigo-400/20 to-pink-400/20 rounded-full blur-3xl"></div>
-
-      <div className="relative p-8">
+      <div className="p-6">
         {/* Заголовок */}
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg shadow-blue-500/30 mb-4">
-            <span className="text-3xl">🚀</span>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-2xl">
+            🧮
           </div>
-          <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent mb-2">
-            Обновление
-          </h3>
-          <p className="text-sm text-gray-600 dark:text-slate-400">
-            Улучшили работу с договорами
-          </p>
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+              Обновление
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-slate-400">
+              Калькулятор стал удобнее
+            </p>
+          </div>
         </div>
 
-        {/* Карточки обновлений */}
-        <div className="space-y-4 mb-6">
+        {/* Список обновлений */}
+        <div className="divide-y divide-gray-100 dark:divide-slate-800 mb-6">
           {/* График платежей */}
-          <div className="group relative bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-4 border border-blue-100 dark:border-blue-900/50 hover:border-blue-300 dark:hover:border-blue-700 transition-all hover:shadow-lg hover:shadow-blue-500/10">
-            <div className="flex items-start gap-4">
-              <div className="shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-2xl shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform">
-                📅
-              </div>
-              <div className="flex-1">
-                <p className="text-base font-bold text-gray-900 dark:text-white mb-1">
-                  График платежей
-                </p>
-                <p className="text-sm text-gray-600 dark:text-slate-400 leading-relaxed">
-                  Теперь в договоре отображается наглядный график — клиент сразу видит все даты платежей
-                </p>
-              </div>
+          <div className="flex items-center gap-3 py-4">
+            <div className="text-2xl">📊</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
+                График платежей
+              </p>
+              <p className="text-xs text-gray-500 dark:text-slate-500">
+                Видно все даты и ежемесячная сумма.
+              </p>
             </div>
           </div>
 
-          {/* Все договоры */}
-          <div className="group relative bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl p-4 border border-emerald-100 dark:border-emerald-900/50 hover:border-emerald-300 dark:hover:border-emerald-700 transition-all hover:shadow-lg hover:shadow-emerald-500/10">
-            <div className="flex items-start gap-4">
-              <div className="shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-2xl shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform">
-                📂
-              </div>
-              <div className="flex-1">
-                <p className="text-base font-bold text-gray-900 dark:text-white mb-1">
-                  Кнопка «Все договоры»
-                </p>
-                <p className="text-sm text-gray-600 dark:text-slate-400 leading-relaxed">
-                  Добавили быстрый доступ ко всем договорам — не нужно переключаться между вкладками
-                </p>
-              </div>
+          {/* Поделиться расчётом */}
+          <div className="flex items-center gap-3 py-4">
+            <div className="text-2xl">📤</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
+                Поделиться расчётом
+              </p>
+              <p className="text-xs text-gray-500 dark:text-slate-500">
+                Отправьте клиенту красивую картинку с графиком в WhatsApp или Telegram
+              </p>
             </div>
           </div>
+
+          {/* Обновлённый дизайн */}
+          
         </div>
 
         {/* Кнопка */}
         <button
           onClick={() => setShowTemplateUpdateModal(false)}
-          className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 active:scale-[0.98] transition-all"
+          className="w-full py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-semibold rounded-xl active:scale-[0.98] transition-all"
         >
-          Отлично!
+          Понятно
         </button>
       </div>
     </div>
