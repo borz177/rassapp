@@ -1661,13 +1661,13 @@ const handleSaveSale = async (data: any): Promise<any> => {
         
       }
       
-      // 🔹 🔑 ОБНОВЛЯЕМ ОСТАТОК ТОВАРА ЛОКАЛЬНО
-      if (data.productId) {
-        const prod = products.find(p => p.id === data.productId);
+      // 🔹 🔑 ОБНОВЛЯЕМ ОСТАТОК ТОВАРА ЛОКАЛЬНО (только для новых договоров)
+      const isOfflineEdit = data.id && sales.some((s: any) => s.id === data.id);
+      if (!isOfflineEdit && data.productId) {
+        const prod = products.find((p: any) => p.id === data.productId);
         if (prod) {
           const updatedProd = { ...prod, stock: prod.stock - 1 };
           updateList(setProducts, updatedProd);
-          
         }
       }
       
@@ -1746,13 +1746,18 @@ const handleDeleteSale = async (saleId: string) => {
 
     // 🔹 2. УДАЛЕНИЕ РАСХОДА ЗАКУПА (изолированно)
     try {
-      if (sale.buyPrice > 0 && sale.accountId) {
-        const buyExpense = expenses.find(e =>
-          e.accountId === sale.accountId &&
-          e.category === 'Себестоимость' &&
-          e.title?.includes(sale.productName) &&
-          Math.abs(e.amount - sale.buyPrice) < 0.01
-        );
+      if (sale.buyPrice > 0 && sale.accountId && !sale.supplierId) {
+        // Сначала ищем по точному ID (все текущие договоры используют этот формат)
+        let buyExpense = expenses.find(e => e.id === `exp_sale_${saleId}`);
+        // Запасной вариант для старых договоров с другим форматом ID
+        if (!buyExpense) {
+          buyExpense = expenses.find(e =>
+            e.accountId === sale.accountId &&
+            e.category === 'Себестоимость' &&
+            e.title === `Закуп: ${sale.productName}` &&
+            Math.abs(e.amount - sale.buyPrice) < 0.01
+          );
+        }
         if (buyExpense) {
           const result = await api.deleteItem('expenses', buyExpense.id);
           removeFromList(setExpenses, buyExpense.id);
