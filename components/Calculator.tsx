@@ -67,6 +67,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   const [price, setPrice]           = useState<string>('');
   const [months, setMonths]         = useState<number>(3);
   const [downPayment, setDownPayment] = useState<string>('');
+  const [customRate, setCustomRate] = useState<string>('');
   const [startDate, setStartDate]   = useState<string>(todayISO);
   const [showSchedule, setShowSchedule] = useState(true);
   const [isSharing, setIsSharing]   = useState(false);
@@ -105,10 +106,13 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
     return specific ? specific.rate : baseRate;
   }, [months, termRates, defaultRate, isPublic, publicRules]);
 
+  // Если пользователь ввёл свою наценку — используем её, иначе из настроек ставок
+  const effectiveRate = customRate !== '' ? (parseFloat(customRate) || 0) : activeRate;
+
   const result = useMemo(() => {
     const p  = parseFloat(price) || 0;
     const dp = parseFloat(downPayment) || 0;
-    const priceWithMarkup = p + p * (activeRate / 100);
+    const priceWithMarkup = p + p * (effectiveRate / 100);
     const remaining       = priceWithMarkup - dp;
     const monthly         = months > 0 ? remaining / months : 0;
     const roundedMonthly  = Math.ceil(monthly / 100) * 100;
@@ -117,7 +121,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
       monthly:      roundedMonthly,
       totalPayable: roundedMonthly * months + dp,
     };
-  }, [price, months, downPayment, activeRate]);
+  }, [price, months, downPayment, effectiveRate]);
 
   // График платежей
   const paymentSchedule = useMemo(() => {
@@ -177,7 +181,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
       ctx.fillStyle = 'rgba(255,255,255,0.7)';
       ctx.font = '14px Arial, sans-serif';
-      ctx.fillText(`${months} мес. • Ставка ${activeRate}%`, 36, 80);
+      ctx.fillText(`${months} мес. • Ставка ${effectiveRate}%`, 36, 80);
 
       // Нижняя полоса шапки — ежемесячный платёж
       const mGrad = ctx.createLinearGradient(0, 90, 0, 120);
@@ -203,7 +207,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
       const rows2 = [
         { label: 'Стоимость товара',        val: `${fmtMoney(parseFloat(price || '0'))} ₽`, color: '#1e293b' },
-        { label: `Наценка (${activeRate}%)`, val: `+${fmtMoney(result.total - parseFloat(price || '0'))} ₽`, color: '#f59e0b' },
+        { label: `Наценка (${effectiveRate}%)`, val: `+${fmtMoney(result.total - parseFloat(price || '0'))} ₽`, color: '#f59e0b' },
         { label: 'Первый взнос',             val: parseFloat(downPayment || '0') > 0 ? `${fmtMoney(parseFloat(downPayment))} ₽` : '—', color: '#64748b' },
         { label: 'Итого к выплате',          val: `${fmtMoney(result.totalPayable)} ₽`, color: '#4f46e5' },
       ];
@@ -263,7 +267,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
         ctx.fillStyle = '#334155';
         ctx.font = '14px Arial, sans-serif';
-        ctx.fillText(fmtDate(p.date), 82, ry + 27);
+        ctx.fillText(fmtDate(p.date), p.isDownPayment ? 100 : 82, ry + 27);
 
         ctx.fillStyle = '#1e293b';
         ctx.font = 'bold 15px Arial, sans-serif';
@@ -410,18 +414,36 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
           {/* ── Поля ввода ── */}
           <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-4 overflow-hidden">
 
-            {/* Стоимость */}
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Стоимость товара</label>
-              <div className="relative">
-                <input
-                  type="number"
-                  className="w-full p-4 pr-12 text-xl font-bold border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500 transition-colors"
-                  placeholder="0"
-                  value={price}
-                  onChange={e => setPrice(e.target.value)}
-                />
-                <span className="absolute right-4 top-4 text-slate-400 font-bold">₽</span>
+            {/* Стоимость + Наценка */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Стоимость товара</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    className="w-full p-4 pr-12 text-xl font-bold border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500 transition-colors"
+                    placeholder="0"
+                    value={price}
+                    onChange={e => setPrice(e.target.value)}
+                  />
+                  <span className="absolute right-4 top-4 text-slate-400 font-bold">₽</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">
+                  Наценка
+                  {customRate === '' && <span className="ml-1 font-normal text-indigo-400 normal-case">({activeRate}% из настроек)</span>}
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    className="w-full p-4 pr-8 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500 transition-colors font-semibold"
+                    placeholder={String(activeRate)}
+                    value={customRate}
+                    onChange={e => setCustomRate(e.target.value)}
+                  />
+                  <span className="absolute right-3 top-4 text-slate-400 text-sm">%</span>
+                </div>
               </div>
             </div>
 
@@ -488,7 +510,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                   <span className="font-medium">{fmtMoney(parseFloat(price))} ₽</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Наценка ({activeRate}%)</span>
+                  <span className="text-slate-400">Наценка ({effectiveRate}%)</span>
                   <span className="text-amber-400 font-medium">+{fmtMoney(result.total - parseFloat(price))} ₽</span>
                 </div>
                 {parseFloat(downPayment || '0') > 0 && (

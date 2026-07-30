@@ -319,21 +319,52 @@ const reconcileSalePaymentPlan = (sale: Sale): Sale => {
     }
 
     let scheduled: Payment[];
-    if (firstPaymentDate) {
-        const usedExistingIds = new Set<string>();
+    if (existingScheduled.length >= installments) {
+        // 🔒 Уже есть столько же (или больше) плановых записей, сколько установлено
+        // installments — значит ничего не пропущено, ничего достраивать не нужно. Берём
+        // существующие как есть, НЕ пытаясь угадать календарные месяцы через startDate.
+        // У Sale нет отдельного поля "дата первого платежа" (только paymentDay — день месяца),
+        // поэтому startDate+1 месяц — лишь предположение; если договор редактировали и
+        // реальная дата первого платежа съехала (например, при редактировании явно указали
+        // другую дату первого платежа), предположение расходится с тем, что уже в графике, и
+        // код (до этой правки) считал существующие месяцы "непонятными" и задваивал их лишней
+        // записью, хотя всё уже было на месте.
+        scheduled = existingScheduled.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    } else if (existingScheduled.length > 0) {
+        // 🔒 Не хватает части плановых слотов, но хотя бы один уже есть — опираемся на ЕГО
+        // дату (она отражает реальную дату первого платежа, которую выбрали при
+        // оформлении/редактировании), а не на startDate+1 месяц вслепую. Достраиваем
+        // недостающие месяцы либо ДО существующего блока, либо ПОСЛЕ — направление определяем
+        // по знаку "лишних" реальных денег: если реально оплачено больше, чем покрывают
+        // существующие слоты, — значит недостающие месяцы более РАННИЕ (деньгам просто некуда
+        // деваться против только поздних слотов); иначе — недостающие месяцы более ПОЗДНИЕ
+        // (обычный случай "не хватает хвоста графика").
+        const sortedExisting = existingScheduled
+            .slice()
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const existingSum = sortedExisting.reduce((sum, p) => sum + p.amount, 0);
+        const missingCount = installments - sortedExisting.length;
+        const extendBefore = totalRealPaid + totalDiscounts > existingSum + 0.01;
+
         const rebuilt: Payment[] = [];
-        for (let i = 0; i < installments; i++) {
-            const slotDate = addMonthsClamped(firstPaymentDate, i);
-            const slotMonthKey = slotDate.toISOString().slice(0, 7);
-            const match = existingScheduled.find(p => {
-                if (usedExistingIds.has(p.id)) return false;
-                const d = new Date(p.date);
-                return !isNaN(d.getTime()) && d.toISOString().slice(0, 7) === slotMonthKey;
-            });
-            if (match) {
-                usedExistingIds.add(match.id);
-                rebuilt.push(match);
-            } else {
+        if (extendBefore) {
+            const anchor = new Date(sortedExisting[0].date);
+            for (let i = missingCount; i >= 1; i--) {
+                const slotDate = addMonthsClamped(anchor, -i);
+                rebuilt.push({
+                    id: `pay_reconcile_${Date.now()}_${missingCount - i}`,
+                    saleId: sale.id,
+                    date: slotDate.toISOString(),
+                    amount: monthlyAmount,
+                    isPaid: false,
+                    isRealPayment: false
+                });
+            }
+            scheduled = [...rebuilt, ...sortedExisting];
+        } else {
+            const anchor = new Date(sortedExisting[sortedExisting.length - 1].date);
+            for (let i = 1; i <= missingCount; i++) {
+                const slotDate = addMonthsClamped(anchor, i);
                 rebuilt.push({
                     id: `pay_reconcile_${Date.now()}_${i}`,
                     saleId: sale.id,
@@ -343,11 +374,25 @@ const reconcileSalePaymentPlan = (sale: Sale): Sale => {
                     isRealPayment: false
                 });
             }
+            scheduled = [...sortedExisting, ...rebuilt];
         }
-        // Существующие плановые записи, не попавшие ни в один расчётный месяц (не должно
-        // происходить в норме) — не теряем их, дописываем как есть.
-        const leftover = existingScheduled.filter(p => !usedExistingIds.has(p.id));
-        scheduled = [...rebuilt, ...leftover].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    } else if (firstPaymentDate) {
+        // 🔙 Плановых слотов нет вообще (пустой график, installments:0-стиль договор) —
+        // единственный случай, где реально приходится вычислять дату первого платежа из
+        // startDate, потому что опереться не на что.
+        const rebuilt: Payment[] = [];
+        for (let i = 0; i < installments; i++) {
+            const slotDate = addMonthsClamped(firstPaymentDate, i);
+            rebuilt.push({
+                id: `pay_reconcile_${Date.now()}_${i}`,
+                saleId: sale.id,
+                date: slotDate.toISOString(),
+                amount: monthlyAmount,
+                isPaid: false,
+                isRealPayment: false
+            });
+        }
+        scheduled = rebuilt;
     } else {
         // 🔙 Не удалось разобрать startDate — подстраховка: старое поведение (докинуть
         // недостающую сумму одним слотом после последней записи), лучше грубо, чем никак.
@@ -1832,7 +1877,7 @@ const handleIncomeSubmit = async (data: any) => {
         const sale = sales.find(s => s.id === saleId);
 
         if (sale) {
-            const updatedSale = { ...sale };
+            const updatedSale = { ...sale, paymentPlan: [...sale.paymentPlan] };
 
             // 🆕 ЛОГИКА СО СКИДКОЙ: полное погашение с дисконтом
             if (discountAmount > 0) {

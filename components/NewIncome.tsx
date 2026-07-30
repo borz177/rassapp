@@ -52,6 +52,9 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [discountType, setDiscountType] = useState<'percent' | 'amount'>('percent');
   const [discountValue, setDiscountValue] = useState('');
 
+  const isSubmittingRef = useRef(false);
+const isConfirmingRef = useRef(false);
+
   const contractRef = useRef<HTMLDivElement>(null);
 
   const isSubscriptionExpired = useMemo(() => {
@@ -252,7 +255,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       return;
     }
 
-    if (isSubmitting) return;
+    if (isSubmittingRef.current) return;
 
     const numAmount = Number(amount);
     if (numAmount <= 0) { alert("Введите сумму больше нуля"); return; }
@@ -272,13 +275,15 @@ const NewIncome: React.FC<NewIncomeProps> = ({
       }
     }
 
-    setIsSubmitting(true);
-    setShowConfirmModal(true);
-  };
+      isSubmittingRef.current = true;
+  setIsSubmitting(true);
+  setShowConfirmModal(true);
+};
 
   const handleConfirm = async () => {
-    if (isConfirming) return;
-    setIsConfirming(true);
+    if (isConfirmingRef.current) return;
+  isConfirmingRef.current = true;
+  setIsConfirming(true);
     try {
       const numAmount = Number(amount);
       let finalDate = date;
@@ -353,12 +358,15 @@ const commonData = {
       setShowConfirmModal(false);
       setIsSubmitting(false);
       setIsConfirming(false);
+      isSubmittingRef.current = false;
+    isConfirmingRef.current = false;
     }
   };
 
   const handleCancel = () => {
     setShowConfirmModal(false);
     setIsSubmitting(false);
+    isSubmittingRef.current = false;
   };
 
   const renderContractContent = () => {
