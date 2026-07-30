@@ -270,6 +270,21 @@ const mergeServerData = <T extends { id: string }>(
 // (paymentPlan короче, чем installments), то remainingAmount не совпадал с суммой того, что
 // реально показывает график. Теперь ЛЮБОЕ сохранение договора проходит через эту функцию —
 // несогласованное состояние просто не может быть записано, независимо от причины.
+// 🔒 Безопасное прибавление месяцев к дате. Обычный `date.setMonth(date.getMonth()+n)` при дне
+// месяца 29-31 "переливается" в следующий месяц, если в целевом месяце столько дней нет —
+// например, 30 февраля не существует, и JS превращает его в 2 марта. Из-за этого при обходе
+// по installments месяцам подряд ДВЕ разные итерации (условно "февраль" и "март") попадали в
+// один и тот же календарный месяц (короткий месяц "съедался" соседним), и вместо того чтобы
+// найти существующую запись за этот месяц, код создавал дубликат — именно так в проде возникла
+// лишняя запись за март у Приоры. Здесь день месяца всегда КЛАМПится до последнего реального
+// дня целевого месяца, а не перетекает в следующий.
+const addMonthsClamped = (date: Date, months: number): Date => {
+    const targetFirst = new Date(date.getFullYear(), date.getMonth() + months, 1);
+    const daysInTargetMonth = new Date(targetFirst.getFullYear(), targetFirst.getMonth() + 1, 0).getDate();
+    targetFirst.setDate(Math.min(date.getDate(), daysInTargetMonth));
+    return targetFirst;
+};
+
 const reconcileSalePaymentPlan = (sale: Sale): Sale => {
     if (sale.type !== 'INSTALLMENT' || !Array.isArray(sale.paymentPlan)) return sale;
 
@@ -296,8 +311,11 @@ const reconcileSalePaymentPlan = (sale: Sale): Sale => {
     if (isNaN(firstPaymentDate.getTime())) {
         firstPaymentDate = null;
     } else {
-        firstPaymentDate.setMonth(firstPaymentDate.getMonth() + 1);
-        if (sale.paymentDay) firstPaymentDate.setDate(sale.paymentDay);
+        firstPaymentDate = addMonthsClamped(firstPaymentDate, 1);
+        if (sale.paymentDay) {
+            const daysInMonth = new Date(firstPaymentDate.getFullYear(), firstPaymentDate.getMonth() + 1, 0).getDate();
+            firstPaymentDate.setDate(Math.min(sale.paymentDay, daysInMonth));
+        }
     }
 
     let scheduled: Payment[];
@@ -305,8 +323,7 @@ const reconcileSalePaymentPlan = (sale: Sale): Sale => {
         const usedExistingIds = new Set<string>();
         const rebuilt: Payment[] = [];
         for (let i = 0; i < installments; i++) {
-            const slotDate = new Date(firstPaymentDate);
-            slotDate.setMonth(slotDate.getMonth() + i);
+            const slotDate = addMonthsClamped(firstPaymentDate, i);
             const slotMonthKey = slotDate.toISOString().slice(0, 7);
             const match = existingScheduled.find(p => {
                 if (usedExistingIds.has(p.id)) return false;

@@ -3,6 +3,30 @@ import { ICONS } from '../constants';
 import { AppSettings, TermRate } from '../types';
 import { api } from '../services/api';
 
+const MONTHS_RU = ['января','февраля','марта','апреля','мая','июня',
+                   'июля','августа','сентября','октября','ноября','декабря'];
+
+const fmtMoney = (n: number) => Math.round(n).toLocaleString('ru-RU');
+const fmtDate  = (d: Date)   => `${d.getDate()} ${MONTHS_RU[d.getMonth()]} ${d.getFullYear()}`;
+
+function todayISO() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function drawRRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
 interface CalculatorProps {
   isPublic?: boolean;
   appSettings?: AppSettings;
@@ -12,503 +36,714 @@ interface CalculatorProps {
 }
 
 const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, userPhone, onBack, onSaveSettings }) => {
-  // Public URL Params parsing
   const searchParams = new URLSearchParams(window.location.search);
   const pathName = window.location.pathname;
-  const configId = searchParams.get('cfg'); // 🔹 Новый параметр для серверного конфига
+  const configId = searchParams.get('cfg');
 
-  // Extract Company Name from Path if available
   let publicCompany = searchParams.get('c') || searchParams.get('company') || appSettings?.companyName || 'Наша Компания';
   if (pathName.startsWith('/calc/')) {
-      const parts = pathName.split('/');
-      if (parts.length >= 3 && parts[2]) {
-          publicCompany = decodeURIComponent(parts[2]);
-      }
+    const parts = pathName.split('/');
+    if (parts.length >= 3 && parts[2]) publicCompany = decodeURIComponent(parts[2]);
   }
 
-  // 🔹 Стабилизируем вычисление публичных правил через useMemo (фикс бесконечной загрузки)
   const { publicRate, publicRules } = useMemo(() => {
-      const rate = parseFloat(searchParams.get('r') || searchParams.get('rate') || '30');
-
-      const rulesParam = searchParams.get('rules');
-      const shortRulesParam = searchParams.get('l');
-      let rules: TermRate[] = [];
-
-      try {
-          if (rulesParam) {
-              rules = JSON.parse(decodeURIComponent(rulesParam));
-          } else if (shortRulesParam) {
-              rules = shortRulesParam.split(',').map(pair => {
-                  const [months, rate] = pair.split(':').map(Number);
-                  return { months, rate };
-              }).filter(r => !isNaN(r.months) && !isNaN(r.rate));
-          }
-      } catch (e) {
-          console.error("Failed to parse rules from URL", e);
+    const rate = parseFloat(searchParams.get('r') || searchParams.get('rate') || '30');
+    const rulesParam = searchParams.get('rules');
+    const shortRulesParam = searchParams.get('l');
+    let rules: TermRate[] = [];
+    try {
+      if (rulesParam) {
+        rules = JSON.parse(decodeURIComponent(rulesParam));
+      } else if (shortRulesParam) {
+        rules = shortRulesParam.split(',').map(pair => {
+          const [m, r] = pair.split(':').map(Number);
+          return { months: m, rate: r };
+        }).filter(r => !isNaN(r.months) && !isNaN(r.rate));
       }
+    } catch (e) {}
+    return { publicRate: rate, publicRules: rules };
+  }, [searchParams.toString()]);
 
-      return { publicRate: rate, publicRules: rules };
-  }, [searchParams.toString()]); // 🔹 Зависимость от строки, а не от объекта
-
-  // State
-  const [price, setPrice] = useState<string>('');
-  const [months, setMonths] = useState<number>(3);
+  const [price, setPrice]           = useState<string>('');
+  const [months, setMonths]         = useState<number>(3);
   const [downPayment, setDownPayment] = useState<string>('');
+  const [startDate, setStartDate]   = useState<string>(todayISO);
+  const [showSchedule, setShowSchedule] = useState(true);
+  const [isSharing, setIsSharing]   = useState(false);
 
-  // Admin Settings State
   const [defaultRate, setDefaultRate] = useState<string>(appSettings?.calculator?.defaultInterestRate?.toString() || '30');
-  const [termRates, setTermRates] = useState<TermRate[]>(appSettings?.calculator?.termRates || []);
+  const [termRates, setTermRates]     = useState<TermRate[]>(appSettings?.calculator?.termRates || []);
   const [showSettings, setShowSettings] = useState(false);
-
-  // 🔹 Состояние загрузки конфига с сервера
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
-
-  // New Rule State
   const [newRuleMonth, setNewRuleMonth] = useState<number>(3);
-  const [newRuleRate, setNewRuleRate] = useState<string>('');
+  const [newRuleRate, setNewRuleRate]   = useState<string>('');
+  const [sellerPhone, setSellerPhone]   = useState<string>('');
 
-  const [sellerPhone, setSellerPhone] = useState<string>('');
-
-  // 🔹 Загрузка конфига с сервера при наличии ?cfg=...
-  // 🔹 FIX: Только configId в зависимостях — предотвращает бесконечный ре-рендер
   useEffect(() => {
-      if (configId && !isLoadingConfig) {
-          setIsLoadingConfig(true);
+    if (configId && !isLoadingConfig) {
+      setIsLoadingConfig(true);
+      api.getCalculatorConfig(configId)
+        .then(config => {
+          if (config) {
+            setDefaultRate(config.defaultRate.toString());
+            setTermRates(config.termRates || []);
+            setSellerPhone(config.sellerPhone || '');
+          }
+        })
+        .catch(() => {
+          if (publicRate) setDefaultRate(publicRate.toString());
+          if (publicRules.length > 0) setTermRates(publicRules);
+        })
+        .finally(() => setIsLoadingConfig(false));
+    }
+  }, [configId]);
 
-          api.getCalculatorConfig(configId)
-              .then(config => {
-                  if (config) {
-                      setDefaultRate(config.defaultRate.toString());
-                      setTermRates(config.termRates || []);
-                      setSellerPhone(config.sellerPhone || '');
-                  }
-              })
-              .catch(error => {
-                  console.error("Failed to load config from server", error);
-                  // 🔹 Fallback: пробуем загрузить из старых параметров
-                  if (publicRate) setDefaultRate(publicRate.toString());
-                  if (publicRules.length > 0) setTermRates(publicRules);
-              })
-              .finally(() => {
-                  setIsLoadingConfig(false);
-              });
-      }
-  }, [configId]); // ✅ ТОЛЬКО configId — больше никаких зависимостей!
+  const activeRate = useMemo(() => {
+    const ratesToUse = isPublic ? (termRates.length > 0 ? termRates : publicRules) : termRates;
+    const baseRate   = parseFloat(defaultRate);
+    const specific   = ratesToUse?.find(r => r.months === months);
+    return specific ? specific.rate : baseRate;
+  }, [months, termRates, defaultRate, isPublic, publicRules]);
 
-  // Determine Active Rate
-  // Determine Active Rate
-const activeRate = useMemo(() => {
-  const ratesToUse = isPublic
-    ? (termRates.length > 0 ? termRates : publicRules)
-    : termRates;
-
-  const baseRate = parseFloat(defaultRate);
-
-  // Ищем ставку для выбранного месяца
-  const specificRule = ratesToUse?.find(r => r.months === months);
-
-  // Если нашли — возвращаем её, иначе — базовую ставку
-  return specificRule ? specificRule.rate : baseRate;
-}, [months, termRates, defaultRate, isPublic, publicRules]);
-
-  // Calculation
   const result = useMemo(() => {
-      const p = parseFloat(price) || 0;
-      const dp = parseFloat(downPayment) || 0;
-
-      const priceWithMarkup = p + (p * (activeRate / 100));
-      const remaining = priceWithMarkup - dp;
-      const monthly = months > 0 ? remaining / months : 0;
-      const roundedMonthly = Math.ceil(monthly / 100) * 100; // Smart round up
-
-      return {
-          total: priceWithMarkup,
-          monthly: roundedMonthly,
-          totalPayable: (roundedMonthly * months) + dp
-      };
+    const p  = parseFloat(price) || 0;
+    const dp = parseFloat(downPayment) || 0;
+    const priceWithMarkup = p + p * (activeRate / 100);
+    const remaining       = priceWithMarkup - dp;
+    const monthly         = months > 0 ? remaining / months : 0;
+    const roundedMonthly  = Math.ceil(monthly / 100) * 100;
+    return {
+      total:        priceWithMarkup,
+      monthly:      roundedMonthly,
+      totalPayable: roundedMonthly * months + dp,
+    };
   }, [price, months, downPayment, activeRate]);
 
-  // 🔹 ОБНОВЛЁННАЯ ФУНКЦИЯ: сохраняет конфиг на сервере → возвращает чистую ссылку
-  // 🔹 ОБНОВЛЁННАЯ ФУНКЦИЯ: с фолбэком для мобильных
-const handleCopyLink = async () => {
-  const companyName = encodeURIComponent(appSettings?.companyName || 'Company');
+  // График платежей
+  const paymentSchedule = useMemo(() => {
+    const p = parseFloat(price);
+    if (!p || p <= 0 || months <= 0 || result.monthly <= 0) return [];
+    const base = new Date(startDate);
+    const dp   = parseFloat(downPayment || '0');
+    const rows: { num: number; date: Date; amount: number; isDownPayment: boolean }[] = [];
+    if (dp > 0) {
+      rows.push({ num: 0, date: new Date(base), amount: dp, isDownPayment: true });
+    }
+    for (let i = 0; i < months; i++) {
+      const d = new Date(base);
+      d.setMonth(d.getMonth() + i + 1);
+      rows.push({ num: i + 1, date: d, amount: result.monthly, isDownPayment: false });
+    }
+    return rows;
+  }, [price, months, startDate, downPayment, result.monthly]);
 
-  try {
-    // 1. Сохраняем конфиг на сервере
-    const configId = await api.saveCalculatorConfig({
-      defaultRate: parseFloat(defaultRate),
-      termRates: termRates.map(r => ({ months: r.months, rate: r.rate }))
-    });
+  // Генерация изображения для "Поделиться"
+  const handleShare = async () => {
+    if (!parseFloat(price)) { alert('Введите стоимость товара'); return; }
+    setIsSharing(true);
+    try {
+      const canvas = document.createElement('canvas');
+      const W  = 640;
+      const PH = 52; // высота строки графика
+      const H  = 160 + 160 + 60 + paymentSchedule.length * PH + 60;
+      canvas.width  = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d')!;
 
-    // 2. Сохраняем настройки калькулятора в профиль пользователя
-    if (onSaveSettings && appSettings) {
-      onSaveSettings({
-        ...appSettings,
-        whatsapp: {
-          ...appSettings.whatsapp,
-          calculator: {
+      // Фон
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 0, W, H);
+
+      // ── Шапка ────────────────────────────────────────────────────
+      const hGrad = ctx.createLinearGradient(0, 0, W, 0);
+      hGrad.addColorStop(0, '#4f46e5');
+      hGrad.addColorStop(1, '#7c3aed');
+      ctx.fillStyle = hGrad;
+      ctx.fillRect(0, 0, W, 150);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.65)';
+      ctx.font = 'bold 13px Arial, sans-serif';
+      ctx.fillText('КАЛЬКУЛЯТОР РАССРОЧКИ', 36, 36);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 26px Arial, sans-serif';
+      ctx.fillText(publicCompany, 36, 70);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.font = '14px Arial, sans-serif';
+      ctx.fillText(`${months} мес. • Ставка ${activeRate}%`, 36, 100);
+
+      // Зелёный блок — ежемесячный платёж
+      const mGrad = ctx.createLinearGradient(0, 110, 0, 150);
+      mGrad.addColorStop(0, 'rgba(0,0,0,0)');
+      mGrad.addColorStop(1, 'rgba(0,0,0,0.18)');
+      ctx.fillStyle = mGrad;
+      ctx.fillRect(0, 110, W, 40);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.font = '13px Arial, sans-serif';
+      ctx.fillText('Ежемесячный платёж:', 36, 132);
+
+      ctx.fillStyle = '#6ee7b7';
+      ctx.font = 'bold 26px Arial, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${fmtMoney(result.monthly)} ₽/мес`, W - 36, 132);
+      ctx.textAlign = 'left';
+
+      // ── Сводка ───────────────────────────────────────────────────
+      ctx.fillStyle = '#ffffff';
+      drawRRect(ctx, 24, 165, W - 48, 130, 16);
+      ctx.fill();
+
+      const rows2 = [
+        { label: 'Стоимость товара',  val: `${fmtMoney(parseFloat(price || '0'))} ₽`,  color: '#1e293b' },
+        { label: `Наценка (${activeRate}%)`, val: `+${fmtMoney(result.total - parseFloat(price || '0'))} ₽`, color: '#f59e0b' },
+        { label: 'Первый взнос',      val: parseFloat(downPayment || '0') > 0 ? `${fmtMoney(parseFloat(downPayment))} ₽` : '—', color: '#64748b' },
+        { label: 'Итого к выплате',   val: `${fmtMoney(result.totalPayable)} ₽`, color: '#4f46e5' },
+      ];
+      rows2.forEach((r, i) => {
+        const ry = 192 + i * 26;
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '13px Arial, sans-serif';
+        ctx.fillText(r.label, 40, ry);
+        ctx.fillStyle = r.color;
+        ctx.font = 'bold 13px Arial, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(r.val, W - 40, ry);
+        ctx.textAlign = 'left';
+      });
+
+      // ── Заголовок графика ─────────────────────────────────────────
+      const schTop = 310;
+      ctx.fillStyle = '#1e293b';
+      ctx.font = 'bold 16px Arial, sans-serif';
+      ctx.fillText('График платежей', 36, schTop + 22);
+
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(36, schTop + 34);
+      ctx.lineTo(W - 36, schTop + 34);
+      ctx.stroke();
+
+      // ── Строки графика ────────────────────────────────────────────
+      paymentSchedule.forEach((p, i) => {
+        const ry = schTop + 46 + i * PH;
+        ctx.fillStyle = i % 2 === 0 ? '#f1f5f9' : '#ffffff';
+        ctx.fillRect(24, ry, W - 48, PH - 4);
+
+        if (p.isDownPayment) {
+          // Взнос
+          ctx.fillStyle = '#f59e0b';
+          drawRRect(ctx, 36, ry + 10, 62, 26, 13);
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 12px Arial, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('Взнос', 67, ry + 28);
+        } else {
+          // Номер платежа
+          const pillGrad = ctx.createLinearGradient(36, ry, 92, ry);
+          pillGrad.addColorStop(0, '#4f46e5');
+          pillGrad.addColorStop(1, '#7c3aed');
+          ctx.fillStyle = pillGrad;
+          ctx.beginPath();
+          ctx.arc(58, ry + 24, 18, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 13px Arial, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(String(p.num), 58, ry + 29);
+        }
+        ctx.textAlign = 'left';
+
+        // Дата
+        ctx.fillStyle = '#334155';
+        ctx.font = '14px Arial, sans-serif';
+        ctx.fillText(fmtDate(p.date), 90, ry + 29);
+
+        // Сумма
+        ctx.fillStyle = '#1e293b';
+        ctx.font = 'bold 16px Arial, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${fmtMoney(p.amount)} ₽`, W - 36, ry + 29);
+        ctx.textAlign = 'left';
+      });
+
+      // ── Подвал ────────────────────────────────────────────────────
+      const fY = H - 60;
+      const fGrad = ctx.createLinearGradient(0, fY, W, fY);
+      fGrad.addColorStop(0, '#4f46e5');
+      fGrad.addColorStop(1, '#7c3aed');
+      ctx.fillStyle = fGrad;
+      ctx.fillRect(0, fY, W, 60);
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.font = '13px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('rassrochka.pro — Сервис управления рассрочками', W / 2, fY + 36);
+      ctx.textAlign = 'left';
+
+      // Поделиться / скачать
+      await new Promise<void>((resolve) => {
+        canvas.toBlob(async (blob) => {
+          if (!blob) { resolve(); return; }
+          const file = new File([blob], 'rassrochka.png', { type: 'image/png' });
+          try {
+            if (navigator.share && (navigator as any).canShare?.({ files: [file] })) {
+              await navigator.share({
+                files: [file],
+                title: 'Расчёт рассрочки',
+                text: `${publicCompany} — рассрочка ${fmtMoney(result.monthly)} ₽/мес × ${months} мес.`,
+              });
+            } else {
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = 'rassrochka.png'; a.click();
+              URL.revokeObjectURL(url);
+            }
+          } catch (e) {}
+          resolve();
+        }, 'image/png');
+      });
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    const companyName = encodeURIComponent(appSettings?.companyName || 'Company');
+    try {
+      const cfgId = await api.saveCalculatorConfig({
+        defaultRate: parseFloat(defaultRate),
+        termRates: termRates.map(r => ({ months: r.months, rate: r.rate })),
+      });
+      if (onSaveSettings && appSettings) {
+        onSaveSettings({
+          ...appSettings,
+          whatsapp: { ...appSettings.whatsapp, calculator: {
             defaultInterestRate: parseFloat(defaultRate),
             termRates: termRates.map(r => ({ months: r.months, rate: r.rate })),
-            minDownPayment: 0
-          }
-        }
-      });
+            minDownPayment: 0,
+          }},
+        });
+      }
+      const cleanUrl = `${window.location.origin}/calc/${companyName}?cfg=${cfgId}`;
+      const copied = await copyToClipboard(cleanUrl);
+      if (copied) alert('✨ Ссылка скопирована!');
+      else alert(`📋 Скопируйте ссылку вручную:\n\n${cleanUrl}`);
+    } catch {
+      alert('❌ Ошибка сохранения настроек.');
     }
+  };
 
-    // 3. Формируем ссылку
-    const cleanUrl = `${window.location.origin}/calc/${companyName}?cfg=${configId}`;
-
-    // 🔥 4. Копируем с фолбэком для мобильных
-    const copied = await copyToClipboard(cleanUrl);
-
-    if (copied) {
-      alert("✨ Ссылка скопирована!");
-    } else {
-      // Фолбэк: показать ссылку для ручного копирования
-      alert(`📋 Скопируйте ссылку вручную:\n\n${cleanUrl}`);
+  const copyToClipboard = async (text: string): Promise<boolean> => {
+    if (navigator.clipboard?.writeText) {
+      try { await navigator.clipboard.writeText(text); return true; } catch {}
     }
-
-  } catch (error) {
-    console.error("Failed to save config", error);
-    alert("❌ Ошибка сохранения настроек.");
-  }
-};
-
-// 🔥 Вспомогательная функция: копирует с поддержкой всех устройств
-const copyToClipboard = async (text: string): Promise<boolean> => {
-  // Способ 1: Современный Clipboard API
-  if (navigator.clipboard && navigator.clipboard.writeText) {
     try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch (e) {
-      console.log('Clipboard API failed, trying fallback:', e);
-    }
-  }
-
-  // Способ 2: Фолбэк через textarea (работает везде)
-  try {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.left = '-9999px';
-    textarea.style.top = '-9999px';
-    document.body.appendChild(textarea);
-
-    textarea.focus();
-    textarea.select();
-
-    const success = document.execCommand('copy');
-    document.body.removeChild(textarea);
-
-    return success;
-  } catch (e) {
-    console.error('Fallback copy failed:', e);
-    return false;
-  }
-};
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch { return false; }
+  };
 
   const handleSaveConfig = () => {
-      if (onSaveSettings) {
-          onSaveSettings({
-              ...appSettings,
-              calculator: {
-                  defaultInterestRate: parseFloat(defaultRate),
-                  maxMonths: 12,
-                  termRates: termRates
-              }
-          });
-          setShowSettings(false);
-          alert("Настройки калькулятора сохранены");
-      }
+    if (onSaveSettings) {
+      onSaveSettings({ ...appSettings, calculator: {
+        defaultInterestRate: parseFloat(defaultRate),
+        maxMonths: 12,
+        termRates,
+      }});
+      setShowSettings(false);
+      alert('Настройки калькулятора сохранены');
+    }
   };
 
   const addRule = () => {
-      if (!newRuleRate) return;
-      const rate = parseFloat(newRuleRate);
-      if (isNaN(rate)) return;
-
-      setTermRates(prev => {
-          const filtered = prev.filter(r => r.months !== newRuleMonth);
-          return [...filtered, { months: newRuleMonth, rate }].sort((a,b) => a.months - b.months);
-      });
-      setNewRuleRate('');
+    if (!newRuleRate) return;
+    const rate = parseFloat(newRuleRate);
+    if (isNaN(rate)) return;
+    setTermRates(prev => [...prev.filter(r => r.months !== newRuleMonth), { months: newRuleMonth, rate }].sort((a,b) => a.months - b.months));
+    setNewRuleRate('');
   };
 
-  const removeRule = (month: number) => {
-      setTermRates(prev => prev.filter(r => r.months !== month));
-  };
+  const removeRule = (month: number) => setTermRates(prev => prev.filter(r => r.months !== month));
 
-// 🔥 Динамический список месяцев: 1-12 ИЛИ только настроенные ставки
-// 🔥 Динамический список месяцев: разная логика для админки и публичного режима
-const availableTerms = useMemo(() => {
-  // 🔹 В админке: всегда показываем 1-12, чтобы можно настроить любую ставку
-  if (!isPublic) {
-    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-  }
+  const availableTerms = useMemo(() => {
+    if (!isPublic) return [1,2,3,4,5,6,7,8,9,10,11,12];
+    if (termRates?.length > 0) return Array.from(new Set(termRates.map(r => r.months))).sort((a: number, b: number) => a - b);
+    return [1,2,3,4,5,6,7,8,9,10,11,12];
+  }, [termRates, isPublic]);
 
-  // 🔹 В публичном режиме: показываем только настроенные ставки
-  if (termRates && termRates.length > 0) {
-    const customTerms = termRates.map(r => r.months).sort((a, b) => a - b);
-    return [...new Set(customTerms)];
-  }
-
-  // Если в публичном режиме нет настроек — показываем 1-12
-  return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-}, [termRates, isPublic]);  // 🔹 Зависимость от isPublic
+  const hasPrice = parseFloat(price) > 0;
 
   return (
-    <div className={`min-h-screen ${isPublic ? 'bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4' : 'animate-fade-in pb-20'}`}>
-        <div className={`bg-white dark:bg-slate-800 w-full ${isPublic ? 'max-w-md rounded-3xl shadow-xl' : 'rounded-none bg-transparent'}`}>
+    <div className={`min-h-screen ${isPublic ? 'bg-gradient-to-br from-slate-100 to-indigo-50 dark:from-slate-900 dark:to-slate-800 flex items-start justify-center p-4 pt-6' : 'animate-fade-in pb-24'}`}>
+      <div className={`bg-white dark:bg-slate-800 w-full ${isPublic ? 'max-w-md rounded-3xl shadow-2xl overflow-hidden' : 'rounded-none bg-transparent'}`}>
 
-            {/* Header */}
-            <div className={`p-6 ${isPublic ? 'bg-indigo-600 rounded-t-3xl text-white' : ''}`}>
-                <div className="flex items-center gap-3 mb-2">
-                    {!isPublic && onBack && (
-                        <button onClick={onBack} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200">
-                            {ICONS.Back}
-                        </button>
-                    )}
-                    <div>
-                        <h2 className={`text-2xl font-bold ${isPublic ? 'text-white' : 'text-slate-800 dark:text-white'}`}>
-                            {isPublic ? 'Калькулятор рассрочки' : 'Калькулятор'}
-                        </h2>
-                        {isPublic && <p className="text-indigo-200 text-sm">{publicCompany}</p>}
-                        {!isPublic && <p className="text-slate-500 dark:text-slate-400 text-sm">Расчет условий и ссылка для клиента</p>}
-                    </div>
-                </div>
+        {/* Шапка */}
+        <div className={`p-6 pb-5 ${isPublic ? 'bg-gradient-to-br from-indigo-600 to-violet-600' : ''}`}>
+          <div className="flex items-center gap-3">
+            {!isPublic && onBack && (
+              <button onClick={onBack} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200">
+                {ICONS.Back}
+              </button>
+            )}
+            <div>
+              <h2 className={`text-2xl font-bold ${isPublic ? 'text-white' : 'text-slate-800 dark:text-white'}`}>
+                {isPublic ? 'Калькулятор рассрочки' : 'Калькулятор'}
+              </h2>
+              {isPublic
+                ? <p className="text-indigo-200 text-sm mt-0.5">{publicCompany}</p>
+                : <p className="text-slate-500 dark:text-slate-400 text-sm">Расчёт условий и ссылка для клиента</p>}
             </div>
-
-            <div className={`space-y-6 ${isPublic ? 'p-6' : ''}`}>
-
-                {/* 🔹 Индикатор загрузки конфига */}
-                {isLoadingConfig && (
-                    <div className="flex items-center justify-center py-4 text-indigo-600">
-                        <svg className="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                        </svg>
-                        Загрузка настроек...
-                    </div>
-                )}
-
-                {/* Inputs */}
-                <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-4">
-                    <div>
-                        <label className="block text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">Стоимость товара</label>
-                        <div className="relative">
-                            <input
-                                type="number"
-                                className="w-full p-4 pl-4 pr-12 text-xl font-bold border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500"
-                                placeholder="0"
-                                value={price}
-                                onChange={e => setPrice(e.target.value)}
-                            />
-                            <span className="absolute right-4 top-4 text-slate-400 dark:text-slate-500">₽</span>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">Срок (мес)</label>
-                            <select
-                                className="w-full p-4 border border-slate-200 dark:border-slate-600 rounded-xl outline-none bg-white dark:bg-slate-900 dark:text-white font-medium"
-                                value={months}
-                                onChange={e => setMonths(parseInt(e.target.value))}
-                            >
-                                {availableTerms.map(m => (
-                                    <option key={m} value={m}>{m} мес.</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-bold text-slate-500 dark:text-slate-400 mb-1">Взнос</label>
-                            <input
-                                type="number"
-                                className="w-full p-4 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                                placeholder="0"
-                                value={downPayment}
-                                onChange={e => setDownPayment(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Results */}
-                <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 text-white shadow-lg">
-                    <div className="flex justify-between items-end mb-4">
-                        <span className="text-slate-400 text-sm">Ежемесячный платеж</span>
-                        <span className="text-3xl font-bold text-emerald-400">{result.monthly.toLocaleString()} ₽</span>
-                    </div>
-                    <div className="border-t border-slate-700 pt-4 space-y-2 text-sm">
-                        <div className="flex justify-between">
-                            <span className="text-slate-400">Сумма товаров</span>
-                            <span>{parseFloat(price || '0').toLocaleString()} ₽</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-slate-400">
-                                Наценка ({activeRate}%)
-                            </span>
-                            <span className="text-amber-400">+{(result.total - parseFloat(price || '0')).toLocaleString()} ₽</span>
-                        </div>
-                        <div className="flex justify-between font-bold pt-2">
-                            <span className="text-slate-200">Итого к выплате</span>
-                            <span>{result.totalPayable.toLocaleString()} ₽</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Admin Controls (Hidden in Public Mode) */}
-                {!isPublic && (
-                    <div className="bg-indigo-50 dark:bg-indigo-950/40 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 animate-fade-in">
-                        <div className="flex justify-between items-center mb-3">
-                            <h3 className="font-bold text-indigo-900 dark:text-indigo-300">Настройки ставок</h3>
-                            <button onClick={() => setShowSettings(!showSettings)} className="text-xs text-indigo-600 dark:text-indigo-400 underline font-bold">
-                                {showSettings ? 'Свернуть' : 'Развернуть'}
-                            </button>
-                        </div>
-
-                        {showSettings ? (
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-indigo-400 uppercase mb-1">Базовая ставка (%)</label>
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="number"
-                                            className="flex-1 p-3 border border-indigo-200 dark:border-indigo-900/50 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                                            value={defaultRate}
-                                            onChange={e => setDefaultRate(e.target.value)}
-                                            placeholder="30"
-                                        />
-                                    </div>
-                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Применяется, если для срока нет отдельного правила.</p>
-                                </div>
-
-                                <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/50">
-                                    <label className="block text-xs font-bold text-indigo-400 uppercase mb-2">Специальные ставки по срокам</label>
-
-                                    {/* List of existing rules */}
-                                    <div className="space-y-2 mb-3">
-                                        {termRates.map(rule => (
-                                            <div key={rule.months} className="flex justify-between items-center bg-indigo-50 dark:bg-indigo-950/40 p-2 rounded-lg text-sm">
-                                                <span className="font-bold text-indigo-900 dark:text-indigo-300">{rule.months} мес.</span>
-                                                <div className="flex items-center gap-3">
-                                                    <span className="font-bold text-indigo-600 dark:text-indigo-400">{rule.rate}%</span>
-                                                    <button onClick={() => removeRule(rule.months)} className="text-red-400 hover:text-red-600">
-                                                        {ICONS.Close}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        {termRates.length === 0 && <p className="text-center text-xs text-slate-400 dark:text-slate-500 py-2">Нет специальных правил</p>}
-                                    </div>
-
-                                    {/* Add new rule */}
-                                    <div className="flex gap-2 items-end">
-                                        <div className="flex-1">
-                                            <label className="text-[10px] text-slate-400 dark:text-slate-500 block mb-1">Срок</label>
-                                            <select
-                                                className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm bg-slate-50 dark:bg-slate-900 dark:text-white outline-none"
-                                                value={newRuleMonth}
-                                                onChange={e => setNewRuleMonth(parseInt(e.target.value))}
-                                            >
-                                                {availableTerms.map(m => <option key={m} value={m}>{m} мес</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-[10px] text-slate-400 dark:text-slate-500 block mb-1">Ставка %</label>
-                                            <input
-                                                type="number"
-                                                className="w-full p-2 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm outline-none"
-                                                value={newRuleRate}
-                                                onChange={e => setNewRuleRate(e.target.value)}
-                                                placeholder="%"
-                                            />
-                                        </div>
-                                        <button onClick={addRule} className="p-2 bg-indigo-600 text-white rounded-lg h-[38px] w-[38px] flex items-center justify-center">
-                                            {ICONS.AddSmall}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <button onClick={handleSaveConfig} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">
-                                    Сохранить настройки
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="space-y-3">
-                                <button
-                                    onClick={handleCopyLink}
-                                    disabled={isLoadingConfig}
-                                    className={`w-full py-3 bg-white dark:bg-slate-800 border-2 border-indigo-200 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-400 font-bold rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/40 flex items-center justify-center gap-2 transition-colors ${isLoadingConfig ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                >
-                                    {isLoadingConfig ? (
-                                        <>
-                                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                                            </svg>
-                                            Сохранение...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                                            Копировать ссылку
-                                        </>
-                                    )}
-                                </button>
-                                <p className="text-center text-xs text-indigo-400">
-                                    Ссылка будет вида: rassrochka.pro/calc/ВашаКомпания
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {isPublic && (
-  <div className="text-center space-y-3">
-    {/* 🔥 Телефон: проверяем sellerPhone из конфига */}
-    {sellerPhone && (
-      <a
-        href={`tel:${sellerPhone}`}
-        className="w-full py-4 bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-200 flex items-center justify-center gap-2 hover:bg-blue-600 transition-colors"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-        </svg>
-        Позвонить: {sellerPhone.replace(/(\d)(\d{3})(\d{3})(\d{2})(\d{2})/, '+$1 ($2) $3-$4-$5')}
-      </a>
-    )}
-
-    {/* 🔥 WhatsApp: используем sellerPhone для формирования ссылки */}
-    {sellerPhone && (
-      <a
-        href={`https://wa.me/${sellerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Здравствуйте! Хочу узнать подробнее о рассрочке')}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="w-full py-4 bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
-        </svg>
-        Написать в WhatsApp
-      </a>
-    )}
-
-    {/* Если нет телефона */}
-    {!sellerPhone && (
-      <button className="w-full py-4 bg-slate-400 text-white font-bold rounded-xl shadow-lg cursor-not-allowed">
-        Контакты не указаны
-      </button>
-    )}
-
-    <p className="text-xs text-slate-400 dark:text-slate-500">
-      Расчет является предварительным. {publicCompany}
-    </p>
-  </div>
-)}
-            </div>
+          </div>
         </div>
+
+        <div className={`space-y-4 ${isPublic ? 'p-5 pt-4' : ''}`}>
+
+          {/* Индикатор загрузки */}
+          {isLoadingConfig && (
+            <div className="flex items-center justify-center py-3 text-indigo-600">
+              <svg className="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              Загрузка настроек...
+            </div>
+          )}
+
+          {/* ── Поля ввода ── */}
+          <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-4">
+
+            {/* Стоимость */}
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Стоимость товара</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  className="w-full p-4 pr-12 text-xl font-bold border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500 transition-colors"
+                  placeholder="0"
+                  value={price}
+                  onChange={e => setPrice(e.target.value)}
+                />
+                <span className="absolute right-4 top-4 text-slate-400 font-bold">₽</span>
+              </div>
+            </div>
+
+            {/* Срок + Взнос */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Срок</label>
+                <select
+                  className="w-full p-4 border border-slate-200 dark:border-slate-600 rounded-xl outline-none bg-white dark:bg-slate-900 dark:text-white font-semibold"
+                  value={months}
+                  onChange={e => setMonths(parseInt(e.target.value))}
+                >
+                  {availableTerms.map(m => <option key={m} value={m}>{m} мес.</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Первый взнос</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    className="w-full p-4 pr-8 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500 transition-colors font-semibold"
+                    placeholder="0"
+                    value={downPayment}
+                    onChange={e => setDownPayment(e.target.value)}
+                  />
+                  <span className="absolute right-3 top-4 text-slate-400 text-sm">₽</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Дата начала — НОВОЕ */}
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Дата начала</label>
+              <input
+                type="date"
+                className="w-full p-4 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500 transition-colors font-semibold"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+              />
+              <p className="text-xs text-slate-400 mt-1.5">Первый платёж по графику — со следующего месяца</p>
+            </div>
+          </div>
+
+          {/* ── Результат ── */}
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 text-white shadow-lg">
+            <div className="flex justify-between items-start mb-5">
+              <div>
+                <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Ежемесячный платёж</p>
+                <p className="text-4xl font-black text-emerald-400 tracking-tight">
+                  {hasPrice ? fmtMoney(result.monthly) : '—'} <span className="text-2xl text-emerald-500">₽</span>
+                </p>
+              </div>
+              {hasPrice && (
+                <div className="text-right">
+                  <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Итого</p>
+                  <p className="text-xl font-bold">{fmtMoney(result.totalPayable)} ₽</p>
+                </div>
+              )}
+            </div>
+            {hasPrice && (
+              <div className="border-t border-slate-700 pt-4 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Цена товара</span>
+                  <span className="font-medium">{fmtMoney(parseFloat(price))} ₽</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Наценка ({activeRate}%)</span>
+                  <span className="text-amber-400 font-medium">+{fmtMoney(result.total - parseFloat(price))} ₽</span>
+                </div>
+                {parseFloat(downPayment || '0') > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Первый взнос</span>
+                    <span className="text-indigo-300 font-medium">{fmtMoney(parseFloat(downPayment))} ₽</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── График платежей ── НОВОЕ */}
+          {hasPrice && paymentSchedule.length > 0 && (
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+              {/* Заголовок */}
+              <button
+                onClick={() => setShowSchedule(s => !s)}
+                className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600 dark:text-indigo-400">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                  </div>
+                  <span className="font-bold text-slate-800 dark:text-white">График платежей</span>
+                  <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-700 rounded-full px-2 py-0.5">{months} мес.</span>
+                </div>
+                <svg
+                  className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${showSchedule ? 'rotate-180' : ''}`}
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                >
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+
+              {showSchedule && (
+                <div className="border-t border-slate-100 dark:border-slate-700">
+                  <div className="divide-y divide-slate-50 dark:divide-slate-700/50">
+                    {paymentSchedule.map((row, i) => (
+                      <div key={i} className={`flex items-center gap-3 px-5 py-3.5 ${i % 2 === 0 ? '' : 'bg-slate-50/60 dark:bg-slate-700/20'}`}>
+                        {/* Номер / взнос */}
+                        {row.isDownPayment ? (
+                          <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600 dark:text-amber-400">
+                              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                            </svg>
+                          </div>
+                        ) : (
+                          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center flex-shrink-0 shadow-sm shadow-indigo-200 dark:shadow-indigo-900/30">
+                            <span className="text-white font-bold text-sm">{row.num}</span>
+                          </div>
+                        )}
+
+                        {/* Дата */}
+                        <div className="flex-1 min-w-0">
+                          {row.isDownPayment ? (
+                            <>
+                              <p className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wide">Первый взнос</p>
+                              <p className="text-sm text-slate-500 dark:text-slate-400">{fmtDate(row.date)}</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-sm font-semibold text-slate-800 dark:text-white">{fmtDate(row.date)}</p>
+                              <p className="text-xs text-slate-400">{row.num} из {months}</p>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Сумма */}
+                        <div className="text-right flex-shrink-0">
+                          <p className={`text-base font-black ${row.isDownPayment ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-white'}`}>
+                            {fmtMoney(row.amount)} ₽
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Итого */}
+                  <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-indigo-50 to-violet-50 dark:from-indigo-950/40 dark:to-violet-950/40 border-t border-indigo-100 dark:border-indigo-900/50">
+                    <span className="text-sm font-bold text-slate-600 dark:text-slate-300">Итого к выплате</span>
+                    <span className="text-lg font-black text-indigo-700 dark:text-indigo-300">{fmtMoney(result.totalPayable)} ₽</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Кнопка Поделиться ── НОВОЕ */}
+          {hasPrice && (
+            <button
+              onClick={handleShare}
+              disabled={isSharing}
+              className="w-full py-4 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-70"
+            >
+              {isSharing ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                  Создание...
+                </>
+              ) : (
+                <>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                  </svg>
+                  Поделиться расчётом
+                </>
+              )}
+            </button>
+          )}
+
+          {/* ── Настройки (только для админа) ── */}
+          {!isPublic && (
+            <div className="bg-indigo-50 dark:bg-indigo-950/40 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 animate-fade-in">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="font-bold text-indigo-900 dark:text-indigo-300">Настройки ставок</h3>
+                <button onClick={() => setShowSettings(!showSettings)} className="text-xs text-indigo-600 dark:text-indigo-400 underline font-bold">
+                  {showSettings ? 'Свернуть' : 'Развернуть'}
+                </button>
+              </div>
+
+              {showSettings ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-indigo-400 uppercase mb-1">Базовая ставка (%)</label>
+                    <input
+                      type="number"
+                      className="w-full p-3 border border-indigo-200 dark:border-indigo-900/50 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
+                      value={defaultRate}
+                      onChange={e => setDefaultRate(e.target.value)}
+                      placeholder="30"
+                    />
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Применяется, если для срока нет отдельного правила.</p>
+                  </div>
+
+                  <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/50">
+                    <label className="block text-xs font-bold text-indigo-400 uppercase mb-2">Специальные ставки по срокам</label>
+                    <div className="space-y-2 mb-3">
+                      {termRates.map(rule => (
+                        <div key={rule.months} className="flex justify-between items-center bg-indigo-50 dark:bg-indigo-950/40 p-2 rounded-lg text-sm">
+                          <span className="font-bold text-indigo-900 dark:text-indigo-300">{rule.months} мес.</span>
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold text-indigo-600 dark:text-indigo-400">{rule.rate}%</span>
+                            <button onClick={() => removeRule(rule.months)} className="text-red-400 hover:text-red-600">{ICONS.Close}</button>
+                          </div>
+                        </div>
+                      ))}
+                      {termRates.length === 0 && <p className="text-center text-xs text-slate-400 dark:text-slate-500 py-2">Нет специальных правил</p>}
+                    </div>
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <label className="text-[10px] text-slate-400 dark:text-slate-500 block mb-1">Срок</label>
+                        <select
+                          className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm bg-slate-50 dark:bg-slate-900 dark:text-white outline-none"
+                          value={newRuleMonth}
+                          onChange={e => setNewRuleMonth(parseInt(e.target.value))}
+                        >
+                          {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{m} мес</option>)}
+                        </select>
+                      </div>
+                      <div className="w-20">
+                        <label className="text-[10px] text-slate-400 dark:text-slate-500 block mb-1">Ставка %</label>
+                        <input
+                          type="number"
+                          className="w-full p-2 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm outline-none"
+                          value={newRuleRate}
+                          onChange={e => setNewRuleRate(e.target.value)}
+                          placeholder="%"
+                        />
+                      </div>
+                      <button onClick={addRule} className="p-2 bg-indigo-600 text-white rounded-lg h-[38px] w-[38px] flex items-center justify-center">
+                        {ICONS.AddSmall}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button onClick={handleSaveConfig} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">
+                    Сохранить настройки
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <button
+                    onClick={handleCopyLink}
+                    disabled={isLoadingConfig}
+                    className={`w-full py-3 bg-white dark:bg-slate-800 border-2 border-indigo-200 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-400 font-bold rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-900/40 flex items-center justify-center gap-2 transition-colors ${isLoadingConfig ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {isLoadingConfig ? (
+                      <><svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Сохранение...</>
+                    ) : (
+                      <><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> Копировать ссылку</>
+                    )}
+                  </button>
+                  <p className="text-center text-xs text-indigo-400">Ссылка будет вида: rassrochka.pro/calc/ВашаКомпания</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Контакты (публичный режим) ── */}
+          {isPublic && (
+            <div className="space-y-3 pt-1">
+              {sellerPhone ? (
+                <>
+                  <a
+                    href={`tel:${sellerPhone}`}
+                    className="w-full py-4 bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-200 flex items-center justify-center gap-2 hover:bg-blue-600 transition-colors"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                    </svg>
+                    Позвонить: {sellerPhone.replace(/(\d)(\d{3})(\d{3})(\d{2})(\d{2})/, '+$1 ($2) $3-$4-$5')}
+                  </a>
+                  <a
+                    href={`https://wa.me/${sellerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Здравствуйте! Хочу узнать подробнее о рассрочке')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-4 bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                    </svg>
+                    Написать в WhatsApp
+                  </a>
+                </>
+              ) : (
+                <div className="py-3 text-center text-xs text-slate-400 dark:text-slate-500">
+                  Контакты не указаны
+                </div>
+              )}
+              <p className="text-center text-xs text-slate-400 dark:text-slate-500 pb-2">
+                Расчёт является предварительным. {publicCompany}
+              </p>
+            </div>
+          )}
+
+        </div>
+      </div>
     </div>
   );
 };
