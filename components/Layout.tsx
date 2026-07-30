@@ -397,6 +397,10 @@ const counts = useMemo(() => {
                 <div className="bg-slate-100 dark:bg-slate-700 p-2 rounded-full text-slate-600 dark:text-slate-300">{ICONS.List}</div>
                 <span className="font-semibold">Все операции</span>
              </button>
+             <button onClick={() => handleActionClick('CALCULATOR')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                <div className="bg-violet-100 dark:bg-violet-900/30 p-2 rounded-full text-violet-600 dark:text-violet-400">{ICONS.Calculator}</div>
+                <span className="font-semibold">Калькулятор</span>
+             </button>
           </div>
         </div>
       )}

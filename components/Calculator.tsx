@@ -123,15 +123,20 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   const paymentSchedule = useMemo(() => {
     const p = parseFloat(price);
     if (!p || p <= 0 || months <= 0 || result.monthly <= 0) return [];
-    const base = new Date(startDate);
-    const dp   = parseFloat(downPayment || '0');
+    const base    = new Date(startDate);
+    const baseDay = base.getDate(); // день начала — сохраняем для клампинга (30 → последний день февраля)
+    const dp      = parseFloat(downPayment || '0');
     const rows: { num: number; date: Date; amount: number; isDownPayment: boolean }[] = [];
     if (dp > 0) {
       rows.push({ num: 0, date: new Date(base), amount: dp, isDownPayment: true });
     }
     for (let i = 0; i < months; i++) {
       const d = new Date(base);
+      d.setDate(1); // сбрасываем до 1-го, чтобы не было переполнения месяца
       d.setMonth(d.getMonth() + i + 1);
+      // Клампим день: если в целевом месяце меньше дней (напр. февраль), берём последний день
+      const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      d.setDate(Math.min(baseDay, lastDay));
       rows.push({ num: i + 1, date: d, amount: result.monthly, isDownPayment: false });
     }
     return rows;
@@ -143,12 +148,17 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
     setIsSharing(true);
     try {
       const canvas = document.createElement('canvas');
+      // 2× разрешение для чёткости на Retina/высокоплотных экранах
+      const SCALE = 2;
       const W  = 640;
-      const PH = 52; // высота строки графика
-      const H  = 160 + 160 + 60 + paymentSchedule.length * PH + 60;
-      canvas.width  = W;
-      canvas.height = H;
+      const PH = 56;
+      const H  = 130 + 150 + 60 + paymentSchedule.length * PH + 24;
+      canvas.width  = W * SCALE;
+      canvas.height = H * SCALE;
+      canvas.style.width  = `${W}px`;
+      canvas.style.height = `${H}px`;
       const ctx = canvas.getContext('2d')!;
+      ctx.scale(SCALE, SCALE);
 
       // Фон
       ctx.fillStyle = '#f8fafc';
@@ -159,129 +169,108 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
       hGrad.addColorStop(0, '#4f46e5');
       hGrad.addColorStop(1, '#7c3aed');
       ctx.fillStyle = hGrad;
-      ctx.fillRect(0, 0, W, 150);
-
-      ctx.fillStyle = 'rgba(255,255,255,0.65)';
-      ctx.font = 'bold 13px Arial, sans-serif';
-      ctx.fillText('КАЛЬКУЛЯТОР РАССРОЧКИ', 36, 36);
+      ctx.fillRect(0, 0, W, 120);
 
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 26px Arial, sans-serif';
-      ctx.fillText(publicCompany, 36, 70);
+      ctx.font = 'bold 24px Arial, sans-serif';
+      ctx.fillText(publicCompany, 36, 52);
 
       ctx.fillStyle = 'rgba(255,255,255,0.7)';
       ctx.font = '14px Arial, sans-serif';
-      ctx.fillText(`${months} мес. • Ставка ${activeRate}%`, 36, 100);
+      ctx.fillText(`${months} мес. • Ставка ${activeRate}%`, 36, 80);
 
-      // Зелёный блок — ежемесячный платёж
-      const mGrad = ctx.createLinearGradient(0, 110, 0, 150);
+      // Нижняя полоса шапки — ежемесячный платёж
+      const mGrad = ctx.createLinearGradient(0, 90, 0, 120);
       mGrad.addColorStop(0, 'rgba(0,0,0,0)');
-      mGrad.addColorStop(1, 'rgba(0,0,0,0.18)');
+      mGrad.addColorStop(1, 'rgba(0,0,0,0.2)');
       ctx.fillStyle = mGrad;
-      ctx.fillRect(0, 110, W, 40);
+      ctx.fillRect(0, 90, W, 30);
 
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.font = '13px Arial, sans-serif';
-      ctx.fillText('Ежемесячный платёж:', 36, 132);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.font = '12px Arial, sans-serif';
+      ctx.fillText('Ежемесячный платёж:', 36, 110);
 
       ctx.fillStyle = '#6ee7b7';
-      ctx.font = 'bold 26px Arial, sans-serif';
+      ctx.font = 'bold 22px Arial, sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText(`${fmtMoney(result.monthly)} ₽/мес`, W - 36, 132);
+      ctx.fillText(`${fmtMoney(result.monthly)} ₽/мес`, W - 36, 110);
       ctx.textAlign = 'left';
 
       // ── Сводка ───────────────────────────────────────────────────
       ctx.fillStyle = '#ffffff';
-      drawRRect(ctx, 24, 165, W - 48, 130, 16);
+      drawRRect(ctx, 20, 134, W - 40, 136, 14);
       ctx.fill();
 
       const rows2 = [
-        { label: 'Стоимость товара',  val: `${fmtMoney(parseFloat(price || '0'))} ₽`,  color: '#1e293b' },
+        { label: 'Стоимость товара',        val: `${fmtMoney(parseFloat(price || '0'))} ₽`, color: '#1e293b' },
         { label: `Наценка (${activeRate}%)`, val: `+${fmtMoney(result.total - parseFloat(price || '0'))} ₽`, color: '#f59e0b' },
-        { label: 'Первый взнос',      val: parseFloat(downPayment || '0') > 0 ? `${fmtMoney(parseFloat(downPayment))} ₽` : '—', color: '#64748b' },
-        { label: 'Итого к выплате',   val: `${fmtMoney(result.totalPayable)} ₽`, color: '#4f46e5' },
+        { label: 'Первый взнос',             val: parseFloat(downPayment || '0') > 0 ? `${fmtMoney(parseFloat(downPayment))} ₽` : '—', color: '#64748b' },
+        { label: 'Итого к выплате',          val: `${fmtMoney(result.totalPayable)} ₽`, color: '#4f46e5' },
       ];
       rows2.forEach((r, i) => {
-        const ry = 192 + i * 26;
+        const ry = 158 + i * 28;
         ctx.fillStyle = '#94a3b8';
         ctx.font = '13px Arial, sans-serif';
-        ctx.fillText(r.label, 40, ry);
+        ctx.fillText(r.label, 36, ry);
         ctx.fillStyle = r.color;
         ctx.font = 'bold 13px Arial, sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText(r.val, W - 40, ry);
+        ctx.fillText(r.val, W - 36, ry);
         ctx.textAlign = 'left';
       });
 
       // ── Заголовок графика ─────────────────────────────────────────
-      const schTop = 310;
+      const schTop = 290;
       ctx.fillStyle = '#1e293b';
-      ctx.font = 'bold 16px Arial, sans-serif';
+      ctx.font = 'bold 15px Arial, sans-serif';
       ctx.fillText('График платежей', 36, schTop + 22);
 
       ctx.strokeStyle = '#e2e8f0';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(36, schTop + 34);
-      ctx.lineTo(W - 36, schTop + 34);
+      ctx.moveTo(36, schTop + 32);
+      ctx.lineTo(W - 36, schTop + 32);
       ctx.stroke();
 
       // ── Строки графика ────────────────────────────────────────────
       paymentSchedule.forEach((p, i) => {
-        const ry = schTop + 46 + i * PH;
+        const ry = schTop + 40 + i * PH;
         ctx.fillStyle = i % 2 === 0 ? '#f1f5f9' : '#ffffff';
-        ctx.fillRect(24, ry, W - 48, PH - 4);
+        ctx.fillRect(20, ry, W - 40, PH - 4);
 
         if (p.isDownPayment) {
-          // Взнос
           ctx.fillStyle = '#f59e0b';
-          drawRRect(ctx, 36, ry + 10, 62, 26, 13);
+          drawRRect(ctx, 32, ry + 10, 58, 24, 12);
           ctx.fill();
           ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 12px Arial, sans-serif';
+          ctx.font = 'bold 11px Arial, sans-serif';
           ctx.textAlign = 'center';
-          ctx.fillText('Взнос', 67, ry + 28);
+          ctx.fillText('Взнос', 61, ry + 27);
         } else {
-          // Номер платежа
-          const pillGrad = ctx.createLinearGradient(36, ry, 92, ry);
+          const pillGrad = ctx.createLinearGradient(32, 0, 88, 0);
           pillGrad.addColorStop(0, '#4f46e5');
           pillGrad.addColorStop(1, '#7c3aed');
           ctx.fillStyle = pillGrad;
           ctx.beginPath();
-          ctx.arc(58, ry + 24, 18, 0, Math.PI * 2);
+          ctx.arc(54, ry + 22, 17, 0, Math.PI * 2);
           ctx.fill();
           ctx.fillStyle = '#ffffff';
           ctx.font = 'bold 13px Arial, sans-serif';
           ctx.textAlign = 'center';
-          ctx.fillText(String(p.num), 58, ry + 29);
+          ctx.fillText(String(p.num), 54, ry + 27);
         }
         ctx.textAlign = 'left';
 
-        // Дата
         ctx.fillStyle = '#334155';
         ctx.font = '14px Arial, sans-serif';
-        ctx.fillText(fmtDate(p.date), 90, ry + 29);
+        ctx.fillText(fmtDate(p.date), 82, ry + 27);
 
-        // Сумма
         ctx.fillStyle = '#1e293b';
-        ctx.font = 'bold 16px Arial, sans-serif';
+        ctx.font = 'bold 15px Arial, sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText(`${fmtMoney(p.amount)} ₽`, W - 36, ry + 29);
+        ctx.fillText(`${fmtMoney(p.amount)} ₽`, W - 28, ry + 27);
         ctx.textAlign = 'left';
       });
-
-      // ── Подвал ────────────────────────────────────────────────────
-      const fY = H - 60;
-      const fGrad = ctx.createLinearGradient(0, fY, W, fY);
-      fGrad.addColorStop(0, '#4f46e5');
-      fGrad.addColorStop(1, '#7c3aed');
-      ctx.fillStyle = fGrad;
-      ctx.fillRect(0, fY, W, 60);
-      ctx.fillStyle = 'rgba(255,255,255,0.75)';
-      ctx.font = '13px Arial, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('rassrochka.pro — Сервис управления рассрочками', W / 2, fY + 36);
-      ctx.textAlign = 'left';
 
       // Поделиться / скачать
       await new Promise<void>((resolve) => {
@@ -590,8 +579,8 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
             </div>
           )}
 
-          {/* ── Кнопка Поделиться ── НОВОЕ */}
-          {hasPrice && (
+          {/* ── Кнопка Поделиться ── только в режиме менеджера */}
+          {hasPrice && !isPublic && (
             <button
               onClick={handleShare}
               disabled={isSharing}
