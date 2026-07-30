@@ -373,7 +373,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
   return (
     <div className={`min-h-screen ${isPublic ? 'bg-gradient-to-br from-slate-100 to-indigo-50 dark:from-slate-900 dark:to-slate-800 flex items-start justify-center p-4 pt-6' : 'animate-fade-in pb-24'}`}>
-      <div className={`bg-white dark:bg-slate-800 w-full ${isPublic ? 'max-w-md rounded-3xl shadow-2xl overflow-hidden' : 'rounded-none bg-transparent'}`}>
+      <div className={`bg-white dark:bg-slate-800 w-full ${isPublic ? 'max-w-md rounded-3xl shadow-2xl overflow-hidden' : 'rounded-3xl overflow-hidden'}`}>
 
         {/* Шапка */}
         <div className={`p-6 pb-5 ${isPublic ? 'bg-gradient-to-br from-indigo-600 to-violet-600' : ''}`}>
