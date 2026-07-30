@@ -54,6 +54,7 @@ const Layout: React.FC<LayoutProps> = ({
   onOpenNotifications,
   showNotificationsBell = false,
 }) => {  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isMenuClosing, setIsMenuClosing] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
   const isInvestor = user?.role === 'investor';
@@ -184,8 +185,17 @@ const counts = useMemo(() => {
       return allSidebarItems.filter(item => item.visible);
   }, [user, counts, isInvestor, investorPermissions]);
 
+  const closeMenu = () => {
+    setIsMenuClosing(true);
+    setTimeout(() => {
+      setIsMenuOpen(false);
+      setIsMenuClosing(false);
+    }, 260);
+  };
+
   const handleFabClick = () => {
-    setIsMenuOpen(!isMenuOpen);
+    if (isMenuOpen) closeMenu();
+    else { setIsMenuOpen(true); setIsMenuClosing(false); }
   };
 
   const toggleMenu = (id: string) => {
@@ -279,8 +289,8 @@ const counts = useMemo(() => {
   };
 
   const handleActionClick = (action: string) => {
-      setIsMenuOpen(false);
-      onAction(action);
+    closeMenu();
+    setTimeout(() => onAction(action), 260);
   };
 
   return (
@@ -374,33 +384,38 @@ const counts = useMemo(() => {
       {/* Mobile Quick Actions Menu (Triggered by FAB) - ONLY FOR MANAGER/EMPLOYEE */}
       {!isInvestor && isMenuOpen && (
         <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden flex flex-col justify-end pb-24 px-4 animate-fade-in"
-          onClick={() => setIsMenuOpen(false)}
+          className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden flex flex-col justify-end pb-32 px-4 ${isMenuClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
+          onClick={closeMenu}
         >
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-2xl space-y-2 mb-4" onClick={e => e.stopPropagation()}>
-             <div className="pb-2 mb-2 border-b border-slate-100 dark:border-slate-700">
-                 <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm uppercase px-2">Быстрые действия</h3>
-             </div>
-             <button onClick={() => handleActionClick('CALCULATOR')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                <div className="bg-violet-100 dark:bg-violet-900/30 p-2 rounded-full text-violet-600 dark:text-violet-400">{ICONS.Calculator}</div>
-                <span className="font-semibold">Калькулятор</span>
-             </button>
-             <button onClick={() => handleActionClick('CREATE_SALE')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2 rounded-full text-indigo-600 dark:text-indigo-400">{ICONS.Sales}</div>
-                <span className="font-semibold">Оформить продажу</span>
-             </button>
-             <button onClick={() => handleActionClick('INCOME')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2 rounded-full text-emerald-600 dark:text-emerald-400">{ICONS.Income}</div>
-                <span className="font-semibold">Приход (Внести)</span>
-             </button>
-             <button onClick={() => handleActionClick('EXPENSE')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                <div className="bg-red-100 dark:bg-red-900/30 p-2 rounded-full text-red-600 dark:text-red-400">{ICONS.Expense}</div>
-                <span className="font-semibold">Расход (Изъять)</span>
-             </button>
-             <button onClick={() => handleActionClick('OPERATIONS')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                <div className="bg-slate-100 dark:bg-slate-700 p-2 rounded-full text-slate-600 dark:text-slate-300">{ICONS.List}</div>
-                <span className="font-semibold">Все операции</span>
-             </button>
+          <div
+            className={`bg-white dark:bg-slate-800 rounded-2xl shadow-2xl overflow-hidden ${isMenuClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-4 pt-4 pb-2 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm uppercase tracking-wide">Быстрые действия</h3>
+            </div>
+            <div className="p-2">
+              <button onClick={() => handleActionClick('CALCULATOR')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                <div className="bg-violet-100 dark:bg-violet-900/30 p-2.5 rounded-full text-violet-600 dark:text-violet-400">{ICONS.Calculator}</div>
+                <span className="font-semibold text-[15px]">Калькулятор</span>
+              </button>
+              <button onClick={() => handleActionClick('CREATE_SALE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2.5 rounded-full text-indigo-600 dark:text-indigo-400">{ICONS.Sales}</div>
+                <span className="font-semibold text-[15px]">Оформить продажу</span>
+              </button>
+              <button onClick={() => handleActionClick('INCOME')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2.5 rounded-full text-emerald-600 dark:text-emerald-400">{ICONS.Income}</div>
+                <span className="font-semibold text-[15px]">Приход (Внести)</span>
+              </button>
+              <button onClick={() => handleActionClick('EXPENSE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                <div className="bg-red-100 dark:bg-red-900/30 p-2.5 rounded-full text-red-600 dark:text-red-400">{ICONS.Expense}</div>
+                <span className="font-semibold text-[15px]">Расход (Изъять)</span>
+              </button>
+              <button onClick={() => handleActionClick('OPERATIONS')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                <div className="bg-slate-100 dark:bg-slate-700 p-2.5 rounded-full text-slate-600 dark:text-slate-300">{ICONS.List}</div>
+                <span className="font-semibold text-[15px]">Все операции</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
