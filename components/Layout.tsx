@@ -381,6 +381,10 @@ const counts = useMemo(() => {
              <div className="pb-2 mb-2 border-b border-slate-100 dark:border-slate-700">
                  <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm uppercase px-2">Быстрые действия</h3>
              </div>
+             <button onClick={() => handleActionClick('CALCULATOR')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                <div className="bg-violet-100 dark:bg-violet-900/30 p-2 rounded-full text-violet-600 dark:text-violet-400">{ICONS.Calculator}</div>
+                <span className="font-semibold">Калькулятор</span>
+             </button>
              <button onClick={() => handleActionClick('CREATE_SALE')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
                 <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2 rounded-full text-indigo-600 dark:text-indigo-400">{ICONS.Sales}</div>
                 <span className="font-semibold">Оформить продажу</span>
@@ -396,10 +400,6 @@ const counts = useMemo(() => {
              <button onClick={() => handleActionClick('OPERATIONS')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
                 <div className="bg-slate-100 dark:bg-slate-700 p-2 rounded-full text-slate-600 dark:text-slate-300">{ICONS.List}</div>
                 <span className="font-semibold">Все операции</span>
-             </button>
-             <button onClick={() => handleActionClick('CALCULATOR')} className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                <div className="bg-violet-100 dark:bg-violet-900/30 p-2 rounded-full text-violet-600 dark:text-violet-400">{ICONS.Calculator}</div>
-                <span className="font-semibold">Калькулятор</span>
              </button>
           </div>
         </div>
