@@ -1345,6 +1345,7 @@ const dashboardStats = useMemo(() => {
           case 'INCOME': setDraftSaleData({}); setCurrentView('CREATE_INCOME'); break;
           case 'EXPENSE': setCurrentView('CREATE_EXPENSE'); break;
           case 'OPERATIONS': setOperationsAccountId(null); setCurrentView('OPERATIONS'); break;
+          case 'CALCULATOR': setCurrentView('CALCULATOR'); break;
           case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break;
           case 'ADD_CUSTOMER': setCurrentView('CUSTOMERS'); break;
           case 'ADD_PRODUCT': setCurrentView('MANAGE_PRODUCTS'); break;
