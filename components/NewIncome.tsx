@@ -196,10 +196,20 @@ const NewIncome: React.FC<NewIncomeProps> = ({
 
   const generateContractPDF = async (sale: Sale, customer: Customer, currentPaymentAmount: number, paymentDate: string): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
-    const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-      import('jspdf'),
-      import('html2canvas')
-    ]);
+    let jsPDF: any, html2canvas: any;
+    try {
+      [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas')
+      ]);
+    } catch (importErr: any) {
+      if (importErr?.message?.includes('MIME') || importErr?.message?.includes('text/html')) {
+        const err: any = new Error('APP_UPDATE_REQUIRED');
+        err.isUpdateRequired = true;
+        throw err;
+      }
+      throw importErr;
+    }
     // 🔒 Повторная проверка после await: если за время загрузки чанков форма всё же
     // размонтировалась — бросаем понятную ошибку вместо краша на cloneNode.
     if (!contractRef.current) throw new Error("Contract element not found");
@@ -322,7 +332,14 @@ const commonData = {
             else alert("Ошибка отправки PDF в WhatsApp");
           } catch (error: any) {
             console.error("PDF generation error:", error);
-            alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
+            if (error?.isUpdateRequired || error?.message === 'APP_UPDATE_REQUIRED' ||
+                error?.message?.includes('MIME') || error?.message?.includes('text/html')) {
+              if (window.confirm('Приложение было обновлено. Нажмите OK для перезагрузки, затем повторите отправку.')) {
+                window.location.reload();
+              }
+            } else {
+              alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
+            }
           }
         }
 

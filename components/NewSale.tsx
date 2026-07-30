@@ -814,10 +814,21 @@ if (mode === 'CASH') {
   // в главный бандл.
   const generatePDFBlob = async (): Promise<Blob> => {
     if (!contractRef.current) throw new Error("Contract element not found");
-    const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-      import('jspdf'),
-      import('html2canvas')
-    ]);
+    let jsPDF: any, html2canvas: any;
+    try {
+      [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas')
+      ]);
+    } catch (importErr: any) {
+      // Старый кеш PWA после деплоя — сервер вернул HTML вместо JS-чанка
+      if (importErr?.message?.includes('MIME') || importErr?.message?.includes('text/html')) {
+        const err: any = new Error('APP_UPDATE_REQUIRED');
+        err.isUpdateRequired = true;
+        throw err;
+      }
+      throw importErr;
+    }
     const element = contractRef.current;
     const originalStyle = {
       display: element.style.display,
@@ -913,6 +924,25 @@ if (mode === 'CASH') {
       }
 
     } catch (error: any) {
+      // Приложение обновилось, кеш устарел — просим перезагрузить
+      if (error?.isUpdateRequired || error?.message === 'APP_UPDATE_REQUIRED' ||
+          error?.message?.includes('MIME') || error?.message?.includes('text/html')) {
+        if (onShowNotification) {
+          onShowNotification(
+            '🔄 Требуется обновление',
+            'Приложение было обновлено. Перезагрузите страницу и попробуйте снова.',
+            'warning',
+            'Перезагрузить',
+            () => window.location.reload()
+          );
+        } else {
+          if (window.confirm('Приложение обновилось. Нажмите OK для перезагрузки.')) {
+            window.location.reload();
+          }
+        }
+        return;
+      }
+
       console.error("❌ WhatsApp send error:", {
         message: error?.message,
         stack: error?.stack,
