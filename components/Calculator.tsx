@@ -408,7 +408,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
           )}
 
           {/* ── Поля ввода ── */}
-          <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-4">
+          <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-4 overflow-hidden">
 
             {/* Стоимость */}
             <div>
@@ -466,7 +466,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
           </div>
 
           {/* ── Результат ── */}
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 text-white shadow-lg">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-6 text-white shadow-lg overflow-hidden">
             <div className="flex justify-between items-start mb-5">
               <div>
                 <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Ежемесячный платёж</p>
@@ -503,7 +503,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
           {/* ── График платежей ── НОВОЕ */}
           {hasPrice && paymentSchedule.length > 0 && (
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
               {/* Заголовок */}
               <button
                 onClick={() => setShowSchedule(s => !s)}
@@ -584,7 +584,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
             <button
               onClick={handleShare}
               disabled={isSharing}
-              className="w-full py-4 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-70"
+              className="w-full py-4 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white font-bold rounded-3xl shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-70"
             >
               {isSharing ? (
                 <>
@@ -608,7 +608,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
           {/* ── Настройки (только для админа) ── */}
           {!isPublic && (
-            <div className="bg-indigo-50 dark:bg-indigo-950/40 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 animate-fade-in">
+            <div className="bg-indigo-50 dark:bg-indigo-950/40 p-5 rounded-3xl border border-indigo-100 dark:border-indigo-900/50 animate-fade-in overflow-hidden">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="font-bold text-indigo-900 dark:text-indigo-300">Настройки ставок</h3>
                 <button onClick={() => setShowSettings(!showSettings)} className="text-xs text-indigo-600 dark:text-indigo-400 underline font-bold">
