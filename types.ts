@@ -293,6 +293,7 @@ export interface NotificationEventToggles {
   expense: boolean;
   whatsappSent: boolean;
   adminBroadcast: boolean;
+  supportMessage: boolean;
 }
 
 export interface NotificationSettings {
@@ -324,14 +325,15 @@ export type NotificationType =
   | 'CONTRACT_CLOSED'
   | 'EXPENSE'
   | 'WHATSAPP_SENT'
-  | 'ADMIN_BROADCAST';
+  | 'ADMIN_BROADCAST'
+  | 'SUPPORT_MESSAGE';
 
 export interface AppNotification {
   id: string;
   type: NotificationType;
   title: string;
   body?: string;
-  data?: { saleId?: string; customerId?: string; expenseId?: string; amount?: number; [key: string]: any } | null;
+  data?: { saleId?: string; customerId?: string; expenseId?: string; ticketId?: string; amount?: number; [key: string]: any } | null;
   isRead: boolean;
   isArchived?: boolean;
   createdAt: string;

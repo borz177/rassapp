@@ -34,16 +34,20 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     expense: true,
     whatsappSent: true,
     adminBroadcast: true,
+    supportMessage: true,
   },
 };
 
-const NOTIFICATION_EVENT_ROWS: { key: keyof NotificationEventToggles; label: string; icon: React.ReactNode }[] = [
+// adminOnly — событие имеет смысл только для админа (у него нет своих договоров/платежей,
+// зато есть входящие обращения в техподдержку от остальных пользователей).
+const NOTIFICATION_EVENT_ROWS: { key: keyof NotificationEventToggles; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
   { key: 'payment', label: 'Платёж', icon: ICONS.Income },
   { key: 'newContract', label: 'Новый договор', icon: ICONS.File },
   { key: 'contractClosed', label: 'Договор закрыт', icon: ICONS.CheckCircle },
   { key: 'expense', label: 'Расход', icon: ICONS.Expense },
   { key: 'whatsappSent', label: 'WhatsApp-напоминания', icon: ICONS.Chat },
   { key: 'adminBroadcast', label: 'От администратора', icon: ICONS.Megaphone },
+  { key: 'supportMessage', label: 'Сообщения от пользователей', icon: ICONS.Chat, adminOnly: true },
 ];
 
 // 🔹 Свёрнутая по умолчанию карточка настроек — раскрывается по клику на шапку. Название
@@ -452,7 +456,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
 
                   <div className={`mt-4 space-y-3 ${!notifSettings.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
                       <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase">Какие события присылать</p>
-                      {NOTIFICATION_EVENT_ROWS.map(row => (
+                      {NOTIFICATION_EVENT_ROWS.filter(row => !row.adminOnly || user?.role === 'admin').map(row => (
                           <div key={row.key} className="flex items-center justify-between">
                               <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
                                   <span className="text-slate-400 dark:text-slate-500">{row.icon}</span>

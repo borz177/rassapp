@@ -275,6 +275,7 @@ const NOTIFICATION_DEFAULT_SETTINGS = {
     expense: true,
     whatsappSent: true,
     adminBroadcast: true,
+    supportMessage: true,
   },
 };
 const NOTIFICATION_EVENT_TOGGLE_KEYS = {
@@ -283,6 +284,7 @@ const NOTIFICATION_EVENT_TOGGLE_KEYS = {
   CONTRACT_CLOSED: 'contractClosed',
   EXPENSE: 'expense',
   WHATSAPP_SENT: 'whatsappSent',
+  SUPPORT_MESSAGE: 'supportMessage',
 };
 // 🔔 Отправка Web Push всем подпискам пользователя (с автоочисткой протухших подписок)
 const sendPushToUser = async (userId, title, body) => {
@@ -334,6 +336,20 @@ const createNotification = async (userId, type, title, body, data = null) => {
     }
   } catch (e) {
     console.error('❌ createNotification error:', e);
+  }
+};
+
+// 🔔 Уведомить ВСЕХ админов о новом сообщении от пользователя в техподдержку
+// (каждый админ сам решает, получать ли это, через свой тумблер "Сообщения от пользователей").
+const notifyAdminsOfSupportMessage = async (fromUserId, title, body, data) => {
+  try {
+    const admins = await pool.query(`SELECT id FROM users WHERE role = 'admin'`);
+    for (const admin of admins.rows) {
+      if (admin.id === fromUserId) continue; // на случай если сообщение оставил сам админ
+      await createNotification(admin.id, 'SUPPORT_MESSAGE', title, body, data);
+    }
+  } catch (e) {
+    console.error('❌ notifyAdminsOfSupportMessage error:', e);
   }
 };
 
@@ -3268,6 +3284,15 @@ app.post('/api/support/tickets', auth, async (req, res) => {
       VALUES ($1, $2, $3, $4, TRUE)
     `, [messageId, ticketId, userId, message.trim()]);
 
+    const senderResult = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId]);
+    const senderName = senderResult.rows[0]?.name || 'Пользователь';
+    await notifyAdminsOfSupportMessage(
+      userId,
+      'Новое обращение в поддержку',
+      `${senderName}: ${subject.trim()}`,
+      { ticketId }
+    );
+
     res.json({ success: true, ticketId });
   } catch (err) {
     console.error('Create ticket error:', err);
@@ -3314,6 +3339,18 @@ app.post('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
 
     await pool.query(`UPDATE support_tickets SET updated_at = NOW() WHERE id = $1`, [ticketId]);
 
+    if (isFromUser) {
+      const senderResult = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId]);
+      const senderName = senderResult.rows[0]?.name || 'Пользователь';
+      const preview = message.trim().length > 120 ? `${message.trim().slice(0, 120)}…` : message.trim();
+      await notifyAdminsOfSupportMessage(
+        userId,
+        'Новое сообщение в поддержке',
+        `${senderName} (${ticket.subject}): ${preview}`,
+        { ticketId }
+      );
+    }
+
     res.json({ success: true, messageId });
   } catch (err) {
     console.error('Send message error:', err);
@@ -3344,10 +3381,17 @@ app.get('/api/support/tickets/:ticketId/messages', auth, async (req, res) => {
       SELECT * FROM support_messages WHERE ticket_id = $1 ORDER BY created_at ASC
     `, [ticketId]);
 
-    // Помечаем как прочитанные (только для не-админов)
-    if (userRole !== 'admin') {
+    // 🔹 Помечаем прочитанными сообщения, адресованные ИМЕННО ТОМУ, кто открыл тикет.
+    //    Раньше ветки для админа не было вообще — из-за этого сообщения клиента навсегда
+    //    оставались непрочитанными и счётчик в админ-панели не сбрасывался при открытии.
+    if (userRole === 'admin') {
       await pool.query(`
-        UPDATE support_messages SET is_read = TRUE 
+        UPDATE support_messages SET is_read = TRUE
+        WHERE ticket_id = $1 AND is_from_user = TRUE AND is_read = FALSE
+      `, [ticketId]);
+    } else {
+      await pool.query(`
+        UPDATE support_messages SET is_read = TRUE
         WHERE ticket_id = $1 AND is_from_user = FALSE AND is_read = FALSE
       `, [ticketId]);
     }
@@ -3677,10 +3721,23 @@ app.get('/api/admin/support/tickets', adminAuth, async (req, res) => {
   try {
     const { status, priority, search } = req.query;
 
+    // 🔹 is_read у сообщения относится к ЕГО получателю:
+    //    is_from_user = TRUE  → написал клиент, получатель админ  → is_read = "админ прочитал"
+    //    is_from_user = FALSE → написал админ,  получатель клиент → is_read = "клиент прочитал"
+    //    Раньше здесь считались сообщения САМОГО админа (is_from_user = FALSE), то есть бейдж
+    //    показывал «сколько моих ответов ещё не прочитал клиент» и никогда не сбрасывался,
+    //    когда админ открывал тикет. Считаем непрочитанные сообщения ОТ КЛИЕНТА.
     let query = `
       SELECT st.*, u.name as user_name, u.email as user_email,
-        (SELECT COUNT(*) FROM support_messages 
-         WHERE ticket_id = st.id AND is_from_user = FALSE AND is_read = FALSE) as unread_count
+        (SELECT COUNT(*) FROM support_messages
+         WHERE ticket_id = st.id AND is_from_user = TRUE AND is_read = FALSE) as unread_count,
+        (SELECT COUNT(*) FROM support_messages WHERE ticket_id = st.id) as messages_count,
+        (SELECT message FROM support_messages WHERE ticket_id = st.id
+         ORDER BY created_at DESC LIMIT 1) as last_message,
+        (SELECT is_from_user FROM support_messages WHERE ticket_id = st.id
+         ORDER BY created_at DESC LIMIT 1) as last_message_from_user,
+        (SELECT created_at FROM support_messages WHERE ticket_id = st.id
+         ORDER BY created_at DESC LIMIT 1) as last_message_at
       FROM support_tickets st
       JOIN users u ON st.user_id = u.id
       WHERE 1=1
@@ -3721,10 +3778,33 @@ app.post('/api/admin/support/tickets/:ticketId/messages', adminAuth, async (req,
       VALUES ($1, $2, $3, $4, FALSE)
     `, [messageId, ticketId, req.user.id, message.trim()]);
 
-    await pool.query(`UPDATE support_tickets SET updated_at = NOW() WHERE id = $1`, [ticketId]);
+    // 🔹 Ответ админа = тикет в работе + закрепляется за ответившим (если ещё ничей).
+    //    Раньше приходилось отдельно жать «Назначить», иначе тикет навсегда висел в OPEN.
+    await pool.query(`
+      UPDATE support_tickets
+      SET updated_at = NOW(),
+          status = CASE WHEN status = 'OPEN' THEN 'IN_PROGRESS' ELSE status END,
+          assigned_admin_id = COALESCE(assigned_admin_id, $2)
+      WHERE id = $1
+    `, [ticketId, req.user.id]);
     res.json({ success: true, messageId });
   } catch (err) {
     console.error('Admin message error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Админ переоткрывает закрытый тикет
+app.patch('/api/admin/support/tickets/:ticketId/reopen', adminAuth, async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    await pool.query(`
+      UPDATE support_tickets SET status = 'IN_PROGRESS', resolved_at = NULL, updated_at = NOW()
+      WHERE id = $1
+    `, [ticketId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Reopen ticket error:', err);
     res.status(500).json({ msg: 'Server error' });
   }
 });
@@ -3774,7 +3854,7 @@ app.get('/api/admin/support/stats', adminAuth, async (req, res) => {
         COUNT(*) FILTER (WHERE status = 'IN_PROGRESS') as in_progress_tickets,
         COUNT(*) FILTER (WHERE status = 'CLOSED') as closed_tickets,
         COUNT(*) FILTER (WHERE priority = 'HIGH') as high_priority,
-        (SELECT COUNT(*) FROM support_messages WHERE is_from_user = FALSE AND is_read = FALSE) as unread_messages
+        (SELECT COUNT(*) FROM support_messages WHERE is_from_user = TRUE AND is_read = FALSE) as unread_messages
       FROM support_tickets
     `);
     res.json(stats.rows[0]);
@@ -4046,6 +4126,11 @@ app.post('/api/v1/payments', apiKeyAuth, async (req, res) => {
       amount: Number(amount),
       date: date || new Date().toISOString(),
       isPaid: true,
+      // 🔒 Без этого флага запись проходит ОБА фильтра отображения сразу — и как
+      // поступление (isRealPayment !== false), и как закрытый месяц графика
+      // (isRealPayment !== true). Тогда она сама себя взаимно погашает в расчёте
+      // излишка, платёж попадает в историю, но не закрывает месяцы в графике.
+      isRealPayment: true,
       actualDate: new Date().toISOString()
     };
     

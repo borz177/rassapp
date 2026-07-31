@@ -9,6 +9,7 @@ export const TYPE_META: Record<NotificationType, { icon: React.ReactNode; bg: st
   EXPENSE: { icon: ICONS.Expense, bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-600 dark:text-red-400', label: 'Расход' },
   WHATSAPP_SENT: { icon: ICONS.Chat, bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-600 dark:text-emerald-400', label: 'WhatsApp' },
   ADMIN_BROADCAST: { icon: ICONS.Megaphone, bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-600 dark:text-amber-400', label: 'От администратора' },
+  SUPPORT_MESSAGE: { icon: ICONS.Chat, bg: 'bg-sky-100 dark:bg-sky-900/30', text: 'text-sky-600 dark:text-sky-400', label: 'Сообщение от пользователя' },
 };
 
 export const NOTIFICATION_TYPE_FILTERS: { key: NotificationType | 'all'; label: string }[] = [
@@ -19,6 +20,7 @@ export const NOTIFICATION_TYPE_FILTERS: { key: NotificationType | 'all'; label: 
   { key: 'EXPENSE', label: TYPE_META.EXPENSE.label },
   { key: 'WHATSAPP_SENT', label: TYPE_META.WHATSAPP_SENT.label },
   { key: 'ADMIN_BROADCAST', label: TYPE_META.ADMIN_BROADCAST.label },
+  { key: 'SUPPORT_MESSAGE', label: TYPE_META.SUPPORT_MESSAGE.label },
 ];
 
 export const groupLabel = (dateStr: string): string => {

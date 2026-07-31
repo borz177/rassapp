@@ -1086,7 +1086,7 @@ const subStatus = useMemo(() => {
 }, [user?.subscription]);
 // После useEffect с initApp добавьте:
 useEffect(() => {
-  if (!user || user.role === 'admin') return;
+  if (!user) return;
 
   // Загружаем сразу
   loadSupportUnreadCount(user);
@@ -1146,9 +1146,19 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 
 
   const loadSupportUnreadCount = async (currentUser: User) => {
-  if (!currentUser || currentUser.role === 'admin') return;
+  if (!currentUser) return;
 
   try {
+    // 🔹 У админа нет "своих" тикетов (он видит все чужие обращения) — считаем
+    // непрочитанные сообщения от пользователей через админскую статистику, а не
+    // через /support/tickets (тот эндпоинт про тикеты ТЕКУЩЕГО юзера и для админа
+    // всегда возвращал 0 — счётчик на кнопке поддержки никогда не показывался).
+    if (currentUser.role === 'admin') {
+      const stats = await api.get<{ unread_messages: number }>('/admin/support/stats');
+      setSupportUnreadCount(Number(stats.unread_messages) || 0);
+      return;
+    }
+
     const response = await api.get<{
       tickets: Array<{ unreadCount: number }>;
       broadcasts: any[];
@@ -3108,11 +3118,15 @@ if (!user && !showSplash) {
     unreadNotifCount={unreadNotifCount}
     onOpenNotifications={() => setShowNotificationsPanel(true)}
     showNotificationsBell={checkAccess('NOTIFICATIONS')}
-    // 🔹 Кнопка поддержки для десктопа (плавающая)
+    // 🔹 Кнопка поддержки для десктопа (плавающая) — админа ведём в панель
+    // управления обращениями, а не в чат "как у обычного пользователя"
     supportButton={
       <SupportButton
         unreadCount={supportUnreadCount}
-        onClick={() => setShowSupportChat(true)}
+        onClick={() => {
+          if (user?.role === 'admin') { setPreviousView(currentView); setCurrentView('ADMIN_SUPPORT'); }
+          else setShowSupportChat(true);
+        }}
       />
     }
 
@@ -3482,7 +3496,7 @@ if (!user && !showSplash) {
 
     {/* 🔹 АДМИН ПАНЕЛЬ ПОДДЕРЖКИ */}
     {currentView === 'ADMIN_SUPPORT' && user?.role === 'admin' && (
-      <PagePush onClose={() => setCurrentView('ADMIN_PANEL')}>
+      <PagePush onClose={() => setCurrentView(previousView)}>
         {(requestClose: () => void) => (
           <Suspense fallback={<LazyFallback />}>
             <AdminSupportPanel onBack={requestClose} />
@@ -3786,17 +3800,24 @@ if (!user && !showSplash) {
 
             {/* 🔹 НОВАЯ КНОПКА: Техподдержка (только для админов) */}
 {user.role === 'admin' && (
-  <button onClick={() => setCurrentView('ADMIN_SUPPORT')}
+  <button onClick={() => { setPreviousView('MORE'); setCurrentView('ADMIN_SUPPORT'); }}
           className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
       <div className="flex items-center gap-3">
           <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 p-2 rounded-lg">{ICONS.Chat}</div>
           <span className="font-semibold text-slate-800 dark:text-white">Техподдержка</span>
       </div>
-      <span className="text-slate-400 dark:text-slate-500">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="9 18 15 12 9 6"/>
-          </svg>
-      </span>
+      <div className="flex items-center gap-2">
+          {supportUnreadCount > 0 && (
+              <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
+                  {supportUnreadCount > 9 ? '9+' : supportUnreadCount}
+              </span>
+          )}
+          <span className="text-slate-400 dark:text-slate-500">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="9 18 15 12 9 6"/>
+              </svg>
+          </span>
+      </div>
   </button>
 )}
 {/* Кнопка Техподдержка */}
