@@ -25,6 +25,26 @@ let isSyncing = false;
 
 let lastSyncAttempt = 0;
 
+// 🔒 Единая проверка "это сбой связи, а не отказ сервера".
+// Раньше проверка была скопирована в четырёх местах и опознавала только формулировку
+// Chrome ("Failed to fetch"). Firefox говорит "NetworkError when attempting to fetch
+// resource", Safari — "Load failed", а WebView на iOS — "cancelled"/"The network
+// connection was lost". Из-за этого на iPhone (там любой браузер под капотом Safari)
+// настоящий обрыв связи считался отказом сервера: сохранение НЕ попадало в офлайн-очередь,
+// ошибка летела наверх, и договор или платёж просто не сохранялся.
+// Ключевая часть — проверка по типу: fetch() при любом сетевом сбое бросает TypeError,
+// независимо от браузера и формулировки. Строки оставлены как подстраховка.
+const isNetworkFailure = (error: any): boolean => {
+  if (!error) return false;
+  if (!navigator.onLine) return true;
+  if (error.name === 'AbortError') return true;          // сработал наш таймаут
+  if (error.name === 'TimeoutError') return true;        // AbortSignal.timeout()
+  if (error instanceof TypeError) return true;           // 🔑 любой сетевой сбой fetch()
+  if (error.name === 'TypeError') return true;           // тот же случай после сериализации
+  const msg = String(error.message || '');
+  return /Failed to fetch|NetworkError|Load failed|Network request failed|The network connection was lost|cancelled|TIMEOUT|Captive Portal/i.test(msg);
+};
+
 // 🔔 Офлайн-очередь для "отметить прочитанным" — без неё пометка, сделанная при плохой связи,
 // молча терялась: UI уже показывал "прочитано", а сервер — нет, и после восстановления сети
 // следующий опрос счётчика откатывал уведомление обратно в непрочитанные.
@@ -365,11 +385,9 @@ export const api = {
             return user;
         } catch (error: any) {
             // 🔥 ЛОВИМ ЛЮБЫЕ СЕТЕВЫЕ ОШИБКИ И ОТДАЕМ КЭШ
-            const isNetworkError = 
+            const isNetworkError =
                 error.message === 'TOKEN_EXPIRED' ||
-                error.message.includes('Captive Portal') ||
-                error.message.includes('Failed to fetch') ||
-                error.message.includes('TIMEOUT');
+                isNetworkFailure(error);
 
             if (isNetworkError) {
                 const cachedUser = await offlineStorage.getCache('user_me');
@@ -449,12 +467,9 @@ export const api = {
       await offlineStorage.setCache('all_data', data);
     } catch (error: any) {
       // 🔥 2. УМНАЯ ОБРАБОТКА ОШИБОК (не пугаем пользователя и консоль)
-      const isNetworkError = 
+      const isNetworkError =
           error.message === 'TOKEN_EXPIRED' ||
-          error.message.includes('Captive Portal') ||
-          error.message.includes('Failed to fetch') ||
-          error.message.includes('TIMEOUT') ||
-          error.name === 'AbortError';
+          isNetworkFailure(error);
 
       if (error.message === 'TOKEN_EXPIRED') {
         const cachedData = await offlineStorage.getCache('all_data');
@@ -568,12 +583,7 @@ export const api = {
   const isLimitError = error.isLimitError === true;
   
   // 🔹 ИСПРАВЛЕННАЯ ПРОВЕРКА: теперь ловит таймауты и отмены
-  const isNetworkError =
-    error.message?.includes('Failed to fetch') ||
-    error.message?.includes('TIMEOUT') ||        // 🔑 Ловим таймауты
-    error.name === 'AbortError' ||               // 🔑 Ловим отмену запроса
-    !navigator.onLine ||
-    (error.name === 'TypeError' && error.message?.includes('fetch'));
+  const isNetworkError = isNetworkFailure(error);
 
   if (isNetworkError && type === 'sales' && item.status !== 'DELETED') {
     try {
@@ -648,12 +658,7 @@ export const api = {
     // "нельзя удалить поставщика с непогашенным долгом") — раньше сюда попадала
     // ЛЮБАЯ ошибка и молча уходила в офлайн-очередь, из-за чего легитимный отказ
     // сервера через 5 неудачных попыток синхронизации тихо исчезал без следа.
-    const isNetworkError =
-      error.message?.includes('Failed to fetch') ||
-      error.message?.includes('TIMEOUT') ||
-      error.name === 'AbortError' ||
-      !navigator.onLine ||
-      (error.name === 'TypeError' && error.message?.includes('fetch'));
+    const isNetworkError = isNetworkFailure(error);
 
     if (!isNetworkError) {
       console.error("❌ Delete rejected by server (not queued):", error.message || error);
