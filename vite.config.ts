@@ -63,20 +63,18 @@ export default defineConfig(({ mode }) => {
   ],
           navigateFallback: '/index.html',
           navigateFallbackDenylist: [/^\/downloads\//],
-          runtimeCaching: [
-            {
-              urlPattern: ({ url }) => url.pathname.startsWith('/api'),
-              handler: 'NetworkFirst',
-              options: {
-                cacheName: 'api-cache',
-                expiration: {
-                  maxEntries: 100,
-                  maxAgeSeconds: 60 * 60 * 24 * 7 // 1 week
-                },
-                networkTimeoutSeconds: 2
-              }
-            },
-          ]
+          // 🔒 Ответы /api НАМЕРЕННО не кэшируются Service Worker'ом.
+          // Здесь стоял NetworkFirst с networkTimeoutSeconds: 2 и хранением до недели. На
+          // медленной связи (LTE, VPN) запрос за 2 секунды не укладывался — у тяжёлых аккаунтов
+          // ответ /api/data весит сотни килобайт — и Workbox молча отдавал ответ недельной
+          // давности, неотличимый от свежего. Приложение считало его актуальным: писало
+          // устаревший снимок поверх рабочего кэша в IndexedDB (см. setCache('all_data') в
+          // services/api.ts) и откатывало свежие правки в mergeServerData. Дальше пользователь
+          // работал с устаревшим договором, а при сохранении этот снимок уходил на сервер целиком.
+          // Офлайн от этого не зависит: и данные, и пользователь, и очередь несинхронизированных
+          // изменений живут в IndexedDB (services/offlineStorage.ts) и читаются оттуда при любой
+          // ошибке сети. Кэш приложения (HTML/JS/CSS) обеспечивается precache выше и не меняется.
+          runtimeCaching: []
         }
       })
     ],
