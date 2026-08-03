@@ -861,7 +861,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
 
       {/* Edit modal */}
       {showEdit && (
-        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowEdit(false)}>
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowEdit(false)}>
           <form onSubmit={handleEditSubmit} className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl p-5 space-y-4 animate-fade-in" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
               <h3 className="text-lg font-bold text-slate-800 dark:text-white">Редактировать инвестора</h3>

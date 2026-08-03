@@ -683,7 +683,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
       {/* Модалка рассылки */}
       {showBroadcastForm && (
         <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[60] p-0 sm:p-4 animate-modal-fade-in"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] p-0 sm:p-4 animate-modal-fade-in"
           onClick={() => setShowBroadcastForm(false)}
         >
           <div

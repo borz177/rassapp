@@ -83,7 +83,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
     if (appSettings.whatsapp) {
       setIdInstance(appSettings.whatsapp.idInstance);
       setApiToken(appSettings.whatsapp.apiTokenInstance || '');
-      setReminderTime(appSettings.whatsapp.reminderTime);
+      setReminderTime(appSettings.whatsapp.reminderTime ?? '10:00');
       // 🔹 ИСПРАВЛЕНО: добавлен дефолт [0] если reminderDays undefined
       setReminderDays(appSettings.whatsapp.reminderDays ?? [0]);
       setBotEnabled(appSettings.whatsapp.botEnabled || false);

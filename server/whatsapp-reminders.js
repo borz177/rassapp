@@ -87,34 +87,88 @@ async function createWhatsAppSentNotification(userId, title, body, data) {
   }
 }
 
-async function sendWhatsAppMessage(idInstance, apiTokenInstance, phone, message) {
-  if (!phone || !message) return false;
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const cleanPhone = phone.replace(/\D/g, '');
-  if (cleanPhone.length < 10) {
-    console.warn(`${LOG_PREFIX} Некорректный номер: ${phone}`);
-    return false;
-  }
+// Приводит номер к виду, который ждёт Green API (цифры без '+').
+// Возвращает { phone, reason }: phone === null, если номер непригоден.
+function normalizePhone(raw) {
+  if (!raw || typeof raw !== 'string') return { phone: null, reason: 'пусто' };
 
-  let formattedPhone = cleanPhone;
-  if (formattedPhone.startsWith('8')) {
-    formattedPhone = '7' + formattedPhone.slice(1);
-  } else if (formattedPhone.length === 10) {
-    formattedPhone = '7' + formattedPhone;
+  let d = raw.replace(/\D/g, '');
+  if (!d) return { phone: null, reason: 'нет цифр' };
+
+  // Префикс международного набора «00» вместо «+»
+  if (d.startsWith('00')) d = d.slice(2);
+
+  // Российский мобильный без кода страны: 9XXXXXXXXX
+  if (d.length === 10 && d.startsWith('9')) return { phone: '7' + d, reason: null };
+
+  // 89XXXXXXXXX → 79XXXXXXXXX. Только для мобильных: '80...' — это уже не Россия,
+  // и замена восьмёрки на семёрку сделала бы из него несуществующий номер.
+  if (d.length === 11 && d.startsWith('89')) return { phone: '7' + d.slice(1), reason: null };
+
+  if (d.length === 11 && d.startsWith('7')) return { phone: d, reason: null };
+
+  // Прочие страны (375…, 380…, 998…) и десятизначные с иным началом —
+  // отдаём как есть, пусть Green API рассудит.
+  if (d.length === 10) return { phone: '7' + d, reason: null };
+  if (d.length >= 11 && d.length <= 15) return { phone: d, reason: null };
+
+  return { phone: null, reason: `${d.length} цифр — номер неполный` };
+}
+
+// { ok, skipped, reason } — skipped означает «не отправляли», а не «ошибка отправки»
+async function sendWhatsAppMessage(idInstance, apiTokenInstance, phone, message, logTag = '') {
+  if (!message) return { ok: false, skipped: true, reason: 'пустое сообщение' };
+
+  const { phone: formattedPhone, reason } = normalizePhone(phone);
+  if (!formattedPhone) {
+    console.warn(`${LOG_PREFIX}${logTag} ⚠️ Пропуск, некорректный номер "${phone}": ${reason}`);
+    return { ok: false, skipped: true, reason };
   }
 
   const chatId = `${formattedPhone}@c.us`;
+  const url = `${GREEN_API_BASE_URL}/waInstance${idInstance}/sendMessage/${apiTokenInstance}`;
 
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const response = await axios.post(url, { chatId, message }, { timeout: 15000 });
+      if (response.data?.idMessage) return { ok: true, skipped: false, reason: null };
+      return { ok: false, skipped: false, reason: 'ответ без idMessage' };
+    } catch (err) {
+      const status = err.response?.status;
+      const body = err.response?.data ? JSON.stringify(err.response.data).slice(0, 300) : '';
+
+      // 4xx — запрос не примут и со второй попытки, повтор только для сети и 5xx
+      const retriable = !status || status >= 500;
+      if (retriable && attempt === 1) {
+        console.warn(`${LOG_PREFIX}${logTag} ↻ Повтор для ${formattedPhone} (${err.message})`);
+        await sleep(3000);
+        continue;
+      }
+
+      console.error(
+        `${LOG_PREFIX}${logTag} ❌ Ошибка WhatsApp на ${phone} → ${formattedPhone}: ` +
+        `${err.message}${status ? ` | HTTP ${status}` : ''}${body ? ` | ${body}` : ''}`
+      );
+      return { ok: false, skipped: false, reason: `HTTP ${status || 'network'}` };
+    }
+  }
+
+  return { ok: false, skipped: false, reason: 'исчерпаны попытки' };
+}
+
+// Состояние инстанса. null — проверить не удалось (тогда рассылку не блокируем).
+async function getInstanceState(idInstance, apiTokenInstance) {
   try {
-    const response = await axios.post(
-      `${GREEN_API_BASE_URL}/waInstance${idInstance}/sendMessage/${apiTokenInstance}`,
-      { chatId, message },
+    const response = await axios.get(
+      `${GREEN_API_BASE_URL}/waInstance${idInstance}/getStateInstance/${apiTokenInstance}`,
       { timeout: 10000 }
     );
-    return !!response.data?.idMessage;
+    return response.data?.stateInstance || null;
   } catch (err) {
-    console.error(`${LOG_PREFIX} Ошибка WhatsApp на ${phone}:`, err.message);
-    return false;
+    console.warn(`${LOG_PREFIX} ⚠️ Не удалось проверить инстанс ${idInstance}: ${err.message}`);
+    return null;
   }
 }
 
@@ -298,11 +352,22 @@ async function processRemindersForUser(user) {
   today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().split('T')[0];
 
+  // Настройки старых аккаунтов могут не содержать этих полей. Без дефолтов обращение
+  // к undefined роняло обработку всего менеджера — и ни один его клиент не получал ничего.
+  const reminderTime = settings.reminderTime || '10:00';
+  const reminderDays = Array.isArray(settings.reminderDays) ? settings.reminderDays : [0];
+
   // Проверка времени ±5 мин
   const now = new Date();
-  const [targetHour, targetMin] = settings.reminderTime.split(':').map(Number);
+  const [targetHour, targetMin] = reminderTime.split(':').map(Number);
   const diffMinutes = Math.abs((now.getHours() * 60 + now.getMinutes()) - (targetHour * 60 + targetMin));
   if (diffMinutes > 5) return;
+
+  const state = await getInstanceState(settings.idInstance, settings.apiTokenInstance);
+  if (state && state !== 'authorized') {
+    console.warn(`${LOG_PREFIX} [${id}] ⛔ Инстанс не авторизован (${state}) — рассылка пропущена`);
+    return;
+  }
 
   const [salesRes, customersRes] = await Promise.all([
     pool.query('SELECT data FROM data_items WHERE user_id = $1 AND type = $2', [id, 'sales']),
@@ -332,15 +397,21 @@ async function processRemindersForUser(user) {
       const diffDays = Math.ceil((pDate - today) / (1000 * 60 * 60 * 24));
 
       let isTrigger = false;
-      if (diffDays === 1 && settings.reminderDays.includes(-1)) isTrigger = true;
-      else if (diffDays === 0 && settings.reminderDays.includes(0)) isTrigger = true;
-      else if (diffDays < 0 && settings.reminderDays.includes(1)) isTrigger = true;
+      if (diffDays === 1 && reminderDays.includes(-1)) isTrigger = true;
+      else if (diffDays === 0 && reminderDays.includes(0)) isTrigger = true;
+      else if (diffDays < 0 && reminderDays.includes(1)) isTrigger = true;
 
       const isOverdue = diffDays < 0;
       const isUpcomingOrToday = diffDays === 0 || diffDays === 1;
 
       if (!isOverdue && !isUpcomingOrToday) continue;
       if (!isTrigger && !isOverdue) continue;
+
+      // По одному платежу — не больше одного напоминания в сутки. Без этой проверки
+      // смена времени рассылки в течение дня отправляла клиенту второе сообщение:
+      // для «сегодня» и «завтра» дедупликации не было вовсе, а для просрочки она
+      // работала только при overdueReminderInterval > 1.
+      if (p.lastNotificationDate === todayStr) continue;
 
       if (isOverdue && settings.overdueReminderInterval > 1) {
         const lastNotif = p.lastNotificationDate ? new Date(p.lastNotificationDate) : null;
@@ -394,6 +465,10 @@ async function processRemindersForUser(user) {
   }
 
   let sentCount = 0;
+  let badPhoneCount = 0;
+  let failedCount = 0;
+  let isFirstSend = true;
+
   for (const custId of Object.keys(customerReminders)) {
     const data = customerReminders[custId];
 
@@ -419,36 +494,62 @@ async function processRemindersForUser(user) {
     const templates = settings.templates || DEFAULT_TEMPLATES;
     const message = buildConsolidatedMessage(data, totalToPay, templates, templateType);
 
-    const success = await sendWhatsAppMessage(
+    // Green API ограничивает частоту отправки: без паузы хвост очереди отбивался ошибками
+    if (!isFirstSend) await sleep(1500);
+    isFirstSend = false;
+
+    const result = await sendWhatsAppMessage(
       settings.idInstance,
       settings.apiTokenInstance,
       data.customer.phone,
-      message
+      message,
+      ` [${id}]`
     );
 
-    if (success) {
-      for (const ref of data.paymentsToUpdate) {
-        const saleInDb = ref.saleRef;
-        const payment = saleInDb.paymentPlan.find(p => p.id === ref.paymentId);
-        if (payment) {
-          payment.lastNotificationDate = todayStr;
-          await pool.query(
-            `UPDATE data_items SET data = $1 WHERE id = $2 AND user_id = $3`,
-            [JSON.stringify(saleInDb), ref.saleId, id]
-          );
-        }
-      }
-      sentCount++;
+    if (!result.ok) {
+      if (result.skipped) badPhoneCount++;
+      else failedCount++;
+      continue;
     }
+
+    // Сообщение уже ушло. Сбой записи отметки не должен обрывать очередь —
+    // остальные клиенты этого менеджера иначе остались бы без напоминания.
+    for (const ref of data.paymentsToUpdate) {
+      const saleInDb = ref.saleRef;
+      const payment = saleInDb.paymentPlan.find(p => p.id === ref.paymentId);
+      if (!payment) continue;
+
+      payment.lastNotificationDate = todayStr;
+      try {
+        await pool.query(
+          `UPDATE data_items SET data = $1 WHERE id = $2 AND user_id = $3`,
+          [JSON.stringify(saleInDb), ref.saleId, id]
+        );
+      } catch (e) {
+        console.error(`${LOG_PREFIX} [${id}] ❌ Не удалось отметить платёж ${ref.paymentId}:`, e.message);
+      }
+    }
+    sentCount++;
   }
 
-  if (sentCount > 0) {
-    console.log(`${LOG_PREFIX} 📊 Отправлено объединённых сообщений: ${sentCount}`);
+  if (sentCount > 0 || badPhoneCount > 0 || failedCount > 0) {
+    console.log(
+      `${LOG_PREFIX} [${id}] 📊 Отправлено: ${sentCount}` +
+      `${badPhoneCount ? `, пропущено по номеру: ${badPhoneCount}` : ''}` +
+      `${failedCount ? `, ошибок отправки: ${failedCount}` : ''}`
+    );
+  }
+
+  if (sentCount > 0 || badPhoneCount > 0) {
+    const parts = [`Автоматически отправлено WhatsApp-напоминаний: ${sentCount}`];
+    if (badPhoneCount > 0) {
+      parts.push(`Не отправлено из-за некорректного номера: ${badPhoneCount} — проверьте карточки клиентов.`);
+    }
     await createWhatsAppSentNotification(
       id,
       'Напоминания отправлены',
-      `Автоматически отправлено WhatsApp-напоминаний: ${sentCount}`,
-      { sent: sentCount }
+      parts.join('\n'),
+      { sent: sentCount, badPhone: badPhoneCount, failed: failedCount }
     );
   }
 }
