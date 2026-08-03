@@ -21,6 +21,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const axios = require('axios');
+const { normalizePhone } = require('./phone-utils');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 const fs = require('fs');
@@ -991,49 +992,55 @@ app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
 // === 🔔 WHATSAPP: ОТПРАВКА НАПОМИНАНИЯ О ПРОСРОЧКЕ ===
 // =====================================================
 
-async function sendGreenApiMessage(idInstance, apiTokenInstance, phone, message) {
+// Состояние инстанса. null — проверить не удалось (тогда отправку не блокируем).
+async function getGreenApiState(idInstance, apiTokenInstance) {
   try {
-
-    const cleanPhone = phone.replace(/\D/g, '');
-    let formattedPhone = cleanPhone;
-
-
-    if (cleanPhone.startsWith('8')) {
-      formattedPhone = '7' + cleanPhone.slice(1);
-    }
-
-    else if (cleanPhone.startsWith('7')) {
-      formattedPhone = cleanPhone;
-    }
-
-    else if (cleanPhone.length === 10) {
-      formattedPhone = '7' + cleanPhone;
-    }
-
-
-    const chatId = `${formattedPhone}@c.us`;
-
-
     const stateUrl = `https://api.green-api.com/waInstance${idInstance}/getStateInstance/${apiTokenInstance}`;
     const stateResponse = await axios.get(stateUrl, { timeout: 5000 });
+    return stateResponse.data?.stateInstance || null;
+  } catch (e) {
+    console.warn(`⚠️ Не удалось проверить инстанс ${idInstance}: ${e.message}`);
+    return null;
+  }
+}
 
-    if (stateResponse.data?.stateInstance !== 'authorized') {
-      console.warn(`⚠️ Инстанс ${idInstance} не авторизован`);
-      return false;
+// skipStateCheck — для массовой рассылки, где состояние проверяется один раз до цикла.
+// Раньше проверка шла перед каждым сообщением и удваивала число запросов к Green API,
+// из-за чего рассылка упиралась в лимит частоты и получала 429.
+async function sendGreenApiMessage(idInstance, apiTokenInstance, phone, message, options = {}) {
+  const { phone: formattedPhone, reason } = normalizePhone(phone);
+  if (!formattedPhone) {
+    console.warn(`⚠️ Пропуск, некорректный номер "${phone}": ${reason}`);
+    return false;
+  }
+
+  try {
+    const chatId = `${formattedPhone}@c.us`;
+
+    if (!options.skipStateCheck) {
+      const state = await getGreenApiState(idInstance, apiTokenInstance);
+      if (state && state !== 'authorized') {
+        console.warn(`⚠️ Инстанс ${idInstance} не авторизован (${state})`);
+        return false;
+      }
     }
-
 
     const sendUrl = `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiTokenInstance}`;
     const response = await axios.post(
       sendUrl,
       { chatId, message },
-      { timeout: 10000 }
+      { timeout: 15000 }
     );
 
-    console.log(`📱 Sent to ${formattedPhone} (clean: ${cleanPhone})`);
+    console.log(`📱 Sent to ${formattedPhone}`);
     return !!response.data?.idMessage;
   } catch (e) {
-    console.error('🔴 Green API send error:', e.message);
+    const status = e.response?.status;
+    const body = e.response?.data ? JSON.stringify(e.response.data).slice(0, 300) : '';
+    console.error(
+      `🔴 Green API send error → ${formattedPhone}: ${e.message}` +
+      `${status ? ` | HTTP ${status}` : ''}${body ? ` | ${body}` : ''}`
+    );
     return false;
   }
 }
@@ -1292,6 +1299,15 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
 
     const rawTemplate = settings.templates?.[template] || defaultOverdueTemplate;
 
+    // Состояние инстанса проверяем один раз на всю рассылку, а не перед каждым сообщением
+    const instanceState = await getGreenApiState(settings.idInstance, settings.apiTokenInstance);
+    if (instanceState && instanceState !== 'authorized') {
+      return res.status(400).json({
+        error: 'WhatsApp не подключён',
+        msg: `Инстанс не авторизован (${instanceState}). Переподключите WhatsApp в настройках.`
+      });
+    }
+
     for (const item of overdueSales) {
   try {
     const monthlyPaymentText = item.monthlyPayment.toLocaleString('ru-RU');
@@ -1332,7 +1348,8 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
       settings.idInstance,
       settings.apiTokenInstance,
       item.customer.phone,
-      message
+      message,
+      { skipStateCheck: true }
     );
 
     if (sent) {
@@ -1345,7 +1362,8 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
       });
     }
 
-    await new Promise(resolve => setTimeout(resolve, 300));
+    // Green API ограничивает частоту: с паузой 300 мс рассылка ловила 429 и теряла клиентов
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
   } catch (err) {
     results.failed++;
@@ -1379,17 +1397,11 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
 
 
 // --- WHATSAPP WEBHOOK ---
-const normalizePhone = (phone) => {
-  let cleaned = phone.replace(/\D/g, '');
-  if (cleaned.length === 10) {
-    if (cleaned.startsWith('9')) return '7' + cleaned;
-  }
-  if (cleaned.length === 11) {
-    if (cleaned.startsWith('8')) return '7' + cleaned.slice(1);
-    if (cleaned.startsWith('7')) return cleaned;
-  }
-  return cleaned;
-};
+// Ключ для сопоставления входящего сообщения с карточкой клиента.
+// Отдаёт строку: нормализованный номер, а если номер непригоден — просто его цифры,
+// чтобы сравнение всё равно могло сойтись.
+const phoneKey = (phone) =>
+  normalizePhone(phone).phone || String(phone || '').replace(/\D/g, '');
 
 async function sendMessage(idInstance, apiTokenInstance, chatId, message) {
   try {
@@ -1439,7 +1451,7 @@ app.post(
       if (chatId.includes('@g.us')) return;
 
       const rawPhone = chatId.replace('@c.us', '');
-      const senderPhone = normalizePhone(rawPhone);
+      const senderPhone = phoneKey(rawPhone);
       const text = (messageData.textMessageData.textMessage || '').trim().toLowerCase();
 
       const instanceId = String(instanceData?.idInstance || instanceData?.instanceId || body?.idInstance || '');
@@ -1469,7 +1481,7 @@ app.post(
       `, [managerId]);
 
       const customerRow = customersResult.rows.find(row =>
-        normalizePhone(row.data?.phone || '') === senderPhone
+        phoneKey(row.data?.phone || '') === senderPhone
       );
 
       if (!customerRow) return;
