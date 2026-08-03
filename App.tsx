@@ -1037,14 +1037,14 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v20';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v21';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
   const now = Date.now();
 
   if (!lastShown || now - Number(lastShown) >= FIVE_HOURS) {
-    setShowTemplateUpdateModal(false);
+    setShowTemplateUpdateModal(true);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
@@ -4149,49 +4149,46 @@ if (!user && !showSplash) {
       <div className="p-6">
         {/* Заголовок */}
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-2xl">
-            🧮
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-2xl">
+            💰
           </div>
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">
               Обновление
             </h3>
             <p className="text-sm text-gray-500 dark:text-slate-400">
-              Калькулятор стал удобнее
+              Доработали страницу «Касса»
             </p>
           </div>
         </div>
 
         {/* Список обновлений */}
         <div className="divide-y divide-gray-100 dark:divide-slate-800 mb-6">
-          {/* График платежей */}
+          {/* Скрытие счёта и суммы */}
           <div className="flex items-center gap-3 py-4">
-            <div className="text-2xl">📊</div>
+            <div className="text-2xl">👁️</div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
-                График платежей
+                Скрытие счёта и суммы
               </p>
               <p className="text-xs text-gray-500 dark:text-slate-500">
-                Видно все даты и ежемесячная сумма.
+                Можно скрыть сам счёт или только сумму на нём — удобно при показе экрана другим
               </p>
             </div>
           </div>
 
-          {/* Поделиться расчётом */}
+          {/* Фильтр по периоду */}
           <div className="flex items-center gap-3 py-4">
-            <div className="text-2xl">📤</div>
+            <div className="text-2xl">📅</div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
-                Поделиться расчётом
+                Фильтр по периоду
               </p>
               <p className="text-xs text-gray-500 dark:text-slate-500">
-                Отправьте клиенту красивую картинку с графиком в WhatsApp или Telegram
+                Быстрый выбор: всё время, сегодня, неделя, месяц или свой диапазон дат
               </p>
             </div>
           </div>
-
-          {/* Обновлённый дизайн */}
-          
         </div>
 
         {/* Кнопка */}
