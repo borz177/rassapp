@@ -1804,13 +1804,19 @@ app.post('/api/auth/send-code', sendCodeLimiter, async (req, res) => {
 });
 
 app.post('/api/auth/register', registerLimiter, async (req, res) => {
-  const { name, email, password, code, role, managerId, permissions, allowedInvestorIds } = req.body;
+  const { name, email, password, code, permissions, allowedInvestorIds } = req.body;
   const normalizedEmail = email.toLowerCase().trim();
 
-  // Whitelist допустимых ролей: sub-пользователи (investor/employee) требуют managerId,
-  // самостоятельная регистрация — всегда 'manager'.
-  const SUB_USER_ROLES = ['investor', 'employee'];
-  const safeRole = managerId && SUB_USER_ROLES.includes(role) ? role : 'manager';
+  // 🔒 Открытая регистрация создаёт ТОЛЬКО менеджера — role и managerId из тела запроса
+  // игнорируются. Сотрудники и инвесторы заводятся авторизованным менеджером через
+  // /api/users/manage, где managerId берётся из его сессии и проверяются лимиты тарифа.
+  //
+  // Раньше их принимали снаружи: в БД роль уже подменялась на 'manager', но JWT всё равно
+  // выписывался с ролью из запроса — а доступ строится на роли из токена (см. adminAuth),
+  // поэтому role:'admin' открывал данные всех тенантов. Второе следствие — role:'employee'
+  // с чужим managerId давал доступ к данным чужого менеджера через getTargetUserId.
+  const safeRole = 'manager';
+  const safeManagerId = null;
 
   try {
     // 1. Verify Code
@@ -1857,7 +1863,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
         normalizedEmail,
         hashedPassword,
         safeRole,
-        managerId || null,
+        safeManagerId,
         JSON.stringify(permissions || {}),
         JSON.stringify(allowedInvestorIds || []),
         subscription ? JSON.stringify(subscription) : null
@@ -1877,8 +1883,9 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
       );
     }
     
-    const token = jwt.sign({ id, role: role || 'manager', managerId }, JWT_SECRET, { expiresIn: '90d' });
-    res.json({ token, user: { id, name, email: normalizedEmail, role: role || 'manager', managerId, permissions, allowedInvestorIds, subscription } });
+    // Токен выписываем строго по safeRole: именно из него берётся роль при проверке доступа
+    const token = jwt.sign({ id, role: safeRole, managerId: safeManagerId }, JWT_SECRET, { expiresIn: '90d' });
+    res.json({ token, user: { id, name, email: normalizedEmail, role: safeRole, managerId: safeManagerId, permissions, allowedInvestorIds, subscription } });
   } catch (err) {
     console.error('Register Error:', err);
     res.status(500).send('Server error');
