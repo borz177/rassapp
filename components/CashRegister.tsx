@@ -3,6 +3,28 @@ import { Sale, Account, Expense, Investor, AppSettings, Customer } from '../type
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares } from '../src/utils';
 
+// Пресеты периода — те же, что в карточке инвестора.
+// 'ALL' сохранён отдельно: до этого касса по умолчанию показывала данные за всё время,
+// и молча переключить всех на «месяц» значило бы изменить цифры без спроса.
+type PeriodMode = 'ALL' | 'TODAY' | 'WEEK' | 'MONTH' | 'CUSTOM';
+
+// «Всё время» = дата заведомо раньше любых операций. Именно так период инициализируется
+// в App, и расчёт realizedPeriodProfit делает new Date(start) без проверки на пустоту —
+// поэтому очищать поле нельзя, иначе получится Invalid Date и прибыль обнулится.
+const ALL_TIME_START = '2023-01-01';
+
+const todayStr = () => new Date().toISOString().split('T')[0];
+const weekAgoStr = () => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; };
+const monthStartStr = () => { const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0]; };
+
+const PERIOD_CONFIG: { key: PeriodMode; label: string }[] = [
+  { key: 'ALL', label: 'Всё время' },
+  { key: 'TODAY', label: 'Сегодня' },
+  { key: 'WEEK', label: 'Неделя' },
+  { key: 'MONTH', label: 'Месяц' },
+  { key: 'CUSTOM', label: 'Свой' },
+];
+
 interface CashRegisterProps {
   accounts: Account[];
   sales: Sale[];
@@ -281,7 +303,9 @@ const AccountActionModal = ({
     onSetMain,
     isManager,
     onUpdateAccount,
-    appSettings
+    onToggleHidden,
+    appSettings,
+    isBalanceMasked
 }: {
     account: Account;
     balance: number;
@@ -291,7 +315,9 @@ const AccountActionModal = ({
     onSetMain: (id: string) => void;
     isManager: boolean;
     onUpdateAccount?: (acc: Account) => void;
+    onToggleHidden: (acc: Account) => void;
     appSettings: AppSettings;
+    isBalanceMasked: boolean;
 }) => {
     const getAccountTypeColor = (type: Account['type']) => {
         switch(type) {
@@ -334,7 +360,7 @@ const AccountActionModal = ({
                                  account.type === 'POOL' ? 'Инвестиционный пул' : 'Дополнительный счет'}
                             </p>
                             <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-1">
-                                {formatCurrency(balance, appSettings.showCents)} ₽
+                                {isBalanceMasked ? '•••••• ₽' : `${formatCurrency(balance, appSettings.showCents)} ₽`}
                             </p>
                         </div>
                     </div>
@@ -382,6 +408,26 @@ const AccountActionModal = ({
                                 </div>
                             </button>
                         )}
+
+                        {/* Основной счёт прятать нельзя — иначе касса останется без счёта по умолчанию */}
+                        {isManager && onUpdateAccount && account.type !== 'MAIN' && !account.isMain && (
+                            <button
+                                onClick={() => { onToggleHidden(account); onClose(); }}
+                                className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 rounded-xl flex items-center gap-3 transition-all group"
+                            >
+                                <span className="w-8 h-8 bg-slate-100 dark:bg-slate-700 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 group-hover:bg-slate-200 dark:group-hover:bg-slate-600 transition-all">
+                                    {account.isArchived ? ICONS.Unarchive : ICONS.Archive}
+                                </span>
+                                <div>
+                                    <span className="font-medium">{account.isArchived ? 'Вернуть счет' : 'Скрыть счет'}</span>
+                                    <p className="text-xs text-slate-400 dark:text-slate-500">
+                                        {account.isArchived
+                                            ? 'Показать карточку в общем списке'
+                                            : 'Убрать карточку из списка, данные сохранятся'}
+                                    </p>
+                                </div>
+                            </button>
+                        )}
                     </div>
 
                     <button
@@ -405,6 +451,69 @@ const CashRegister: React.FC<CashRegisterProps> = ({
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [selectedSharedAccount, setSelectedSharedAccount] = useState<Account | null>(null);
   const [activeMenuAccount, setActiveMenuAccount] = useState<Account | null>(null);
+
+  // Маскировка суммы — у каждого счёта своя. Это локальная приватность «от посторонних
+  // глаз», поэтому список живёт в localStorage устройства, а не в данных счёта: скрыв
+  // сумму на телефоне, пользователь не ждёт, что она пропадёт и на компьютере.
+  const [maskedAccountIds, setMaskedAccountIds] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('finuchet_masked_accounts');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleAccountMask = (accountId: string) => {
+    setMaskedAccountIds(prev => {
+      const next = prev.includes(accountId)
+        ? prev.filter(id => id !== accountId)
+        : [...prev, accountId];
+      localStorage.setItem('finuchet_masked_accounts', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const isMasked = (accountId: string) => maskedAccountIds.includes(accountId);
+
+  const [showHiddenAccounts, setShowHiddenAccounts] = useState(false);
+
+  // Период хранится в App (myProfitPeriod) — здесь только режим выбора.
+  // При возврате на страницу восстанавливаем его по уже выставленным датам.
+  const [periodMode, setPeriodMode] = useState<PeriodMode>(() => {
+    const { start, end } = myProfitPeriod;
+    if (!start || start <= ALL_TIME_START) return 'ALL';
+    if (end === todayStr()) {
+      if (start === todayStr()) return 'TODAY';
+      if (start === weekAgoStr()) return 'WEEK';
+      if (start === monthStartStr()) return 'MONTH';
+    }
+    return 'CUSTOM';
+  });
+
+  const applyPeriodMode = (mode: PeriodMode) => {
+    setPeriodMode(mode);
+    if (mode === 'ALL') setMyProfitPeriod({ start: ALL_TIME_START, end: todayStr() });
+    else if (mode === 'TODAY') setMyProfitPeriod({ start: todayStr(), end: todayStr() });
+    else if (mode === 'WEEK') setMyProfitPeriod({ start: weekAgoStr(), end: todayStr() });
+    else if (mode === 'MONTH') setMyProfitPeriod({ start: monthStartStr(), end: todayStr() });
+    else if (!myProfitPeriod.start || myProfitPeriod.start <= ALL_TIME_START) {
+      // «Свой» поверх «всего времени» — подставляем осмысленную заготовку
+      setMyProfitPeriod({ start: monthStartStr(), end: todayStr() });
+    }
+  };
+
+  const visibleAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
+  const hiddenAccounts = useMemo(() => accounts.filter(a => a.isArchived), [accounts]);
+
+  const handleToggleHidden = (acc: Account) => {
+    if (!onUpdateAccount) return;
+    onUpdateAccount({ ...acc, isArchived: !acc.isArchived });
+  };
+
+  // Скрытую сумму заменяем строкой похожей ширины, чтобы карточка не «прыгала»
+  const renderAmount = (accountId: string, value: number) =>
+    isMasked(accountId) ? '•••••• ₽' : `${formatCurrency(value, appSettings.showCents)} ₽`;
 
  // 🔹 Добавьте новые состояния в начало компонента (после других useState)
 const [showProfitDetails, setShowProfitDetails] = useState(false);
@@ -785,9 +894,16 @@ const investorProfitPayouts = useMemo(() => {
             </button>
           )}
         </div>
+      ) : visibleAccounts.length === 0 ? (
+        // Счета есть, но все спрятаны — иначе на месте сетки была бы пустота без объяснений
+        <div className="bg-slate-50 dark:bg-slate-800/60 rounded-3xl p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-700">
+          <div className="flex justify-center mb-3 text-slate-400 dark:text-slate-500">{ICONS.Archive}</div>
+          <h3 className="text-base sm:text-lg font-bold text-slate-700 dark:text-slate-200 mb-1">Все счета скрыты</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Верните нужный счет в списке ниже</p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-          {accounts.map(acc => (
+          {visibleAccounts.map(acc => (
             <div key={acc.id} className="relative bg-white dark:bg-slate-800 rounded-2xl sm:rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden" onClick={() => handleSharedAccountClick(acc)}>
               <div className={`absolute inset-0 bg-gradient-to-br ${getAccountTypeColor(acc.type)} opacity-0 hover:opacity-5 transition-opacity`}></div>
               <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${getAccountTypeColor(acc.type)}`}></div>
@@ -807,9 +923,19 @@ const investorProfitPayouts = useMemo(() => {
                 <div className="space-y-3 sm:space-y-4">
                   <div>
                     <h3 className="font-bold text-lg sm:text-xl text-slate-800 dark:text-white mb-1 truncate">{acc.name}</h3>
-                    <p className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
-                      {formatCurrency(accountBalances[acc.id] || 0, appSettings.showCents)} ₽
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
+                        {renderAmount(acc.id, accountBalances[acc.id] || 0)}
+                      </p>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleAccountMask(acc.id); }}
+                        className="shrink-0 p-1.5 rounded-lg text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all z-10"
+                        title={isMasked(acc.id) ? 'Показать сумму' : 'Скрыть сумму'}
+                        aria-label={isMasked(acc.id) ? 'Показать сумму' : 'Скрыть сумму'}
+                      >
+                        {isMasked(acc.id) ? ICONS.EyeOff : ICONS.Eye}
+                      </button>
+                    </div>
                   </div>
                   {acc.type === 'SHARED' && acc.partners && acc.partners.length > 0 && (
                     <div className="flex items-center justify-between">
@@ -851,8 +977,64 @@ const investorProfitPayouts = useMemo(() => {
         </div>
       )}
 
+      {/* Скрытые счета — свёрнуты, но всегда под рукой */}
+      {hiddenAccounts.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowHiddenAccounts(prev => !prev)}
+            className="flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-all"
+          >
+            <span className="text-slate-400 dark:text-slate-500">{ICONS.Archive}</span>
+            <span>Скрытые счета ({hiddenAccounts.length})</span>
+            <span className={`transition-transform ${showHiddenAccounts ? 'rotate-180' : ''}`}>▾</span>
+          </button>
+
+          {showHiddenAccounts && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mt-4">
+              {hiddenAccounts.map(acc => (
+                <div
+                  key={acc.id}
+                  className="relative bg-slate-50 dark:bg-slate-800/60 rounded-2xl sm:rounded-3xl border border-dashed border-slate-200 dark:border-slate-700 p-4 sm:p-5"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div>
+                      <h3 className="font-bold text-base sm:text-lg text-slate-600 dark:text-slate-300 truncate">{acc.name}</h3>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500">{getAccountTypeLabel(acc.type)}</p>
+                    </div>
+                    <span className="shrink-0 px-2 py-1 rounded-full text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                      Скрыт
+                    </span>
+                  </div>
+
+                  <p className="text-xl sm:text-2xl font-bold text-slate-500 dark:text-slate-400 mb-4">
+                    {renderAmount(acc.id, accountBalances[acc.id] || 0)}
+                  </p>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => onSelectAccount(acc.id)}
+                      className="flex-1 py-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-all"
+                    >
+                      История
+                    </button>
+                    {isManager && onUpdateAccount && (
+                      <button
+                        onClick={() => handleToggleHidden(acc)}
+                        className="flex-1 py-2 text-xs font-bold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition-all"
+                      >
+                        Вернуть
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {activeMenuAccount && (
-        <AccountActionModal account={activeMenuAccount} balance={accountBalances[activeMenuAccount.id] || 0} onClose={() => setActiveMenuAccount(null)} onSelectAccount={onSelectAccount} onEdit={setEditingAccount} onSetMain={onSetMainAccount} isManager={isManager} onUpdateAccount={onUpdateAccount} appSettings={appSettings} />
+        <AccountActionModal account={activeMenuAccount} balance={accountBalances[activeMenuAccount.id] || 0} onClose={() => setActiveMenuAccount(null)} onSelectAccount={onSelectAccount} onEdit={setEditingAccount} onSetMain={onSetMainAccount} isManager={isManager} onUpdateAccount={onUpdateAccount} onToggleHidden={handleToggleHidden} appSettings={appSettings} isBalanceMasked={isMasked(activeMenuAccount.id)} />
       )}
 
       {/* 🔹🔹🔹 БЛОК: Моя прибыль 🔹🔹🔹 */}
@@ -869,7 +1051,7 @@ const investorProfitPayouts = useMemo(() => {
                         onChange={e => { setProfitFilterAccountId(e.target.value); setProfitFilterInvestorId('ALL'); }}
                     >
                         <option value="ALL">Все счета</option>
-                        {accounts.filter(a => a.type !== 'SHARED').map(acc => (
+                        {accounts.filter(a => a.type !== 'SHARED' && (!a.isArchived || a.id === profitFilterAccountId)).map(acc => (
                             <option key={acc.id} value={acc.id}>{acc.name}</option>
                         ))}
                     </select>
@@ -889,32 +1071,60 @@ const investorProfitPayouts = useMemo(() => {
                         </select>
                     </div>
                 )}
-                <div className="grid grid-cols-1 gap-3">
-                    <div>
-                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5 block">Начало</label>
-                        <input
-                            type="date"
-                            className="w-full p-2.5 sm:p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-700 dark:text-slate-300 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
-                            value={myProfitPeriod.start}
-                            onChange={e => setMyProfitPeriod(p => ({...p, start: e.target.value}))}
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5 block">Конец</label>
-                        <input
-                            type="date"
-                            className="w-full p-2.5 sm:p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-700 dark:text-slate-300 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
-                            value={myProfitPeriod.end}
-                            onChange={e => setMyProfitPeriod(p => ({...p, end: e.target.value}))}
-                        />
+                <div>
+                    <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5 block">Период</label>
+                    <div className="flex flex-wrap gap-2">
+                        {PERIOD_CONFIG.map(({ key, label }) => (
+                            <button
+                                key={key}
+                                onClick={() => applyPeriodMode(key)}
+                                className={`flex-1 min-w-[68px] py-2 rounded-xl text-xs font-bold transition-colors ${
+                                    periodMode === key
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
                     </div>
                 </div>
+
+                {periodMode === 'CUSTOM' && (
+                    <div className="grid grid-cols-2 gap-3 animate-fade-in">
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5 block">Начало</label>
+                            <input
+                                type="date"
+                                className="w-full p-2.5 sm:p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-700 dark:text-slate-300 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                                value={myProfitPeriod.start}
+                                onChange={e => setMyProfitPeriod(p => ({...p, start: e.target.value}))}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5 block">Конец</label>
+                            <input
+                                type="date"
+                                className="w-full p-2.5 sm:p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-700 dark:text-slate-300 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
+                                value={myProfitPeriod.end}
+                                onChange={e => setMyProfitPeriod(p => ({...p, end: e.target.value}))}
+                            />
+                        </div>
+                    </div>
+                )}
             </div>
-            {(!myProfitPeriod.start && !myProfitPeriod.end) && (
-                <p className="text-[10px] sm:text-xs text-center text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900 py-2 rounded-lg mt-3">
-                    Показаны данные за все время
-                </p>
-            )}
+
+            <p className="text-[10px] sm:text-xs text-center text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900 py-2 rounded-lg mt-3">
+                {(() => {
+                    const { start, end } = myProfitPeriod;
+                    if (periodMode === 'ALL') return 'Показаны данные за все время';
+                    const fmt = (d: string) => new Date(d).toLocaleDateString('ru-RU');
+                    // В режиме «Свой» одно из полей можно очистить — тогда границы нет
+                    if (!start) return `по ${fmt(end)}`;
+                    if (!end) return `с ${fmt(start)}`;
+                    return start === end ? fmt(start) : `${fmt(start)} — ${fmt(end)}`;
+                })()}
+            </p>
         </div>
 
         {/* Заголовок */}

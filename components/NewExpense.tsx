@@ -399,7 +399,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                     value={sourceAccountId}
                     onChange={e => setSourceAccountId(e.target.value)}
                 >
-                    {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    {accounts.filter(a => !a.isArchived || a.id === sourceAccountId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
             </div>
         )}
@@ -424,7 +424,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                         value={sourceAccountId}
                         onChange={e => setSourceAccountId(e.target.value)}
                      >
-                         {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                         {accounts.filter(a => !a.isArchived || a.id === sourceAccountId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                      </select>
                  </div>
                  <div className="pt-2">
@@ -557,7 +557,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                         value={sourceAccountId}
                         onChange={e => setSourceAccountId(e.target.value)}
                      >
-                         {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                         {accounts.filter(a => !a.isArchived || a.id === sourceAccountId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                      </select>
                  </div>
                  {category === 'Моя выплата' && (

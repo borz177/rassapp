@@ -792,7 +792,7 @@ const Reports: React.FC<ReportsProps> = ({
                                     onChange={e => onFiltersChange(prev => ({ ...prev, accountId: e.target.value }))}
                                 >
                                     <option value="ALL">Все счета</option>
-                                    {(accounts as Account[]).filter((a: Account) => !a.isArchived).map((a: Account) => (
+                                    {(accounts as Account[]).filter((a: Account) => !a.isArchived || a.id === filters.accountId).map((a: Account) => (
                                         <option key={a.id} value={a.id}>
                                             {a.name}{a.type === 'INVESTOR' ? ' 👤' : a.type === 'SHARED' ? ' 🤝' : ''}
                                         </option>

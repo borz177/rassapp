@@ -234,7 +234,8 @@ const Operations: React.FC<OperationsProps> = ({
               <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Счет</label>
               <select className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg outline-none text-sm text-slate-700 dark:text-slate-300" value={filterAccountId} onChange={e => setFilterAccountId(e.target.value)}>
                   <option value="">Все счета</option>
-                  {accounts.map(acc => (<option key={acc.id} value={acc.id}>{acc.name}</option>))}
+                  {accounts.filter(acc => !acc.isArchived || acc.id === filterAccountId)
+                           .map(acc => (<option key={acc.id} value={acc.id}>{acc.name}</option>))}
               </select>
           </div>
 

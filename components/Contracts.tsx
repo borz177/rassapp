@@ -958,7 +958,8 @@ useEffect(() => {
               onChange={e => setFilterAccountId(e.target.value)}
             >
               <option value="">Все счета / Инвесторы</option>
-              {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+              {accounts.filter(acc => !acc.isArchived || acc.id === filterAccountId)
+                       .map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
             </select>
           </div>
         </div>

@@ -1318,7 +1318,7 @@ useEffect(() => {
                             >
                                 Все счета
                             </button>
-                            {accounts.map(acc => (
+                            {accounts.filter(acc => !acc.isArchived || acc.id === selectedAccountId).map(acc => (
                                 <button
                                   key={acc.id}
                                   onClick={() => setSelectedAccountId(acc.id)}

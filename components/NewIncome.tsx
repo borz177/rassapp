@@ -689,7 +689,8 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
               <select
                 className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
                 value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                {accounts.filter(a => !a.isArchived || a.id === targetAccountId)
+                         .map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
           </div>

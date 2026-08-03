@@ -1269,7 +1269,10 @@ if (mode === 'CASH') {
                   className="w-full p-3 bg-white dark:bg-slate-900 border rounded-lg outline-none text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
                   value={formData.accountId}
                   onChange={e => setFormData({...formData, accountId: e.target.value})}>
-            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            {/* Скрытые счета не предлагаем, но уже выбранный оставляем — иначе при
+                редактировании договора со скрытым счётом значение слетело бы на чужой */}
+            {accounts.filter(a => !a.isArchived || a.id === formData.accountId)
+                     .map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
 
