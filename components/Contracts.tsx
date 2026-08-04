@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Sale, Customer, Account, User, AppSettings } from '../types';
+import { Sale, Customer, Account, User, AppSettings, Task } from '../types';
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
 import { formatCurrency, formatDate, escapeHtml } from '../src/utils';
@@ -19,6 +19,7 @@ interface ContractsProps {
   user?: User | null;
   employees?: User[];
   appSettings?: AppSettings;
+  onCreateTask?: (draft: Partial<Task>) => void;
 
 }
 
@@ -336,7 +337,7 @@ const formatPhone = (raw: string | undefined): string => {
 const Contracts: React.FC<ContractsProps> = ({
   sales, customers, accounts, activeTab, onTabChange,
   onViewSchedule, onEditSale, onDeleteSale, readOnly = false,
-  user, employees = [], appSettings
+  user, employees = [], appSettings, onCreateTask
 }) => {
   const isEmployee = user?.role === 'employee';
   const [searchTerm, setSearchTerm] = useState('');
@@ -769,6 +770,34 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
                 <span className="text-slate-500 dark:text-slate-400"><Printer size={18} /></span>
                 <span>Печать договора</span>
               </button>
+
+              {/* Задача по договору: для просроченных подсказываем текст сразу */}
+              {onCreateTask && (
+                <button
+                  onClick={() => closeActionMenu(() => {
+                    const customer = customers.find(c => c.id === currentMenuSale.customerId);
+                    const overdueSum = calculateSaleOverdue(currentMenuSale);
+                    const noteParts = [
+                      customer?.phone ? `Телефон: ${customer.phone}` : null,
+                      overdueSum > 0 ? `Долг: ${Math.round(overdueSum).toLocaleString('ru-RU')} ₽` : null,
+                      `Товар: ${currentMenuSale.productName}`,
+                    ].filter(Boolean);
+                    onCreateTask({
+                      title: overdueSum > 0
+                        ? `Связаться по просрочке — ${customer?.name || 'клиент'}`
+                        : `По договору — ${customer?.name || currentMenuSale.productName}`,
+                      note: noteParts.join('\n'),
+                      customerId: currentMenuSale.customerId,
+                      customerName: customer?.name,
+                      saleId: currentMenuSale.id,
+                    });
+                  })}
+                  className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
+                >
+                  <span className="text-emerald-500 dark:text-emerald-400">{ICONS.Tasks}</span>
+                  <span>Создать задачу</span>
+                </button>
+              )}
             </div>
 
             <div className="border-t border-slate-100 dark:border-slate-700 py-2">

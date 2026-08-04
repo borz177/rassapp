@@ -528,21 +528,101 @@ async function processRemindersForUser(user) {
   }
 }
 
+// 🔔 Напоминания о задачах с наступившим сроком.
+// Работает для всех менеджеров на тарифах Бизнес/Бизнес Pro независимо от WhatsApp:
+// задачи к рассылке клиентам отношения не имеют, им нужен только push и колокольчик.
+async function processTaskReminders() {
+  const PLANS_WITH_TASKS = ['BUSINESS', 'BUSINESS_PRO'];
+  const nowIso = new Date().toISOString();
+
+  const rows = await pool.query(`
+    SELECT d.id, d.user_id, d.data
+    FROM data_items d
+    JOIN users u ON u.id = d.user_id
+    WHERE d.type = 'tasks'
+      AND COALESCE((d.data->>'isDone')::boolean, false) = false
+      AND d.data->>'dueDate' IS NOT NULL
+      AND d.data->>'dueDate' <= $1
+      AND d.data->>'notifiedAt' IS NULL
+      AND u.subscription->>'plan' = ANY($2)
+  `, [nowIso, PLANS_WITH_TASKS]);
+
+  let sent = 0;
+  for (const row of rows.rows) {
+    const task = row.data;
+    // Поручение — исполнителю, личная задача — владельцу
+    const recipient = task.assigneeId || row.user_id;
+
+    try {
+      const settingsRes = await pool.query(
+        `SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'settings'`,
+        [`settings_${recipient}`, recipient]
+      );
+      const notif = settingsRes.rows[0]?.data?.notifications;
+      const muted = notif?.enabled === false || notif?.events?.taskDue === false;
+
+      if (!muted) {
+        const id = `notif_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        await pool.query(
+          `INSERT INTO notifications (id, user_id, type, title, body, data)
+           VALUES ($1, $2, 'TASK_DUE', $3, $4, $5)`,
+          [id, recipient, 'Срок задачи наступил', task.title, JSON.stringify({ taskId: task.id })]
+        );
+        if (notif?.pushEnabled !== false) {
+          await sendPushToUser(recipient, 'Срок задачи наступил', task.title);
+        }
+        sent++;
+      }
+
+      // Отметку ставим даже при выключенных уведомлениях, иначе задача будет
+      // перебираться каждые полчаса до самого её выполнения.
+      await pool.query(
+        `UPDATE data_items SET data = $1 WHERE id = $2 AND user_id = $3`,
+        [JSON.stringify({ ...task, notifiedAt: nowIso }), row.id, row.user_id]
+      );
+    } catch (e) {
+      console.error(`${LOG_PREFIX} ❌ Напоминание о задаче ${task.id}:`, e.message);
+    }
+  }
+
+  if (sent > 0) console.log(`${LOG_PREFIX} 🔔 Напоминаний о задачах: ${sent}`);
+}
+
+// Два режима: рассылка клиентам привязана к часу и получасу, поэтому ей хватает запуска
+// раз в 30 минут. Срок задачи задаётся с точностью до минуты — её напоминания нужно
+// проверять часто, но гонять ради этого опрос WhatsApp-инстансов незачем.
+//   --tasks-only  — только напоминания о задачах (частый запуск)
+//   --skip-tasks  — только рассылка клиентам
+// Без флагов делает и то и другое — чтобы старая строка cron продолжала работать.
+const TASKS_ONLY = process.argv.includes('--tasks-only');
+const SKIP_TASKS = process.argv.includes('--skip-tasks');
+
 async function runReminders() {
   try {
-    const result = await pool.query(`
-      SELECT id, whatsapp_settings
-      FROM users
-      WHERE role IN ('manager', 'admin')
-        AND whatsapp_settings IS NOT NULL
-        AND whatsapp_settings->>'enabled' = 'true'
-    `);
+    if (!TASKS_ONLY) {
+      const result = await pool.query(`
+        SELECT id, whatsapp_settings
+        FROM users
+        WHERE role IN ('manager', 'admin')
+          AND whatsapp_settings IS NOT NULL
+          AND whatsapp_settings->>'enabled' = 'true'
+      `);
 
-    for (const user of result.rows) {
+      for (const user of result.rows) {
+        try {
+          await processRemindersForUser(user);
+        } catch (e) {
+          console.error(`${LOG_PREFIX} ❌ Ошибка обработки пользователя ${user.id}:`, e.message);
+        }
+      }
+    }
+
+    // Отдельным блоком: падение напоминаний о задачах не должно ронять рассылку клиентам
+    if (!SKIP_TASKS) {
       try {
-        await processRemindersForUser(user);
+        await processTaskReminders();
       } catch (e) {
-        console.error(`${LOG_PREFIX} ❌ Ошибка обработки пользователя ${user.id}:`, e.message);
+        console.error(`${LOG_PREFIX} ❌ Ошибка напоминаний о задачах:`, e.message);
       }
     }
   } catch (err) {

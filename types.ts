@@ -294,6 +294,7 @@ export interface NotificationEventToggles {
   whatsappSent: boolean;
   adminBroadcast: boolean;
   supportMessage: boolean;
+  taskDue: boolean;
 }
 
 export interface NotificationSettings {
@@ -326,7 +327,10 @@ export type NotificationType =
   | 'EXPENSE'
   | 'WHATSAPP_SENT'
   | 'ADMIN_BROADCAST'
-  | 'SUPPORT_MESSAGE';
+  | 'SUPPORT_MESSAGE'
+  | 'TASK_ASSIGNED'
+  | 'TASK_DONE'
+  | 'TASK_DUE';
 
 export interface AppNotification {
   id: string;
@@ -378,4 +382,33 @@ export type ViewState =
   | 'TARIFFS'
   | 'ADMIN_SUPPORT'
   | 'ADMIN_PANEL'
+  | 'TASKS'
   | 'NOTIFICATIONS';
+
+// Задачи менеджера — личный список дел, не привязанный к договорам.
+// Доступны на тарифах Бизнес и Бизнес Pro.
+export interface Task {
+  id: string;
+  userId: string;
+  title: string;
+  note?: string;           // дополнительная информация
+  dueDate?: string;        // ISO-строка; время внутри неё, если задано
+  hasTime?: boolean;       // false — только дата, время не показываем
+  isFavorite?: boolean;
+  isDone?: boolean;
+  completedAt?: string;
+  createdAt: string;
+
+  // Поручение сотруднику: пусто — личная задача менеджера.
+  // Сервер отдаёт сотруднику только задачи с его assigneeId (filterDataForEmployee).
+  assigneeId?: string;
+  assigneeName?: string;   // снимок имени, чтобы список не зависел от загрузки сотрудников
+
+  // Привязка к работе — задача из карточки клиента или договора
+  customerId?: string;
+  customerName?: string;
+  saleId?: string;
+
+  // Отметка cron-скрипта, что напоминание о наступившем сроке уже отправлено
+  notifiedAt?: string;
+}

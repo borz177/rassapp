@@ -71,7 +71,7 @@ app.use((req, res, next) => {
 
 
 // ✅ БЕЛЫЙ СПИСОК ТИПОВ ДАННЫХ (защита от инъекций)
-const VALID_DATA_TYPES = ['customers', 'products', 'sales', 'expenses', 'accounts', 'investors', 'partnerships', 'suppliers', 'settings'];
+const VALID_DATA_TYPES = ['customers', 'products', 'sales', 'expenses', 'accounts', 'investors', 'partnerships', 'suppliers', 'settings', 'tasks'];
 
 // ✅ ХЕЛПЕР: Определение целевого пользователя для загрузки данных
 const getTargetUserId = (user) => {
@@ -86,17 +86,25 @@ const getTargetUserId = (user) => {
 
 // ✅ КОНФИГУРАЦИЯ ЛИМИТОВ ТАРИФОВ
 const PLAN_LIMITS = {
-  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: true,  suppliers: false, investorPools: false, notifications: true  },
-  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false },
-  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true  },
-  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: false, investorPools: false, notifications: true  },
-  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: true,  investorPools: true,  notifications: true  },
+  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: true,  suppliers: false, investorPools: false, notifications: true,  tasks: false },
+  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false },
+  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false },
+  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: false, investorPools: false, notifications: true,  tasks: true  },
+  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: true,  investorPools: true,  notifications: true,  tasks: true  },
 };
 
 
 // 🔹 Фильтрация данных для сотрудника по allowed_investor_ids
 // 🔥 По умолчанию сотрудник видит только СВОИ записи (createdByUserId === employeeId).
 //    Если счёт/инвестор входит в fullAccessInvestorIds — сотрудник видит ВСЕ записи по нему.
+// Чьи уведомления показываем. Сотрудник читает ящик менеджера (события по общим данным),
+// но личные поручения приходят на его собственный id — поэтому смотрим оба.
+// Для менеджера и админа это один и тот же ящик, поведение не меняется.
+const notificationAudience = (user) => {
+  const target = getTargetUserId(user);
+  return target === user.id ? [target] : [target, user.id];
+};
+
 const filterDataForEmployee = (dataByType, allowedInvestorIds, fullAccessInvestorIds, employeeId) => {
     // 🔥 Если доступов нет вообще — возвращаем пустоту (безопасность)
     if (!allowedInvestorIds || allowedInvestorIds.length === 0) {
@@ -106,11 +114,17 @@ const filterDataForEmployee = (dataByType, allowedInvestorIds, fullAccessInvesto
             accounts: [],
             sales: [],
             expenses: [],
-            customers: [] // Сотрудник без прав не видит никого
+            customers: [], // Сотрудник без прав не видит никого
+            // Поручения приходят лично, поэтому доступны и без прав на инвесторов
+            tasks: (dataByType.tasks || []).filter(t => t.assigneeId === employeeId)
         };
     }
 
     const filtered = { ...dataByType };
+
+    // 0. Задачи: сотруднику видны только назначенные ему лично.
+    // Личные задачи менеджера и поручения другим сотрудникам скрыты.
+    filtered.tasks = (filtered.tasks || []).filter(t => t.assigneeId === employeeId);
     const hasMainAccess = allowedInvestorIds.includes('MAIN_ACCOUNT');
     const investorIds = allowedInvestorIds.filter(id => id !== 'MAIN_ACCOUNT');
 
@@ -240,6 +254,7 @@ const FEATURE_DENIED_MESSAGES = {
   suppliers: { msg: 'Модуль «Партнеры» доступен только на тарифе Бизнес Pro.', hint: 'Оформите тариф Бизнес Pro для работы с поставщиками.' },
   investorPools: { msg: 'Общий инвестиционный пул доступен только на тарифе Бизнес Pro.', hint: 'Оформите тариф Бизнес Pro для распределения дохода между инвесторами в одном пуле.' },
   notifications: { msg: 'Уведомления доступны начиная с тарифа Стандарт.', hint: 'Оформите тариф Стандарт для доступа к уведомлениям о событиях.' },
+  tasks: { msg: 'Задачи доступны на тарифах Бизнес и Бизнес Pro.', hint: 'Оформите тариф Бизнес для работы с задачами и поручениями сотрудникам.' },
 };
 const checkFeatureAccess = async (userId, featureKey) => {
   try {
@@ -286,6 +301,10 @@ const NOTIFICATION_EVENT_TOGGLE_KEYS = {
   EXPENSE: 'expense',
   WHATSAPP_SENT: 'whatsappSent',
   SUPPORT_MESSAGE: 'supportMessage',
+  // Все события задач подчиняются одному тумблеру «Напоминания о задачах»
+  TASK_DUE: 'taskDue',
+  TASK_ASSIGNED: 'taskDue',
+  TASK_DONE: 'taskDue',
 };
 // 🔔 Отправка Web Push всем подпискам пользователя (с автоочисткой протухших подписок)
 const sendPushToUser = async (userId, title, body) => {
@@ -2127,7 +2146,7 @@ app.get('/api/data', auth, async (req, res) => {
 
     const result = {
       customers: [], products: [], sales: [], expenses: [],
-      accounts: [], investors: [], partnerships: [], suppliers: [], settings: null
+      accounts: [], investors: [], partnerships: [], suppliers: [], tasks: [], settings: null
     };
 
     itemsResult.rows.forEach(row => {
@@ -2260,6 +2279,33 @@ app.post('/api/data/:type', auth, async (req, res) => {
       if (!featureAccess.allowed) {
         return res.status(403).json({ msg: featureAccess.msg, hint: featureAccess.hint });
       }
+    }
+
+    // 🔒 Задачи — тарифы Бизнес и Бизнес Pro. Плюс сотрудник вправе трогать только то,
+    // что назначено лично ему: без этой проверки он мог бы переписать любую задачу
+    // менеджера, ведь пишет он в данные менеджера (targetUserId).
+    let taskNotifyContext = null;
+    if (type === 'tasks') {
+      const featureAccess = await checkFeatureAccess(targetUserId, 'tasks');
+      if (!featureAccess.allowed) {
+        return res.status(403).json({ msg: featureAccess.msg, hint: featureAccess.hint });
+      }
+
+      const existingTaskRes = await pool.query(
+        `SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'tasks'`,
+        [itemData.id, targetUserId]
+      );
+      const existingTask = existingTaskRes.rows[0]?.data || null;
+
+      if (req.user.role === 'employee') {
+        const ownsIt = itemData.assigneeId === req.user.id
+          && (!existingTask || existingTask.assigneeId === req.user.id);
+        if (!ownsIt) {
+          return res.status(403).json({ error: 'Можно изменять только свои задачи' });
+        }
+      }
+
+      taskNotifyContext = { existingTask, isNew: !existingTask };
     }
 
     // 🔔 Контекст для уведомлений о событиях (новый договор / платёж / закрытие / расход)
@@ -2406,6 +2452,36 @@ app.post('/api/data/:type', auth, async (req, res) => {
         `${itemData.title || 'Расход'}: ${Number(itemData.amount || 0).toLocaleString('ru-RU')} ₽`,
         { expenseId: itemData.id }
       );
+    } else if (type === 'tasks' && taskNotifyContext) {
+      const { existingTask } = taskNotifyContext;
+      const assignee = itemData.assigneeId || null;
+      const wasAssignee = existingTask?.assigneeId || null;
+
+      // 1. Поручение назначено (или переназначено) — уведомляем исполнителя
+      if (assignee && assignee !== wasAssignee && assignee !== req.user.id) {
+        await createNotification(
+          assignee,
+          'TASK_ASSIGNED',
+          'Новая задача',
+          itemData.title,
+          { taskId: itemData.id, dueDate: itemData.dueDate || null }
+        );
+      }
+
+      // 2. Сотрудник выполнил поручение — уведомляем менеджера.
+      // targetUserId здесь и есть менеджер (данные сотрудника лежат у него).
+      const justCompleted = itemData.isDone && !existingTask?.isDone;
+      if (justCompleted && req.user.id !== targetUserId) {
+        const doerRes = await pool.query('SELECT name FROM users WHERE id = $1', [req.user.id]);
+        const doerName = doerRes.rows[0]?.name || 'Сотрудник';
+        await createNotification(
+          targetUserId,
+          'TASK_DONE',
+          'Задача выполнена',
+          `${doerName}: ${itemData.title}`,
+          { taskId: itemData.id }
+        );
+      }
     }
 
     res.json(savedResult.rows[0]?.data || itemData);
@@ -3478,7 +3554,7 @@ app.get('/api/notifications', auth, async (req, res) => {
     const cursor = req.query.cursor;
     const archived = req.query.archived === 'true';
 
-    const params = [targetUserId];
+    const params = [notificationAudience(req.user)];
     let cursorClause = '';
     if (cursor) {
       params.push(cursor);
@@ -3488,7 +3564,7 @@ app.get('/api/notifications', auth, async (req, res) => {
 
     const notifResult = await pool.query(
       `SELECT id, type, title, body, data, is_read, created_at FROM notifications
-       WHERE user_id = $1 AND is_archived = ${archived ? 'TRUE' : 'FALSE'} ${cursorClause}
+       WHERE user_id = ANY($1) AND is_archived = ${archived ? 'TRUE' : 'FALSE'} ${cursorClause}
        ORDER BY created_at DESC LIMIT $${params.length}`,
       params
     );
@@ -3546,8 +3622,8 @@ app.get('/api/notifications/unread-count', auth, async (req, res) => {
     }
 
     const notifResult = await pool.query(
-      `SELECT COUNT(*) as count FROM notifications WHERE user_id = $1 AND is_read = FALSE AND is_archived = FALSE`,
-      [targetUserId]
+      `SELECT COUNT(*) as count FROM notifications WHERE user_id = ANY($1) AND is_read = FALSE AND is_archived = FALSE`,
+      [notificationAudience(req.user)]
     );
 
     let broadcastCount = 0;
@@ -3581,8 +3657,8 @@ app.post('/api/notifications/:id/read', auth, async (req, res) => {
       `, [JSON.stringify([req.user.id]), broadcastId]);
     } else {
       await pool.query(
-        `UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = $2`,
-        [id, targetUserId]
+        `UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = ANY($2)`,
+        [id, notificationAudience(req.user)]
       );
     }
 
@@ -3599,8 +3675,8 @@ app.post('/api/notifications/read-all', auth, async (req, res) => {
     const targetUserId = getTargetUserId(req.user);
 
     await pool.query(
-      `UPDATE notifications SET is_read = TRUE WHERE user_id = $1 AND is_read = FALSE`,
-      [targetUserId]
+      `UPDATE notifications SET is_read = TRUE WHERE user_id = ANY($1) AND is_read = FALSE`,
+      [notificationAudience(req.user)]
     );
 
     if (req.user.role !== 'admin') {
@@ -3628,8 +3704,8 @@ app.post('/api/notifications/:id/archive', auth, async (req, res) => {
     }
 
     await pool.query(
-      `UPDATE notifications SET is_archived = TRUE WHERE id = $1 AND user_id = $2`,
-      [id, targetUserId]
+      `UPDATE notifications SET is_archived = TRUE WHERE id = $1 AND user_id = ANY($2)`,
+      [id, notificationAudience(req.user)]
     );
     res.json({ success: true });
   } catch (err) {
@@ -3648,8 +3724,8 @@ app.post('/api/notifications/:id/unarchive', auth, async (req, res) => {
     }
 
     await pool.query(
-      `UPDATE notifications SET is_archived = FALSE WHERE id = $1 AND user_id = $2`,
-      [id, targetUserId]
+      `UPDATE notifications SET is_archived = FALSE WHERE id = $1 AND user_id = ANY($2)`,
+      [id, notificationAudience(req.user)]
     );
     res.json({ success: true });
   } catch (err) {

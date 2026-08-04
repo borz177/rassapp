@@ -35,6 +35,7 @@ const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     whatsappSent: true,
     adminBroadcast: true,
     supportMessage: true,
+    taskDue: true,
   },
 };
 
@@ -46,6 +47,7 @@ const NOTIFICATION_EVENT_ROWS: { key: keyof NotificationEventToggles; label: str
   { key: 'contractClosed', label: 'Договор закрыт', icon: ICONS.CheckCircle },
   { key: 'expense', label: 'Расход', icon: ICONS.Expense },
   { key: 'whatsappSent', label: 'WhatsApp-напоминания', icon: ICONS.Chat },
+  { key: 'taskDue', label: 'Напоминания о задачах', icon: ICONS.Tasks },
   { key: 'adminBroadcast', label: 'От администратора', icon: ICONS.Megaphone },
   { key: 'supportMessage', label: 'Сообщения от пользователей', icon: ICONS.Chat, adminOnly: true },
 ];

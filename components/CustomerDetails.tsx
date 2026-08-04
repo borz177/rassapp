@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier} from '../types';
+import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier, Task} from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate } from '../src/utils';
 import { offlineStorage } from '../services/offlineStorage';
@@ -22,6 +22,7 @@ interface CustomerDetailsProps {
   user?: User | null;
   suppliers?: Supplier[];
   onPaySupplier?: (sale: Sale) => void;
+  onCreateTask?: (draft: Partial<Task>) => void;
 }
 
 const compressImage = (file: File, maxWidth = 1920): Promise<Blob> => {
@@ -494,7 +495,7 @@ const DocumentsModal = ({
 const CustomerDetails: React.FC<CustomerDetailsProps> = ({
     customer, sales, accounts, investors, appSettings, onBack,
     onInitiatePayment, onUndoPayment, onEditPayment, onUpdateCustomer,
-    initialSaleId, onDeleteCustomer, user, suppliers, onPaySupplier
+    initialSaleId, onDeleteCustomer, user, suppliers, onPaySupplier, onCreateTask
 }) => {
     const supplierList: Supplier[] = suppliers || [];
     const isEmployee = user?.role === 'employee';
@@ -996,7 +997,22 @@ ${customer.name}!
         <div className="space-y-4 animate-fade-in pb-20">
             <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 bg-white dark:bg-slate-900 sticky top-0 z-10 pt-2">
                 <button onClick={onBack} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">{ICONS.Back}</button>
-                <h2 className="text-xl font-bold text-slate-800 dark:text-white">{customer.name}</h2>
+                <h2 className="flex-1 text-xl font-bold text-slate-800 dark:text-white truncate">{customer.name}</h2>
+                {onCreateTask && (
+                    <button
+                        onClick={() => onCreateTask({
+                            title: `Связаться — ${customer.name}`,
+                            note: customer.phone ? `Телефон: ${customer.phone}` : undefined,
+                            customerId: customer.id,
+                            customerName: customer.name,
+                        })}
+                        className="shrink-0 flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-2 rounded-lg font-semibold text-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+                        title="Создать задачу по клиенту"
+                    >
+                        {ICONS.Tasks}
+                        <span className="hidden sm:inline">Задача</span>
+                    </button>
+                )}
             </div>
             <div className="flex border-b border-slate-200 dark:border-slate-700">
                 <button onClick={() => setActiveTab('INFO')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INFO' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400'}`}>Информация</button>

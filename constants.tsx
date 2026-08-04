@@ -40,7 +40,11 @@ import {
   ArchiveRestore,
   Calculator,
   Eye,
-  EyeOff
+  EyeOff,
+  Star,
+  ListTodo,
+  AlignLeft,
+  CalendarClock
 } from 'lucide-react';
 
 export const ICONS: Record<string, ReactNode> = {
@@ -87,6 +91,11 @@ export const ICONS: Record<string, ReactNode> = {
   Unarchive: <ArchiveRestore size={18} />,
   Eye: <Eye size={18} />,
   EyeOff: <EyeOff size={18} />,
+  Star: <Star size={18} />,
+  StarFilled: <Star size={18} fill="currentColor" />,
+  Tasks: <ListTodo size={20} />,
+  Note: <AlignLeft size={18} />,
+  DateTime: <CalendarClock size={18} />,
     Chat: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>

@@ -21,6 +21,7 @@ import Reports from './components/Reports';
 import Profile from './components/Profile';
 import Partners from './components/Partners';
 import Suppliers from './components/Suppliers';
+import Tasks from './components/Tasks';
 import SupplierDetails from './components/SupplierDetails';
 import InvestorDashboard from './components/InvestorDashboard';
 import Tariffs from './components/Tariffs';
@@ -37,7 +38,7 @@ const LazyFallback: React.FC = () => (
     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
   </div>
 );
-import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier } from './types';
+import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task } from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
 import { api } from './services/api';
 import { ICONS } from './constants';
@@ -76,7 +77,7 @@ async function enablePersistentStorage() {
 // underneath, gated on previousView === 'MORE') so swiping back reveals the real menu, not blank space.
 const MORE_PUSH_VIEWS = new Set<ViewState>([
   'PROFILE', 'SETTINGS', 'EMPLOYEES', 'SUPPLIERS', 'TARIFFS', 'ADMIN_PANEL',
-  'REPORTS', 'CONTRACTS', 'INVESTORS',
+  'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS',
 ]);
 
 const App: React.FC = () => {
@@ -112,6 +113,9 @@ const isLanding = path === "/"
   const [employees, setEmployees] = useState<User[]>([]);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  // Заготовка задачи, переданная со страницы договоров или карточки клиента
+  const [taskDraft, setTaskDraft] = useState<Partial<Task> | null>(null);
   const [appSettings, setAppSettings] = useState<AppSettings>({ companyName: 'FinUchet' });
 
   const [whatsappRefreshKey, setWhatsAppRefreshKey] = useState<number>(0);
@@ -569,6 +573,7 @@ const handleSync = async () => {
         if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
         if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
         if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers'));
+        if (freshData.tasks) setTasks(prev => mergeServerData(prev, freshData.tasks, 'tasks'));
 
         if (freshData.settings) {
           setAppSettings(freshData.settings);
@@ -777,6 +782,7 @@ useEffect(() => {
                 if (cachedData.investors) setInvestors(cachedData.investors);
                 if (cachedData.partnerships) setPartnerships(cachedData.partnerships);
                 if (cachedData.suppliers) setSuppliers(cachedData.suppliers);
+                if (cachedData.tasks) setTasks(cachedData.tasks);
                 if (cachedData.employees) setEmployees(cachedData.employees);
                 if (cachedData.settings) setAppSettings(cachedData.settings);
             }
@@ -822,6 +828,7 @@ useEffect(() => {
               if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
               if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
               if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers'));
+              if (freshData.tasks) setTasks(prev => mergeServerData(prev, freshData.tasks, 'tasks'));
 
               if (freshData.settings) {
                 setAppSettings(freshData.settings);
@@ -1122,6 +1129,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
     if (data.investors) setInvestors(prev => mergeServerData(prev, data.investors, 'investors'));
     if (data.partnerships) setPartnerships(prev => mergeServerData(prev, data.partnerships, 'partnerships'));
     if (data.suppliers) setSuppliers(prev => mergeServerData(prev, data.suppliers, 'suppliers'));
+    if (data.tasks) setTasks(prev => mergeServerData(prev, data.tasks, 'tasks'));
     if (data.employees?.length > 0 || employees.length === 0) setEmployees(data.employees || []);
 
     let loadedSettings = data.settings || getAppSettings();
@@ -1172,7 +1180,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 };
 
   // ... (Access checks and calculation logic remain the same)
-  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS'): boolean => {
+  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS'): boolean => {
     if (!user) return false;
     if (isEmployee || isInvestor || user.role === 'admin') return true;
 
@@ -1193,6 +1201,8 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         case 'EMPLOYEES': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
         case 'SUPPLIERS': return plan === 'BUSINESS_PRO';
         case 'INVESTOR_POOLS': return plan === 'BUSINESS_PRO';
+        // Задачи — тарифы Бизнес и Бизнес Pro (см. PLAN_LIMITS.tasks на сервере)
+        case 'TASKS': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
         case 'NOTIFICATIONS': return plan !== 'START';
         default: return true;
     }
@@ -1402,6 +1412,7 @@ const dashboardStats = useMemo(() => {
           case 'OPERATIONS': setOperationsAccountId(null); setCurrentView('OPERATIONS'); break;
           case 'CALCULATOR': setCurrentView('CALCULATOR'); break;
           case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break;
+          case 'TASKS': setPreviousView(currentView); setCurrentView('TASKS'); break;
           case 'ADD_CUSTOMER': setCurrentView('CUSTOMERS'); break;
           case 'ADD_PRODUCT': setCurrentView('MANAGE_PRODUCTS'); break;
       }
@@ -2638,6 +2649,37 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
       }
   };
   const handleUpdateAccount = async (updatedAccount: Account) => { if (user && isManager) { const saved = await api.saveItem('accounts', updatedAccount); updateList(setAccounts, saved); } };
+
+  // Задачи. Список локальный для менеджера, поэтому обновляем состояние сразу,
+  // а сохранение уходит следом — иначе галочка «выполнено» ставилась бы с задержкой сети.
+  const handleSaveTask = async (task: Task) => {
+    if (!user) return;
+    setTasks(prev => prev.some(t => t.id === task.id)
+      ? prev.map(t => (t.id === task.id ? task : t))
+      : [task, ...prev]);
+    try {
+      await api.saveItem('tasks', task);
+    } catch (e) {
+      console.error('Не удалось сохранить задачу:', e);
+    }
+  };
+
+  // Открыть страницу задач с заполненной заготовкой (из договора / карточки клиента)
+  const handleCreateTaskFor = (draft: Partial<Task>) => {
+    setTaskDraft(draft);
+    setPreviousView(currentView);
+    setCurrentView('TASKS');
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!user) return;
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    try {
+      await api.deleteItem('tasks', taskId);
+    } catch (e) {
+      console.error('Не удалось удалить задачу:', e);
+    }
+  };
   const handleUndoPayment = async (saleId: string, paymentId: string) => {
     if (isEmployee && !user?.permissions?.canDelete) {
         alert("Нет прав на удаление");
@@ -3118,6 +3160,7 @@ if (!user && !showSplash) {
     unreadNotifCount={unreadNotifCount}
     onOpenNotifications={() => setShowNotificationsPanel(true)}
     showNotificationsBell={checkAccess('NOTIFICATIONS')}
+    showTasks={checkAccess('TASKS')}
     // 🔹 Кнопка поддержки для десктопа (плавающая) — админа ведём в панель
     // управления обращениями, а не в чат "как у обычного пользователя"
     supportButton={
@@ -3238,6 +3281,7 @@ if (!user && !showSplash) {
                       user={user}
                       employees={employees}
                       appSettings={appSettings}
+                      onCreateTask={checkAccess("TASKS") ? handleCreateTaskFor : undefined}
                   />
                   </PagePush>
               )}
@@ -3287,6 +3331,21 @@ if (!user && !showSplash) {
                       appSettings={appSettings}
                   />
               )}
+              {currentView === 'TASKS' && (
+                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+                  <Tasks
+                      tasks={tasks}
+                      onSaveTask={handleSaveTask}
+                      onDeleteTask={handleDeleteTask}
+                      userId={user.id}
+                      employees={employees}
+                      isEmployee={isEmployee}
+                      draft={taskDraft}
+                      onDraftConsumed={() => setTaskDraft(null)}
+                      onOpenCustomer={handleSelectCustomer}
+                  />
+                  </PagePush>
+              )}
               {currentView === 'SUPPLIERS' && (
                   <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                   <Suppliers
@@ -3333,7 +3392,8 @@ if (!user && !showSplash) {
                                        onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer}
                                        onDeleteCustomer={handleDeleteCustomer}
                                        suppliers={suppliers} onPaySupplier={handlePaySupplier}
-                                       initialSaleId={initialSaleIdForDetails} appSettings={appSettings} user={user}/>
+                                       initialSaleId={initialSaleIdForDetails} appSettings={appSettings} user={user}
+                                       onCreateTask={checkAccess("TASKS") ? handleCreateTaskFor : undefined}/>
                     )}
                   </PagePush>}
               {currentView === 'MANAGE_PRODUCTS' &&
@@ -3749,6 +3809,29 @@ if (!user && !showSplash) {
                   <polyline points="9 18 15 12 9 6"/>
                 </svg>
               </span>
+            </button>
+          )}
+
+          {/* Задачи — тарифы Бизнес и Бизнес Pro. Сотруднику видны поручения от менеджера */}
+          {(user.role === 'manager' || isEmployee) && checkAccess('TASKS') && (
+            <button onClick={() => { setPreviousView('MORE'); setCurrentView('TASKS'); }}
+                    className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
+              <div className="flex items-center gap-3">
+                <div className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 p-2 rounded-lg">{ICONS.Tasks}</div>
+                <span className="font-semibold text-slate-800 dark:text-white">Задачи</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {tasks.filter(t => !t.isDone).length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300">
+                    {tasks.filter(t => !t.isDone).length}
+                  </span>
+                )}
+                <span className="text-slate-400 dark:text-slate-500">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </span>
+              </div>
             </button>
           )}
 

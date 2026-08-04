@@ -10,6 +10,9 @@ export const TYPE_META: Record<NotificationType, { icon: React.ReactNode; bg: st
   WHATSAPP_SENT: { icon: ICONS.Chat, bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-600 dark:text-emerald-400', label: 'WhatsApp' },
   ADMIN_BROADCAST: { icon: ICONS.Megaphone, bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-600 dark:text-amber-400', label: 'От администратора' },
   SUPPORT_MESSAGE: { icon: ICONS.Chat, bg: 'bg-sky-100 dark:bg-sky-900/30', text: 'text-sky-600 dark:text-sky-400', label: 'Сообщение от пользователя' },
+  TASK_ASSIGNED: { icon: ICONS.Tasks, bg: 'bg-indigo-100 dark:bg-indigo-900/30', text: 'text-indigo-600 dark:text-indigo-400', label: 'Новая задача' },
+  TASK_DONE: { icon: ICONS.CheckCircle, bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-600 dark:text-emerald-400', label: 'Задача выполнена' },
+  TASK_DUE: { icon: ICONS.Clock, bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-600 dark:text-amber-400', label: 'Срок задачи' },
 };
 
 export const NOTIFICATION_TYPE_FILTERS: { key: NotificationType | 'all'; label: string }[] = [
@@ -21,6 +24,9 @@ export const NOTIFICATION_TYPE_FILTERS: { key: NotificationType | 'all'; label: 
   { key: 'WHATSAPP_SENT', label: TYPE_META.WHATSAPP_SENT.label },
   { key: 'ADMIN_BROADCAST', label: TYPE_META.ADMIN_BROADCAST.label },
   { key: 'SUPPORT_MESSAGE', label: TYPE_META.SUPPORT_MESSAGE.label },
+  { key: 'TASK_ASSIGNED', label: TYPE_META.TASK_ASSIGNED.label },
+  { key: 'TASK_DONE', label: TYPE_META.TASK_DONE.label },
+  { key: 'TASK_DUE', label: TYPE_META.TASK_DUE.label },
 ];
 
 export const groupLabel = (dateStr: string): string => {

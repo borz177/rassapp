@@ -23,6 +23,7 @@ interface LayoutProps {
   unreadNotifCount?: number;
   onOpenNotifications?: () => void;
   showNotificationsBell?: boolean;
+  showTasks?: boolean;
 }
 
 const PLAN_NAMES: Record<SubscriptionPlan, string> = {
@@ -53,6 +54,7 @@ const Layout: React.FC<LayoutProps> = ({
   unreadNotifCount = 0,
   onOpenNotifications,
   showNotificationsBell = false,
+  showTasks = false,
 }) => {  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMenuClosing, setIsMenuClosing] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
@@ -139,6 +141,7 @@ const counts = useMemo(() => {
 
   // Desktop Sidebar Items
   const allSidebarItems = [
+    { id: 'TASKS' as const, label: 'Задачи', icon: ICONS.Tasks, visible: showTasks && !isInvestor },
     { id: 'DASHBOARD' as const, label: 'Главная', icon: ICONS.Dashboard, visible: true },
     {
       id: 'CASH_REGISTER' as const,
@@ -399,6 +402,12 @@ const counts = useMemo(() => {
                 <div className="bg-violet-100 dark:bg-violet-900/30 p-2.5 rounded-full text-violet-600 dark:text-violet-400">{ICONS.Calculator}</div>
                 <span className="font-semibold text-[15px]">Калькулятор</span>
               </button>
+              {showTasks && (
+                <button onClick={() => handleActionClick('TASKS')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                  <div className="bg-sky-100 dark:bg-sky-900/30 p-2.5 rounded-full text-sky-600 dark:text-sky-400">{ICONS.Tasks}</div>
+                  <span className="font-semibold text-[15px]">Задачи</span>
+                </button>
+              )}
               <button onClick={() => handleActionClick('CREATE_SALE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
                 <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2.5 rounded-full text-indigo-600 dark:text-indigo-400">{ICONS.Sales}</div>
                 <span className="font-semibold text-[15px]">Оформить продажу</span>
