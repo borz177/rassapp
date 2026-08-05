@@ -24,6 +24,8 @@ interface LayoutProps {
   onOpenNotifications?: () => void;
   showNotificationsBell?: boolean;
   showTasks?: boolean;
+  showEmployees?: boolean;
+  showSuppliers?: boolean;
 }
 
 const PLAN_NAMES: Record<SubscriptionPlan, string> = {
@@ -55,6 +57,8 @@ const Layout: React.FC<LayoutProps> = ({
   onOpenNotifications,
   showNotificationsBell = false,
   showTasks = false,
+  showEmployees = false,
+  showSuppliers = false,
 }) => {  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMenuClosing, setIsMenuClosing] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
@@ -176,9 +180,10 @@ const counts = useMemo(() => {
     },
     { id: 'REPORTS' as const, label: 'Отчеты', icon: ICONS.Dashboard, visible: !isInvestor && user?.role !== 'employee' },
     { id: 'CUSTOMERS' as const, label: 'Клиенты', icon: ICONS.Customers, visible: !isInvestor },
-    { id: 'INVESTORS' as const, label: 'Инвесторы', icon: ICONS.Users, visible: !isInvestor },
-    { id: 'EMPLOYEES' as const, label: 'Сотрудники', icon: ICONS.Employees, visible: !isInvestor && (user?.role === 'manager' || user?.role === 'admin') },
-    { id: 'SUPPLIERS' as const, label: 'Партнеры', icon: ICONS.Suppliers, visible: !isInvestor && (user?.role === 'manager' || user?.role === 'admin') && (user?.role === 'admin' || user?.subscription?.plan === 'BUSINESS_PRO') },
+    // Инвесторы — дело менеджера: сотруднику этот раздел не нужен
+    { id: 'INVESTORS' as const, label: 'Инвесторы', icon: ICONS.Users, visible: !isInvestor && user?.role !== 'employee' },
+    { id: 'EMPLOYEES' as const, label: 'Сотрудники', icon: ICONS.Employees, visible: !isInvestor && (user?.role === 'admin' || (user?.role === 'manager' && showEmployees)) },
+    { id: 'SUPPLIERS' as const, label: 'Партнеры', icon: ICONS.Suppliers, visible: !isInvestor && (user?.role === 'admin' || (user?.role === 'manager' && showSuppliers)) },
     { id: 'TARIFFS' as const, label: 'Тарифы', icon: ICONS.Tariffs, visible: !isInvestor },
     { id: 'SETTINGS' as const, label: 'Настройки', icon: ICONS.Settings, visible: !isInvestor },
     { id: 'ADMIN_PANEL' as const, label: 'Админ панель', icon: ICONS.Crown, visible: user?.role === 'admin' },

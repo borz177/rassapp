@@ -97,12 +97,30 @@ const PLAN_LIMITS = {
 // 🔹 Фильтрация данных для сотрудника по allowed_investor_ids
 // 🔥 По умолчанию сотрудник видит только СВОИ записи (createdByUserId === employeeId).
 //    Если счёт/инвестор входит в fullAccessInvestorIds — сотрудник видит ВСЕ записи по нему.
-// Чьи уведомления показываем. Сотрудник читает ящик менеджера (события по общим данным),
-// но личные поручения приходят на его собственный id — поэтому смотрим оба.
-// Для менеджера и админа это один и тот же ящик, поведение не меняется.
-const notificationAudience = (user) => {
+// Чьи уведомления показываем.
+// Менеджер и админ — только свой ящик.
+// Сотрудник всегда видит адресованное лично ему (поручения), а события по общим данным
+// менеджера — лишь если ему открыт полный доступ хотя бы к одному счёту или инвестору
+// (галочка «Видит все данные по этому счёту», поле full_access_investor_ids).
+// Без неё сотрудник ограничен своими записями, и показывать ему чужие платежи,
+// расходы и договоры в колокольчике было бы шире, чем его доступ к самим данным.
+const notificationAudience = async (user) => {
   const target = getTargetUserId(user);
-  return target === user.id ? [target] : [target, user.id];
+  if (target === user.id) return [target];
+
+  try {
+    const res = await pool.query(
+      `SELECT full_access_investor_ids FROM users WHERE id = $1`,
+      [user.id]
+    );
+    const full = res.rows[0]?.full_access_investor_ids;
+    const hasFullAccess = Array.isArray(full) && full.length > 0;
+    return hasFullAccess ? [target, user.id] : [user.id];
+  } catch (e) {
+    // При сбое базы показываем только личные — безопаснее, чем открыть лишнее
+    console.error('❌ notificationAudience error:', e);
+    return [user.id];
+  }
 };
 
 const filterDataForEmployee = (dataByType, allowedInvestorIds, fullAccessInvestorIds, employeeId) => {
@@ -250,6 +268,46 @@ const canAccessUserData = (currentUser, targetUserId) => {
 };
 
 // ✅ Проверка доступа к платному модулю (например "suppliers" — модуль "Партнеры", тариф BUSINESS_PRO)
+// Тариф действует только до даты окончания. Раньше проверки читали лишь subscription.plan,
+// поэтому у не продлившего пользователя в базе навсегда оставался, например, BUSINESS —
+// и все его возможности продолжали работать бесплатно. Теперь по истечении срока
+// пользователь получает возможности START, пока не оплатит снова.
+const EXPIRED_FALLBACK_PLAN = 'START';
+
+const getEffectivePlan = (subscription) => {
+  if (!subscription?.plan) return null;
+  const expiresAt = subscription.expiresAt ? new Date(subscription.expiresAt) : null;
+  if (expiresAt && !isNaN(expiresAt) && expiresAt < new Date()) return EXPIRED_FALLBACK_PLAN;
+  return subscription.plan;
+};
+
+// Активна ли подписка. Админы и сотрудники не привязаны к собственному тарифу:
+// сотрудник работает в данных менеджера, и его подписка проверяется по менеджеру.
+const getSubscriptionState = async (userId) => {
+  try {
+    const res = await pool.query(`SELECT role, subscription FROM users WHERE id = $1`, [userId]);
+    const row = res.rows[0];
+    if (!row) return { expired: false };
+    if (row.role === 'admin') return { expired: false };
+
+    const sub = typeof row.subscription === 'string' ? JSON.parse(row.subscription) : row.subscription;
+    if (!sub?.expiresAt) return { expired: false, plan: sub?.plan };
+
+    const expiresAt = new Date(sub.expiresAt);
+    if (isNaN(expiresAt)) return { expired: false, plan: sub.plan };
+    return { expired: expiresAt < new Date(), plan: sub.plan, expiresAt: sub.expiresAt };
+  } catch (e) {
+    // При сбое базы не запираем пользователя — иначе временная ошибка остановит всю работу
+    console.error('❌ getSubscriptionState error:', e);
+    return { expired: false };
+  }
+};
+
+const SUBSCRIPTION_EXPIRED_MESSAGE = {
+  msg: 'Срок действия подписки истёк.',
+  hint: 'Продлите тариф, чтобы снова пользоваться функциями своего плана.'
+};
+
 const FEATURE_DENIED_MESSAGES = {
   suppliers: { msg: 'Модуль «Партнеры» доступен только на тарифе Бизнес Pro.', hint: 'Оформите тариф Бизнес Pro для работы с поставщиками.' },
   investorPools: { msg: 'Общий инвестиционный пул доступен только на тарифе Бизнес Pro.', hint: 'Оформите тариф Бизнес Pro для распределения дохода между инвесторами в одном пуле.' },
@@ -269,9 +327,14 @@ const checkFeatureAccess = async (userId, featureKey) => {
     const subscription = typeof user.subscription === 'string'
       ? JSON.parse(user.subscription)
       : user.subscription;
-    const limits = PLAN_LIMITS?.[subscription?.plan];
+    const effectivePlan = getEffectivePlan(subscription);
+    const isExpired = effectivePlan !== subscription?.plan;
+    const limits = PLAN_LIMITS?.[effectivePlan];
     if (!limits?.[featureKey]) {
-      const denied = FEATURE_DENIED_MESSAGES[featureKey] || FEATURE_DENIED_MESSAGES.suppliers;
+      // Истёкшей подписке объясняем причину прямо, а не предлагаем тариф, который уже был оплачен
+      const denied = isExpired
+        ? SUBSCRIPTION_EXPIRED_MESSAGE
+        : (FEATURE_DENIED_MESSAGES[featureKey] || FEATURE_DENIED_MESSAGES.suppliers);
       return { allowed: false, ...denied };
     }
     return { allowed: true };
@@ -402,10 +465,12 @@ const checkContractLimit = async (userId, action = 'create', itemData = null) =>
       return { allowed: false, msg: 'Нет активной подписки' };
     }
 
-    // 🔹 Безопасное получение лимитов (защита от undefined)
-    const limits = PLAN_LIMITS?.[subscription.plan];
+    // 🔹 Безопасное получение лимитов (защита от undefined).
+    // По истечении подписки действуют лимиты START, а не последнего оплаченного тарифа.
+    const effectivePlan = getEffectivePlan(subscription);
+    const limits = PLAN_LIMITS?.[effectivePlan];
     if (!limits || typeof limits.contracts !== 'number') {
-      console.error(`⚠️ Invalid plan limits for plan: ${subscription.plan}`);
+      console.error(`⚠️ Invalid plan limits for plan: ${effectivePlan}`);
       return { allowed: false, msg: 'Ошибка конфигурации тарифа' };
     }
 
@@ -447,13 +512,18 @@ const checkContractLimit = async (userId, action = 'create', itemData = null) =>
 
       if (currentCount >= limits.contracts) {
         // 🔹 Логируем попытку превышения для аналитики
-        console.log(`🚫 LIMIT_HIT: user=${userId}, plan=${subscription.plan}, count=${currentCount}, limit=${limits.contracts}`);
+        const expired = effectivePlan !== subscription.plan;
+        console.log(`🚫 LIMIT_HIT: user=${userId}, plan=${effectivePlan}${expired ? ` (истёк ${subscription.plan})` : ''}, count=${currentCount}, limit=${limits.contracts}`);
 
         return {
           allowed: false,
-          msg: `Превышен лимит договоров для тарифа "${subscription.plan}". Максимум: ${limits.contracts}.`,
+          msg: expired
+            ? `Срок действия подписки истёк, действует лимит тарифа "${effectivePlan}". Максимум: ${limits.contracts}.`
+            : `Превышен лимит договоров для тарифа "${subscription.plan}". Максимум: ${limits.contracts}.`,
           details: { current: currentCount, limit: limits.contracts },
-          hint: 'Удалите ненужные договоры или оформите подписку выше.'
+          hint: expired
+            ? 'Продлите подписку, чтобы снова оформлять договоры без ограничений.'
+            : 'Удалите ненужные договоры или оформите подписку выше.'
         };
       }
     }
@@ -2262,6 +2332,22 @@ app.post('/api/data/:type', auth, async (req, res) => {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
 
+    // 🔒 Без активной подписки запись данных закрыта полностью: ни новых договоров,
+    // ни платежей, ни правок. Раньше это проверялось только на клиенте (checkAccess('WRITE')),
+    // то есть пряталось в интерфейсе, но запрос к API всё равно проходил.
+    // Настройки оставляем доступными — иначе нельзя выключить, например, авторассылку,
+    // которая продолжает писать клиентам от имени пользователя.
+    if (type !== 'settings') {
+      const sub = await getSubscriptionState(targetUserId);
+      if (sub.expired) {
+        return res.status(403).json({
+          code: 'SUBSCRIPTION_EXPIRED',
+          msg: 'Срок действия подписки истёк.',
+          hint: 'Продлите тариф, чтобы снова вести учёт: создавать договоры и проводить платежи.'
+        });
+      }
+    }
+
     // 🔒 Модуль "Партнеры" (поставщики) — только тариф BUSINESS_PRO
     if (type === 'suppliers' || (type === 'sales' && itemData.supplierId) || (type === 'expenses' && itemData.supplierId)) {
       const featureAccess = await checkFeatureAccess(targetUserId, 'suppliers');
@@ -2651,7 +2737,8 @@ app.post('/api/users/manage', auth, async (req, res) => {
           ? JSON.parse(managerSubRaw)
           : managerSubRaw;
 
-        const plan = managerSub?.plan || 'TRIAL';
+        // После окончания подписки действуют лимиты START, а не оплаченного ранее тарифа
+        const plan = getEffectivePlan(managerSub) || 'TRIAL';
         const limits = PLAN_LIMITS[plan];
 
         if (limits) {
@@ -3554,7 +3641,7 @@ app.get('/api/notifications', auth, async (req, res) => {
     const cursor = req.query.cursor;
     const archived = req.query.archived === 'true';
 
-    const params = [notificationAudience(req.user)];
+    const params = [await notificationAudience(req.user)];
     let cursorClause = '';
     if (cursor) {
       params.push(cursor);
@@ -3623,7 +3710,7 @@ app.get('/api/notifications/unread-count', auth, async (req, res) => {
 
     const notifResult = await pool.query(
       `SELECT COUNT(*) as count FROM notifications WHERE user_id = ANY($1) AND is_read = FALSE AND is_archived = FALSE`,
-      [notificationAudience(req.user)]
+      [await notificationAudience(req.user)]
     );
 
     let broadcastCount = 0;
@@ -3658,7 +3745,7 @@ app.post('/api/notifications/:id/read', auth, async (req, res) => {
     } else {
       await pool.query(
         `UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = ANY($2)`,
-        [id, notificationAudience(req.user)]
+        [id, await notificationAudience(req.user)]
       );
     }
 
@@ -3676,7 +3763,7 @@ app.post('/api/notifications/read-all', auth, async (req, res) => {
 
     await pool.query(
       `UPDATE notifications SET is_read = TRUE WHERE user_id = ANY($1) AND is_read = FALSE`,
-      [notificationAudience(req.user)]
+      [await notificationAudience(req.user)]
     );
 
     if (req.user.role !== 'admin') {
@@ -3705,7 +3792,7 @@ app.post('/api/notifications/:id/archive', auth, async (req, res) => {
 
     await pool.query(
       `UPDATE notifications SET is_archived = TRUE WHERE id = $1 AND user_id = ANY($2)`,
-      [id, notificationAudience(req.user)]
+      [id, await notificationAudience(req.user)]
     );
     res.json({ success: true });
   } catch (err) {
@@ -3725,7 +3812,7 @@ app.post('/api/notifications/:id/unarchive', auth, async (req, res) => {
 
     await pool.query(
       `UPDATE notifications SET is_archived = FALSE WHERE id = $1 AND user_id = ANY($2)`,
-      [id, notificationAudience(req.user)]
+      [id, await notificationAudience(req.user)]
     );
     res.json({ success: true });
   } catch (err) {

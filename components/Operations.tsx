@@ -9,11 +9,12 @@ interface OperationsProps {
   customers: Customer[];
   employees?: User[];
   initialAccountId?: string | null;
+  canFilterByEmployee?: boolean;
   onClose?: () => void;
 }
 
 const Operations: React.FC<OperationsProps> = ({ 
-    sales, expenses, accounts, customers, employees = [], initialAccountId 
+    sales, expenses, accounts, customers, employees = [], initialAccountId, canFilterByEmployee = false
 }) => {
   const [filterType, setFilterType] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [filterAccountId, setFilterAccountId] = useState<string>(initialAccountId || '');
@@ -253,7 +254,8 @@ const Operations: React.FC<OperationsProps> = ({
               </select>
           </div>
 
-          {employees.length > 0 && (
+          {/* Фильтр по сотруднику — инструмент менеджера: сам сотрудник и инвестор его не видят */}
+          {employees.length > 0 && canFilterByEmployee && (
               <div>
                   <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Сотрудник</label>
                   <select

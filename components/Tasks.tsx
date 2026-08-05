@@ -85,10 +85,36 @@ const TaskModal: React.FC<{
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
 
-  // Курсор сразу в поле — окно открывается готовым к печати
+  // Высота выехавшей клавиатуры: на неё поднимаем окно, чтобы поле ввода и кнопки
+  // не оказались под ней. visualViewport — единственный способ узнать эту высоту,
+  // обычный resize на мобильных о клавиатуре не сообщает.
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Курсор сразу в поле — окно открывается готовым к печати.
+  // Без задержки: на iOS focus() срабатывает только пока «жив» жест пользователя,
+  // а setTimeout эту связь рвёт и клавиатура не появляется.
   useEffect(() => {
-    const t = setTimeout(() => titleRef.current?.focus(), 120);
-    return () => clearTimeout(t);
+    titleRef.current?.focus({ preventScroll: true });
+    const raf = requestAnimationFrame(() => titleRef.current?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const sync = () => {
+      // Сколько экрана закрыто клавиатурой снизу
+      const covered = window.innerHeight - vv.height - vv.offsetTop;
+      setKeyboardOffset(Math.max(0, Math.round(covered)));
+    };
+    sync();
+    vv.addEventListener('resize', sync);
+    vv.addEventListener('scroll', sync);
+    return () => {
+      vv.removeEventListener('resize', sync);
+      vv.removeEventListener('scroll', sync);
+    };
   }, []);
 
   useEffect(() => {
@@ -166,9 +192,12 @@ const TaskModal: React.FC<{
       onClick={handleClose}
     >
       <div
-        className={`bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden safe-area-pb ${
-          isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'
-        }`}
+        className={`bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden ${
+          keyboardOffset > 0 ? '' : 'safe-area-pb'
+        } ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+        // Поднимаем окно ровно на высоту клавиатуры, чтобы поле и кнопки оставались видны.
+        // Когда клавиатура закрыта, отступ снизу задаёт safe-area-pb (вырез на iPhone).
+        style={keyboardOffset > 0 ? { marginBottom: keyboardOffset, transition: 'margin-bottom 0.18s ease-out' } : undefined}
         onClick={e => e.stopPropagation()}
       >
         <div className="p-5 space-y-3">
@@ -282,7 +311,7 @@ const TaskModal: React.FC<{
 
           {task && onDelete && (
             <button
-              onClick={() => { onDelete(task.id); handleClose(); }}
+              onClick={() => setConfirmDelete(true)}
               className="w-full py-2.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all"
             >
               Удалить задачу
@@ -290,6 +319,41 @@ const TaskModal: React.FC<{
           )}
         </div>
       </div>
+
+      {/* Подтверждение удаления — поверх окна задачи */}
+      {confirmDelete && task && onDelete && (
+        <div
+          className="absolute inset-0 z-10 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-modal-fade-in"
+          onClick={e => { e.stopPropagation(); setConfirmDelete(false); }}
+        >
+          <div
+            className="bg-white dark:bg-slate-800 w-full max-w-xs rounded-3xl shadow-2xl p-5 text-center animate-dialog-in"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-rose-50 dark:bg-rose-900/30 flex items-center justify-center text-rose-600 dark:text-rose-400">
+              {ICONS.Delete}
+            </div>
+            <h3 className="text-base font-bold text-slate-800 dark:text-white mb-1">Удалить задачу?</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-5 break-words line-clamp-3">
+              {task.title}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-600 transition-all"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => { onDelete(task.id); setConfirmDelete(false); handleClose(); }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-bold hover:bg-rose-700 transition-all"
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   );

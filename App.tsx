@@ -1044,7 +1044,7 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v21';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v22';
   const FIVE_HOURS = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -1188,7 +1188,10 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
     const isExpired = new Date() > new Date(sub.expiresAt);
     if (isExpired && feature === 'WRITE') return false;
 
-    const plan = sub.plan;
+    // Оплаченный тариф действует только до даты окончания: дальше остаются возможности
+    // START, пока подписку не продлят. Та же логика на сервере — getEffectivePlan
+    // в server/index.js, иначе интерфейс показывал бы кнопки, которые API уже не пропускает.
+    const plan = isExpired ? 'START' : sub.plan;
     switch(feature) {
         case 'WRITE': return !isExpired;
         case 'INVESTORS': return (plan === 'START' && investors.length < 1) || (plan === 'STANDARD' && investors.length < 5) || true;
@@ -1529,6 +1532,13 @@ const filterDataForEmployeeClient = (data: any, allowedIds: string[]) => {
 // ✅ ОБНОВЛЁННЫЙ handleSaveSale — проверка лимита + правильная обработка ошибок
 const handleSaveSale = async (data: any): Promise<any> => {
   if (!user) return;
+
+  // Без активной подписки запись закрыта — тот же запрет стоит на сервере.
+  // Проверяем и здесь, чтобы человек увидел понятное объяснение, а не ошибку API.
+  if (!checkAccess('WRITE')) {
+    showUpgradeAlert("Срок подписки истек.");
+    return;
+  }
 
   // 🔒 Собирается внутри try — храним ссылку здесь, чтобы offline-фолбэк в catch
   // мог переиспользовать уже готовую запись (правильный id, график платежей, статус),
@@ -2560,7 +2570,7 @@ const handleUpdateCustomer = async (updated: Customer) => {
         // Но для офлайн-режима лучше оставить оптимистичное обновление
     }
 };
-const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', partners?: string[]) => { if (user && isManager) { const newAcc = { id: `acc_${Date.now()}`, userId: user.id, name, type, partners }; const saved = await api.saveItem('accounts', newAcc); updateList(setAccounts, saved); } };
+const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', partners?: string[]) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } if (user && isManager) { const newAcc = { id: `acc_${Date.now()}`, userId: user.id, name, type, partners }; const saved = await api.saveItem('accounts', newAcc); updateList(setAccounts, saved); } };
   const handleSetMainAccount = async (accountId: string) => {
     if (!user || !isManager) return;
     // 🔒 Раньше выбранному счёту принудительно ставился type: 'MAIN', что затирало его
@@ -3161,6 +3171,8 @@ if (!user && !showSplash) {
     onOpenNotifications={() => setShowNotificationsPanel(true)}
     showNotificationsBell={checkAccess('NOTIFICATIONS')}
     showTasks={checkAccess('TASKS')}
+    showEmployees={checkAccess('EMPLOYEES')}
+    showSuppliers={checkAccess('SUPPLIERS')}
     // 🔹 Кнопка поддержки для десктопа (плавающая) — админа ведём в панель
     // управления обращениями, а не в чат "как у обычного пользователя"
     supportButton={
@@ -3409,6 +3421,7 @@ if (!user && !showSplash) {
                       initialAccountId={operationsAccountId}
                       onDelete={handleDeleteOperation}
                       employees={isInvestor ? [] : employees}
+                      canFilterByEmployee={isManager && !isEmployee && !isInvestor}
                       accountBalances={accountBalances}
                       appSettings={appSettings}
                     />
@@ -3782,7 +3795,8 @@ if (!user && !showSplash) {
           </button>
 
 
-          {/* Инвесторы */}
+          {/* Инвесторы — только менеджер, сотруднику раздел не нужен */}
+          {!isEmployee && (
           <button onClick={() => { setPreviousView('MORE'); setCurrentView('INVESTORS'); }}
                   className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
             <div className="flex items-center gap-3">
@@ -3795,9 +3809,10 @@ if (!user && !showSplash) {
               </svg>
             </span>
           </button>
+          )}
 
-          {/* Сотрудники (только менеджер) */}
-          {user.role === 'manager' && (
+          {/* Сотрудники — менеджер на тарифе Бизнес и выше */}
+          {user.role === 'manager' && checkAccess('EMPLOYEES') && (
             <button onClick={() => { setPreviousView('MORE'); setCurrentView('EMPLOYEES'); }}
                     className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
               <div className="flex items-center gap-3">
@@ -4220,6 +4235,17 @@ if (!user && !showSplash) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 {showTemplateUpdateModal && (
   <div
     className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
@@ -4232,43 +4258,43 @@ if (!user && !showSplash) {
       <div className="p-6">
         {/* Заголовок */}
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-2xl">
-            💰
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-400 to-indigo-500 flex items-center justify-center text-2xl">
+            ✅
           </div>
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">
               Обновление
             </h3>
             <p className="text-sm text-gray-500 dark:text-slate-400">
-              Доработали страницу «Касса»
+              Добавили задачи на тарифах Бизнес и Бизнес Про
             </p>
           </div>
         </div>
 
         {/* Список обновлений */}
         <div className="divide-y divide-gray-100 dark:divide-slate-800 mb-6">
-          {/* Скрытие счёта и суммы */}
+          {/* Страница Задачи */}
           <div className="flex items-center gap-3 py-4">
-            <div className="text-2xl">👁️</div>
+            <div className="text-2xl">📋</div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
-                Скрытие счёта и суммы
+                Новая страница «Задачи»
               </p>
               <p className="text-xs text-gray-500 dark:text-slate-500">
-                Можно скрыть сам счёт или только сумму на нём — удобно при показе экрана другим
+                Создавайте задачи для себя или назначайте сотрудникам — всё в одном месте
               </p>
             </div>
           </div>
 
-          {/* Фильтр по периоду */}
+          {/* Уведомления */}
           <div className="flex items-center gap-3 py-4">
-            <div className="text-2xl">📅</div>
+            <div className="text-2xl">🔔</div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
-                Фильтр по периоду
+                Уведомления с временем
               </p>
               <p className="text-xs text-gray-500 dark:text-slate-500">
-                Быстрый выбор: всё время, сегодня, неделя, месяц или свой диапазон дат
+                В списке уведомлений теперь видно задачи и время, когда их нужно выполнить
               </p>
             </div>
           </div>
@@ -4285,6 +4311,21 @@ if (!user && !showSplash) {
     </div>
   </div>
 )}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   </Layout>
 );

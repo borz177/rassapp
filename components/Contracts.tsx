@@ -993,7 +993,8 @@ useEffect(() => {
           </div>
         </div>
 
-        {employees.length > 0 && (
+        {/* Фильтр по сотруднику — инструмент менеджера: сам сотрудник и инвестор его не видят */}
+        {employees.length > 0 && !isEmployee && !readOnly && (
           <div className="relative">
             <UserIcon className="absolute left-3 top-2.5 text-slate-400 dark:text-slate-500" size={16} />
             <select
