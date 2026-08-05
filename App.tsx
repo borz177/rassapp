@@ -1641,6 +1641,10 @@ const handleSaveSale = async (data: any): Promise<any> => {
               ...linkedExpense,
               id: buyPriceExpenseId,
               userId: ownerId,
+              // Без автора расход невидим сотруднику без полного доступа к счёту
+              // (filterDataForEmployee оставляет только свои записи) — и тогда при
+              // удалении договора его нечем было найти, списание закупа оставалось висеть.
+              createdByUserId: linkedExpense?.createdByUserId || user.id,
               accountId: data.accountId,
               title: `Закуп: ${data.productName}`,
               amount: newBuyPrice,
@@ -1744,6 +1748,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
         const buyPriceExpense: Expense = {
           id: `exp_sale_${tempSale.id}`,
           userId: isEmployee && user.managerId ? user.managerId : user.id,
+          createdByUserId: user.id,
           accountId: data.accountId,
           title: `Закуп: ${data.productName}`,
           amount: Number(data.buyPrice),
@@ -1858,6 +1863,13 @@ const handleDeleteSale = async (saleId: string) => {
           if (result.isOffline) {
             console.log('📦 Расход закупа удалён локально');
           }
+        } else {
+          // Расхода нет в локальном списке — это нормально для сотрудника: без полного
+          // доступа к счёту он не видит чужие записи, а у договоров, созданных до
+          // появления createdByUserId, автор не проставлен вовсе. Id детерминированный,
+          // поэтому удаляем вслепую: если записи нет, сервер просто ничего не тронет.
+          await api.deleteItem('expenses', `exp_sale_${saleId}`);
+          removeFromList(setExpenses, `exp_sale_${saleId}`);
         }
       }
     } catch (e) {
