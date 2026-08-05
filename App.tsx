@@ -2197,6 +2197,44 @@ const handleAddInvestor = async (
 
 
 
+// Повторный вход инвестора в пул: кроме нового периода нужно оприходовать деньги на счёт.
+// Раньше добавлялся только период — сумма числилась за инвестором, но на баланс счёта
+// не попадала, и касса расходилась с долями участников.
+const handleInvestorReentry = async (
+  updatedInvestor: Investor,
+  deposit: { accountId: string; amount: number; date: string; note?: string }
+) => {
+  if (!user) return;
+  await handleUpdateInvestor(updatedInvestor);
+
+  if (!deposit.accountId || !(deposit.amount > 0)) return;
+
+  const depositTransaction: Sale = {
+    id: `dep_reentry_${updatedInvestor.id}_${Date.now()}`,
+    userId: user.id,
+    type: 'CASH',
+    customerId: `system_deposit_${updatedInvestor.id}`,
+    productName: `Пополнение доли: ${updatedInvestor.name}${deposit.note ? ` (${deposit.note})` : ''}`,
+    buyPrice: 0,
+    accountId: deposit.accountId,
+    totalAmount: deposit.amount,
+    downPayment: deposit.amount,
+    remainingAmount: 0,
+    interestRate: 0,
+    installments: 0,
+    startDate: new Date(deposit.date).toISOString(),
+    status: 'COMPLETED',
+    paymentPlan: []
+  };
+
+  try {
+    const saved = await api.saveItem('sales', depositTransaction);
+    updateList(setSales, saved || depositTransaction, undefined, 'sales');
+  } catch (e) {
+    console.error('❌ Не удалось оприходовать повторный вход инвестора:', e);
+  }
+};
+
 const handleUpdateInvestor = async (updated: Investor, password?: string) => {
   if (!isManager) return;
 
@@ -3326,7 +3364,8 @@ if (!user && !showSplash) {
                                      appSettings={appSettings}
                                      onUpdateInvestor={handleUpdateInvestor}
                                      onDeleteInvestor={(id: string) => { handleDeleteInvestor(id); requestClose(); }}
-                                     onUpdateAccount={handleUpdateAccount}/>
+                                     onUpdateAccount={handleUpdateAccount}
+                                     onInvestorReentry={handleInvestorReentry}/>
                       );
                     }}
                   </PagePush>

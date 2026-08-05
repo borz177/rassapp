@@ -1,7 +1,81 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Investor, Sale, Expense, Account, Payment, AppSettings, Customer, InvestmentPeriod, LossEvent } from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt } from '../src/utils';
+
+// Модальное окно формы. Через портал в body: страница открыта внутри .page-push-layer,
+// а он position: fixed с z-index 30 — окно внутри него оказалось бы под нижней навигацией.
+// Поднимается над клавиатурой: visualViewport — единственный способ узнать её высоту.
+const FormSheet: React.FC<{
+  title: string;
+  subtitle?: string;
+  accent: 'indigo' | 'red';
+  icon: React.ReactNode;
+  submitLabel: string;
+  canSubmit: boolean;
+  onSubmit: () => void;
+  onClose: () => void;
+  children: React.ReactNode;
+}> = ({ title, subtitle, accent, icon, submitLabel, canSubmit, onSubmit, onClose, children }) => {
+  const [isClosing, setIsClosing] = useState(false);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const sync = () => setKeyboardOffset(Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)));
+    sync();
+    vv.addEventListener('resize', sync);
+    vv.addEventListener('scroll', sync);
+    return () => { vv.removeEventListener('resize', sync); vv.removeEventListener('scroll', sync); };
+  }, []);
+
+  const close = () => { setIsClosing(true); setTimeout(onClose, 260); };
+
+  const tone = accent === 'red'
+    ? { bg: 'bg-rose-50 dark:bg-rose-900/30', text: 'text-rose-600 dark:text-rose-400', btn: 'bg-rose-600 hover:bg-rose-700' }
+    : { bg: 'bg-indigo-50 dark:bg-indigo-900/30', text: 'text-indigo-600 dark:text-indigo-400', btn: 'bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800' };
+
+  return createPortal(
+    <div
+      className={`fixed inset-0 z-[9999] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
+      onClick={close}
+    >
+      <div
+        className={`bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden ${keyboardOffset > 0 ? '' : 'safe-area-pb'} ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+        style={keyboardOffset > 0 ? { marginBottom: keyboardOffset, transition: 'margin-bottom 0.18s ease-out' } : undefined}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-2xl ${tone.bg} ${tone.text} flex items-center justify-center shrink-0`}>{icon}</div>
+            <div className="min-w-0">
+              <h3 className="font-bold text-slate-800 dark:text-white leading-tight">{title}</h3>
+              {subtitle && <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{subtitle}</p>}
+            </div>
+          </div>
+
+          {children}
+
+          <div className="flex gap-2 pt-1">
+            <button onClick={close} className="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-600 transition-all">
+              Отмена
+            </button>
+            <button
+              onClick={onSubmit}
+              disabled={!canSubmit}
+              className={`flex-1 py-3 rounded-xl text-white text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${tone.btn}`}
+            >
+              {submitLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
 
 interface InvestorDetailsProps {
   investor: Investor;
@@ -15,6 +89,11 @@ interface InvestorDetailsProps {
   onUpdateInvestor?: (investor: Investor, password?: string) => void;
   onDeleteInvestor?: (id: string) => void;
   onUpdateAccount?: (account: Account) => void;
+  // Повторный вход: помимо периода нужно оприходовать сумму на счёт пула
+  onInvestorReentry?: (
+    investor: Investor,
+    deposit: { accountId: string; amount: number; date: string; note?: string }
+  ) => void;
 }
 
 const POOL_MEMBER_PALETTE = [
@@ -24,6 +103,14 @@ const POOL_MEMBER_PALETTE = [
   { bar: 'bg-teal-500', text: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-900/30' },
   { bar: 'bg-violet-500', text: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50 dark:bg-violet-900/30' },
 ];
+
+// Категории выплат инвестору. Форма расхода сохраняет «Выплата инвестора» (NewExpense.tsx),
+// в старых записях встречается «Investment Return», а здесь раньше искали только
+// «Выплата инвестору» — из-за расхождения в одной букве выплаты не попадали ни в историю
+// операций, ни в расчёт «выплачено за период».
+const PAYOUT_CATEGORIES = ['Выплата инвестора', 'Выплата инвестору', 'Investment Return'];
+const isPayoutExpense = (e: Expense) =>
+  PAYOUT_CATEGORIES.includes(e.category) || (!!e.investorId && !!e.payoutType);
 
 type HistoryFilter = 'ALL' | 'DEPOSIT' | 'PAYOUT' | 'PROFIT';
 type PeriodMode = 'TODAY' | 'WEEK' | 'MONTH' | 'CUSTOM';
@@ -41,7 +128,7 @@ const weekAgoStr = () => { const d = new Date(); d.setDate(d.getDate() - 7); ret
 const monthStartStr = () => { const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0]; };
 
 const InvestorDetails: React.FC<InvestorDetailsProps> = ({
-  investor, investors, account, sales, expenses, customers, appSettings, onBack, onUpdateInvestor, onDeleteInvestor, onUpdateAccount
+  investor, investors, account, sales, expenses, customers, appSettings, onBack, onUpdateInvestor, onDeleteInvestor, onUpdateAccount, onInvestorReentry
 }) => {
   const currentSharePercent = useMemo(() => {
     const share = getAccountShares(account, investors).find(m => m.investor.id === investor.id);
@@ -160,7 +247,21 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
     const existing = investor.investmentPeriods && investor.investmentPeriods.length > 0
       ? investor.investmentPeriods
       : [{ id: 'legacy', joinedDate: investor.joinedDate, leftPoolDate: investor.leftPoolDate, initialAmount: investor.initialAmount }];
-    onUpdateInvestor({ ...investor, investmentPeriods: [...existing, newPeriod], leftPoolDate: undefined });
+    const updatedInvestor = { ...investor, investmentPeriods: [...existing, newPeriod], leftPoolDate: undefined };
+
+    // Деньги должны попасть на счёт, а не только числиться за инвестором.
+    // Если обработчик прихода передан — он и сохранит инвестора, и создаст поступление.
+    if (onInvestorReentry && account) {
+      onInvestorReentry(updatedInvestor, {
+        accountId: account.id,
+        amount: Number(newPeriodAmount),
+        date: newPeriodDate,
+        note: newPeriodNote || undefined,
+      });
+    } else {
+      onUpdateInvestor(updatedInvestor);
+    }
+
     setShowNewPeriod(false);
     setNewPeriodDate(todayStr());
     setNewPeriodAmount('');
@@ -268,7 +369,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
 
     const paidOut = expenses
       .filter(e => e.accountId === account?.id && (!e.investorId || e.investorId === investor.id) &&
-        (e.category === 'Выплата инвестору' || e.category === 'Investment Return'))
+        isPayoutExpense(e))
       .filter(e => { const d = new Date(e.date); return d >= startDate && d <= endDate; })
       .reduce((sum, e) => sum + e.amount, 0);
 
@@ -323,8 +424,12 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
     const ops: HistoryOp[] = [];
 
     sales
+      // Депозиты помечены служебным customerId — по нему и отбираем.
+      // Раньше сверяли название целиком, и мимо проходили «Начальный депозит (активация)»
+      // и пополнения при повторном входе в пул.
       .filter(s => s.accountId === account.id
-        && (s.productName === 'Начальный депозит' || s.productName === 'Депозит инвестора'))
+        && (String(s.customerId || '').startsWith('system_deposit')
+          || s.productName === 'Начальный депозит' || s.productName === 'Депозит инвестора'))
       .forEach(s => ops.push({
         id: s.id, date: s.startDate, amount: s.totalAmount,
         opType: 'DEPOSIT', title: s.productName,
@@ -332,7 +437,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
 
     expenses
       .filter(e => e.accountId === account.id && (!e.investorId || e.investorId === investor.id) &&
-        (e.category === 'Выплата инвестору' || e.category === 'Investment Return'))
+        isPayoutExpense(e))
       .forEach(e => ops.push({
         id: e.id, date: e.date, amount: e.amount,
         opType: 'PAYOUT',
@@ -549,27 +654,48 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
                 })}
               </div>
               {showNewPeriod && (
-                <div className="px-5 py-4 bg-indigo-50 dark:bg-indigo-900/20 border-t border-indigo-100 dark:border-indigo-900/40 space-y-3 animate-fade-in">
-                  <p className="text-sm font-bold text-indigo-700 dark:text-indigo-400">Новый период участия</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-slate-500 mb-1 block">Дата входа</label>
-                      <input type="date" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm" value={newPeriodDate} onChange={e => setNewPeriodDate(e.target.value)} />
+                <FormSheet
+                  title="Повторный вход в пул"
+                  subtitle={investor.name}
+                  accent="indigo"
+                  icon={ICONS.Users}
+                  submitLabel="Внести"
+                  canSubmit={!!newPeriodDate && Number(newPeriodAmount) > 0}
+                  onSubmit={handleAddPeriod}
+                  onClose={() => setShowNewPeriod(false)}
+                >
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Сумма вложения</label>
+                    <div className="relative">
+                      <input
+                        type="number" inputMode="decimal" autoFocus placeholder="0"
+                        className="w-full p-3.5 pr-9 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-lg font-bold text-slate-800 dark:text-white outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/40 transition-all"
+                        value={newPeriodAmount} onChange={e => setNewPeriodAmount(e.target.value)}
+                      />
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₽</span>
                     </div>
-                    <div>
-                      <label className="text-xs text-slate-500 mb-1 block">Сумма вложения</label>
-                      <div className="relative">
-                        <span className="absolute right-3 top-2.5 text-slate-400 text-xs">₽</span>
-                        <input type="number" placeholder="0" className="w-full p-2.5 pr-7 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm font-bold" value={newPeriodAmount} onChange={e => setNewPeriodAmount(e.target.value)} />
-                      </div>
-                    </div>
+                    {account && (
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
+                        Поступит на счёт «{account.name}»
+                      </p>
+                    )}
                   </div>
-                  <input placeholder="Примечание (необязательно)" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm" value={newPeriodNote} onChange={e => setNewPeriodNote(e.target.value)} />
-                  <div className="flex gap-2">
-                    <button onClick={() => setShowNewPeriod(false)} className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-sm font-medium">Отмена</button>
-                    <button onClick={handleAddPeriod} disabled={!newPeriodDate || !newPeriodAmount} className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold disabled:opacity-50">Добавить</button>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Дата входа</label>
+                    <input
+                      type="date"
+                      className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-700 dark:text-slate-300 outline-none focus:border-indigo-300"
+                      value={newPeriodDate} onChange={e => setNewPeriodDate(e.target.value)}
+                    />
                   </div>
-                </div>
+
+                  <input
+                    placeholder="Примечание (необязательно)"
+                    className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-700 dark:text-slate-300 outline-none focus:border-indigo-300"
+                    value={newPeriodNote} onChange={e => setNewPeriodNote(e.target.value)}
+                  />
+                </FormSheet>
               )}
             </div>
           )}
@@ -633,27 +759,46 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
               )}
 
               {showNewLoss && (
-                <div className="px-5 py-4 bg-red-50 dark:bg-red-900/20 border-t border-red-100 dark:border-red-900/40 space-y-3 animate-fade-in">
-                  <p className="text-sm font-bold text-red-700 dark:text-red-400">Новый убыток пула</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-slate-500 mb-1 block">Дата убытка</label>
-                      <input type="date" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm" value={lossDate} onChange={e => setLossDate(e.target.value)} />
+                <FormSheet
+                  title="Убыток пула"
+                  subtitle={account?.name}
+                  accent="red"
+                  icon={ICONS.Alert}
+                  submitLabel="Зафиксировать"
+                  canSubmit={!!lossDate && Number(lossAmount) > 0}
+                  onSubmit={handleAddLoss}
+                  onClose={() => setShowNewLoss(false)}
+                >
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Сумма убытка</label>
+                    <div className="relative">
+                      <input
+                        type="number" inputMode="decimal" autoFocus placeholder="0"
+                        className="w-full p-3.5 pr-9 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-lg font-bold text-rose-600 dark:text-rose-400 outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-100 dark:focus:ring-rose-900/40 transition-all"
+                        value={lossAmount} onChange={e => setLossAmount(e.target.value)}
+                      />
+                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₽</span>
                     </div>
-                    <div>
-                      <label className="text-xs text-slate-500 mb-1 block">Сумма убытка</label>
-                      <div className="relative">
-                        <span className="absolute right-3 top-2.5 text-slate-400 text-xs">₽</span>
-                        <input type="number" placeholder="0" className="w-full p-2.5 pr-7 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm font-bold" value={lossAmount} onChange={e => setLossAmount(e.target.value)} />
-                      </div>
-                    </div>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
+                      Распределится между всеми участниками пула по их долям
+                    </p>
                   </div>
-                  <input placeholder="Описание (дефолт по договору, кража и т.д.)" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm" value={lossDesc} onChange={e => setLossDesc(e.target.value)} />
-                  <div className="flex gap-2">
-                    <button onClick={() => setShowNewLoss(false)} className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-sm font-medium">Отмена</button>
-                    <button onClick={handleAddLoss} disabled={!lossDate || !lossAmount} className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-bold disabled:opacity-50">Добавить</button>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Дата убытка</label>
+                    <input
+                      type="date"
+                      className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-700 dark:text-slate-300 outline-none focus:border-rose-300"
+                      value={lossDate} onChange={e => setLossDate(e.target.value)}
+                    />
                   </div>
-                </div>
+
+                  <input
+                    placeholder="Причина: дефолт по договору, кража и т.д."
+                    className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-700 dark:text-slate-300 outline-none focus:border-rose-300"
+                    value={lossDesc} onChange={e => setLossDesc(e.target.value)}
+                  />
+                </FormSheet>
               )}
             </div>
           )}
@@ -787,9 +932,9 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
         </div>
       )}
 
-      {/* Profit detail modal */}
-      {showProfitDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowProfitDetails(false)}>
+      {/* Profit detail modal — тоже через портал, иначе перекрывается нижней навигацией */}
+      {showProfitDetails && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowProfitDetails(false)}>
           <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-slate-200 dark:border-slate-700">
               <h3 className="text-lg font-bold text-slate-800 dark:text-white">Детализация прибыли</h3>
@@ -829,12 +974,13 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
               <button onClick={() => setShowProfitDetails(false)} className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600">Закрыть</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Delete confirmation modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in" onClick={() => setShowDeleteConfirm(false)}>
+      {/* Delete confirmation modal — через портал по той же причине */}
+      {showDeleteConfirm && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in" onClick={() => setShowDeleteConfirm(false)}>
           <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-fade-in" onClick={e => e.stopPropagation()}>
             <div className="bg-red-50 dark:bg-red-900/20 p-6 text-center">
               <div className="w-16 h-16 bg-red-100 dark:bg-red-900/40 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500 dark:text-red-400">
@@ -856,12 +1002,14 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Edit modal */}
-      {showEdit && (
-        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowEdit(false)}>
+      {/* Edit modal — через портал: страница живёт внутри .page-push-layer (position: fixed,
+          z-index 30), он создаёт свой контекст наложения, и окно оставалось под навигацией */}
+      {showEdit && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowEdit(false)}>
           <form onSubmit={handleEditSubmit} className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl p-5 space-y-4 animate-fade-in" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
               <h3 className="text-lg font-bold text-slate-800 dark:text-white">Редактировать инвестора</h3>
@@ -889,7 +1037,8 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
               <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
