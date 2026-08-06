@@ -94,6 +94,9 @@ interface InvestorDetailsProps {
     investor: Investor,
     deposit: { accountId: string; amount: number; date: string; note?: string }
   ) => void;
+  // Убыток пула: списывает со счёта и/или уменьшает доли участников
+  onPoolLoss?: (account: Account, event: LossEvent) => void;
+  onDeletePoolLoss?: (account: Account, lossId: string) => void;
 }
 
 const POOL_MEMBER_PALETTE = [
@@ -128,7 +131,7 @@ const weekAgoStr = () => { const d = new Date(); d.setDate(d.getDate() - 7); ret
 const monthStartStr = () => { const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0]; };
 
 const InvestorDetails: React.FC<InvestorDetailsProps> = ({
-  investor, investors, account, sales, expenses, customers, appSettings, onBack, onUpdateInvestor, onDeleteInvestor, onUpdateAccount, onInvestorReentry
+  investor, investors, account, sales, expenses, customers, appSettings, onBack, onUpdateInvestor, onDeleteInvestor, onUpdateAccount, onInvestorReentry, onPoolLoss, onDeletePoolLoss
 }) => {
   const currentSharePercent = useMemo(() => {
     const share = getAccountShares(account, investors).find(m => m.investor.id === investor.id);
@@ -174,6 +177,13 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
   const [lossDate, setLossDate] = useState(todayStr());
   const [lossAmount, setLossAmount] = useState('');
   const [lossDesc, setLossDesc] = useState('');
+  const [lossSaleId, setLossSaleId] = useState('');
+  const [lossBlamedOnManager, setLossBlamedOnManager] = useState(false);
+
+  // Забирает ли инвестор долю в прибыли по ещё не собранным платежам.
+  // По шариату допустимы оба варианта при взаимном согласии, поэтому решает пользователь.
+  const [includePendingProfit, setIncludePendingProfit] = useState(true);
+  const [showExitSettlement, setShowExitSettlement] = useState(false);
   const [expandedLossId, setExpandedLossId] = useState<string | null>(null);
 
   const isPoolMember = account?.type === 'POOL';
@@ -275,17 +285,29 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
       date: lossDate,
       amount: Number(lossAmount),
       description: lossDesc,
+      saleId: lossSaleId || undefined,
+      blamedOnManager: lossBlamedOnManager || undefined,
     };
-    onUpdateAccount({ ...account, lossEvents: [...(account.lossEvents || []), event] });
+
+    // Обработчик из App списывает деньги со счёта и уменьшает доли участников.
+    // Без него остаётся прежнее поведение — только запись в счёте.
+    if (onPoolLoss) onPoolLoss(account, event);
+    else onUpdateAccount({ ...account, lossEvents: [...(account.lossEvents || []), event] });
+
     setShowNewLoss(false);
     setLossDate(todayStr());
     setLossAmount('');
     setLossDesc('');
+    setLossSaleId('');
+    setLossBlamedOnManager(false);
   };
 
   const handleDeleteLoss = (lossId: string) => {
     if (!account || !onUpdateAccount) return;
-    onUpdateAccount({ ...account, lossEvents: (account.lossEvents || []).filter(e => e.id !== lossId) });
+    // Через обработчик из App: он вернёт капитал участникам и удалит списание со счёта.
+    // Простое удаление записи оставило бы доли заниженными навсегда.
+    if (onDeletePoolLoss) onDeletePoolLoss(account, lossId);
+    else onUpdateAccount({ ...account, lossEvents: (account.lossEvents || []).filter(e => e.id !== lossId) });
   };
 
   const balance = useMemo(() => {
@@ -392,6 +414,26 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     return { events, totalMyLoss: events.reduce((s, e) => s + e.myLoss, 0) };
   }, [account, investors, investor.id, isPoolMember]);
+
+  // Итоговый расчёт при выходе. Все слагаемые уже считаются выше — здесь только сводим их,
+  // потому что после даты выхода доля инвестора обнуляется (getAccountShares берёт долю
+  // на дату платежа), и система больше ничего ему не доначислит.
+  const exitSettlement = useMemo(() => {
+    const activePeriod = getActivePeriodAt(investor, Date.now()) ?? latestPeriod;
+    const capital = activePeriod?.initialAmount || 0;
+    const unpaidProfit = totalProfitEarned - totalProfitWithdrawn;
+    const pending = includePendingProfit ? expectedTotalProfit : 0;
+    const total = capital + unpaidProfit + pending - lossData.totalMyLoss;
+    return {
+      capital,
+      unpaidProfit,
+      pending,
+      losses: lossData.totalMyLoss,
+      total,
+      shortfall: Math.max(0, total - balance),
+    };
+  }, [investor, latestPeriod, totalProfitEarned, totalProfitWithdrawn, expectedTotalProfit,
+      includePendingProfit, lossData.totalMyLoss, balance]);
 
   const poolComposition = useMemo(() => {
     if (!account || account.type !== 'POOL') return null;
@@ -609,6 +651,93 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
               <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(totalProfitEarned - totalProfitWithdrawn, appSettings.showCents)} ₽</p>
             </div>
           </div>
+
+          {/* Расчёт при выходе. Появляется сам, когда проставлена дата выхода — иначе по кнопке.
+              Нужен потому, что после даты выхода доля обнуляется и система больше ничего
+              не доначислит: всё причитающееся закрывается в момент выхода. */}
+          {isPoolMember && (willExit || isExited || showExitSettlement) && (
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+              <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  {ICONS.Wallet}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-slate-800 dark:text-white leading-tight">Расчёт при выходе</h3>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    {willExit ? `Выходит ${formatDate(latestPeriod.leftPoolDate!)}` : isExited ? 'Участие завершено' : 'Предварительный расчёт'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="px-5 py-4 space-y-2.5">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-600 dark:text-slate-300">Вложенный капитал</span>
+                  <span className="font-bold text-slate-800 dark:text-white">{formatCurrency(exitSettlement.capital, appSettings.showCents)} ₽</span>
+                </div>
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-600 dark:text-slate-300">Заработанная прибыль</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">+{formatCurrency(exitSettlement.unpaidProfit, appSettings.showCents)} ₽</span>
+                </div>
+
+                {expectedTotalProfit > 0 && (
+                  <label className="flex items-start justify-between gap-3 py-1 cursor-pointer">
+                    <span className="flex items-start gap-2.5 min-w-0">
+                      <input
+                        type="checkbox"
+                        className="mt-1 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 shrink-0"
+                        checked={includePendingProfit}
+                        onChange={e => setIncludePendingProfit(e.target.checked)}
+                      />
+                      <span className="min-w-0">
+                        <span className="text-sm text-slate-600 dark:text-slate-300 block">Доля в текущих договорах</span>
+                        <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                          {includePendingProfit
+                            ? 'Забирает сразу — партнёры выкупают его долю'
+                            : 'Отказывается в пользу пула'}
+                        </span>
+                      </span>
+                    </span>
+                    <span className={`font-bold shrink-0 ${includePendingProfit ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-300 dark:text-slate-600 line-through'}`}>
+                      +{formatCurrency(expectedTotalProfit, appSettings.showCents)} ₽
+                    </span>
+                  </label>
+                )}
+
+                {exitSettlement.losses > 0 && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-600 dark:text-slate-300">Убытки</span>
+                    <span className="font-bold text-rose-600 dark:text-rose-400">−{formatCurrency(exitSettlement.losses, appSettings.showCents)} ₽</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-700">
+                  <span className="font-bold text-slate-800 dark:text-white">Итого к выдаче</span>
+                  <span className="text-xl font-bold text-slate-800 dark:text-white">{formatCurrency(exitSettlement.total, appSettings.showCents)} ₽</span>
+                </div>
+
+                {exitSettlement.shortfall > 0 ? (
+                  <div className="flex gap-2.5 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
+                    <span className="text-amber-600 dark:text-amber-400 shrink-0">{ICONS.Alert}</span>
+                    <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                      В кассе пула {formatCurrency(balance, appSettings.showCents)} ₽ — не хватает{' '}
+                      <strong>{formatCurrency(exitSettlement.shortfall, appSettings.showCents)} ₽</strong>.
+                      Деньги в работе у клиентов: выплату придётся разбить по мере поступления платежей.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
+                    В кассе пула {formatCurrency(balance, appSettings.showCents)} ₽ — на выплату хватает
+                  </p>
+                )}
+
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed pt-1">
+                  Проведите двумя расходами: капитал — «Возврат вложения», прибыль — «Выплата прибыли».
+                  После даты выхода прибыль по новым платежам инвестору не начисляется.
+                </p>
+              </div>
+            </div>
+          )}
           {/* Investment periods */}
           {isPoolMember && (
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
@@ -617,12 +746,21 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
                   <h3 className="font-bold text-slate-800 dark:text-white">Периоды инвестирования</h3>
                   <p className="text-xs text-slate-400 mt-0.5">{allPeriods.length} {allPeriods.length === 1 ? 'период' : 'периода'}</p>
                 </div>
-                {canReenter && onUpdateInvestor && (
-                  <button onClick={() => setShowNewPeriod(v => !v)}
-                    className="text-xs font-bold px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
-                    + Повторный вход
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {/* Пока дата выхода не проставлена, расчёт можно посмотреть заранее */}
+                  {isCurrentlyActive && !showExitSettlement && (
+                    <button onClick={() => setShowExitSettlement(true)}
+                      className="text-xs font-bold px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                      Расчёт выхода
+                    </button>
+                  )}
+                  {canReenter && onUpdateInvestor && (
+                    <button onClick={() => setShowNewPeriod(v => !v)}
+                      className="text-xs font-bold px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                      + Повторный вход
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="divide-y divide-slate-100 dark:divide-slate-700">
                 {allPeriods.map((p, idx) => {
@@ -780,8 +918,35 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
                       <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₽</span>
                     </div>
                     <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
-                      Распределится между всеми участниками пула по их долям
+                      {lossBlamedOnManager
+                        ? 'Ляжет на управляющего — доли инвесторов не изменятся'
+                        : lossSaleId
+                          ? 'Уменьшит доли участников. Со счёта не спишется — деньги в кассу не поступали'
+                          : 'Спишется со счёта и уменьшит доли участников по их вложениям'}
                     </p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
+                      Договор <span className="normal-case font-medium text-slate-400">(если долг клиента)</span>
+                    </label>
+                    <select
+                      className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-700 dark:text-slate-300 outline-none focus:border-rose-300"
+                      value={lossSaleId}
+                      onChange={e => setLossSaleId(e.target.value)}
+                    >
+                      <option value="">Не связан с договором (деньги из кассы)</option>
+                      {sales
+                        .filter(s => s.accountId === account?.id && s.status !== 'DELETED')
+                        .map(s => {
+                          const c = customers.find(x => x.id === s.customerId);
+                          return (
+                            <option key={s.id} value={s.id}>
+                              {c?.name || 'Клиент'} — {s.productName}
+                            </option>
+                          );
+                        })}
+                    </select>
                   </div>
 
                   <div>
@@ -798,6 +963,23 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
                     className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-700 dark:text-slate-300 outline-none focus:border-rose-300"
                     value={lossDesc} onChange={e => setLossDesc(e.target.value)}
                   />
+
+                  {/* Мудараба: небрежность управляющего — его личная ответственность,
+                      капитал инвесторов в этом случае неприкосновенен */}
+                  <label className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-amber-600 focus:ring-amber-500 shrink-0"
+                      checked={lossBlamedOnManager}
+                      onChange={e => setLossBlamedOnManager(e.target.checked)}
+                    />
+                    <span>
+                      <span className="text-sm font-semibold text-amber-800 dark:text-amber-300 block">По вине управляющего</span>
+                      <span className="text-[11px] text-amber-700/70 dark:text-amber-400/70">
+                        Небрежность или нарушение условий — убыток несёт управляющий, доли инвесторов не уменьшаются
+                      </span>
+                    </span>
+                  </label>
                 </FormSheet>
               )}
             </div>

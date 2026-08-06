@@ -38,7 +38,7 @@ const LazyFallback: React.FC = () => (
     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
   </div>
 );
-import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task } from './types';
+import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent } from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
 import { api } from './services/api';
 import { ICONS } from './constants';
@@ -48,7 +48,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor } from './src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt } from './src/utils';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
@@ -2212,6 +2212,114 @@ const handleAddInvestor = async (
 // Повторный вход инвестора в пул: кроме нового периода нужно оприходовать деньги на счёт.
 // Раньше добавлялся только период — сумма числилась за инвестором, но на баланс счёта
 // не попадала, и касса расходилась с долями участников.
+// Убыток пула (мудараба). Раньше событие только записывалось в счёт и показывалось справкой —
+// ни касса, ни доли участников не менялись. Теперь:
+//  • деньги реально ушли (убыток не привязан к договору) → создаём расход по счёту пула;
+//  • убыток по договору → расхода нет, деньги в кассу и не поступали;
+//  • вина управляющего → капитал инвесторов не трогаем, потеря на менеджере.
+const applyLossToCapital = (event: LossEvent, poolAccount: Account, sign: 1 | -1) => {
+  // sign = 1 — уменьшить капитал (новый убыток), -1 — вернуть (убыток удалён)
+  const shares = getCapitalShares(poolAccount, investors, event.date);
+  return shares.map(({ investor, percentage }) => {
+    const delta = event.amount * percentage / 100 * sign;
+    const periods = investor.investmentPeriods && investor.investmentPeriods.length > 0
+      ? investor.investmentPeriods
+      : [{ id: 'legacy', joinedDate: investor.joinedDate, leftPoolDate: investor.leftPoolDate, initialAmount: investor.initialAmount }];
+
+    const active = getActivePeriodAt(investor, new Date(event.date).getTime());
+    if (!active) return null;
+
+    const updatedPeriods = periods.map(p =>
+      p.id === active.id ? { ...p, initialAmount: Math.max(0, p.initialAmount - delta) } : p
+    );
+    const updatedInvestor: Investor = {
+      ...investor,
+      investmentPeriods: updatedPeriods,
+      initialAmount: Math.max(0, (investor.initialAmount || 0) - delta),
+    };
+    return updatedInvestor;
+  }).filter((i): i is Investor => !!i);
+};
+
+const handlePoolLoss = async (poolAccount: Account, event: LossEvent) => {
+  if (!user) return;
+
+  let expenseId: string | undefined;
+
+  // 1. Реальные деньги ушли из кассы — списываем со счёта.
+  //    По договору расход не создаём: эти деньги в кассу никогда не поступали.
+  if (!event.saleId) {
+    const lossExpense: Expense = {
+      id: `loss_${event.id}`,
+      userId: user.id,
+      createdByUserId: user.id,
+      accountId: poolAccount.id,
+      title: event.description?.trim() || 'Убыток пула',
+      amount: event.amount,
+      category: 'Убыток пула',
+      date: event.date,
+      description: event.blamedOnManager ? 'Убыток по вине управляющего' : undefined,
+    };
+    try {
+      const saved = await api.saveItem('expenses', lossExpense);
+      updateList(setExpenses, saved || lossExpense);
+      expenseId = lossExpense.id;
+    } catch (e) {
+      console.error('❌ Не удалось списать убыток со счёта:', e);
+    }
+  }
+
+  // 2. Капитал участников уменьшаем только если убыток не на совести управляющего
+  if (!event.blamedOnManager) {
+    for (const inv of applyLossToCapital(event, poolAccount, 1)) {
+      try {
+        const saved = await api.saveItem('investors', inv);
+        updateList(setInvestors, saved || inv);
+      } catch (e) {
+        console.error('❌ Не удалось уменьшить долю инвестора:', e);
+      }
+    }
+  }
+
+  // 3. Само событие сохраняем в счёте
+  await handleUpdateAccount({
+    ...poolAccount,
+    lossEvents: [...(poolAccount.lossEvents || []), { ...event, expenseId }],
+  });
+};
+
+// Удаление убытка обязано вернуть всё назад, иначе доли навсегда останутся заниженными
+const handleDeletePoolLoss = async (poolAccount: Account, lossId: string) => {
+  if (!user) return;
+  const event = (poolAccount.lossEvents || []).find(e => e.id === lossId);
+  if (!event) return;
+
+  if (event.expenseId) {
+    try {
+      await api.deleteItem('expenses', event.expenseId);
+      setExpenses(prev => prev.filter(e => e.id !== event.expenseId));
+    } catch (e) {
+      console.error('❌ Не удалось удалить списание убытка:', e);
+    }
+  }
+
+  if (!event.blamedOnManager) {
+    for (const inv of applyLossToCapital(event, poolAccount, -1)) {
+      try {
+        const saved = await api.saveItem('investors', inv);
+        updateList(setInvestors, saved || inv);
+      } catch (e) {
+        console.error('❌ Не удалось вернуть долю инвестора:', e);
+      }
+    }
+  }
+
+  await handleUpdateAccount({
+    ...poolAccount,
+    lossEvents: (poolAccount.lossEvents || []).filter(e => e.id !== lossId),
+  });
+};
+
 const handleInvestorReentry = async (
   updatedInvestor: Investor,
   deposit: { accountId: string; amount: number; date: string; note?: string }
@@ -3377,7 +3485,9 @@ if (!user && !showSplash) {
                                      onUpdateInvestor={handleUpdateInvestor}
                                      onDeleteInvestor={(id: string) => { handleDeleteInvestor(id); requestClose(); }}
                                      onUpdateAccount={handleUpdateAccount}
-                                     onInvestorReentry={handleInvestorReentry}/>
+                                     onInvestorReentry={handleInvestorReentry}
+                                     onPoolLoss={handlePoolLoss}
+                                     onDeletePoolLoss={handleDeletePoolLoss}/>
                       );
                     }}
                   </PagePush>
