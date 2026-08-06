@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useScrollRestoration } from '../../src/hooks/useScrollRestoration';
 
 interface PagePushProps {
   /** Called once the close animation has finished — this is where currentView should actually change. */
@@ -6,6 +7,10 @@ interface PagePushProps {
   /** Renders a built-in floating back button (for screens with no back UI of their own). */
   showBackButton?: boolean;
   className?: string;
+  /** Запоминает и восстанавливает прокрутку под этим ключом — как при возврате на список
+      в мобильном приложении. Не передавайте, если у страницы нет смысла помнить позицию
+      (короткие формы, разовые экраны). */
+  scrollKey?: string;
   children: React.ReactNode | ((requestClose: () => void) => React.ReactNode);
 }
 
@@ -42,10 +47,12 @@ interface DragState {
  * (played fully before the parent actually swaps `currentView`), and an edge-swipe-to-go-back
  * gesture that follows the finger in real time.
  */
-const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, className = '', children }) => {
+const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, className = '', scrollKey, children }) => {
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  useScrollRestoration(scrollKey, rootRef);
   // Synchronous guard (unlike the `closing` state, which only updates on the next render) so a
   // rapid second gesture during the close animation can never restart/interfere with it.
   const closingRef = useRef(false);

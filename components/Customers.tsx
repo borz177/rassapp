@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react'; // Добавили useMemo
 import { Customer } from '../types';
 import { ICONS } from '../constants';
+import { useScrollRestoration } from '../src/hooks/useScrollRestoration';
 
 interface CustomersProps {
   customers: Customer[];
@@ -14,13 +15,22 @@ interface CustomersProps {
     passportIssuedBy?: string;
   }) => Promise<Customer>;
   onSelectCustomer: (id: string) => void;
+  /** true, когда эта страница видна поверх остальных — включая случай, когда карточка
+      клиента (открытая поверх списка) только что закрылась и список снова на переднем плане. */
+  isActive?: boolean;
 }
 
 const Customers: React.FC<CustomersProps> = ({
   customers,
   onAddCustomer,
   onSelectCustomer,
+  isActive = true,
 }) => {
+  // Список не размонтируется, пока открыта карточка клиента (она выезжает поверх него),
+  // поэтому обычной прокрутки окна должно хватать сама по себе — но переустанавливаем её
+  // явно при каждом возврате в фокус, а не полагаемся на то, что браузер её не тронет.
+  useScrollRestoration('CUSTOMERS', undefined, isActive);
+
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');

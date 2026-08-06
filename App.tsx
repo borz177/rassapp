@@ -3437,7 +3437,7 @@ if (!user && !showSplash) {
   />
 )}
               {currentView === 'CONTRACTS' && (
-                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton scrollKey="CONTRACTS">
                   <Contracts
                       sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
                       customers={customers}
@@ -3456,7 +3456,7 @@ if (!user && !showSplash) {
                   </PagePush>
               )}
               {(currentView === 'INVESTORS' || currentView === 'INVESTOR_DETAILS') && (
-                <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+                <PagePush onClose={() => setCurrentView(previousView)} showBackButton scrollKey="INVESTORS">
                   <Investors investors={investors} accounts={accounts}
                                                          showPools={checkAccess('INVESTOR_POOLS')}
                                                          onAddInvestor={handleAddInvestor}
@@ -3467,7 +3467,7 @@ if (!user && !showSplash) {
                 </PagePush>
               )}
               {currentView === 'INVESTOR_DETAILS' && selectedInvestorId && (
-                  <PagePush onClose={() => setCurrentView('INVESTORS')}>
+                  <PagePush onClose={() => setCurrentView('INVESTORS')} scrollKey={`INVESTOR_DETAILS:${selectedInvestorId}`}>
                     {(requestClose: () => void) => {
                       // Удаление инвестора обновляет `investors` асинхронно (после ответа сервера),
                       // а PagePush ещё какое-то время держит этот экран смонтированным для анимации
@@ -3505,7 +3505,7 @@ if (!user && !showSplash) {
                   />
               )}
               {currentView === 'TASKS' && (
-                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton scrollKey="TASKS">
                   <Tasks
                       tasks={tasks}
                       onSaveTask={handleSaveTask}
@@ -3520,7 +3520,7 @@ if (!user && !showSplash) {
                   </PagePush>
               )}
               {currentView === 'SUPPLIERS' && (
-                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton scrollKey="SUPPLIERS">
                   <Suppliers
                       suppliers={suppliers}
                       sales={sales}
@@ -3533,7 +3533,7 @@ if (!user && !showSplash) {
                   </PagePush>
               )}
               {currentView === 'SUPPLIER_DETAILS' && selectedSupplierId && (
-                  <PagePush onClose={() => setCurrentView('SUPPLIERS')}>
+                  <PagePush onClose={() => setCurrentView('SUPPLIERS')} scrollKey={`SUPPLIER_DETAILS:${selectedSupplierId}`}>
                     {(requestClose: () => void) => (
                       <SupplierDetails
                       supplier={suppliers.find((s: Supplier) => s.id === selectedSupplierId)!}
@@ -3554,10 +3554,11 @@ if (!user && !showSplash) {
                       customers={customers}
                       onAddCustomer={handleAddCustomer}
                       onSelectCustomer={handleSelectCustomer}
+                      isActive={currentView === 'CUSTOMERS'}
                   />
               )}
               {currentView === 'CUSTOMER_DETAILS' && selectedCustomerId &&
-                  <PagePush onClose={() => setCurrentView(previousView)}>
+                  <PagePush onClose={() => setCurrentView(previousView)} scrollKey={`CUSTOMER_DETAILS:${selectedCustomerId}`}>
                     {(requestClose: () => void) => (
                       <CustomerDetails customer={customers.find((c: Customer) => c.id === selectedCustomerId)!} sales={sales}
                                        accounts={accounts} investors={investors} onBack={requestClose}
@@ -3573,7 +3574,7 @@ if (!user && !showSplash) {
                   <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct}
                             onDeleteProduct={handleDeleteProduct} appSettings={appSettings}/>}
               {currentView === 'OPERATIONS' && (
-                  <PagePush onClose={() => setCurrentView(previousView)}>
+                  <PagePush onClose={() => setCurrentView(previousView)} scrollKey="OPERATIONS">
                     <Operations
                       sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
                       expenses={isInvestor ? expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id) : expenses}
@@ -3632,7 +3633,7 @@ if (!user && !showSplash) {
                                                                    onCancel={() => setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE')}
                                                                    onAddNew={handleQuickAddCustomer}/>}
               {(currentView === 'EMPLOYEES' || currentView === 'EMPLOYEE_ACTIVITY') && (
-                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton scrollKey="EMPLOYEES">
                     <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee}
                              onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee}
                              onSelectActivity={handleSelectEmployeeActivity}
