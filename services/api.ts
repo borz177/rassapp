@@ -824,7 +824,15 @@ export const api = {
     },
 
     // === КАЛЬКУЛЯТОР ===
-    saveCalculatorConfig: async (config: { defaultRate: number; termRates: { months: number; rate: number }[] }): Promise<string> => {
+    saveCalculatorConfig: async (config: {
+        defaultRate: number;
+        termRates: { months: number; rate: number }[];
+        // Правила расчёта тоже уходят в ссылку — иначе клиент увидит не ту сумму,
+        // которую посчитал менеджер
+        roundStep?: number;
+        roundDir?: 'up' | 'down';
+        markupOnRemainder?: boolean;
+    }): Promise<string> => {
         const res = await fetchWithAuth(`${API_URL}/calculator-configs`, {
             method: 'POST',
             body: JSON.stringify(config)
@@ -835,7 +843,7 @@ export const api = {
     },
 
     // 🔥 ПУБЛИЧНЫЙ — обычный fetch (без токена)
-    getCalculatorConfig: async (configId: string): Promise<{ defaultRate: number; termRates: { months: number; rate: number }[]; sellerPhone?: string; }> => {
+    getCalculatorConfig: async (configId: string): Promise<{ defaultRate: number; termRates: { months: number; rate: number }[]; sellerPhone?: string; roundStep?: number; roundDir?: 'up' | 'down'; markupOnRemainder?: boolean; }> => {
         const res = await fetch(`${API_URL}/calculator-configs/${configId}`, {
             headers: { 'Content-Type': 'application/json' }
         });

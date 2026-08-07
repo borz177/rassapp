@@ -4340,11 +4340,18 @@ app.post('/api/v1/payments', apiKeyAuth, async (req, res) => {
 // Сохранить конфиг калькулятора → вернуть короткий ID
 app.post('/api/calculator-configs', auth, async (req, res) => {
   try {
-    const { defaultRate, termRates } = req.body;
+    const { defaultRate, termRates, roundStep, roundDir, markupOnRemainder } = req.body;
 
     // 🔹 Валидация
     if (defaultRate === undefined || !Array.isArray(termRates)) {
       return res.status(400).json({ msg: 'Некорректные данные конфига' });
+    }
+    // Шаг и направление округления — только из списка, поддержанного калькулятором
+    if (roundStep !== undefined && ![0, 100, 500, 1000].includes(Number(roundStep))) {
+      return res.status(400).json({ msg: 'Некорректный шаг округления' });
+    }
+    if (roundDir !== undefined && !['up', 'down'].includes(roundDir)) {
+      return res.status(400).json({ msg: 'Некорректное направление округления' });
     }
     if (termRates.length > 20) {
       return res.status(400).json({ msg: 'Максимум 20 правил' });
@@ -4360,6 +4367,9 @@ app.post('/api/calculator-configs', auth, async (req, res) => {
       id: `cfg_${configId}`,
       defaultRate: parseFloat(defaultRate),
       termRates: termRates.map(r => ({ months: r.months, rate: r.rate })),
+      roundStep: Number(roundStep) || 0,
+      roundDir: roundDir === 'down' ? 'down' : 'up',
+      markupOnRemainder: !!markupOnRemainder,
       createdAt: new Date().toISOString(),
       createdBy: req.user.id
     };
@@ -4417,6 +4427,12 @@ app.get('/api/calculator-configs/:configId', async (req, res) => {
     res.json({
       defaultRate: config.defaultRate,
       termRates: config.termRates,
+      // Ссылки, созданные до появления настройки, округления не хранят — но раньше
+      // калькулятор всегда округлял вверх до 100 ₽. Отдаём им прежнее поведение,
+      // иначе у клиента по уже разосланной ссылке молча поменяется сумма платежа.
+      roundStep: config.roundStep === undefined ? 100 : config.roundStep,
+      roundDir: config.roundDir === 'down' ? 'down' : 'up',
+      markupOnRemainder: !!config.markupOnRemainder,
       sellerPhone: sellerPhone  // ← Новое поле
     });
 

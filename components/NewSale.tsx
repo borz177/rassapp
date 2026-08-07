@@ -77,6 +77,9 @@ const NewSale: React.FC<NewSaleProps> = ({
   const [roundingMode, setRoundingMode] = useState<'NONE' | 'DOWN' | 'UP'>(
     initialData.roundingMode || 'NONE'
   );
+  // Шаг округления. 100 — прежнее поведение: у договоров, оформленных до появления
+  // выбора, шаг не сохранён, и подставлять надо именно его.
+  const [roundingStep, setRoundingStep] = useState<number>(initialData.roundingStep || 100);
 
   // Modals State
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -315,6 +318,18 @@ const regeneratePaymentPlan = (
     return Math.round(bp + (markupBase * (rate / 100)));
   }, [formData.buyPrice, formData.downPayment, formData.interestRate, appSettings.markupFromNetBuyPrice]);
 
+  // 🔹 1.5. Фактическая наценка. Когда цену вписали руками или включили округление,
+  // итоговая сумма перестаёт соответствовать проценту в поле «Наценка» — считаем
+  // обратной формулой от той же базы, что и прямой расчёт выше.
+  const actualMarkupPercent = useMemo(() => {
+    const bp = Number(formData.buyPrice) || 0;
+    const dp = Number(formData.downPayment) || 0;
+    if (bp <= 0) return null;
+    const markupBase = appSettings.markupFromNetBuyPrice ? Math.max(0, bp - dp) : bp;
+    if (markupBase <= 0) return null; // взнос покрыл весь закуп — процент считать не от чего
+    return ((Number(formData.price) || 0) - bp) / markupBase * 100;
+  }, [formData.buyPrice, formData.downPayment, formData.price, appSettings.markupFromNetBuyPrice]);
+
   // 🔹 2. Расчёт итоговых значений с учётом округления
   const calculatedValues = useMemo(() => {
     const downPayment = Number(formData.downPayment) || 0;
@@ -333,6 +348,12 @@ const regeneratePaymentPlan = (
     let totalAmount: number;
     if (initialData.id) {
       totalAmount = Number(formData.price) || initialData.totalAmount || 0;
+    } else if (roundingMode !== 'NONE' && !isPriceManual && baseCalculatedPrice > 0) {
+      // Округляем всегда от исходной цены (закуп + наценка), а не от той, что уже
+      // подтянулась под прошлое округление. Иначе после «Вверх» база становится
+      // кратной шагу, и переключение на «Вниз» ничего не меняет — направление
+      // «залипало» на первом выбранном.
+      totalAmount = baseCalculatedPrice;
     } else {
       totalAmount = Number(formData.price) || baseCalculatedPrice;
     }
@@ -346,9 +367,12 @@ const regeneratePaymentPlan = (
 
     // 🔹 Применяем округление к ежемесячному платежу
     if (!initialData.id && roundingMode !== 'NONE' && monthlyPayment > 0) {
+      // Округление вниз на маленьких суммах могло бы обнулить платёж (500 / 12 при шаге
+      // 1000 → 0) и создать договор, по которому клиент ничего не платит. Держим минимум
+      // в один шаг.
       const roundedMonthly = roundingMode === 'DOWN'
-        ? Math.floor(monthlyPayment / 100) * 100
-        : Math.ceil(monthlyPayment / 100) * 100;
+        ? Math.max(Math.floor(monthlyPayment / roundingStep) * roundingStep, roundingStep)
+        : Math.ceil(monthlyPayment / roundingStep) * roundingStep;
 
       monthlyPayment = roundedMonthly;
       remainingAmount = monthlyPayment * installments;
@@ -361,6 +385,8 @@ const regeneratePaymentPlan = (
     formData.downPayment,
     formData.installments,
     roundingMode,
+    roundingStep,
+    isPriceManual,
     mode,
     baseCalculatedPrice,
     initialData.id,
@@ -544,6 +570,7 @@ const regeneratePaymentPlan = (
         installments: Number(formData.installments),
         interestRate: Number(formData.interestRate),
         roundingMode,
+        roundingStep,
       };
 
       let finalSaleData;
@@ -1333,6 +1360,14 @@ if (mode === 'CASH') {
                         Справочно: не пересчитывает цену автоматически при редактировании
                       </p>
                   )}
+                  {/* Цену вписали руками — процент в поле выше больше не отражает
+                      реальную наценку, показываем фактическую */}
+                  {actualMarkupPercent !== null
+                    && Math.abs(actualMarkupPercent - (Number(formData.interestRate) || 0)) >= 0.1 && (
+                      <p className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 mt-1">
+                        Фактически: {actualMarkupPercent.toFixed(1)}%
+                      </p>
+                  )}
                 </div>
             )}
           </div>
@@ -1494,7 +1529,9 @@ if (mode === 'CASH') {
                 </div>
                 {!formData.id && (
                     <div className="flex flex-col gap-2 text-sm pt-3 border-t border-indigo-100 dark:border-indigo-900/50">
-                      <span className="text-slate-500 dark:text-slate-400 font-medium">Округление платежа (до 100 ₽)</span>
+                      <span className="text-slate-500 dark:text-slate-400 font-medium">
+                        Округление платежа{roundingMode !== 'NONE' ? ` (до ${roundingStep} ₽)` : ''}
+                      </span>
                       <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
                         <button type="button" onClick={() => setRoundingMode('NONE')}
                                 className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'NONE' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Нет
@@ -1506,6 +1543,17 @@ if (mode === 'CASH') {
                                 className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingMode === 'UP' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Вверх
                         </button>
                       </div>
+                      {/* Шаг нужен только при включённом округлении — иначе не занимаем место */}
+                      {roundingMode !== 'NONE' && (
+                        <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-lg animate-fade-in">
+                          {[100, 500, 1000].map(step => (
+                            <button key={step} type="button" onClick={() => setRoundingStep(step)}
+                                    className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${roundingStep === step ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>
+                              {step} ₽
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                 )}
                 <div className="flex justify-between text-sm pt-3 border-t border-indigo-100 dark:border-indigo-900/50"><span

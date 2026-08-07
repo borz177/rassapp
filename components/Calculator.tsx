@@ -7,7 +7,27 @@ const MONTHS_RU = ['января','февраля','марта','апреля','
                    'июля','августа','сентября','октября','ноября','декабря'];
 
 const fmtMoney = (n: number) => Math.round(n).toLocaleString('ru-RU');
+
+// Платёж без округления почти всегда получается дробным (50 000 / 3 = 16 666,67).
+// Показывать его округлённым нельзя: сумма платежей тогда не сойдётся с «Итого»,
+// и клиент справедливо спросит, откуда взялась разница.
+const fmtPayment = (n: number) =>
+  Number.isInteger(n)
+    ? n.toLocaleString('ru-RU')
+    : n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 const fmtDate  = (d: Date)   => `${d.getDate()} ${MONTHS_RU[d.getMonth()]} ${d.getFullYear()}`;
+
+// Верхний предел срока: график строится построчно, и без ограничения опечатка вроде
+// «1200» подвесила бы страницу тысячей строк.
+const MAX_MONTHS = 120;
+
+const ROUND_OPTIONS: { value: number; label: string }[] = [
+  { value: 0,    label: 'Как есть' },
+  { value: 100,  label: '100 ₽' },
+  { value: 500,  label: '500 ₽' },
+  { value: 1000, label: '1000 ₽' },
+];
 
 function todayISO() {
   return new Date().toISOString().split('T')[0];
@@ -66,6 +86,12 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
   const [price, setPrice]           = useState<string>('');
   const [months, setMonths]         = useState<number>(3);
+  // 0 — платёж как есть; 100/500/1000 — округление до этого шага
+  const [roundStep, setRoundStep]   = useState<number>(0);
+  // Куда округлять: вверх (продавец добирает) или вниз (уступка клиенту)
+  const [roundDir, setRoundDir]     = useState<'up' | 'down'>('up');
+  // Наценка начисляется только на остаток после первого взноса
+  const [markupOnRemainder, setMarkupOnRemainder] = useState<boolean>(false);
   const [downPayment, setDownPayment] = useState<string>('');
   const [customRate, setCustomRate] = useState<string>('');
   const [startDate, setStartDate]   = useState<string>(todayISO);
@@ -89,6 +115,11 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
             setDefaultRate(config.defaultRate.toString());
             setTermRates(config.termRates || []);
             setSellerPhone(config.sellerPhone || '');
+            // Правила расчёта берём из ссылки, чтобы клиент увидел ровно ту сумму,
+            // которую посчитал менеджер
+            if (config.roundStep !== undefined) setRoundStep(config.roundStep);
+            if (config.roundDir !== undefined) setRoundDir(config.roundDir);
+            if (config.markupOnRemainder !== undefined) setMarkupOnRemainder(config.markupOnRemainder);
           }
         })
         .catch(() => {
@@ -111,17 +142,35 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
   const result = useMemo(() => {
     const p  = parseFloat(price) || 0;
-    const dp = parseFloat(downPayment) || 0;
-    const priceWithMarkup = p + p * (effectiveRate / 100);
-    const remaining       = priceWithMarkup - dp;
-    const monthly         = months > 0 ? remaining / months : 0;
-    const roundedMonthly  = Math.ceil(monthly / 100) * 100;
+    const dp = Math.min(parseFloat(downPayment) || 0, p); // взнос не может быть больше цены
+    const rate = effectiveRate / 100;
+
+    // Два способа начислить наценку:
+    //  • markupOnRemainder — только на то, что реально уходит в рассрочку (цена минус взнос).
+    //    Клиент не переплачивает за часть, которую уже оплатил наличными.
+    //  • обычный — на всю цену товара, взнос лишь уменьшает остаток к выплате.
+    const markupBase = markupOnRemainder ? p - dp : p;
+    const markup     = markupBase * rate;
+    const remaining  = markupOnRemainder ? (p - dp) + markup : (p + markup) - dp;
+
+    const monthly = months > 0 ? remaining / months : 0;
+    // step === 0 — платёж как есть, без подгонки. Округление вниз не должно уводить
+    // платёж в ноль на маленьких суммах, поэтому держим минимум в один шаг.
+    const roundedMonthly = roundStep > 0
+      ? (roundDir === 'down'
+          ? Math.max(Math.floor(monthly / roundStep) * roundStep, monthly > 0 ? roundStep : 0)
+          : Math.ceil(monthly / roundStep) * roundStep)
+      : monthly;
+
     return {
-      total:        priceWithMarkup,
+      markup,
+      total:        p + markup,          // полная стоимость товара с наценкой
       monthly:      roundedMonthly,
       totalPayable: roundedMonthly * months + dp,
+      // Сколько клиент заплатил бы без округления — разница с totalPayable и есть надбавка
+      exactTotal:   monthly * months + dp,
     };
-  }, [price, months, downPayment, effectiveRate]);
+  }, [price, months, downPayment, effectiveRate, roundStep, roundDir, markupOnRemainder]);
 
   // График платежей
   const paymentSchedule = useMemo(() => {
@@ -197,7 +246,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
       ctx.fillStyle = '#6ee7b7';
       ctx.font = 'bold 22px Arial, sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText(`${fmtMoney(result.monthly)} ₽/мес`, W - 36, 110);
+      ctx.fillText(`${fmtPayment(result.monthly)} ₽/мес`, W - 36, 110);
       ctx.textAlign = 'left';
 
       // ── Сводка ───────────────────────────────────────────────────
@@ -272,7 +321,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
         ctx.fillStyle = '#1e293b';
         ctx.font = 'bold 15px Arial, sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText(`${fmtMoney(p.amount)} ₽`, W - 28, ry + 27);
+        ctx.fillText(`${fmtPayment(p.amount)} ₽`, W - 28, ry + 27);
         ctx.textAlign = 'left';
       });
 
@@ -286,7 +335,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
               await navigator.share({
                 files: [file],
                 title: 'Расчёт рассрочки',
-                text: `${publicCompany} — рассрочка ${fmtMoney(result.monthly)} ₽/мес × ${months} мес.`,
+                text: `${publicCompany} — рассрочка ${fmtPayment(result.monthly)} ₽/мес × ${months} мес.`,
               });
             } else {
               const url = URL.createObjectURL(blob);
@@ -309,6 +358,9 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
       const cfgId = await api.saveCalculatorConfig({
         defaultRate: parseFloat(defaultRate),
         termRates: termRates.map(r => ({ months: r.months, rate: r.rate })),
+        roundStep,
+        roundDir,
+        markupOnRemainder,
       });
       if (onSaveSettings && appSettings) {
         onSaveSettings({
@@ -417,7 +469,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
             {/* Стоимость + Наценка */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Стоимость товара</label>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Стоимость</label>
                 <div className="relative">
                   <input
                     type="number"
@@ -432,7 +484,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
               <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">
                   Наценка
-                  {customRate === '' && <span className="ml-1 font-normal text-indigo-400 normal-case">({activeRate}% из настроек)</span>}
+                  {customRate === '' && <span className="ml-1 font-normal text-indigo-400 normal-case">({activeRate}%)</span>}
                 </label>
                 <div className="relative">
                   <input
@@ -451,13 +503,34 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Срок</label>
-                <select
-                  className="w-full p-4 border border-slate-200 dark:border-slate-600 rounded-xl outline-none bg-white dark:bg-slate-900 dark:text-white font-semibold"
-                  value={months}
-                  onChange={e => setMonths(parseInt(e.target.value))}
-                >
-                  {availableTerms.map(m => <option key={m} value={m}>{m} мес.</option>)}
-                </select>
+                {/* В публичной ссылке с правилами ставок срок выбирается только из тех,
+                    для которых менеджер задал ставку — свободный ввод дал бы клиенту
+                    условия, которых у продавца нет. В остальных случаях — любое число. */}
+                {isPublic && termRates.length > 0 ? (
+                  <select
+                    className="w-full p-4 border border-slate-200 dark:border-slate-600 rounded-xl outline-none bg-white dark:bg-slate-900 dark:text-white font-semibold"
+                    value={months}
+                    onChange={e => setMonths(parseInt(e.target.value))}
+                  >
+                    {availableTerms.map(m => <option key={m} value={m}>{m} мес.</option>)}
+                  </select>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={MAX_MONTHS}
+                      className="w-full p-4 pr-12 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500 transition-colors font-semibold"
+                      value={months || ''}
+                      onChange={e => {
+                        const v = parseInt(e.target.value);
+                        setMonths(isNaN(v) ? 0 : Math.min(Math.max(v, 0), MAX_MONTHS));
+                      }}
+                    />
+                    <span className="absolute right-3 top-4 text-slate-400 text-sm">мес.</span>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Первый взнос</label>
@@ -485,6 +558,97 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
               />
               <p className="text-xs text-slate-400 mt-1.5">Первый платёж по графику — со следующего месяца</p>
             </div>
+
+            {/* Быстрый выбор срока — чтобы частые варианты не набирать руками */}
+            {!(isPublic && termRates.length > 0) && (
+              <div className="flex flex-wrap gap-2">
+                {[3, 6, 9, 12, 18, 24].map(m => (
+                  <button
+                    key={m}
+                    onClick={() => setMonths(m)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                      months === m
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                    }`}
+                  >
+                    {m} мес.
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Округление платежа */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5 gap-2">
+                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                  Округление платежа
+                </label>
+                {/* Направление нужно только при включённом округлении — иначе прячем,
+                    чтобы не занимать место лишним переключателем */}
+                {roundStep > 0 && (
+                  <div className="flex rounded-lg bg-slate-100 dark:bg-slate-700 p-0.5 shrink-0">
+                    {([['up', '↑ Вверх'], ['down', '↓ Вниз']] as const).map(([dir, label]) => (
+                      <button
+                        key={dir}
+                        onClick={() => setRoundDir(dir)}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-colors ${
+                          roundDir === dir
+                            ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                            : 'text-slate-500 dark:text-slate-400'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {ROUND_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setRoundStep(opt.value)}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-colors ${
+                      roundStep === opt.value
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-1.5">
+                {roundStep === 0
+                  ? 'Платёж считается точно, без подгонки'
+                  : roundDir === 'up'
+                    ? `Платёж округляется вверх до ${roundStep} ₽ — итоговая сумма немного вырастет`
+                    : `Платёж округляется вниз до ${roundStep} ₽ — вы уступаете клиенту разницу`}
+              </p>
+            </div>
+
+            {/* Откуда считать наценку */}
+            <label className="flex items-start justify-between gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 cursor-pointer">
+              <span className="flex items-start gap-3 min-w-0">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 shrink-0"
+                  checked={markupOnRemainder}
+                  onChange={e => setMarkupOnRemainder(e.target.checked)}
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    Наценка на остаток после взноса
+                  </span>
+                  <span className="block text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                    {markupOnRemainder
+                      ? 'Начисляется только на сумму, уходящую в рассрочку'
+                      : 'Сейчас начисляется на всю цену товара'}
+                  </span>
+                </span>
+              </span>
+            </label>
           </div>
 
           {/* ── Результат ── */}
@@ -493,7 +657,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
               <div>
                 <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Ежемесячный платёж</p>
                 <p className="text-4xl font-black text-emerald-400 tracking-tight">
-                  {hasPrice ? fmtMoney(result.monthly) : '—'} <span className="text-2xl text-emerald-500">₽</span>
+                  {hasPrice ? fmtPayment(result.monthly) : '—'} <span className="text-2xl text-emerald-500">₽</span>
                 </p>
               </div>
               {hasPrice && (
@@ -509,14 +673,29 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                   <span className="text-slate-400">Цена товара</span>
                   <span className="font-medium">{fmtMoney(parseFloat(price))} ₽</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Наценка ({effectiveRate}%)</span>
-                  <span className="text-amber-400 font-medium">+{fmtMoney(result.total - parseFloat(price))} ₽</span>
-                </div>
                 {parseFloat(downPayment || '0') > 0 && (
                   <div className="flex justify-between">
                     <span className="text-slate-400">Первый взнос</span>
-                    <span className="text-indigo-300 font-medium">{fmtMoney(parseFloat(downPayment))} ₽</span>
+                    <span className="text-indigo-300 font-medium">−{fmtMoney(parseFloat(downPayment))} ₽</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-slate-400">
+                    Наценка ({effectiveRate}%)
+                    {markupOnRemainder && parseFloat(downPayment || '0') > 0 && (
+                      <span className="block text-[11px] text-slate-500">на остаток после взноса</span>
+                    )}
+                  </span>
+                  <span className="text-amber-400 font-medium">+{fmtMoney(result.markup)} ₽</span>
+                </div>
+                {roundStep > 0 && Math.abs(result.totalPayable - result.exactTotal) >= 1 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">
+                      {result.totalPayable > result.exactTotal ? 'Надбавка за округление' : 'Скидка за округление'}
+                    </span>
+                    <span className={`font-medium ${result.totalPayable > result.exactTotal ? 'text-slate-300' : 'text-emerald-400'}`}>
+                      {result.totalPayable > result.exactTotal ? '+' : '−'}{fmtMoney(Math.abs(result.totalPayable - result.exactTotal))} ₽
+                    </span>
                   </div>
                 )}
               </div>
@@ -584,7 +763,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                         {/* Сумма */}
                         <div className="text-right flex-shrink-0">
                           <p className={`text-base font-black ${row.isDownPayment ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-white'}`}>
-                            {fmtMoney(row.amount)} ₽
+                            {fmtPayment(row.amount)} ₽
                           </p>
                         </div>
                       </div>
