@@ -5,6 +5,17 @@ import { formatCurrency, formatDate, getManagerSharePercent } from '../src/utils
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import {createPortal} from "react-dom";
 
+// Календарный день платежа в виде «YYYY-MM-DD» по московскому времени.
+//
+// В базе даты платежей лежат в двух видах: «...T00:00:00.000Z» (24 015 записей) и
+// «...T21:00:00.000Z» — полночь по Москве (1 546 записей). Если разбирать их часовым
+// поясом устройства, второй вид у пользователя западнее Москвы (Калининград, UTC+2)
+// съезжает на день назад, и платёж показывается не в тот день. В московском поясе
+// оба вида дают одну и ту же верную дату, поэтому сравниваем именно по нему.
+// 'en-CA' выбран потому, что даёт ровно формат YYYY-MM-DD.
+const mskDayKey = (d: string | number | Date): string =>
+  new Date(d).toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+
 
 interface DashboardProps {
   sales: Sale[];
@@ -805,7 +816,9 @@ const Dashboard: React.FC<DashboardProps> = ({
       totalDue: number;
   } | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [paymentDateFilter, setPaymentDateFilter] = useState<'ALL' | 'TODAY' | 'TOMORROW'>('ALL');
+  // Неделя, а не «сегодня и завтра»: у менеджера ближайший платёж часто через 2–3 дня,
+  // и двухдневное окно показывало пустой экран, хотя на неделе ждут поступления.
+  const [paymentDateFilter, setPaymentDateFilter] = useState<'WEEK' | 'TODAY' | 'TOMORROW'>('WEEK');
 
   // В начале компонента Dashboard, рядом с другими useState:
 const [selectedPaymentType, setSelectedPaymentType] = useState<'expected' | 'received' | null>(null);
@@ -949,93 +962,128 @@ const currentMonthName = useMemo(() => {
           .slice(0, 5);
   }, [sales, selectedAccountId]);
 
-  // Найдите useMemo upcomingAndOverduePayments и исправьте:
+  // 🔹 Единый источник неоплаченных плановых платежей для календаря и списка.
+  // Раньше они считались двумя независимыми блоками с разной фильтрацией (календарь
+  // отбрасывал isPaid, список гасил суммой реальных приходов), из-за чего день мог
+  // подсвечиваться в календаре, а по клику список оказывался пустым.
+  // Берём вариант с гашением: isPaid у плановых слотов — производная от реальных
+  // платежей (см. reconcileSalePaymentPlan в App.tsx, «не доверяем унаследованным
+  // флагам»), и она может зависнуть после отмены платежа.
+  const duePaymentsBySale = useMemo(() => {
+    return sales.map(sale => {
+      if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return null;
 
-const upcomingAndOverduePayments = useMemo(() => {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(0, 0, 0, 0);
-  const tomorrowEnd = new Date(tomorrow);
-  tomorrowEnd.setHours(23, 59, 59, 999);
-
-  const today = new Date();
-  const todayEnd = new Date(today);
-  today.setHours(0,0,0,0);
-  todayEnd.setHours(23, 59, 59, 999);
-  const todayStr = today.toDateString();
-
-  const payments: { sale: Sale, customerName: string, totalDue: number, isTomorrow: boolean, isToday: boolean, isOverdue: boolean }[] = [];
-
-  sales.forEach(sale => {
-    if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
-
-    const realInstallmentPayments = sale.paymentPlan
+      let paymentPool = sale.paymentPlan
         .filter(p => p.isPaid && p.isRealPayment !== false)
         .reduce((sum, p) => sum + p.amount, 0);
 
-    let paymentPool = realInstallmentPayments;
-    const planItems = sale.paymentPlan
+      const due: { date: Date; dayKey: string; amount: number }[] = [];
+
+      sale.paymentPlan
         .filter(p => p.isRealPayment === false || p.isRealPayment === undefined)
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .forEach(p => {
+          const covered = Math.min(p.amount, paymentPool);
+          paymentPool -= covered;
+          const actualDue = p.amount - covered;
+          if (actualDue > 0.01) {
+            const d = new Date(p.date);
+            due.push({ date: d, dayKey: mskDayKey(d), amount: actualDue });
+          }
+        });
 
-    let relevantAmount = 0;
-    let isTomorrowPayment = false;
-    let isTodayPayment = false;
-    let isOverduePayment = false;
+      return due.length > 0 ? { sale, due } : null;
+    }).filter((x): x is { sale: Sale; due: { date: Date; dayKey: string; amount: number }[] } => x !== null);
+  }, [sales]);
 
-    planItems.forEach(p => {
-        const amountDue = p.amount;
-        const coveredByPool = Math.min(amountDue, paymentPool);
-        paymentPool -= coveredByPool;
-        const actualDue = amountDue - coveredByPool;
+// Платежи выбранного периода, сгруппированные по дням: так видно, что «11 августа ждём
+// троих на 20 300 ₽», а не просто плоский перечень договоров вперемешку.
+const paymentGroups = useMemo(() => {
+  const todayKey = mskDayKey(new Date());
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrowKey = mskDayKey(tomorrowDate);
 
-        if (actualDue > 0.01) {
-            const paymentDate = new Date(p.date);
-            paymentDate.setHours(0,0,0,0);
-            const isPast = paymentDate < today;
-            const isToday = paymentDate.toDateString() === todayStr;
-            const isTomorrow = paymentDate >= tomorrow && paymentDate <= tomorrowEnd;
+  const weekEnd = new Date();
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const weekEndKey = mskDayKey(weekEnd);
 
-            let include = false;
-            if (selectedCalendarDate) {
-              // ✅ Если выбрана дата в календаре — показываем только её
-              const selectedDateStr = selectedCalendarDate.toDateString();
-              if (paymentDate.toDateString() === selectedDateStr) include = true;
-            } else if (paymentDateFilter === 'ALL') {
-              if (isToday || isTomorrow) include = true;
-            } else if (paymentDateFilter === 'TODAY') {
-              if (isToday) include = true;
-            } else if (paymentDateFilter === 'TOMORROW') {
-              if (isTomorrow) include = true;
-            }
+  const selectedKey = selectedCalendarDate ? mskDayKey(selectedCalendarDate) : null;
 
-            if (include) {
-                relevantAmount += actualDue;
-                if (isTomorrow) isTomorrowPayment = true;
-                if (isToday) isTodayPayment = true;
-                if (isPast) isOverduePayment = true;
-            }
-        }
+  type Item = { sale: Sale; customerName: string; amount: number };
+  const groups = new Map<string, { dayKey: string; date: Date; total: number; items: Item[] }>();
+
+  duePaymentsBySale.forEach(({ sale, due }) => {
+    const customerName = customers.find(c => c.id === sale.customerId)?.name || 'Неизвестный клиент';
+
+    due.forEach(({ dayKey, date, amount }) => {
+      // Строки «YYYY-MM-DD» сравниваются лексикографически так же, как хронологически
+      let include = false;
+      if (selectedKey) {
+        include = dayKey === selectedKey;
+      } else if (paymentDateFilter === 'WEEK') {
+        include = dayKey >= todayKey && dayKey <= weekEndKey;
+      } else if (paymentDateFilter === 'TODAY') {
+        include = dayKey === todayKey;
+      } else if (paymentDateFilter === 'TOMORROW') {
+        include = dayKey === tomorrowKey;
+      }
+      if (!include) return;
+
+      const group = groups.get(dayKey) || { dayKey, date, total: 0, items: [] };
+      group.total += amount;
+      // Несколько платежей одного договора в один день показываем одной строкой
+      const existing = group.items.find(i => i.sale.id === sale.id);
+      if (existing) existing.amount += amount;
+      else group.items.push({ sale, customerName, amount });
+      groups.set(dayKey, group);
+    });
+  });
+
+  return [...groups.values()]
+    .sort((a, b) => a.dayKey.localeCompare(b.dayKey))
+    .map(g => ({
+      ...g,
+      total: Math.round(g.total * 100) / 100,
+      isToday: g.dayKey === todayKey,
+      isTomorrow: g.dayKey === tomorrowKey,
+      isPast: g.dayKey < todayKey,
+      items: g.items.sort((a, b) => b.amount - a.amount),
+    }));
+}, [duePaymentsBySale, customers, paymentDateFilter, selectedCalendarDate]);
+
+// Итог по выбранному периоду — для строки-сводки над списком
+const periodSummary = useMemo(() => ({
+  contracts: paymentGroups.reduce((sum, g) => sum + g.items.length, 0),
+  amount: paymentGroups.reduce((sum, g) => sum + g.total, 0),
+}), [paymentGroups]);
+
+// Когда в выбранном периоде пусто — подсказываем ближайшую дату, чтобы экран
+// не выглядел так, будто платежей нет вообще
+const nextPaymentAfterPeriod = useMemo(() => {
+  const todayKey = mskDayKey(new Date());
+  let best: { dayKey: string; date: Date; amount: number; contracts: number } | null = null;
+
+  const perDay = new Map<string, { date: Date; amount: number; sales: Set<string> }>();
+  duePaymentsBySale.forEach(({ sale, due }) => {
+    due.forEach(({ dayKey, date, amount }) => {
+      if (dayKey < todayKey) return; // просрочка живёт на своей странице
+      const e = perDay.get(dayKey) || { date, amount: 0, sales: new Set<string>() };
+      e.amount += amount;
+      e.sales.add(sale.id);
+      perDay.set(dayKey, e);
+    });
+  });
+
+  [...perDay.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(0, 1)
+    .forEach(([dayKey, e]) => {
+      best = { dayKey, date: e.date, amount: Math.round(e.amount * 100) / 100, contracts: e.sales.size };
     });
 
-    if (relevantAmount > 0) {
-      payments.push({
-        sale: sale,
-        customerName: customers.find(c => c.id === sale.customerId)?.name || 'Неизвестный клиент',
-        totalDue: Math.round(relevantAmount * 100) / 100,
-        isTomorrow: isTomorrowPayment && !isTodayPayment,
-        isToday: isTodayPayment,
-        isOverdue: isOverduePayment
-      });
-    }
-  });
-
-  return payments.sort((a,b) => {
-      if (a.isToday && !b.isToday) return -1;
-      if (!a.isToday && b.isToday) return 1;
-      return a.totalDue - b.totalDue;
-  });
-}, [sales, customers, paymentDateFilter, selectedCalendarDate]);
+  return best;
+}, [duePaymentsBySale]);
 
 
 // 📊 Ожидаемые платежи в этом месяце (исправленная версия)
@@ -1215,42 +1263,29 @@ const expectedProfitThisMonth = useMemo(() => {
 
 
 
+// Суммы и число договоров по дням — из того же источника, что и список платежей,
+// поэтому подсвеченный день всегда открывает непустой список.
 const getPaymentsByDate = useMemo(() => {
-  const map = new Map<string, number>();
+  const map = new Map<string, { amount: number; contracts: number }>();
 
-  sales.forEach(sale => {
-    if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
+  duePaymentsBySale.forEach(({ due }) => {
+    // Один договор может иметь несколько платежей в одном дне — в счётчике
+    // договоров он должен учитываться один раз
+    const daysOfThisSale = new Set<string>();
 
-    const realInstallmentPayments = sale.paymentPlan
-        .filter(p => p.isPaid && p.isRealPayment !== false)
-        .reduce((sum, p) => sum + p.amount, 0);
-
-    let paymentPool = realInstallmentPayments;
-
-    const planItems = sale.paymentPlan
-      .filter(p => p.isRealPayment === false || p.isRealPayment === undefined)
-      .filter(p => !p.isPaid)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    planItems.forEach(p => {
-      const amountDue = p.amount;
-      const coveredByPool = Math.min(amountDue, paymentPool);
-      paymentPool -= coveredByPool;
-      const actualDue = amountDue - coveredByPool;
-
-      if (actualDue > 0.01) {
-        const paymentDate = new Date(p.date);
-        paymentDate.setHours(0, 0, 0, 0);
-        const dateKey = paymentDate.toDateString();
-
-        const current = map.get(dateKey) || 0;
-        map.set(dateKey, current + actualDue);
+    due.forEach(({ dayKey, amount }) => {
+      const current = map.get(dayKey) || { amount: 0, contracts: 0 };
+      current.amount += amount;
+      if (!daysOfThisSale.has(dayKey)) {
+        current.contracts += 1;
+        daysOfThisSale.add(dayKey);
       }
+      map.set(dayKey, current);
     });
   });
 
   return map;
-}, [sales]);
+}, [duePaymentsBySale]);
 
 
 
@@ -1293,9 +1328,9 @@ useEffect(() => {
             }`}
           >
             Платежи
-            {upcomingAndOverduePayments.length > 0 && (
+            {periodSummary.contracts > 0 && (
               <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[10px] rounded-full flex items-center justify-center border-2 border-white shadow-sm animate-pulse">
-                {upcomingAndOverduePayments.length}
+                {periodSummary.contracts}
               </span>
             )}
           </button>
@@ -1666,14 +1701,14 @@ useEffect(() => {
     <div className="flex flex-wrap items-center gap-2">
       <div className="flex gap-1 p-1 bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-xl shadow-sm">
         <button
-          onClick={() => { setSelectedCalendarDate(null); setPaymentDateFilter('ALL'); }}
+          onClick={() => { setSelectedCalendarDate(null); setPaymentDateFilter('WEEK'); }}
           className={`px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
-            !selectedCalendarDate && paymentDateFilter === 'ALL'
+            !selectedCalendarDate && paymentDateFilter === 'WEEK'
               ? 'bg-gradient-to-r from-slate-800 to-slate-700 text-white shadow-md'
               : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600'
           }`}
         >
-          Все
+          Неделя
         </button>
         <button
           onClick={() => { setSelectedCalendarDate(null); setPaymentDateFilter('TODAY'); }}
@@ -1704,7 +1739,7 @@ useEffect(() => {
       setShowCalendarPicker(!showCalendarPicker);
       if (!showCalendarPicker) {
         setSelectedCalendarDate(null);
-        setPaymentDateFilter('ALL');
+        setPaymentDateFilter('WEEK');
       }
     }}
     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 border ${
@@ -1772,14 +1807,19 @@ useEffect(() => {
             }
 
             // Дни месяца
+            const todayKey = mskDayKey(new Date());
             for (let d = 1; d <= lastDay.getDate(); d++) {
-              const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), d);
-              date.setHours(0, 0, 0, 0);
-              const dateKey = date.toDateString();
-              const amount = getPaymentsByDate.get(dateKey) || 0;
+              const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), d, 12);
+              // Полдень, а не полночь: у даты, собранной на полночь, при переводе в
+              // московский день можно уехать на сутки назад в западных поясах.
+              const dateKey = mskDayKey(date);
+              const entry = getPaymentsByDate.get(dateKey);
+              const amount = entry?.amount || 0;
+              const contracts = entry?.contracts || 0;
               const hasPayments = amount > 0;
-              const isToday = date.toDateString() === new Date().toDateString();
-              const isSelected = selectedCalendarDate?.toDateString() === dateKey;
+              const isToday = dateKey === todayKey;
+              const isPast = dateKey < todayKey;
+              const isSelected = selectedCalendarDate ? mskDayKey(selectedCalendarDate) === dateKey : false;
 
               days.push(
                 <button
@@ -1788,22 +1828,37 @@ useEffect(() => {
                     setSelectedCalendarDate(date);
                     setShowCalendarPicker(false);
                   }}
+                  title={hasPayments ? `${contracts} ${contracts === 1 ? 'договор' : contracts < 5 ? 'договора' : 'договоров'} · ${formatCurrency(amount, false)} ₽` : undefined}
                   className={`aspect-square rounded-xl text-xs flex flex-col items-center justify-center relative transition-all font-semibold ${
                     isSelected
                       ? 'bg-gradient-to-br from-indigo-600 to-indigo-500 text-white font-bold shadow-lg scale-105'
                       : isToday
                         ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-bold border-2 border-indigo-300 dark:border-indigo-800'
                         : hasPayments
-                          ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-900/50'
+                          ? isPast
+                            // Дни, срок которых уже прошёл, а деньги не пришли — приглушённо,
+                            // чтобы не путать их с предстоящими поступлениями
+                            ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600'
+                            : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-900/50'
                           : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
                   }`}
                 >
                   <span className="text-sm">{d}</span>
                   {hasPayments && !isSelected && (
-  <span className="text-[9px] font-bold text-emerald-600 mt-0.5">
-    {amount >= 1000 ? `${Math.round(amount/1000)}к` : `${amount}`}
-  </span>
-)}
+                    <span className={`text-[9px] font-bold mt-0.5 ${isPast ? 'text-slate-400 dark:text-slate-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                      {amount >= 1000 ? `${Math.round(amount / 1000)}к` : `${Math.round(amount)}`}
+                    </span>
+                  )}
+                  {/* Точки — сколько договоров в этот день (до трёх, дальше просто «3+») */}
+                  {hasPayments && contracts > 1 && (
+                    <span className="absolute bottom-1 flex gap-0.5">
+                      {Array.from({ length: Math.min(contracts, 3) }).map((_, i) => (
+                        <span key={i} className={`w-1 h-1 rounded-full ${
+                          isSelected ? 'bg-white/80' : isPast ? 'bg-slate-400' : 'bg-emerald-500'
+                        }`} />
+                      ))}
+                    </span>
+                  )}
                 </button>
               );
             }
@@ -1812,12 +1867,15 @@ useEffect(() => {
         </div>
 
         {/* Легенда */}
-        <div className="flex items-center justify-center gap-3 mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 text-[10px] text-slate-500 dark:text-slate-400">
+        <div className="flex flex-wrap items-center justify-center gap-3 mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 text-[10px] text-slate-500 dark:text-slate-400">
           <span className="flex items-center gap-1">
             <span className="w-3 h-3 bg-indigo-100 dark:bg-indigo-900/30 rounded border border-indigo-300 dark:border-indigo-800" /> Сегодня
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-3 h-3 bg-emerald-50 dark:bg-emerald-900/30 rounded border border-emerald-200 dark:border-emerald-900/50" /> Есть платежи
+            <span className="w-3 h-3 bg-emerald-50 dark:bg-emerald-900/30 rounded border border-emerald-200 dark:border-emerald-900/50" /> Ожидается
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-3 h-3 bg-slate-100 dark:bg-slate-700/50 rounded border border-slate-200 dark:border-slate-600" /> Срок прошёл
           </span>
         </div>
       </div>
@@ -1836,91 +1894,133 @@ useEffect(() => {
       )}
     </div>
 
-    {/* 🔹 Список платежей */}
-    {upcomingAndOverduePayments.length === 0 ? (
-      <div className="text-center py-16 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
-        <div className="text-6xl mb-4 opacity-30">📅</div>
-        <p className="text-slate-400 font-medium">
-          {selectedCalendarDate ? 'Нет платежей на выбранную дату' : 'Нет платежей на сегодня и завтра'}
+    {/* 🔹 Сводка за период — сразу видно, сколько денег ждём */}
+    {paymentGroups.length > 0 && (
+      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-indigo-50 to-white dark:from-indigo-950/40 dark:to-slate-800/60 rounded-2xl border border-indigo-100 dark:border-indigo-900/40">
+        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+          {periodSummary.contracts} {periodSummary.contracts === 1 ? 'платёж' : periodSummary.contracts < 5 ? 'платежа' : 'платежей'}
+          {' · '}
+          {paymentGroups.length} {paymentGroups.length === 1 ? 'день' : paymentGroups.length < 5 ? 'дня' : 'дней'}
+        </span>
+        <span className="text-lg font-bold text-indigo-700 dark:text-indigo-400">
+          {formatCurrency(periodSummary.amount, appSettings.showCents)} ₽
+        </span>
+      </div>
+    )}
+
+    {/* 🔹 Список платежей, сгруппированный по дням */}
+    {paymentGroups.length === 0 ? (
+      <div className="text-center py-14 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
+        <div className="text-5xl mb-3 opacity-30">📅</div>
+        <p className="text-slate-500 dark:text-slate-400 font-medium">
+          {selectedCalendarDate
+            ? 'На выбранную дату платежей нет'
+            : paymentDateFilter === 'TODAY' ? 'На сегодня платежей нет'
+            : paymentDateFilter === 'TOMORROW' ? 'На завтра платежей нет'
+            : 'На ближайшую неделю платежей нет'}
         </p>
-        <p className="text-xs text-slate-300 mt-1">Все платежи по расписанию</p>
+        {/* Пустой экран не должен выглядеть так, будто платежей нет вовсе */}
+        {nextPaymentAfterPeriod ? (
+          <button
+            onClick={() => { setSelectedCalendarDate(nextPaymentAfterPeriod.date); }}
+            className="mt-4 inline-flex flex-col items-center gap-1 px-5 py-3 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+          >
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Ближайший платёж</span>
+            <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">
+              {nextPaymentAfterPeriod.date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+              {' · '}
+              {formatCurrency(nextPaymentAfterPeriod.amount, appSettings.showCents)} ₽
+            </span>
+          </button>
+        ) : (
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Все платежи по расписанию</p>
+        )}
       </div>
     ) : (
-      <div className="space-y-3">
-        {upcomingAndOverduePayments.map((p, idx) => (
-          <div
-            key={p.sale.id}
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedPaymentForAction({
-                sale: p.sale,
-                customerName: p.customerName,
-                totalDue: p.totalDue
-              });
-            }}
-            className="group bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-800 relative animate-in fade-in slide-in-from-bottom-2 cursor-pointer"
-            style={{animationDelay: `${idx * 100}ms`}}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4 min-w-0 flex-1">
-                <div className="min-w-0">
-                  <p className="font-bold text-slate-800 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors break-words leading-tight">
-                    {p.customerName}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-0.5 break-words">
-                    {p.sale.productName}
-                  </p>
-                </div>
+      <div className="space-y-5">
+        {paymentGroups.map((group, gIdx) => (
+          <div key={group.dayKey} className="space-y-2 animate-in fade-in slide-in-from-bottom-2"
+               style={{ animationDelay: `${gIdx * 80}ms` }}>
+            {/* Заголовок дня */}
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <span className={`text-sm font-bold ${
+                  group.isToday ? 'text-emerald-600 dark:text-emerald-400'
+                  : group.isTomorrow ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-slate-700 dark:text-slate-200'
+                }`}>
+                  {group.isToday ? 'Сегодня' : group.isTomorrow ? 'Завтра'
+                    : group.date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+                </span>
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                  {group.date.toLocaleDateString('ru-RU', { weekday: 'short' })}
+                </span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                  {group.items.length}
+                </span>
               </div>
-              <div className="text-right flex-shrink-0 pl-4">
-                <p className="text-lg font-bold text-indigo-600 whitespace-nowrap">
-                  {formatCurrency(p.totalDue, appSettings.showCents)} ₽
-                </p>
-                {p.isToday && !selectedCalendarDate && (
-                  <p className="text-[10px] font-bold text-emerald-600 mt-0.5">СЕГОДНЯ</p>
-                )}
-                {p.isTomorrow && !selectedCalendarDate && (
-                  <p className="text-[10px] font-bold text-amber-600 mt-0.5">ЗАВТРА</p>
-                )}
-               {selectedCalendarDate && (
-  <p className="text-[10px] font-bold text-indigo-600 mt-0.5">
-
-    {formatDate(selectedCalendarDate.toLocaleDateString('ru-RU'))}
-  </p>
-)}
-              </div>
+              <span className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                {formatCurrency(group.total, appSettings.showCents)} ₽
+              </span>
             </div>
-            {/* Блок задолженности */}
-            {(() => {
-              const calculateOverdueAmount = (sale: Sale) => {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                let expectedPaid = sale.downPayment;
-                sale.paymentPlan.forEach(p => {
-                  const paymentDate = new Date(p.date);
-                  paymentDate.setHours(0, 0, 0, 0);
-                  if ((!p.isRealPayment || p.isRealPayment === undefined) && paymentDate < today) {
-                    expectedPaid += p.amount;
-                  }
-                });
-                const actualPaid = sale.totalAmount - sale.remainingAmount;
-                return Math.max(0, expectedPaid - actualPaid);
-              };
-              const overdueDebt = calculateOverdueAmount(p.sale);
-              if (overdueDebt <= 0) return null;
-              return (
-                <div className="mt-4 pt-3 border-t border-dashed border-rose-200">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-rose-600 font-medium flex items-center gap-1">
-                      ⚠️ Задолженность
-                    </span>
-                    <span className="font-bold text-rose-700 whitespace-nowrap">
-                      {formatCurrency(overdueDebt, appSettings.showCents)} ₽
-                    </span>
+
+            {group.items.map(item => (
+              <div
+                key={`${group.dayKey}_${item.sale.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedPaymentForAction({
+                    sale: item.sale,
+                    customerName: item.customerName,
+                    totalDue: item.amount
+                  });
+                }}
+                className={`group bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-4 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border-l-4 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-800 cursor-pointer ${
+                  group.isToday ? 'border-l-emerald-500'
+                  : group.isTomorrow ? 'border-l-amber-400'
+                  : 'border-l-indigo-300 dark:border-l-indigo-700'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-800 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors break-words leading-tight">
+                      {item.customerName}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 break-words">
+                      {item.sale.productName}
+                    </p>
                   </div>
+                  <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap shrink-0">
+                    {formatCurrency(item.amount, appSettings.showCents)} ₽
+                  </p>
                 </div>
-              );
-            })()}
+
+                {/* Задолженность по этому же договору — предупреждение, что клиент уже должен */}
+                {(() => {
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  let expectedPaid = item.sale.downPayment;
+                  item.sale.paymentPlan.forEach(p => {
+                    const d = new Date(p.date);
+                    d.setHours(0, 0, 0, 0);
+                    if ((!p.isRealPayment || p.isRealPayment === undefined) && d < today) {
+                      expectedPaid += p.amount;
+                    }
+                  });
+                  const actualPaid = item.sale.totalAmount - item.sale.remainingAmount;
+                  const overdueDebt = Math.max(0, expectedPaid - actualPaid);
+                  if (overdueDebt <= 0) return null;
+                  return (
+                    <div className="mt-3 pt-2.5 border-t border-dashed border-rose-200 dark:border-rose-900/50 flex items-center justify-between text-xs">
+                      <span className="text-rose-600 dark:text-rose-400 font-medium">⚠️ Задолженность</span>
+                      <span className="font-bold text-rose-700 dark:text-rose-400 whitespace-nowrap">
+                        {formatCurrency(overdueDebt, appSettings.showCents)} ₽
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+            ))}
           </div>
         ))}
       </div>

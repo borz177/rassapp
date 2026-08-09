@@ -86,7 +86,7 @@ const getTargetUserId = (user) => {
 
 // ✅ КОНФИГУРАЦИЯ ЛИМИТОВ ТАРИФОВ
 const PLAN_LIMITS = {
-  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: true,  suppliers: false, investorPools: false, notifications: true,  tasks: false },
+  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: true,  suppliers: true, investorPools: true, notifications: true,  tasks: true },
   START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false },
   STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false },
   BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: false, investorPools: false, notifications: true,  tasks: true  },
