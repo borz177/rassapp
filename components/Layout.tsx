@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
 import { ICONS, APP_NAME, THEMES } from '../constants';
+import { calculateSaleOverdue } from '../src/utils';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -122,18 +123,7 @@ const counts = useMemo(() => {
         return;
       }
 
-      // 🔥 ТА ЖЕ ЛОГИКА, ЧТО В CONTRACTS COMPONENT
-      let expectedTotal = sale.downPayment;
-      sale.paymentPlan.forEach(p => {
-        // Важно: используем isRealPayment, а не isPaid!
-        if (!p.isRealPayment && new Date(p.date) < today) {
-          expectedTotal += p.amount;
-        }
-      });
-      const totalPaid = sale.totalAmount - sale.remainingAmount;
-      const overdueAmount = Math.max(0, expectedTotal - totalPaid);
-
-      if (overdueAmount > 0) {
+      if (calculateSaleOverdue(sale, today) > 0) {
         overdue++;
       } else {
         active++;

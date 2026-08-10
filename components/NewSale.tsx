@@ -796,7 +796,7 @@ if (mode === 'CASH') {
                   <td style={styles.td}>{index + 1}</td>
                   <td style={styles.td}>{p.date.toLocaleDateString()}</td>
                   <td style={styles.td}>{p.paid > 0.01 ? `${p.paid.toLocaleString()} ₽` : ''}</td>
-                  <td style={styles.td}>{p.paid > 0.01 ? `${p.remaining.toLocaleString()} ₽` : ''}</td>
+                  <td style={styles.td}>{p.remaining.toLocaleString()} ₽</td>
                 </tr>
               )) : Array.from({ length: sale.installments || 1 }).map((_, index) => (
                 <tr key={index}>

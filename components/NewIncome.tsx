@@ -558,7 +558,7 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
         </div>
     )}
 </td>
-                    <td style={styles.td}>{hasAmount ? `${formatNum(displayDebt)} ₽` : ''}</td>
+                    <td style={styles.td}>{formatNum(displayDebt)} ₽</td>
                   </tr>
                 );
               })}
