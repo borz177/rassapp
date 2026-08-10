@@ -1354,7 +1354,11 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
         }
       }
       const totalPaid = (sale.totalAmount || 0) - (sale.remainingAmount || 0);
-      const overdueAmount = Math.max(0, expectedTotal - totalPaid);
+      // Округляем до копеек: суммы вроде 48100/6 в double дают расхождение ~1e-12,
+      // и без округления договор без долга проходил проверку «> 0». Клиенту при этом
+      // уходило сообщение «Оплата просрочена, задолженность 0 ₽» — то же расхождение
+      // ломало и вкладку «Просроченные». См. calculateSaleOverdue в src/utils.ts.
+      const overdueAmount = Math.round((expectedTotal - totalPaid) * 100) / 100;
 
       if (overdueAmount > 0) {
         const overduePayments = (sale.paymentPlan || []).filter(p =>
