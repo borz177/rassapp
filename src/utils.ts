@@ -1,4 +1,4 @@
-import { Account, Investor, InvestmentPeriod } from '../types';
+import { Account, Investor, InvestmentPeriod, Sale } from '../types';
 
 export const escapeHtml = (str: unknown): string =>
   String(str ?? '')
@@ -147,6 +147,25 @@ export const isAccountForInvestor = (account: Account, investorId: string): bool
 // Счёт, в котором участвует данный инвестор — свой отдельный (ownerId) или общий пул (poolMemberIds).
 export const getInvestorAccount = (investorId: string, accounts: Account[]): Account | undefined => {
   return accounts.find(a => isAccountForInvestor(a, investorId));
+};
+
+// Просрочка по договору: сколько клиент был должен заплатить к сегодняшнему дню
+// (первый взнос + все плановые платежи с прошедшей датой) минус сколько реально внёс.
+// Считаем от remainingAmount, а не от флагов isPaid — так учитываются частичные оплаты.
+//
+// Итог округляется до копеек намеренно. Суммы платежей — это доли вроде 48 100 / 6,
+// и в double их сложение расходится с (totalAmount − remainingAmount) на 1e-12.
+// Без округления такой договор проходил проверку «просрочка > 0» и попадал во вкладку
+// «Просроченные» с суммой 0,00 ₽ — на проде так висело 8 договоров у 6 пользователей.
+export const calculateSaleOverdue = (sale: Sale, today?: Date): number => {
+  const cutoff = today ?? (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();
+  let expectedTotal = sale.downPayment;
+  (sale.paymentPlan || []).forEach(p => {
+    if (!p.isRealPayment && new Date(p.date) < cutoff) expectedTotal += p.amount;
+  });
+  const totalPaid = sale.totalAmount - sale.remainingAmount;
+  const overdue = Math.round((expectedTotal - totalPaid) * 100) / 100;
+  return overdue > 0 ? overdue : 0;
 };
 
 export const formatCurrency = (amount: number | undefined | null, showCents: boolean = true): string => {

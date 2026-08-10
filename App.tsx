@@ -48,7 +48,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt } from './src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue } from './src/utils';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
@@ -1274,24 +1274,11 @@ const dashboardStats = useMemo(() => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // ✅ ФУНКЦИЯ: расчёт реальной просрочки
-  const calculateSaleOverdue = (sale: Sale) => {
-    let expectedTotal = sale.downPayment;
-    sale.paymentPlan.forEach(p => {
-      if (!p.isRealPayment && new Date(p.date) < today) {
-        expectedTotal += p.amount;
-      }
-    });
-    const totalPaid = sale.totalAmount - sale.remainingAmount;
-    const overdue = expectedTotal - totalPaid;
-    return Math.max(0, overdue);
-  };
-
   sales.forEach(sale => {
     totalRevenue += (sale.totalAmount - sale.remainingAmount);
     totalOutstanding += sale.remainingAmount;
     // ✅ ПРОВЕРКА: реальная сумма просрочки > 0
-    const overdueAmount = calculateSaleOverdue(sale);
+    const overdueAmount = calculateSaleOverdue(sale, today);
     if (overdueAmount > 0) overdueCount++;
     if (sale.type === 'INSTALLMENT') {
       installmentSalesTotal += sale.totalAmount;
@@ -3117,26 +3104,13 @@ const contractCounts = useMemo(() => {
   const customerIdSet = new Set(customers.map(c => c.id));
   const actualSales = sales.filter(sale => customerIdSet.has(sale.customerId));
 
-  // ✅ ФУНКЦИЯ: расчёт реальной просрочки (как в Contracts)
-  const calculateSaleOverdue = (sale: Sale) => {
-    let expectedTotal = sale.downPayment;
-    sale.paymentPlan.forEach(p => {
-      if (!p.isRealPayment && new Date(p.date) < today) {
-        expectedTotal += p.amount;
-      }
-    });
-    const totalPaid = sale.totalAmount - sale.remainingAmount;
-    const overdue = expectedTotal - totalPaid;
-    return Math.max(0, overdue);
-  };
-
   actualSales.forEach(sale => {
     if (sale.status === 'COMPLETED' || sale.remainingAmount === 0) {
       archive++;
       return;
     }
     // ✅ ПРОВЕРКА: реальная сумма просрочки > 0
-    const overdueAmount = calculateSaleOverdue(sale);
+    const overdueAmount = calculateSaleOverdue(sale, today);
     if (overdueAmount > 0) {
       overdue++;
     } else {

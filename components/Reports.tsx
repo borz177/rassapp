@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Investor, AppSettings, Sale, Expense, Account, Customer } from '../types';
-import { formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor } from '../src/utils';
+import { formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor, calculateSaleOverdue } from '../src/utils';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -355,13 +355,7 @@ const Reports: React.FC<ReportsProps> = ({
                 return true;
             })
             .forEach((sale: Sale) => {
-                // expectedTotal = первый взнос + все плановые платежи, срок которых уже прошёл
-                let expectedTotal = sale.downPayment;
-                (sale.paymentPlan || []).forEach((p: any) => {
-                    if (!p.isRealPayment && new Date(p.date) < today) expectedTotal += p.amount;
-                });
-                const totalPaid = sale.totalAmount - sale.remainingAmount;
-                const overdueAmount = Math.max(0, expectedTotal - totalPaid);
+                const overdueAmount = calculateSaleOverdue(sale, today);
                 if (overdueAmount <= 0) return;
 
                 // Считаем пропущенные месяцы (аналог overduePaymentsList в Contracts.tsx)
@@ -369,6 +363,7 @@ const Reports: React.FC<ReportsProps> = ({
                 const sortedPlan = [...planPayments].sort((a: any, b: any) =>
                     new Date(a.date).getTime() - new Date(b.date).getTime()
                 );
+                const totalPaid = sale.totalAmount - sale.remainingAmount;
                 let remaining = Math.max(0, totalPaid - sale.downPayment);
                 let paidMonths = 0;
                 for (const p of sortedPlan) {

@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, User, AppSettings, Task } from '../types';
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
-import { formatCurrency, formatDate, escapeHtml } from '../src/utils';
+import { formatCurrency, formatDate, escapeHtml, calculateSaleOverdue } from '../src/utils';
 import { createPortal } from 'react-dom';
 import { api } from '../services/api';
 
@@ -90,15 +90,7 @@ const overduePaymentsList = sortedPlan.filter((p, index) => {
   return isPast && !isCovered;
 });
 
-  let expectedPaidByNow = sale.downPayment;
-  sale.paymentPlan.forEach(p => {
-    if (!p.isRealPayment && new Date(p.date) < today) {
-      expectedPaidByNow += p.amount;
-    }
-  });
-
-  const actualPaidTotal = sale.totalAmount - sale.remainingAmount;
-  const realOverdueAmount = Math.max(0, expectedPaidByNow - actualPaidTotal);
+  const realOverdueAmount = calculateSaleOverdue(sale, today);
 
   const nextUnpaidPayment = sale.paymentPlan.find(p => !p.isPaid && new Date(p.date) >= today);
   const nextPaymentDate = nextUnpaidPayment
@@ -358,17 +350,6 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
 const [riskAcknowledged, setRiskAcknowledged] = useState(false);
 
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Неизвестно';
-
-  const calculateSaleOverdue = (sale: Sale) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    let expectedTotal = sale.downPayment;
-    sale.paymentPlan.forEach(p => {
-      if (!p.isRealPayment && new Date(p.date) < today) expectedTotal += p.amount;
-    });
-    const totalPaid = sale.totalAmount - sale.remainingAmount;
-    return Math.max(0, expectedTotal - totalPaid);
-  };
 
   const { filteredList } = useMemo(() => {
     const today = new Date();

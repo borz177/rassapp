@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, AppSettings, Investor} from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getManagerSharePercent } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue } from '../src/utils';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import {createPortal} from "react-dom";
 
@@ -15,6 +15,58 @@ import {createPortal} from "react-dom";
 // 'en-CA' выбран потому, что даёт ровно формат YYYY-MM-DD.
 const mskDayKey = (d: string | number | Date): string =>
   new Date(d).toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+
+// Номер для wa.me: только цифры. Российские 8XXXXXXXXXX и XXXXXXXXXX приводим к 7XXXXXXXXXX,
+// всё остальное считаем международным и оставляем как есть.
+const waPhoneDigits = (phone?: string): string | null => {
+  const digits = (phone || '').replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  if (digits.length === 10) return '7' + digits;
+  if (digits.length === 11 && digits.startsWith('8')) return '7' + digits.slice(1);
+  return digits;
+};
+
+// Сколько календарных дней (по Москве) осталось до дня платежа
+const daysUntilDayKey = (dayKey: string): number => {
+  const toUtc = (k: string) => {
+    const [y, m, d] = k.split('-').map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((toUtc(dayKey) - toUtc(mskDayKey(new Date()))) / 86400000);
+};
+
+const pluralRu = (n: number, one: string, few: string, many: string): string => {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
+  return many;
+};
+
+// Текст напоминания подстраивается под то, за сколько дней до срока его отправляют:
+// в день оплаты — просьба оплатить сегодня, заранее — предупреждение о дате.
+const buildPaymentReminder = (opts: {
+  customerName: string; productName: string; amount: number;
+  dayKey: string; date: Date; showCents?: boolean; companyName?: string;
+}): string => {
+  const { customerName, productName, amount, dayKey, date, showCents, companyName } = opts;
+  const days = daysUntilDayKey(dayKey);
+  const sum = `*${formatCurrency(amount, showCents)} ₽*`;
+  const when = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+
+  let body: string;
+  if (days < 0) {
+    const late = Math.abs(days);
+    body = `По договору «${productName}» платёж от ${when} пока не поступил — ${late} ${pluralRu(late, 'день', 'дня', 'дней')} просрочки.\n\n💰 Сумма к оплате: ${sum}\n\nПожалуйста, погасите задолженность.`;
+  } else if (days === 0) {
+    body = `Сегодня день оплаты по договору «${productName}».\n\n💰 Сумма к оплате: ${sum}`;
+  } else if (days === 1) {
+    body = `Напоминаем: завтра, ${when}, очередной платёж по договору «${productName}».\n\n💰 Сумма к оплате: ${sum}`;
+  } else {
+    body = `Напоминаем о предстоящем платеже по договору «${productName}».\n\n📅 Дата: ${when} (через ${days} ${pluralRu(days, 'день', 'дня', 'дней')})\n💰 Сумма: ${sum}`;
+  }
+
+  return `Здравствуйте, ${customerName}!\n\n${body}${companyName ? `\n\n${companyName}` : ''}`;
+};
 
 
 interface DashboardProps {
@@ -139,9 +191,11 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
 };
 
 const PaymentActionModal = ({
-    sale, customerName, onClose, onSelectCustomer, onInitiatePayment, onViewSchedule, totalDue, appSettings
+    sale, customerName, customerPhone, dueDate, dueDayKey,
+    onClose, onSelectCustomer, onInitiatePayment, onViewSchedule, totalDue, appSettings
 }: {
-    sale: Sale, customerName: string, onClose: () => void,
+    sale: Sale, customerName: string, customerPhone?: string,
+    dueDate: Date, dueDayKey: string, onClose: () => void,
     onSelectCustomer: (id: string) => void, onInitiatePayment: (sale: Sale, amount: number) => void,
     onViewSchedule: (sale: Sale) => void, totalDue: number, appSettings: AppSettings
 }) => {
@@ -150,6 +204,30 @@ const PaymentActionModal = ({
     const handleClose = () => {
         setIsClosing(true);
         setTimeout(onClose, 200);
+    };
+
+    const phone = waPhoneDigits(customerPhone);
+    const daysLeft = daysUntilDayKey(dueDayKey);
+    // Подпись на кнопке говорит, каким будет тон сообщения, ещё до отправки
+    const reminderHint =
+        daysLeft < 0 ? 'о просрочке'
+        : daysLeft === 0 ? 'в день оплаты'
+        : daysLeft === 1 ? 'за день'
+        : `за ${daysLeft} ${pluralRu(daysLeft, 'день', 'дня', 'дней')}`;
+
+    const handleRemind = () => {
+        if (!phone) return;
+        const text = buildPaymentReminder({
+            customerName,
+            productName: sale.productName,
+            amount: totalDue,
+            dayKey: dueDayKey,
+            date: dueDate,
+            showCents: appSettings.showCents,
+            companyName: appSettings.companyName,
+        });
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+        handleClose();
     };
 
     return (
@@ -177,11 +255,34 @@ const PaymentActionModal = ({
 
                 <div className="p-6 pb-4">
                     <div className="bg-indigo-50 dark:bg-indigo-900/30 rounded-xl p-4 border border-indigo-100 dark:border-indigo-900/50">
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Сумма к оплате</p>
-                        <p className="text-2xl font-bold text-indigo-600">
-                            {formatCurrency(totalDue, appSettings.showCents)} ₽
-                        </p>
+                        <div className="flex items-end justify-between gap-3">
+                            <div>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Сумма к оплате</p>
+                                <p className="text-2xl font-bold text-indigo-600">
+                                    {formatCurrency(totalDue, appSettings.showCents)} ₽
+                                </p>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap pb-1">
+                                {daysLeft === 0 ? 'сегодня' : daysLeft === 1 ? 'завтра'
+                                    : dueDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+                            </p>
+                        </div>
                     </div>
+
+                    {phone ? (
+                        <button
+                            onClick={handleRemind}
+                            className="mt-3 w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 dark:shadow-emerald-900/30 hover:from-emerald-600 hover:to-green-600 active:scale-[0.98] transition-all"
+                        >
+                            <span>💬</span>
+                            <span>Напомнить</span>
+                            <span className="text-[11px] font-medium text-white/80">· {reminderHint}</span>
+                        </button>
+                    ) : (
+                        <p className="mt-3 text-center text-xs text-slate-400 dark:text-slate-500 py-3">
+                            Чтобы напомнить, добавьте телефон клиента
+                        </p>
+                    )}
                 </div>
 
                 <div className="px-6 pb-6 space-y-2">
@@ -265,11 +366,7 @@ const PaymentDetailsModal = ({
 
             if (type === 'expected') {
         // 🔹 Проверяем общую просрочку перед добавлением платежей клиента
-        let expectedTotalForCheck = sale.downPayment;
-        sale.paymentPlan.forEach(p => {
-            if (!p.isRealPayment && new Date(p.date) < today) expectedTotalForCheck += p.amount;
-        });
-        const clientOverdue = Math.max(0, expectedTotalForCheck - (sale.totalAmount - sale.remainingAmount));
+        const clientOverdue = calculateSaleOverdue(sale, today);
 
         // ⛔ Если клиент в графике (просрочки нет) — не показываем его здесь
         if (clientOverdue <= 0) return;
@@ -813,7 +910,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [selectedPaymentForAction, setSelectedPaymentForAction] = useState<{
       sale: Sale;
       customerName: string;
+      customerPhone?: string;
       totalDue: number;
+      dueDate: Date;
+      dueDayKey: string;
   } | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   // Неделя, а не «сегодня и завтра»: у менеджера ближайший платёж часто через 2–3 дня,
@@ -882,12 +982,7 @@ const currentMonthName = useMemo(() => {
     filteredSales.forEach(sale => {
       if (sale.customerId.startsWith('system_') || investorIds.has(sale.customerId)) return;
       if (sale.status === 'COMPLETED') return;
-      let expectedPaid = sale.downPayment;
-      sale.paymentPlan.forEach(p => {
-        if (!p.isRealPayment && new Date(p.date) < today) expectedPaid += p.amount;
-      });
-      const actualPaid = sale.totalAmount - sale.remainingAmount;
-      overdue += Math.max(0, expectedPaid - actualPaid);
+      overdue += calculateSaleOverdue(sale, today);
     });
     return Math.round(overdue * 100) / 100;
   }, [sales, selectedAccountId, investors]);
@@ -1972,7 +2067,10 @@ useEffect(() => {
                   setSelectedPaymentForAction({
                     sale: item.sale,
                     customerName: item.customerName,
-                    totalDue: item.amount
+                    customerPhone: customers.find(c => c.id === item.sale.customerId)?.phone,
+                    totalDue: item.amount,
+                    dueDate: group.date,
+                    dueDayKey: group.dayKey,
                   });
                 }}
                 className={`group bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-4 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border-l-4 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-800 cursor-pointer ${
@@ -1997,18 +2095,7 @@ useEffect(() => {
 
                 {/* Задолженность по этому же договору — предупреждение, что клиент уже должен */}
                 {(() => {
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  let expectedPaid = item.sale.downPayment;
-                  item.sale.paymentPlan.forEach(p => {
-                    const d = new Date(p.date);
-                    d.setHours(0, 0, 0, 0);
-                    if ((!p.isRealPayment || p.isRealPayment === undefined) && d < today) {
-                      expectedPaid += p.amount;
-                    }
-                  });
-                  const actualPaid = item.sale.totalAmount - item.sale.remainingAmount;
-                  const overdueDebt = Math.max(0, expectedPaid - actualPaid);
+                  const overdueDebt = calculateSaleOverdue(item.sale);
                   if (overdueDebt <= 0) return null;
                   return (
                     <div className="mt-3 pt-2.5 border-t border-dashed border-rose-200 dark:border-rose-900/50 flex items-center justify-between text-xs">
@@ -2041,7 +2128,10 @@ useEffect(() => {
               <PaymentActionModal
                 sale={selectedPaymentForAction.sale}
                 customerName={selectedPaymentForAction.customerName}
+                customerPhone={selectedPaymentForAction.customerPhone}
                 totalDue={selectedPaymentForAction.totalDue}
+                dueDate={selectedPaymentForAction.dueDate}
+                dueDayKey={selectedPaymentForAction.dueDayKey}
                 onClose={() => setSelectedPaymentForAction(null)}
                 onSelectCustomer={onSelectCustomer}
                 onInitiatePayment={onInitiatePayment}
