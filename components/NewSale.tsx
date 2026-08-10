@@ -68,9 +68,42 @@ const checkDuplicateSale = (
   });
 };
 
+// Короткая вибро-отдача на подтверждение операции. Работает в Android-обёртке и в
+// Chrome; на iOS и десктопе Vibration API отсутствует — просто ничего не произойдёт.
+const haptic = (pattern: number | number[] = 12) => {
+  try { navigator.vibrate?.(pattern); } catch { /* устройство без вибромотора */ }
+};
+
+// Галочка, которая «рисуется» штрихом: сначала обводится круг, затем сама птичка.
+// Тот же приём, что в системных подтверждениях iOS — момент завершения читается
+// как событие, а не как появившаяся из ниоткуда картинка.
+const SuccessCheck: React.FC<{ size?: number }> = ({ size = 72 }) => (
+  <div className="relative mx-auto animate-success-pop" style={{ width: size, height: size }}>
+    <span className="absolute inset-0 rounded-full border-2 border-emerald-400 animate-success-ripple" />
+    <svg viewBox="0 0 60 60" width={size} height={size} fill="none" className="relative">
+      <circle
+        cx="30" cy="30" r="26"
+        className="success-ring stroke-emerald-500"
+        strokeWidth="3.5" strokeLinecap="round"
+        transform="rotate(-90 30 30)"
+      />
+      <path
+        d="M18 30.5 L26 38.5 L42 22"
+        className="success-check stroke-emerald-500"
+        strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  </div>
+);
+
+// Стадии отправки договора: пока идёт генерация PDF и заливка в WhatsApp, пользователь
+// видит, на каком шаге процесс. Раньше окно закрывалось сразу и несколько секунд
+// не происходило ничего — казалось, что нажатие не сработало.
+type SendStage = 'idle' | 'pdf' | 'upload' | 'done';
+
 const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales, suppliers, showSupplierField,
-  onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user, propAppSettings, 
+  onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user, propAppSettings,
 }) => {
   const supplierList: Supplier[] = suppliers || [];
   const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(initialData.type || 'INSTALLMENT');
@@ -86,6 +119,7 @@ const NewSale: React.FC<NewSaleProps> = ({
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showWhatsAppConfirmModal, setShowWhatsAppConfirmModal] = useState(false);
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
+  const [sendStage, setSendStage] = useState<SendStage>('idle');
   const [createdSale, setCreatedSale] = useState<any>(null);
   const [isPriceManual, setIsPriceManual] = useState(false);
 
@@ -654,6 +688,7 @@ if (mode === 'CASH') {
       setCreatedSale(fullSaleObject);
       setShowConfirmModal(false);
       setShowSuccessModal(true);
+      haptic([12, 60, 18]); // короткий двойной отклик — операция завершена
 
     } catch (error: any) {
       console.error('❌ Save error:', error);
@@ -911,10 +946,12 @@ if (mode === 'CASH') {
     }
 
     setIsSendingWhatsApp(true);
-    setShowWhatsAppConfirmModal(false);
+    setSendStage('pdf');
+    haptic();
 
     try {
       const blob = await generatePDFBlob();
+      setSendStage('upload');
       const dateStr = new Date(createdSale.startDate || Date.now()).toISOString().split('T')[0].replace(/-/g, '');
       const safeProductName = (createdSale.productName || 'Contract')
         .replace(/[^a-zA-Z0-9]/g, '_')
@@ -937,20 +974,30 @@ if (mode === 'CASH') {
       );
 
       if (success) {
+        // Показываем галочку прямо в окне отправки, даём ей доиграть и только потом закрываем —
+        // подтверждение должно быть увидено, а не мелькнуть.
+        setSendStage('done');
+        haptic([12, 60, 18]);
+        await new Promise(resolve => setTimeout(resolve, 1100));
+        setShowWhatsAppConfirmModal(false);
+        setSendStage('idle');
+
         if (onShowNotification) {
           onShowNotification(
             '✅ Отправлено!',
             `Договор "${createdSale.productName}" отправлен клиенту ${selectedCustomer.name}`,
             'success'
           );
-        } else {
-          alert("✅ Договор успешно отправлен в WhatsApp!");
         }
       } else {
         throw new Error('Green API вернул ошибку отправки. Проверьте статус инстанса.');
       }
 
     } catch (error: any) {
+      // При любой ошибке окно закрываем — дальше сообщение показывает вызывающая сторона
+      setShowWhatsAppConfirmModal(false);
+      setSendStage('idle');
+
       // Приложение обновилось, кеш устарел — просим перезагрузить
       if (error?.isUpdateRequired || error?.message === 'APP_UPDATE_REQUIRED' ||
           error?.message?.includes('MIME') || error?.message?.includes('text/html')) {
@@ -1567,7 +1614,7 @@ if (mode === 'CASH') {
         <button
             type="submit"
             disabled={isSubmitting || isSubscriptionExpired}
-            className={`w-full text-white py-4 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 ${
+            className={`btn-press w-full text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 ${
                 isSubscriptionExpired
                     ? 'bg-slate-400 cursor-not-allowed shadow-none'
                     : isSubmitting
@@ -1601,8 +1648,8 @@ if (mode === 'CASH') {
       {showConfirmModal && (
           <div
               className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-              onClick={() => setShowConfirmModal(false)}>
-            <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
+              onClick={() => { if (!isSubmitting) setShowConfirmModal(false); }}>
+            <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 animate-dialog-in"
                  onClick={e => e.stopPropagation()}>
               <h3 className="text-xl font-bold text-slate-800 dark:text-white text-center">Подтверждение</h3>
               <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-2 text-sm">
@@ -1620,10 +1667,10 @@ if (mode === 'CASH') {
               </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowConfirmModal(false)} disabled={isSubmitting}
-                        className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50">Отмена
+                        className="btn-press flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50">Отмена
                 </button>
                 <button onClick={handleConfirm} disabled={isSubmitting}
-                        className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                        className="btn-press flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                   {isSubmitting ? (
                     <>
                       <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24">
@@ -1642,22 +1689,22 @@ if (mode === 'CASH') {
       {showSuccessModal && (
           <div
               className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-5"
+            <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-5 animate-dialog-in"
                  onClick={e => e.stopPropagation()}>
-              <div
-                  className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl">{ICONS.Check}</div>
-              <div>
+              <SuccessCheck />
+              {/* Заголовок и кнопки появляются с задержкой — сначала дорисовывается галочка */}
+              <div className="animate-stage-in" style={{ animationDelay: '0.55s' }}>
                 <h3 className="text-2xl font-bold text-slate-800 dark:text-white">Успешно!</h3>
                 <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Сделка оформлена и сохранена.</p>
               </div>
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 animate-stage-in" style={{ animationDelay: '0.7s' }}>
                 <button onClick={handlePrintContract}
-                        className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center justify-center gap-2">{ICONS.File} Печать
+                        className="btn-press w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center justify-center gap-2">{ICONS.File} Печать
                   договора
                 </button>
                 {appSettings.whatsapp?.enabled && (
                     <button onClick={handleSendContract}
-                            className="w-full py-3 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 font-bold rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/50 flex items-center justify-center gap-2">{ICONS.Send} Отправить
+                            className="btn-press w-full py-3 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 font-bold rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/50 flex items-center justify-center gap-2">{ICONS.Send} Отправить
                       договор (PDF)</button>
                 )}
               </div>
@@ -1676,12 +1723,64 @@ if (mode === 'CASH') {
       {showWhatsAppConfirmModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-          onClick={() => setShowWhatsAppConfirmModal(false)}
+          onClick={() => { if (!isSendingWhatsApp) setShowWhatsAppConfirmModal(false); }}
         >
           <div
-            className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
+            className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 animate-dialog-in"
             onClick={e => e.stopPropagation()}
           >
+            {/* Пока идёт отправка — окно превращается в индикатор стадий, а не закрывается */}
+            {sendStage !== 'idle' ? (
+              <div className="py-4 text-center space-y-5">
+                {sendStage === 'done' ? (
+                  <SuccessCheck />
+                ) : (
+                  <div className="relative w-[72px] h-[72px] mx-auto flex items-center justify-center">
+                    <svg className="absolute inset-0 animate-spin" viewBox="0 0 60 60" fill="none">
+                      <circle cx="30" cy="30" r="26" className="stroke-emerald-100 dark:stroke-emerald-900/40" strokeWidth="3.5" />
+                      <circle
+                        cx="30" cy="30" r="26" className="stroke-emerald-500"
+                        strokeWidth="3.5" strokeLinecap="round"
+                        strokeDasharray="40 126" transform="rotate(-90 30 30)"
+                      />
+                    </svg>
+                    <span className="text-emerald-600 dark:text-emerald-400 animate-stage-pulse">
+                      {sendStage === 'pdf' ? ICONS.File : ICONS.Send}
+                    </span>
+                  </div>
+                )}
+
+                <div key={sendStage} className="animate-stage-in">
+                  <h3 className="text-lg font-bold text-slate-800 dark:text-white">
+                    {sendStage === 'pdf' ? 'Готовим документ'
+                      : sendStage === 'upload' ? 'Отправляем клиенту'
+                      : 'Договор отправлен'}
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    {sendStage === 'pdf' ? 'Формируем PDF договора'
+                      : sendStage === 'upload' ? `${selectedCustomer?.name} · ${formatPhone(selectedCustomer?.phone)}`
+                      : 'Клиент получит его в WhatsApp'}
+                  </p>
+                </div>
+
+                {/* Две точки-шага: показывают, где процесс сейчас */}
+                {sendStage !== 'done' && (
+                  <div className="flex items-center justify-center gap-2">
+                    {(['pdf', 'upload'] as const).map(step => (
+                      <span
+                        key={step}
+                        className={`h-1.5 rounded-full transition-all duration-500 ${
+                          sendStage === step ? 'w-7 bg-emerald-500'
+                            : step === 'pdf' ? 'w-1.5 bg-emerald-500'
+                            : 'w-1.5 bg-slate-200 dark:bg-slate-600'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+            <>
             <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl">
               {ICONS.Send}
             </div>
@@ -1716,36 +1815,20 @@ if (mode === 'CASH') {
             <div className="flex gap-3 pt-2">
               <button
                   onClick={() => setShowWhatsAppConfirmModal(false)}
-                  className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                  className="btn-press flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
               >
                 Отмена
               </button>
               <button
                   onClick={handleConfirmSendWhatsApp}
-                  disabled={isSendingWhatsApp}
-                  className={`flex-1 py-3 rounded-xl font-bold transition-colors shadow-lg flex items-center justify-center gap-2 ${
-                      isSendingWhatsApp
-                          ? 'bg-slate-400 cursor-not-allowed'
-                          : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200'
-                  }`}
+                  className="btn-press flex-1 py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200"
               >
-                {isSendingWhatsApp ? (
-                    <>
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"
-                                fill="none"/>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                      </svg>
-                      Отправка...
-                    </>
-                ) : (
-                    <>
-                      {ICONS.Send}
-                      Отправить
-                    </>
-                )}
+                {ICONS.Send}
+                Отправить
               </button>
             </div>
+            </>
+            )}
           </div>
         </div>
       )}
