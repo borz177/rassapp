@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Task, User } from '../types';
 import { ICONS } from '../constants';
+import { haptic } from './feedback';
 
 interface TasksProps {
   tasks: Task[];
@@ -370,24 +371,42 @@ const TaskRow: React.FC<{
   onOpenCustomer?: (customerId: string) => void;
 }> = ({ task, onToggleDone, onToggleFavorite, onEdit, onOpenCustomer }) => {
   const overdue = isOverdue(task);
+  // Даём анимации доиграть до того, как список пересортируется и строка уедет
+  // в «Выполненные»: без этой паузы галочку просто не успеваешь увидеть.
+  const [settling, setSettling] = useState(false);
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (settling) return;
+    if (!task.isDone) {
+      setSettling(true);
+      haptic();
+      setTimeout(() => { setSettling(false); onToggleDone(task); }, 380);
+    } else {
+      onToggleDone(task); // возврат в работу — без празднования
+    }
+  };
 
   return (
     <div
-      className="group flex items-start gap-3 p-3.5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-slate-600 transition-all cursor-pointer"
+      className={`group flex items-start gap-3 p-3.5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-slate-600 transition-all cursor-pointer ${
+        settling ? 'animate-task-settle' : ''
+      }`}
       onClick={() => onEdit(task)}
     >
       <button
-        onClick={e => { e.stopPropagation(); onToggleDone(task); }}
-        className={`shrink-0 mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-          task.isDone
+        onClick={handleToggle}
+        className={`shrink-0 mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
+          task.isDone || settling
             ? 'bg-emerald-500 border-emerald-500 text-white'
             : 'border-slate-300 dark:border-slate-600 hover:border-indigo-500'
-        }`}
+        } ${settling ? 'animate-task-check' : ''}`}
         aria-label={task.isDone ? 'Вернуть в работу' : 'Отметить выполненной'}
       >
-        {task.isDone && (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-            <polyline points="20 6 9 17 4 12" />
+        {(task.isDone || settling) && (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" className={settling ? 'task-check-mark' : ''} />
           </svg>
         )}
       </button>

@@ -5,6 +5,7 @@ import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
 import { api } from '../services/api';
 import { getSellerPhone, escapeHtml, formatDate } from '../src/utils';
+import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } from './feedback';
 
 interface NewSaleProps {
   initialData: any;
@@ -67,39 +68,6 @@ const checkDuplicateSale = (
     return sameCustomer && sameProduct && sameDate && sameAmount;
   });
 };
-
-// Короткая вибро-отдача на подтверждение операции. Работает в Android-обёртке и в
-// Chrome; на iOS и десктопе Vibration API отсутствует — просто ничего не произойдёт.
-const haptic = (pattern: number | number[] = 12) => {
-  try { navigator.vibrate?.(pattern); } catch { /* устройство без вибромотора */ }
-};
-
-// Галочка, которая «рисуется» штрихом: сначала обводится круг, затем сама птичка.
-// Тот же приём, что в системных подтверждениях iOS — момент завершения читается
-// как событие, а не как появившаяся из ниоткуда картинка.
-const SuccessCheck: React.FC<{ size?: number }> = ({ size = 72 }) => (
-  <div className="relative mx-auto animate-success-pop" style={{ width: size, height: size }}>
-    <span className="absolute inset-0 rounded-full border-2 border-emerald-400 animate-success-ripple" />
-    <svg viewBox="0 0 60 60" width={size} height={size} fill="none" className="relative">
-      <circle
-        cx="30" cy="30" r="26"
-        className="success-ring stroke-emerald-500"
-        strokeWidth="3.5" strokeLinecap="round"
-        transform="rotate(-90 30 30)"
-      />
-      <path
-        d="M18 30.5 L26 38.5 L42 22"
-        className="success-check stroke-emerald-500"
-        strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"
-      />
-    </svg>
-  </div>
-);
-
-// Стадии отправки договора: пока идёт генерация PDF и заливка в WhatsApp, пользователь
-// видит, на каком шаге процесс. Раньше окно закрывалось сразу и несколько секунд
-// не происходило ничего — казалось, что нажатие не сработало.
-type SendStage = 'idle' | 'pdf' | 'upload' | 'done';
 
 const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales, suppliers, showSupplierField,
@@ -688,7 +656,7 @@ if (mode === 'CASH') {
       setCreatedSale(fullSaleObject);
       setShowConfirmModal(false);
       setShowSuccessModal(true);
-      haptic([12, 60, 18]); // короткий двойной отклик — операция завершена
+      hapticSuccess(); // короткий двойной отклик — операция завершена
 
     } catch (error: any) {
       console.error('❌ Save error:', error);
@@ -831,7 +799,7 @@ if (mode === 'CASH') {
                   <td style={styles.td}>{index + 1}</td>
                   <td style={styles.td}>{p.date.toLocaleDateString()}</td>
                   <td style={styles.td}>{p.paid > 0.01 ? `${p.paid.toLocaleString()} ₽` : ''}</td>
-                  <td style={styles.td}>{p.remaining.toLocaleString()} ₽</td>
+                  <td style={styles.td}>{p.paid > 0.01 ? `${p.remaining.toLocaleString()} ₽` : ''}</td>
                 </tr>
               )) : Array.from({ length: sale.installments || 1 }).map((_, index) => (
                 <tr key={index}>
@@ -977,7 +945,7 @@ if (mode === 'CASH') {
         // Показываем галочку прямо в окне отправки, даём ей доиграть и только потом закрываем —
         // подтверждение должно быть увидено, а не мелькнуть.
         setSendStage('done');
-        haptic([12, 60, 18]);
+        hapticSuccess();
         await new Promise(resolve => setTimeout(resolve, 1100));
         setShowWhatsAppConfirmModal(false);
         setSendStage('idle');
@@ -1731,54 +1699,11 @@ if (mode === 'CASH') {
           >
             {/* Пока идёт отправка — окно превращается в индикатор стадий, а не закрывается */}
             {sendStage !== 'idle' ? (
-              <div className="py-4 text-center space-y-5">
-                {sendStage === 'done' ? (
-                  <SuccessCheck />
-                ) : (
-                  <div className="relative w-[72px] h-[72px] mx-auto flex items-center justify-center">
-                    <svg className="absolute inset-0 animate-spin" viewBox="0 0 60 60" fill="none">
-                      <circle cx="30" cy="30" r="26" className="stroke-emerald-100 dark:stroke-emerald-900/40" strokeWidth="3.5" />
-                      <circle
-                        cx="30" cy="30" r="26" className="stroke-emerald-500"
-                        strokeWidth="3.5" strokeLinecap="round"
-                        strokeDasharray="40 126" transform="rotate(-90 30 30)"
-                      />
-                    </svg>
-                    <span className="text-emerald-600 dark:text-emerald-400 animate-stage-pulse">
-                      {sendStage === 'pdf' ? ICONS.File : ICONS.Send}
-                    </span>
-                  </div>
-                )}
-
-                <div key={sendStage} className="animate-stage-in">
-                  <h3 className="text-lg font-bold text-slate-800 dark:text-white">
-                    {sendStage === 'pdf' ? 'Готовим документ'
-                      : sendStage === 'upload' ? 'Отправляем клиенту'
-                      : 'Договор отправлен'}
-                  </h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                    {sendStage === 'pdf' ? 'Формируем PDF договора'
-                      : sendStage === 'upload' ? `${selectedCustomer?.name} · ${formatPhone(selectedCustomer?.phone)}`
-                      : 'Клиент получит его в WhatsApp'}
-                  </p>
-                </div>
-
-                {/* Две точки-шага: показывают, где процесс сейчас */}
-                {sendStage !== 'done' && (
-                  <div className="flex items-center justify-center gap-2">
-                    {(['pdf', 'upload'] as const).map(step => (
-                      <span
-                        key={step}
-                        className={`h-1.5 rounded-full transition-all duration-500 ${
-                          sendStage === step ? 'w-7 bg-emerald-500'
-                            : step === 'pdf' ? 'w-1.5 bg-emerald-500'
-                            : 'w-1.5 bg-slate-200 dark:bg-slate-600'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
+              <SendStageView
+                stage={sendStage}
+                target={`${selectedCustomer?.name} · ${formatPhone(selectedCustomer?.phone)}`}
+                icons={{ file: ICONS.File, send: ICONS.Send }}
+              />
             ) : (
             <>
             <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl">

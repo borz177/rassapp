@@ -4,6 +4,7 @@ import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
 import { getInvestorAccount } from '../src/utils';
+import { SuccessCheck, SendStageView, hapticSuccess, type SendStage } from './feedback';
 
 interface NewIncomeProps {
   initialData?: any;
@@ -43,6 +44,10 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [sendHistory, setSendHistory] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Стадии отправки PDF и финальное подтверждение — вместо системных alert(),
+  // которые выглядели чужими и рвали ощущение приложения.
+  const [sendStage, setSendStage] = useState<SendStage>('idle');
+  const [paymentDone, setPaymentDone] = useState(false);
   // 🔒 Отдельно от isSubmitting (тот уже true с момента открытия модалки подтверждения) —
   // именно этот флаг отражает, что handleConfirm сейчас реально выполняется (генерация PDF,
   // отправка в WhatsApp, onSubmit), и используется, чтобы заблокировать повторный клик
@@ -280,6 +285,15 @@ const isConfirmingRef = useRef(false);
   setShowConfirmModal(true);
 };
 
+  // Показываем галочку и только потом отдаём данные наверх: onSubmit уводит на другой
+  // экран и размонтирует форму, так что после его вызова показать что-либо уже нельзя.
+  const finishWithSuccess = async (payload: any) => {
+    setPaymentDone(true);
+    hapticSuccess();
+    await new Promise(r => setTimeout(r, 1100));
+    onSubmit(payload);
+  };
+
   const handleConfirm = async () => {
     if (isConfirmingRef.current) return;
   isConfirmingRef.current = true;
@@ -323,7 +337,9 @@ const commonData = {
         // an object (evaluating '...current.cloneNode')").
         if (sendHistory && selectedSale && selectedCustomer && appSettings.whatsapp?.enabled) {
           try {
+            setSendStage('pdf');
             const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
+            setSendStage('upload');
             const dateStr = date.replace(/-/g, '');
             const fileName = `Payment_${dateStr}.pdf`;
             const success = await sendWhatsAppFile(
@@ -333,9 +349,16 @@ const commonData = {
               pdfBlob,
               fileName
             );
-            if (success) alert("Договор (PDF) отправлен клиенту в WhatsApp");
-            else alert("Ошибка отправки PDF в WhatsApp");
+            if (success) {
+              // Галочка отправки должна быть увидена, а не мелькнуть
+              setSendStage('done');
+              await new Promise(r => setTimeout(r, 900));
+            } else {
+              setSendStage('idle');
+              alert("Ошибка отправки PDF в WhatsApp");
+            }
           } catch (error: any) {
+            setSendStage('idle');
             console.error("PDF generation error:", error);
             if (error?.isUpdateRequired || error?.message === 'APP_UPDATE_REQUIRED' ||
                 error?.message?.includes('MIME') || error?.message?.includes('text/html')) {
@@ -346,13 +369,14 @@ const commonData = {
               alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
             }
           }
+          setSendStage('idle');
         }
 
-        onSubmit({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
+        await finishWithSuccess({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
       } else if (sourceType === 'INVESTOR') {
-        onSubmit({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
+        await finishWithSuccess({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
       } else {
-        onSubmit({ ...commonData, type: 'OTHER_INCOME', accountId: targetAccountId, note: note || "Прочий приход" });
+        await finishWithSuccess({ ...commonData, type: 'OTHER_INCOME', accountId: targetAccountId, note: note || "Прочий приход" });
       }
     } finally {
       setShowConfirmModal(false);
@@ -558,7 +582,7 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
         </div>
     )}
 </td>
-                    <td style={styles.td}>{formatNum(displayDebt)} ₽</td>
+                    <td style={styles.td}>{hasAmount ? `${formatNum(displayDebt)} ₽` : ''}</td>
                   </tr>
                 );
               })}
@@ -824,12 +848,34 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
       {showConfirmModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-          onClick={() => { if (!isConfirming) handleCancel(); }}
+          onClick={() => { if (!isConfirming && !paymentDone) handleCancel(); }}
         >
           <div
-            className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
+            className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 animate-dialog-in"
             onClick={e => e.stopPropagation()}
           >
+            {/* Приход зачислен — подтверждение перед уходом на другой экран */}
+            {paymentDone ? (
+              <div className="py-4 text-center space-y-5">
+                <SuccessCheck />
+                <div className="animate-stage-in" style={{ animationDelay: '0.55s' }}>
+                  <h3 className="text-xl font-bold text-slate-800 dark:text-white">Приход зачислен</h3>
+                  <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-2">
+                    +{formatNum(Number(amount))} ₽
+                  </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    {getAccountName(targetAccountId)}
+                  </p>
+                </div>
+              </div>
+            ) : sendStage !== 'idle' ? (
+              <SendStageView
+                stage={sendStage}
+                target={selectedCustomer?.name}
+                icons={{ file: ICONS.File, send: ICONS.Send }}
+              />
+            ) : (
+            <>
             <h3 className="text-xl font-bold text-slate-800 dark:text-white text-center">Подтверждение прихода</h3>
 
             <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-2 text-sm border border-slate-100 dark:border-slate-700">
@@ -883,7 +929,7 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
               <button
                 onClick={handleCancel}
                 disabled={isConfirming}
-                className={`flex-1 py-3 rounded-xl font-bold transition-colors ${
+                className={`btn-press flex-1 py-3 rounded-xl font-bold ${
                   isConfirming
                     ? 'bg-slate-50 dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed'
                     : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
@@ -894,7 +940,7 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
               <button
                 onClick={handleConfirm}
                 disabled={isConfirming}
-                className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg shadow-emerald-200 transition-colors ${
+                className={`btn-press flex-1 py-3 rounded-xl font-bold text-white shadow-lg shadow-emerald-200 ${
                   isConfirming ? 'bg-emerald-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'
                 }`}
               >
@@ -911,6 +957,8 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
                 ) : 'Зачислить'}
               </button>
             </div>
+            </>
+            )}
           </div>
         </div>
       )}

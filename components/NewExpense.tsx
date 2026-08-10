@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Account, Investor, Expense, User, Supplier, Sale } from '../types';
 import { ICONS } from '../constants';
 import { getInvestorAccount } from '../src/utils';
+import { SuccessCheck, hapticSuccess } from './feedback';
 
 interface NewExpenseProps {
   investors: Investor[];
@@ -75,6 +76,9 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   // 🔥 НОВЫЕ СТЕЙТЫ для защиты от дублей и подтверждения
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  // Подтверждение списания: раньше окно просто закрывалось, и было непонятно,
+  // прошла операция или нет — из-за этого расход проводили повторно.
+  const [expenseDone, setExpenseDone] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [pendingExpenseData, setPendingExpenseData] = useState<any>(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
@@ -321,12 +325,17 @@ const NewExpense: React.FC<NewExpenseProps> = ({
     try {
       // 🔥 ОТПРАВКА НА СЕРВЕР
       await onSubmit(pendingExpenseData);
-      
-      // ✅ Успех — закрываем модалы и сбрасываем форму
+
+      // ✅ Успех — показываем подтверждение и только потом уходим с экрана
+      setExpenseDone(true);
+      hapticSuccess();
+      await new Promise(r => setTimeout(r, 1100));
+
       setShowConfirmModal(false);
+      setExpenseDone(false);
       setPendingExpenseData(null);
       onClose();
-      
+
     } catch (error: any) {
       console.error('❌ Expense save error:', error);
       alert(`Ошибка: ${error?.message || 'Не удалось сохранить расход'}`);
@@ -648,12 +657,29 @@ const NewExpense: React.FC<NewExpenseProps> = ({
       {showConfirmModal && pendingExpenseData && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-          onClick={handleCancel}
+          onClick={() => { if (!isSubmitting && !expenseDone) handleCancel(); }}
         >
           <div
-            className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4"
+            className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 animate-dialog-in"
             onClick={e => e.stopPropagation()}
           >
+            {/* Расход проведён. Галочка красная, а не зелёная: списание не должно
+                выглядеть так же, как поступление денег. */}
+            {expenseDone ? (
+              <div className="py-4 text-center space-y-5">
+                <SuccessCheck tone="danger" />
+                <div className="animate-stage-in" style={{ animationDelay: '0.55s' }}>
+                  <h3 className="text-xl font-bold text-slate-800 dark:text-white">Расход проведён</h3>
+                  <p className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-2">
+                    −{Number(pendingExpenseData.amount).toLocaleString('ru-RU')} ₽
+                  </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    {getAccountName(pendingExpenseData.accountId)}
+                  </p>
+                </div>
+              </div>
+            ) : (
+            <>
             {/* Иконка */}
             <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto text-3xl">
               {ICONS.Expenses}
@@ -741,14 +767,14 @@ const NewExpense: React.FC<NewExpenseProps> = ({
               <button 
                 onClick={handleCancel}
                 disabled={isSubmitting}
-                className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors disabled:opacity-50"
+                className="btn-press flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200 disabled:opacity-50"
               >
                 Отмена
               </button>
               <button 
                 onClick={handleConfirm}
                 disabled={isSubmitting}
-                className={`flex-1 py-3 rounded-xl font-bold transition-colors shadow-lg flex items-center justify-center gap-2 ${
+                className={`btn-press flex-1 py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 ${
                   isSubmitting 
                     ? 'bg-slate-400 cursor-not-allowed text-white' 
                     : 'bg-red-600 hover:bg-red-700 text-white shadow-red-200'
@@ -767,6 +793,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                 )}
               </button>
             </div>
+            </>
+            )}
           </div>
         </div>
       )}

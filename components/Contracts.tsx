@@ -537,7 +537,7 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
                 <td style="text-align:center">${index + 1}</td>
                 <td style="text-align:center">${formatDate(p.date)}</td>
                 <td style="text-align:center">${p.paid > 0.01 ? `${formatCurrency(p.paid, appSettings?.showCents)} ₽` : ''}</td>
-                <td style="text-align:center">${formatCurrency(p.remaining, appSettings?.showCents)} ₽</td>
+                <td style="text-align:center">${p.paid > 0.01 ? `${formatCurrency(p.remaining, appSettings?.showCents)} ₽` : ''}</td>
             </tr>`).join('')
         : Array.from({ length: sale.installments || 1 }).map((_, i) =>
             `<tr>
