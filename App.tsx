@@ -1796,31 +1796,28 @@ const handleStartEditSale = (sale: Sale) => {
 
 
 
+// Причины отказа бросаем наружу: их показывает та же модалка, в которой пользователь
+// подтвердил удаление. Своего window.confirm здесь нет — модалка уже спросила,
+// второй системный вопрос поверх неё выглядел дублем.
 const handleDeleteSale = async (saleId: string) => {
   if (isEmployee && !user?.permissions?.canDelete) {
-    alert("⛔ У вас нет прав на удаление договоров.");
-    return;
+    throw new Error('У вас нет прав на удаление договоров.');
   }
-
-  if (!window.confirm("Вы уверены, что хотите удалить этот договор?")) return;
 
   const sale = sales.find(s => s.id === saleId);
   if (!sale) {
-    alert("Договор не найден");
-    return;
+    throw new Error('Договор не найден.');
   }
 
   const installmentPayments = sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false);
   const installmentAmount = installmentPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
   if (installmentAmount > 0) {
-    alert(`❌ Нельзя удалить договор с платежами по графику.\nОплачено по графику: ${formatCurrency(installmentAmount, appSettings?.showCents)} ₽`);
-    return;
+    throw new Error(`Нельзя удалить договор с платежами по графику. Оплачено: ${formatCurrency(installmentAmount, appSettings?.showCents)} ₽`);
   }
 
   if (sale.supplierId && !sale.isPartnerDebtPaid && (sale.partnerDebtPaidAmount || 0) > 0) {
-    alert(`❌ Нельзя удалить договор с частично оплаченным долгом поставщику.\nОплачено поставщику: ${formatCurrency(sale.partnerDebtPaidAmount || 0, appSettings?.showCents)} ₽`);
-    return;
+    throw new Error(`Нельзя удалить договор с частично оплаченным долгом поставщику. Оплачено: ${formatCurrency(sale.partnerDebtPaidAmount || 0, appSettings?.showCents)} ₽`);
   }
 
   // 🔹 🔑 ОПТИМИСТИЧНОЕ УДАЛЕНИЕ: сначала удаляем из UI
@@ -1889,9 +1886,8 @@ const handleDeleteSale = async (saleId: string) => {
           'Договор удалён локально и будет синхронизирован при подключении.',
           'warning'
         );
-      } else {
-        alert('✅ Договор удалён');
       }
+      // Успех показывает модалка удаления — своей анимацией, без системного alert
     } catch (e) {
       console.warn('⚠️ Sale delete failed:', e);
     }

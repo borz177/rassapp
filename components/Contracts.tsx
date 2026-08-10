@@ -3,6 +3,7 @@ import { Sale, Customer, Account, User, AppSettings, Task } from '../types';
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
 import { formatCurrency, formatDate, escapeHtml, calculateSaleOverdue } from '../src/utils';
+import { SuccessCheck, hapticSuccess } from './feedback';
 import { createPortal } from 'react-dom';
 import { api } from '../services/api';
 
@@ -14,7 +15,7 @@ interface ContractsProps {
   onTabChange: (tab: 'ALL' | 'ACTIVE' | 'OVERDUE' | 'ARCHIVE') => void;
   onViewSchedule: (sale: Sale) => void;
   onEditSale: (sale: Sale) => void;
-  onDeleteSale: (saleId: string) => void;
+  onDeleteSale: (saleId: string) => void | Promise<void>;
   readOnly?: boolean;
   user?: User | null;
   employees?: User[];
@@ -339,6 +340,8 @@ const Contracts: React.FC<ContractsProps> = ({
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [isMenuClosing, setIsMenuClosing] = useState(false);
   const [deletingSale, setDeletingSale] = useState<Sale | null>(null);
+  const [deleteStage, setDeleteStage] = useState<'idle' | 'working' | 'done'>('idle');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [selectedSaleForInfo, setSelectedSaleForInfo] = useState<Sale | null>(null);
   const [currentMenuSale, setCurrentMenuSale] = useState<Sale | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number, left: number } | null>(null);
@@ -485,8 +488,30 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
   setCurrentMenuSale(sale);
 };
 
-  const handleDeleteConfirm = () => {
-    if (deletingSale) { onDeleteSale(deletingSale.id); setDeletingSale(null); }
+  // Удаление подтверждается в этой же модалке: «Удаляем…» → галочка → закрытие.
+  // Причину отказа (платежи по графику, долг поставщику, нет прав) onDeleteSale
+  // бросает исключением — показываем её здесь же, а не системным alert поверх окна.
+  const handleDeleteConfirm = async () => {
+    if (!deletingSale || deleteStage === 'working') return;
+    setDeleteStage('working');
+    setDeleteError(null);
+    try {
+      await onDeleteSale(deletingSale.id);
+      setDeleteStage('done');
+      hapticSuccess();
+      await new Promise(r => setTimeout(r, 1100));
+      setDeletingSale(null);
+      setDeleteStage('idle');
+    } catch (e: any) {
+      setDeleteError(e?.message || 'Не удалось удалить договор');
+      setDeleteStage('idle');
+    }
+  };
+
+  const closeDeleteModal = () => {
+    if (deleteStage !== 'idle') return;
+    setDeletingSale(null);
+    setDeleteError(null);
   };
 
   const printContract = (sale: Sale) => {
@@ -1077,15 +1102,54 @@ useEffect(() => {
 
       {/* Модалка удаления */}
       {deletingSale && !readOnly && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setDeletingSale(null)}>
-          <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-3xl shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={closeDeleteModal}>
+          <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-3xl shadow-2xl animate-dialog-in" onClick={e => e.stopPropagation()}>
+            {deleteStage === 'done' ? (
+              <div className="py-2 text-center space-y-5">
+                <SuccessCheck tone="danger" />
+                <div className="animate-stage-in" style={{ animationDelay: '0.55s' }}>
+                  <h3 className="text-lg font-bold text-slate-800 dark:text-white">Договор удалён</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 break-words">
+                    {deletingSale.productName}
+                  </p>
+                </div>
+              </div>
+            ) : (
+            <>
             <div className="w-14 h-14 bg-red-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4"><Trash2 size={28} /></div>
             <h3 className="text-lg font-bold text-slate-800 dark:text-white text-center mb-1.5">Удалить договор?</h3>
             <p className="text-center text-slate-500 dark:text-slate-400 mb-6 text-sm">Все данные о платежах будут удалены. Товар вернётся на склад.</p>
+
+            {/* Отказ показываем здесь же — раньше он прилетал системным alert */}
+            {deleteError && (
+              <div className="mb-4 bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-900/50 rounded-xl p-3 flex gap-2 items-start animate-stage-in">
+                <span className="text-rose-500 shrink-0 mt-0.5">⛔</span>
+                <p className="text-xs text-rose-800 dark:text-rose-300">{deleteError}</p>
+              </div>
+            )}
+
             <div className="flex gap-2.5">
-              <button onClick={() => setDeletingSale(null)} className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 rounded-xl font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-all">Отмена</button>
-              <button onClick={handleDeleteConfirm} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-all">Удалить</button>
+              <button onClick={closeDeleteModal} disabled={deleteStage === 'working'}
+                      className="btn-press flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 rounded-xl font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50">
+                {deleteError ? 'Закрыть' : 'Отмена'}
+              </button>
+              {!deleteError && (
+                <button onClick={handleDeleteConfirm} disabled={deleteStage === 'working'}
+                        className="btn-press flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 disabled:bg-slate-400 flex items-center justify-center gap-2">
+                  {deleteStage === 'working' ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                      </svg>
+                      Удаляем…
+                    </>
+                  ) : 'Удалить'}
+                </button>
+              )}
             </div>
+            </>
+            )}
           </div>
         </div>
       )}

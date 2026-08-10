@@ -950,13 +950,7 @@ if (mode === 'CASH') {
         setShowWhatsAppConfirmModal(false);
         setSendStage('idle');
 
-        if (onShowNotification) {
-          onShowNotification(
-            '✅ Отправлено!',
-            `Договор "${createdSale.productName}" отправлен клиенту ${selectedCustomer.name}`,
-            'success'
-          );
-        }
+     
       } else {
         throw new Error('Green API вернул ошибку отправки. Проверьте статус инстанса.');
       }
