@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Account, Investor, InvestorPermissions } from '../types';
 import { ICONS } from '../constants';
 import { getInvestorAccount, formatDate } from '../src/utils';
+import { SuccessCheck, hapticSuccess, haptic } from './feedback';
 
 export type InvestorPoolChoice =
   | { mode: 'EXISTING'; accountId: string }
@@ -24,6 +25,15 @@ const Investors: React.FC<InvestorsProps> = ({
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+
+  // Создание инвестора — событие того же веса, что оформление договора: заходят деньги,
+  // фиксируется доля в прибыли. Показываем, что именно записалось.
+  const [createdInvestor, setCreatedInvestor] = useState<{ name: string; amount: number; percent: number } | null>(null);
+  // Правку показываем тише — короткой подсветкой карточки в списке, без модалки
+  const [savedId, setSavedId] = useState<string | null>(null);
+  // Удаление: своя модалка вместо системного window.confirm, который не показывал,
+  // кого именно удаляют, и не предупреждал о последствиях.
+  const [deletingInvestor, setDeletingInvestor] = useState<Investor | null>(null);
 
   // Form State
   const [formName, setFormName] = useState('');
@@ -138,6 +148,11 @@ const Investors: React.FC<InvestorsProps> = ({
                     leftPoolDate,
                     permissions: formPermissions
                 }, formPassword);
+
+                // Рутинная правка — подсвечиваем строку и идём дальше
+                setSavedId(inv.id);
+                haptic();
+                setTimeout(() => setSavedId(prev => (prev === inv.id ? null : prev)), 1500);
             }
         }  else {
     // 🔹 Email и пароль необязательны — без них инвестор просто не получит доступ в приложение
@@ -167,16 +182,29 @@ const Investors: React.FC<InvestorsProps> = ({
     // 🔹 Сумма теперь необязательна, по умолчанию 0
     const leftPoolDateIso = formLeftPoolDate ? new Date(formLeftPoolDate).toISOString() : undefined;
     onAddInvestor(formName, formPhone, formEmail, formPassword, Number(formAmount) || 0, Number(formProfitPercentage), formPermissions, poolChoice, joinedDateIso, leftPoolDateIso);
+
+    setCreatedInvestor({
+        name: formName,
+        amount: Number(formAmount) || 0,
+        percent: Number(formProfitPercentage) || 0,
+    });
+    hapticSuccess();
+    setTimeout(() => setCreatedInvestor(null), 1900);
 }
         resetForm();
     }
 };
 
   const handleDelete = (id: string) => {
-      if(window.confirm("Удалить инвестора?")) {
-          onDeleteInvestor?.(id);
-      }
-  }
+      const inv = investors.find(i => i.id === id);
+      if (inv) setDeletingInvestor(inv);
+  };
+
+  const confirmDeleteInvestor = () => {
+      if (!deletingInvestor) return;
+      onDeleteInvestor?.(deletingInvestor.id);
+      setDeletingInvestor(null);
+  };
 
   return (
     <div className="space-y-6 pb-20">
@@ -447,7 +475,9 @@ const Investors: React.FC<InvestorsProps> = ({
             return (
             <div key={inv.id}
                 onClick={() => onViewDetails?.(inv)}
-                className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md transition-all active:scale-[0.99]">
+                className={`bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md transition-all active:scale-[0.99] ${
+                    savedId === inv.id ? 'animate-row-saved' : ''
+                }`}>
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 min-w-0">
                         <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center font-bold text-lg shrink-0">
@@ -480,6 +510,83 @@ const Investors: React.FC<InvestorsProps> = ({
             );
         })}
       </div>
+
+      {/* Инвестор заведён — что именно записалось */}
+      {createdInvestor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-5 animate-dialog-in">
+            <SuccessCheck />
+            <div className="animate-stage-in" style={{ animationDelay: '0.55s' }}>
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white">Инвестор добавлен</h3>
+              <p className="text-slate-600 dark:text-slate-300 font-semibold mt-1 break-words">{createdInvestor.name}</p>
+              <div className="flex justify-center gap-6 mt-4">
+                <div>
+                  <p className="text-xs text-slate-400">Вложено</p>
+                  <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                    {createdInvestor.amount.toLocaleString('ru-RU')} ₽
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Процент</p>
+                  <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{createdInvestor.percent}%</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Удаление инвестора: раньше это был системный confirm без единой детали о том,
+          кого удаляют и что при этом теряется. */}
+      {deletingInvestor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+             onClick={() => setDeletingInvestor(null)}>
+          <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-3xl shadow-2xl animate-dialog-in"
+               onClick={e => e.stopPropagation()}>
+            <div className="w-14 h-14 bg-rose-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 scale-150">
+              {ICONS.Delete}
+            </div>
+            <h3 className="text-lg font-bold text-slate-800 dark:text-white text-center mb-1.5">
+              Удалить инвестора?
+            </h3>
+            <p className="text-center text-slate-600 dark:text-slate-300 font-semibold break-words mb-3">
+              {deletingInvestor.name}
+            </p>
+
+            <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3 space-y-1.5 text-sm mb-4 border border-slate-100 dark:border-slate-700">
+              <div className="flex justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Вложено:</span>
+                <span className="font-bold text-slate-800 dark:text-white">
+                  {(deletingInvestor.initialAmount || 0).toLocaleString('ru-RU')} ₽
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Доля в прибыли:</span>
+                <span className="font-bold text-slate-800 dark:text-white">{deletingInvestor.profitPercentage}%</span>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 rounded-lg p-3 flex gap-2 items-start mb-5">
+              <span className="text-amber-500 shrink-0 mt-0.5">⚠️</span>
+              <p className="text-xs text-amber-800 dark:text-amber-300">
+                История вложений и начисленной прибыли будет потеряна. Если инвестор просто выходит
+                из пула — вместо удаления проставьте ему дату выхода.
+              </p>
+            </div>
+
+            <div className="flex gap-2.5">
+              <button onClick={() => setDeletingInvestor(null)}
+                      className="btn-press flex-1 py-2.5 bg-slate-100 dark:bg-slate-700 rounded-xl font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600">
+                Отмена
+              </button>
+              <button onClick={confirmDeleteInvestor}
+                      className="btn-press flex-1 py-2.5 bg-rose-500 text-white rounded-xl font-bold hover:bg-rose-600">
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

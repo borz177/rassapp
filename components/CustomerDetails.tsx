@@ -4,6 +4,7 @@ import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocumen
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate } from '../src/utils';
 import { offlineStorage } from '../services/offlineStorage';
+import { api } from '../services/api';
 import { parsePhoneNumberFromString, CountryCode } from 'libphonenumber-js';
 
 interface CustomerDetailsProps {
@@ -314,11 +315,59 @@ const DocumentsModal = ({
         }
     };
 
-    const handleViewDocument = (doc: CustomerDocument) => {
-        if (doc.fileType === 'image') {
-            setSelectedDocument(doc);
+    // 🔒 Документы тянем с токеном и показываем как blob-URL: сервер больше не отдаёт
+    // /uploads/... без проверки прав, поэтому <img src="/uploads/..."> вернул бы 401.
+    const [docObjectUrl, setDocObjectUrl] = useState<string | null>(null);
+    const [docLoading, setDocLoading] = useState(false);
+    const [docError, setDocError] = useState<string | null>(null);
+
+    const loadDocumentUrl = async (doc: CustomerDocument): Promise<string | null> => {
+        setDocLoading(true);
+        setDocError(null);
+        try {
+            return await api.getDocumentUrl(doc.fileUrl);
+        } catch (e: any) {
+            setDocError(e?.message || 'Не удалось открыть документ');
+            return null;
+        } finally {
+            setDocLoading(false);
         }
     };
+
+    const handleViewDocument = async (doc: CustomerDocument) => {
+        if (doc.fileType !== 'image') return;
+        setSelectedDocument(doc);
+        const url = await loadDocumentUrl(doc);
+        setDocObjectUrl(url);
+    };
+
+    // Закрытие просмотрщика — обязательно освобождаем blob, иначе он висит в памяти
+    const closeDocumentViewer = () => {
+        setSelectedDocument(null);
+        setDocError(null);
+        setDocObjectUrl(prev => {
+            if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+            return null;
+        });
+    };
+
+    // Тот же blob нужен и для скачивания PDF — ссылки <a href> без токена больше не работают
+    const handleDownloadDocument = async (doc: CustomerDocument) => {
+        const url = await loadDocumentUrl(doc);
+        if (!url) return;
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = doc.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        if (url.startsWith('blob:')) setTimeout(() => URL.revokeObjectURL(url), 10000);
+    };
+
+    // Страховка от утечки: если компонент размонтируют с открытым документом
+    useEffect(() => () => {
+        if (docObjectUrl?.startsWith('blob:')) URL.revokeObjectURL(docObjectUrl);
+    }, [docObjectUrl]);
 
     // 🔹 Итоговый transform: либо живой драг, либо CSS-анимация
     const sheetStyle: React.CSSProperties = isDragging || dragY > 0
@@ -360,7 +409,6 @@ const DocumentsModal = ({
                     {customer.documents && customer.documents.length > 0 ? (
                         <div className="space-y-2 mb-4">
                             {customer.documents.map(doc => {
-                                const fileUrl = doc.fileUrl.startsWith('http') ? doc.fileUrl : `${window.location.origin}${doc.fileUrl}`;
                                 return (
                                     <div key={doc.id} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group">
                                         <div
@@ -388,13 +436,19 @@ const DocumentsModal = ({
                                         </div>
                                         <div className="flex items-center gap-1 flex-shrink-0">
                                             {doc.fileType === 'pdf' && (
-                                                <a href={fileUrl} download={doc.name} className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors" title="Скачать PDF" onClick={(e) => e.stopPropagation()}>
+                                                <button
+                                                    type="button"
+                                                    disabled={docLoading}
+                                                    onClick={(e) => { e.stopPropagation(); handleDownloadDocument(doc); }}
+                                                    className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors disabled:opacity-50"
+                                                    title="Скачать PDF"
+                                                >
                                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                                                         <polyline points="7 10 12 15 17 10"/>
                                                         <line x1="12" y1="15" x2="12" y2="3"/>
                                                     </svg>
-                                                </a>
+                                                </button>
                                             )}
                                             {doc.fileType === 'image' && (
                                                 <button onClick={() => handleViewDocument(doc)} className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors" title="Просмотреть">
@@ -459,29 +513,55 @@ const DocumentsModal = ({
             </div>
 
             {selectedDocument && selectedDocument.fileType === 'image' && (
-                <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedDocument(null)}>
+                <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-fade-in" onClick={closeDocumentViewer}>
                     <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => setSelectedDocument(null)} className="absolute -top-12 right-0 text-white/80 hover:text-white p-2">
+                        <button onClick={closeDocumentViewer} className="absolute -top-12 right-0 text-white/80 hover:text-white p-2">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <line x1="18" y1="6" x2="6" y2="18"/>
                                 <line x1="6" y1="6" x2="18" y2="18"/>
                             </svg>
                         </button>
                         <div className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-                            <img src={selectedDocument.fileUrl} alt={selectedDocument.name} className="w-full h-auto max-h-[80vh] object-contain"/>
+                            {docLoading ? (
+                                <div className="h-64 flex flex-col items-center justify-center gap-3 text-slate-400">
+                                    <svg className="animate-spin h-8 w-8" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                                    </svg>
+                                    <span className="text-sm">Загружаем документ…</span>
+                                </div>
+                            ) : docError ? (
+                                <div className="h-64 flex flex-col items-center justify-center gap-2 px-6 text-center">
+                                    <span className="text-3xl">⚠️</span>
+                                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{docError}</p>
+                                    <button
+                                        onClick={async () => setDocObjectUrl(await loadDocumentUrl(selectedDocument))}
+                                        className="btn-press mt-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold"
+                                    >
+                                        Повторить
+                                    </button>
+                                </div>
+                            ) : docObjectUrl ? (
+                                <img src={docObjectUrl} alt={selectedDocument.name} className="w-full h-auto max-h-[80vh] object-contain"/>
+                            ) : null}
                             <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 flex items-center justify-between">
                                 <div>
                                     <p className="font-medium text-slate-800 dark:text-white">{selectedDocument.name}</p>
                                     <p className="text-xs text-slate-500 dark:text-slate-400">{formatFileSize(selectedDocument.fileSize || 0)} • {new Date(selectedDocument.uploadedAt).toLocaleDateString('ru-RU')}</p>
                                 </div>
-                                <a href={selectedDocument.fileUrl} download={selectedDocument.name} className="text-indigo-600 dark:text-indigo-400 text-sm font-medium hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    disabled={docLoading}
+                                    onClick={() => handleDownloadDocument(selectedDocument)}
+                                    className="text-indigo-600 dark:text-indigo-400 text-sm font-medium hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1 disabled:opacity-50"
+                                >
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                                         <polyline points="7 10 12 15 17 10"/>
                                         <line x1="12" y1="15" x2="12" y2="3"/>
                                     </svg>
                                     Скачать
-                                </a>
+                                </button>
                             </div>
                         </div>
                     </div>

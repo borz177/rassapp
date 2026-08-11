@@ -2693,15 +2693,42 @@ app.post('/api/upload/document', auth, upload.single('file'), async (req, res) =
 });
 
 // 🔹 Отдача файлов (защищённая)
-app.get('/uploads/documents/:filename', auth, (req, res) => {
+//
+// 🔒 Раньше здесь стояла проверка `filename.includes(req.user.id)`, но имена файлов
+// генерируются как `<timestamp>-<uuid8>-<name>` и id пользователя не содержат никогда —
+// то есть проверка не могла пройти ни у кого. Значение это имело только теоретическое:
+// nginx перехватывал /uploads/ своим `location` и отдавал файлы с диска напрямую, вообще
+// не доходя до Node, — паспорта клиентов лежали в открытом доступе по прямой ссылке.
+// Теперь владелец определяется по записи в БД, в которой на этот файл есть ссылка.
+app.get('/uploads/documents/:filename', auth, async (req, res) => {
   const filename = path.basename(req.params.filename); // защита от path traversal
   const filePath = path.join(uploadDir, filename);
   if (!filePath.startsWith(uploadDir)) {
     return res.status(400).json({ error: 'Недопустимый путь' });
   }
 
-  if (!filename.includes(req.user.id) && req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Доступ запрещён' });
+  if (req.user.role !== 'admin') {
+    const targetUserId = getTargetUserId(req.user);
+    if (!targetUserId) return res.status(403).json({ error: 'Доступ запрещён' });
+
+    try {
+      // Ищем запись, в документах которой упомянут этот файл. jsonb-путь надёжнее
+      // подстроки по всему объекту: имя файла не может случайно совпасть с текстом заметки.
+      const owner = await pool.query(
+        `SELECT 1 FROM data_items d,
+                jsonb_array_elements(COALESCE(d.data->'documents', '[]'::jsonb)) doc
+          WHERE d.user_id = $1
+            AND doc->>'fileUrl' = $2
+          LIMIT 1`,
+        [targetUserId, `/uploads/documents/${filename}`]
+      );
+      if (owner.rowCount === 0) {
+        return res.status(403).json({ error: 'Доступ запрещён' });
+      }
+    } catch (e) {
+      console.error('❌ Document access check failed:', e);
+      return res.status(500).json({ error: 'Ошибка проверки доступа' });
+    }
   }
 
   res.sendFile(filePath, (err) => {

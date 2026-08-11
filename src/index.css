@@ -394,6 +394,21 @@ input, textarea, [contenteditable] {
   animation: task-settle 0.35s cubic-bezier(0.32, 0.72, 0, 1) forwards;
 }
 
+/* «Сохранено» для рутинных правок: карточка коротко подсвечивается и гаснет.
+   Намеренно тише галочки — редактирование не должно праздноваться так же,
+   как создание, иначе подтверждение обесценивается.
+
+   Анимируем только box-shadow: он накладывается поверх и не подменяет собственные
+   фон и рамку карточки. Через background-color/border-color так делать нельзя —
+   к концу анимации карточка теряла свой фон и проваливалась в фон страницы. */
+@keyframes row-saved {
+  0%   { box-shadow: 0 0 0 2px rgb(129 140 248 / 0.85), 0 0 18px 2px rgb(129 140 248 / 0.35); }
+  100% { box-shadow: 0 0 0 2px rgb(129 140 248 / 0),    0 0 18px 2px rgb(129 140 248 / 0); }
+}
+.animate-row-saved {
+  animation: row-saved 1.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 /* Тактильный отклик на нажатие основной кнопки */
 .btn-press {
   transition: transform 0.12s cubic-bezier(0.32, 0.72, 0, 1), box-shadow 0.2s ease, background-color 0.2s ease;
@@ -413,6 +428,7 @@ input, textarea, [contenteditable] {
   .animate-task-check,
   .task-check-mark,
   .animate-task-settle,
+  .animate-row-saved,
   .progress-sweep::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;

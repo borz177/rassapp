@@ -16,6 +16,10 @@ const getBaseUrl = () => {
 
 const API_URL = getBaseUrl();
 
+// База для путей ВНЕ /api — например /uploads/documents/... Локально бэкенд живёт на
+// отдельном порту, в проде это тот же origin, что и фронтенд.
+const getOrigin = () => (API_URL === '/api' ? '' : API_URL.replace(/\/api$/, ''));
+
 const getAuthHeader = () => {
     const token = localStorage.getItem('token');
     return token ? { 'x-auth-token': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
@@ -634,6 +638,50 @@ export const api = {
   console.error("❌ Validation/limit error (not queued):", error.message || error);
   throw error;
 }
+    },
+
+    // 🔒 Документы клиентов (паспорта, договоры) больше не отдаются напрямую по ссылке —
+    // сервер проверяет, что файл принадлежит этому пользователю. Значит запросить его
+    // тегами <img src> / <a href> нельзя: браузер не шлёт с ними x-auth-token. Тянем
+    // файл с заголовком и отдаём наружу blob-URL, который уже можно подставить в вёрстку.
+    //
+    // Возвращаемый URL создан через createObjectURL — вызывающий код обязан освободить
+    // его через revokeObjectURL, иначе blob останется в памяти вкладки до перезагрузки.
+    getDocumentUrl: async (fileUrl: string): Promise<string> => {
+      // Старые документы лежали прямо в записи как base64 — их отдаём как есть
+      if (fileUrl.startsWith('data:')) return fileUrl;
+
+      // Сохранённые офлайн: файл ещё не уехал на сервер, лежит в IndexedDB
+      if (fileUrl.startsWith('temp_doc_')) {
+        const temp = await offlineStorage.getTempFile(fileUrl);
+        if (!temp) throw new Error('Файл не найден в локальном хранилище');
+        return URL.createObjectURL(temp.blob);
+      }
+
+      // Уже скачивали — не ходим в сеть повторно (и это же даёт офлайн-доступ)
+      const cached = await offlineStorage.getCachedFile(fileUrl);
+      if (cached) return URL.createObjectURL(cached.blob);
+
+      const res = await fetchWithAuth(`${getOrigin()}${fileUrl}`, { timeout: 30000 });
+      if (!res.ok) {
+        if (res.status === 403) throw new Error('Нет доступа к этому документу');
+        if (res.status === 404) throw new Error('Файл не найден на сервере');
+        throw new Error(`Не удалось загрузить документ (${res.status})`);
+      }
+
+      const blob = await res.blob();
+      // Кладём в кеш, чтобы документ открывался и без сети
+      try {
+        await offlineStorage.cacheFile({
+          url: fileUrl,
+          blob,
+          mimeType: blob.type || 'application/octet-stream',
+          fileName: fileUrl.split('/').pop() || 'document',
+          fileSize: blob.size,
+        });
+      } catch { /* переполнен квотой — не повод не показать файл */ }
+
+      return URL.createObjectURL(blob);
     },
 
     deleteItem: async (type: string, id: string): Promise<{ success: boolean; isOffline?: boolean }> => {
