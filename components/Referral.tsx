@@ -26,7 +26,9 @@ const Referral: React.FC<ReferralProps> = ({ onBack }) => {
            .catch(e => setError(e?.message || 'Не удалось загрузить статистику'));
     }, []);
 
-    const link = stats ? `${window.location.origin}/?ref=${stats.code}` : '';
+    // Ведём сразу на /app, а не на «/»: по «/» открывается лендинг, и человеку
+    // пришлось бы ещё искать кнопку «Войти». Здесь он сразу попадает на регистрацию.
+    const link = stats ? `${window.location.origin}/app?ref=${stats.code}` : '';
 
     const handleCopy = async () => {
         try {

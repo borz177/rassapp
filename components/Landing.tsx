@@ -1,5 +1,16 @@
 import React, { useEffect, useState } from "react"
 
+// 🎁 Переход в приложение с сохранением кода приглашения. Ссылка вида
+// rassrochka.pro/?ref=КОД открывает лендинг, а «Войти» — это полная перезагрузка
+// на /app, при которой параметр терялся бы вместе с приглашением.
+const appHref = () => {
+    try {
+        const ref = new URLSearchParams(window.location.search).get('ref')
+            || localStorage.getItem('pending_referral');
+        return ref ? `/app?ref=${encodeURIComponent(ref)}` : '/app';
+    } catch { return '/app'; }
+};
+
 export default function Landing() {
     const [scrolled, setScrolled] = useState(false)
 
@@ -165,7 +176,7 @@ export default function Landing() {
                         <div className="h-0.5 bg-gradient-to-r from-indigo-600 to-teal-600 scale-x-0 group-hover:scale-x-100 transition-transform origin-left"></div>
                     </div>
                     <div className="flex gap-3 items-center">
-                        <a href="/app" className="relative px-5 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all group">
+                        <a href={appHref()} className="relative px-5 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all group">
                             Войти
                             <span className="absolute bottom-0 left-1/2 w-0 h-0.5 bg-indigo-600 group-hover:w-full group-hover:left-0 transition-all"></span>
                         </a>
@@ -345,7 +356,7 @@ export default function Landing() {
                             Присоединяйтесь к тысячам компаний, которые уже используют FinUchet
                         </p>
                         <div className="flex justify-center gap-4 flex-wrap">
-                            <a href="/app" download className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all hover:-translate-y-1">
+                            <a href={appHref()} className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all hover:-translate-y-1">
                                 Начать бесплатно
                             </a>
                         </div>

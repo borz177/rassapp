@@ -82,6 +82,23 @@ const MORE_PUSH_VIEWS = new Set<ViewState>([
   'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS', 'REFERRAL',
 ]);
 
+// 🎁 Код приглашения из адреса сохраняем СРАЗУ при загрузке любой страницы.
+//
+// Раньше захват жил внутри компонента Auth, и это не работало: по адресу «/» открывается
+// лендинг, Auth не смонтирован, эффект не выполняется. А кнопка «Войти» на лендинге —
+// обычная ссылка на /app, то есть полная перезагрузка, при которой ?ref= теряется.
+// Здесь код перехватывается до какой-либо развилки и переживает переход на /app.
+const capturePendingReferral = () => {
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get('ref');
+    if (fromUrl) {
+      const code = fromUrl.trim().toUpperCase().slice(0, 16);
+      if (code) localStorage.setItem('pending_referral', code);
+    }
+  } catch { /* приватный режим без localStorage — приглашение просто не засчитается */ }
+};
+capturePendingReferral();
+
 const App: React.FC = () => {
     const path = window.location.pathname
 const isLanding = path === "/"

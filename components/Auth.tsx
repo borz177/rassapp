@@ -18,19 +18,16 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     // Согласие снято по умолчанию — предзаполненная галочка не считается выраженным согласием
     const [legalAccepted, setLegalAccepted] = useState(false);
 
-    // 🎁 Код приглашения из ссылки. Сохраняем в localStorage: между переходом по ссылке
-    // и завершением регистрации человек проходит подтверждение почты, и параметр из
-    // адресной строки к этому моменту теряется.
+    // 🎁 Код приглашения. Сам захват из адреса делает App при загрузке страницы
+    // (capturePendingReferral) — здесь только читаем сохранённое. Так код переживает
+    // и лендинг, и переход на /app, и подтверждение почты.
     const [referralCode, setReferralCode] = useState('');
     useEffect(() => {
-        const fromUrl = new URLSearchParams(window.location.search).get('ref');
-        if (fromUrl) {
-            const code = fromUrl.trim().toUpperCase().slice(0, 16);
-            localStorage.setItem('pending_referral', code);
+        let code = '';
+        try { code = localStorage.getItem('pending_referral') || ''; } catch { /* нет localStorage */ }
+        if (code) {
             setReferralCode(code);
-            setMode('REGISTER');
-        } else {
-            setReferralCode(localStorage.getItem('pending_referral') || '');
+            setMode('REGISTER');   // пришёл по приглашению — сразу форма регистрации
         }
     }, []);
 
