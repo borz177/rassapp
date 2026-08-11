@@ -318,6 +318,41 @@ const FEATURE_DENIED_MESSAGES = {
   notifications: { msg: 'Уведомления доступны начиная с тарифа Стандарт.', hint: 'Оформите тариф Стандарт для доступа к уведомлениям о событиях.' },
   tasks: { msg: 'Задачи доступны на тарифах Бизнес и Бизнес Pro.', hint: 'Оформите тариф Бизнес для работы с задачами и поручениями сотрудникам.' },
 };
+// 🔒 Лимит инвесторов по тарифу.
+//
+// Раньше он проверялся только при создании ЛОГИНА инвестора (/api/users/manage), то есть
+// считал строки в users. Но инвестор без e-mail логина не получает и в users не попадает —
+// он живёт только записью в data_items. Из-за этого на тарифе «Старт» с лимитом 1 можно
+// было завести сколько угодно инвесторов, просто не заполняя почту.
+//
+// Считаем по data_items — это и есть настоящий список инвесторов.
+//
+// При понижении тарифа лишние инвесторы НЕ удаляются: данные и история расчётов должны
+// остаться нетронутыми. Вместо этого те, что сверх лимита, блокируются до повышения тарифа.
+// Кого оставить — определяем по created_at (порядок создания), а не по joinedDate: дату
+// вступления пользователь может отредактировать и тем самым менять состав разрешённых.
+const getInvestorLimitState = async (userId) => {
+  const userResult = await pool.query(`SELECT role, subscription FROM users WHERE id = $1`, [userId]);
+  if (userResult.rows.length === 0) return { limit: -1, lockedIds: [], plan: null };
+
+  const user = userResult.rows[0];
+  if (user.role === 'admin') return { limit: -1, lockedIds: [], plan: 'ADMIN' };
+
+  const subscription = typeof user.subscription === 'string'
+    ? JSON.parse(user.subscription) : user.subscription;
+  const plan = getEffectivePlan(subscription) || 'TRIAL';
+  const limit = PLAN_LIMITS?.[plan]?.investors ?? -1;
+
+  if (limit === -1) return { limit, lockedIds: [], plan };
+
+  const rows = await pool.query(
+    `SELECT id FROM data_items WHERE user_id = $1 AND type = 'investors'
+      ORDER BY created_at ASC, id ASC`,
+    [userId]
+  );
+  return { limit, plan, lockedIds: rows.rows.slice(limit).map(r => r.id) };
+};
+
 const checkFeatureAccess = async (userId, featureKey) => {
   try {
     const userResult = await pool.query(`SELECT role, subscription FROM users WHERE id = $1`, [userId]);
@@ -2328,6 +2363,17 @@ app.get('/api/data', auth, async (req, res) => {
       finalResult = filterDataForEmployee(finalResult, allowedIds, fullAccessIds, req.user.id);
     }
 
+    // 🔒 Кто из инвесторов сверх лимита тарифа. Считаем на сервере и отдаём готовым списком,
+    // чтобы интерфейс и проверки при записи опирались на одно и то же правило и не разошлись.
+    try {
+      const { limit, lockedIds } = await getInvestorLimitState(targetUserId);
+      finalResult.investorLimit = limit;
+      finalResult.lockedInvestorIds = lockedIds;
+    } catch (e) {
+      console.error('⚠️ Не удалось вычислить лимит инвесторов:', e.message);
+      finalResult.lockedInvestorIds = [];
+    }
+
     res.json(finalResult);
   } catch (err) {
     console.error('❌ /api/data error:', err);
@@ -2414,6 +2460,58 @@ app.post('/api/data/:type', auth, async (req, res) => {
       const featureAccess = await checkFeatureAccess(targetUserId, 'suppliers');
       if (!featureAccess.allowed) {
         return res.status(403).json({ msg: featureAccess.msg, hint: featureAccess.hint });
+      }
+    }
+
+    // 🔒 Лимит инвесторов по тарифу. Проверяем ЗДЕСЬ, а не только при заведении логина:
+    // инвестор без e-mail логина не создаёт, и раньше лимит обходился простым незаполнением
+    // почты. Правка уже существующего инвестора разрешена всегда — иначе пользователь,
+    // оказавшийся сверх лимита после понижения тарифа, не смог бы ничего исправить.
+    if (type === 'investors') {
+      const { limit, lockedIds, plan } = await getInvestorLimitState(targetUserId);
+      if (limit !== -1) {
+        const existsRes = await pool.query(
+          `SELECT 1 FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'investors'`,
+          [itemData.id, targetUserId]
+        );
+        const isNew = existsRes.rowCount === 0;
+
+        if (isNew) {
+          const countRes = await pool.query(
+            `SELECT COUNT(*)::int AS c FROM data_items WHERE user_id = $1 AND type = 'investors'`,
+            [targetUserId]
+          );
+          if (countRes.rows[0].c >= limit) {
+            console.log(`🚫 LIMIT_HIT investors: user=${targetUserId}, plan=${plan}, current=${countRes.rows[0].c}, limit=${limit}`);
+            return res.status(403).json({
+              code: 'INVESTOR_LIMIT',
+              msg: `На тарифе «${plan}» доступен ${limit === 1 ? 'только 1 инвестор' : `${limit} инвесторов`}. Сейчас у вас ${countRes.rows[0].c}.`,
+              hint: 'Повысьте тариф, чтобы добавить больше инвесторов.',
+              details: { current: countRes.rows[0].c, limit, plan }
+            });
+          }
+        } else if (lockedIds.includes(itemData.id)) {
+          // Заблокированного инвестора менять нельзя — иначе через правку доли можно
+          // продолжать им пользоваться в обход лимита
+          return res.status(403).json({
+            code: 'INVESTOR_LOCKED',
+            msg: 'Этот инвестор заблокирован: он сверх лимита вашего тарифа.',
+            hint: 'Повысьте тариф, чтобы снова работать с ним.'
+          });
+        }
+      }
+    }
+
+    // 🔒 Операции с заблокированным инвестором (выплаты, пополнения) закрыты до повышения
+    // тарифа. Сами данные и история расчётов при этом сохраняются нетронутыми.
+    if ((type === 'expenses' || type === 'sales') && itemData.investorId) {
+      const { lockedIds } = await getInvestorLimitState(targetUserId);
+      if (lockedIds.includes(itemData.investorId)) {
+        return res.status(403).json({
+          code: 'INVESTOR_LOCKED',
+          msg: 'Инвестор заблокирован: он сверх лимита вашего тарифа.',
+          hint: 'Повысьте тариф, чтобы проводить операции с этим инвестором.'
+        });
       }
     }
 

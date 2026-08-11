@@ -129,6 +129,10 @@ const isLanding = path === "/"
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [investors, setInvestors] = useState<Investor[]>([]);
+  // 🔒 Инвесторы сверх лимита тарифа. Список считает сервер и отдаёт в /api/data —
+  // так интерфейс и проверки при записи опираются на одно правило и не расходятся.
+  // Данные таких инвесторов сохраняются: они блокируются, а не удаляются.
+  const [lockedInvestorIds, setLockedInvestorIds] = useState<string[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -613,6 +617,7 @@ const handleSync = async () => {
         if (freshData.expenses) setExpenses(prev => mergeServerData(prev, freshData.expenses, 'expenses'));
         if (freshData.accounts) setAccounts(prev => mergeServerData(prev, freshData.accounts, 'accounts'));
         if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors'));
+        if (Array.isArray(freshData.lockedInvestorIds)) setLockedInvestorIds(freshData.lockedInvestorIds);
         if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
         if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
         if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers'));
@@ -868,6 +873,7 @@ useEffect(() => {
               if (freshData.expenses) setExpenses(prev => mergeServerData(prev, freshData.expenses, 'expenses'));
               if (freshData.accounts) setAccounts(prev => mergeServerData(prev, freshData.accounts, 'accounts'));
               if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors'));
+              if (Array.isArray(freshData.lockedInvestorIds)) setLockedInvestorIds(freshData.lockedInvestorIds);
               if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
               if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
               if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers'));
@@ -1189,6 +1195,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
     if (data.expenses) setExpenses(prev => mergeServerData(prev, data.expenses, 'expenses'));
     if (data.accounts) setAccounts(prev => mergeServerData(prev, data.accounts, 'accounts'));
     if (data.investors) setInvestors(prev => mergeServerData(prev, data.investors, 'investors'));
+    if (Array.isArray(data.lockedInvestorIds)) setLockedInvestorIds(data.lockedInvestorIds);
     if (data.partnerships) setPartnerships(prev => mergeServerData(prev, data.partnerships, 'partnerships'));
     if (data.suppliers) setSuppliers(prev => mergeServerData(prev, data.suppliers, 'suppliers'));
     if (data.tasks) setTasks(prev => mergeServerData(prev, data.tasks, 'tasks'));
@@ -3495,6 +3502,7 @@ if (!user && !showSplash) {
                                                          onUpdateInvestor={handleUpdateInvestor}
                                                          onDeleteInvestor={handleDeleteInvestor}
                                                          onViewDetails={handleSelectInvestor}
+                                                         lockedInvestorIds={lockedInvestorIds}
                                                          appSettings={appSettings}/>
                 </PagePush>
               )}

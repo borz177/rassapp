@@ -16,10 +16,13 @@ interface InvestorsProps {
   onUpdateInvestor?: (investor: Investor, password?: string) => void;
   onDeleteInvestor?: (id: string) => void;
   onViewDetails?: (investor: Investor) => void;
+  /** Инвесторы сверх лимита тарифа — блокируются до его повышения, данные сохраняются */
+  lockedInvestorIds?: string[];
 }
 
 const Investors: React.FC<InvestorsProps> = ({
-    investors, accounts: accountsProp, showPools, onAddInvestor, onUpdateInvestor, onDeleteInvestor, onViewDetails
+    investors, accounts: accountsProp, showPools, onAddInvestor, onUpdateInvestor, onDeleteInvestor, onViewDetails,
+    lockedInvestorIds = []
 }) => {
   const accounts: Account[] = accountsProp || [];
   const [isAdding, setIsAdding] = useState(false);
@@ -465,6 +468,25 @@ const Investors: React.FC<InvestorsProps> = ({
         }).length === 0 && (
             <div className="text-center py-8 text-slate-400">Ничего не найдено по «{search}»</div>
         )}
+        {/* Тариф понизили — часть инвесторов оказалась сверх лимита. Объясняем, что
+            данные целы, и что нужно сделать, чтобы снова с ними работать. */}
+        {lockedInvestorIds.length > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-xl p-4 flex gap-3 items-start">
+                <span className="text-amber-500 shrink-0 text-lg">🔒</span>
+                <div>
+                    <p className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                        {lockedInvestorIds.length === 1
+                            ? '1 инвестор заблокирован'
+                            : `Заблокировано инвесторов: ${lockedInvestorIds.length}`}
+                    </p>
+                    <p className="text-xs text-amber-800 dark:text-amber-300 mt-1 leading-snug">
+                        Они сверх лимита вашего тарифа. Все данные и расчёты сохранены —
+                        операции с ними станут доступны сразу после повышения тарифа.
+                    </p>
+                </div>
+            </div>
+        )}
+
         {investors.filter(inv => {
             if (!search) return true;
             const q = search.toLowerCase();
@@ -472,12 +494,16 @@ const Investors: React.FC<InvestorsProps> = ({
         }).map(inv => {
             const acc = getInvestorAccount(inv.id, accounts);
             const isPoolMember = acc?.type === 'POOL';
+            // Сверх лимита тарифа: данные сохранены, но работать с инвестором нельзя
+            const isLocked = lockedInvestorIds.includes(inv.id);
             return (
             <div key={inv.id}
-                onClick={() => onViewDetails?.(inv)}
-                className={`bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md transition-all active:scale-[0.99] ${
-                    savedId === inv.id ? 'animate-row-saved' : ''
-                }`}>
+                onClick={() => { if (!isLocked) onViewDetails?.(inv); }}
+                className={`bg-white dark:bg-slate-800 p-4 rounded-xl border shadow-sm transition-all ${
+                    isLocked
+                        ? 'border-amber-200 dark:border-amber-900/50 opacity-70 cursor-not-allowed'
+                        : 'border-slate-200 dark:border-slate-700 cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md active:scale-[0.99]'
+                } ${savedId === inv.id ? 'animate-row-saved' : ''}`}>
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 min-w-0">
                         <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center font-bold text-lg shrink-0">
@@ -487,6 +513,11 @@ const Investors: React.FC<InvestorsProps> = ({
                             <h3 className="font-bold text-slate-800 dark:text-white truncate">{inv.name}</h3>
                             <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{inv.email}</p>
                             <div className="flex flex-wrap gap-1 mt-1">
+                                {isLocked && (
+                                    <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded-full">
+                                        🔒 Сверх лимита тарифа
+                                    </span>
+                                )}
                                 {isPoolMember && (
                                     <span className="text-[10px] font-bold text-fuchsia-600 dark:text-fuchsia-400 bg-fuchsia-50 dark:bg-fuchsia-900/30 px-2 py-0.5 rounded-full">Пул: {acc!.name}</span>
                                 )}
