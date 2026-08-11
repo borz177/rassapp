@@ -684,6 +684,18 @@ export const api = {
       return URL.createObjectURL(blob);
     },
 
+    // Удаление файла документа с диска. Вызывать ДО сохранения карточки без этого
+    // документа: сервер проверяет права по ссылке, которая ещё должна быть в записи.
+    deleteDocumentFile: async (fileUrl: string): Promise<void> => {
+      if (!fileUrl?.startsWith('/uploads/')) return; // офлайновые и base64 файла не имеют
+      await fetchWithAuth(`${API_URL}/upload/document`, {
+        method: 'DELETE',
+        body: JSON.stringify({ fileUrl }),
+      });
+      // Локальный кеш тоже чистим, иначе удалённый документ продолжит открываться офлайн
+      try { await offlineStorage.removeCachedFile(fileUrl); } catch { /* не критично */ }
+    },
+
     deleteItem: async (type: string, id: string): Promise<{ success: boolean; isOffline?: boolean }> => {
   try {
     await fetchWithAuth(`${API_URL}/data/${type}/${id}`, {

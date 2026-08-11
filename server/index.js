@@ -650,7 +650,10 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'https:'],
+      // blob: — документы клиентов больше не отдаются по прямой ссылке, клиент качает их
+      // с токеном и показывает через URL.createObjectURL(). Без blob: в этой директиве
+      // браузер блокирует такую картинку молча, в консоли остаётся только ошибка CSP.
+      imgSrc: ["'self'", 'data:', 'https:', 'blob:'],
       connectSrc: ["'self'", 'https://api.yookassa.ru', 'https://api.green-api.com'],
       frameSrc: ["'self'", 'https://yoomoney.ru','blob:'],
       objectSrc: ["'none'"],
@@ -2692,14 +2695,33 @@ app.post('/api/upload/document', auth, upload.single('file'), async (req, res) =
   }
 });
 
-// 🔹 Отдача файлов (защищённая)
+// 🔒 Принадлежит ли файл этому пользователю. Владелец определяется по записи в БД,
+// в документах которой есть ссылка на файл.
 //
-// 🔒 Раньше здесь стояла проверка `filename.includes(req.user.id)`, но имена файлов
+// Раньше на отдаче стояла проверка `filename.includes(req.user.id)`, но имена файлов
 // генерируются как `<timestamp>-<uuid8>-<name>` и id пользователя не содержат никогда —
-// то есть проверка не могла пройти ни у кого. Значение это имело только теоретическое:
+// то есть проверка не могла пройти ни у кого. Значение это имело лишь теоретическое:
 // nginx перехватывал /uploads/ своим `location` и отдавал файлы с диска напрямую, вообще
 // не доходя до Node, — паспорта клиентов лежали в открытом доступе по прямой ссылке.
-// Теперь владелец определяется по записи в БД, в которой на этот файл есть ссылка.
+const userOwnsDocument = async (user, filename) => {
+  if (user.role === 'admin') return true;
+  const targetUserId = getTargetUserId(user);
+  if (!targetUserId) return false;
+
+  // jsonb-путь надёжнее подстроки по всему объекту: имя файла не может случайно
+  // совпасть с текстом заметки или названием товара.
+  const owner = await pool.query(
+    `SELECT 1 FROM data_items d,
+            jsonb_array_elements(COALESCE(d.data->'documents', '[]'::jsonb)) doc
+      WHERE d.user_id = $1
+        AND doc->>'fileUrl' = $2
+      LIMIT 1`,
+    [targetUserId, `/uploads/documents/${filename}`]
+  );
+  return owner.rowCount > 0;
+};
+
+// 🔹 Отдача файлов (защищённая)
 app.get('/uploads/documents/:filename', auth, async (req, res) => {
   const filename = path.basename(req.params.filename); // защита от path traversal
   const filePath = path.join(uploadDir, filename);
@@ -2707,33 +2729,54 @@ app.get('/uploads/documents/:filename', auth, async (req, res) => {
     return res.status(400).json({ error: 'Недопустимый путь' });
   }
 
-  if (req.user.role !== 'admin') {
-    const targetUserId = getTargetUserId(req.user);
-    if (!targetUserId) return res.status(403).json({ error: 'Доступ запрещён' });
-
-    try {
-      // Ищем запись, в документах которой упомянут этот файл. jsonb-путь надёжнее
-      // подстроки по всему объекту: имя файла не может случайно совпасть с текстом заметки.
-      const owner = await pool.query(
-        `SELECT 1 FROM data_items d,
-                jsonb_array_elements(COALESCE(d.data->'documents', '[]'::jsonb)) doc
-          WHERE d.user_id = $1
-            AND doc->>'fileUrl' = $2
-          LIMIT 1`,
-        [targetUserId, `/uploads/documents/${filename}`]
-      );
-      if (owner.rowCount === 0) {
-        return res.status(403).json({ error: 'Доступ запрещён' });
-      }
-    } catch (e) {
-      console.error('❌ Document access check failed:', e);
-      return res.status(500).json({ error: 'Ошибка проверки доступа' });
+  try {
+    if (!(await userOwnsDocument(req.user, filename))) {
+      return res.status(403).json({ error: 'Доступ запрещён' });
     }
+  } catch (e) {
+    console.error('❌ Document access check failed:', e);
+    return res.status(500).json({ error: 'Ошибка проверки доступа' });
   }
 
   res.sendFile(filePath, (err) => {
     if (err) res.status(404).json({ error: 'Файл не найден' });
   });
+});
+
+// 🔹 Удаление файла документа
+//
+// Вызывается ПЕРЕД тем, как документ убирают из карточки клиента: пока ссылка на файл
+// ещё есть в записи, по ней проверяются права. Без этого эндпоинта файл оставался на
+// диске навсегда — на проде так накопилось 16 «сирот», в том числе присланные клиентами
+// фотографии паспортов, недоступные уже никому, но лежащие на диске.
+app.delete('/api/upload/document', auth, async (req, res) => {
+  const { fileUrl } = req.body || {};
+  if (!fileUrl || typeof fileUrl !== 'string') {
+    return res.status(400).json({ error: 'Не указан файл' });
+  }
+  // Офлайновые и старые base64-документы файла на сервере не имеют — удалять нечего
+  if (!fileUrl.startsWith('/uploads/documents/')) {
+    return res.json({ success: true, skipped: true });
+  }
+
+  const filename = path.basename(fileUrl);
+  const filePath = path.join(uploadDir, filename);
+  if (!filePath.startsWith(uploadDir)) {
+    return res.status(400).json({ error: 'Недопустимый путь' });
+  }
+
+  try {
+    if (!(await userOwnsDocument(req.user, filename))) {
+      return res.status(403).json({ error: 'Доступ запрещён' });
+    }
+    await fs.promises.unlink(filePath);
+    return res.json({ success: true });
+  } catch (e) {
+    // Файла уже нет — цель достигнута, ошибкой это не считаем
+    if (e.code === 'ENOENT') return res.json({ success: true, alreadyGone: true });
+    console.error('❌ Document delete failed:', e);
+    return res.status(500).json({ error: 'Не удалось удалить файл' });
+  }
 });
 
 

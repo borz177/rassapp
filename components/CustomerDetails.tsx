@@ -460,11 +460,19 @@ const DocumentsModal = ({
                                             )}
                                             <button
                                                 type="button"
-                                                onClick={() => {
-                                                    if (window.confirm('Удалить документ?')) {
-                                                        const updatedDocs = customer.documents?.filter(d => d.id !== doc.id) || [];
-                                                        onUpdate({...customer, documents: updatedDocs});
+                                                onClick={async () => {
+                                                    if (!window.confirm('Удалить документ?')) return;
+                                                    // Сначала файл с диска — пока ссылка на него ещё есть в записи,
+                                                    // по ней сервер проверяет права. Если не выйдет, всё равно
+                                                    // убираем документ из карточки: не блокировать же пользователя
+                                                    // из-за файла, его подберёт периодическая чистка.
+                                                    try {
+                                                        await api.deleteDocumentFile(doc.fileUrl);
+                                                    } catch (e) {
+                                                        console.warn('Не удалось удалить файл документа:', e);
                                                     }
+                                                    const updatedDocs = customer.documents?.filter(d => d.id !== doc.id) || [];
+                                                    onUpdate({...customer, documents: updatedDocs});
                                                 }}
                                                 className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                                                 disabled={!isOnline && !(doc._isTemp || doc.fileUrl?.startsWith('temp_doc_'))}
