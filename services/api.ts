@@ -710,6 +710,31 @@ export const api = {
       return res.json();
     },
 
+    // 🎁 Реферальная программа
+    getReferralStats: async (): Promise<{
+      code: string; invited: number; paid: number; daysEarned: number; rewardDays: number;
+    }> => {
+      const res = await fetchWithAuth(`${API_URL}/referral/stats`);
+      if (!res.ok) throw new Error('Не удалось загрузить статистику приглашений');
+      return res.json();
+    },
+
+    getReferralPending: async (): Promise<{ count: number; days: number; rewardDays: number }> => {
+      const res = await fetchWithAuth(`${API_URL}/referral/pending`);
+      if (!res.ok) return { count: 0, days: 0, rewardDays: 10 };
+      return res.json();
+    },
+
+    markReferralPendingSeen: async (): Promise<void> => {
+      await fetchWithAuth(`${API_URL}/referral/pending/seen`, { method: 'POST' });
+    },
+
+    adminGetReferrals: async (): Promise<any> => {
+      const res = await fetchWithAuth(`${API_URL}/admin/referrals`);
+      if (!res.ok) throw new Error('Не удалось загрузить реферальные данные');
+      return res.json();
+    },
+
     deleteItem: async (type: string, id: string): Promise<{ success: boolean; isOffline?: boolean }> => {
   try {
     await fetchWithAuth(`${API_URL}/data/${type}/${id}`, {

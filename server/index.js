@@ -762,7 +762,34 @@ const initDB = async () => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='blocked') THEN
           ALTER TABLE users ADD COLUMN blocked BOOLEAN DEFAULT FALSE;
         END IF;
+        -- 🎁 Реферальная программа
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='referral_code') THEN
+          ALTER TABLE users ADD COLUMN referral_code TEXT UNIQUE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='referred_by') THEN
+          ALTER TABLE users ADD COLUMN referred_by TEXT;
+        END IF;
+        -- Награда выдаётся ОДИН раз за приглашённого — при его первой оплате.
+        -- Без этого флага повторные платежи начисляли бы рефереру дни снова и снова.
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='referral_rewarded_at') THEN
+          ALTER TABLE users ADD COLUMN referral_rewarded_at TIMESTAMP;
+        END IF;
+        -- referral_rewarded_at = «обработано» (в т.ч. отказ при самоприглашении),
+        -- а этот флаг = награда действительно начислена. Считать статистику надо по нему.
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='referral_reward_granted') THEN
+          ALTER TABLE users ADD COLUMN referral_reward_granted BOOLEAN DEFAULT FALSE;
+        END IF;
+        -- Когда пригласивший в последний раз видел поздравление о начислении
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='referral_seen_at') THEN
+          ALTER TABLE users ADD COLUMN referral_seen_at TIMESTAMP;
+        END IF;
       END $$;
+    `);
+
+    // Код нужен всем существующим пользователям, иначе они не смогут никого пригласить
+    await pool.query(`
+      UPDATE users SET referral_code = UPPER(SUBSTRING(MD5(id || 'finuchet-ref') FROM 1 FOR 8))
+       WHERE referral_code IS NULL
     `);
 
     // Data Items Table
@@ -1953,10 +1980,31 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
       };
     }
     
+    // 🎁 Реферальная программа. Код выдаётся только менеджерам: сотрудники и инвесторы —
+    // подчинённые учётные записи, приглашать они никого не могут.
+    const referralCode = safeRole === 'manager'
+      ? crypto.createHash('md5').update(id + 'finuchet-ref').digest('hex').slice(0, 8).toUpperCase()
+      : null;
+
+    // Кто пригласил. Проверяем существование кода на сервере, а не доверяем клиенту.
+    let referredBy = null;
+    if (safeRole === 'manager' && req.body.referralCode) {
+      const ref = await pool.query(
+        `SELECT id FROM users WHERE referral_code = $1 AND role = 'manager' LIMIT 1`,
+        [String(req.body.referralCode).trim().toUpperCase()]
+      );
+      // Пригласить самого себя нельзя: id нового пользователя ещё не существует,
+      // но код мог быть подставлен от уже существующего аккаунта того же человека —
+      // на этот случай ниже, при начислении награды, стоит проверка по e-mail и телефону.
+      if (ref.rowCount > 0 && ref.rows[0].id !== id) {
+        referredBy = ref.rows[0].id;
+      }
+    }
+
     // Insert User
     await pool.query(
-      `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, subscription)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, subscription, referral_code, referred_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         id,
         name,
@@ -1966,7 +2014,9 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
         safeManagerId,
         JSON.stringify(permissions || {}),
         JSON.stringify(allowedInvestorIds || []),
-        subscription ? JSON.stringify(subscription) : null
+        subscription ? JSON.stringify(subscription) : null,
+        referralCode,
+        referredBy
       ]
     );
     
@@ -3448,6 +3498,213 @@ app.post('/api/payment/create', auth, async (req, res) => {
 // --- WEBHOOK HANDLER ---
 // --- WEBHOOK HANDLER ---
 // 🔥 ВАЖНО: express.raw читает исходные байты запроса до любого парсинга.
+// 🎁 РЕФЕРАЛЬНАЯ ПРОГРАММА
+//
+// Пригласивший получает +10 дней подписки, когда приглашённый ВПЕРВЫЕ оплачивает.
+// Дни, а не деньги: оператор — самозанятый, налог по НПД считается с валовой выручки
+// без вычета расходов, поэтому денежная выплата уменьшала бы маржу, но не уменьшала
+// налог и не освобождала лимит 2,4 млн ₽. Бесплатные дни не стоят почти ничего.
+const REFERRAL_REWARD_DAYS = 10;
+
+const grantReferralReward = async (paidUserId) => {
+  const paid = await pool.query(
+    `SELECT id, email, phone, referred_by, referral_rewarded_at FROM users WHERE id = $1`,
+    [paidUserId]
+  );
+  if (paid.rowCount === 0) return;
+  const { referred_by: referrerId, referral_rewarded_at, email, phone } = paid.rows[0];
+
+  if (!referrerId) return;                  // пришёл сам, не по ссылке
+  if (referral_rewarded_at) return;         // за этого человека уже награждали
+
+  const refRes = await pool.query(
+    `SELECT id, email, phone, subscription FROM users WHERE id = $1 AND role = 'manager'`,
+    [referrerId]
+  );
+  if (refRes.rowCount === 0) return;
+  const referrer = refRes.rows[0];
+
+  // Защита от самоприглашения через второй аккаунт.
+  //
+  // Почта: в базе есть уникальный индекс по lower(email), поэтому два аккаунта на один
+  // адрес завести нельзя — проверка здесь на случай, если индекс когда-нибудь снимут.
+  //
+  // Телефон: уникального индекса нет, и это основной вектор накрутки. Сравнивать голые
+  // цифры недостаточно — «+7 900 222-33-44» и «89002223344» это ОДИН номер, но строки
+  // '79002223344' и '89002223344' не совпадают, и накрутка проходила. Приводим номера
+  // общей функцией normalizePhone: она и убирает разделители, и заменяет ведущую 8 на 7.
+  const sameEmail = email && referrer.email && email.toLowerCase() === referrer.email.toLowerCase();
+  const normA = normalizePhone(String(phone || '')).phone;
+  const normB = normalizePhone(String(referrer.phone || '')).phone;
+  const samePhone = !!normA && normA === normB;
+  if (sameEmail || samePhone) {
+    console.warn(`⛔ Реферальная награда отклонена: ${referrerId} и ${paidUserId} имеют общий контакт`);
+    // Помечаем обработанным, чтобы не пересчитывать это при каждой следующей оплате
+    await pool.query(
+      'UPDATE users SET referral_rewarded_at = NOW(), referral_reward_granted = FALSE WHERE id = $1',
+      [paidUserId]
+    );
+    return;
+  }
+
+  // Дни добавляем к текущему сроку; если подписка истекла — считаем от сегодня,
+  // иначе награда сгорела бы в прошлом.
+  const sub = referrer.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
+  let expiresAt = new Date(sub.expiresAt);
+  if (isNaN(expiresAt.getTime()) || expiresAt < new Date()) expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + REFERRAL_REWARD_DAYS);
+
+  await pool.query(
+    'UPDATE users SET subscription = $1, updated_at = NOW() WHERE id = $2',
+    [JSON.stringify({ ...sub, expiresAt: expiresAt.toISOString() }), referrerId]
+  );
+  await pool.query(
+    'UPDATE users SET referral_rewarded_at = NOW(), referral_reward_granted = TRUE WHERE id = $1',
+    [paidUserId]
+  );
+
+  console.log(`🎁 Реферальная награда: +${REFERRAL_REWARD_DAYS} дн. пользователю ${referrerId} за оплату ${paidUserId}`);
+
+  // Уведомление, чтобы человек увидел результат приглашения, а не гадал
+  try {
+    await createNotification(
+      referrerId,
+      'REFERRAL_BONUS',
+      'Бонус за приглашение',
+      `Приглашённый вами пользователь оплатил подписку — вам начислено ${REFERRAL_REWARD_DAYS} дней.`
+    );
+  } catch (e) { /* уведомления не критичны для начисления */ }
+};
+
+// Статистика для экрана «Пригласить друга»
+app.get('/api/referral/stats', auth, async (req, res) => {
+  if (req.user.role !== 'manager') {
+    return res.status(403).json({ error: 'Реферальная программа доступна только владельцам аккаунта' });
+  }
+  try {
+    const me = await pool.query('SELECT referral_code FROM users WHERE id = $1', [req.user.id]);
+    let code = me.rows[0]?.referral_code;
+
+    // Аккаунты, созданные до появления программы, кода не имеют — выдаём при первом заходе
+    if (!code) {
+      code = crypto.createHash('md5').update(req.user.id + 'finuchet-ref').digest('hex').slice(0, 8).toUpperCase();
+      await pool.query('UPDATE users SET referral_code = $1 WHERE id = $2', [code, req.user.id]);
+    }
+
+    const stats = await pool.query(
+      `SELECT COUNT(*)::int AS invited,
+              COUNT(*) FILTER (WHERE referral_reward_granted = TRUE)::int AS paid
+         FROM users WHERE referred_by = $1`,
+      [req.user.id]
+    );
+
+    const invited = stats.rows[0].invited;
+    const paid = stats.rows[0].paid;
+    res.json({
+      code,
+      invited,
+      paid,
+      daysEarned: paid * REFERRAL_REWARD_DAYS,
+      rewardDays: REFERRAL_REWARD_DAYS,
+    });
+  } catch (e) {
+    console.error('❌ Referral stats error:', e);
+    res.status(500).json({ error: 'Не удалось загрузить статистику' });
+  }
+});
+
+// Непоказанные поздравления: сколько наград начислено с тех пор, как пользователь
+// последний раз видел это окно. Возвращаем скопом — если человек не заходил неделю
+// и за это время оплатили трое, показываем одно окно на 30 дней, а не три подряд.
+app.get('/api/referral/pending', auth, async (req, res) => {
+  if (req.user.role !== 'manager') return res.json({ count: 0, days: 0 });
+  try {
+    const r = await pool.query(
+      `SELECT COUNT(*)::int AS cnt
+         FROM users
+        WHERE referred_by = $1
+          AND referral_reward_granted = TRUE
+          AND referral_rewarded_at > COALESCE(
+                (SELECT referral_seen_at FROM users WHERE id = $1), to_timestamp(0))`,
+      [req.user.id]
+    );
+    const count = r.rows[0].cnt;
+    res.json({ count, days: count * REFERRAL_REWARD_DAYS, rewardDays: REFERRAL_REWARD_DAYS });
+  } catch (e) {
+    console.error('❌ Referral pending error:', e);
+    res.json({ count: 0, days: 0 });
+  }
+});
+
+app.post('/api/referral/pending/seen', auth, async (req, res) => {
+  try {
+    await pool.query('UPDATE users SET referral_seen_at = NOW() WHERE id = $1', [req.user.id]);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('❌ Referral seen error:', e);
+    res.status(500).json({ error: 'Ошибка' });
+  }
+});
+
+// 👑 Админ: полная картина по реферальной программе
+app.get('/api/admin/referrals', adminAuth, async (req, res) => {
+  try {
+    const summary = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE referred_by IS NOT NULL)::int                          AS invited_total,
+        COUNT(*) FILTER (WHERE referral_reward_granted = TRUE)::int                   AS rewarded_total,
+        COUNT(*) FILTER (WHERE referred_by IS NOT NULL
+                           AND referral_rewarded_at IS NOT NULL
+                           AND referral_reward_granted = FALSE)::int                  AS rejected_total,
+        COUNT(DISTINCT referred_by) FILTER (WHERE referred_by IS NOT NULL)::int       AS referrers_total
+      FROM users
+    `);
+
+    // Кто сколько привёл. Сортируем по оплатившим: привести сотню и не получить
+    // ни одной оплаты — не заслуга, а повод присмотреться.
+    const top = await pool.query(`
+      SELECT r.id, r.name, r.email, r.referral_code,
+             COUNT(u.id)::int                                            AS invited,
+             COUNT(*) FILTER (WHERE u.referral_reward_granted = TRUE)::int AS paid
+        FROM users r
+        JOIN users u ON u.referred_by = r.id
+       GROUP BY r.id, r.name, r.email, r.referral_code
+       ORDER BY paid DESC, invited DESC
+       LIMIT 50
+    `);
+
+    // Все пары «кто → кого» с текущим статусом
+    const pairs = await pool.query(`
+      SELECT u.id, u.name, u.email, u.created_at,
+             u.referral_rewarded_at, u.referral_reward_granted,
+             u.subscription->>'plan' AS plan,
+             r.id AS referrer_id, r.name AS referrer_name, r.email AS referrer_email
+        FROM users u
+        JOIN users r ON r.id = u.referred_by
+       ORDER BY u.created_at DESC
+       LIMIT 300
+    `);
+
+    const s = summary.rows[0];
+    res.json({
+      summary: {
+        ...s,
+        daysGranted: s.rewarded_total * REFERRAL_REWARD_DAYS,
+        // Доля приглашённых, которые дошли до оплаты
+        conversion: s.invited_total > 0
+          ? Math.round((s.rewarded_total / s.invited_total) * 100)
+          : 0,
+        rewardDays: REFERRAL_REWARD_DAYS,
+      },
+      top: top.rows,
+      pairs: pairs.rows,
+    });
+  } catch (e) {
+    console.error('❌ Admin referrals error:', e);
+    res.status(500).json({ error: 'Не удалось загрузить данные' });
+  }
+});
+
 app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     try {
         // 🔒 ЮKassa НЕ подписывает вебхуки заголовком "signature" в формате
@@ -3500,6 +3757,17 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
                         [JSON.stringify({ plan, expiresAt: newExpiresAt.toISOString() }), userId]
                     );
                     console.log(`✅ Subscription updated for user ${userId} to ${plan} for ${months} months`);
+
+                    // 🎁 Награда пригласившему — 10 дней за приглашённого, который заплатил.
+                    // Начисляется один раз и только за ПЕРВУЮ оплату: повторные платежи
+                    // того же человека награду не удваивают (см. referral_rewarded_at).
+                    try {
+                        await grantReferralReward(userId);
+                    } catch (e) {
+                        // Реферальная награда не должна ломать обработку платежа: подписка
+                        // уже продлена, и вернуть ЮKassa ошибку означало бы повторный вебхук.
+                        console.error('⚠️ Не удалось начислить реферальную награду:', e.message);
+                    }
                 } else {
                     console.warn('⚠️ Webhook payment.succeeded без userId/plan/months в metadata:', verifyResp.data?.metadata);
                 }

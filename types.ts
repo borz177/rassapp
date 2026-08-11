@@ -339,7 +339,8 @@ export type NotificationType =
   | 'SUPPORT_MESSAGE'
   | 'TASK_ASSIGNED'
   | 'TASK_DONE'
-  | 'TASK_DUE';
+  | 'TASK_DUE'
+  | 'REFERRAL_BONUS';
 
 export interface AppNotification {
   id: string;
@@ -364,6 +365,7 @@ export interface WhatsAppReminderPayload {
 
 export type ViewState =
   | 'DASHBOARD'
+  | 'REFERRAL'
   | 'CASH_REGISTER'
   | 'CUSTOMERS'
   | 'CUSTOMER_DETAILS'

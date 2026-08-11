@@ -18,6 +18,22 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     // Согласие снято по умолчанию — предзаполненная галочка не считается выраженным согласием
     const [legalAccepted, setLegalAccepted] = useState(false);
 
+    // 🎁 Код приглашения из ссылки. Сохраняем в localStorage: между переходом по ссылке
+    // и завершением регистрации человек проходит подтверждение почты, и параметр из
+    // адресной строки к этому моменту теряется.
+    const [referralCode, setReferralCode] = useState('');
+    useEffect(() => {
+        const fromUrl = new URLSearchParams(window.location.search).get('ref');
+        if (fromUrl) {
+            const code = fromUrl.trim().toUpperCase().slice(0, 16);
+            localStorage.setItem('pending_referral', code);
+            setReferralCode(code);
+            setMode('REGISTER');
+        } else {
+            setReferralCode(localStorage.getItem('pending_referral') || '');
+        }
+    }, []);
+
     // Data
     const [email, setEmail] = useState('');
     const [code, setCode] = useState('');
@@ -71,7 +87,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         if (!name || !password) { setError('Заполните все поля'); return; }
         setIsLoading(true);
         try {
-            const user = await api.register({ name, email, password, code, role: 'manager' });
+            const user = await api.register({
+                name, email, password, code, role: 'manager',
+                referralCode: referralCode || undefined,
+            });
+            localStorage.removeItem('pending_referral');
             onLogin(user);
         } catch (e: any) {
             setError(e.message);
@@ -150,6 +170,17 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         {mode === 'RESET' && 'Восстановление пароля'}
                     </p>
                 </div>
+
+                {/* Пришёл по приглашению — показываем, что код принят, иначе непонятно,
+                    сработала ссылка или нет */}
+                {referralCode && mode === 'REGISTER' && (
+                    <div className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-900/50 rounded-xl p-3 mb-4 flex items-center gap-2">
+                        <span className="text-lg">🎁</span>
+                        <p className="text-xs text-emerald-800 dark:text-emerald-300">
+                            Вы регистрируетесь по приглашению — код <span className="font-bold">{referralCode}</span>
+                        </p>
+                    </div>
+                )}
 
                 {/* Error Banner */}
                 {error && <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-3 rounded-lg text-sm text-center mb-4">{error}</div>}

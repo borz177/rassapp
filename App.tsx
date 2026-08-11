@@ -33,6 +33,8 @@ const AdminPanel = lazy(() => import('./components/AdminPanel'));
 const AdminSupportPanel = lazy(() => import('./components/AdminSupportPanel'));
 const Integrations = lazy(() => import('./components/Integrations'));
 const Calculator = lazy(() => import('./components/Calculator'));
+const Referral = lazy(() => import('./components/Referral'));
+import { SuccessCheck } from './components/feedback';
 const LazyFallback: React.FC = () => (
   <div className="flex items-center justify-center py-20">
     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
@@ -77,7 +79,7 @@ async function enablePersistentStorage() {
 // underneath, gated on previousView === 'MORE') so swiping back reveals the real menu, not blank space.
 const MORE_PUSH_VIEWS = new Set<ViewState>([
   'PROFILE', 'SETTINGS', 'EMPLOYEES', 'SUPPLIERS', 'TARIFFS', 'ADMIN_PANEL',
-  'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS',
+  'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS', 'REFERRAL',
 ]);
 
 const App: React.FC = () => {
@@ -156,6 +158,11 @@ const isLanding = path === "/"
 } | null>(null);
 
 const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
+
+  // 🎁 Поздравление о начисленных реферальных днях. Одно окно на все накопившиеся
+  // награды: если человек неделю не заходил, а за это время оплатили трое, он увидит
+  // одно сообщение о 30 днях, а не три подряд.
+  const [referralBonus, setReferralBonus] = useState<{ count: number; days: number } | null>(null);
 const [sessionMessage, setSessionMessage] = useState('');
 const [sessionHandlers, setSessionHandlers] = useState<{
   onConfirm: () => void;
@@ -521,6 +528,25 @@ useEffect(() => {
   };
 }, [user, isSyncing]);
 
+
+  // 🎁 Есть ли непоказанные реферальные награды. Отдельным эффектом, а не внутри
+  // loadData: это редкое событие, и сбой запроса не должен влиять на загрузку данных.
+  useEffect(() => {
+    if (!user || user.role !== 'manager') return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const p = await api.getReferralPending();
+        if (!cancelled && p.count > 0) setReferralBonus({ count: p.count, days: p.days });
+      } catch { /* не критично: уведомление в колокольчике всё равно придёт */ }
+    };
+    check();
+    // Проверяем и при возврате в приложение: приглашённый мог оплатить, пока
+    // вкладка висела в фоне
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { cancelled = true; document.removeEventListener('visibilitychange', onVisible); };
+  }, [user?.id, user?.role]);
 
  useEffect(() => {
   (window as any).__onSessionExpired = (
@@ -1053,14 +1079,16 @@ useEffect(() => {
 useEffect(() => {
   if (!user || isPublicMode) return;
 
-  const STORAGE_KEY = 'template_update_notice_last_shown_v24';
-  const FIVE_HOURS = 10 * 60 * 60 * 1000;
+  // Ключ меняется вместе с содержимым окна: те, кто видел прошлое обновление,
+  // должны увидеть и новое, а не считаться уже показанными.
+  const STORAGE_KEY = 'template_update_notice_last_shown_v25';
+  const REPEAT_AFTER = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
   const now = Date.now();
 
-  if (!lastShown || now - Number(lastShown) >= FIVE_HOURS) {
-    setShowTemplateUpdateModal(false);
+  if (!lastShown || now - Number(lastShown) >= REPEAT_AFTER) {
+    setShowTemplateUpdateModal(true);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
@@ -3648,6 +3676,16 @@ if (!user && !showSplash) {
                 </PagePush>
               )}
 
+              {currentView === 'REFERRAL' && (
+                <PagePush onClose={() => setCurrentView('MORE')} scrollKey="REFERRAL">
+                  {(requestClose: () => void) => (
+                    <Suspense fallback={<LazyFallback />}>
+                      <Referral onBack={requestClose} />
+                    </Suspense>
+                  )}
+                </PagePush>
+              )}
+
               {currentView === 'INTEGRATIONS' && (
                 <PagePush onClose={() => setCurrentView('SETTINGS')}>
                   {(requestClose: () => void) => (
@@ -4091,6 +4129,25 @@ if (!user && !showSplash) {
   )}
 </button>)}
 
+          {/* 🎁 Пригласить друга — только владельцам аккаунта: сотрудники и инвесторы
+              приглашать не могут, у них нет своей подписки */}
+          {user?.role === 'manager' && (
+          <button onClick={() => { setPreviousView('MORE'); setCurrentView('REFERRAL'); }}
+                  className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
+            <div className="flex items-center gap-3">
+              <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 p-2 rounded-lg">{ICONS.Star}</div>
+              <div className="text-left">
+                <span className="font-semibold text-slate-800 dark:text-white block">Пригласить друга</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">+10 дней подписки за каждого</span>
+              </div>
+            </div>
+            <span className="text-slate-400 dark:text-slate-500">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </span>
+          </button>)}
+
           {/* Настройки */}
           <button onClick={() => { setPreviousView('MORE'); setCurrentView('SETTINGS'); }}
                   className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
@@ -4153,6 +4210,56 @@ if (!user && !showSplash) {
           className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors shadow-lg shadow-red-200 dark:shadow-red-900/30 focus:outline-none focus:ring-2 focus:ring-red-300"
         >
           Да, удалить
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* 🎁 Поздравление с реферальной наградой */}
+{referralBonus && (
+  <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in">
+    <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-3xl shadow-2xl p-7 text-center space-y-5 animate-dialog-in">
+      <SuccessCheck size={84} />
+
+      <div className="animate-stage-in" style={{ animationDelay: '0.55s' }}>
+        <h3 className="text-2xl font-bold text-slate-800 dark:text-white">Спасибо за приглашение!</h3>
+        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
+          {referralBonus.count === 1
+            ? 'Приглашённый вами пользователь оплатил подписку'
+            : `Приглашённые вами пользователи (${referralBonus.count}) оплатили подписку`}
+        </p>
+
+        <div className="mt-5 bg-gradient-to-br from-emerald-500 to-green-500 rounded-2xl py-5 text-white">
+          <p className="text-4xl font-bold">+{referralBonus.days}</p>
+          <p className="text-emerald-50 text-sm mt-0.5">
+            {referralBonus.days % 10 === 1 && referralBonus.days % 100 !== 11 ? 'день' :
+             [2,3,4].includes(referralBonus.days % 10) && ![12,13,14].includes(referralBonus.days % 100) ? 'дня' : 'дней'}
+            {' '}подписки уже начислено
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2 animate-stage-in" style={{ animationDelay: '0.7s' }}>
+        <button
+          onClick={async () => {
+            setReferralBonus(null);
+            try { await api.markReferralPendingSeen(); } catch { /* повторим при следующем входе */ }
+            setPreviousView('MORE');
+            setCurrentView('REFERRAL');
+          }}
+          className="btn-press w-full py-3.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700"
+        >
+          Пригласить ещё
+        </button>
+        <button
+          onClick={async () => {
+            setReferralBonus(null);
+            try { await api.markReferralPendingSeen(); } catch { /* повторим при следующем входе */ }
+          }}
+          className="w-full py-2.5 text-slate-400 dark:text-slate-500 text-sm font-medium hover:text-slate-600 dark:hover:text-slate-300"
+        >
+          Закрыть
         </button>
       </div>
     </div>
@@ -4406,33 +4513,52 @@ if (!user && !showSplash) {
     >
       <div className="p-6">
         {/* Заголовок */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-2xl">
-            💳
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center text-2xl">
+            🎁
           </div>
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-              Обновление
+              Что нового
             </h3>
             <p className="text-sm text-gray-500 dark:text-slate-400">
-              Доработали вкладку с платежами
+              Приглашайте друзей и получайте дни
             </p>
           </div>
         </div>
 
-        {/* Список обновлений */}
+        {/* Главное — отдельной карточкой, чтобы не потерялось в списке */}
+        <button
+          onClick={() => {
+            setShowTemplateUpdateModal(false);
+            setPreviousView('MORE');
+            setCurrentView('REFERRAL');
+          }}
+          className="w-full text-left mb-4 p-4 rounded-xl bg-gradient-to-br from-emerald-500 to-green-500 text-white active:scale-[0.98] transition-all"
+        >
+          <p className="font-bold">Пригласить друга — +10 дней</p>
+          <p className="text-xs text-emerald-50 mt-0.5 leading-snug">
+            За каждого, кто зарегистрируется по вашей ссылке и оплатит подписку,
+            вам добавится 10 дней. Нажмите, чтобы получить ссылку.
+          </p>
+        </button>
+
+        {/* Как это работает — коротко, тремя шагами */}
         <div className="divide-y divide-gray-100 dark:divide-slate-800 mb-6">
-          <div className="flex items-center gap-3 py-4">
-            <div className="text-2xl">✨</div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
-                Ближайшие платежи
-              </p>
-              <p className="text-xs text-gray-500 dark:text-slate-500">
-               Умные даты и счётчик за неделю
+          {[
+            { icon: '1', text: 'Отправьте свою ссылку знакомому, который ведёт рассрочки' },
+            { icon: '2', text: 'Он регистрируется по ней и оплачивает любой тариф' },
+            { icon: '3', text: 'Вам автоматически добавляется 10 дней подписки' },
+          ].map(item => (
+            <div key={item.icon} className="flex items-center gap-3 py-3">
+              <div className="shrink-0 w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center justify-center">
+                {item.icon}
+              </div>
+              <p className="text-xs text-gray-600 dark:text-slate-400 leading-snug">
+                {item.text}
               </p>
             </div>
-          </div>
+          ))}
         </div>
 
         <button

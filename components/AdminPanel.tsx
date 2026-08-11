@@ -64,7 +64,10 @@ const AdminPanel: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [subscriptionFilter, setSubscriptionFilter] = useState<SubscriptionFilter>('all'); // 🔹 Новый фильтр
-    const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'logs'>('users');
+    const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'referrals' | 'logs'>('users');
+    // 🎁 Реферальная программа
+    const [referrals, setReferrals] = useState<any>(null);
+    const [referralsLoading, setReferralsLoading] = useState(false);
 
     // Modal State
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -105,7 +108,15 @@ const AdminPanel: React.FC = () => {
         if (activeTab === 'logs' && !auditLoaded) {
             loadAuditLog();
         }
-    }, [activeTab, auditLoaded]);
+        // Данные тяжёлые (до 300 пар), грузим только при открытии вкладки
+        if (activeTab === 'referrals' && !referrals && !referralsLoading) {
+            setReferralsLoading(true);
+            api.adminGetReferrals()
+               .then(setReferrals)
+               .catch(e => console.error('Referrals load error:', e))
+               .finally(() => setReferralsLoading(false));
+        }
+    }, [activeTab, auditLoaded, referrals, referralsLoading]);
 
     const loadAuditLog = async () => {
         setAuditLoading(true);
@@ -394,6 +405,7 @@ const getContractUsage = (user: User): {
                 {([
                     { id: 'users', label: '👥 Пользователи' },
                     { id: 'stats', label: '📊 Статистика' },
+                    { id: 'referrals', label: '🎁 Рефералы' },
                     { id: 'logs', label: '📜 Логи' },
                 ] as const).map(tab => (
                     <button
@@ -674,6 +686,128 @@ const getContractUsage = (user: User): {
                             </div>
                         )}
                     </div>
+                </div>
+            )}
+
+            {activeTab === 'referrals' && (
+                <div className="space-y-4">
+                    {referralsLoading && (
+                        <p className="text-center text-slate-400 dark:text-slate-500 py-8 text-sm">Загружаем…</p>
+                    )}
+
+                    {referrals && (
+                        <>
+                            {/* Сводка */}
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                                {[
+                                    { v: referrals.summary.referrers_total, l: 'приглашали' },
+                                    { v: referrals.summary.invited_total, l: 'приглашено всего' },
+                                    { v: referrals.summary.rewarded_total, l: 'дошли до оплаты', accent: 'emerald' },
+                                    { v: `${referrals.summary.conversion}%`, l: 'конверсия', accent: 'indigo' },
+                                    { v: referrals.summary.daysGranted, l: 'дней выдано', accent: 'amber' },
+                                ].map(c => (
+                                    <div key={c.l} className={`rounded-xl p-3 text-center border ${
+                                        c.accent === 'emerald' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-900/40'
+                                        : c.accent === 'indigo' ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-900/40'
+                                        : c.accent === 'amber' ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-900/40'
+                                        : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700'
+                                    }`}>
+                                        <p className="text-xl font-bold text-slate-800 dark:text-white">{c.v}</p>
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 leading-tight">{c.l}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Отклонённые — признак попыток накрутки, стоит видеть отдельно */}
+                            {referrals.summary.rejected_total > 0 && (
+                                <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-900/40 rounded-xl p-3 flex gap-2 items-start">
+                                    <span className="text-rose-500 shrink-0">⛔</span>
+                                    <p className="text-xs text-rose-800 dark:text-rose-300">
+                                        Отклонено начислений: <b>{referrals.summary.rejected_total}</b> — совпал телефон
+                                        или почта пригласившего и приглашённого (попытка привести самого себя).
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Кто сколько привёл */}
+                            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden">
+                                <h3 className="font-bold text-slate-800 dark:text-white p-4 pb-2">Кто приглашает</h3>
+                                {referrals.top.length === 0 ? (
+                                    <p className="text-sm text-slate-400 dark:text-slate-500 px-4 pb-4">Пока никто никого не пригласил</p>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full text-sm">
+                                            <thead className="bg-slate-50 dark:bg-slate-700/50 text-left">
+                                                <tr>
+                                                    <th className="px-4 py-2 font-semibold text-slate-600 dark:text-slate-300">Пользователь</th>
+                                                    <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-300">Код</th>
+                                                    <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-300 text-center">Привёл</th>
+                                                    <th className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-300 text-center">Оплатили</th>
+                                                    <th className="px-4 py-2 font-semibold text-slate-600 dark:text-slate-300 text-center">Дней</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {referrals.top.map((r: any) => (
+                                                    <tr key={r.id} className="border-t border-slate-100 dark:border-slate-700">
+                                                        <td className="px-4 py-2.5">
+                                                            <p className="font-medium text-slate-800 dark:text-white">{r.name}</p>
+                                                            <p className="text-[11px] text-slate-400 dark:text-slate-500">{r.email}</p>
+                                                        </td>
+                                                        <td className="px-3 py-2.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">{r.referral_code}</td>
+                                                        <td className="px-3 py-2.5 text-center text-slate-600 dark:text-slate-300">{r.invited}</td>
+                                                        <td className="px-3 py-2.5 text-center font-bold text-emerald-600 dark:text-emerald-400">{r.paid}</td>
+                                                        <td className="px-4 py-2.5 text-center text-slate-600 dark:text-slate-300">
+                                                            {r.paid * referrals.summary.rewardDays}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Кто кого привёл */}
+                            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden">
+                                <h3 className="font-bold text-slate-800 dark:text-white p-4 pb-2">
+                                    Кто кого привёл
+                                    <span className="text-xs font-normal text-slate-400 dark:text-slate-500 ml-2">
+                                        последние {referrals.pairs.length}
+                                    </span>
+                                </h3>
+                                {referrals.pairs.length === 0 ? (
+                                    <p className="text-sm text-slate-400 dark:text-slate-500 px-4 pb-4">Приглашений пока нет</p>
+                                ) : (
+                                    <div className="divide-y divide-slate-100 dark:divide-slate-700">
+                                        {referrals.pairs.map((p: any) => (
+                                            <div key={p.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <p className="text-sm text-slate-800 dark:text-white truncate">
+                                                        <span className="text-slate-400 dark:text-slate-500">{p.referrer_name}</span>
+                                                        <span className="mx-1.5 text-slate-300 dark:text-slate-600">→</span>
+                                                        <span className="font-medium">{p.name}</span>
+                                                    </p>
+                                                    <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
+                                                        {p.email} · {new Date(p.created_at).toLocaleDateString('ru-RU')}
+                                                        {p.plan ? ` · ${p.plan}` : ''}
+                                                    </p>
+                                                </div>
+                                                <span className={`text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${
+                                                    p.referral_reward_granted
+                                                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                                                        : p.referral_rewarded_at
+                                                            ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400'
+                                                            : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                                                }`}>
+                                                    {p.referral_reward_granted ? 'оплатил' : p.referral_rewarded_at ? 'отклонён' : 'не оплатил'}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
                 </div>
             )}
 
