@@ -85,12 +85,16 @@ const getTargetUserId = (user) => {
 
 
 // ✅ КОНФИГУРАЦИЯ ЛИМИТОВ ТАРИФОВ
+// ИИ-функции отключены во всех тарифах: обращения к Google Gemini означали бы
+// трансграничную передачу персональных данных в США, требующую отдельного
+// уведомления Роскомнадзора (ч. 3 ст. 12 152-ФЗ) и приостановки передачи на
+// 10 рабочих дней. Функция в интерфейсе не использовалась, поэтому выключена.
 const PLAN_LIMITS = {
-  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: true,  suppliers: true, investorPools: true, notifications: true,  tasks: true },
+  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: false,  suppliers: true, investorPools: true, notifications: true,  tasks: true },
   START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false },
   STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false },
-  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: false, investorPools: false, notifications: true,  tasks: true  },
-  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: true,  investorPools: true,  notifications: true,  tasks: true  },
+  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: false, investorPools: false, notifications: true,  tasks: true  },
+  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: true,  investorPools: true,  notifications: true,  tasks: true  },
 };
 
 
@@ -2611,6 +2615,89 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).send('Server Error');
+  }
+});
+
+// 🔒 Полное удаление учётной записи и всех связанных данных.
+//
+// Требование ст. 14 152-ФЗ (право на прекращение обработки и уничтожение данных) и
+// прямое обещание, данное в Согласии на обработку и в Публичной оферте: «отзыв согласия
+// через интерфейс удаления аккаунта». Раньше такой возможности не существовало —
+// документы ссылались на несуществующую функцию.
+//
+// Удаляет всё разом, в одной транзакции: данные учёта, загруженные файлы, уведомления,
+// подписки на push, переписку с поддержкой, подчинённые учётные записи (сотрудники и
+// инвесторы) и самого пользователя.
+app.delete('/api/user/account', auth, async (req, res) => {
+  // Удалять аккаунт может только его владелец: сотрудник или инвестор снесли бы
+  // данные менеджера, к которым getTargetUserId дал бы им доступ.
+  if (req.user.role !== 'manager' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Удалить учётную запись может только её владелец' });
+  }
+
+  const { password } = req.body || {};
+  if (!password) return res.status(400).json({ error: 'Требуется пароль' });
+
+  const client = await pool.connect();
+  try {
+    const userRes = await client.query('SELECT password FROM users WHERE id = $1', [req.user.id]);
+    if (userRes.rowCount === 0) return res.status(404).json({ error: 'Пользователь не найден' });
+
+    // Пароль подтверждает, что удаление инициировал владелец, а не тот, кто получил
+    // доступ к незаблокированному устройству.
+    const ok = await bcrypt.compare(password, userRes.rows[0].password);
+    if (!ok) return res.status(401).json({ error: 'Неверный пароль' });
+
+    const userId = req.user.id;
+
+    // Файлы документов удаляем ДО транзакции: снести их внутри неё нельзя — откат
+    // вернёт записи в БД, но не вернёт файлы с диска.
+    let filesDeleted = 0;
+    try {
+      const docs = await client.query(
+        `SELECT doc->>'fileUrl' AS url
+           FROM data_items d, jsonb_array_elements(COALESCE(d.data->'documents','[]'::jsonb)) doc
+          WHERE d.user_id = $1 AND doc->>'fileUrl' LIKE '/uploads/documents/%'`,
+        [userId]
+      );
+      for (const row of docs.rows) {
+        try {
+          await fs.promises.unlink(path.join(uploadDir, path.basename(row.url)));
+          filesDeleted++;
+        } catch (e) { if (e.code !== 'ENOENT') console.error('unlink failed:', e.message); }
+      }
+    } catch (e) {
+      console.error('❌ Не удалось собрать файлы для удаления:', e);
+    }
+
+    await client.query('BEGIN');
+
+    // Подчинённые учётные записи — их данные хранятся под user_id менеджера,
+    // но сами записи в users надо снести, иначе останутся «висячие» логины.
+    const subs = await client.query('SELECT id FROM users WHERE manager_id = $1', [userId]);
+    const allIds = [userId, ...subs.rows.map(r => r.id)];
+
+    await client.query('DELETE FROM data_items WHERE user_id = ANY($1)', [allIds]);
+    await client.query('DELETE FROM notifications WHERE user_id = ANY($1)', [allIds]);
+    await client.query('DELETE FROM push_subscriptions WHERE user_id = ANY($1)', [allIds]);
+    await client.query(
+      'DELETE FROM support_messages WHERE ticket_id IN (SELECT id FROM support_tickets WHERE user_id = ANY($1))',
+      [allIds]
+    );
+    await client.query('DELETE FROM support_tickets WHERE user_id = ANY($1)', [allIds]);
+    await client.query('DELETE FROM verification_codes WHERE email IN (SELECT email FROM users WHERE id = ANY($1))', [allIds]);
+    await client.query('DELETE FROM users WHERE id = ANY($1)', [allIds]);
+
+    await client.query('COMMIT');
+
+    console.log(`🗑 Аккаунт удалён: ${userId} (учётных записей: ${allIds.length}, файлов: ${filesDeleted})`);
+    return res.json({ success: true, deletedAccounts: allIds.length, deletedFiles: filesDeleted });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('❌ Account deletion failed:', e);
+    return res.status(500).json({ error: 'Не удалось удалить учётную запись' });
+  } finally {
+    client.release();
   }
 });
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { ICONS } from '../constants';
-import { PrivacyPolicy, DataProcessingAgreement } from './LegalDocs';
+import { PrivacyPolicy, DataProcessingAgreement, ClientDataTerms, PublicOffer } from './LegalDocs';
 
 interface AuthProps {
     onLogin: (user: any) => void;
@@ -9,12 +9,14 @@ interface AuthProps {
 
 type AuthMode = 'LOGIN' | 'REGISTER' | 'RESET';
 type AuthStep = 'EMAIL' | 'CODE' | 'DETAILS' | 'NEW_PASSWORD';
-type LegalView = 'NONE' | 'PRIVACY' | 'AGREEMENT';
+type LegalView = 'NONE' | 'PRIVACY' | 'AGREEMENT' | 'CLIENT_DATA' | 'OFFER';
 
 const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     const [mode, setMode] = useState<AuthMode>('LOGIN');
     const [step, setStep] = useState<AuthStep>('EMAIL');
     const [legalView, setLegalView] = useState<LegalView>('NONE');
+    // Согласие снято по умолчанию — предзаполненная галочка не считается выраженным согласием
+    const [legalAccepted, setLegalAccepted] = useState(false);
 
     // Data
     const [email, setEmail] = useState('');
@@ -127,6 +129,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         return <DataProcessingAgreement onBack={() => setLegalView('NONE')} />;
     }
 
+    if (legalView === 'CLIENT_DATA') {
+        return <ClientDataTerms onBack={() => setLegalView('NONE')} />;
+    }
+
+    if (legalView === 'OFFER') {
+        return <PublicOffer onBack={() => setLegalView('NONE')} />;
+    }
+
     return (
         <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
             <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl w-full max-w-sm shadow-xl animate-fade-in relative">
@@ -217,7 +227,35 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Придумайте пароль</label>
                                     <input type="password" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" />
                                 </div>
-                                <button onClick={handleRegister} disabled={isLoading} className="w-full bg-emerald-600 text-white p-4 rounded-xl font-bold hover:bg-emerald-700 transition-colors disabled:opacity-70">
+                                {/* 🔒 Согласие по 152-ФЗ должно быть «конкретным, предметным,
+                                    информированным, сознательным и однозначным» (ч. 1 ст. 9).
+                                    Формулировка «продолжая, вы соглашаетесь» этому не отвечает:
+                                    Роскомнадзор считает такое согласие невыраженным. Нужно
+                                    отдельное действие — снятая по умолчанию галочка. */}
+                                <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={legalAccepted}
+                                        onChange={e => setLegalAccepted(e.target.checked)}
+                                        className="mt-0.5 w-4 h-4 shrink-0 accent-emerald-600 cursor-pointer"
+                                    />
+                                    <span className="text-xs text-slate-600 dark:text-slate-400 leading-snug">
+                                        Принимаю условия{' '}
+                                        <button type="button" onClick={() => setLegalView('OFFER')} className="text-indigo-500 hover:underline">Публичной оферты</button>,
+                                        даю{' '}
+                                        <button type="button" onClick={() => setLegalView('AGREEMENT')} className="text-indigo-500 hover:underline">согласие на обработку персональных данных</button>,
+                                        ознакомлен(а) с{' '}
+                                        <button type="button" onClick={() => setLegalView('PRIVACY')} className="text-indigo-500 hover:underline">Политикой обработки персональных данных</button>
+                                        {' '}и{' '}
+                                        <button type="button" onClick={() => setLegalView('CLIENT_DATA')} className="text-indigo-500 hover:underline">Условиями обработки данных клиентов</button>.
+                                    </span>
+                                </label>
+
+                                <button
+                                    onClick={handleRegister}
+                                    disabled={isLoading || !legalAccepted}
+                                    className="w-full bg-emerald-600 text-white p-4 rounded-xl font-bold hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
                                     {isLoading ? 'Создание...' : 'Завершить регистрацию'}
                                 </button>
                             </div>
@@ -249,11 +287,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 )}
 
                 {/* Legal Footer */}
+                {/* Документы должны быть доступны в любой момент, а не только при регистрации:
+                    ч. 2 ст. 18.1 152-ФЗ требует неограниченного доступа к политике. */}
                 <div className="mt-6 text-[10px] text-center text-slate-400 dark:text-slate-500 leading-tight">
-                    Продолжая, вы соглашаетесь с <br/>
-                    <button onClick={() => setLegalView('PRIVACY')} className="text-indigo-500 hover:underline">Политикой конфиденциальности</button>
-                    {' '}и{' '}
-                    <button onClick={() => setLegalView('AGREEMENT')} className="text-indigo-500 hover:underline">Обработкой персональных данных</button>
+                    <button onClick={() => setLegalView('OFFER')} className="text-indigo-500 hover:underline">Оферта</button>
+                    {' · '}
+                    <button onClick={() => setLegalView('PRIVACY')} className="text-indigo-500 hover:underline">Политика обработки ПДн</button>
+                    {' · '}
+                    <button onClick={() => setLegalView('CLIENT_DATA')} className="text-indigo-500 hover:underline">Данные клиентов</button>
                 </div>
             </div>
         </div>

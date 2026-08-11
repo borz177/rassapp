@@ -399,6 +399,31 @@ class OfflineStorage {
       request.onerror = () => reject(request.error);
     });
   }
+
+  /**
+   * Полное уничтожение локальной базы — вызывается при удалении учётной записи.
+   *
+   * Обычной очистки localStorage недостаточно: в IndexedDB остаются кэш данных,
+   * очередь синхронизации и скачанные файлы документов (в том числе копии паспортов
+   * клиентов). После удаления аккаунта они не должны оставаться на устройстве.
+   *
+   * Соединение закрывается перед удалением, иначе запрос повиснет в состоянии blocked.
+   */
+  async wipeEverything(): Promise<void> {
+    try {
+      const db = await this.dbPromise;
+      db.close();
+    } catch { /* база и не открывалась — удалять всё равно можно */ }
+
+    return new Promise(resolve => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      // Резолвим в любом случае: удаление аккаунта не должно застрять, если
+      // база заблокирована другой вкладкой — там всё равно последует перезагрузка.
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+      req.onblocked = () => resolve();
+    });
+  }
 }
 
 export const offlineStorage = new OfflineStorage();

@@ -79,10 +79,9 @@ export default defineConfig(({ mode }) => {
       })
     ],
 
-    define: {
-      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-    },
+    // ИИ-функции отключены. Раньше здесь ключ Gemini подставлялся прямо в публичный
+    // бандл — то есть любой мог достать его из исходников страницы. Возвращать этот
+    // блок нельзя: ключ должен жить на сервере, а не в браузере.
 
     resolve: {
       alias: {

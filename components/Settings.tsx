@@ -2,8 +2,9 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
 import { AppSettings, ViewState, User, NotificationSettings, NotificationEventToggles } from '../types';
 import { ICONS, APP_VERSION, THEMES } from '../constants';
-import { PrivacyPolicy, DataProcessingAgreement } from './LegalDocs';
+import { PrivacyPolicy, DataProcessingAgreement, ClientDataTerms, PublicOffer } from './LegalDocs';
 import { api } from '../services/api';
+import { offlineStorage } from '../services/offlineStorage';
 import { useTheme, ThemeMode } from '../src/theme/ThemeContext';
 
 // 🔹 Тянут xlsx — грузим только когда реально открыли импорт/экспорт
@@ -194,6 +195,14 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
   const [isClearing, setIsClearing] = useState(false);
   const [confirmCooldown, setConfirmCooldown] = useState(0);
 
+  // 🗑 Удаление учётной записи
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [deleteCooldown, setDeleteCooldown] = useState(0);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteConfirmWord, setDeleteConfirmWord] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+
   // 👇 ДОБАВИЛИ: состояния для модалок импорта и экспорта
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -203,7 +212,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
   const [updateProgress, setUpdateProgress] = useState(0);
 
   // Legal Docs View State
-  const [legalView, setLegalView] = useState<'NONE' | 'PRIVACY' | 'AGREEMENT'>('NONE');
+  const [legalView, setLegalView] = useState<'NONE' | 'PRIVACY' | 'AGREEMENT' | 'CLIENT_DATA' | 'OFFER'>('NONE');
 
   useEffect(() => {
     setCompanyName(appSettings.companyName);
@@ -226,6 +235,38 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       return () => clearInterval(timer);
     }
   }, [showClearModal]);
+
+  // 🗑 Удаление учётной записи. Отсчёт длиннее, чем при сбросе данных (15 против 10):
+  // сброс оставляет аккаунт, а это действие необратимо и сносит ещё и сотрудников.
+  useEffect(() => {
+    if (showDeleteAccountModal) {
+      setDeleteCooldown(15);
+      const timer = setInterval(() => {
+        setDeleteCooldown(prev => {
+          if (prev <= 1) { clearInterval(timer); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [showDeleteAccountModal]);
+
+  const handleDeleteAccount = async () => {
+    if (deleteCooldown > 0 || isDeletingAccount) return;
+    setIsDeletingAccount(true);
+    setDeleteError('');
+    try {
+      await api.deleteAccount(deletePassword);
+      // Аккаунта больше нет — чистим локальные следы и уводим на экран входа.
+      // Без этого приложение осталось бы с токеном несуществующего пользователя.
+      try { await offlineStorage.wipeEverything(); } catch { /* не критично */ }
+      localStorage.clear();
+      window.location.href = '/';
+    } catch (e: any) {
+      setDeleteError(e?.message || 'Не удалось удалить учётную запись');
+      setIsDeletingAccount(false);
+    }
+  };
 
   // 🆕 ЭФФЕКТ ДЛЯ АНИМАЦИИ ПРОГРЕССА ОБНОВЛЕНИЯ
   useEffect(() => {
@@ -323,6 +364,14 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
 
   if (legalView === 'AGREEMENT') {
       return <DataProcessingAgreement onBack={() => setLegalView('NONE')} />;
+  }
+
+  if (legalView === 'OFFER') {
+      return <PublicOffer onBack={() => setLegalView('NONE')} />;
+  }
+
+  if (legalView === 'CLIENT_DATA') {
+      return <ClientDataTerms onBack={() => setLegalView('NONE')} />;
   }
 
   return (
@@ -653,6 +702,16 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       <SettingsAccordion title="Правовая информация">
           <div className="space-y-2">
               <button
+                  onClick={() => setLegalView('OFFER')}
+                  className="w-full text-left p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 text-sm font-medium text-slate-700 dark:text-slate-300 flex justify-between items-center transition-colors"
+              >
+                  Публичная оферта
+                  <span className="text-slate-400">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </span>
+              </button>
+              <div className="h-px bg-slate-50 dark:bg-slate-700 mx-2"></div>
+              <button
                   onClick={() => setLegalView('AGREEMENT')}
                   className="w-full text-left p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 text-sm font-medium text-slate-700 dark:text-slate-300 flex justify-between items-center transition-colors"
               >
@@ -666,7 +725,19 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
                   onClick={() => setLegalView('PRIVACY')}
                   className="w-full text-left p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 text-sm font-medium text-slate-700 dark:text-slate-300 flex justify-between items-center transition-colors"
               >
-                  Политика конфиденциальности
+                  Политика обработки персональных данных
+                  <span className="text-slate-400">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </span>
+              </button>
+              <div className="h-px bg-slate-50 dark:bg-slate-700 mx-2"></div>
+              {/* Ключевой документ: объясняет, что оператором данных покупателей является
+                  сам пользователь, а согласие у них берёт он. */}
+              <button
+                  onClick={() => setLegalView('CLIENT_DATA')}
+                  className="w-full text-left p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 text-sm font-medium text-slate-700 dark:text-slate-300 flex justify-between items-center transition-colors"
+              >
+                  Условия обработки данных клиентов
                   <span className="text-slate-400">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                   </span>
@@ -683,7 +754,126 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
               >
                   {ICONS.Delete} Сбросить все данные
               </button>
+
+              {/* 🗑 Удаление аккаунта — только владелец. Право на прекращение обработки
+                  и уничтожение данных (ст. 14 152-ФЗ), обещанное в Согласии и Оферте. */}
+              {user?.role === 'manager' && (
+                  <>
+                      <div className="h-px bg-slate-100 dark:bg-slate-700 my-4" />
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-2 leading-snug">
+                          Удаление учётной записи стирает все данные без возможности восстановления
+                          и является отзывом согласия на обработку персональных данных.
+                      </p>
+                      <button
+                          onClick={() => { setDeletePassword(''); setDeleteConfirmWord(''); setDeleteError(''); setShowDeleteAccountModal(true); }}
+                          className="btn-press w-full py-3 bg-rose-600 text-white font-bold rounded-xl hover:bg-rose-700 flex items-center justify-center gap-2"
+                      >
+                          {ICONS.Delete} Удалить учётную запись
+                      </button>
+                  </>
+              )}
           </SettingsAccordion>
+      )}
+
+      {/* Delete Account Modal */}
+      {showDeleteAccountModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
+               onClick={() => { if (!isDeletingAccount) setShowDeleteAccountModal(false); }}>
+              <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 animate-dialog-in max-h-[90vh] overflow-y-auto"
+                   onClick={e => e.stopPropagation()}>
+                  <div className="w-16 h-16 bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-full flex items-center justify-center mx-auto text-3xl">
+                      {ICONS.Alert}
+                  </div>
+                  <div className="text-center">
+                      <h3 className="text-xl font-bold text-slate-800 dark:text-white">Удалить учётную запись?</h3>
+                      <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Это действие необратимо.</p>
+                  </div>
+
+                  {/* Перечисляем поимённо, что именно исчезнет — общая фраза
+                      «все данные» не даёт понять масштаб */}
+                  <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-900/40 rounded-xl p-4">
+                      <p className="text-xs font-bold text-rose-800 dark:text-rose-300 mb-2">Будет удалено безвозвратно:</p>
+                      <ul className="text-xs text-rose-800 dark:text-rose-300 space-y-1 list-disc pl-4">
+                          <li>все клиенты, договоры рассрочки и история платежей;</li>
+                          <li>загруженные документы и фотографии, включая копии паспортов;</li>
+                          <li>расчёты с инвесторами, партнёрами и сотрудниками;</li>
+                          <li>учётные записи ваших сотрудников и инвесторов;</li>
+                          <li>переписка с поддержкой и все уведомления.</li>
+                      </ul>
+                  </div>
+
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-xl p-3 flex gap-2 items-start">
+                      <span className="text-amber-500 shrink-0">💡</span>
+                      <p className="text-xs text-amber-800 dark:text-amber-300">
+                          Если нужна копия данных — закройте это окно и сначала выгрузите их
+                          через «Экспорт данных». После удаления восстановить будет нечего.
+                      </p>
+                  </div>
+
+                  <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                          Введите слово <span className="font-bold text-rose-600 dark:text-rose-400">УДАЛИТЬ</span> для подтверждения
+                      </label>
+                      <input
+                          type="text"
+                          value={deleteConfirmWord}
+                          onChange={e => setDeleteConfirmWord(e.target.value)}
+                          placeholder="УДАЛИТЬ"
+                          autoComplete="off"
+                          className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-rose-500"
+                      />
+                  </div>
+
+                  <div>
+                      <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Ваш пароль</label>
+                      <input
+                          type="password"
+                          value={deletePassword}
+                          onChange={e => setDeletePassword(e.target.value)}
+                          placeholder="••••••"
+                          autoComplete="current-password"
+                          className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-rose-500"
+                      />
+                  </div>
+
+                  {deleteError && (
+                      <p className="text-sm text-rose-600 dark:text-rose-400 text-center">{deleteError}</p>
+                  )}
+
+                  {deleteCooldown > 0 && (
+                      <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 text-center">
+                          <p className="text-slate-600 dark:text-slate-300 text-sm">
+                              ⏳ Подождите <span className="font-bold text-lg">{deleteCooldown}</span> сек.
+                          </p>
+                      </div>
+                  )}
+
+                  <div className="flex gap-3 pt-1">
+                      <button
+                          onClick={() => setShowDeleteAccountModal(false)}
+                          disabled={isDeletingAccount}
+                          className="btn-press flex-1 py-3 bg-slate-100 dark:bg-slate-700 font-bold text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50"
+                      >
+                          Отмена
+                      </button>
+                      <button
+                          onClick={handleDeleteAccount}
+                          disabled={deleteCooldown > 0 || isDeletingAccount || deleteConfirmWord.trim().toUpperCase() !== 'УДАЛИТЬ' || !deletePassword}
+                          className="btn-press flex-1 py-3 font-bold rounded-xl flex items-center justify-center gap-2 bg-rose-600 text-white hover:bg-rose-700 disabled:bg-slate-300 dark:disabled:bg-slate-600 disabled:text-slate-500 disabled:cursor-not-allowed"
+                      >
+                          {isDeletingAccount ? (
+                              <>
+                                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                                  </svg>
+                                  Удаление...
+                              </>
+                          ) : deleteCooldown > 0 ? `${deleteCooldown}с...` : 'Удалить навсегда'}
+                      </button>
+                  </div>
+              </div>
+          </div>
       )}
 
       {/* Clear Data Modal */}

@@ -696,6 +696,20 @@ export const api = {
       try { await offlineStorage.removeCachedFile(fileUrl); } catch { /* не критично */ }
     },
 
+    // Полное удаление учётной записи. Пароль подтверждает, что это владелец.
+    deleteAccount: async (password: string): Promise<{ deletedAccounts: number; deletedFiles: number }> => {
+      const res = await fetchWithAuth(`${API_URL}/user/account`, {
+        method: 'DELETE',
+        body: JSON.stringify({ password }),
+        timeout: 30000,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Не удалось удалить учётную запись');
+      }
+      return res.json();
+    },
+
     deleteItem: async (type: string, id: string): Promise<{ success: boolean; isOffline?: boolean }> => {
   try {
     await fetchWithAuth(`${API_URL}/data/${type}/${id}`, {

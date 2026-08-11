@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Product } from '../types';
 import { ICONS } from '../constants';
-import { suggestProductDescription } from '../services/geminiService';
 
 interface ProductsProps {
   products: Product[];
