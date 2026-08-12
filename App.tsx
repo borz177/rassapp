@@ -251,7 +251,12 @@ const showNotificationModal = (
 // появлялся бы обратно после фоновой синхронизации. isSyncingRef защищает только от
 // параллельных ДРУГ ДРУГУ handleSync(), но не от этого — синхронизация тут всего одна.
 const recentLocalWritesRef = React.useRef<Map<string, number>>(new Map());
-const RECENT_WRITE_GUARD_MS = 10000;
+// 30 секунд, а не 10: таймаут запроса — 8 секунд, и при прежнем значении между
+// приходом медленного ответа и истечением гарда оставалось всего 2 секунды. Синхронизация
+// теперь запускается ещё и при возврате в приложение, то есть чаще, и попасть в это окно
+// стало проще. Гард лишь говорит «столько-то секунд доверяй локальной версии этой записи» —
+// свежие данные по ней всё равно приедут следующей синхронизацией.
+const RECENT_WRITE_GUARD_MS = 30000;
 
  // 🔹 Вспомогательная функция для "умного" слияния данных (исправленная версия)
 // 🔹 Улучшенная версия с защитой от потери данных
@@ -541,16 +546,54 @@ useEffect(() => {
   if (!user) return;
 
   backgroundSyncInterval.current = setInterval(() => {
-    if (navigator.onLine && !isSyncing) {
+    if (navigator.onLine) {
       console.log('🔄 Background sync triggered');
-      handleSync();
+      handleSync();   // сам выйдет, если синхронизация уже идёт (isSyncingRef)
     }
   }, 5 * 60 * 1000); // 5 минут
 
   return () => {
     if (backgroundSyncInterval.current) clearInterval(backgroundSyncInterval.current);
   };
-}, [user, isSyncing]);
+  // 🔒 isSyncing намеренно НЕ в зависимостях: он переключается дважды за каждую
+  // синхронизацию, эффект перезапускался, и пятиминутный отсчёт всё время обнулялся —
+  // реальный интервал плавал. Защита от параллельного запуска и так есть внутри
+  // handleSync (isSyncingRef) и в api.sync().
+}, [user]);
+
+// 🔄 Обновление при возврате в приложение.
+//
+// Основной сценарий: договор внесли на телефоне, а на компьютере приложение открыто,
+// но свёрнуто. Пятиминутный таймер в фоне душится браузером (в Electron — ещё и
+// backgroundThrottling), поэтому переключение на окно ничего не обновляло и данные
+// появлялись только после перезапуска. Такой же обработчик уже стоял на счётчике
+// уведомлений — здесь он для основных данных.
+//
+// Момент возврата вдобавок самый безопасный для обновления: пользователь только что
+// пришёл и заведомо ничего не редактировал последние секунды.
+const lastFocusSyncRef = React.useRef(0);
+useEffect(() => {
+  if (!user) return;
+
+  const FOCUS_SYNC_THROTTLE_MS = 20000; // чаще раза в 20 сек не дёргаем сервер
+
+  const syncOnReturn = () => {
+    if (!navigator.onLine) return;
+    const now = Date.now();
+    if (now - lastFocusSyncRef.current < FOCUS_SYNC_THROTTLE_MS) return;
+    lastFocusSyncRef.current = now;
+    handleSync();
+  };
+
+  const onVisible = () => { if (document.visibilityState === 'visible') syncOnReturn(); };
+  document.addEventListener('visibilitychange', onVisible);
+  window.addEventListener('focus', syncOnReturn);
+
+  return () => {
+    document.removeEventListener('visibilitychange', onVisible);
+    window.removeEventListener('focus', syncOnReturn);
+  };
+}, [user]);
 
 
   // 🎁 Есть ли непоказанные реферальные награды. Отдельным эффектом, а не внутри
