@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/services/api';
-import { Customer, Sale, Account, Investor, Payment } from '../types';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-
-declare const XLSX: any;
+// @ts-ignore — общий JS-модуль без типов, используется и сервером (server/index.js)
+import { buildExcelReport } from '../shared/excelReport.js';
 
 interface DataExportProps {
     onClose: () => void;
@@ -51,18 +50,11 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
         }
     };
 
-    const calculateColumnWidths = (data: any[]): { wch: number }[] => {
-        if (!data || data.length === 0) return [];
-        const colWidths: Map<string, number> = new Map();
-        for (const row of data) {
-            for (const [key, value] of Object.entries(row)) {
-                const cellValue = value === null || value === undefined ? '' : String(value);
-                const currentMax = colWidths.get(key) || key.length;
-                const newLen = Math.max(currentMax, cellValue.length);
-                colWidths.set(key, newLen);
-            }
-        }
-        return Array.from(colWidths.values()).map(width => ({ wch: Math.min(width + 2, 50) }));
+    const base64ToBlob = (base64: string): Blob => {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     };
 
     const processExport = async () => {
@@ -81,284 +73,32 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
         }
 
         try {
-            const { customers, sales, investors, accounts } = await api.fetchAllData();
-            addLog(`📊 Загружено из базы: Клиентов=${customers.length}, Продаж=${sales.length}`);
+            const data = await api.fetchAllData();
+            addLog(`📊 Загружено из базы: Клиентов=${data.customers.length}, Продаж=${data.sales.length}`);
 
-            // 🔧 МАГИЯ: Если даты пустые, берем 0 и Infinity (то есть весь период)
-            const filterStart = startDate ? new Date(startDate + 'T00:00:00').getTime() : 0;
-            const filterEnd = endDate ? new Date(endDate + 'T23:59:59').getTime() : Infinity;
+            // Сборка книги живёт в shared/excelReport.js — тот же модуль использует
+            // планировщик резервного копирования на сервере, чтобы файл из письма
+            // и файл из этой кнопки не разъезжались.
+            const { base64, salesCount } = buildExcelReport(XLSX_LIB, data, {
+                startDate: allTime ? undefined : startDate,
+                endDate: allTime ? undefined : endDate,
+                onlyActive,
+                includePlanned,
+            });
 
-            const overviewData: any[] = [];
-            const paymentsData: any[] = [];
-            let filteredSalesCount = 0;
-
-            let totalPeriodPayments = 0;
-            let totalClientDebt = 0;
-            let totalRevenue = 0;
-            let totalBuyPrice = 0;
-
-            // Для каждой строки "Обзора клиентов" запоминаем, с какого индекса в paymentsData
-            // начинаются платежи этой продажи — по этим индексам ниже строятся гиперссылки
-            // "клик по клиенту → его платежи".
-            const paymentAnchors: number[] = [];
-
-            // Накопитель по инвесторам для отдельного листа.
-            const investorTotals = new Map<string, {
-                sales: number; revenue: number; buyPrice: number; paid: number; debt: number;
-            }>();
-
-            const nowTs = Date.now();
-
-            for (const sale of sales) {
-                if (onlyActive && sale.status === 'COMPLETED') continue;
-
-                const saleDate = new Date(sale.startDate).getTime();
-
-                // Если saleDate попадает в диапазон (при allTime это всегда true, т.к. 0 <= saleDate <= Infinity)
-                if (saleDate < filterStart || saleDate > filterEnd) continue;
-
-                filteredSalesCount++;
-                const customer = customers.find(c => c.id === sale.customerId);
-                const account = accounts.find(a => a.id === sale.accountId);
-
-                let investor: Investor | undefined;
-                if (account?.ownerId) {
-                    investor = investors.find(i => i.id === account.ownerId);
-                }
-
-                const statusStr = sale.status === 'COMPLETED' ? 'Завершен' : (sale.status === 'DRAFT' ? 'Оформлен' : 'Активен');
-
-                const totalRealPaid = sale.paymentPlan
-                    .filter((p: Payment) => p.isRealPayment && p.isPaid)
-                    .reduce((sum, p) => sum + (p.amount || 0), 0);
-
-                const currentDebt = Math.max(0, (sale.totalAmount || 0) - (sale.downPayment || 0) - totalRealPaid);
-                totalClientDebt += currentDebt;
-
-                const revenue = sale.totalAmount || 0;
-                const buyPrice = sale.buyPrice || 0;
-                const profit = revenue - buyPrice;
-                // Маржа считается от цены рассрочки: какую долю от суммы договора составляет прибыль.
-                const marginPct = revenue > 0 ? Math.round((profit / revenue) * 1000) / 10 : 0;
-                totalRevenue += revenue;
-                totalBuyPrice += buyPrice;
-
-                // Просрочка: сколько по графику должно было быть оплачено к сегодняшнему дню
-                // (плановые строки, дата которых уже прошла) против фактически полученных денег.
-                // Первый непокрытый месяц даёт дату, от которой считаются дни задержки.
-                const scheduledSorted = (sale.paymentPlan || [])
-                    .filter((p: Payment) => !p.isRealPayment)
-                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                let dueByNow = 0;
-                let cumulative = 0;
-                let firstUnpaidDate: string | null = null;
-                for (const m of scheduledSorted) {
-                    if (new Date(m.date).getTime() <= nowTs) dueByNow += m.amount || 0;
-                    cumulative += m.amount || 0;
-                    if (!firstUnpaidDate && cumulative > totalRealPaid + 0.01) firstUnpaidDate = m.date;
-                }
-                const overdueAmount = Math.max(0, dueByNow - totalRealPaid);
-                let overdueDays = 0;
-                if (sale.status !== 'COMPLETED' && overdueAmount > 0.01 && firstUnpaidDate) {
-                    overdueDays = Math.max(0, Math.floor((nowTs - new Date(firstUnpaidDate).getTime()) / 86400000));
-                }
-
-                const investorName = investor?.name || 'Без инвестора';
-                const agg = investorTotals.get(investorName) || { sales: 0, revenue: 0, buyPrice: 0, paid: 0, debt: 0 };
-                agg.sales += 1;
-                agg.revenue += revenue;
-                agg.buyPrice += buyPrice;
-                agg.paid += totalRealPaid;
-                agg.debt += currentDebt;
-                investorTotals.set(investorName, agg);
-
-                overviewData.push({
-                    'Клиент': customer?.name || 'Неизвестный клиент',
-                    'Товар': sale.productName || '',
-                    'Инвестор': investor?.name || '-',
-                    'Телефон': customer?.phone || '',
-                    'Адрес': customer?.address || '',
-                    'Поручитель': sale.guarantorName || '',
-                    'Телефон поручителя': sale.guarantorPhone || '',
-                    'Цена рассрочки': revenue,
-                    'Цена закупа': buyPrice,
-                    'Прибыль': profit,
-                    'Маржа %': marginPct,
-                    'Взнос': sale.downPayment || 0,
-                    'Остаток долга': currentDebt,
-                    'Просрочено ₽': overdueDays > 0 ? Math.round(overdueAmount) : 0,
-                    'Просрочка (дн.)': overdueDays,
-                    'Срок (мес)': sale.installments || 0,
-                    'Дата оформления': new Date(sale.startDate).toLocaleDateString('ru-RU'),
-                    'Дата первого платежа': sale.paymentPlan && sale.paymentPlan.length > 0
-                        ? new Date(sale.paymentPlan[0].date).toLocaleDateString('ru-RU')
-                        : '',
-                    'Статус': statusStr
-                });
-
-                paymentAnchors.push(paymentsData.length);
-
-                let paymentsToExport = sale.paymentPlan?.filter((p: Payment) => p.isRealPayment) || [];
-                if (includePlanned) {
-                    paymentsToExport = sale.paymentPlan || [];
-                }
-
-                paymentsToExport = paymentsToExport.filter((p: Payment) => {
-                    const pDate = new Date(p.date).getTime();
-                    return pDate >= filterStart && pDate <= filterEnd;
-                });
-
-                if (paymentsToExport.length === 0) {
-                    paymentsData.push({
-                        'Клиент': customer?.name || 'Неизвестный клиент',
-                        'Товар': sale.productName || '',
-                        'Статус товара': statusStr,
-                        'Сумма': 0,
-                        'Дата платежа': '',
-                        'Платёж': 'Нет платежей в периоде'
-                    });
-                } else {
-                    for (const payment of paymentsToExport) {
-                        if (payment.isRealPayment && payment.isPaid) {
-                            totalPeriodPayments += payment.amount || 0;
-                        }
-
-                        paymentsData.push({
-                            'Клиент': customer?.name || 'Неизвестный клиент',
-                            'Товар': sale.productName || '',
-                            'Статус товара': statusStr,
-                            'Сумма': payment.amount || 0,
-                            'Дата платежа': new Date(payment.date).toLocaleDateString('ru-RU'),
-                            'Платёж': payment.note || (payment.isRealPayment ? 'Оплата' : 'План')
-                        });
-                    }
-                }
-            }
-
-            if (filteredSalesCount === 0) {
+            if (!base64) {
                 addLog("⚠️ Внимание: За выбранный период данных не найдено.");
                 setIsProcessing(false);
                 return;
             }
 
-            paymentsData.push({});
-            paymentsData.push({
-                'Клиент': 'ИТОГО:',
-                'Товар': `Продаж: ${filteredSalesCount}`,
-                'Статус товара': '',
-                'Сумма': totalPeriodPayments,
-                'Дата платежа': '',
-                'Платёж': ''
-            });
-
-            // 🔧 Адаптивный текст для сводки
-            const periodText = allTime
-                ? 'Весь период (с начала работы)'
-                : `${new Date(filterStart).toLocaleDateString('ru-RU')} — ${new Date(filterEnd).toLocaleDateString('ru-RU')}`;
-
-            const totalProfit = totalRevenue - totalBuyPrice;
-            const totalMarginPct = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 1000) / 10 : 0;
-
-            const summaryData = [
-                { 'Параметр': '📅 Период выгрузки', 'Значение': periodText },
-                { 'Параметр': '', 'Значение': '' },
-                { 'Параметр': '💳 Получено платежей', 'Значение': `${totalPeriodPayments.toLocaleString('ru-RU')} ₽` },
-                { 'Параметр': '📉 Общий долг клиентов', 'Значение': `${totalClientDebt.toLocaleString('ru-RU')} ₽` },
-                { 'Параметр': '', 'Значение': '' },
-                { 'Параметр': '🏷 Сумма договоров', 'Значение': `${totalRevenue.toLocaleString('ru-RU')} ₽` },
-                { 'Параметр': '📦 Сумма закупа', 'Значение': `${totalBuyPrice.toLocaleString('ru-RU')} ₽` },
-                { 'Параметр': '📈 Прибыль (договоры − закуп)', 'Значение': `${totalProfit.toLocaleString('ru-RU')} ₽` },
-                { 'Параметр': '％ Маржа', 'Значение': `${totalMarginPct} %` },
-                { 'Параметр': '', 'Значение': '' },
-                { 'Параметр': '🕐 Дата формирования', 'Значение': new Date().toLocaleString('ru-RU') }
-            ];
-
-            const investorData = Array.from(investorTotals.entries())
-                .sort((a, b) => b[1].revenue - a[1].revenue)
-                .map(([name, t]) => ({
-                    'Инвестор': name,
-                    'Продаж': t.sales,
-                    'Сумма договоров': t.revenue,
-                    'Закуп': t.buyPrice,
-                    'Прибыль': t.revenue - t.buyPrice,
-                    'Маржа %': t.revenue > 0 ? Math.round(((t.revenue - t.buyPrice) / t.revenue) * 1000) / 10 : 0,
-                    'Получено': t.paid,
-                    'Остаток долга': t.debt
-                }));
-
-            if (investorData.length > 0) {
-                const sum = (key: keyof (typeof investorData)[number]) =>
-                    investorData.reduce((s, r) => s + (Number(r[key]) || 0), 0);
-                const revSum = sum('Сумма договоров');
-                const buySum = sum('Закуп');
-                investorData.push({
-                    'Инвестор': 'ИТОГО:',
-                    'Продаж': sum('Продаж'),
-                    'Сумма договоров': revSum,
-                    'Закуп': buySum,
-                    'Прибыль': revSum - buySum,
-                    'Маржа %': revSum > 0 ? Math.round(((revSum - buySum) / revSum) * 1000) / 10 : 0,
-                    'Получено': sum('Получено'),
-                    'Остаток долга': sum('Остаток долга')
-                });
-            }
-
-            addLog(`📝 Формирование листов Excel...`);
-            addLog(`   - Найдено продаж: ${filteredSalesCount}`);
-
-            const wb = XLSX_LIB.utils.book_new();
-
-            const ws1 = XLSX_LIB.utils.json_to_sheet(overviewData);
-            ws1['!cols'] = calculateColumnWidths(overviewData);
-            ws1['!views'] = [{ state: 'frozen', ySplit: 1 }];
-            ws1['!autofilter'] = { ref: `A1:${XLSX_LIB.utils.encode_col(overviewData[0] ? Object.keys(overviewData[0]).length - 1 : 0)}1` };
-
-            // Клик по имени клиента переносит на его первую строку в "Истории платежей".
-            // В xlsx внутренние ссылки задаются через Target с ведущим "#" — это штатная
-            // возможность формата, работает и в Excel, и в Google Sheets.
-            // +2 к индексу: строка 1 — заголовок, а нумерация строк в Excel начинается с 1.
-            overviewData.forEach((_, i) => {
-                const addr = `A${i + 2}`;
-                if (!ws1[addr]) return;
-                ws1[addr].l = {
-                    Target: `#'История платежей'!A${paymentAnchors[i] + 2}`,
-                    Tooltip: 'Перейти к платежам этого клиента'
-                };
-            });
-
-            XLSX_LIB.utils.book_append_sheet(wb, ws1, "Обзор клиентов");
-
-            const ws2 = XLSX_LIB.utils.json_to_sheet(paymentsData);
-            ws2['!cols'] = calculateColumnWidths(paymentsData);
-            ws2['!views'] = [{ state: 'frozen', ySplit: 1 }];
-            ws2['!autofilter'] = { ref: `A1:${XLSX_LIB.utils.encode_col(paymentsData[0] ? Object.keys(paymentsData[0]).length - 1 : 0)}1` };
-
-            // Обратные ссылки: с первой строки платежей клиента — назад в "Обзор клиентов".
-            paymentAnchors.forEach((anchor, i) => {
-                const addr = `A${anchor + 2}`;
-                if (!ws2[addr]) return;
-                ws2[addr].l = {
-                    Target: `#'Обзор клиентов'!A${i + 2}`,
-                    Tooltip: 'Вернуться к карточке продажи'
-                };
-            });
-
-            XLSX_LIB.utils.book_append_sheet(wb, ws2, "История платежей");
-
-            if (investorData.length > 0) {
-                const ws4 = XLSX_LIB.utils.json_to_sheet(investorData);
-                ws4['!cols'] = calculateColumnWidths(investorData);
-                ws4['!views'] = [{ state: 'frozen', ySplit: 1 }];
-                XLSX_LIB.utils.book_append_sheet(wb, ws4, "По инвесторам");
-            }
-
-            const ws3 = XLSX_LIB.utils.json_to_sheet(summaryData);
-            ws3['!cols'] = [{ wch: 45 }, { wch: 40 }];
-            XLSX_LIB.utils.book_append_sheet(wb, ws3, "Сводка");
+            addLog(`📝 Файл сформирован. Продаж: ${salesCount}`);
 
             const fileName = allTime
                 ? `Export_All_Time_${new Date().toISOString().slice(0, 10)}.xlsx`
                 : `Export_${startDate}_to_${endDate}.xlsx`;
+
+            const base64Data = base64;
 
             // 🔹 В нативном Android/iOS-приложении (Capacitor WebView) обычный браузерный
             // download через <a download> / blob-ссылку не срабатывает — WebView не умеет
@@ -366,7 +106,6 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
             // открываем системный диалог "Поделиться/Сохранить".
             if (Capacitor.isNativePlatform()) {
                 addLog("📱 Сохранение файла на устройство...");
-                const base64Data: string = XLSX_LIB.write(wb, { type: 'base64', bookType: 'xlsx' });
                 const saved = await Filesystem.writeFile({
                     path: fileName,
                     data: base64Data,
@@ -380,7 +119,12 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                 });
                 addLog(`✅ Файл "${fileName}" готов — выберите, куда сохранить или кому отправить.`);
             } else {
-                XLSX_LIB.writeFile(wb, fileName);
+                const url = URL.createObjectURL(base64ToBlob(base64Data));
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                link.click();
+                URL.revokeObjectURL(url);
                 addLog(`✅ Файл "${fileName}" успешно скачан!`);
             }
 
@@ -454,7 +198,7 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                     <div className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-900/50 rounded-xl p-3 text-xs text-emerald-800 dark:text-emerald-400">
                         <p className="font-bold mb-1">📋 Файл будет содержать 4 листа:</p>
                         <ul className="list-disc list-inside space-y-0.5">
-                            <li><b>Обзор клиентов</b> — долг, закуп, прибыль, маржа, просрочка</li>
+                            <li><b>Обзор клиентов</b> — закуп, цена, прибыль, долг, просрочка</li>
                             <li><b>История платежей</b> — оплаты + итого</li>
                             <li><b>По инвесторам</b> — итоги по каждому инвестору</li>
                             <li><b>Сводка</b> — поступления, долг и прибыль</li>

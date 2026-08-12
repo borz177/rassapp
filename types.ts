@@ -329,6 +329,32 @@ export interface AppSettings {
   notifications?: NotificationSettings;
 }
 
+export type BackupFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';
+
+/**
+ * Настройки резервного копирования на почту. Живут не в AppSettings, а в отдельной
+ * таблице на сервере (backup_settings): приложение сохраняет AppSettings целиком,
+ * и служебные отметки планировщика (nextRunAt/lastRunAt) затирались бы при каждом
+ * сохранении любой другой настройки.
+ */
+export interface BackupSettings {
+  enabled: boolean;
+  frequency: BackupFrequency;
+  /** Подтверждённый дополнительный адрес (кроме почты аккаунта). */
+  extraEmail: string | null;
+  extraEmailVerified: boolean;
+  /** Адрес, для которого запрошен код, но подтверждение ещё не введено. */
+  extraEmailPending: string | null;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastStatus: 'OK' | 'EMPTY' | 'ERROR' | 'SKIPPED' | 'OVERSIZED' | 'TOO_MANY' | null;
+  lastError: string | null;
+  accountEmail: string;
+  plan: string;
+  /** Что разрешает текущий тариф — решает сервер, интерфейс только отображает. */
+  allowedFrequencies: BackupFrequency[];
+}
+
 export type NotificationType =
   | 'PAYMENT'
   | 'NEW_CONTRACT'

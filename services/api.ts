@@ -1,4 +1,4 @@
-import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification } from "../types";
+import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency } from "../types";
 import { offlineStorage } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
 // Helper to determine the API URL dynamically
@@ -978,6 +978,16 @@ export const api = {
         return json;
     },
 
+    put: async <T>(url: string, data?: any): Promise<T> => {
+        const res = await fetchWithAuth(`${API_URL}${url}`, {
+            method: 'PUT',
+            body: data ? JSON.stringify(data) : undefined
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.msg || json.error || `PUT ${url} failed`);
+        return json;
+    },
+
     patch: async <T>(url: string, data?: any): Promise<T> => {
         const res = await fetchWithAuth(`${API_URL}${url}`, {
             method: 'PATCH',
@@ -1083,6 +1093,33 @@ export const api = {
 
     getPushSubscriptions: async (): Promise<{ id: string; userAgent?: string; createdAt: string }[]> => {
         return api.get('/push/subscriptions');
+    },
+
+    // === РЕЗЕРВНОЕ КОПИРОВАНИЕ НА ПОЧТУ (server/backup.js) ===
+    // Настройки хранятся на сервере отдельно от AppSettings, поэтому свои методы,
+    // а не общий saveItem('settings', ...).
+    getBackupSettings: async (): Promise<BackupSettings> => {
+        return api.get('/backup/settings');
+    },
+
+    updateBackupSettings: async (payload: { enabled: boolean; frequency: BackupFrequency }): Promise<BackupSettings> => {
+        return api.put('/backup/settings', payload);
+    },
+
+    runBackupNow: async (): Promise<{ ok: boolean; status: string }> => {
+        return api.post('/backup/run-now');
+    },
+
+    requestBackupExtraEmail: async (email: string): Promise<{ ok: boolean }> => {
+        return api.post('/backup/extra-email/request', { email });
+    },
+
+    confirmBackupExtraEmail: async (code: string): Promise<BackupSettings> => {
+        return api.post('/backup/extra-email/confirm', { code });
+    },
+
+    removeBackupExtraEmail: async (): Promise<BackupSettings> => {
+        return api.delete('/backup/extra-email');
     },
 
     sendOverdueReminder: async (payload: {

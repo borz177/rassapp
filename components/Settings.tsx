@@ -10,6 +10,9 @@ import { useTheme, ThemeMode } from '../src/theme/ThemeContext';
 // 🔹 Тянут xlsx — грузим только когда реально открыли импорт/экспорт
 const DataImport = lazy(() => import('./DataImport'));
 const DataExport = lazy(() => import('./DataExport'));
+// Карточка сама ходит на /api/backup/settings — грузим лениво, чтобы запрос уходил
+// только у тех, кто действительно открыл раздел настроек.
+const BackupSettingsCard = lazy(() => import('./BackupSettingsCard'));
 
 interface SettingsProps {
   appSettings: AppSettings;
@@ -457,6 +460,20 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
               </label>
           </div>
       </SettingsAccordion>
+
+      {/* Резервное копирование — как и уведомления, только для владельца данных:
+          рассылка идёт по базе менеджера, и настраивать её сотруднику нечего.
+          Состояние живёт на сервере (backup_settings), поэтому карточка грузит его сама. */}
+      {(user?.role === 'manager' || user?.role === 'admin') && (
+      <SettingsAccordion
+          title="Резервное копирование"
+          subtitle="Excel с вашими данными на почту — ежедневно, еженедельно или ежемесячно."
+      >
+          <Suspense fallback={<p className="text-sm text-slate-500 dark:text-slate-400">Загрузка…</p>}>
+              <BackupSettingsCard onNavigate={onNavigate} />
+          </Suspense>
+      </SettingsAccordion>
+      )}
 
       {/* Notifications — доступно только владельцу тенанта (менеджер/админ): у сотрудников и
           инвесторов тумблеры сохранялись бы под их собственным settings-id и не влияли бы на

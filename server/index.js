@@ -1006,6 +1006,31 @@ await pool.query(`
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created_at ON admin_audit_log(created_at DESC);`);
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_admin_audit_log_target_user_id ON admin_audit_log(target_user_id);`);
 
+// === РЕЗЕРВНОЕ КОПИРОВАНИЕ НА ПОЧТУ ===
+// Отдельная таблица, а не поле в settings: клиент сохраняет настройки целиком
+// (PUT со всем объектом AppSettings) и затирал бы служебные отметки планировщика —
+// next_run_at/last_run_at. Из-за этого копия либо ушла бы повторно, либо не ушла вовсе.
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS backup_settings (
+    user_id TEXT PRIMARY KEY,
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    frequency TEXT NOT NULL DEFAULT 'MONTHLY',
+    extra_email TEXT,
+    extra_email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    extra_email_pending TEXT,
+    extra_email_code TEXT,
+    extra_email_code_expires TIMESTAMP,
+    next_run_at TIMESTAMP,
+    last_run_at TIMESTAMP,
+    last_status TEXT,
+    last_error TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+// Планировщик каждые 15 минут выбирает «кому пора» — без индекса это seq scan
+// по всей таблице пользователей на каждом тике.
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_backup_settings_due ON backup_settings(next_run_at) WHERE enabled = TRUE;`);
+
     initSuperAdmin();
 
   } catch (err) {
@@ -5011,6 +5036,13 @@ app.get('/api/calculator-configs/:configId', async (req, res) => {
     res.status(500).json({ msg: 'Server error' });
   }
 });
+// 🔹 Резервное копирование на почту (роуты + ночной планировщик), см. server/backup.js
+const backupModule = require('./backup')({
+  pool, transporter, auth, getEffectivePlan, generateCode,
+});
+backupModule.registerRoutes(app);
+backupModule.startScheduler();
+
 // 🔹 Очистка старых конфигов (запускается раз в сутки)
 setInterval(async () => {
   try {
