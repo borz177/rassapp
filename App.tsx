@@ -133,6 +133,9 @@ const isLanding = path === "/"
   // так интерфейс и проверки при записи опираются на одно правило и не расходятся.
   // Данные таких инвесторов сохраняются: они блокируются, а не удаляются.
   const [lockedInvestorIds, setLockedInvestorIds] = useState<string[]>([]);
+  // Счета заблокированных инвесторов — операции по ним тоже закрыты, иначе деньги
+  // можно было бы проводить через тот же счёт, просто не указывая инвестора.
+  const [lockedAccountIds, setLockedAccountIds] = useState<string[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -618,6 +621,7 @@ const handleSync = async () => {
         if (freshData.accounts) setAccounts(prev => mergeServerData(prev, freshData.accounts, 'accounts'));
         if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors'));
         if (Array.isArray(freshData.lockedInvestorIds)) setLockedInvestorIds(freshData.lockedInvestorIds);
+        if (Array.isArray(freshData.lockedAccountIds)) setLockedAccountIds(freshData.lockedAccountIds);
         if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
         if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
         if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers'));
@@ -874,6 +878,7 @@ useEffect(() => {
               if (freshData.accounts) setAccounts(prev => mergeServerData(prev, freshData.accounts, 'accounts'));
               if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors'));
               if (Array.isArray(freshData.lockedInvestorIds)) setLockedInvestorIds(freshData.lockedInvestorIds);
+              if (Array.isArray(freshData.lockedAccountIds)) setLockedAccountIds(freshData.lockedAccountIds);
               if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
               if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
               if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers'));
@@ -1196,6 +1201,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
     if (data.accounts) setAccounts(prev => mergeServerData(prev, data.accounts, 'accounts'));
     if (data.investors) setInvestors(prev => mergeServerData(prev, data.investors, 'investors'));
     if (Array.isArray(data.lockedInvestorIds)) setLockedInvestorIds(data.lockedInvestorIds);
+    if (Array.isArray(data.lockedAccountIds)) setLockedAccountIds(data.lockedAccountIds);
     if (data.partnerships) setPartnerships(prev => mergeServerData(prev, data.partnerships, 'partnerships'));
     if (data.suppliers) setSuppliers(prev => mergeServerData(prev, data.suppliers, 'suppliers'));
     if (data.tasks) setTasks(prev => mergeServerData(prev, data.tasks, 'tasks'));
@@ -3462,6 +3468,7 @@ if (!user && !showSplash) {
     onSelectAccount={handleSelectAccountForOperations}
     onSetMainAccount={handleSetMainAccount}
     onUpdateAccount={handleUpdateAccount}
+    lockedAccountIds={lockedAccountIds}
     isManager={isManager}
 
     // 🔹 Новые пропсы для внутренней фильтрации

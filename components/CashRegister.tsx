@@ -37,6 +37,8 @@ interface CashRegisterProps {
   onSetMainAccount: (accountId: string) => void;
   onUpdateAccount?: (account: Account) => void;
   onSelectCustomer?: (customerId: string) => void;
+  /** Счета инвесторов сверх лимита тарифа — операции по ним закрыты до его повышения */
+  lockedAccountIds?: string[];
   isManager: boolean;
   totalExpectedProfit: number;
   realizedPeriodProfit: number;
@@ -445,7 +447,8 @@ const AccountActionModal = ({
 
 const CashRegister: React.FC<CashRegisterProps> = ({
     accounts, sales, expenses, investors, customers, onAddAccount, onAction, onSelectAccount, onSetMainAccount, onUpdateAccount,
-    onSelectCustomer, isManager, myProfitPeriod, setMyProfitPeriod, appSettings
+    onSelectCustomer, isManager, myProfitPeriod, setMyProfitPeriod, appSettings,
+    lockedAccountIds = []
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -903,8 +906,13 @@ const investorProfitPayouts = useMemo(() => {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-          {visibleAccounts.map(acc => (
-            <div key={acc.id} className="relative bg-white dark:bg-slate-800 rounded-2xl sm:rounded-3xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden" onClick={() => handleSharedAccountClick(acc)}>
+          {visibleAccounts.map(acc => {
+            // Счёт инвестора сверх лимита тарифа: виден, но операции по нему закрыты
+            const isLocked = lockedAccountIds.includes(acc.id);
+            return (
+            <div key={acc.id} className={`relative bg-white dark:bg-slate-800 rounded-2xl sm:rounded-3xl shadow-sm transition-all duration-300 overflow-hidden ${
+              isLocked ? 'opacity-70 ring-1 ring-amber-300 dark:ring-amber-800' : 'hover:shadow-xl'
+            }`} onClick={() => { if (!isLocked) handleSharedAccountClick(acc); }}>
               <div className={`absolute inset-0 bg-gradient-to-br ${getAccountTypeColor(acc.type)} opacity-0 hover:opacity-5 transition-opacity`}></div>
               <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${getAccountTypeColor(acc.type)}`}></div>
               <div className="relative p-4 sm:p-6">
@@ -916,6 +924,9 @@ const investorProfitPayouts = useMemo(() => {
                     </div>
                     {acc.isMain && acc.type !== 'MAIN' && (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] sm:text-xs font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">⭐ Основной</span>
+                    )}
+                    {isLocked && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] sm:text-xs font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">🔒 Сверх лимита</span>
                     )}
                   </div>
                   <button onClick={(e) => handleMenuClick(e, acc)} className="p-1.5 sm:p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg sm:rounded-xl transition-all z-10" aria-label="Действия со счетом">{ICONS.More}</button>
@@ -973,7 +984,8 @@ const investorProfitPayouts = useMemo(() => {
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

@@ -333,24 +333,51 @@ const FEATURE_DENIED_MESSAGES = {
 // вступления пользователь может отредактировать и тем самым менять состав разрешённых.
 const getInvestorLimitState = async (userId) => {
   const userResult = await pool.query(`SELECT role, subscription FROM users WHERE id = $1`, [userId]);
-  if (userResult.rows.length === 0) return { limit: -1, lockedIds: [], plan: null };
+  // Во всех ранних возвратах поля те же, что и в основном: вызывающий код обращается
+  // к lockedAccountIds напрямую, и undefined уронил бы сохранение данных.
+  if (userResult.rows.length === 0) return { limit: -1, lockedIds: [], lockedAccountIds: [], plan: null };
 
   const user = userResult.rows[0];
-  if (user.role === 'admin') return { limit: -1, lockedIds: [], plan: 'ADMIN' };
+  if (user.role === 'admin') return { limit: -1, lockedIds: [], lockedAccountIds: [], plan: 'ADMIN' };
 
   const subscription = typeof user.subscription === 'string'
     ? JSON.parse(user.subscription) : user.subscription;
   const plan = getEffectivePlan(subscription) || 'TRIAL';
   const limit = PLAN_LIMITS?.[plan]?.investors ?? -1;
 
-  if (limit === -1) return { limit, lockedIds: [], plan };
+  if (limit === -1) return { limit, lockedIds: [], lockedAccountIds: [], plan };
 
   const rows = await pool.query(
     `SELECT id FROM data_items WHERE user_id = $1 AND type = 'investors'
       ORDER BY created_at ASC, id ASC`,
     [userId]
   );
-  return { limit, plan, lockedIds: rows.rows.slice(limit).map(r => r.id) };
+  const lockedIds = rows.rows.slice(limit).map(r => r.id);
+  if (lockedIds.length === 0) return { limit, plan, lockedIds, lockedAccountIds: [] };
+
+  // Счета заблокированных инвесторов закрываем вместе с ними — иначе деньги можно
+  // продолжать проводить через счёт, просто не указывая инвестора.
+  //
+  // Общий пул закрываем ТОЛЬКО если заблокированы все его участники: у пула бывают
+  // и разрешённые инвесторы, и они не должны страдать из-за соседа сверх лимита.
+  const accRes = await pool.query(
+    `SELECT data FROM data_items WHERE user_id = $1 AND type = 'accounts'`,
+    [userId]
+  );
+  const locked = new Set(lockedIds);
+  const lockedAccountIds = accRes.rows
+    .map(r => r.data)
+    .filter(acc => {
+      if (!acc) return false;
+      if (acc.type === 'POOL') {
+        const members = acc.poolMemberIds || [];
+        return members.length > 0 && members.every(id => locked.has(id));
+      }
+      return !!acc.ownerId && locked.has(acc.ownerId);
+    })
+    .map(acc => acc.id);
+
+  return { limit, plan, lockedIds, lockedAccountIds };
 };
 
 const checkFeatureAccess = async (userId, featureKey) => {
@@ -2366,12 +2393,14 @@ app.get('/api/data', auth, async (req, res) => {
     // 🔒 Кто из инвесторов сверх лимита тарифа. Считаем на сервере и отдаём готовым списком,
     // чтобы интерфейс и проверки при записи опирались на одно и то же правило и не разошлись.
     try {
-      const { limit, lockedIds } = await getInvestorLimitState(targetUserId);
+      const { limit, lockedIds, lockedAccountIds } = await getInvestorLimitState(targetUserId);
       finalResult.investorLimit = limit;
       finalResult.lockedInvestorIds = lockedIds;
+      finalResult.lockedAccountIds = lockedAccountIds || [];
     } catch (e) {
       console.error('⚠️ Не удалось вычислить лимит инвесторов:', e.message);
       finalResult.lockedInvestorIds = [];
+      finalResult.lockedAccountIds = [];
     }
 
     res.json(finalResult);
@@ -2502,15 +2531,29 @@ app.post('/api/data/:type', auth, async (req, res) => {
       }
     }
 
-    // 🔒 Операции с заблокированным инвестором (выплаты, пополнения) закрыты до повышения
-    // тарифа. Сами данные и история расчётов при этом сохраняются нетронутыми.
-    if ((type === 'expenses' || type === 'sales') && itemData.investorId) {
-      const { lockedIds } = await getInvestorLimitState(targetUserId);
-      if (lockedIds.includes(itemData.investorId)) {
+    // 🔒 Операции с заблокированным инвестором и по его счёту закрыты до повышения тарифа.
+    // Сами данные и история расчётов при этом сохраняются нетронутыми.
+    //
+    // Счёт проверяем отдельно от инвестора: без этого деньги можно было бы проводить
+    // через тот же счёт, просто не указывая инвестора в операции.
+    if (type === 'expenses' || type === 'sales' || type === 'accounts') {
+      const { lockedIds, lockedAccountIds } = await getInvestorLimitState(targetUserId);
+
+      if (itemData.investorId && lockedIds.includes(itemData.investorId)) {
         return res.status(403).json({
           code: 'INVESTOR_LOCKED',
           msg: 'Инвестор заблокирован: он сверх лимита вашего тарифа.',
           hint: 'Повысьте тариф, чтобы проводить операции с этим инвестором.'
+        });
+      }
+
+      // Для самого счёта проверяем его id, для операций — счёт, по которому они идут
+      const touchedAccount = type === 'accounts' ? itemData.id : itemData.accountId;
+      if (touchedAccount && lockedAccountIds.includes(touchedAccount)) {
+        return res.status(403).json({
+          code: 'ACCOUNT_LOCKED',
+          msg: 'Счёт заблокирован: он принадлежит инвестору сверх лимита вашего тарифа.',
+          hint: 'Повысьте тариф, чтобы снова проводить операции по этому счёту.'
         });
       }
     }
