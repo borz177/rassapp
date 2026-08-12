@@ -1109,7 +1109,7 @@ useEffect(() => {
 
   // Ключ меняется вместе с содержимым окна: те, кто видел прошлое обновление,
   // должны увидеть и новое, а не считаться уже показанными.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v25';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v26';
   const REPEAT_AFTER = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -4532,8 +4532,6 @@ if (!user && !showSplash) {
 
 
 
-
-
 {showTemplateUpdateModal && (
   <div
     className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
@@ -4545,52 +4543,33 @@ if (!user && !showSplash) {
     >
       <div className="p-6">
         {/* Заголовок */}
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center text-2xl">
-            🎁
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-2xl">
+            💾
           </div>
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-              Что нового
+              Обновление
             </h3>
             <p className="text-sm text-gray-500 dark:text-slate-400">
-              Приглашайте друзей и получайте дни
+              Добавили резервное копирование
             </p>
           </div>
         </div>
 
-        {/* Главное — отдельной карточкой, чтобы не потерялось в списке */}
-        <button
-          onClick={() => {
-            setShowTemplateUpdateModal(false);
-            setPreviousView('MORE');
-            setCurrentView('REFERRAL');
-          }}
-          className="w-full text-left mb-4 p-4 rounded-xl bg-gradient-to-br from-emerald-500 to-green-500 text-white active:scale-[0.98] transition-all"
-        >
-          <p className="font-bold">Пригласить друга — +10 дней</p>
-          <p className="text-xs text-emerald-50 mt-0.5 leading-snug">
-            За каждого, кто зарегистрируется по вашей ссылке и оплатит подписку,
-            вам добавится 10 дней. Нажмите, чтобы получить ссылку.
-          </p>
-        </button>
-
-        {/* Как это работает — коротко, тремя шагами */}
+        {/* Список обновлений */}
         <div className="divide-y divide-gray-100 dark:divide-slate-800 mb-6">
-          {[
-            { icon: '1', text: 'Отправьте свою ссылку знакомому, который ведёт рассрочки' },
-            { icon: '2', text: 'Он регистрируется по ней и оплачивает любой тариф' },
-            { icon: '3', text: 'Вам автоматически добавляется 10 дней подписки' },
-          ].map(item => (
-            <div key={item.icon} className="flex items-center gap-3 py-3">
-              <div className="shrink-0 w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center justify-center">
-                {item.icon}
-              </div>
-              <p className="text-xs text-gray-600 dark:text-slate-400 leading-snug">
-                {item.text}
+          <div className="flex items-center gap-3 py-4">
+            <div className="text-2xl">📧</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
+                Автобэкап на почту
+              </p>
+              <p className="text-xs text-gray-500 dark:text-slate-500">
+                Ежедневно, еженедельно или ежемесячно — Excel со всеми данными приходит на почту
               </p>
             </div>
-          ))}
+          </div>
         </div>
 
         <button
@@ -4603,7 +4582,6 @@ if (!user && !showSplash) {
     </div>
   </div>
 )}
-
 
 
 

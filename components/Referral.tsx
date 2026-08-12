@@ -171,8 +171,6 @@ const Referral: React.FC<ReferralProps> = ({ onBack }) => {
                             </ol>
                             <p className="text-xs text-slate-400 dark:text-slate-500 mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 leading-snug">
                                 Награда начисляется один раз за каждого приглашённого — при его первой оплате.
-                                Приглашать самого себя на второй аккаунт не получится: совпадение почты или
-                                телефона проверяется автоматически.
                             </p>
                         </div>
                     </>

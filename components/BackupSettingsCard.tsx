@@ -13,6 +13,11 @@ const FREQUENCY_OPTIONS: { key: BackupFrequency; label: string; hint: string }[]
   { key: 'MONTHLY', label: 'Ежемесячно', hint: '1-го числа' },
 ];
 
+// Кнопка ручной отправки скрыта по просьбе: проверить работу уже удалось,
+// а на каждый клик уходит письмо с вложением — при лимитах Gmail лишние отправки ни к чему.
+// Роут /api/backup/run-now на сервере остался рабочим, так что вернуть кнопку — это снять флаг.
+const SHOW_RUN_NOW_BUTTON = false;
+
 const STATUS_TEXT: Record<string, string> = {
   OK: 'Отправлено',
   EMPTY: 'Нет данных для выгрузки',
@@ -241,7 +246,7 @@ const BackupSettingsCard: React.FC<BackupSettingsCardProps> = ({ onNavigate }) =
         </p>
       </div>
 
-      {/* Состояние и ручная отправка */}
+      {/* Состояние: когда была последняя копия и когда будет следующая */}
       <div className="pt-4 border-t border-slate-100 dark:border-slate-700 space-y-3">
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
@@ -260,18 +265,20 @@ const BackupSettingsCard: React.FC<BackupSettingsCardProps> = ({ onNavigate }) =
           </div>
         </div>
 
-        <button
-          type="button"
-          disabled={isBusy || !settings.enabled}
-          onClick={() => runAction(async () => {
-            await api.runBackupNow();
-            setNotice('Копия отправлена — проверьте почту');
-            setSettings(await api.getBackupSettings());
-          })}
-          className="w-full py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50"
-        >
-          {isBusy ? 'Отправляем…' : 'Отправить копию сейчас'}
-        </button>
+        {SHOW_RUN_NOW_BUTTON && (
+          <button
+            type="button"
+            disabled={isBusy || !settings.enabled}
+            onClick={() => runAction(async () => {
+              await api.runBackupNow();
+              setNotice('Копия отправлена — проверьте почту');
+              setSettings(await api.getBackupSettings());
+            })}
+            className="w-full py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50"
+          >
+            {isBusy ? 'Отправляем…' : 'Отправить копию сейчас'}
+          </button>
+        )}
       </div>
 
       {notice && <p className="text-sm text-emerald-600 dark:text-emerald-400">{notice}</p>}
