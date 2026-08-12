@@ -1,7 +1,13 @@
 import { Sale, Customer, WhatsAppSettings } from "../types";
 import { api } from "./api";
 
-const GREEN_API_BASE_URL = process.env.REACT_APP_GREEN_API_HOST || "https://api.green-api.com"; // ← пробелы удалены
+// ⚠️ Здесь было `process.env.REACT_APP_GREEN_API_HOST`. В браузере глобального `process` нет,
+// а `define`-блок, который его подставлял, убрали из vite.config.ts вместе с ключом Gemini —
+// из-за этого модуль падал с "process is not defined" прямо при импорте. А импортируется он
+// статически из NewSale/NewIncome, то есть ложилось всё приложение на старте. В Vite переменные
+// окружения для клиента читаются через import.meta.env и обязаны иметь префикс VITE_
+// (префикс REACT_APP_ остался от Create React App и тут не работал в принципе).
+const GREEN_API_BASE_URL = import.meta.env.VITE_GREEN_API_HOST || "https://api.green-api.com";
 
 // Helper to format phone number to 79XXXXXXXXX format
 const formatPhone = (phone: string): string | null => {

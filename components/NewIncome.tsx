@@ -429,17 +429,17 @@ if (!currentPaymentAlreadyExists) {
     existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
-// 🔒 Плановые месяцы графика, ещё НЕ покрытые реальными платежами — строки-плейсхолдеры даты
-// без суммы. Покрытие пересчитываем от ОБЩЕЙ суммы реальных платежей (surplus), а не доверяем
-// сохранённому флагу isPaid планового слота — он бывает неактуален (платёж добавлен без
-// пересчёта reconcileSalePaymentPlan), из-за чего рядом с уже оплаченной датой оставался
-// "призрачный" пустой дубль той же даты.
+// 🔒 Плановая дата месяца показывается ТОЛЬКО пока по нему не прошло ни одной реальной оплаты:
+// как только на месяц пришли деньги (даже частично), его плановая строка заменяется строкой(-ами)
+// с ФАКТИЧЕСКИМИ датами платежей. Сколько месяцев уже задето деньгами, считаем от ОБЩЕЙ суммы
+// реальных платежей (surplus), а не доверяем сохранённому флагу isPaid планового слота — он
+// бывает неактуален (платёж добавлен без пересчёта reconcileSalePaymentPlan).
 let scheduleSurplus = existingPayments.reduce((sum, p) => sum + p.amount, 0);
 const scheduleDates = (selectedSale.paymentPlan || [])
     .filter(p => p.isRealPayment !== true)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
     .filter(p => {
-        if (scheduleSurplus >= p.amount - 0.01) {
+        if (scheduleSurplus > 0.01) {
             scheduleSurplus -= p.amount;
             return false;
         }

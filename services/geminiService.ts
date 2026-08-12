@@ -3,7 +3,10 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Customer, Sale } from "../types";
 
 const getAiClient = () => {
-  const apiKey = process.env.API_KEY;
+  // Тот же случай, что и в services/whatsapp.ts: `process` в браузере не существует, а define-блок
+  // из vite.config.ts убран намеренно (ключ не должен попадать в публичный бандл). Читаем через
+  // import.meta.env, чтобы вместо ReferenceError получить честное "ключа нет" и мягкий отказ ниже.
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
     console.warn("Google Gemini API Key is missing");
     return null;
