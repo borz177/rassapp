@@ -30,7 +30,12 @@ export default defineConfig(({ mode }) => {
           theme_color: '#ffffff',
           background_color: '#ffffff',
           display: 'standalone',
-          start_url: '/',
+          // Запуск сразу в приложение, а не на «/»: по корню отдаётся рекламный лендинг,
+          // и человек, добавивший приложение на экран «Домой», каждый раз видел страницу
+          // с предложением скачать APK — в том числе на iPhone, где APK бесполезен.
+          start_url: '/app',
+          // scope оставляем корневым, иначе он вывелся бы из start_url ('/app/') и
+          // переходы на другие пути считались бы выходом за пределы приложения.
           scope: '/',
           orientation: 'portrait',
           icons: [

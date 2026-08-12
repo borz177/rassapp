@@ -28,6 +28,14 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
     <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
 
+    <!-- iOS. Safari до 16.4 не читает display из манифеста: без этих тегов приложение,
+         добавленное на экран «Домой», открывалось в браузере с адресной строкой,
+         а не во весь экран. -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="FinUchet">
+    <!-- Полупрозрачная строка состояния под цвет шапки приложения -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
     <!-- Prevent Caching -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
