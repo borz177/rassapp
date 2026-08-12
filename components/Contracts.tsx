@@ -534,31 +534,44 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
     // неактуален (например, платёж импортирован/добавлен без пересчёта reconcileSalePaymentPlan).
     // "Остаток" — НАКОПИТЕЛЬНЫЙ остаток долга по договору, уменьшается только на реальных платежах.
     const realPayments = (sale.paymentPlan || []).filter(p => p.isRealPayment === true);
-    let surplus = realPayments.reduce((sum, p) => sum + p.amount, 0);
-
-    const uncoveredScheduled = (sale.paymentPlan || [])
+    const scheduledMonths = (sale.paymentPlan || [])
         .filter(p => p.isRealPayment !== true)
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        .filter(p => {
-            if (surplus > 0.01) {
-                // на этот месяц уже пришли деньги (полностью или частично) — его плановую дату
-                // заменяют строки реальных платежей; остаток surplus уходит на следующие месяцы
-                surplus -= p.amount;
-                return false;
-            }
-            return true;
-        });
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Каждый реальный платёж (по возрастанию даты) закрепляем за первым ЕЩЁ НЕ ЗАКРЫТЫМ месяцем
+    // графика: пока месяц не добран до своей суммы, все следующие платежи идут туда же. Месяц, за
+    // которым закрепился хотя бы один платёж, представлен в таблице строками этих платежей —
+    // собственная плановая строка ему не нужна. А месяц, на который своей строки платежа не
+    // пришлось, печатается плановой датой, даже если на него уже перетёк остаток предыдущего
+    // платежа: иначе из графика пропадала дата, по которой клиент ещё должен платить.
+    const monthsWithOwnPaymentRow = new Set<number>();
+    let monthIdx = 0;
+    let filledOnMonth = 0;
+    for (const pay of [...realPayments].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())) {
+        if (monthIdx >= scheduledMonths.length) break;
+        monthsWithOwnPaymentRow.add(monthIdx);
+        filledOnMonth += pay.amount;
+        while (monthIdx < scheduledMonths.length && filledOnMonth >= scheduledMonths[monthIdx].amount - 0.01) {
+            filledOnMonth -= scheduledMonths[monthIdx].amount;
+            monthIdx++;
+        }
+    }
+    const uncoveredScheduled = scheduledMonths.filter((_, i) => !monthsWithOwnPaymentRow.has(i));
+
+    // Порядок строк: СНАЧАЛА все фактические платежи (по возрастанию даты), ПОТОМ оставшиеся
+    // плановые даты. Раньше обе группы сортировались вместе по дате, и пустая плановая строка
+    // вклинивалась между двумя оплатами — в печатном документе это читается как "дыра" в платежах.
+    const byDate = (a: { date: string }, b: { date: string }) =>
+        new Date(a.date).getTime() - new Date(b.date).getTime();
 
     let currentDebt = sale.totalAmount - sale.downPayment;
     const scheduleRows = [
-        ...realPayments.map(p => ({ date: p.date, paid: p.amount })),
+        ...[...realPayments].sort(byDate).map(p => ({ date: p.date, paid: p.amount })),
         ...uncoveredScheduled.map(p => ({ date: p.date, paid: 0 }))
-    ]
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        .map(p => {
-            if (p.paid > 0) currentDebt -= p.paid;
-            return { date: p.date, paid: p.paid, remaining: Math.max(0, currentDebt) };
-        });
+    ].map(p => {
+        if (p.paid > 0) currentDebt -= p.paid;
+        return { date: p.date, paid: p.paid, remaining: Math.max(0, currentDebt) };
+    });
 
     const scheduleRowsHtml = scheduleRows.length > 0
         ? scheduleRows.map((p, index) => `<tr>

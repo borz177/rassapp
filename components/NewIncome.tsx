@@ -429,22 +429,30 @@ if (!currentPaymentAlreadyExists) {
     existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
-// 🔒 Плановая дата месяца показывается ТОЛЬКО пока по нему не прошло ни одной реальной оплаты:
-// как только на месяц пришли деньги (даже частично), его плановая строка заменяется строкой(-ами)
-// с ФАКТИЧЕСКИМИ датами платежей. Сколько месяцев уже задето деньгами, считаем от ОБЩЕЙ суммы
-// реальных платежей (surplus), а не доверяем сохранённому флагу isPaid планового слота — он
-// бывает неактуален (платёж добавлен без пересчёта reconcileSalePaymentPlan).
-let scheduleSurplus = existingPayments.reduce((sum, p) => sum + p.amount, 0);
-const scheduleDates = (selectedSale.paymentPlan || [])
+// 🔒 Каждый реальный платёж закрепляем за первым ещё не закрытым месяцем графика: пока месяц не
+// добран до своей суммы, туда же идут и следующие платежи. Месяц скрываем ТОЛЬКО если за ним
+// закрепилась своя строка платежа — она его и представляет. Месяц, на который лишь перетёк
+// остаток предыдущего платежа, остаётся плановой датой: по нему клиенту ещё платить. Считаем от
+// самих платежей, а не от флага isPaid планового слота — он бывает неактуален (платёж добавлен
+// без пересчёта reconcileSalePaymentPlan).
+const scheduledMonths = (selectedSale.paymentPlan || [])
     .filter(p => p.isRealPayment !== true)
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .filter(p => {
-        if (scheduleSurplus > 0.01) {
-            scheduleSurplus -= p.amount;
-            return false;
-        }
-        return true;
-    })
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+const monthsWithOwnPaymentRow = new Set<number>();
+let monthIdx = 0;
+let filledOnMonth = 0;
+for (const pay of [...existingPayments].sort((a, b) => a.date.getTime() - b.date.getTime())) {
+    if (monthIdx >= scheduledMonths.length) break;
+    monthsWithOwnPaymentRow.add(monthIdx);
+    filledOnMonth += pay.amount;
+    while (monthIdx < scheduledMonths.length && filledOnMonth >= scheduledMonths[monthIdx].amount - 0.01) {
+        filledOnMonth -= scheduledMonths[monthIdx].amount;
+        monthIdx++;
+    }
+}
+const scheduleDates = scheduledMonths
+    .filter((_, i) => !monthsWithOwnPaymentRow.has(i))
     .map(p => new Date(p.date));
 
 // 🔹 РАСЧЁТ С УЧЁТОМ СКИДОК
@@ -484,12 +492,15 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
 
     let currentDebt = selectedSale.totalAmount - selectedSale.downPayment;
 
-    // 🔒 Объединяем реальные платежи (с суммой) и ещё не покрытые месяцы графика (только дата,
-    // без суммы) в один список по датам — та же модель, что и в печати договора (Contracts.tsx).
+    // 🔒 Та же модель, что и в печати договора (Contracts.tsx): СНАЧАЛА все фактические платежи
+    // (по возрастанию даты), ПОТОМ оставшиеся месяцы графика. Обе группы вместе по дате не
+    // сортируем — иначе пустая плановая строка вклинивается между двумя оплатами.
     const tableRows: { date: Date; amount: number | null; discountAmount: number }[] = [
-        ...existingPayments.map(p => ({ date: p.date, amount: p.amount, discountAmount: p.discountAmount })),
+        ...[...existingPayments]
+            .sort((a, b) => a.date.getTime() - b.date.getTime())
+            .map(p => ({ date: p.date, amount: p.amount, discountAmount: p.discountAmount })),
         ...scheduleDates.map(d => ({ date: d, amount: null, discountAmount: 0 }))
-    ].sort((a, b) => a.date.getTime() - b.date.getTime());
+    ];
 
     return (
       <div ref={contractRef} style={styles.page}>

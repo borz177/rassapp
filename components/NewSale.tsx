@@ -721,34 +721,42 @@ if (mode === 'CASH') {
     };
 
     // 🔒 Та же модель графика, что и в печати договора (Contracts.tsx) и в чеке прихода
-    // (NewIncome.tsx): плановая дата месяца видна ТОЛЬКО пока по нему не прошло ни одной реальной
-    // оплаты. Как только на месяц пришли деньги (даже частично), его плановая строка заменяется
-    // строкой(-ами) с ФАКТИЧЕСКИМИ датами и суммами платежей. Сколько месяцев уже задето деньгами,
-    // считаем от ОБЩЕЙ суммы реальных платежей (surplus), а не доверяем сохранённому флагу isPaid
-    // планового слота — он бывает неактуален.
+    // (NewIncome.tsx): каждый реальный платёж закрепляется за первым ещё не закрытым месяцем
+    // графика, и месяц скрывается ТОЛЬКО если за ним закрепилась своя строка платежа. Месяц, на
+    // который лишь перетёк остаток предыдущего платежа, остаётся плановой датой — по нему клиенту
+    // ещё платить. Считаем от самих платежей, а не от флага isPaid планового слота — он бывает
+    // неактуален (платёж импортирован/добавлен без пересчёта reconcileSalePaymentPlan).
     const realPaymentsForSchedule = (sale.paymentPlan || []).filter(p => p.isRealPayment === true);
-    let scheduleSurplus = realPaymentsForSchedule.reduce((sum, p) => sum + p.amount, 0);
-    const uncoveredScheduled = (sale.paymentPlan || [])
+    const scheduledMonths = (sale.paymentPlan || [])
         .filter(p => p.isRealPayment !== true)
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        .filter(p => {
-            if (scheduleSurplus > 0.01) {
-                scheduleSurplus -= p.amount;
-                return false;
-            }
-            return true;
-        });
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+    const monthsWithOwnPaymentRow = new Set<number>();
+    let monthIdx = 0;
+    let filledOnMonth = 0;
+    for (const pay of [...realPaymentsForSchedule].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())) {
+        if (monthIdx >= scheduledMonths.length) break;
+        monthsWithOwnPaymentRow.add(monthIdx);
+        filledOnMonth += pay.amount;
+        while (monthIdx < scheduledMonths.length && filledOnMonth >= scheduledMonths[monthIdx].amount - 0.01) {
+            filledOnMonth -= scheduledMonths[monthIdx].amount;
+            monthIdx++;
+        }
+    }
+    const uncoveredScheduled = scheduledMonths.filter((_, i) => !monthsWithOwnPaymentRow.has(i));
+
+    // Сначала все фактические платежи по дате, затем оставшиеся плановые даты — чтобы пустая
+    // плановая строка не вклинивалась между двумя оплатами (см. Contracts.tsx).
     let currentDebt = sale.totalAmount - sale.downPayment;
     const scheduleRows = [
-        ...realPaymentsForSchedule.map(p => ({ date: p.date, paid: p.amount })),
+        ...[...realPaymentsForSchedule]
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+            .map(p => ({ date: p.date, paid: p.amount })),
         ...uncoveredScheduled.map(p => ({ date: p.date, paid: 0 }))
-    ]
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        .map(p => {
-            if (p.paid > 0) currentDebt -= p.paid;
-            return { date: new Date(p.date), paid: p.paid, remaining: Math.max(0, currentDebt) };
-        });
+    ].map(p => {
+        if (p.paid > 0) currentDebt -= p.paid;
+        return { date: new Date(p.date), paid: p.paid, remaining: Math.max(0, currentDebt) };
+    });
 
     return (
       <div ref={contractRef} style={styles.page}>
