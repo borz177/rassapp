@@ -3609,11 +3609,58 @@ app.post('/api/admin/users/:userId/reset-password', adminAuth, async (req, res) 
 
 
 // --- PAYMENTS (YooKassa) ---
+// === ТАРИФНАЯ СЕТКА — ЕДИНСТВЕННЫЙ ИСТОЧНИК ПРАВДЫ ПО ЦЕНАМ ===
+// Раньше сумма платежа приходила с клиента (req.body.amount) и нигде не проверялась,
+// а webhook активировал тариф только по plan/months из метаданных, не сверяясь с тем,
+// сколько человек реально заплатил. То есть запрос с amount = 1 и plan = BUSINESS_PRO
+// давал год максимального тарифа за рубль. Теперь цену считает только сервер,
+// клиент присылает исключительно plan и months, а webhook сверяет фактическую оплату.
+const PLAN_PRICES = {
+  START: 990,
+  STANDARD: 1490,
+  BUSINESS: 1990,
+  BUSINESS_PRO: 2990,
+};
+
+// Скидки за длительный период. Дублируются в components/Tariffs.tsx только для
+// отображения — деньги считаются здесь, поэтому расхождение не приведёт к неверному списанию.
+const DURATION_DISCOUNTS = { 1: 0, 3: 0.03, 6: 0.05, 12: 0.10 };
+
+const ALLOWED_MONTHS = Object.keys(DURATION_DISCOUNTS).map(Number);
+
+/**
+ * Стоимость подписки. Округление вверх помесячно — ровно так же, как показывает
+ * интерфейс (Math.ceil на цене месяца), иначе итог в окне оплаты и реальный счёт
+ * разошлись бы на несколько рублей.
+ * @returns {number|null} сумма в рублях либо null, если план/срок недопустимы
+ */
+const calculateSubscriptionAmount = (plan, months) => {
+  const base = PLAN_PRICES[plan];
+  const discount = DURATION_DISCOUNTS[months];
+  if (!base || discount === undefined) return null;
+  return Math.ceil(base * (1 - discount)) * months;
+};
+
+// Клиент берёт цены отсюда, чтобы витрина и счёт считались по одним и тем же числам.
+app.get('/api/payment/pricing', (req, res) => {
+  res.json({ prices: PLAN_PRICES, discounts: DURATION_DISCOUNTS });
+});
+
 app.post('/api/payment/create', auth, async (req, res) => {
-  const { amount, description, returnUrl, plan, months } = req.body;
+  const { description, returnUrl, plan, months } = req.body;
   const shopId = process.env.YOOKASSA_SHOP_ID;
   const secretKey = process.env.YOOKASSA_SECRET_KEY;
-  
+
+  // 🔒 Сумма НИКОГДА не берётся из запроса — только считается здесь.
+  const monthsNum = Number(months);
+  if (!ALLOWED_MONTHS.includes(monthsNum)) {
+    return res.status(400).json({ msg: 'Недопустимый период подписки' });
+  }
+  const amount = calculateSubscriptionAmount(plan, monthsNum);
+  if (amount === null) {
+    return res.status(400).json({ msg: 'Недопустимый тариф' });
+  }
+
   if (!shopId || !secretKey) {
 
     return res.json({
@@ -3622,9 +3669,9 @@ app.post('/api/payment/create', auth, async (req, res) => {
       confirmationUrl: returnUrl || 'https://yoomoney.ru'
     });
   }
-  
+
   try {
-    
+
     const idempotenceKey = uuidv4();
     const response = await axios.post('https://api.yookassa.ru/v3/payments', {
       amount: {
@@ -3636,11 +3683,13 @@ app.post('/api/payment/create', auth, async (req, res) => {
         type: 'redirect',
         return_url: returnUrl
       },
-      description: description,
+      // Описание тоже собираем сами: оно попадает в чек, и подставлять туда
+      // произвольный текст из запроса не стоит.
+      description: `Оплата тарифа ${plan} на ${monthsNum} мес.`,
       metadata: {
         userId: req.user.id,
         plan: plan,
-        months: months
+        months: monthsNum
       }
     }, {
       headers: {
@@ -3912,6 +3961,20 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
             if (verifyResp.data?.status === 'succeeded') {
                 const { userId, plan, months } = verifyResp.data.metadata || {};
                 if (userId && plan && months) {
+                    // 🔒 Сверяем, что заплачено ровно столько, сколько стоит этот тариф
+                    // на этот срок. Без проверки достаточно было создать платёж в обход
+                    // интерфейса — метаданные с планом и сроком активировали подписку
+                    // независимо от внесённой суммы.
+                    const expected = calculateSubscriptionAmount(plan, Number(months));
+                    const paid = Number(verifyResp.data.amount?.value);
+                    if (expected === null || !(paid >= expected)) {
+                        console.error(
+                            `🚨 Оплата не соответствует тарифу. Пользователь ${userId}, ${plan}/${months} мес.: ` +
+                            `ожидалось ${expected} ₽, оплачено ${verifyResp.data.amount?.value}. Подписка НЕ активирована.`
+                        );
+                        return res.status(200).send('OK'); // 200, иначе ЮKassa будет слать вебхук повторно
+                    }
+
                     const userResult = await pool.query('SELECT subscription FROM users WHERE id = $1', [userId]);
                     let currentSub = userResult.rows[0]?.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
                     let newExpiresAt = new Date(currentSub.expiresAt);

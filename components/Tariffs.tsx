@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'; // ← добавили useMemo
+import React, { useState, useMemo, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { api } from '../services/api';
 import { SubscriptionPlan, User } from '../types';
@@ -37,14 +37,23 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
     };
   }, [user]);
 
-  const getDiscount = (months: number) => {
-    switch(months) {
-      case 3: return 0.05;
-      case 6: return 0.10;
-      case 12: return 0.20;
-      default: return 0;
-    }
-  };
+  // Значения на случай, если запрос цен не прошёл: страница тарифов не должна
+  // ломаться из-за сетевой ошибки. Считает деньги всё равно сервер, поэтому
+  // расхождение может дать только неверную витрину, но не неверное списание.
+  const FALLBACK_DISCOUNTS: Record<number, number> = { 1: 0, 3: 0.03, 6: 0.05, 12: 0.10 };
+  const [pricing, setPricing] = useState<{ prices: Record<string, number>; discounts: Record<string, number> } | null>(null);
+
+  useEffect(() => {
+    api.getPricing()
+       .then(setPricing)
+       .catch(() => { /* останемся на встроенных значениях */ });
+  }, []);
+
+  const getDiscount = (months: number) =>
+    pricing?.discounts?.[months] ?? FALLBACK_DISCOUNTS[months] ?? 0;
+
+  const getBasePrice = (planKey: string, fallback: number) =>
+    pricing?.prices?.[planKey] ?? fallback;
 
   const calculatePrice = (basePrice: number) => {
     const discount = getDiscount(duration);
@@ -59,17 +68,14 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
   const proceedToPayment = async () => {
     if (!confirmData) return;
 
-    const { name, monthlyPrice } = confirmData;
+    const { name } = confirmData;
     setLoading(name);
 
     const planKey: SubscriptionPlan = name === 'Старт' ? 'START' : name === 'Стандарт' ? 'STANDARD' : name === 'Бизнес Pro' ? 'BUSINESS_PRO' : 'BUSINESS';
-    const amount = monthlyPrice * duration;
 
     try {
-      // Use API service which handles the correct URL (proxy vs localhost)
+      // Сумму не передаём — её считает сервер по plan + months (PLAN_PRICES в server/index.js).
       const data = await api.createPayment({
-          amount: amount,
-          description: `Оплата тарифа ${name} на ${duration} мес.`,
           // 🔹 Маркер ?payment=success — по нему App.tsx понимает, что нужно сразу
           // проверить подписку на сервере, не дожидаясь фоновой синхронизации.
           returnUrl: 'https://rassrochka.pro/?payment=success',
@@ -226,7 +232,9 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
       {/* Plans Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto px-2">
         {plans.map((plan) => {
-  const monthlyPrice = calculatePrice(plan.basePrice);
+  // Базовую цену берём с сервера, встроенная в массив — только запасной вариант.
+  const basePrice = getBasePrice(plan.key, plan.basePrice);
+  const monthlyPrice = calculatePrice(basePrice);
   const totalPrice = monthlyPrice * duration;
 
   // 🔥 План совпадает с текущим И подписка активна
@@ -293,7 +301,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
 
       {/* 🔥 Кнопка: доступна всегда, кроме случая, когда это другой план и он активен (опционально) */}
       <button
-        onClick={() => handleSelectPlan(plan.name, monthlyPrice, plan.basePrice)}
+        onClick={() => handleSelectPlan(plan.name, monthlyPrice, basePrice)}
         // ❌ Убрали disabled={isCurrentPlan} — теперь можно продлевать активный тариф
         className={`w-full py-4 rounded-xl font-bold transition-opacity ${
           isCurrentPlan 
@@ -346,7 +354,10 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
                       </div>
                       {confirmData.basePrice > confirmData.monthlyPrice && (
                           <div className="flex justify-between items-center text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                              <span>Скидка ({(1 - confirmData.monthlyPrice / confirmData.basePrice) * 100}%)</span>
+                              {/* Процент берём из тарифной сетки, а не пересчитываем обратно из цены:
+                                  месячная цена округляется вверх (Math.ceil), и обратный расчёт давал
+                                  дробь вида «4.94949494949495%» прямо в окне оплаты. */}
+                              <span>Скидка ({getDiscount(duration) * 100}%)</span>
                               <span>-{(confirmData.basePrice * duration - confirmData.monthlyPrice * duration).toLocaleString()} ₽</span>
                           </div>
                       )}

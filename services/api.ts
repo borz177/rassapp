@@ -432,7 +432,10 @@ export const api = {
         if (!res.ok) throw new Error('Failed to save WhatsApp settings');
     },
 
-    createPayment: async (paymentData: { amount: number, description: string, returnUrl: string, plan: SubscriptionPlan, months: number }): Promise<any> => {
+    // Сумма здесь намеренно не передаётся: её считает сервер по plan + months.
+    // Раньше amount приходил с клиента и не проверялся — можно было оплатить рубль
+    // и получить год максимального тарифа.
+    createPayment: async (paymentData: { returnUrl: string, plan: SubscriptionPlan, months: number }): Promise<any> => {
         const res = await fetchWithAuth(`${API_URL}/payment/create`, {
             method: 'POST',
             body: JSON.stringify(paymentData)
@@ -1095,6 +1098,12 @@ export const api = {
         return api.get('/push/subscriptions');
     },
 
+    // Цены и скидки задаёт сервер (PLAN_PRICES/DURATION_DISCOUNTS в server/index.js) —
+    // он же считает сумму платежа, поэтому витрина должна показывать именно их.
+    getPricing: async (): Promise<{ prices: Record<string, number>; discounts: Record<string, number> }> => {
+        return api.get('/payment/pricing');
+    },
+
     // === РЕЗЕРВНОЕ КОПИРОВАНИЕ НА ПОЧТУ (server/backup.js) ===
     // Настройки хранятся на сервере отдельно от AppSettings, поэтому свои методы,
     // а не общий saveItem('settings', ...).
@@ -1116,6 +1125,12 @@ export const api = {
 
     confirmBackupExtraEmail: async (code: string): Promise<BackupSettings> => {
         return api.post('/backup/extra-email/confirm', { code });
+    },
+
+    // Отмена незавершённого подтверждения: гасит extra_email_pending на сервере,
+    // иначе карточка при следующем открытии снова покажет ввод кода.
+    cancelBackupExtraEmail: async (): Promise<BackupSettings> => {
+        return api.post('/backup/extra-email/cancel');
     },
 
     removeBackupExtraEmail: async (): Promise<BackupSettings> => {

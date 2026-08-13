@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '@/services/api';
 import { BackupSettings, BackupFrequency, ViewState } from '../types';
 import { ICONS } from '../constants';
@@ -17,6 +17,11 @@ const FREQUENCY_OPTIONS: { key: BackupFrequency; label: string; hint: string }[]
 // а на каждый клик уходит письмо с вложением — при лимитах Gmail лишние отправки ни к чему.
 // Роут /api/backup/run-now на сервере остался рабочим, так что вернуть кнопку — это снять флаг.
 const SHOW_RUN_NOW_BUTTON = false;
+
+// Длина кода и пауза перед повторной отправкой — должны совпадать с сервером
+// (generateCode и RESEND_COOLDOWN_SEC в server/backup.js).
+const CODE_LENGTH = 6;
+const RESEND_COOLDOWN_SEC = 60;
 
 const STATUS_TEXT: Record<string, string> = {
   OK: 'Отправлено',
@@ -41,12 +46,16 @@ const BackupSettingsCard: React.FC<BackupSettingsCardProps> = ({ onNavigate }) =
   const [extraEmailInput, setExtraEmailInput] = useState('');
   const [codeInput, setCodeInput] = useState('');
   const [isCodeStage, setIsCodeStage] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
+  const codeRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     (async () => {
       try {
         const data = await api.getBackupSettings();
         setSettings(data);
+        // Незавершённое подтверждение живёт на сервере, поэтому карточка
+        // восстанавливает стадию ввода кода после перезагрузки страницы.
         setIsCodeStage(!!data.extraEmailPending);
         setExtraEmailInput(data.extraEmailPending || '');
       } catch (e: any) {
@@ -56,6 +65,27 @@ const BackupSettingsCard: React.FC<BackupSettingsCardProps> = ({ onNavigate }) =
       }
     })();
   }, []);
+
+  // Обратный отсчёт до повторной отправки кода.
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const id = setTimeout(() => setResendIn(s => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [resendIn]);
+
+  // Сообщение об успехе живёт несколько секунд: «Код отправлен», висящее на экране
+  // до конца сессии, перестаёт что-либо значить. Ошибку не гасим — её надо прочитать.
+  useEffect(() => {
+    if (!notice) return;
+    const id = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(id);
+  }, [notice]);
+
+  // Попав на стадию кода, сразу ставим курсор в поле — иначе на телефоне
+  // приходится отдельно тыкать в него после переключения формы.
+  useEffect(() => {
+    if (isCodeStage) codeRef.current?.focus();
+  }, [isCodeStage]);
 
   // Любое действие сбрасывает предыдущие сообщения — иначе рядом висят
   // старый успех и новая ошибка, и непонятно, что относится к последнему клику.
@@ -91,6 +121,42 @@ const BackupSettingsCard: React.FC<BackupSettingsCardProps> = ({ onNavigate }) =
   }
 
   const isAllowed = (key: BackupFrequency) => settings.allowedFrequencies.includes(key);
+
+  // Адрес, для которого идёт подтверждение. Сервер — источник правды (он переживает
+  // перезагрузку страницы), локальное поле — запасной вариант сразу после отправки,
+  // пока настройки не перечитаны.
+  const pendingAddress = settings.extraEmailPending || extraEmailInput;
+
+  const sendCode = (email: string) => runAction(async () => {
+    await api.requestBackupExtraEmail(email);
+    // Перечитываем настройки, чтобы extraEmailPending пришёл с сервера: без этого
+    // после перезагрузки страницы карточка не знала бы, какой адрес подтверждается.
+    setSettings(await api.getBackupSettings());
+    setIsCodeStage(true);
+    setCodeInput('');
+    setResendIn(RESEND_COOLDOWN_SEC);
+    setNotice(`Код отправлен на ${email}`);
+  });
+
+  const confirmCode = () => {
+    if (isBusy || codeInput.length < CODE_LENGTH) return;
+    runAction(async () => {
+      try {
+        setSettings(await api.confirmBackupExtraEmail(codeInput));
+      } catch (e) {
+        // Неверный код очищаем сразу: оставлять его в поле — значит заставлять
+        // пользователя стирать цифры вручную перед второй попыткой.
+        setCodeInput('');
+        codeRef.current?.focus();
+        throw e;
+      }
+      setCodeInput('');
+      setIsCodeStage(false);
+      setResendIn(0);
+      setExtraEmailInput('');
+      setNotice('Адрес подтверждён — копии будут приходить и на него');
+    });
+  };
 
   return (
     <div className="space-y-5">
@@ -175,7 +241,10 @@ const BackupSettingsCard: React.FC<BackupSettingsCardProps> = ({ onNavigate }) =
               onClick={() => runAction(async () => {
                 setSettings(await api.removeBackupExtraEmail());
                 setExtraEmailInput('');
+                setCodeInput('');
                 setIsCodeStage(false);
+                setResendIn(0);
+                setNotice('Дополнительный адрес удалён');
               })}
               className="shrink-0 text-sm text-rose-600 dark:text-rose-400 hover:underline"
             >
@@ -185,38 +254,59 @@ const BackupSettingsCard: React.FC<BackupSettingsCardProps> = ({ onNavigate }) =
         ) : isCodeStage ? (
           <div className="space-y-2">
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Код отправлен на <b className="break-all">{settings.extraEmailPending || extraEmailInput}</b>
+              Код отправлен на <b className="break-all">{pendingAddress}</b>
             </p>
             <div className="flex gap-2">
               <input
+                ref={codeRef}
                 type="text"
                 inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={CODE_LENGTH}
                 value={codeInput}
-                onChange={(e) => setCodeInput(e.target.value)}
-                placeholder="Код из письма"
-                className="flex-1 min-w-0 px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                // Код всегда цифровой — отсекаем всё остальное на вводе,
+                // чтобы «неверный код» не всплывал из-за случайного пробела.
+                onChange={(e) => setCodeInput(e.target.value.replace(/\D/g, '').slice(0, CODE_LENGTH))}
+                onKeyDown={(e) => { if (e.key === 'Enter') confirmCode(); }}
+                placeholder={`Код из письма (${CODE_LENGTH} цифр)`}
+                className="flex-1 min-w-0 px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm tracking-[0.3em] focus:ring-2 focus:ring-indigo-500"
               />
               <button
                 type="button"
-                disabled={isBusy || !codeInput.trim()}
-                onClick={() => runAction(async () => {
-                  setSettings(await api.confirmBackupExtraEmail(codeInput.trim()));
-                  setCodeInput('');
-                  setIsCodeStage(false);
-                  setNotice('Адрес подтверждён');
-                })}
+                disabled={isBusy || codeInput.length < CODE_LENGTH}
+                onClick={confirmCode}
                 className="shrink-0 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
               >
                 Подтвердить
               </button>
             </div>
-            <button
-              type="button"
-              onClick={() => { setIsCodeStage(false); setCodeInput(''); }}
-              className="text-xs text-slate-500 dark:text-slate-400 hover:underline"
-            >
-              Изменить адрес
-            </button>
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                disabled={isBusy || resendIn > 0}
+                onClick={() => sendCode(pendingAddress)}
+                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline disabled:text-slate-400 dark:disabled:text-slate-500 disabled:no-underline"
+              >
+                {resendIn > 0 ? `Отправить снова через ${resendIn} с` : 'Отправить код ещё раз'}
+              </button>
+              <button
+                type="button"
+                disabled={isBusy}
+                // Сбрасываем и на сервере: иначе незавершённая попытка вернёт
+                // карточку к вводу кода при следующем открытии настроек.
+                onClick={() => runAction(async () => {
+                  setSettings(await api.cancelBackupExtraEmail());
+                  setIsCodeStage(false);
+                  setCodeInput('');
+                  setResendIn(0);
+                  // Адрес оставляем в поле: «изменить» обычно значит поправить опечатку.
+                  setExtraEmailInput(pendingAddress);
+                })}
+                className="text-xs text-slate-500 dark:text-slate-400 hover:underline"
+              >
+                Изменить адрес
+              </button>
+            </div>
           </div>
         ) : (
           <div className="flex gap-2">
@@ -224,20 +314,17 @@ const BackupSettingsCard: React.FC<BackupSettingsCardProps> = ({ onNavigate }) =
               type="email"
               value={extraEmailInput}
               onChange={(e) => setExtraEmailInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && extraEmailInput.trim()) sendCode(extraEmailInput.trim()); }}
               placeholder="например, бухгалтеру"
               className="flex-1 min-w-0 px-3 py-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
             />
             <button
               type="button"
               disabled={isBusy || !extraEmailInput.trim()}
-              onClick={() => runAction(async () => {
-                await api.requestBackupExtraEmail(extraEmailInput.trim());
-                setIsCodeStage(true);
-                setNotice('Код отправлен на указанный адрес');
-              })}
+              onClick={() => sendCode(extraEmailInput.trim())}
               className="shrink-0 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50"
             >
-              Отправить код
+              {isBusy ? 'Отправляем…' : 'Отправить код'}
             </button>
           </div>
         )}

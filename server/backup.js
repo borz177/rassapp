@@ -47,6 +47,10 @@ const MAX_CONTRACTS = Number(process.env.BACKUP_MAX_CONTRACTS) || 1500;
 
 const CODE_TTL_MINUTES = 15;
 
+// Пауза перед повторной отправкой кода. Каждый код — отдельное письмо, а суточный
+// лимит Gmail общий с резервными копиями и восстановлением пароля.
+const RESEND_COOLDOWN_SEC = 60;
+
 // Пауза между письмами. Почта уходит через Gmail SMTP, а он ограничивает и суточный
 // объём, и скорость: залп из сотни писем с вложениями подряд получает временную
 // блокировку, и часть копий просто не доходит. Ночью торопиться некуда — 2 секунды
@@ -457,6 +461,20 @@ module.exports = ({ pool, transporter, auth, getEffectivePlan, generateCode }) =
                     return res.status(400).json({ msg: 'Некорректный адрес' });
                 }
                 assertMailConfigured();
+
+                // Защита от повторных нажатий: каждый код — это письмо, а суточный лимит
+                // Gmail общий с резервными копиями и кодами восстановления пароля.
+                // Момент выдачи прошлого кода вычисляем из срока его действия — отдельная
+                // колонка ради этого не нужна.
+                const prev = await getRow(req.user.id);
+                if (prev?.extra_email_code_expires) {
+                    const issuedAt = new Date(prev.extra_email_code_expires).getTime() - CODE_TTL_MINUTES * 60 * 1000;
+                    const waitSec = Math.ceil((issuedAt + RESEND_COOLDOWN_SEC * 1000 - Date.now()) / 1000);
+                    if (waitSec > 0) {
+                        return res.status(429).json({ msg: `Код уже отправлен. Повторить можно через ${waitSec} с.`, retryAfter: waitSec });
+                    }
+                }
+
                 const code = generateCode();
                 const expires = new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000);
                 await pool.query(`
@@ -479,6 +497,26 @@ module.exports = ({ pool, transporter, auth, getEffectivePlan, generateCode }) =
             } catch (e) {
                 console.error('Backup extra-email request error:', e);
                 res.status(500).json({ msg: e.message || 'Не удалось отправить код' });
+            }
+        });
+
+        // Отмена начатого подтверждения. Без этого роута кнопка «Изменить адрес» чистила
+        // только состояние в браузере, а extra_email_pending оставался в базе — и при
+        // следующем открытии настроек карточка снова показывала ввод кода для старого
+        // адреса. Со стороны это выглядело так, будто форма вообще не сбрасывается.
+        // Подтверждённый адрес не трогаем: здесь отменяется только незавершённая попытка.
+        app.post('/api/backup/extra-email/cancel', auth, ownerOnly, async (req, res) => {
+            try {
+                await pool.query(`
+                    UPDATE backup_settings
+                       SET extra_email_pending = NULL, extra_email_code = NULL,
+                           extra_email_code_expires = NULL, updated_at = NOW()
+                     WHERE user_id = $1
+                `, [req.user.id]);
+                res.json(publicView(await getRow(req.user.id), await getUserPlan(req.user.id)));
+            } catch (e) {
+                console.error('Backup extra-email cancel error:', e);
+                res.status(500).json({ msg: 'Server error' });
             }
         });
 
