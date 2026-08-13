@@ -1523,6 +1523,8 @@ const dashboardStats = useMemo(() => {
           case 'TASKS': setPreviousView(currentView); setCurrentView('TASKS'); break;
           case 'ADD_CUSTOMER': setCurrentView('CUSTOMERS'); break;
           case 'ADD_PRODUCT': setCurrentView('MANAGE_PRODUCTS'); break;
+          // Из плашки об истекающей подписке на главной
+          case 'TARIFFS': setPreviousView(currentView); setCurrentView('TARIFFS'); break;
       }
   };
 
@@ -3440,7 +3442,7 @@ if (!user && !showSplash) {
                   <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital}
                              accountBalances={accountBalances} onAction={handleAction}
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
-                             accounts={accounts} appSettings={appSettings} investors={investors}/>}
+                             accounts={accounts} appSettings={appSettings} investors={investors} user={user}/>}
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
 {/* 🔹 Дашборд инвестора — с проверкой на загрузку данных */}
 {currentView === 'DASHBOARD' && isInvestor && activeInvestor && (
@@ -3740,7 +3742,14 @@ if (!user && !showSplash) {
               })()}
               {currentView === 'TARIFFS' && (
                 <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
-                  <Tariffs user={user}/>
+                  {/* Счётчики нужны, чтобы при понижении тарифа показать не абстрактное
+                      «лимит станет меньше», а конкретное «4 из 5 инвесторов заблокируются» */}
+                  <Tariffs
+                    user={user}
+                    investorsCount={investors.length}
+                    contractsCount={sales.filter(s => !s.customerId.startsWith('system_')).length}
+                    employeesCount={employees.length}
+                  />
                 </PagePush>
               )}
 

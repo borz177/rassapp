@@ -329,6 +329,23 @@ export interface AppSettings {
   notifications?: NotificationSettings;
 }
 
+/**
+ * Возможности тарифа. Приходят с сервера (PLAN_LIMITS в server/index.js) вместе
+ * с ценами — интерфейс на их основе показывает, что теряется при понижении тарифа.
+ * Значение -1 у числовых полей означает «без ограничений».
+ */
+export interface PlanLimits {
+  contracts: number;
+  investors: number;
+  employees: number;
+  whatsapp: boolean;
+  ai: boolean;
+  suppliers: boolean;
+  investorPools: boolean;
+  notifications: boolean;
+  tasks: boolean;
+}
+
 export type BackupFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
 /**

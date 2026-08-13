@@ -1,4 +1,4 @@
-import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency } from "../types";
+import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits } from "../types";
 import { offlineStorage } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
 // Helper to determine the API URL dynamically
@@ -1100,7 +1100,11 @@ export const api = {
 
     // Цены и скидки задаёт сервер (PLAN_PRICES/DURATION_DISCOUNTS в server/index.js) —
     // он же считает сумму платежа, поэтому витрина должна показывать именно их.
-    getPricing: async (): Promise<{ prices: Record<string, number>; discounts: Record<string, number> }> => {
+    getPricing: async (): Promise<{
+        prices: Record<string, number>;
+        discounts: Record<string, number>;
+        limits: Record<string, PlanLimits>;
+    }> => {
         return api.get('/payment/pricing');
     },
 

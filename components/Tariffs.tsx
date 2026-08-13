@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { api } from '../services/api';
-import { SubscriptionPlan, User } from '../types';
+import { SubscriptionPlan, User, PlanLimits } from '../types';
 
 // ← Добавьте этот маппинг, если его нет в файле
 const PLAN_NAMES: { START: string; BUSINESS: string; STANDARD: string; BUSINESS_PRO: string } = {
@@ -13,12 +13,29 @@ const PLAN_NAMES: { START: string; BUSINESS: string; STANDARD: string; BUSINESS_
 
 interface TariffsProps {
     user?: User | null;
+    /** Текущие объёмы — нужны, чтобы показать последствия понижения в конкретных числах. */
+    investorsCount?: number;
+    contractsCount?: number;
+    employeesCount?: number;
 }
 
-const Tariffs: React.FC<TariffsProps> = ({ user }) => {
+// Названия возможностей для списка «что отключится». Порядок задаёт порядок в списке:
+// сначала то, что бьёт по уже заведённым данным, потом просто отключаемые функции.
+const FEATURE_LABELS: { key: keyof PlanLimits; label: string; note?: string }[] = [
+  { key: 'investorPools', label: 'Общая касса — несколько инвесторов на одном счёте' },
+  { key: 'suppliers', label: 'Модуль «Партнёры»: поставщики и долги по закупу' },
+  { key: 'whatsapp', label: 'Авто-напоминания клиентам в WhatsApp' },
+  { key: 'tasks', label: 'Поручения сотрудникам' },
+  { key: 'ai', label: 'AI-помощник' },
+  { key: 'notifications', label: 'Уведомления о платежах и договорах' },
+];
+
+const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCount = 0, employeesCount = 0 }) => {
   const [duration, setDuration] = useState<1 | 3 | 6 | 12>(1);
   const [loading, setLoading] = useState<string | null>(null);
-  const [confirmData, setConfirmData] = useState<{name: string, monthlyPrice: number, basePrice: number} | null>(null);
+  const [confirmData, setConfirmData] = useState<{name: string, key: string, monthlyPrice: number, basePrice: number} | null>(null);
+  // Осознанное согласие на потерю функций. Сбрасывается при каждом открытии окна.
+  const [downgradeAccepted, setDowngradeAccepted] = useState(false);
 
   // 🔹 Вычисляем статус подписки
   const subStatus = useMemo(() => {
@@ -61,9 +78,77 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
     return Math.ceil(monthlyPrice);
   };
 
-  const handleSelectPlan = (name: string, monthlyPrice: number, basePrice: number) => {
-      setConfirmData({ name, monthlyPrice, basePrice });
+  const handleSelectPlan = (name: string, key: string, monthlyPrice: number, basePrice: number) => {
+      setDowngradeAccepted(false);
+      setConfirmData({ name, key, monthlyPrice, basePrice });
   };
+
+  /**
+   * Что человек теряет, переходя на выбранный тариф. Считается сравнением лимитов
+   * текущего и нового плана — таблицу отдаёт сервер, поэтому список всегда совпадает
+   * с тем, что реально применится после оплаты.
+   */
+  const downgrade = useMemo(() => {
+    if (!confirmData || !pricing?.limits) return null;
+    // У истёкшей подписки возможности уже урезаны до START (EXPIRED_FALLBACK_PLAN
+    // в server/index.js), поэтому сравнивать надо с фактическим уровнем доступа,
+    // а не с формально записанным тарифом — иначе человеку с истёкшим Бизнесом
+    // показали бы «вы потеряете WhatsApp», хотя он потерял его ещё в день окончания.
+    const currentPlan = subStatus.expired ? 'START' : (user?.subscription?.plan || 'TRIAL');
+
+    // Пробный период показывает почти все возможности, поэтому переход на любой платный
+    // тариф формально «понижение». Но это первая покупка, а не отказ от оплаченного —
+    // список потерь на этом шаге только отпугивает. Что входит в тариф, видно на карточках.
+    if (currentPlan === 'TRIAL') return null;
+
+    const from = pricing.limits[currentPlan];
+    const to = pricing.limits[confirmData.key];
+    if (!from || !to || currentPlan === confirmData.key) return null;
+
+    // Функции, которые были и пропадут.
+    const lostFeatures = FEATURE_LABELS
+      .filter(f => from[f.key] === true && to[f.key] !== true)
+      .map(f => f.label);
+
+    // Числовые лимиты: -1 означает «без ограничений», поэтому сравниваем аккуратно.
+    const tighter = (a: number, b: number) => (a === -1 && b !== -1) || (a !== -1 && b !== -1 && b < a);
+    const limitWarnings: { text: string; critical: boolean }[] = [];
+
+    if (tighter(from.investors, to.investors)) {
+      // Инвесторы сверх лимита не удаляются, а блокируются вместе со своими счетами
+      // (getInvestorLimitState в server/index.js) — это самое болезненное последствие.
+      const blocked = Math.max(0, investorsCount - to.investors);
+      limitWarnings.push({
+        critical: blocked > 0,
+        text: blocked > 0
+          ? `Инвесторы: останется ${to.investors} из ${investorsCount}. ${blocked} ${blocked === 1 ? 'инвестор будет заблокирован' : 'инвесторов будут заблокированы'} вместе со своими счетами — данные сохранятся, но работать с ними будет нельзя.`
+          : `Лимит инвесторов: ${to.investors} (сейчас у вас ${investorsCount}).`
+      });
+    }
+
+    if (tighter(from.contracts, to.contracts)) {
+      const over = to.contracts !== -1 && contractsCount > to.contracts;
+      limitWarnings.push({
+        critical: over,
+        text: over
+          ? `Договоры: лимит станет ${to.contracts}, а у вас уже ${contractsCount}. Новые договоры создать будет нельзя, пока не закроете лишние.`
+          : `Лимит договоров: ${to.contracts} (сейчас у вас ${contractsCount}).`
+      });
+    }
+
+    if (tighter(from.employees, to.employees)) {
+      const blocked = to.employees === 0 ? employeesCount : Math.max(0, employeesCount - to.employees);
+      limitWarnings.push({
+        critical: blocked > 0,
+        text: blocked > 0
+          ? `Сотрудники: доступ потеряют ${blocked} — они не смогут войти в приложение.`
+          : 'Сотрудники: заводить новых будет нельзя.'
+      });
+    }
+
+    if (lostFeatures.length === 0 && limitWarnings.length === 0) return null;
+    return { lostFeatures, limitWarnings, hasCritical: limitWarnings.some(w => w.critical) };
+  }, [confirmData, pricing, user, subStatus.expired, investorsCount, contractsCount, employeesCount]);
 
   const proceedToPayment = async () => {
     if (!confirmData) return;
@@ -301,7 +386,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
 
       {/* 🔥 Кнопка: доступна всегда, кроме случая, когда это другой план и он активен (опционально) */}
       <button
-        onClick={() => handleSelectPlan(plan.name, monthlyPrice, basePrice)}
+        onClick={() => handleSelectPlan(plan.name, plan.key, monthlyPrice, basePrice)}
         // ❌ Убрали disabled={isCurrentPlan} — теперь можно продлевать активный тариф
         className={`w-full py-4 rounded-xl font-bold transition-opacity ${
           isCurrentPlan 
@@ -338,6 +423,69 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
                   <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1">Подтверждение заказа</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Проверьте детали перед оплатой</p>
 
+                  {/* Понижение тарифа: показываем последствия ДО оплаты, а не после.
+                      Возврат денег за уже оплаченный период не предусмотрен, поэтому
+                      узнать о потере инвесторов постфактум — худший из возможных сценариев. */}
+                  {downgrade && (
+                    <div className={`mb-5 rounded-xl border p-4 ${
+                      downgrade.hasCritical
+                        ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/50'
+                        : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/50'
+                    }`}>
+                      <div className="flex items-start gap-2.5 mb-3">
+                        <span className={`shrink-0 mt-0.5 ${downgrade.hasCritical ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                          {ICONS.Alert}
+                        </span>
+                        <div className="min-w-0">
+                          <p className={`font-bold text-sm ${downgrade.hasCritical ? 'text-rose-900 dark:text-rose-300' : 'text-amber-900 dark:text-amber-300'}`}>
+                            Тариф ниже текущего
+                          </p>
+                          <p className={`text-xs ${downgrade.hasCritical ? 'text-rose-700 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                            После перехода на «{confirmData.name}» станет недоступно:
+                          </p>
+                        </div>
+                      </div>
+
+                      {downgrade.limitWarnings.length > 0 && (
+                        <ul className="space-y-2 mb-3">
+                          {downgrade.limitWarnings.map((w, i) => (
+                            <li key={i} className={`flex items-start gap-2 text-xs leading-relaxed ${
+                              w.critical
+                                ? 'text-rose-800 dark:text-rose-300 font-medium'
+                                : 'text-slate-600 dark:text-slate-400'
+                            }`}>
+                              <span className="shrink-0 mt-1.5 w-1.5 h-1.5 rounded-full bg-current opacity-60" />
+                              <span>{w.text}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {downgrade.lostFeatures.length > 0 && (
+                        <ul className="space-y-1.5">
+                          {downgrade.lostFeatures.map((f, i) => (
+                            <li key={i} className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                              <span className="shrink-0 text-slate-400 dark:text-slate-500 font-bold leading-none mt-0.5">✕</span>
+                              <span className="line-through decoration-slate-400/60">{f}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      <label className="flex items-start gap-2.5 mt-4 pt-3 border-t border-current/10 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={downgradeAccepted}
+                          onChange={(e) => setDowngradeAccepted(e.target.checked)}
+                          className="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className={`text-xs font-medium ${downgrade.hasCritical ? 'text-rose-900 dark:text-rose-300' : 'text-amber-900 dark:text-amber-300'}`}>
+                          Я понимаю, что перечисленное отключится, и хочу перейти на этот тариф
+                        </span>
+                      </label>
+                    </div>
+                  )}
+
                   <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-3 border border-slate-100 dark:border-slate-700 mb-6">
                       <div className="flex justify-between items-center">
                           <span className="text-slate-500 dark:text-slate-400 text-sm">Тариф</span>
@@ -370,7 +518,8 @@ const Tariffs: React.FC<TariffsProps> = ({ user }) => {
                   <div className="space-y-3">
                       <button
                           onClick={proceedToPayment}
-                          disabled={!!loading}
+                          // Кнопка неактивна, пока человек не подтвердил, что видел список потерь.
+                          disabled={!!loading || (!!downgrade && !downgradeAccepted)}
                           className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                       >
                           {loading ? (

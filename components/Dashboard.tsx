@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Sale, Customer, Account, AppSettings, Investor} from '../types';
+import { Sale, Customer, Account, AppSettings, Investor, User } from '../types';
 import { ICONS } from '../constants';
+import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
 import { formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue } from '../src/utils';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import {createPortal} from "react-dom";
@@ -87,6 +88,8 @@ interface DashboardProps {
   accounts: Account[];
   appSettings: AppSettings;
   investors: Investor[];
+  /** Нужен только для плашки об истекающей подписке */
+  user?: User | null;
 }
 
 const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: Sale, customerName: string, onClose: () => void, appSettings: AppSettings }) => {
@@ -903,7 +906,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     onViewSchedule,
     accounts,
     appSettings,
-    investors, 
+    investors,
+    user,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
   const [selectedSaleForModal, setSelectedSaleForModal] = useState<Sale | null>(null);
@@ -1401,6 +1405,10 @@ useEffect(() => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-900 dark:to-indigo-950/20 pb-24 w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
+
+        {/* Подписка заканчивается в ближайшие сутки либо уже закончилась.
+            Компонент сам решает, показываться ли — здесь условия не дублируем. */}
+        <SubscriptionExpiryBanner user={user} onRenew={() => onAction('TARIFFS')} />
 
         {/* Tabs */}
         <div className="flex bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm p-1.5 rounded-2xl shadow-sm border border-white dark:border-slate-700">

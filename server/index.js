@@ -2826,6 +2826,22 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
 
+    // 🔒 Та же проверка, что и при записи (POST /api/data/:type): без активной подписки
+    // менять данные нельзя. Удаление сюда изначально не попало — получалось, что
+    // создать договор нельзя, а удалить можно. Это хуже обычной несогласованности:
+    // восстановить удалённое человек не сможет до оплаты, потому что создание
+    // ему как раз закрыто. Настройки исключены по той же причине, что и в POST.
+    if (type !== 'settings') {
+      const sub = await getSubscriptionState(targetUserId);
+      if (sub.expired) {
+        return res.status(403).json({
+          code: 'SUBSCRIPTION_EXPIRED',
+          msg: 'Срок действия подписки истёк.',
+          hint: 'Продлите тариф, чтобы снова вести учёт: создавать, изменять и удалять записи.'
+        });
+      }
+    }
+
     await pool.query('DELETE FROM data_items WHERE id = $1 AND user_id = $2', [id, targetUserId]);
     res.json({ success: true, id });
   } catch (err) {
@@ -3642,8 +3658,12 @@ const calculateSubscriptionAmount = (plan, months) => {
 };
 
 // Клиент берёт цены отсюда, чтобы витрина и счёт считались по одним и тем же числам.
+// Лимиты отдаём тем же запросом: на их основе интерфейс показывает, что именно
+// человек теряет при понижении тарифа. Считать это по отдельной копии таблицы
+// на клиенте нельзя — предупреждение обязано совпадать с тем, что реально
+// применит сервер (PLAN_LIMITS выше).
 app.get('/api/payment/pricing', (req, res) => {
-  res.json({ prices: PLAN_PRICES, discounts: DURATION_DISCOUNTS });
+  res.json({ prices: PLAN_PRICES, discounts: DURATION_DISCOUNTS, limits: PLAN_LIMITS });
 });
 
 app.post('/api/payment/create', auth, async (req, res) => {
