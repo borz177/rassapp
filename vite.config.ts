@@ -1,8 +1,43 @@
+import fs from 'fs';
 import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
+
+/**
+ * Подстановка версии приложения в index.html на сборке.
+ *
+ * Версия живёт в constants.tsx (APP_VERSION) — оттуда её берут экран настроек и
+ * React-сплеш. В index.html импортировать константу неоткуда: это обычный HTML,
+ * который обязан отрисоваться до загрузки бандла, поэтому сплеш-экран показывал
+ * прописанную руками строку, и её приходилось помнить обновлять в двух местах.
+ *
+ * Напрямую импортировать constants.tsx сюда нельзя — это TSX с JSX-иконками,
+ * конфиг такое не соберёт. Поэтому достаём значение регуляркой и роняем сборку,
+ * если формат объявления изменится: молча подставить пустую строку хуже.
+ *
+ * Плейсхолдер намеренно в фигурных скобках, а не в процентах: синтаксис %VAR%
+ * Vite использует для подстановки переменных окружения в HTML, и пересекаться с ним не нужно.
+ */
+const appVersionPlugin = (): Plugin => {
+  const readVersion = () => {
+    const file = path.resolve(__dirname, 'constants.tsx');
+    const match = fs.readFileSync(file, 'utf-8').match(/APP_VERSION\s*=\s*["'`]([^"'`]+)["'`]/);
+    if (!match) {
+      throw new Error('vite.config: не удалось найти APP_VERSION в constants.tsx — проверьте объявление константы');
+    }
+    return match[1];
+  };
+
+  return {
+    name: 'inject-app-version',
+    transformIndexHtml: {
+      order: 'pre',
+      handler: (html) => html.replace(/\{\{APP_VERSION\}\}/g, readVersion()),
+    },
+  };
+};
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
@@ -14,6 +49,7 @@ export default defineConfig(({ mode }) => {
     },
 
     plugins: [
+      appVersionPlugin(),
       react(),
       tailwindcss(),
       VitePWA({

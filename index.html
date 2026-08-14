@@ -43,66 +43,190 @@
 
     <title>FinUchet</title>
 
-    <!-- 🔹 СТАТИЧЕСКИЙ СПЛЕШ-СКРИН (показывается мгновенно при открытии) -->
+    <!-- 🔹 СПЛЕШ-ЭКРАН.
+         Стили лежат здесь, а не в бандле, намеренно: экран должен появиться в первом
+         же кадре, до загрузки CSS и JS. Те же классы использует React-компонент
+         components/SplashScreen.tsx — благодаря этому при передаче эстафеты от
+         статической разметки к React картинка не перерисовывается и логотип не
+         проигрывает анимацию появления второй раз. Раньше стили были скопированы
+         в двух местах и уже начали расходиться. -->
     <style>
-      #static-splash {
+      .splash-screen {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background-color: #1e3a8a;
-        display: flex;
-        justify-content: center;
-        align-items: center;
+        inset: 0;
         z-index: 99999;
-        transition: opacity 0.4s ease-out;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        /* 100vh на мобильных считается вместе со свёрнутой адресной строкой, из-за чего
+           экран оказывается выше видимой области. dvh учитывает реальную высоту. */
+        height: 100vh;
+        height: 100dvh;
+        padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+        box-sizing: border-box;
+        background: linear-gradient(160deg, #ffffff 0%, #f1f5f9 55%, #e8ecf6 100%);
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        transition: opacity 0.45s ease, visibility 0.45s;
       }
-      
-      #static-splash.hidden {
+
+      .dark .splash-screen {
+        background: linear-gradient(160deg, #0b0f1a 0%, #111827 60%, #0b0f1a 100%);
+      }
+
+      .splash-screen.hidden {
         opacity: 0;
+        visibility: hidden;
         pointer-events: none;
       }
-      
-      .static-logo {
-        width: 220px;
-        height: 220px;
-        border-radius: 55%;
+
+      .splash-brand {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 18px;
+      }
+
+      /* Логотип подаём как иконку приложения — скруглённым квадратом, а не кругом.
+         Раньше стоял border-radius: 55%, который и кругом не является, и срезал углы
+         самой картинки. Скруглённый квадрат совпадает с тем, как иконка выглядит на
+         рабочем столе телефона, поэтому запуск читается как продолжение нажатия по ней. */
+      .splash-logo {
+        width: clamp(84px, 22vw, 104px);
+        height: clamp(84px, 22vw, 104px);
+        border-radius: 24%;
         object-fit: cover;
+        display: block;
         box-shadow:
-          0 10px 40px rgba(0, 0, 0, 0.3),
-          0 0 0 1px rgba(255, 255, 255, 0.1) inset;
-        animation:
-          floatIn 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-          floating 3s ease-in-out infinite 1.2s;
+          0 12px 32px -8px rgba(30, 58, 138, 0.45),
+          0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+        animation: splash-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
       }
-      
-      @keyframes floatIn {
-        0% {
-          opacity: 0;
-          transform: scale(0.5) translateY(-30px);
-        }
-        100% {
-          opacity: 1;
-          transform: scale(1) translateY(0);
-        }
+
+      .splash-title {
+        margin: 0;
+        font-size: 26px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        color: #0f172a;
+        animation: splash-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
       }
-      
-      @keyframes floating {
-        0%, 100% {
-          transform: translateY(0px);
+      .dark .splash-title { color: #f8fafc; }
+
+      .splash-subtitle {
+        margin: 6px 0 0;
+        font-size: 13px;
+        font-weight: 400;
+        color: #64748b;
+        animation: splash-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.14s both;
+      }
+      .dark .splash-subtitle { color: #94a3b8; }
+
+      /* Индикатор загрузки без процентов: реальный прогресс здесь неизвестен, а
+         поддельная шкала, замирающая на 90%, выглядит хуже честной бесконечной. */
+      .splash-progress {
+        position: relative;
+        width: 132px;
+        height: 3px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(15, 23, 42, 0.08);
+        animation: splash-fade 0.5s ease 0.25s both;
+      }
+      .dark .splash-progress { background: rgba(255, 255, 255, 0.1); }
+
+      /* Два сегмента с разными таймингами, как в Material. Один бегунок оставлял
+         паузы: пока он уезжал за правый край и не появился слева, полоса выглядела
+         пустой примерно треть цикла — как будто загрузка встала. */
+      .splash-progress::before,
+      .splash-progress::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #4f46e5, #6366f1);
+      }
+      .splash-progress::before {
+        width: 55%;
+        animation: splash-bar-a 2.1s cubic-bezier(0.65, 0.82, 0.74, 0.4) infinite;
+      }
+      .splash-progress::after {
+        width: 35%;
+        animation: splash-bar-b 2.1s cubic-bezier(0.17, 0.84, 0.44, 1) 1.05s infinite;
+      }
+
+      .splash-version {
+        position: absolute;
+        bottom: max(20px, env(safe-area-inset-bottom));
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        color: #94a3b8;
+        animation: splash-fade 0.5s ease 0.35s both;
+      }
+      .dark .splash-version { color: #475569; }
+
+      @keyframes splash-rise {
+        from { opacity: 0; transform: translateY(8px) scale(0.98); }
+        to   { opacity: 1; transform: none; }
+      }
+      @keyframes splash-fade {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+      @keyframes splash-bar-a {
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(240%); }
+      }
+      @keyframes splash-bar-b {
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(380%); }
+      }
+
+      /* Появление логотипа проигрывается один раз — при первой отрисовке. React-версия
+         показывается уже «на месте», иначе при передаче эстафеты логотип дёргался повторно. */
+      .splash-screen--settled .splash-logo,
+      .splash-screen--settled .splash-title,
+      .splash-screen--settled .splash-subtitle,
+      .splash-screen--settled .splash-progress,
+      .splash-screen--settled .splash-version {
+        animation-name: none;
+        opacity: 1;
+        transform: none;
+      }
+      /* Сама бегущая полоса продолжает двигаться и в React-версии — она показывает,
+         что приложение живо, а не подвисло. Сброс касается только появления блоков. */
+      .splash-screen--settled .splash-progress::before { animation-name: splash-bar-a; }
+      .splash-screen--settled .splash-progress::after  { animation-name: splash-bar-b; }
+
+      @media (prefers-reduced-motion: reduce) {
+        .splash-logo, .splash-title, .splash-subtitle, .splash-progress, .splash-version {
+          animation: splash-fade 0.2s ease both;
         }
-        50% {
-          transform: translateY(-10px);
-        }
+        /* Без движения: ровная приглушённая заливка вместо бегунков */
+        .splash-progress::before { animation: none; width: 100%; opacity: 0.45; }
+        .splash-progress::after  { display: none; }
       }
     </style>
   </head>
-  
+
   <body>
-    <!-- 🔹 СТАТИЧЕСКИЙ СПЛЕШ-СКРИН (виден сразу при открытии) -->
-    <div id="static-splash">
-      <img src="/splash.png" alt="FinUchet" class="static-logo" />
+    <!-- Виден в первом кадре, до загрузки бандла. Убирается из App.tsx, когда
+         приложение готово; те же классы затем отрисовывает SplashScreen.tsx. -->
+    <div id="static-splash" class="splash-screen">
+      <div class="splash-brand">
+        <img src="/splash.png" alt="" class="splash-logo" width="104" height="104" />
+        <div style="text-align: center;">
+          <h1 class="splash-title">FinUchet</h1>
+          <p class="splash-subtitle">Учёт рассрочек и платежей</p>
+        </div>
+      </div>
+      <div class="splash-progress" role="progressbar" aria-label="Загрузка приложения"></div>
+      <!-- Подставляется на сборке из APP_VERSION в constants.tsx
+           (плагин inject-app-version в vite.config.ts) -->
+      <span class="splash-version">{{APP_VERSION}}</span>
     </div>
 
     <div id="root"></div>
