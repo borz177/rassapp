@@ -242,3 +242,15 @@ const normalizePhoneForWhatsApp = (phone: string): string => {
   // Если номер короче или длиннее 11 цифр — возвращаем как есть (возможно, международный)
   return cleaned;
 };
+// 🔒 Безопасное прибавление месяцев к дате. Обычный `date.setMonth(date.getMonth()+n)` при дне
+// месяца 29-31 "переливается" в следующий месяц, если в целевом месяце столько дней нет —
+// например, 30 февраля не существует, и JS превращает его в 2 марта. При построении графика
+// платежей это приводило к тому, что февральский платёж не создавался вовсе (его месяц
+// "занимал" мартовский), а весь дальнейший ряд сдвигался на месяц.
+// Здесь день месяца всегда КЛАМПится до последнего реального дня целевого месяца.
+export const addMonthsClamped = (date: Date, months: number): Date => {
+  const targetFirst = new Date(date.getFullYear(), date.getMonth() + months, 1);
+  const daysInTargetMonth = new Date(targetFirst.getFullYear(), targetFirst.getMonth() + 1, 0).getDate();
+  targetFirst.setDate(Math.min(date.getDate(), daysInTargetMonth));
+  return targetFirst;
+};

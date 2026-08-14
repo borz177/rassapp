@@ -50,7 +50,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue } from './src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped } from './src/utils';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
@@ -318,12 +318,6 @@ const mergeServerData = <T extends { id: string }>(
 // найти существующую запись за этот месяц, код создавал дубликат — именно так в проде возникла
 // лишняя запись за март у Приоры. Здесь день месяца всегда КЛАМПится до последнего реального
 // дня целевого месяца, а не перетекает в следующий.
-const addMonthsClamped = (date: Date, months: number): Date => {
-    const targetFirst = new Date(date.getFullYear(), date.getMonth() + months, 1);
-    const daysInTargetMonth = new Date(targetFirst.getFullYear(), targetFirst.getMonth() + 1, 0).getDate();
-    targetFirst.setDate(Math.min(date.getDate(), daysInTargetMonth));
-    return targetFirst;
-};
 
 const reconcileSalePaymentPlan = (sale: Sale): Sale => {
     if (sale.type !== 'INSTALLMENT' || !Array.isArray(sale.paymentPlan)) return sale;

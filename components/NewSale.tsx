@@ -4,7 +4,7 @@ import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
 import { api } from '../services/api';
-import { getSellerPhone, escapeHtml, formatDate } from '../src/utils';
+import { getSellerPhone, escapeHtml, formatDate, addMonthsClamped } from '../src/utils';
 import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } from './feedback';
 
 interface NewSaleProps {
@@ -240,8 +240,12 @@ const regeneratePaymentPlan = (
   let monthOffset = 0;
 
   while (futurePayments.length < remainingInstallments) {
-    const pDate = new Date(firstDate);
-    pDate.setMonth(pDate.getMonth() + monthOffset);
+    // 🔒 addMonthsClamped, а не pDate.setMonth(...): при дне платежа 29-31 обычный setMonth
+    // "переливает" несуществующую дату в следующий месяц (30 февраля → 2 марта). Из-за этого
+    // февральский платёж не создавался вовсе — его месяц оказывался занят сбойной мартовской
+    // датой, настоящий март отсекался проверкой usedMonths ниже, и весь оставшийся график
+    // сдвигался на месяц (в печатном договоре это выглядело как пропущенный месяц).
+    const pDate = addMonthsClamped(firstDate, monthOffset);
 
     const monthKey = pDate.toISOString().slice(0, 7);
 
