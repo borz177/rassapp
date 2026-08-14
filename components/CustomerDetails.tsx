@@ -2,10 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier, Task} from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate } from '../src/utils';
+import { formatCurrency, formatDate, normalizePhoneForWhatsApp } from '../src/utils';
 import { offlineStorage } from '../services/offlineStorage';
 import { api } from '../services/api';
-import { parsePhoneNumberFromString, CountryCode } from 'libphonenumber-js';
 
 interface CustomerDetailsProps {
   customer: Customer;
@@ -687,10 +686,17 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
         }
     };
 
-    const normalizePhoneForWhatsApp = (phone: string, defaultCountry?: CountryCode): string | null => {
-        const phoneNumber = parsePhoneNumberFromString(phone, defaultCountry);
-        if (!phoneNumber?.isValid()) return null;
-        return phoneNumber.number.replace('+', '');
+    // Собирает ссылку на WhatsApp. Номер нормализуется общим помощником из src/utils.ts:
+    // здесь была своя копия, которая вызывала parsePhoneNumberFromString без страны
+    // по умолчанию и на номерах вида 89001234567 возвращала null — он подставлялся
+    // в адрес, и WhatsApp открывался с «Имя пользователя null не зарегистрировано».
+    const openWhatsApp = (text: string): void => {
+        const phone = normalizePhoneForWhatsApp(customer.phone);
+        if (!phone) {
+            alert(`У клиента «${customer.name}» не указан корректный номер телефона — отправить сообщение в WhatsApp не получится.`);
+            return;
+        }
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
     };
 
     // 🔥 ИСПРАВЛЕНИЕ: теперь ближайший платеж берётся из paymentSchedule,
@@ -724,9 +730,7 @@ ${customer.name}!
 
         message += paymentHistory;
 
-        const phone = normalizePhoneForWhatsApp(customer.phone);
-        const url = `https://wa.me/${phone}?text=${encodeURIComponent(message.trim().replace(/^\s+/gm, ''))}`;
-        window.open(url, '_blank');
+        openWhatsApp(message.trim().replace(/^\s+/gm, ''));
     };
 
     const handleSendFullReport = () => {
@@ -770,9 +774,7 @@ ${customer.name}!
             }
         }
 
-        const phone = normalizePhoneForWhatsApp(customer.phone);
-        const url = `https://wa.me/${phone}?text=${encodeURIComponent(report)}`;
-        window.open(url, '_blank');
+        openWhatsApp(report);
     };
 
     // 🔥 ИСПРАВЛЕННЫЙ useMemo с учётом скидок и статуса договора

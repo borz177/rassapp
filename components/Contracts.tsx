@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, User, AppSettings, Task } from '../types';
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
-import { formatCurrency, formatDate, escapeHtml, calculateSaleOverdue } from '../src/utils';
+import { formatCurrency, formatDate, escapeHtml, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
 import { createPortal } from 'react-dom';
 import { api } from '../services/api';
@@ -109,12 +109,16 @@ const overduePaymentsList = sortedPlan.filter((p, index) => {
 
   // 💬 WhatsApp (без подтверждения, прямая ссылка)
   const handleWhatsApp = () => {
-    if (customer?.phone) {
-      const phone = customer.phone.replace(/[^0-9]/g, '');
-      const formattedPhone = phone.startsWith('7') ? phone : '7' + phone;
-      const text = `Здравствуйте, ${customer.name}. Напоминаем о задолженности по договору "${sale.productName}" в размере ${formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽.`;
-      window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(text)}`, '_blank');
+    // Здесь номер собирался как phone.startsWith('7') ? phone : '7' + phone.
+    // На 89001234567 это давало 789001234567 — лишняя восьмёрка внутри номера,
+    // а украинский +380... превращался в 7380... Пустая строка давала wa.me/7.
+    const phone = normalizePhoneForWhatsApp(customer?.phone);
+    if (!phone) {
+      alert(`У клиента${customer?.name ? ` «${customer.name}»` : ''} не указан корректный номер телефона.`);
+      return;
     }
+    const text = `Здравствуйте, ${customer?.name}. Напоминаем о задолженности по договору "${sale.productName}" в размере ${formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽.`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
 

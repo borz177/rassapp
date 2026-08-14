@@ -1,3 +1,4 @@
+import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js';
 import { Account, Investor, InvestmentPeriod, Sale } from '../types';
 
 export const escapeHtml = (str: unknown): string =>
@@ -224,23 +225,41 @@ export const getCapitalShares = (
   }));
 };
 
-// Добавьте эту функцию внутри компонента или вынесите в utils
-const normalizePhoneForWhatsApp = (phone: string): string => {
-  // Удаляем все нецифровые символы
-  let cleaned = phone.replace(/[^0-9]/g, '');
+/**
+ * Приводит телефон к виду, который понимает ссылка https://wa.me/<номер> — только цифры,
+ * с кодом страны и без плюса. Возвращает null, если из строки вообще нечего собрать.
+ *
+ * Раньше эта логика была написана в проекте четыре раза по-своему, и две копии были
+ * сломаны на самых частых российских форматах:
+ *
+ * 1) В CustomerDetails вызывался parsePhoneNumberFromString(phone) БЕЗ страны по умолчанию.
+ *    Без неё libphonenumber понимает только международную запись (с «+»), поэтому номера
+ *    вида 89001234567 и 9001234567 давали null — и он молча подставлялся в адрес,
+ *    из-за чего WhatsApp открывался с ошибкой «Имя пользователя null не зарегистрировано».
+ *    На боевой базе так записана почти половина клиентов.
+ * 2) В Contracts номер склеивался как phone.startsWith('7') ? phone : '7' + phone,
+ *    и 89001234567 превращался в 789001234567 — лишняя восьмёрка внутри номера.
+ *
+ * Поэтому здесь: сначала честный разбор с подсказкой страны, а если номер записан
+ * с опечаткой или в формате, которого нет в справочнике, — запасной путь по цифрам.
+ * Открыть WhatsApp с очищенным номером всё равно полезнее, чем отправить туда «null».
+ */
+export const normalizePhoneForWhatsApp = (
+  phone?: string | null,
+  defaultCountry: CountryCode = 'RU'
+): string | null => {
+  const raw = (phone || '').trim();
+  if (!raw) return null;
 
-  // Если номер начинается с 8 (российский формат), заменяем на 7
-  if (cleaned.startsWith('8') && cleaned.length === 11) {
-    cleaned = '7' + cleaned.slice(1);
-  }
+  // Номер уже в международной записи разбираем как есть; локальный — с подсказкой страны.
+  const parsed = parsePhoneNumberFromString(raw, raw.startsWith('+') ? undefined : defaultCountry);
+  if (parsed?.isValid()) return parsed.number.replace('+', '');
 
-  // Если номер начинается с +7 (уже с плюсом, но мы удалили его), убеждаемся что первая цифра 7
-  if (cleaned.startsWith('7') && cleaned.length === 11) {
-    return cleaned;
-  }
-
-  // Если номер короче или длиннее 11 цифр — возвращаем как есть (возможно, международный)
-  return cleaned;
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('8')) return '7' + digits.slice(1);
+  if (digits.length === 10) return defaultCountry === 'RU' ? '7' + digits : digits;
+  if (digits.length >= 10) return digits;
+  return null;
 };
 // 🔒 Безопасное прибавление месяцев к дате. Обычный `date.setMonth(date.getMonth()+n)` при дне
 // месяца 29-31 "переливается" в следующий месяц, если в целевом месяце столько дней нет —

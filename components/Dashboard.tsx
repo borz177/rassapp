@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, AppSettings, Investor, User } from '../types';
 import { ICONS } from '../constants';
 import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
-import { formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import {createPortal} from "react-dom";
 
@@ -17,15 +17,9 @@ import {createPortal} from "react-dom";
 const mskDayKey = (d: string | number | Date): string =>
   new Date(d).toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
 
-// Номер для wa.me: только цифры. Российские 8XXXXXXXXXX и XXXXXXXXXX приводим к 7XXXXXXXXXX,
-// всё остальное считаем международным и оставляем как есть.
-const waPhoneDigits = (phone?: string): string | null => {
-  const digits = (phone || '').replace(/\D/g, '');
-  if (digits.length < 10) return null;
-  if (digits.length === 10) return '7' + digits;
-  if (digits.length === 11 && digits.startsWith('8')) return '7' + digits.slice(1);
-  return digits;
-};
+// Номер для wa.me собирает общий помощник normalizePhoneForWhatsApp из src/utils.ts —
+// здесь была четвёртая по счёту копия этой логики в проекте.
+const waPhoneDigits = (phone?: string): string | null => normalizePhoneForWhatsApp(phone);
 
 // Сколько календарных дней (по Москве) осталось до дня платежа
 const daysUntilDayKey = (dayKey: string): number => {
