@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Sale, Account, Expense, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction } from '../src/utils';
 
 // Пресеты периода — те же, что в карточке инвестора.
 // 'ALL' сохранён отдельно: до этого касса по умолчанию показывала данные за всё время,
@@ -623,15 +623,41 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
             }
         });
     });
+    // Из прибыли менеджера уходят не только выплаты себе, но и общие расходы,
+    // отмеченные «Списать из прибыли». Без них баланс в этом блоке был бы завышен:
+    // расход прибыль уменьшает, а список о нём не знал. У общего расхода берём
+    // ДОЛЮ МЕНЕДЖЕРА — остальное приходится на инвесторов счёта.
+    const inPeriod = (dateStr: string) => {
+        const eDate = new Date(dateStr);
+        const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
+        const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
+        endDate.setHours(23, 59, 59, 999);
+        return eDate >= startDate && eDate <= endDate;
+    };
+
     const payouts = expenses
-        .filter(e => e.category === 'Моя выплата' && (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
-        .filter(e => {
-            const eDate = new Date(e.date);
-            const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
-            const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
-            endDate.setHours(23, 59, 59, 999);
-            return eDate >= startDate && eDate <= endDate;
+        .filter(e => (e.category === 'Моя выплата' || e.fromProfit) &&
+                     (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
+        .filter(e => inPeriod(e.date))
+        .map(e => {
+            const account = accounts.find(a => a.id === e.accountId);
+            const isShared = !!e.fromProfit && e.category !== 'Моя выплата';
+            const managerAmount = isShared
+                ? getManagerProfitDeduction(e, account, investors)
+                : Number(e.amount);
+            return {
+                id: e.id,
+                date: e.date,
+                title: e.title,
+                category: e.category,
+                accountName: account?.name,
+                amount: managerAmount,
+                // Сколько стоил расход целиком — чтобы было видно, что списана только доля
+                fullAmount: isShared ? Number(e.amount) : null,
+                isShared,
+            };
         })
+        .filter(e => e.amount > 0.009)
         .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     const totalEarned = accruals.reduce((sum, item) => sum + item.amount, 0);
     const totalWithdrawn = payouts.reduce((sum, item) => sum + Number(item.amount), 0);
@@ -1437,11 +1463,35 @@ const investorProfitPayouts = useMemo(() => {
                     ) : (
                         managerProfitPayouts.map(e => (
                             <div key={e.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-rose-100 dark:border-rose-900/50">
-                                <div className="flex justify-between items-start">
+                                <div className="flex justify-between items-start gap-3">
                                     <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{e.title}</p>
-                                    <span className="font-bold text-sm text-rose-600 dark:text-rose-400 ml-3 shrink-0">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
+                                    <span className="font-bold text-sm text-rose-600 dark:text-rose-400 shrink-0">-{formatCurrency(e.amount, appSettings.showCents)} ₽</span>
                                 </div>
-                                <p className="text-[10px] text-slate-400 mt-0.5">{formatDate(e.date)}</p>
+                                {/* Куда ушло: категория расхода и счёт. Без этого в списке
+                                    висела бы безымянная сумма, и понять причину было нельзя. */}
+                                <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                    <span className="text-[10px] text-slate-400">{formatDate(e.date)}</span>
+                                    {e.category && e.category !== 'Моя выплата' && (
+                                        <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">
+                                            {e.category}
+                                        </span>
+                                    )}
+                                    {e.accountName && (
+                                        <span className="text-[10px] text-slate-400">• {e.accountName}</span>
+                                    )}
+                                    {e.isShared && (
+                                        <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">
+                                            Из прибыли
+                                        </span>
+                                    )}
+                                </div>
+                                {/* У общего расхода списана только доля менеджера — показываем полную сумму,
+                                    иначе цифра в списке не сойдётся с суммой расхода в операциях. */}
+                                {e.isShared && e.fullAmount != null && (
+                                    <p className="text-[10px] text-slate-400 mt-0.5">
+                                        Ваша доля от расхода на {formatCurrency(e.fullAmount, appSettings.showCents)} ₽
+                                    </p>
+                                )}
                             </div>
                         ))
                     )
