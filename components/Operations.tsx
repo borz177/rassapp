@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Sale, Expense, Account, Customer, User } from '../types';
+import { Sale, Expense, Account, Customer, User, Investor } from '../types';
+import { formatCurrency, getManagerSharePercent, getAccountShares } from '../src/utils';
 import { ICONS } from '../constants';
 
 interface OperationsProps {
@@ -8,14 +9,20 @@ interface OperationsProps {
   accounts: Account[];
   customers: Customer[];
   employees?: User[];
+  investors?: Investor[];
   initialAccountId?: string | null;
   canFilterByEmployee?: boolean;
+  /** Отмена операции. Возвращает деньги на счёт и откатывает связанные записи. */
+  onDelete?: (op: any) => Promise<void> | void;
   onClose?: () => void;
 }
 
 const Operations: React.FC<OperationsProps> = ({ 
-    sales, expenses, accounts, customers, employees = [], initialAccountId, canFilterByEmployee = false
+    sales, expenses, accounts, customers, employees = [], investors = [], initialAccountId, canFilterByEmployee = false, onDelete
 }) => {
+  // Отмена расхода: подтверждение с перечислением последствий, а не безликое «вы уверены?»
+  const [cancelTarget, setCancelTarget] = useState<any | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [filterType, setFilterType] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [filterAccountId, setFilterAccountId] = useState<string>(initialAccountId || '');
   const [selectedOp, setSelectedOp] = useState<any | null>(null);
@@ -491,13 +498,103 @@ const Operations: React.FC<OperationsProps> = ({
                         <span className="font-semibold text-slate-800 dark:text-white">{selectedOp.title}</span>
                     </div>
                 )}
-                <button onClick={() => setSelectedOp(null)} className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl mt-4 hover:bg-slate-200 dark:hover:bg-slate-600">
+                {onDelete && selectedOp.type === 'EXPENSE' && (
+                    <button
+                        onClick={() => { setCancelTarget(selectedOp); setSelectedOp(null); }}
+                        className="w-full py-3 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-bold rounded-xl mt-4 border border-rose-200 dark:border-rose-900/50 hover:bg-rose-100 dark:hover:bg-rose-950/60"
+                    >
+                        Отменить расход
+                    </button>
+                )}
+                <button onClick={() => setSelectedOp(null)} className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl mt-2 hover:bg-slate-200 dark:hover:bg-slate-600">
                     Закрыть
                 </button>
             </div>
         </div>
     </div>
 )}
+{/* Подтверждение отмены расхода. Перечисляем последствия поимённо: операция
+    затрагивает не только остаток счёта, но и прибыль, капитал инвестора и долг
+    поставщику — безликое «вы уверены?» тут скрывало бы половину эффекта. */}
+{cancelTarget && (() => {
+    const e: Expense = cancelTarget.raw;
+    const account = accounts.find(a => a.id === e.accountId);
+    const effects: string[] = [
+        `${formatCurrency(Number(e.amount))} ₽ вернутся на счёт «${getAccountName(e.accountId)}»`
+    ];
+
+    if (e.fromProfit) {
+        const mgrPct = getManagerSharePercent(account, investors, e.date);
+        const parts = [`менеджеру ${formatCurrency(Number(e.amount) * mgrPct / 100)} ₽`];
+        getAccountShares(account, investors, e.date).forEach(({ investor, percentage }) => {
+            if (percentage > 0) parts.push(`${investor.name} ${formatCurrency(Number(e.amount) * percentage / 100)} ₽`);
+        });
+        effects.push(`Прибыль восстановится: ${parts.join(', ')}`);
+    }
+    if (e.category === 'Моя выплата' && e.managerPayoutSource === 'PROFIT') {
+        effects.push('Прибыль менеджера восстановится на всю сумму');
+    }
+    if (e.payoutType === 'INVESTMENT' && e.investorId) {
+        const inv = investors.find(i => i.id === e.investorId);
+        effects.push(`Капитал инвестора${inv ? ` «${inv.name}»` : ''} вернётся к прежнему значению`);
+    }
+    if (e.category === 'Оплата партнёру' && e.saleId) {
+        effects.push('Долг перед поставщиком по этому договору снова станет непогашенным');
+    }
+
+    return (
+        <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !isCancelling && setCancelTarget(null)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl p-6" onClick={ev => ev.stopPropagation()}>
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white">Отменить расход?</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
+                    «{e.title}» — {formatCurrency(Number(e.amount))} ₽
+                </p>
+
+                <div className="rounded-xl bg-slate-50 dark:bg-slate-900/40 p-3 space-y-2 mb-4">
+                    <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase">Что произойдёт</p>
+                    {effects.map((t, i) => (
+                        <div key={i} className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+                            <span className="shrink-0 mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span>{t}</span>
+                        </div>
+                    ))}
+                </div>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                    Запись расхода будет удалена без возможности восстановления.
+                </p>
+
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => setCancelTarget(null)}
+                        disabled={isCancelling}
+                        className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl disabled:opacity-50"
+                    >
+                        Не отменять
+                    </button>
+                    <button
+                        onClick={async () => {
+                            if (isCancelling) return;
+                            setIsCancelling(true);
+                            try {
+                                await onDelete?.(cancelTarget);
+                                setCancelTarget(null);
+                            } catch (err: any) {
+                                alert(err?.message || 'Не удалось отменить расход');
+                            } finally {
+                                setIsCancelling(false);
+                            }
+                        }}
+                        disabled={isCancelling}
+                        className="flex-[1.4] py-3 bg-rose-600 text-white font-bold rounded-xl hover:bg-rose-700 disabled:opacity-60"
+                    >
+                        {isCancelling ? 'Отменяем…' : 'Отменить расход'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+})()}
     </div>
   );
 };

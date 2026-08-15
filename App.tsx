@@ -3235,13 +3235,42 @@ const contractCounts = useMemo(() => {
           return;
       }
 
-      if (!window.confirm("Вы уверены, что хотите удалить эту операцию?")) return;
-
       try {
         if (op.type === 'EXPENSE') {
+            const expense: Expense | undefined = op.raw;
             await api.deleteItem('expenses', op.id);
             removeFromList(setExpenses, op.id);
+
+            // 🔙 Откатываем побочные эффекты, которые были сделаны при создании расхода
+            // (см. handleExpenseSubmit). Без этого отмена возвращала деньги на счёт,
+            // но оставляла испорченными связанные записи: у инвестора навсегда
+            // оставался уменьшенный капитал, а долг поставщику — помеченным оплаченным.
+            // Остаток счёта и прибыль пересчитываются из списка расходов сами,
+            // поэтому отдельно их восстанавливать не нужно.
+            if (expense?.payoutType === 'INVESTMENT' && expense.investorId) {
+                const inv = investors.find(i => i.id === expense.investorId);
+                if (inv) {
+                    const restored = { ...inv, initialAmount: inv.initialAmount + Number(expense.amount) };
+                    const savedInv = await api.saveItem('investors', restored);
+                    updateList(setInvestors, savedInv);
+                }
+            }
+
+            if (expense?.category === 'Оплата партнёру' && expense.saleId) {
+                const sale = sales.find(s => s.id === expense.saleId);
+                if (sale) {
+                    const newPaid = Math.max(0, (sale.partnerDebtPaidAmount || 0) - Number(expense.amount));
+                    const updatedSale = {
+                        ...sale,
+                        partnerDebtPaidAmount: newPaid,
+                        isPartnerDebtPaid: newPaid >= sale.buyPrice,
+                    };
+                    const savedSale = await api.saveItem('sales', updatedSale);
+                    updateList(setSales, savedSale);
+                }
+            }
         } else if (op.type === 'INCOME') {
+            if (!window.confirm("Вы уверены, что хотите удалить эту операцию?")) return;
             const sale = sales.find(s => s.id === op.raw.id);
             if (!sale) return;
 
@@ -3683,6 +3712,7 @@ if (!user && !showSplash) {
                       customers={customers}
                       initialAccountId={operationsAccountId}
                       onDelete={handleDeleteOperation}
+                      investors={investors}
                       employees={isInvestor ? [] : employees}
                       canFilterByEmployee={isManager && !isEmployee && !isInvestor}
                       accountBalances={accountBalances}
