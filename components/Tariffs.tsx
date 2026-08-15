@@ -414,7 +414,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
 
       {/* Confirmation Modal */}
       {confirmData && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !loading && setConfirmData(null)}>
+          <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !loading && setConfirmData(null)}>
               <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 relative overflow-hidden" onClick={e => e.stopPropagation()}>
 
                   {/* Decorative Background Element */}

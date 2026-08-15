@@ -98,7 +98,7 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
 
   return (
     <div
-      className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[60] ${isClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
+      className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-modal ${isClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
       onClick={handleClose}
     >
       <div

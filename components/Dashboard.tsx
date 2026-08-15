@@ -104,7 +104,7 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
 
    return (
         <div
-          className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/60 backdrop-blur-md ${isClosing ? 'animate-fade-out' : 'animate-in fade-in zoom-in duration-300'}`}
+          className={`fixed inset-0 z-modal flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/60 backdrop-blur-md ${isClosing ? 'animate-fade-out' : 'animate-in fade-in zoom-in duration-300'}`}
           onClick={handleClose}
         >
             <div
@@ -229,7 +229,7 @@ const PaymentActionModal = ({
 
     return (
         <div
-            className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/60 backdrop-blur-md ${isClosing ? 'animate-fade-out' : 'animate-in fade-in zoom-in duration-300'}`}
+            className={`fixed inset-0 z-modal flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/60 backdrop-blur-md ${isClosing ? 'animate-fade-out' : 'animate-in fade-in zoom-in duration-300'}`}
             onClick={handleClose}
         >
             <div
@@ -433,7 +433,7 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
 
     return createPortal(
     <div
-      className={`fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+      className={`fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
       onClick={handleClose}
     >
       <div
@@ -734,7 +734,7 @@ const ProfitDetailsModal = ({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+      className={`fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
       onClick={handleClose}
     >
       <div
@@ -1859,7 +1859,7 @@ useEffect(() => {
 
   {/* 🔹 Выпадающий календарь — ИСПРАВЛЕННЫЙ */}
   {showCalendarPicker && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:absolute sm:inset-auto sm:top-full sm:left-0 sm:m-0 sm:p-0 sm:w-auto sm:justify-start">
+    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 sm:absolute sm:inset-auto sm:top-full sm:left-0 sm:m-0 sm:p-0 sm:w-auto sm:justify-start">
       {/* Затемнение фона для мобильных */}
       <div
         className="fixed inset-0 bg-black/40 backdrop-blur-sm sm:hidden"

@@ -1620,7 +1620,7 @@ if (mode === 'CASH') {
 
       {showConfirmModal && (
           <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+              className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
               onClick={() => { if (!isSubmitting) setShowConfirmModal(false); }}>
             <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 animate-dialog-in"
                  onClick={e => e.stopPropagation()}>
@@ -1661,7 +1661,7 @@ if (mode === 'CASH') {
 
       {showSuccessModal && (
           <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+              className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
             <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-5 animate-dialog-in"
                  onClick={e => e.stopPropagation()}>
               <SuccessCheck />
@@ -1695,7 +1695,7 @@ if (mode === 'CASH') {
       {/* 🔔 МОДАЛЬНОЕ ОКНО ПОДТВЕРЖДЕНИЯ ОТПРАВКИ В WHATSAPP */}
       {showWhatsAppConfirmModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+          className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
           onClick={() => { if (!isSendingWhatsApp) setShowWhatsAppConfirmModal(false); }}
         >
           <div

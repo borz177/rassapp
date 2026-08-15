@@ -161,7 +161,7 @@ const handleSendReminder = async () => {
 
    return createPortal(
     <div
-      className={`fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+      className={`fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
       onClick={handleClose}
     >
       <div
@@ -260,7 +260,7 @@ const handleSendReminder = async () => {
         {/* 🔔 МОДАЛКА ПОДТВЕРЖДЕНИЯ ОТПРАВКИ */}
         {showConfirmReminder && createPortal(
           <div
-            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
+            className="fixed inset-0 z-modal-top flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
             onClick={() => !isSending && setShowConfirmReminder(false)}
           >
             <div
@@ -1122,7 +1122,7 @@ useEffect(() => {
 
       {/* Модалка удаления */}
       {deletingSale && !readOnly && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={closeDeleteModal}>
+        <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={closeDeleteModal}>
           <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-3xl shadow-2xl animate-dialog-in" onClick={e => e.stopPropagation()}>
             {deleteStage === 'done' ? (
               <div className="py-2 text-center space-y-5">
@@ -1177,7 +1177,7 @@ useEffect(() => {
 
       {showConfirmRemindAll && createPortal(
   <div
-    className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
+    className="fixed inset-0 z-modal-top flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
     onClick={() => !isSendingAll && setShowConfirmRemindAll(false)}
   >
     <div

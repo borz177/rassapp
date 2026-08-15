@@ -483,7 +483,7 @@ const counts = useMemo(() => {
             {/* 📱 Мобильное меню для инвестора (показывает доступные разделы) */}
 {showInvestorMobileMenu && (
   <div
-    className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in md:hidden"
+    className="fixed inset-0 z-modal flex items-end justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in md:hidden"
     onClick={() => setShowInvestorMobileMenu(false)}
   >
     <div

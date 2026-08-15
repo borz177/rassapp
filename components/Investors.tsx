@@ -544,7 +544,7 @@ const Investors: React.FC<InvestorsProps> = ({
 
       {/* Инвестор заведён — что именно записалось */}
       {createdInvestor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-5 animate-dialog-in">
             <SuccessCheck />
             <div className="animate-stage-in" style={{ animationDelay: '0.55s' }}>
@@ -570,7 +570,7 @@ const Investors: React.FC<InvestorsProps> = ({
       {/* Удаление инвестора: раньше это был системный confirm без единой детали о том,
           кого удаляют и что при этом теряется. */}
       {deletingInvestor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+        <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
              onClick={() => setDeletingInvestor(null)}>
           <div className="bg-white dark:bg-slate-800 w-full max-w-sm p-6 rounded-3xl shadow-2xl animate-dialog-in"
                onClick={e => e.stopPropagation()}>

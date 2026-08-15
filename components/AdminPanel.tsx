@@ -386,7 +386,7 @@ const getContractUsage = (user: User): {
                     <div className="text-sm text-slate-500 dark:text-slate-400">Всего пользователей</div>
                     <div className="text-2xl font-bold text-slate-800 dark:text-white">{systemStats.totalUsers}</div>
                 </div>
-                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+              {/* <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                     <div className="text-sm text-slate-500 dark:text-slate-400">Активные подписки</div>
                     <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{systemStats.activeSubscriptions}</div>
                 </div>
@@ -398,7 +398,7 @@ const getContractUsage = (user: User): {
                     <div className="text-sm text-slate-500 dark:text-slate-400">Истекают ≤3 дн.</div>
                     <div className={`text-2xl font-bold ${systemStats.expiringSoon > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-white'}`}>{systemStats.expiringSoon}</div>
                 </div>
-            </div>
+            </div>*/}
 
             {/* Tabs */}
             <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
@@ -853,7 +853,7 @@ const getContractUsage = (user: User): {
 
             {/* 🔹 Modal: Управление тарифом */}
             {selectedUser && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedUser(null)}>
+                <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedUser(null)}>
                     <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="flex items-start justify-between mb-4">
                             <div>
@@ -980,7 +980,7 @@ const getContractUsage = (user: User): {
 
             {/* 🔹 Modal: API Key */}
             {apiModalUser && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setApiModalUser(null)}>
+                <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setApiModalUser(null)}>
                     <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
                         <div className="flex items-start justify-between mb-4">
                             <div>

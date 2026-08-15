@@ -50,7 +50,7 @@ interface NotificationDetailModalProps {
   onArchiveToggle?: (notification: AppNotification) => void;
 }
 
-// z-[70] — выше и панели/страницы уведомлений (z-[60]), и мобильной нижней навигации (z-50)
+// .z-modal-top — слой для подтверждений поверх открытой модалки (см. шкалу слоёв в src/index.css)
 export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = ({ notification, onClose, onArchiveToggle }) => {
   const meta = TYPE_META[notification.type] || TYPE_META.ADMIN_BROADCAST;
   // Рассылки от администратора архивировать нельзя — у них нет этого понятия на сервере
@@ -70,7 +70,7 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
 
   return (
     <div
-      className={`fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 ${isClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
+      className={`fixed inset-0 z-modal-top bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 ${isClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
       onClick={handleClose}
     >
       <div

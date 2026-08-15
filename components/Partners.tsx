@@ -30,7 +30,7 @@ const CreatePartnershipModal = ({ onClose, onSubmit, investors }: { onClose: () 
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+        <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
             <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={e => e.stopPropagation()}>
                 <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">Новое партнерство</h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -128,7 +128,7 @@ const PartnershipDetail = ({ partnership, accounts, sales, expenses, investors, 
     if (!stats) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+        <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
             <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
                 <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 flex justify-between items-center">
                     <div>

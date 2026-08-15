@@ -794,7 +794,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
 
       {/* Delete Account Modal */}
       {showDeleteAccountModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
+          <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in"
                onClick={() => { if (!isDeletingAccount) setShowDeleteAccountModal(false); }}>
               <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 animate-dialog-in max-h-[90vh] overflow-y-auto"
                    onClick={e => e.stopPropagation()}>
@@ -896,7 +896,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
       {/* Clear Data Modal */}
       {showClearModal && (
           <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+              className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
               onClick={handleCloseClearModal}
           >
               <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center space-y-4" onClick={e => e.stopPropagation()}>
@@ -964,14 +964,14 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
 
       {/* 👇 МОДАЛКА ЭКСПОРТА */}
       {showExportModal && (
-        <Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div></div>}>
+        <Suspense fallback={<div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div></div>}>
           <DataExport onClose={() => setShowExportModal(false)} />
         </Suspense>
       )}
 
       {/* МОДАЛКА ИМПОРТА */}
       {showImportModal && (
-        <Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div></div>}>
+        <Suspense fallback={<div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div></div>}>
           <DataImport
               onClose={() => setShowImportModal(false)}
               onImportSuccess={() => {
