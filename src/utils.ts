@@ -1,5 +1,5 @@
 import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js';
-import { Account, Investor, InvestmentPeriod, Sale } from '../types';
+import { Account, Investor, InvestmentPeriod, Sale, Expense } from '../types';
 
 export const escapeHtml = (str: unknown): string =>
   String(str ?? '')
@@ -223,6 +223,96 @@ export const getCapitalShares = (
     investor,
     percentage: getInvestorAmountAt(investor, cutoff) / totalCapital * 100,
   }));
+};
+
+/**
+ * Сколько из расхода уменьшает прибыль МЕНЕДЖЕРА.
+ *
+ * Два случая:
+ * 1) «Моя выплата» с пометкой «Из Прибыли» — менеджер забирает свою прибыль целиком,
+ *    инвесторов это не касается. Раньше поле managerPayoutSource сохранялось в базу,
+ *    но не участвовало ни в одном расчёте: переключатель был просто подписью.
+ * 2) Общий расход с флагом fromProfit — делится между менеджером и инвесторами
+ *    по долям счёта на дату расхода, симметрично начислению прибыли.
+ *    Если инвесторов на счёте нет, доля менеджера 100% и расход уходит целиком ему.
+ */
+export const getManagerProfitDeduction = (
+  expense: Expense,
+  account: Account | undefined,
+  investors: Investor[]
+): number => {
+  if (expense.category === 'Моя выплата' && expense.managerPayoutSource === 'PROFIT') {
+    return expense.amount;
+  }
+  if (expense.fromProfit) {
+    return expense.amount * getManagerSharePercent(account, investors, expense.date) / 100;
+  }
+  return 0;
+};
+
+/**
+ * Сколько из расхода уменьшает прибыль КОНКРЕТНОГО инвестора.
+ *
+ * Здесь учитываются только общие расходы с флагом fromProfit. Адресные выплаты
+ * инвестору (payoutType === 'PROFIT') считаются отдельно там, где ведётся его баланс,
+ * и складывать их сюда значило бы вычесть одну и ту же сумму дважды.
+ */
+export const getInvestorProfitDeduction = (
+  expense: Expense,
+  account: Account | undefined,
+  investors: Investor[],
+  investorId: string
+): number => {
+  if (!expense.fromProfit) return 0;
+  const share = getAccountShares(account, investors, expense.date)
+    .find(m => m.investor.id === investorId);
+  return share ? expense.amount * share.percentage / 100 : 0;
+};
+
+/**
+ * Сколько прибыли по счёту заработано и сколько из неё уже забрали.
+ *
+ * Начисление считается так же, как в карточке инвестора и в отчётах: доля прибыли
+ * в каждом полученном платеже (платёж × маржа договора). Системные записи и «продажи»,
+ * где клиентом выступает инвестор, исключаются — это внутренние движения денег.
+ *
+ * Забранным считается всё, что уменьшает прибыль: выплаты прибыли инвестору,
+ * выплаты менеджеру с пометкой «Из Прибыли» и общие расходы с флагом fromProfit.
+ * Остаток нужен, чтобы предупредить, когда из прибыли пытаются списать больше,
+ * чем её вообще заработано.
+ */
+export const getAccountProfitBalance = (
+  accountId: string,
+  sales: Sale[],
+  expenses: Expense[],
+  investors: Investor[]
+): { earned: number; withdrawn: number; available: number } => {
+  const investorIds = new Set(investors.map(i => i.id));
+
+  let earned = 0;
+  sales.forEach(sale => {
+    if (sale.accountId !== accountId) return;
+    if (String(sale.customerId || '').startsWith('system_')) return;
+    if (investorIds.has(sale.customerId)) return;
+    if (!sale.buyPrice || sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
+
+    const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
+    const collected = (sale.downPayment || 0) + (sale.paymentPlan || [])
+      .filter(p => p.isPaid && p.isRealPayment !== false)
+      .reduce((sum, p) => sum + (p.amount || 0), 0);
+    earned += collected * profitMargin;
+  });
+
+  const withdrawn = expenses
+    .filter(e => e.accountId === accountId)
+    .filter(e =>
+      e.fromProfit === true ||
+      e.payoutType === 'PROFIT' ||
+      (e.category === 'Моя выплата' && e.managerPayoutSource === 'PROFIT')
+    )
+    .reduce((sum, e) => sum + (e.amount || 0), 0);
+
+  return { earned, withdrawn, available: earned - withdrawn };
 };
 
 /**

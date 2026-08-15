@@ -337,6 +337,18 @@ const Operations: React.FC<OperationsProps> = ({
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                     {getTimeMsk(op.date)} • {getCategoryLabel(op.description)}
                 </p>
+                {/* Расход из прибыли внешне не отличался от обычного, и через месяц было
+                    непонятно, почему прибыль просела. Помечаем прямо в списке. */}
+                {op.raw?.fromProfit && (
+                    <span className="inline-block mt-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">
+                        Из прибыли
+                    </span>
+                )}
+                {op.raw?.category === 'Моя выплата' && op.raw?.managerPayoutSource === 'PROFIT' && (
+                    <span className="inline-block mt-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">
+                        Из прибыли менеджера
+                    </span>
+                )}
                 {employees.length > 0 && getEmployeeName(op.raw?.createdByUserId) && op.raw?.createdByUserId !== op.raw?.employeeId && (
                     <p className="text-[10px] text-indigo-500 dark:text-indigo-400 mt-0.5">
                         Добавил: {getEmployeeName(op.raw.createdByUserId)}

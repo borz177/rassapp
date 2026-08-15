@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Investor, Sale, Expense, Account, Payment, AppSettings, Customer, InvestmentPeriod, LossEvent } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt } from '../src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction } from '../src/utils';
 
 // Модальное окно формы. Через портал в body: страница открыта внутри .page-push-layer,
 // а он position: fixed с z-index 30 — окно внутри него оказалось бы под нижней навигацией.
@@ -369,9 +369,15 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
       });
     });
 
+    // Адресные выплаты прибыли этому инвестору
     const withdrawnSum = expenses
       .filter(e => e.accountId === account.id && e.payoutType === 'PROFIT' && (!e.investorId || e.investorId === investor.id))
-      .reduce((sum, e) => sum + e.amount, 0);
+      .reduce((sum, e) => sum + e.amount, 0)
+      // + его доля в общих расходах, списанных из прибыли: такой расход делится
+      // между менеджером и инвесторами счёта по тем же долям, по которым начисляется прибыль
+      + expenses
+        .filter(e => e.accountId === account.id && e.fromProfit)
+        .reduce((sum, e) => sum + getInvestorProfitDeduction(e, account, investors, investor.id), 0);
 
     return {
       totalProfitEarned: profitSum,
@@ -389,14 +395,21 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
       .filter(p => { const d = new Date(p.date); return d >= startDate && d <= endDate; })
       .reduce((sum, p) => sum + p.amount, 0);
 
+    const inPeriod = (e: Expense) => { const d = new Date(e.date); return d >= startDate && d <= endDate; };
+
     const paidOut = expenses
       .filter(e => e.accountId === account?.id && (!e.investorId || e.investorId === investor.id) &&
         isPayoutExpense(e))
-      .filter(e => { const d = new Date(e.date); return d >= startDate && d <= endDate; })
-      .reduce((sum, e) => sum + e.amount, 0);
+      .filter(inPeriod)
+      .reduce((sum, e) => sum + e.amount, 0)
+      // Доля инвестора в общих расходах, списанных из прибыли за тот же период
+      + expenses
+        .filter(e => e.accountId === account?.id && e.fromProfit)
+        .filter(inPeriod)
+        .reduce((sum, e) => sum + getInvestorProfitDeduction(e, account, investors, investor.id), 0);
 
     return { periodProfit: profit, periodPaidOut: paidOut };
-  }, [period, profitAccruals, expenses, account, investor.id]);
+  }, [period, profitAccruals, expenses, account, investor.id, investors]);
 
   const profitWithdrawals = useMemo(() => {
     return expenses

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Account, Investor, Expense, User, Supplier, Sale } from '../types';
 import { ICONS } from '../constants';
-import { getInvestorAccount } from '../src/utils';
+import { getInvestorAccount, getAccountShares, getManagerSharePercent, formatCurrency, getAccountProfitBalance } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
 
 interface NewExpenseProps {
@@ -72,6 +72,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [payoutType, setPayoutType] = useState<'INVESTMENT' | 'PROFIT' | null>(null);
   const [managerPayoutSource, setManagerPayoutSource] = useState<'CAPITAL' | 'PROFIT' | null>(null);
+  // Общий расход списывается из заработанной прибыли (делится по долям счёта)
+  const [fromProfit, setFromProfit] = useState(false);
 
   // 🔥 НОВЫЕ СТЕЙТЫ для защиты от дублей и подтверждения
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -87,6 +89,33 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
   const selectedInvestor = investors.find(i => i.id === selectedInvestorId);
   const selectedAccount = accounts.find(a => a.id === sourceAccountId);
+
+  // Остаток прибыли по счёту — чтобы предупредить, если из неё списывают больше,
+  // чем заработано. Не блокируем: в учёте бывают ситуации, когда так и надо,
+  // но уходить в минус молча человек не должен.
+  const profitBalance = (fromProfit && sourceAccountId)
+    ? getAccountProfitBalance(sourceAccountId, saleList, expenses || [], investors)
+    : null;
+  const profitShortfall = (() => {
+    if (!profitBalance) return null;
+    const numAmount = Number(amount);
+    if (!numAmount || numAmount <= 0) return null;
+    return numAmount > profitBalance.available ? numAmount - profitBalance.available : null;
+  })();
+
+  // Показываем разбивку до сохранения: списание из прибыли — не самая очевидная
+  // операция, и увидеть «сколько уйдёт с кого» лучше заранее, а не в отчёте потом.
+  const profitSplitPreview = (() => {
+    if (!fromProfit) return null;
+    const numAmount = Number(amount);
+    if (!numAmount || numAmount <= 0) return null;
+    const mgrPct = getManagerSharePercent(selectedAccount, investors, date);
+    const parts = [`менеджер ${formatCurrency(numAmount * mgrPct / 100)} ₽`];
+    getAccountShares(selectedAccount, investors, date).forEach(({ investor, percentage }) => {
+      if (percentage > 0) parts.push(`${investor.name} ${formatCurrency(numAmount * percentage / 100)} ₽`);
+    });
+    return 'Спишется: ' + parts.join(', ');
+  })();
 
   // Открытые (непогашенные) долги выбранного поставщика — для опциональной привязки оплаты к конкретному договору
   const supplierOpenDebts = selectedSupplierId
@@ -127,6 +156,9 @@ const NewExpense: React.FC<NewExpenseProps> = ({
     useEffect(() => {
       if (category !== 'Моя выплата') {
           setManagerPayoutSource(null);
+      } else {
+          // У «Моей выплаты» источник выбирается отдельными кнопками ниже
+          setFromProfit(false);
       }
       // 🔥 Сбрасываем сотрудника, если категория не "Зарплата"
       if (category !== 'Salary') {
@@ -287,6 +319,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                         ? `Оплата поставщику: ${selectedSupplierForExpense?.name || 'Партнер'}`
                         : title,
             category: category,
+            // Списание из прибыли делится между менеджером и инвесторами по долям счёта
+            fromProfit: fromProfit || undefined,
         };
 
         // 🔥 Сохраняем ID сотрудника в расходе
@@ -569,6 +603,52 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                          {accounts.filter(a => !a.isArchived || a.id === sourceAccountId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                      </select>
                  </div>
+                 {/* Общий расход можно списать не из оборотных денег, а из уже заработанной
+                     прибыли. Тогда сумма делится между менеджером и инвесторами по их долям
+                     в счёте — так же, как по этому счёту начисляется прибыль.
+                     У «Моей выплаты» для этого есть свой выбор источника ниже. */}
+                 {category !== 'Моя выплата' && (
+                     <div className="pt-2">
+                         <label className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-colors ${
+                             fromProfit
+                                 ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-900/30'
+                                 : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'
+                         }`}>
+                             <input
+                                 type="checkbox"
+                                 checked={fromProfit}
+                                 onChange={e => setFromProfit(e.target.checked)}
+                                 className="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500"
+                             />
+                             <span className="min-w-0">
+                                 <span className="block font-bold text-sm text-emerald-800 dark:text-emerald-300">Списать из прибыли</span>
+                                 <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                     {profitSplitPreview
+                                         ? profitSplitPreview
+                                         : 'Уменьшит заработанную прибыль, а не оборотные средства'}
+                                 </span>
+                                 {profitBalance && (
+                                     <span className="block text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                         Доступно прибыли по счёту: <b>{formatCurrency(Math.max(0, profitBalance.available))} ₽</b>
+                                     </span>
+                                 )}
+                             </span>
+                         </label>
+
+                         {/* Списать больше, чем заработано, не запрещаем — в учёте так бывает,
+                             но уходить в минус молча человек не должен. */}
+                         {profitShortfall !== null && (
+                             <div className="mt-2 flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50">
+                                 <span className="shrink-0 text-amber-600 dark:text-amber-400">{ICONS.Alert}</span>
+                                 <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                                     Сумма больше заработанной прибыли на <b>{formatCurrency(profitShortfall)} ₽</b>.
+                                     Прибыль уйдёт в минус — проверьте, точно ли расход нужно списывать отсюда,
+                                     а не из оборотных средств.
+                                 </p>
+                             </div>
+                         )}
+                     </div>
+                 )}
                  {category === 'Моя выплата' && (
                      <div className="pt-2">
                           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Источник списания</label>

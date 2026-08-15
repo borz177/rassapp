@@ -241,6 +241,12 @@ export interface Expense {
   // 🔹 Источник выплаты для менеджера
   managerPayoutSource?: 'CAPITAL' | 'PROFIT';
 
+  // 🔹 Общий расход списан из заработанной прибыли, а не из оборотных средств.
+  // Сумма делится между менеджером и инвесторами по их долям в счёте на дату расхода —
+  // симметрично тому, как прибыль по этому счёту начисляется.
+  // См. getManagerProfitDeduction / getInvestorProfitDeduction в src/utils.ts.
+  fromProfit?: boolean;
+
   // 🔹 Флаг возврата (для фильтрации и отчётности)
   isRefund?: boolean;
 
