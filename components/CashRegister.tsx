@@ -636,6 +636,12 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
     };
 
     const payouts = expenses
+        // Выплата себе «Из Капитала» — это личные вложенные деньги, а не заработок,
+        // и уменьшать ею баланс прибыли неверно: раньше блок вычитал её наравне
+        // с выплатой из прибыли, из-за чего касса и отчёты расходились.
+        // Записи без указанного источника (сделанные до появления выбора) оставляем
+        // в прибыли, как было, — иначе задним числом изменится история.
+        .filter(e => !(e.category === 'Моя выплата' && e.managerPayoutSource === 'CAPITAL'))
         .filter(e => (e.category === 'Моя выплата' || e.fromProfit) &&
                      (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
         .filter(e => inPeriod(e.date))

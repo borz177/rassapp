@@ -625,7 +625,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                                  <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                      {profitSplitPreview
                                          ? profitSplitPreview
-                                         : 'Уменьшит заработанную прибыль, а не оборотные средства'}
+                                         : 'Уменьшит заработанную прибыль'}
                                  </span>
                                  {profitBalance && (
                                      <span className="block text-xs text-slate-500 dark:text-slate-400 mt-1">
