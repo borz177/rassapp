@@ -2145,7 +2145,7 @@ const handleIncomeSubmit = async (data: any) => {
             }
         }
     }
-};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: crypto.randomUUID(), userId: ownerId, createdByUserId: user.id, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, fromProfit: data.fromProfit, investorId: data.investorId, supplierId: data.supplierId, saleId: data.saleId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = { ...inv, initialAmount: inv.initialAmount - data.amount }; const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } if (data.category === 'Оплата партнёру' && data.saleId) { const sale = sales.find(s => s.id === data.saleId); if (sale) { const newPaid = (sale.partnerDebtPaidAmount || 0) + Number(data.amount); const updatedSale = { ...sale, partnerDebtPaidAmount: newPaid, isPartnerDebtPaid: newPaid >= sale.buyPrice }; const savedSale = await api.saveItem('sales', updatedSale); updateList(setSales, savedSale); } } setDraftExpenseData(null); setCurrentView('OPERATIONS'); };
+};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: crypto.randomUUID(), userId: ownerId, createdByUserId: user.id, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, fromProfit: data.fromProfit, investorId: data.investorId, supplierId: data.supplierId, saleId: data.saleId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = applyInvestmentDelta(inv, -Number(data.amount), data.date); const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } if (data.category === 'Оплата партнёру' && data.saleId) { const sale = sales.find(s => s.id === data.saleId); if (sale) { const newPaid = (sale.partnerDebtPaidAmount || 0) + Number(data.amount); const updatedSale = { ...sale, partnerDebtPaidAmount: newPaid, isPartnerDebtPaid: newPaid >= sale.buyPrice }; const savedSale = await api.saveItem('sales', updatedSale); updateList(setSales, savedSale); } } setDraftExpenseData(null); setCurrentView('OPERATIONS'); };
  const handleAddEmployee = async (data: any) => {
   if (!user || !isManager) return;
 
@@ -2327,6 +2327,33 @@ const handleAddInvestor = async (
 // Повторный вход инвестора в пул: кроме нового периода нужно оприходовать деньги на счёт.
 // Раньше добавлялся только период — сумма числилась за инвестором, но на баланс счёта
 // не попадала, и касса расходилась с долями участников.
+/**
+ * Меняет вложенную сумму инвестора на delta (отрицательная — возврат инвестиций).
+ *
+ * Обновляет И активный период (investmentPeriods), И поле initialAmount.
+ * Это принципиально: у участника общего пула сумма вложения читается из активного
+ * периода (getInvestorAmountAt в src/utils.ts), а верхнее поле игнорируется.
+ * Возврат инвестиций уменьшал только initialAmount — поэтому у инвестора в пуле
+ * «вложено» не менялось вовсе, а его доля в прибыли продолжала считаться
+ * от прежней суммы. Тот же приём уже используется в applyLossToCapital ниже.
+ */
+const applyInvestmentDelta = (investor: Investor, delta: number, atDate: string | number | Date): Investor => {
+  const periods = investor.investmentPeriods && investor.investmentPeriods.length > 0
+    ? investor.investmentPeriods
+    : [{ id: 'legacy', joinedDate: investor.joinedDate, leftPoolDate: investor.leftPoolDate, initialAmount: investor.initialAmount }];
+
+  const active = getActivePeriodAt(investor, new Date(atDate).getTime());
+  const updatedPeriods = active
+    ? periods.map(p => (p.id === active.id ? { ...p, initialAmount: Math.max(0, p.initialAmount + delta) } : p))
+    : periods;
+
+  return {
+    ...investor,
+    investmentPeriods: updatedPeriods,
+    initialAmount: Math.max(0, (investor.initialAmount || 0) + delta),
+  };
+};
+
 // Убыток пула (мудараба). Раньше событие только записывалось в счёт и показывалось справкой —
 // ни касса, ни доли участников не менялись. Теперь:
 //  • деньги реально ушли (убыток не привязан к договору) → создаём расход по счёту пула;
@@ -3253,7 +3280,8 @@ const contractCounts = useMemo(() => {
             if (expense?.payoutType === 'INVESTMENT' && expense.investorId) {
                 const inv = investors.find(i => i.id === expense.investorId);
                 if (inv) {
-                    const restored = { ...inv, initialAmount: inv.initialAmount + Number(expense.amount) };
+                    // Возвращаем и в активный период, и в initialAmount — симметрично списанию
+                    const restored = applyInvestmentDelta(inv, Number(expense.amount), expense.date);
                     const savedInv = await api.saveItem('investors', restored);
                     updateList(setInvestors, savedInv);
                 }

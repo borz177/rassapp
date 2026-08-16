@@ -387,7 +387,7 @@ const getContractUsage = (user: User): {
                     <div className="text-sm text-slate-500 dark:text-slate-400">Всего пользователей</div>
                     <div className="text-2xl font-bold text-slate-800 dark:text-white">{systemStats.totalUsers}</div>
                 </div>
-              {/* <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+              <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                     <div className="text-sm text-slate-500 dark:text-slate-400">Активные подписки</div>
                     <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{systemStats.activeSubscriptions}</div>
                 </div>
@@ -398,7 +398,7 @@ const getContractUsage = (user: User): {
                 <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                     <div className="text-sm text-slate-500 dark:text-slate-400">Истекают ≤3 дн.</div>
                     <div className={`text-2xl font-bold ${systemStats.expiringSoon > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-white'}`}>{systemStats.expiringSoon}</div>
-                </div>*/}
+                </div>
             </div>
 
             {/* Tabs */}
