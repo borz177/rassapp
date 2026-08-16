@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Investor, AppSettings, Sale, Expense, Account, Customer } from '../types';
-import { formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor, calculateSaleOverdue } from '../src/utils';
+import { formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor, calculateSaleOverdue, addMonthsClamped } from '../src/utils';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -52,7 +52,7 @@ function getPeriodDates(preset: PeriodPreset): { start: string; end: string } {
             const e = new Date(today.getFullYear(), today.getMonth(), 0);
             return { start: fmt(s), end: fmt(e) };
         }
-        case 'quarter': { const d = new Date(today); d.setMonth(today.getMonth() - 3); return { start: fmt(d), end: todayStr }; }
+        case 'quarter': { return { start: fmt(addMonthsClamped(today, -3)), end: todayStr }; }
         case 'year': { const d = new Date(today); d.setFullYear(today.getFullYear() - 1); return { start: fmt(d), end: todayStr }; }
         case 'all': return { start: '2020-01-01', end: todayStr };
     }

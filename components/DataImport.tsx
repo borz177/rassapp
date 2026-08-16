@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { api } from '@/services/api';
 import { Customer, Sale, Account, Investor, Payment, Expense } from '../types';
+import { addMonthsClamped } from '../src/utils';
 
 declare const XLSX: any;
 
@@ -314,9 +315,9 @@ if (!investor) {
 
                     let firstPaymentDateStr = row['Дата первого платежа'] || row['First Payment Date'];
                     if (!firstPaymentDateStr) {
-                        const d = new Date(saleDateIso);
-                        d.setMonth(d.getMonth() + 1);
-                        firstPaymentDateStr = d.toISOString();
+                        // addMonthsClamped: у договора от 31-го числа обычное прибавление
+                        // месяца давало не то число (31 января + 1 мес = 3 марта).
+                        firstPaymentDateStr = addMonthsClamped(new Date(saleDateIso), 1).toISOString();
                     } else {
                         firstPaymentDateStr = parseExcelDate(firstPaymentDateStr);
                     }

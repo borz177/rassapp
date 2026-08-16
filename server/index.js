@@ -1109,6 +1109,18 @@ const logAdminAction = async (adminId, action, targetUserId, details) => {
 };
 
 // --- HELPER FUNCTIONS ---
+// Безопасное прибавление месяцев. Обычный setMonth на 29-31 числе «переливается»
+// в следующий месяц: 31 января + 1 месяц даёт 3 марта, потому что 31 февраля не
+// существует. Для подписки это лишние дни доступа, оплаченные как один месяц.
+// Тот же расчёт во фронте — addMonthsClamped в src/utils.ts.
+const addMonthsClamped = (date, months) => {
+  const target = new Date(date.getFullYear(), date.getMonth() + months, 1,
+                          date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds());
+  const daysInTarget = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(date.getDate(), daysInTarget));
+  return target;
+};
+
 const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 const sendEmail = async (email, subject, text, html = null) => {
@@ -2296,7 +2308,7 @@ app.post('/api/user/subscription', auth, async (req, res) => {
     if (newExpiresAt < new Date()) {
       newExpiresAt = new Date();
     }
-    newExpiresAt.setMonth(newExpiresAt.getMonth() + Number(months));
+    newExpiresAt = addMonthsClamped(newExpiresAt, Number(months));
     
     const updatedSub = {
       plan: plan,
@@ -3431,7 +3443,8 @@ app.post('/api/admin/set-subscription', adminAuth, async (req, res) => {
   }
 
   try {
-    const expiresAt = new Date();
+    // let, а не const: ветка с месяцами присваивает новое значение через addMonthsClamped
+    let expiresAt = new Date();
     const resolvedUnit = unit || 'months';
     const resolvedAmount = Number(amount ?? months);
 
@@ -3442,7 +3455,7 @@ app.post('/api/admin/set-subscription', adminAuth, async (req, res) => {
     } else if (resolvedUnit === 'days') {
       expiresAt.setDate(expiresAt.getDate() + resolvedAmount);
     } else {
-      expiresAt.setMonth(expiresAt.getMonth() + resolvedAmount);
+      expiresAt = addMonthsClamped(expiresAt, resolvedAmount);
     }
 
     const subscription = {
@@ -3999,7 +4012,7 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
                     let currentSub = userResult.rows[0]?.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
                     let newExpiresAt = new Date(currentSub.expiresAt);
                     if (newExpiresAt < new Date()) newExpiresAt = new Date();
-                    newExpiresAt.setMonth(newExpiresAt.getMonth() + Number(months));
+                    newExpiresAt = addMonthsClamped(newExpiresAt, Number(months));
 
                     await pool.query(
                         'UPDATE users SET subscription = $1, updated_at = NOW() WHERE id = $2',

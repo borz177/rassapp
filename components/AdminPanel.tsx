@@ -1,6 +1,7 @@
 // components/AdminPanel.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, SubscriptionPlan } from '../types';
+import { addMonthsClamped } from '../src/utils';
 import { ICONS } from '../constants';
 import { api } from '../services/api';
 
@@ -959,9 +960,11 @@ const getContractUsage = (user: User): {
                                     <span className="text-slate-500 dark:text-slate-400">📅 Будет действовать до:</span>
                                     <span className="font-bold text-slate-800 dark:text-white">
                                         {isUnlimited ? 'Не ограничено' : (() => {
-                                            const d = new Date();
+                                            // Тот же расчёт, что применит сервер (addMonthsClamped),
+                                            // иначе предпросмотр показывал бы не ту дату на 29-31 числе.
+                                            let d = new Date();
                                             if (durationUnit === 'days') d.setDate(d.getDate() + durationAmount);
-                                            else d.setMonth(d.getMonth() + durationAmount);
+                                            else d = addMonthsClamped(d, durationAmount);
                                             return d.toLocaleDateString('ru-RU');
                                         })()}
                                     </span>

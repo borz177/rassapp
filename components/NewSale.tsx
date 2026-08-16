@@ -190,10 +190,12 @@ const isFinancialLocked = !!formData.id && (preservedPaymentsInfo.count > 0 || (
 // (та же формула, что и в эффекте автозаполнения выше).
 const impliedOriginalPaymentDate = useMemo(() => {
   if (!initialData.paymentDay || !initialData.startDate) return '';
-  const d = new Date(initialData.startDate);
-  d.setMonth(d.getMonth() + 1);
-  d.setDate(initialData.paymentDay);
-  return d.toISOString().split('T')[0];
+  // Формула обязана совпадать с эффектом автозаполнения выше, иначе сравнение
+  // «менял ли пользователь дату вручную» начнёт врать. Обе используют addMonthsClamped.
+  const base = addMonthsClamped(new Date(initialData.startDate), 1);
+  const lastDay = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+  base.setDate(Math.min(Number(initialData.paymentDay), lastDay));
+  return toInputDate(base);
 }, [initialData.paymentDay, initialData.startDate]);
 
   const selectedCustomer = customers.find(c => c.id === formData.customerId);

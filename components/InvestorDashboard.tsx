@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Sale, Expense, Account, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getAccountShares } from '../src/utils';
+import { formatCurrency, formatDate, getAccountShares, addMonthsClamped } from '../src/utils';
 import Contracts from './Contracts';
 
 interface InvestorDashboardProps {
@@ -31,7 +31,7 @@ function getPeriodDates(preset: PeriodPreset): { start: string; end: string } {
   switch (preset) {
     case 'week': { const d = new Date(today); d.setDate(today.getDate() - 7); return { start: fmt(d), end: todayStr }; }
     case 'month': return { start: fmt(new Date(today.getFullYear(), today.getMonth(), 1)), end: todayStr };
-    case 'quarter': { const d = new Date(today); d.setMonth(today.getMonth() - 3); return { start: fmt(d), end: todayStr }; }
+    case 'quarter': { return { start: fmt(addMonthsClamped(today, -3)), end: todayStr }; }
     case 'year': { const d = new Date(today); d.setFullYear(today.getFullYear() - 1); return { start: fmt(d), end: todayStr }; }
     case 'all': return { start: '2020-01-01', end: todayStr };
   }

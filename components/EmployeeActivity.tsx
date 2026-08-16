@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { User, Sale, Expense, Customer } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate } from '../src/utils';
+import { formatCurrency, formatDate, addMonthsClamped } from '../src/utils';
 
 interface EmployeeActivityProps {
   employee: User;
@@ -30,9 +30,7 @@ const periodStart = (period: Period): Date | null => {
     d.setDate(d.getDate() - 7);
     return d;
   }
-  const d = new Date(now);
-  d.setMonth(d.getMonth() - 1);
-  return d;
+  return addMonthsClamped(now, -1);
 };
 
 const formatRelativeTime = (iso: string | undefined | null): string => {

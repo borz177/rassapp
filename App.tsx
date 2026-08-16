@@ -435,8 +435,7 @@ const reconcileSalePaymentPlan = (sale: Sale): Sale => {
         const missingAmount = Math.round((totalDue - totalScheduledAmount) * 100) / 100;
         if (missingAmount > 0.01) {
             const lastDate = scheduled.length > 0 ? new Date(scheduled[scheduled.length - 1].date) : new Date();
-            const newDate = new Date(lastDate);
-            newDate.setMonth(newDate.getMonth() + 1);
+            const newDate = addMonthsClamped(lastDate, 1);
             scheduled = [...scheduled, {
                 id: `pay_reconcile_${Date.now()}_${scheduled.length}`,
                 saleId: sale.id,
@@ -1153,7 +1152,7 @@ useEffect(() => {
   const now = Date.now();
 
   if (!lastShown || now - Number(lastShown) >= REPEAT_AFTER) {
-    setShowTemplateUpdateModal(true);
+    setShowTemplateUpdateModal(false);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
@@ -1681,7 +1680,9 @@ const handleSaveSale = async (data: any): Promise<any> => {
       ? new Date(data.paymentDate)
       : new Date(data.startDate);
     if (!data.paymentDate) {
-      paymentScheduleStartDate.setMonth(paymentScheduleStartDate.getMonth() + 1);
+      // addMonthsClamped, а не setMonth: на 29-31 числе обычное прибавление
+      // «переливается» в следующий месяц (31 января + 1 мес = 3 марта).
+      paymentScheduleStartDate.setTime(addMonthsClamped(paymentScheduleStartDate, 1).getTime());
     }
     const preferredDay = paymentScheduleStartDate.getDate();
 
@@ -1697,8 +1698,10 @@ const handleSaveSale = async (data: any): Promise<any> => {
       paymentPlan: data.type === 'CASH'
         ? []
         : (data.paymentPlan || Array.from({ length: data.installments }).map((_, idx) => {
-            const pDate = new Date(paymentScheduleStartDate);
-            pDate.setMonth(pDate.getMonth() + idx);
+            // 🔒 Ключевое место: тут строится весь график. С обычным setMonth договор
+            // с платежом 31-го числа терял февральский платёж — он «переливался»
+            // в март, а весь дальнейший ряд съезжал на месяц.
+            const pDate = addMonthsClamped(paymentScheduleStartDate, idx);
             return {
               id: `pay_${Date.now()}_${idx}`,
               saleId: saleId,
