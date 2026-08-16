@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { api } from '../services/api';
+import ModalPortal from './ModalPortal';
 import { SubscriptionPlan, User, PlanLimits } from '../types';
 
 // ← Добавьте этот маппинг, если его нет в файле
@@ -414,6 +415,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
 
       {/* Confirmation Modal */}
       {confirmData && (
+        <ModalPortal>
           <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !loading && setConfirmData(null)}>
               <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 relative overflow-hidden" onClick={e => e.stopPropagation()}>
 
@@ -549,6 +551,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                   </div>
               </div>
           </div>
+        </ModalPortal>
       )}
     </div>
   );

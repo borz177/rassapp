@@ -42,6 +42,16 @@ const formatPhone = (raw: string | undefined): string => {
 };
 
 // 🔍 Проверка: есть ли уже похожий активный договор?
+// Разбор и вывод даты из <input type="date"> строго в локальном времени.
+// new Date('2026-08-15') трактуется как полночь UTC, и обратный toISOString()
+// в поясах восточнее/западнее Гринвича легко сдвигает дату на сутки.
+const parseInputDate = (value: string): Date => {
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+};
+const toInputDate = (date: Date): string =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
 const checkDuplicateSale = (
   sales: Sale[] | undefined,
   customerId: string,
@@ -296,24 +306,28 @@ const regeneratePaymentPlan = (
     }
   }, [downPaymentFromMarkup, formData.buyPrice, formData.interestRate, mode]);
 
-  // Авто-расчёт даты первого платежа
-  useEffect(() => {
-    // 🔥 НЕ пересчитываем дату автоматически при редактировании, если пользователь уже менял
-    if (initialData.id && formData.paymentDate) return;
+  // Пользователь сам выбрал дату первого платежа — тогда смена даты договора её не трогает.
+  // Иначе выбранную вручную дату затирало бы при любой правке даты оформления.
+  const paymentDateTouched = useRef(false);
 
-    if (!formData.paymentDate) {
-      if (initialData.paymentDay && initialData.startDate) {
-        const firstPayment = new Date(initialData.startDate);
-        firstPayment.setMonth(firstPayment.getMonth() + 1);
-        firstPayment.setDate(initialData.paymentDay);
-        setFormData(prev => ({ ...prev, paymentDate: firstPayment.toISOString().split('T')[0] }));
-      } else if (formData.startDate) {
-        const date = new Date(formData.startDate);
-        date.setMonth(date.getMonth() + 1);
-        setFormData(prev => ({ ...prev, paymentDate: date.toISOString().split('T')[0] }));
-      }
-    }
-  }, [formData.startDate, initialData]);
+  // Авто-расчёт даты первого платежа: ровно месяц от даты оформления.
+  useEffect(() => {
+    // При редактировании существующего договора дату не пересчитываем:
+    // график уже построен, и сдвиг задним числом сломал бы историю платежей.
+    if (initialData.id) return;
+    if (paymentDateTouched.current) return;
+    if (!formData.startDate) return;
+
+    // Раньше здесь стояло условие `if (!formData.paymentDate)`, то есть пересчёт
+    // срабатывал только пока поле пустое. Заполнялось оно при первой же отрисовке,
+    // поэтому дальше смена даты оформления на дату первого платежа не влияла вовсе.
+    //
+    // addMonthsClamped вместо setMonth(+1): обычное прибавление месяца на 29-31 числе
+    // «переливается» в следующий месяц (31 января + 1 мес = 3 марта, потому что
+    // 31 февраля не существует). Хелпер прижимает день к последнему числу месяца.
+    const next = toInputDate(addMonthsClamped(parseInputDate(formData.startDate), 1));
+    setFormData(prev => (prev.paymentDate === next ? prev : { ...prev, paymentDate: next, paymentDay: String(new Date(next).getDate()) }));
+  }, [formData.startDate, initialData.id]);
 
   // 🔹 1. Базовая цена (Закуп + Наценка)
   const baseCalculatedPrice = useMemo(() => {
@@ -455,6 +469,8 @@ const regeneratePaymentPlan = (
 
   const handlePaymentDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const dateVal = e.target.value;
+    // Дальше дата первого платежа за датой оформления не тянется — выбор пользователя главнее
+    paymentDateTouched.current = true;
 
     setFormData(prev => ({
       ...prev,

@@ -488,6 +488,15 @@ input, textarea, [contenteditable] {
   right: 0;
   bottom: 0;
   z-index: 30;
+  /* ⚠️ Этот слой — контекст наложения, и убрать это через CSS нельзя:
+     `position: fixed` создаёт новый контекст наложения САМ ПО СЕБЕ, независимо
+     от z-index (поведение Chrome и Safari; проверено — с `absolute` или `static`
+     контекст не создаётся, с `fixed` создаётся всегда).
+     Практическое следствие: модальное окно, отрисованное ВНУТРИ этого слоя,
+     прижато к уровню 30 относительно корня и перекрывается нижней навигацией
+     (z-50) — какое бы большое число ему ни поставили. Никакой z-index внутри
+     не поможет. Единственный способ — рендерить окно порталом в document.body,
+     см. components/ModalPortal.tsx. */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   transition: transform 0.26s cubic-bezier(0.32, 0.72, 0, 1);
