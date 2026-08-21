@@ -1509,20 +1509,29 @@ const dashboardStats = useMemo(() => {
         }
       });
 
-    // 💰 Премия сотрудников с процентом от прибыли уменьшает прибыль менеджера:
-    // это его расход, а не инвесторов. Учитываем только тех, у кого включено
-    // «сразу уменьшать мою прибыль» — у остальных прибыль изменится лишь
-    // в момент фактической выплаты зарплаты (обычным расходом).
+    // 💰 Премия сотрудников уменьшает прибыль. Кого именно — зависит от настройки:
+    //  MANAGER — расход менеджера, целиком с его доли, инвесторы не затрагиваются;
+    //  SHARED  — расход общего дела: считается от всей прибыли и ложится на всех
+    //            по их долям, то есть инвесторы тоже несут свою часть.
+    // Учитываем только тех, у кого включено «сразу уменьшать прибыль» — у остальных
+    // она изменится лишь в момент фактической выплаты зарплаты (обычным расходом).
     employees
       .filter(emp => Number(emp.profitPercentage) > 0 && emp.profitReducesManager !== false)
       .forEach(emp => {
-        realizedManagerProfit -= getEmployeeProfitAccrued(
-          emp,
-          accountId === 'ALL' ? sales : sales.filter(s => s.accountId === accountId),
-          accounts,
-          investors,
-          { start: startDate, end: endDate }
-        );
+        const scopedSales = accountId === 'ALL' ? sales : sales.filter(s => s.accountId === accountId);
+        const range = { start: startDate, end: endDate };
+        const total = getEmployeeProfitAccrued(emp, scopedSales, accounts, investors, range);
+        if (emp.profitSource === 'SHARED') {
+          // Доля менеджера в этом расходе — это та же премия, посчитанная «из доли
+          // менеджера»: Σ(прибыль × доля_менеджера × процент). Остальное несут инвесторы.
+          const managerPart = getEmployeeProfitAccrued(
+            { ...emp, profitSource: 'MANAGER' }, scopedSales, accounts, investors, range
+          );
+          realizedManagerProfit -= managerPart;
+          realizedInvestorProfit -= (total - managerPart);
+        } else {
+          realizedManagerProfit -= total;
+        }
       });
 
     return { customerPaymentsInPeriod, expectedManagerProfit, expectedInvestorProfit, realizedManagerProfit, realizedInvestorProfit };
