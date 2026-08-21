@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Investor, Sale, Expense, Account, Payment, AppSettings, Customer, InvestmentPeriod, LossEvent } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction } from '../src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, shareDateForSale } from '../src/utils';
 
 // Модальное окно формы. Через портал в body: страница открыта внутри .page-push-layer,
 // а он position: fixed с z-index 30 — окно внутри него оказалось бы под нижней навигацией.
@@ -322,14 +322,20 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
   }, [sales, expenses, account]);
 
   const expectedTotalProfit = useMemo(() => {
-    if (!account || currentSharePercent <= 0) return 0;
+    if (!account) return 0;
     return sales
       .filter(s => s.accountId === account.id && (s.status === 'ACTIVE' || s.status === 'DRAFT') && s.buyPrice > 0 && s.totalAmount > 0)
       .reduce((sum, sale) => {
+        // Доля — на дату ОФОРМЛЕНИЯ каждого договора, а не текущая доля инвестора.
+        // Раньше здесь стоял currentSharePercent (доля на сегодня), из-за чего инвестор,
+        // вошедший в пул позже, видел ожидаемую прибыль по договорам, заключённым до него.
+        const myShare = getAccountShares(account, investors, shareDateForSale(sale))
+          .find(m => m.investor.id === investor.id)?.percentage ?? 0;
+        if (myShare <= 0) return sum;
         const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
-        return sum + (sale.remainingAmount * profitMargin * currentSharePercent / 100);
+        return sum + (sale.remainingAmount * profitMargin * myShare / 100);
       }, 0);
-  }, [sales, account, currentSharePercent]);
+  }, [sales, account, investors, investor.id]);
 
   const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
     if (!account) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, profitAccruals: [] };
@@ -353,7 +359,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
 
       allPayments.forEach(p => {
         if (p.amount > 0) {
-          const share = getAccountShares(account, investors, p.date).find(m => m.investor.id === investor.id);
+          const share = getAccountShares(account, investors, shareDateForSale(sale)).find(m => m.investor.id === investor.id);
           const myPercent = share ? share.percentage : 0;
           if (myPercent <= 0) return;
           const profitFromPayment = p.amount * profitMargin * myPercent / 100;

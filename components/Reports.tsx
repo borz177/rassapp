@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Investor, AppSettings, Sale, Expense, Account, Customer } from '../types';
-import { formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor, calculateSaleOverdue, addMonthsClamped } from '../src/utils';
+import { formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor, calculateSaleOverdue, addMonthsClamped, shareDateForSale } from '../src/utils';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -235,7 +235,7 @@ const Reports: React.FC<ReportsProps> = ({
                 const saleProfit = sale.totalAmount - sale.buyPrice;
                 if (saleProfit <= 0) return;
                 const acc = accounts.find(a => a.id === sale.accountId);
-                const myShare = getAccountShares(acc, investors).find(m => m.investor.id === inv.id);
+                const myShare = getAccountShares(acc, investors, shareDateForSale(sale)).find(m => m.investor.id === inv.id);
                 if (myShare) expectedProfit += saleProfit * (myShare.percentage / 100);
             });
 
@@ -249,7 +249,7 @@ const Reports: React.FC<ReportsProps> = ({
                     ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
                 ].filter(p => { const d = new Date(p.date); return d >= startDate && d <= endDate; });
                 paymentsInPeriod.forEach(p => {
-                    const myShare = getAccountShares(acc, investors, p.date).find(m => m.investor.id === inv.id);
+                    const myShare = getAccountShares(acc, investors, shareDateForSale(sale)).find(m => m.investor.id === inv.id);
                     if (myShare) realizedProfit += p.amount * profitMargin * (myShare.percentage / 100);
                 });
             });
@@ -474,17 +474,17 @@ const Reports: React.FC<ReportsProps> = ({
                 const pDate = new Date(p.date);
                 if (pDate < startDate || pDate > endDate) return;
                 const profitFromPayment = p.amount * profitMargin;
-                const mgrPct = getManagerSharePercent(account, investors as Investor[], p.date) / 100;
+                const mgrPct = getManagerSharePercent(account, investors as Investor[], shareDateForSale(sale)) / 100;
                 ensure(MGR, () => ({ label: 'Менеджер', isManager: true, sharePercent: getManagerSharePercent(account, investors as Investor[]), received: 0, expected: 0 })).received += profitFromPayment * mgrPct;
-                getAccountShares(account, investors as Investor[], p.date).forEach(({ investor, percentage }) => {
+                getAccountShares(account, investors as Investor[], shareDateForSale(sale)).forEach(({ investor, percentage }) => {
                     ensure(investor.id, () => ({ label: investor.name, isManager: false, sharePercent: percentage, received: 0, expected: 0 })).received += profitFromPayment * (percentage / 100);
                 });
             });
             if ((sale.status === 'ACTIVE' || sale.status === 'DRAFT') && sale.remainingAmount > 0) {
                 const gross = sale.remainingAmount * profitMargin;
-                const mgrPct = getManagerSharePercent(account, investors as Investor[]) / 100;
+                const mgrPct = getManagerSharePercent(account, investors as Investor[], shareDateForSale(sale)) / 100;
                 ensure(MGR, () => ({ label: 'Менеджер', isManager: true, sharePercent: getManagerSharePercent(account, investors as Investor[]), received: 0, expected: 0 })).expected += gross * mgrPct;
-                getAccountShares(account, investors as Investor[]).forEach(({ investor, percentage }) => {
+                getAccountShares(account, investors as Investor[], shareDateForSale(sale)).forEach(({ investor, percentage }) => {
                     ensure(investor.id, () => ({ label: investor.name, isManager: false, sharePercent: percentage, received: 0, expected: 0 })).expected += gross * (percentage / 100);
                 });
             }

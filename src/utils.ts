@@ -75,11 +75,10 @@ export const getActivePeriodAt = (investor: Investor, cutoff: number): Investmen
 // на весь пул нет. Итоговая доля инвестора от общей прибыли = (его_капитал / общий_капитал) ×
 // его_процент. Доля менеджера — как и для обычного счёта — просто остаток до 100%.
 //
-// asOfDate — на какую дату считать состав и суммы пула. Это критично для истории:
-// если инвестор присоединился к пулу позже, он не должен задним числом получать долю
-// от прибыли, полученной ДО его вступления — поэтому при расчёте конкретного платежа
-// нужно передавать дату этого платежа, а не "сегодня". Участники, чей joinedDate позже
+// asOfDate — на какую дату считать состав и суммы пула. Участники, чей joinedDate позже
 // asOfDate, в расчёт не попадают вовсе (их ещё не было в пуле на тот момент).
+// Для прибыли по договору сюда передаётся ДАТА ОФОРМЛЕНИЯ ДОГОВОРА — см. shareDateForSale
+// ниже. Для операций, не привязанных к договору (расход из прибыли), — дата операции.
 export const getAccountShares = (
   account: Account | undefined,
   investors: Investor[],
@@ -107,6 +106,22 @@ export const getAccountShares = (
   }
   return [];
 };
+
+/**
+ * 📅 На какую дату определяются доли прибыли по КОНКРЕТНОМУ договору — на дату его оформления.
+ *
+ * Прибыль по рассрочке (мурабаха) фиксируется в момент заключения договора: товар куплен
+ * и продан, наценка известна, дальше идёт лишь погашение возникшего долга. Поэтому право
+ * на эту прибыль принадлежит тем, чей капитал нёс риск при её создании, — участникам пула
+ * НА МОМЕНТ ОФОРМЛЕНИЯ, а не тем, кто вошёл позже и застал только платежи.
+ *
+ * Раньше доли брались на дату каждого платежа: инвестор, вошедший в пул после оформления
+ * договора, получал долю прибыли по сделке, которую профинансировали до него.
+ *
+ * Для обычного счёта инвестора (ownerId) дата ни на что не влияет — там фиксированный
+ * процент. Правило работает только для общего пула, где состав и капитал меняются во времени.
+ */
+export const shareDateForSale = (sale: Pick<Sale, 'startDate'>): string => sale.startDate;
 
 // Остаток % после долей всех инвесторов счёта (на дату asOfDate) — достаётся менеджеру.
 // Единая формула для всех типов счёта, включая POOL: доля каждого инвестора там уже учитывает
@@ -245,6 +260,10 @@ export const getManagerProfitDeduction = (
     return expense.amount;
   }
   if (expense.fromProfit) {
+    // Расход менеджера (зарплата сотрудника и т.п.) целиком ложится на его долю:
+    // сотрудник нанят менеджером, и доли инвесторов от найма меняться не должны.
+    // Расход общего дела делится по долям — но только если так договорились заранее.
+    if (expense.profitSource === 'MANAGER') return expense.amount;
     return expense.amount * getManagerSharePercent(account, investors, expense.date) / 100;
   }
   return 0;
@@ -264,9 +283,94 @@ export const getInvestorProfitDeduction = (
   investorId: string
 ): number => {
   if (!expense.fromProfit) return 0;
+  // Расход менеджера инвесторов не касается вовсе.
+  if (expense.profitSource === 'MANAGER') return 0;
   const share = getAccountShares(account, investors, expense.date)
     .find(m => m.investor.id === investorId);
   return share ? expense.amount * share.percentage / 100 : 0;
+};
+
+/**
+ * Начисленная сотруднику доля прибыли за период.
+ *
+ * Считается от ДОЛИ МЕНЕДЖЕРА в каждом поступившем платеже, а не от валовой прибыли:
+ * сотрудник нанят менеджером, и его премия не должна уменьшать долю инвесторов.
+ *
+ * Начисление идёт по фактическим платежам, а не от суммы договора при оформлении —
+ * иначе премия появлялась бы за деньги, которые ещё не пришли, и её пришлось бы
+ * отбирать назад при просрочке или расторжении.
+ *
+ * База зависит от настройки сотрудника (profitBase):
+ *  CONTRACTS — платежи по договорам, которые он оформил
+ *  PAYMENTS  — платежи, которые он лично провёл
+ *  ALL       — все платежи менеджера
+ */
+export const getEmployeeProfitAccrued = (
+  employee: { id: string; profitPercentage?: number; profitBase?: 'CONTRACTS' | 'PAYMENTS' | 'ALL'; profitSource?: 'MANAGER' | 'SHARED'; profitSince?: string },
+  sales: Sale[],
+  accounts: Account[],
+  investors: Investor[],
+  range?: { start?: string | number | Date; end?: string | number | Date }
+): number => {
+  const percent = Number(employee.profitPercentage) || 0;
+  if (percent <= 0) return 0;
+  const base = employee.profitBase || 'CONTRACTS';
+
+  // Премия считается только с даты её установки: платежи, поступившие раньше,
+  // сотруднику не полагаются — иначе при включении процента ему разом начислялась бы
+  // премия за всю прошлую историю.
+  const sinceTs = employee.profitSince ? new Date(employee.profitSince).setHours(0, 0, 0, 0) : -Infinity;
+  const from = Math.max(range?.start ? new Date(range.start).getTime() : -Infinity, sinceTs);
+  const to = range?.end ? new Date(range.end).setHours(23, 59, 59, 999) : Infinity;
+  const investorIds = new Set(investors.map(i => i.id));
+
+  let accrued = 0;
+  for (const sale of sales) {
+    if (String(sale.customerId || '').startsWith('system_')) continue;
+    if (investorIds.has(sale.customerId)) continue;
+    if (!sale.buyPrice || sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) continue;
+    if (base === 'CONTRACTS' && sale.createdByUserId !== employee.id) continue;
+
+    const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
+    const account = accounts.find(a => a.id === sale.accountId);
+
+    const payments = [
+      { date: sale.startDate, amount: sale.downPayment || 0, recordedByUserId: sale.createdByUserId },
+      ...(sale.paymentPlan || []).filter(p => p.isPaid && p.isRealPayment !== false),
+    ];
+
+    for (const p of payments) {
+      if (!p.amount || p.amount <= 0) continue;
+      const t = new Date(p.date).getTime();
+      if (t < from || t > to) continue;
+      if (base === 'PAYMENTS' && (p as any).recordedByUserId !== employee.id) continue;
+
+      const profitFromPayment = p.amount * profitMargin;
+      // По умолчанию премия берётся из доли МЕНЕДЖЕРА (на дату оформления договора).
+      // Вариант SHARED — расход общего дела: считается от всей прибыли до распределения
+      // и ложится на всех участников. Нужен, когда доля менеджера равна нулю
+      // и премию платить попросту не из чего.
+      const bonusBase = employee.profitSource === 'SHARED'
+        ? profitFromPayment
+        : profitFromPayment * getManagerSharePercent(account, investors, shareDateForSale(sale)) / 100;
+      accrued += bonusBase * percent / 100;
+    }
+  }
+  return accrued;
+};
+
+/** Сколько сотруднику уже выплачено зарплатой за период. */
+export const getEmployeeSalaryPaid = (
+  employeeId: string,
+  expenses: Expense[],
+  range?: { start?: string | number | Date; end?: string | number | Date }
+): number => {
+  const from = range?.start ? new Date(range.start).getTime() : -Infinity;
+  const to = range?.end ? new Date(range.end).setHours(23, 59, 59, 999) : Infinity;
+  return expenses
+    .filter(e => e.category === 'Salary' && (e as any).employeeId === employeeId)
+    .filter(e => { const t = new Date(e.date).getTime(); return t >= from && t <= to; })
+    .reduce((sum, e) => sum + (e.amount || 0), 0);
 };
 
 /**

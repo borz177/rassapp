@@ -74,6 +74,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   const [managerPayoutSource, setManagerPayoutSource] = useState<'CAPITAL' | 'PROFIT' | null>(null);
   // Общий расход списывается из заработанной прибыли (делится по долям счёта)
   const [fromProfit, setFromProfit] = useState(false);
+  // Чью прибыль уменьшает: MANAGER — только менеджера, SHARED — общее дело (делится по долям)
+  const [profitSource, setProfitSource] = useState<'MANAGER' | 'SHARED'>('SHARED');
 
   // 🔥 НОВЫЕ СТЕЙТЫ для защиты от дублей и подтверждения
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -109,6 +111,9 @@ const NewExpense: React.FC<NewExpenseProps> = ({
     if (!fromProfit) return null;
     const numAmount = Number(amount);
     if (!numAmount || numAmount <= 0) return null;
+    if (profitSource === 'MANAGER') {
+      return `Спишется целиком с вашей прибыли: ${formatCurrency(numAmount)} ₽`;
+    }
     const mgrPct = getManagerSharePercent(selectedAccount, investors, date);
     const parts = [`менеджер ${formatCurrency(numAmount * mgrPct / 100)} ₽`];
     getAccountShares(selectedAccount, investors, date).forEach(({ investor, percentage }) => {
@@ -164,6 +169,9 @@ const NewExpense: React.FC<NewExpenseProps> = ({
       if (category !== 'Salary') {
           setSelectedEmployeeId('');
       }
+      // Зарплата сотрудника — расход менеджера: он нанял, ему и платить из своей доли.
+      // Прочие расходы по умолчанию считаются расходом общего дела.
+      setProfitSource(category === 'Salary' ? 'MANAGER' : 'SHARED');
       // Сбрасываем поставщика/договор, если категория не "Партнер"
       if (category !== 'Оплата партнёру') {
           setSelectedSupplierId('');
@@ -321,6 +329,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
             category: category,
             // Списание из прибыли делится между менеджером и инвесторами по долям счёта
             fromProfit: fromProfit || undefined,
+            profitSource: fromProfit ? profitSource : undefined,
         };
 
         // 🔥 Сохраняем ID сотрудника в расходе
@@ -634,6 +643,35 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                                  )}
                              </span>
                          </label>
+
+                         {/* Чью прибыль уменьшаем. Для зарплаты по умолчанию — менеджера:
+                             сотрудник нанят им, и доли инвесторов от найма меняться не должны. */}
+                         {fromProfit && (
+                             <div className="mt-3 space-y-2">
+                                 {([
+                                   { key: 'MANAGER', label: 'Из моей прибыли', hint: 'Инвесторы не затрагиваются' },
+                                   { key: 'SHARED', label: 'Расход общего дела', hint: 'Делится по долям счёта — только по договорённости с инвесторами' },
+                                 ] as const).map(opt => (
+                                   <label key={opt.key} className={`flex items-start gap-2.5 p-3 rounded-xl border-2 cursor-pointer ${
+                                       profitSource === opt.key
+                                         ? 'border-emerald-600 bg-white dark:bg-slate-900'
+                                         : 'border-slate-200 dark:border-slate-600 bg-white/60 dark:bg-slate-900/40'
+                                   }`}>
+                                       <input
+                                         type="radio"
+                                         name="expenseProfitSource"
+                                         className="mt-0.5 w-4 h-4 text-emerald-600 focus:ring-emerald-500"
+                                         checked={profitSource === opt.key}
+                                         onChange={() => setProfitSource(opt.key)}
+                                       />
+                                       <span className="min-w-0">
+                                           <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">{opt.label}</span>
+                                           <span className="block text-xs text-slate-500 dark:text-slate-400">{opt.hint}</span>
+                                       </span>
+                                   </label>
+                                 ))}
+                             </div>
+                         )}
 
                          {/* Списать больше, чем заработано, не запрещаем — в учёте так бывает,
                              но уходить в минус молча человек не должен. */}

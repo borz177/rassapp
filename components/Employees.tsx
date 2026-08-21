@@ -32,6 +32,12 @@ const [fullAccessMainAccount, setFullAccessMainAccount] = useState(false);
       canDelete: false
   });
   const [allowedInvestorIds, setAllowedInvestorIds] = useState<string[]>([]);
+  // 💰 Мотивация: процент от прибыли, база расчёта и влияние на прибыль менеджера
+  const [profitPercentage, setProfitPercentage] = useState<string>('');
+  const [profitBase, setProfitBase] = useState<'CONTRACTS' | 'PAYMENTS' | 'ALL'>('CONTRACTS');
+  const [profitReducesManager, setProfitReducesManager] = useState(true);
+  const [profitSource, setProfitSource] = useState<'MANAGER' | 'SHARED'>('MANAGER');
+  const [profitSince, setProfitSince] = useState<string>('');
   const [fullAccessInvestorIds, setFullAccessInvestorIds] = useState<string[]>([]);
 
   const resetForm = () => {
@@ -43,6 +49,11 @@ const [fullAccessMainAccount, setFullAccessMainAccount] = useState(false);
     setFullAccessInvestorIds([]);
     setAllowMainAccount(false); // <-- СБРОС
     setFullAccessMainAccount(false);
+    setProfitPercentage('');
+    setProfitBase('CONTRACTS');
+    setProfitReducesManager(true);
+    setProfitSource('MANAGER');
+    setProfitSince('');
     setEditingId(null);
     setIsAdding(false);
 };
@@ -60,6 +71,12 @@ const [fullAccessMainAccount, setFullAccessMainAccount] = useState(false);
     const fullIds = (emp.fullAccessInvestorIds || []).filter(id => ids.includes(id));
     setFullAccessInvestorIds(fullIds.filter((id: string) => id !== 'MAIN_ACCOUNT'));
     setFullAccessMainAccount(fullIds.includes('MAIN_ACCOUNT'));
+
+    setProfitPercentage(emp.profitPercentage != null ? String(emp.profitPercentage) : '');
+    setProfitBase(emp.profitBase || 'CONTRACTS');
+    setProfitReducesManager(emp.profitReducesManager !== false);
+    setProfitSource(emp.profitSource === 'SHARED' ? 'SHARED' : 'MANAGER');
+    setProfitSince(emp.profitSince || '');
 
     setEditingId(emp.id);
     setIsAdding(true);
@@ -101,7 +118,14 @@ const handleSubmit = (e: React.FormEvent) => {
         email,
         permissions,
         allowedInvestorIds: finalAllowedIds, // <-- ИСПОЛЬЗУЕМ ИТОГОВЫЙ МАССИВ
-        fullAccessInvestorIds: finalFullAccessIds
+        fullAccessInvestorIds: finalFullAccessIds,
+        // Пустое поле = процент не задан, а не ноль: сервер отличает null от 0
+        profitPercentage: profitPercentage.trim() === '' ? null : Number(profitPercentage),
+        profitBase,
+        profitReducesManager,
+        profitSource,
+        // Пусто = сервер проставит сегодняшний день при первом включении процента
+        profitSince: profitSince || undefined
     };
 
     if (editingId) {
@@ -176,6 +200,124 @@ const handleSubmit = (e: React.FormEvent) => {
                         onChange={e => setPassword(e.target.value)}
                       />
                   </div>
+              </div>
+
+              {/* 💰 Мотивация: процент от прибыли */}
+              <div className="bg-emerald-50/60 dark:bg-emerald-900/20 p-4 rounded-xl space-y-3 border border-emerald-100 dark:border-emerald-900/40">
+                  <h4 className="text-sm font-bold text-slate-600 dark:text-slate-300">Процент от прибыли</h4>
+
+                  <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        placeholder="не начисляется"
+                        className="w-40 p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
+                        value={profitPercentage}
+                        onChange={e => setProfitPercentage(e.target.value)}
+                      />
+                      <span className="text-slate-500 dark:text-slate-400 text-sm">% от прибыли</span>
+                  </div>
+
+                  {Number(profitPercentage) > 0 && (
+                    <>
+                      <div>
+                          <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase mb-2">Считать от</p>
+                          <div className="space-y-2">
+                              {([
+                                { key: 'CONTRACTS', label: 'Договоров, которые он оформил', hint: 'Премия капает со всех платежей его клиентов' },
+                                { key: 'PAYMENTS', label: 'Платежей, которые он принял', hint: 'Мотивация на сбор денег' },
+                                { key: 'ALL', label: 'Всей прибыли', hint: 'Доля со всего бизнеса' },
+                              ] as const).map(opt => (
+                                <label key={opt.key} className={`flex items-start gap-2.5 p-3 rounded-xl border-2 cursor-pointer ${
+                                    profitBase === opt.key
+                                      ? 'border-emerald-600 bg-white dark:bg-slate-900'
+                                      : 'border-slate-200 dark:border-slate-600 bg-white/60 dark:bg-slate-900/40'
+                                }`}>
+                                    <input
+                                      type="radio"
+                                      name="profitBase"
+                                      className="mt-0.5 w-4 h-4 text-emerald-600 focus:ring-emerald-500"
+                                      checked={profitBase === opt.key}
+                                      onChange={() => setProfitBase(opt.key)}
+                                    />
+                                    <span className="min-w-0">
+                                        <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">{opt.label}</span>
+                                        <span className="block text-xs text-slate-500 dark:text-slate-400">{opt.hint}</span>
+                                    </span>
+                                </label>
+                              ))}
+                          </div>
+                      </div>
+
+                      <div>
+                          <label className="block text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase mb-2">Начислять с даты</label>
+                          <input
+                            type="date"
+                            className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
+                            value={profitSince}
+                            onChange={e => setProfitSince(e.target.value)}
+                          />
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                              Платежи, поступившие раньше этой даты, в премию не идут.
+                              {!profitSince && ' Если оставить пусто — начнём с сегодняшнего дня.'}
+                          </p>
+                      </div>
+
+                      <div>
+                          <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase mb-2">Из чьей прибыли платится</p>
+                          <div className="space-y-2">
+                              {([
+                                { key: 'MANAGER', label: 'Из моей доли', hint: 'Сотрудник нанят вами — доли инвесторов не затрагиваются' },
+                                { key: 'SHARED', label: 'Расход общего дела', hint: 'Вычитается из прибыли до распределения — ложится и на инвесторов. Только по договорённости с ними' },
+                              ] as const).map(opt => (
+                                <label key={opt.key} className={`flex items-start gap-2.5 p-3 rounded-xl border-2 cursor-pointer ${
+                                    profitSource === opt.key
+                                      ? 'border-emerald-600 bg-white dark:bg-slate-900'
+                                      : 'border-slate-200 dark:border-slate-600 bg-white/60 dark:bg-slate-900/40'
+                                }`}>
+                                    <input
+                                      type="radio"
+                                      name="profitSource"
+                                      className="mt-0.5 w-4 h-4 text-emerald-600 focus:ring-emerald-500"
+                                      checked={profitSource === opt.key}
+                                      onChange={() => setProfitSource(opt.key)}
+                                    />
+                                    <span className="min-w-0">
+                                        <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">{opt.label}</span>
+                                        <span className="block text-xs text-slate-500 dark:text-slate-400">{opt.hint}</span>
+                                    </span>
+                                </label>
+                              ))}
+                          </div>
+                          <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
+                              Если ваша доля прибыли по счёту равна нулю, премия из неё платиться не может —
+                              тогда единственный рабочий вариант это «расход общего дела», и он требует согласия инвесторов.
+                          </p>
+                      </div>
+
+                      <label className="flex items-start gap-2.5 pt-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500"
+                            checked={profitReducesManager}
+                            onChange={e => setProfitReducesManager(e.target.checked)}
+                          />
+                          <span className="min-w-0">
+                              <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">Сразу уменьшать мою прибыль</span>
+                              <span className="block text-xs text-slate-500 dark:text-slate-400">
+                                  Иначе прибыль уменьшится только когда зарплата будет фактически выплачена,
+                                  а начисленное будет видно отдельно как долг перед сотрудником
+                              </span>
+                          </span>
+                      </label>
+
+                      <p className="text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-emerald-100 dark:border-emerald-900/40">
+                          Начисляется по мере поступления платежей, по мере фактической оплаты клиентами.
+                      </p>
+                    </>
+                  )}
               </div>
 
               {/* Permissions */}

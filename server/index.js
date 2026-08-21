@@ -158,22 +158,30 @@ const filterDataForEmployee = (dataByType, allowedInvestorIds, fullAccessInvesto
     // 1. Инвесторы: только явно разрешенные
     filtered.investors = (filtered.investors || []).filter(inv => investorIds.includes(inv.id));
 
-    // 2. Счета: Основной (если есть доступ) ИЛИ счета разрешенных инвесторов
+    // 🔒 Принадлежность счёта инвестору: и обычный счёт (ownerId), и общий пул
+    // (poolMemberIds). Раньше проверялся только ownerId — а у пула его нет, участники
+    // лежат в poolMemberIds. Из-за этого пул подпадал под условие «нет ownerId → основной
+    // счёт», и сотрудник с доступом к участнику пула не видел ни сам пул, ни договоры
+    // в нём, сколько бы прав ему ни выдали.
+    const accountBelongsTo = (acc, ids) =>
+        (acc.ownerId && ids.includes(acc.ownerId)) ||
+        (acc.type === 'POOL' && (acc.poolMemberIds || []).some(id => ids.includes(id)));
+
+    // Основным считаем счёт без владельца И не являющийся пулом.
+    const isMainAccount = (acc) => acc.type === 'MAIN' || (!acc.ownerId && acc.type !== 'POOL');
+
+    // 2. Счета: Основной (если есть доступ) ИЛИ счета разрешенных инвесторов / пулы с ними
     filtered.accounts = (filtered.accounts || []).filter(acc => {
-        const isMainAccount = !acc.ownerId || acc.type === 'MAIN';
-        if (isMainAccount && hasMainAccess) return true;
-        if (acc.ownerId && investorIds.includes(acc.ownerId)) return true;
-        return false;
+        if (isMainAccount(acc) && hasMainAccess) return true;
+        return accountBelongsTo(acc, investorIds);
     });
 
     // 2.1 Счета с полным доступом (видны ВСЕ записи, не только свои)
     const fullAccessAccountIds = new Set(
         filtered.accounts
             .filter(acc => {
-                const isMainAccount = !acc.ownerId || acc.type === 'MAIN';
-                if (isMainAccount && hasFullMainAccess) return true;
-                if (acc.ownerId && fullAccessInvestorIdsSet.has(acc.ownerId)) return true;
-                return false;
+                if (isMainAccount(acc) && hasFullMainAccess) return true;
+                return accountBelongsTo(acc, [...fullAccessInvestorIdsSet]);
             })
             .map(acc => acc.id)
     );
@@ -195,6 +203,76 @@ const filterDataForEmployee = (dataByType, allowedInvestorIds, fullAccessInvesto
     filtered.customers = (filtered.customers || []).filter(cust => allowedCustomerIds.has(cust.id) || cust.createdByUserId === employeeId);
 
     return filtered;
+};
+
+/**
+ * 🔒 Проверка прав сотрудника при ЗАПИСИ данных.
+ *
+ * Права canCreate/canEdit/canDelete и список доступных счетов раньше существовали
+ * только в интерфейсе: сервер их не смотрел вовсе, поэтому сотрудник без права
+ * на удаление спокойно удалял записи прямым запросом к API, а имея id чужого
+ * счёта — проводил по нему расходы, хотя сам этот счёт даже не видел.
+ * Чтение фильтровалось (filterDataForEmployee), запись — нет.
+ *
+ * @returns {Promise<{ok: true} | {ok: false, status: number, body: object}>}
+ */
+const checkEmployeeWriteAccess = async ({ user, type, itemId, accountId, isDelete }) => {
+  if (user.role !== 'employee') return { ok: true };
+  // Настройки сотрудник правит свои собственные — сюда не относится.
+  if (type === 'settings') return { ok: true };
+
+  const res = await pool.query(
+    'SELECT permissions, allowed_investor_ids, full_access_investor_ids FROM users WHERE id = $1',
+    [user.id]
+  );
+  const row = res.rows[0];
+  if (!row) return { ok: false, status: 403, body: { msg: 'Профиль сотрудника не найден' } };
+
+  const perms = (typeof row.permissions === 'string' ? JSON.parse(row.permissions) : row.permissions) || {};
+
+  // 1. Права на действие. Создание отличаем от правки по факту существования записи.
+  if (isDelete) {
+    if (!perms.canDelete) {
+      return { ok: false, status: 403, body: { msg: 'Нет прав на удаление' } };
+    }
+  } else {
+    const existing = await pool.query('SELECT 1 FROM data_items WHERE id = $1', [itemId]);
+    const isNew = existing.rowCount === 0;
+    if (isNew && !perms.canCreate) {
+      return { ok: false, status: 403, body: { msg: 'Нет прав на создание записей' } };
+    }
+    if (!isNew && !perms.canEdit) {
+      return { ok: false, status: 403, body: { msg: 'Нет прав на изменение записей' } };
+    }
+  }
+
+  // 2. Область счетов: писать можно только по счетам, к которым выдан доступ.
+  //    Сопоставление такое же, как при чтении, — с поддержкой пулов.
+  if (accountId) {
+    const allowedIds = parseAllowedInvestorIds(row.allowed_investor_ids);
+    if (allowedIds.length === 0) {
+      return { ok: false, status: 403, body: { msg: 'Нет доступа ни к одному счёту' } };
+    }
+    const hasMainAccess = allowedIds.includes('MAIN_ACCOUNT');
+    const investorIds = allowedIds.filter(id => id !== 'MAIN_ACCOUNT');
+
+    const accRes = await pool.query(
+      `SELECT data FROM data_items WHERE type = 'accounts' AND data->>'id' = $1 LIMIT 1`,
+      [accountId]
+    );
+    const acc = accRes.rows[0]?.data;
+    if (!acc) return { ok: false, status: 403, body: { msg: 'Счёт не найден' } };
+
+    const isMain = acc.type === 'MAIN' || (!acc.ownerId && acc.type !== 'POOL');
+    const belongs = (acc.ownerId && investorIds.includes(acc.ownerId)) ||
+      (acc.type === 'POOL' && (acc.poolMemberIds || []).some(id => investorIds.includes(id)));
+
+    if (!((isMain && hasMainAccess) || belongs)) {
+      return { ok: false, status: 403, body: { msg: 'Нет доступа к этому счёту' } };
+    }
+  }
+
+  return { ok: true };
 };
 
 // 🔹 ХЕЛПЕР: Парсинг allowed_investor_ids (может быть строкой JSON или массивом)
@@ -824,6 +902,28 @@ const initDB = async () => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='blocked') THEN
           ALTER TABLE users ADD COLUMN blocked BOOLEAN DEFAULT FALSE;
         END IF;
+        -- 💰 Процент от прибыли для сотрудника (мотивация).
+        -- profit_base — от чего считается: договоры, которые он оформил (CONTRACTS),
+        -- платежи, которые он принял (PAYMENTS), или вся прибыль менеджера (ALL).
+        -- profit_reduces_manager — уменьшать ли прибыль менеджера сразу при начислении
+        -- или только когда зарплата фактически выплачена.
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='profit_percentage') THEN
+          ALTER TABLE users ADD COLUMN profit_percentage NUMERIC;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='profit_base') THEN
+          ALTER TABLE users ADD COLUMN profit_base TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='profit_reduces_manager') THEN
+          ALTER TABLE users ADD COLUMN profit_reduces_manager BOOLEAN DEFAULT TRUE;
+        END IF;
+        -- Из чьей прибыли платится премия: MANAGER (доля менеджера) или SHARED (общее дело)
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='profit_source') THEN
+          ALTER TABLE users ADD COLUMN profit_source TEXT;
+        END IF;
+        -- С какой даты начисляется премия (платежи раньше неё не учитываются)
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='profit_since') THEN
+          ALTER TABLE users ADD COLUMN profit_since DATE;
+        END IF;
         -- 🎁 Реферальная программа
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='referral_code') THEN
           ALTER TABLE users ADD COLUMN referral_code TEXT UNIQUE;
@@ -1119,6 +1219,16 @@ const addMonthsClamped = (date, months) => {
   const daysInTarget = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
   target.setDate(Math.min(date.getDate(), daysInTarget));
   return target;
+};
+
+// Колонка типа DATE приходит из pg объектом Date в ЛОКАЛЬНОЙ полуночи. toISOString()
+// переводит её в UTC и в поясах восточнее Гринвича сдвигает дату на сутки назад:
+// 2026-06-01 превращалось в 2026-05-31. Собираем строку по локальным компонентам.
+const toDateString = (value) => {
+  if (!value) return undefined;
+  const d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d.getTime())) return undefined;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
 const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
@@ -2216,6 +2326,13 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
                 permissions: user.permissions,
                 allowedInvestorIds: user.allowed_investor_ids,
                 fullAccessInvestorIds: user.full_access_investor_ids,
+                profitPercentage: user.profit_percentage !== null && user.profit_percentage !== undefined ? Number(user.profit_percentage) : undefined,
+                profitBase: user.profit_base || undefined,
+                profitReducesManager: user.profit_reduces_manager !== false,
+            profitSource: user.profit_source || undefined,
+            profitSince: toDateString(user.profit_since),
+                profitSource: user.profit_source || undefined,
+                profitSince: toDateString(user.profit_since),
                 subscription: subscription, // <- Передаем подписку владельца!
                 whatsapp_settings: user.whatsapp_settings
             }
@@ -2262,6 +2379,9 @@ app.get('/api/auth/me', auth, async (req, res) => {
             permissions: user.permissions, // 🔥 ВОЗВРАЩАЕМ ПРАВА (canEdit, canDelete)
             allowedInvestorIds: user.allowed_investor_ids, // 🔥 ВОЗВРАЩАЕМ СПИСОК ИНВЕСТОРОВ
             fullAccessInvestorIds: user.full_access_investor_ids,
+            profitPercentage: user.profit_percentage !== null && user.profit_percentage !== undefined ? Number(user.profit_percentage) : undefined,
+            profitBase: user.profit_base || undefined,
+            profitReducesManager: user.profit_reduces_manager !== false,
             apiKey: user.role === 'admin' ? user.api_key : undefined
         });
     } catch (err) {
@@ -2408,7 +2528,13 @@ app.get('/api/data', auth, async (req, res) => {
         role: u.role,
         permissions: u.permissions,
         allowedInvestorIds: u.allowed_investor_ids,
-        fullAccessInvestorIds: u.full_access_investor_ids
+        fullAccessInvestorIds: u.full_access_investor_ids,
+        // Мотивация сотрудника: процент, база расчёта и влияние на прибыль менеджера
+        profitPercentage: u.profit_percentage !== null && u.profit_percentage !== undefined ? Number(u.profit_percentage) : undefined,
+        profitBase: u.profit_base || undefined,
+        profitReducesManager: u.profit_reduces_manager !== false,
+        profitSource: u.profit_source || undefined,
+        profitSince: toDateString(u.profit_since)
       }));
     }
 
@@ -2520,6 +2646,12 @@ app.post('/api/data/:type', auth, async (req, res) => {
         });
       }
     }
+
+    // 🔒 Права сотрудника и его область счетов — проверяются здесь, а не только в интерфейсе
+    const empCheck = await checkEmployeeWriteAccess({
+      user: req.user, type, itemId: itemData.id, accountId: itemData.accountId, isDelete: false
+    });
+    if (!empCheck.ok) return res.status(empCheck.status).json(empCheck.body);
 
     // 🔒 Модуль "Партнеры" (поставщики) — только тариф BUSINESS_PRO
     if (type === 'suppliers' || (type === 'sales' && itemData.supplierId) || (type === 'expenses' && itemData.supplierId)) {
@@ -2838,6 +2970,14 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
 
+    // 🔒 Права сотрудника: удаление требует canDelete и доступа к счёту записи
+    const existingRow = await pool.query('SELECT data FROM data_items WHERE id = $1', [id]);
+    const delCheck = await checkEmployeeWriteAccess({
+      user: req.user, type, itemId: id,
+      accountId: existingRow.rows[0]?.data?.accountId, isDelete: true
+    });
+    if (!delCheck.ok) return res.status(delCheck.status).json(delCheck.body);
+
     // 🔒 Та же проверка, что и при записи (POST /api/data/:type): без активной подписки
     // менять данные нельзя. Удаление сюда изначально не попало — получалось, что
     // создать договор нельзя, а удалить можно. Это хуже обычной несогласованности:
@@ -3125,7 +3265,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
     // 🔹 ACTION: CREATE
     // ========================================
     if (action === 'create') {
-      const { name, email, password, role, permissions, allowedInvestorIds, fullAccessInvestorIds, phone } = userData;
+      const { name, email, password, role, permissions, allowedInvestorIds, fullAccessInvestorIds, phone, profitPercentage, profitBase, profitReducesManager, profitSource, profitSince } = userData;
 
 
        if (role === 'employee' || role === 'investor') {
@@ -3214,8 +3354,8 @@ app.post('/api/users/manage', auth, async (req, res) => {
 
       // 🔹 Создаём пользователя
       await pool.query(
-        `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, full_access_investor_ids, phone)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        `INSERT INTO users (id, name, email, password, role, manager_id, permissions, allowed_investor_ids, full_access_investor_ids, phone, profit_percentage, profit_base, profit_reduces_manager, profit_source, profit_since)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
         [
           id,
           name,
@@ -3226,7 +3366,14 @@ app.post('/api/users/manage', auth, async (req, res) => {
           JSON.stringify(permissions || {}),
           JSON.stringify(allowedInvestorIds || []),
           JSON.stringify(fullAccessInvestorIds || []),
-          phone || null
+          phone || null,
+          Number.isFinite(Number(profitPercentage)) ? Number(profitPercentage) : null,
+          profitBase || null,
+          profitReducesManager !== false,
+          profitSource || null,
+          // Если процент задан, а дата начала не пришла — считаем с сегодняшнего дня.
+          // Без этого сотруднику разом начислялась бы премия за всю прошлую историю.
+          (Number(profitPercentage) > 0 ? (profitSince || new Date().toISOString().slice(0, 10)) : null)
         ]
       );
 
@@ -3299,7 +3446,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
 }
 
    if (action === 'update') {
-  const { id, name, email, permissions, allowedInvestorIds, fullAccessInvestorIds, password, phone } = userData;
+  const { id, name, email, permissions, allowedInvestorIds, fullAccessInvestorIds, password, phone, profitPercentage, profitBase, profitReducesManager, profitSource, profitSince } = userData;
   const isSelfUpdate = (id === req.user.id);
 
   try {
@@ -3321,6 +3468,11 @@ app.post('/api/users/manage', auth, async (req, res) => {
       allowed_investor_ids = COALESCE($4, allowed_investor_ids),
       full_access_investor_ids = COALESCE($5, full_access_investor_ids),
       phone = COALESCE($6, phone),
+      profit_percentage = COALESCE($8, profit_percentage),
+      profit_base = COALESCE($9, profit_base),
+      profit_reduces_manager = COALESCE($10, profit_reduces_manager),
+      profit_source = COALESCE($11, profit_source),
+      profit_since = COALESCE($12, profit_since),
       updated_at = NOW()
       WHERE id = $7`;
 
@@ -3331,12 +3483,20 @@ app.post('/api/users/manage', auth, async (req, res) => {
       allowedJson,
       fullAccessJson,
       safePhone,  // ✅ Пустая строка → NULL → телефон очистится
-      id
+      id,
+      profitPercentage === undefined || profitPercentage === null || profitPercentage === ''
+        ? null : Number(profitPercentage),
+      profitBase || null,
+      typeof profitReducesManager === 'boolean' ? profitReducesManager : null,
+      profitSource || null,
+      // Дата начала: пришла явно — берём её; иначе, если процент включают впервые,
+      // проставляем сегодняшний день (COALESCE не тронет уже заполненное значение).
+      profitSince || (Number(profitPercentage) > 0 ? new Date().toISOString().slice(0, 10) : null)
     ];
 
     // Проверка manager_id только для чужих профилей
     if (!isSelfUpdate) {
-      query += ` AND manager_id = $8`;
+      query += ` AND manager_id = $13`;
       params.push(req.user.id);
     }
 
@@ -3382,6 +3542,11 @@ app.post('/api/users/manage', auth, async (req, res) => {
         permissions: updatedUser.permissions,
         allowedInvestorIds: updatedUser.allowed_investor_ids,
         fullAccessInvestorIds: updatedUser.full_access_investor_ids,
+        profitPercentage: updatedUser.profit_percentage !== null && updatedUser.profit_percentage !== undefined ? Number(updatedUser.profit_percentage) : undefined,
+        profitBase: updatedUser.profit_base || undefined,
+        profitReducesManager: updatedUser.profit_reduces_manager !== false,
+        profitSource: updatedUser.profit_source || undefined,
+        profitSince: toDateString(updatedUser.profit_since),
         subscription: updatedUser.subscription,
         createdAt: updatedUser.created_at,
         updatedAt: updatedUser.updated_at

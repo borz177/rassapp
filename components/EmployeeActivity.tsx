@@ -1,13 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { User, Sale, Expense, Customer } from '../types';
+import { User, Sale, Expense, Customer, Account, Investor } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, addMonthsClamped } from '../src/utils';
+import { formatCurrency, formatDate, addMonthsClamped, getEmployeeProfitAccrued, getEmployeeSalaryPaid } from '../src/utils';
 
 interface EmployeeActivityProps {
   employee: User;
   sales: Sale[];
   expenses: Expense[];
   customers: Customer[];
+  // Нужны для расчёта премии: доля менеджера зависит от счёта и долей инвесторов
+  accounts?: Account[];
+  investors?: Investor[];
 }
 
 type Period = 'TODAY' | 'WEEK' | 'MONTH' | 'ALL';
@@ -58,7 +61,7 @@ type ActivityItem = {
   sub?: string;
 };
 
-const EmployeeActivity: React.FC<EmployeeActivityProps> = ({ employee, sales, expenses, customers }) => {
+const EmployeeActivity: React.FC<EmployeeActivityProps> = ({ employee, sales, expenses, customers, accounts = [], investors = [] }) => {
   const [period, setPeriod] = useState<Period>('MONTH');
 
   const customerName = (id: string) => customers.find(c => c.id === id)?.name || 'клиент';
@@ -95,6 +98,9 @@ const EmployeeActivity: React.FC<EmployeeActivityProps> = ({ employee, sales, ex
       cashIncomeSum: myCashIncome.reduce((s, c) => s + c.totalAmount, 0),
       expensesCount: myExpenses.length,
       expensesSum: myExpenses.reduce((s, e) => s + e.amount, 0),
+      // 💰 Премия: начислено по проценту от прибыли и сколько уже выплачено зарплатой
+      profitAccrued: getEmployeeProfitAccrued(employee, sales, accounts, investors, { start: from || undefined }),
+      salaryPaid: getEmployeeSalaryPaid(employee.id, expenses, { start: from || undefined }),
     };
 
     const feed: ActivityItem[] = [];
@@ -131,7 +137,7 @@ const EmployeeActivity: React.FC<EmployeeActivityProps> = ({ employee, sales, ex
     feed.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return { kpi, feed: feed.slice(0, 100) };
-  }, [employee.id, period, sales, expenses, customers]);
+  }, [employee, accounts, investors, period, sales, expenses, customers]);
 
   return (
     <div className="space-y-4 pb-20 animate-fade-in">
@@ -187,6 +193,46 @@ const EmployeeActivity: React.FC<EmployeeActivityProps> = ({ employee, sales, ex
           <p className="text-xs text-slate-500 dark:text-slate-400">{formatCurrency(kpi.expensesSum)} ₽</p>
         </div>
       </div>
+
+      {/* 💰 Премия по проценту от прибыли — только если процент задан */}
+      {Number(employee.profitPercentage) > 0 && (
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-4 border border-emerald-100 dark:border-emerald-900/40">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+              Премия — {employee.profitPercentage}% от прибыли
+            </p>
+            <span className="text-[11px] text-emerald-700 dark:text-emerald-400 bg-white/70 dark:bg-slate-900/40 px-2 py-1 rounded-full shrink-0">
+              {employee.profitBase === 'PAYMENTS' ? 'с принятых платежей'
+                : employee.profitBase === 'ALL' ? 'со всей прибыли'
+                : 'с его договоров'}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Начислено</p>
+              <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(kpi.profitAccrued)} ₽</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Выплачено</p>
+              <p className="text-lg font-bold text-slate-700 dark:text-slate-300">{formatCurrency(kpi.salaryPaid)} ₽</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">К выплате</p>
+              <p className={`text-lg font-bold ${kpi.profitAccrued - kpi.salaryPaid > 0.01 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                {formatCurrency(Math.max(0, kpi.profitAccrued - kpi.salaryPaid))} ₽
+              </p>
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
+            {employee.profitSince
+              ? `Начисляется с ${formatDate(employee.profitSince)} по мере поступления платежей. `
+              : 'Начисляется по мере поступления платежей. '}
+            {employee.profitSource === 'SHARED'
+              ? 'Расход общего дела — делится и на инвесторов.'
+              : 'Из доли менеджера.'} Выплата — расходом «Зарплата».
+          </p>
+        </div>
+      )}
 
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden">
         <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex items-center gap-2">

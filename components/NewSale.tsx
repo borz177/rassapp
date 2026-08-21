@@ -506,10 +506,14 @@ const regeneratePaymentPlan = (
       return;
     }
 
-    if (isSubmitting) return;
-
-    if (!formData.customerId || !formData.productName || !formData.accountId) {
-      alert("Заполните все обязательные поля");
+    // 🔒 Закуп обязателен: все расчёты прибыли пропускают договоры с buyPrice <= 0.
+    // Без него договор попадает в кассу и в список, деньги по нему приходят,
+    // но в прибыли он не участвует вообще — ни у менеджера, ни у инвесторов.
+    // Исключение — редактирование договора, по которому уже есть платежи: там поле
+    // закупа заблокировано, и требование его заполнить сделало бы договор
+    // нередактируемым навсегда.
+    if (!isFinancialLocked && !(Number(formData.buyPrice) > 0)) {
+      alert("Укажите цену закупа.\n\nБез неё договор не будет учитываться в прибыли — ни в вашей, ни в доле инвесторов.");
       return;
     }
 
@@ -1364,7 +1368,9 @@ if (mode === 'CASH') {
           {/* 🔹 Закуп и Наценка */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Закуп (Себест.)</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Закуп (Себест.){!isFinancialLocked && <span className="text-rose-500 ml-0.5">*</span>}
+              </label>
               <input
                   type="number"
                   min="0"

@@ -50,7 +50,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction } from './src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale } from './src/utils';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
@@ -1393,7 +1393,7 @@ const dashboardStats = useMemo(() => {
         if (saleProfit <= 0) return;
 
         const account = accounts.find(a => a.id === sale.accountId);
-        const managerProfitShare = getManagerSharePercent(account, investors) / 100;
+        const managerProfitShare = getManagerSharePercent(account, investors, shareDateForSale(sale)) / 100;
 
         totalProfit += saleProfit * managerProfitShare;
     });
@@ -1425,9 +1425,10 @@ const dashboardStats = useMemo(() => {
         allPayments.forEach(p => {
             const paymentDate = new Date(p.date);
             if (paymentDate >= startDate && paymentDate <= endDate && p.amount > 0) {
-                // 🔒 Доля считается на дату КОНКРЕТНОГО платежа — если инвестор вступил в пул
-                // позже, к более ранним платежам его доля не применяется (см. getManagerSharePercent).
-                const managerProfitShare = getManagerSharePercent(account, investors, p.date) / 100;
+                // 🔒 Доля считается на дату ОФОРМЛЕНИЯ договора: прибыль по мурабахе
+                // фиксируется при заключении сделки, поэтому принадлежит тем, чей капитал
+                // её профинансировал (см. shareDateForSale в src/utils.ts).
+                const managerProfitShare = getManagerSharePercent(account, investors, shareDateForSale(sale)) / 100;
                 const profitFromPayment = p.amount * profitMargin;
                 periodProfit += profitFromPayment * managerProfitShare;
             }
@@ -1468,7 +1469,7 @@ const dashboardStats = useMemo(() => {
             const saleProfit = sale.totalAmount - sale.buyPrice;
             if (saleProfit <= 0) return;
             const account = accounts.find(a => a.id === sale.accountId);
-            const shares = getAccountShares(account, investors);
+            const shares = getAccountShares(account, investors, shareDateForSale(sale));
             const totalInvestorShare = shares.reduce((sum, m) => sum + saleProfit * (m.percentage / 100), 0);
             expectedInvestorProfit += totalInvestorShare;
             expectedManagerProfit += saleProfit - totalInvestorShare;
@@ -1487,7 +1488,7 @@ const dashboardStats = useMemo(() => {
 
         paymentsInPeriod.forEach(p => {
             const profitFromPayment = p.amount * profitMargin;
-            const managerPct = getManagerSharePercent(account, investors, p.date) / 100;
+            const managerPct = getManagerSharePercent(account, investors, shareDateForSale(sale)) / 100;
             realizedManagerProfit += profitFromPayment * managerPct;
             realizedInvestorProfit += profitFromPayment * (1 - managerPct);
         });
@@ -1508,8 +1509,24 @@ const dashboardStats = useMemo(() => {
         }
       });
 
+    // 💰 Премия сотрудников с процентом от прибыли уменьшает прибыль менеджера:
+    // это его расход, а не инвесторов. Учитываем только тех, у кого включено
+    // «сразу уменьшать мою прибыль» — у остальных прибыль изменится лишь
+    // в момент фактической выплаты зарплаты (обычным расходом).
+    employees
+      .filter(emp => Number(emp.profitPercentage) > 0 && emp.profitReducesManager !== false)
+      .forEach(emp => {
+        realizedManagerProfit -= getEmployeeProfitAccrued(
+          emp,
+          accountId === 'ALL' ? sales : sales.filter(s => s.accountId === accountId),
+          accounts,
+          investors,
+          { start: startDate, end: endDate }
+        );
+      });
+
     return { customerPaymentsInPeriod, expectedManagerProfit, expectedInvestorProfit, realizedManagerProfit, realizedInvestorProfit };
-  }, [reportFilters, sales, accounts, investors, expenses, isManager]);
+  }, [reportFilters, sales, accounts, investors, expenses, employees, isManager]);
 
   const handleAuthSuccess = async (loggedInUser: User) => {
       setUser(loggedInUser);
@@ -3806,7 +3823,7 @@ if (!user && !showSplash) {
                   const emp = employees.find((e: User) => e.id === selectedEmployeeId);
                   return emp ? (
                       <PagePush onClose={() => setCurrentView('EMPLOYEES')} showBackButton>
-                        <EmployeeActivity employee={emp} sales={sales} expenses={expenses} customers={customers}/>
+                        <EmployeeActivity employee={emp} sales={sales} expenses={expenses} customers={customers} accounts={accounts} investors={investors}/>
                       </PagePush>
                   ) : null;
               })()}
