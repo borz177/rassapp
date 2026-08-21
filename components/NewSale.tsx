@@ -238,8 +238,18 @@ const regeneratePaymentPlan = (
   // 🔒 Защита от отрицательного остатка (не должно происходить — валидируется до вызова,
   // но подстраховываемся на случай прямого вызова функции с некорректными данными).
   const remainingAmount = Math.max(0, saleData.totalAmount - saleData.downPayment - preservedAmount);
-  const monthlyAmount = remainingInstallments > 0
-    ? Number((remainingAmount / remainingInstallments).toFixed(2))
+  // 🔒 Платежи считаем ЦЕЛЫМИ РУБЛЯМИ, а остаток от деления кладём в ПОСЛЕДНИЙ платёж.
+  // Раньше все платежи получали одну сумму с копейками (91 000 / 3 = 30 333,33), и их сумма
+  // не сходилась с долгом (30 333,33 × 3 = 90 999,99). А так как принимают платежи целыми
+  // рублями, каждый раз недоплачивалось 33 копейки: они копились в остатке долга, из-за чего
+  // график показывал 30 333 ₽, а «Остаток долга» — 30 334 ₽, и в графике вылезали строки-хвосты.
+  // Теперь 91 000 / 3 → 30 333 + 30 333 + 30 334: сумма сходится точно, копеек нет.
+  // Если сама сумма договора с копейками (например, 43 312,50) — они уйдут в последний платёж.
+  const baseAmount = remainingInstallments > 0
+    ? Math.floor(remainingAmount / remainingInstallments)
+    : 0;
+  const lastAmount = remainingInstallments > 0
+    ? Math.round((remainingAmount - baseAmount * (remainingInstallments - 1)) * 100) / 100
     : 0;
 
   // 🔹 7. Генерируем новые даты для будущих платежей
@@ -266,7 +276,8 @@ const regeneratePaymentPlan = (
       futurePayments.push({
         id: `pay_${Date.now()}_${futurePayments.length}_${Math.random().toString(36).substr(2, 6)}`,
         saleId: saleData.id,
-        amount: monthlyAmount,
+        // Последнему платежу достаётся остаток от деления, чтобы сумма графика сошлась точно.
+        amount: futurePayments.length === remainingInstallments - 1 ? lastAmount : baseAmount,
         date: pDate.toISOString(),
         isPaid: false,
         isRealPayment: false
