@@ -4679,7 +4679,6 @@ if (!user && !showSplash) {
 
 
 
-
 {showTemplateUpdateModal && (
   <div
     className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
@@ -4692,29 +4691,26 @@ if (!user && !showSplash) {
       <div className="p-6">
         {/* Заголовок */}
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-2xl">
-            💾
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center text-2xl">
+            💰
           </div>
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">
               Обновление
             </h3>
-            <p className="text-sm text-gray-500 dark:text-slate-400">
-              Добавили резервное копирование
-            </p>
           </div>
         </div>
 
         {/* Список обновлений */}
         <div className="divide-y divide-gray-100 dark:divide-slate-800 mb-6">
           <div className="flex items-center gap-3 py-4">
-            <div className="text-2xl">📧</div>
+            <div className="text-2xl">📈</div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
-                Автобэкап на почту
+                Процент сотруднику
               </p>
               <p className="text-xs text-gray-500 dark:text-slate-500">
-                Ежедневно, еженедельно или ежемесячно — Excel со всеми данными приходит на почту
+                От его договоров, от его платежей или от общей прибыли — выбирайте удобный вариант
               </p>
             </div>
           </div>
