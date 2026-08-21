@@ -181,7 +181,12 @@ export const calculateSaleOverdue = (sale: Sale, today?: Date): number => {
   });
   const totalPaid = sale.totalAmount - sale.remainingAmount;
   const overdue = Math.round((expectedTotal - totalPaid) * 100) / 100;
-  return overdue > 0 ? overdue : 0;
+  // Порог в 1 ₽, а не «больше нуля». Суммы платежей — это доли вроде 48 100 / 6, каждая
+  // округлена до копеек, поэтому их сумма расходится с (totalAmount − remainingAmount) на
+  // копейки. Такой остаток — не долг, а артефакт округления, но он проходил проверку «> 0»:
+  // договор попадал во вкладку «Просроченные», а сумма выводится через Math.round и
+  // показывалась как «0 ₽» (на проде так висело 12 договоров с остатком 0,03–0,67 ₽).
+  return overdue >= 1 ? overdue : 0;
 };
 
 export const formatCurrency = (amount: number | undefined | null, showCents: boolean = true): string => {

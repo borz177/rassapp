@@ -571,7 +571,9 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
             surplus = Math.max(0, surplus - covered);
             return { date: p.date, due: p.amount - covered };
         })
-        .filter(p => p.due > 0.01);
+        // Порог 1 ₽: копеечный остаток — артефакт округления долей платежа, а не долг
+        // (та же логика, что на экране договора — CustomerDetails.tsx).
+        .filter(p => p.due >= 1);
 
     // Порядок строк: СНАЧАЛА все фактические поступления (по возрастанию даты), ПОТОМ оставшиеся
     // плановые даты. Раньше обе группы сортировались вместе по дате, и пустая плановая строка

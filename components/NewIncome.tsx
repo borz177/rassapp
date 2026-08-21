@@ -478,7 +478,9 @@ const scheduleDates = (selectedSale.paymentPlan || [])
         // строка с долгом в одну копейку по уже полностью оплаченному месяцу.
         return { date: p.date, due: Math.round((p.amount - covered) * 100) / 100 };
     })
-    .filter(p => p.due > 0.01)
+    // Порог 1 ₽: копеечный остаток — артефакт округления долей платежа, а не долг
+    // (та же логика, что на экране договора — CustomerDetails.tsx).
+    .filter(p => p.due >= 1)
     .map(p => new Date(p.date));
 
 // 🔥 ВАЖНО: Если договор закрыт (status === 'COMPLETED'), остаток = 0

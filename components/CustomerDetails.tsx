@@ -816,17 +816,24 @@ ${customer.name}!
             .filter(p => !p.isPaid && p.isRealPayment !== true)
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-        const scheduleForDisplay = scheduled.map(p => {
-            const amountDue = p.amount;
-            const covered = Math.min(amountDue, surplus);
-            surplus = Math.max(0, surplus - covered);
-            const amountToPay = amountDue - covered;
-
-            return {
-                ...p,
+        // 🔒 Порог отсечения — 1 ₽ от НЕокруглённого остатка, а не «больше копейки» от
+        // округлённого. Суммы платежей — это доли вроде 91 000 / 3 = 30 333,33, поэтому при
+        // приёме округлённых рублей на каждом платеже копится остаток в копейки. Раньше он
+        // проходил фильтр и после второго-третьего платежа вылезал строкой «1 ₽» по месяцу,
+        // который пользователь только что оплатил ровно той суммой, что показывал график.
+        // Такой остаток — артефакт округления, а не долг (на проде так висело 20 договоров).
+        const scheduleForDisplay = scheduled
+            .map(p => {
+                const amountDue = p.amount;
+                const covered = Math.min(amountDue, surplus);
+                surplus = Math.max(0, surplus - covered);
+                return { payment: p, amountToPay: amountDue - covered };
+            })
+            .filter(x => x.amountToPay >= 1)
+            .map(({ payment, amountToPay }) => ({
+                ...payment,
                 amountToPay: appSettings.showCents !== false ? amountToPay : Math.round(amountToPay),
-            };
-        }).filter(p => p.amountToPay > 0.01);
+            }));
 
         return { paidPayments, paymentSchedule: scheduleForDisplay, totalDiscounts, totalRealPaid };
     }, [selectedSale, appSettings.showCents]);

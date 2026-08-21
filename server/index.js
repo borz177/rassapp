@@ -1614,7 +1614,9 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
       // ломало и вкладку «Просроченные». См. calculateSaleOverdue в src/utils.ts.
       const overdueAmount = Math.round((expectedTotal - totalPaid) * 100) / 100;
 
-      if (overdueAmount > 0) {
+      // Порог в 1 ₽: остаток в копейки — артефакт округления долей платежа, а не долг.
+      // Иначе клиенту уходило напоминание о «задолженности» в 0,33 ₽.
+      if (overdueAmount >= 1) {
         const overduePayments = (sale.paymentPlan || []).filter(p =>
           !p.isPaid && !p.isRealPayment && new Date(p.date) < today
         );
