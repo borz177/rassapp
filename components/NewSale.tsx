@@ -902,12 +902,17 @@ if (mode === 'CASH') {
       zIndex: element.style.zIndex
     };
 
+    // Лист держим ЗА ПРЕДЕЛАМИ экрана. Раньше здесь было left: 0 и z-index: 9999 —
+    // договор выкладывался поверх интерфейса и висел 300 мс ожидания плюс время
+    // отрисовки, из-за чего при сохранении на секунду выскакивал полный лист.
+    // Видимым он быть обязан (visibility: hidden html2canvas снял бы пустотой),
+    // но положение за краем экрана на снимок не влияет — проверено.
     element.style.display = 'block';
-    element.style.position = 'absolute';
-    element.style.left = '0';
+    element.style.position = 'fixed';
+    element.style.left = '-10000px';
     element.style.top = '0';
     element.style.visibility = 'visible';
-    element.style.zIndex = '9999';
+    element.style.zIndex = '-1';
     element.style.background = 'white';
 
     try {

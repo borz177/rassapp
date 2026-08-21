@@ -221,12 +221,20 @@ const isConfirmingRef = useRef(false);
     // 🔒 Повторная проверка после await: если за время загрузки чанков форма всё же
     // размонтировалась — бросаем понятную ошибку вместо краша на cloneNode.
     if (!contractRef.current) throw new Error("Contract element not found");
+    // Копию для снимка держим ЗА ПРЕДЕЛАМИ экрана.
+    // Раньше здесь стояло left: 0 и z-index: 9999 — документ выкладывался поверх
+    // всего интерфейса и висел там 300 мс ожидания плюс время отрисовки, из-за чего
+    // при отправке чека на секунду выскакивал полный лист договора.
+    // Видимой копия быть обязана: visibility: hidden html2canvas уважает и снимет пустоту.
+    // А вот положение за краем экрана ему безразлично — проверено: холст и содержимое
+    // получаются идентичными тому, что выходило при отрисовке на виду.
     const clonedElement = contractRef.current.cloneNode(true) as HTMLDivElement;
     clonedElement.style.position = 'fixed';
-    clonedElement.style.left = '0';
+    clonedElement.style.left = '-10000px';
     clonedElement.style.top = '0';
     clonedElement.style.visibility = 'visible';
-    clonedElement.style.zIndex = '9999';
+    clonedElement.style.zIndex = '-1';
+    clonedElement.style.pointerEvents = 'none';
     clonedElement.style.width = '210mm';
     clonedElement.style.background = 'white';
     clonedElement.style.opacity = '1';

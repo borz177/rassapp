@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Sale, Account, Expense, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, shareDateForSale } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, shareDateForSale } from '../src/utils';
 
 // Пресеты периода — те же, что в карточке инвестора.
 // 'ALL' сохранён отдельно: до этого касса по умолчанию показывала данные за всё время,
@@ -739,18 +739,46 @@ const investorProfitAccruals = useMemo(() => {
 
 // 🔹 Выплаты инвестора
 const investorProfitPayouts = useMemo(() => {
-    return expenses
-        .filter(e => e.investorId && e.payoutType === 'PROFIT' && (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
+    const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
+    const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
+    endDate.setHours(23, 59, 59, 999);
+    const inPeriod = (e: Expense) => {
+        const d = new Date(e.date);
+        return d >= startDate && d <= endDate;
+    };
+    const inAccount = (e: Expense) => profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId;
+
+    type PayoutRow = { id: string; title: string; date: string; amount: number; investorId: string; isShared?: boolean };
+
+    // 1) Адресные выплаты инвестору — как и раньше.
+    const direct: PayoutRow[] = expenses
+        .filter(e => e.investorId && e.payoutType === 'PROFIT' && inAccount(e))
         .filter(e => profitFilterInvestorId === 'ALL' || e.investorId === profitFilterInvestorId)
-        .filter(e => {
-            const eDate = new Date(e.date);
-            const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
-            const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
-            endDate.setHours(23, 59, 59, 999);
-            return eDate >= startDate && eDate <= endDate;
-        })
-        .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-}, [expenses, profitFilterAccountId, profitFilterInvestorId, myProfitPeriod]);
+        .filter(inPeriod)
+        .map(e => ({ id: e.id, title: e.title, date: e.date, amount: Number(e.amount), investorId: e.investorId! }));
+
+    // 2) 🔒 Общие расходы «из прибыли» (fromProfit) — они уменьшают прибыль инвесторов по их
+    // долям в счёте, но раньше в этот список не попадали вовсе: фильтр смотрел только на
+    // payoutType === 'PROFIT'. Из-за этого расход из прибыли по общему делу не отображался в
+    // блоке инвестора, хотя его долю из прибыли уже вычли. Считаем долю тем же помощником,
+    // что и карточка инвестора (InvestorDetails.tsx), чтобы цифры сходились.
+    const shared: PayoutRow[] = [];
+    expenses
+        .filter(e => e.fromProfit && e.profitSource !== 'MANAGER' && inAccount(e))
+        .filter(inPeriod)
+        .forEach(e => {
+            const account = accounts.find(a => a.id === e.accountId);
+            getAccountShares(account, investors, e.date).forEach(({ investor }) => {
+                if (profitFilterInvestorId !== 'ALL' && investor.id !== profitFilterInvestorId) return;
+                const share = getInvestorProfitDeduction(e, account, investors, investor.id);
+                if (share <= 0.01) return;
+                shared.push({ id: `${e.id}_${investor.id}`, title: e.title, date: e.date,
+                              amount: share, investorId: investor.id, isShared: true });
+            });
+        });
+
+    return [...direct, ...shared].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}, [expenses, accounts, investors, profitFilterAccountId, profitFilterInvestorId, myProfitPeriod]);
 
 
 
@@ -836,6 +864,25 @@ const investorProfitPayouts = useMemo(() => {
             const investor = investors.find(i => i.id === e.investorId);
             if (!investor) return;
             ensure(investor).totalWithdrawn += Number(e.amount);
+        });
+
+    // 🔒 Плюс доля инвестора в общих расходах «из прибыли» — она тоже уменьшает его прибыль.
+    // Без этого «Выплачено» и остаток по инвестору в кассе были завышены и расходились с
+    // карточкой инвестора, где такие расходы учитываются (InvestorDetails.tsx).
+    expenses
+        .filter(e => e.fromProfit && e.profitSource !== 'MANAGER' &&
+                    (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
+        .filter(e => {
+            const eDate = new Date(e.date);
+            return eDate >= startDate && eDate <= endDate;
+        })
+        .forEach(e => {
+            const account = accounts.find(a => a.id === e.accountId);
+            getAccountShares(account, investors, e.date).forEach(({ investor }) => {
+                const share = getInvestorProfitDeduction(e, account, investors, investor.id);
+                if (share <= 0) return;
+                ensure(investor).totalWithdrawn += share;
+            });
         });
 
     return Array.from(map.values())
