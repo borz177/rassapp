@@ -1108,6 +1108,15 @@ export const api = {
         return api.get('/payment/pricing');
     },
 
+    // 💰 Премия сотрудника. Считается на сервере: в браузере у сотрудника
+    // данные урезаны по доступным счетам, и расчёт в пуле вышел бы неверным.
+    getMyBonus: async (): Promise<{
+        enabled: boolean; percentage?: number; base?: string; source?: string;
+        since?: string | null; accrued?: number; paid?: number; balance?: number;
+    }> => {
+        return api.get('/my-bonus');
+    },
+
     // === РЕЗЕРВНОЕ КОПИРОВАНИЕ НА ПОЧТУ (server/backup.js) ===
     // Настройки хранятся на сервере отдельно от AppSettings, поэтому свои методы,
     // а не общий saveItem('settings', ...).

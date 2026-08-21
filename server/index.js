@@ -1224,6 +1224,17 @@ const addMonthsClamped = (date, months) => {
 // Колонка типа DATE приходит из pg объектом Date в ЛОКАЛЬНОЙ полуночи. toISOString()
 // переводит её в UTC и в поясах восточнее Гринвича сдвигает дату на сутки назад:
 // 2026-06-01 превращалось в 2026-05-31. Собираем строку по локальным компонентам.
+// Общий модуль расчёта прибыли (тот же, что использует интерфейс) — ESM,
+// поэтому подключается динамическим импортом, как shared/excelReport.js.
+let profitModulePromise = null;
+const getProfitModule = () => {
+  if (!profitModulePromise) {
+    const url = require('url').pathToFileURL(require('path').join(__dirname, '..', 'shared', 'profit.js')).href;
+    profitModulePromise = import(url);
+  }
+  return profitModulePromise;
+};
+
 const toDateString = (value) => {
   if (!value) return undefined;
   const d = value instanceof Date ? value : new Date(value);
@@ -5297,6 +5308,60 @@ app.get('/api/calculator-configs/:configId', async (req, res) => {
     res.status(500).json({ msg: 'Server error' });
   }
 });
+// 💰 Премия сотрудника — считает СЕРВЕР.
+// В браузере у сотрудника данные урезаны по доступным счетам: в общем пуле он видит
+// только «своего» инвестора, из-за чего капитал-доля посчиталась бы как 100% вместо
+// реальной, и премия вышла бы неверной. Здесь берутся полные данные менеджера,
+// а наружу отдаются только итоговые суммы — чужих договоров сотрудник не увидит.
+app.get('/api/my-bonus', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'employee') {
+      return res.json({ enabled: false });
+    }
+    const meRes = await pool.query(
+      'SELECT manager_id, profit_percentage, profit_base, profit_source, profit_since FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const me = meRes.rows[0];
+    if (!me || !(Number(me.profit_percentage) > 0)) {
+      return res.json({ enabled: false });
+    }
+
+    const ownerId = me.manager_id;
+    const rows = await pool.query(
+      `SELECT type, data FROM data_items WHERE user_id = $1 AND type IN ('sales','accounts','investors','expenses')`,
+      [ownerId]
+    );
+    const byType = { sales: [], accounts: [], investors: [], expenses: [] };
+    rows.rows.forEach(r => { if (byType[r.type]) byType[r.type].push(r.data); });
+
+    const { getEmployeeProfitAccrued, getEmployeeSalaryPaid } = await getProfitModule();
+    const employee = {
+      id: req.user.id,
+      profitPercentage: Number(me.profit_percentage),
+      profitBase: me.profit_base || 'CONTRACTS',
+      profitSource: me.profit_source || 'MANAGER',
+      profitSince: toDateString(me.profit_since),
+    };
+    const accrued = getEmployeeProfitAccrued(employee, byType.sales, byType.accounts, byType.investors);
+    const paid = getEmployeeSalaryPaid(req.user.id, byType.expenses);
+
+    res.json({
+      enabled: true,
+      percentage: employee.profitPercentage,
+      base: employee.profitBase,
+      source: employee.profitSource,
+      since: employee.profitSince || null,
+      accrued: Math.round(accrued * 100) / 100,
+      paid: Math.round(paid * 100) / 100,
+      balance: Math.round((accrued - paid) * 100) / 100,
+    });
+  } catch (e) {
+    console.error('my-bonus error:', e);
+    res.status(500).json({ msg: 'Не удалось рассчитать премию' });
+  }
+});
+
 // 🔹 Резервное копирование на почту (роуты + ночной планировщик), см. server/backup.js
 const backupModule = require('./backup')({
   pool, transporter, auth, getEffectivePlan, generateCode,

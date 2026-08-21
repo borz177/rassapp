@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, AppSettings, Investor, User } from '../types';
 import { ICONS } from '../constants';
 import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
+import MyBonusCard from './MyBonusCard';
 import { formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import {createPortal} from "react-dom";
@@ -1403,6 +1404,10 @@ useEffect(() => {
         {/* Подписка заканчивается в ближайшие сутки либо уже закончилась.
             Компонент сам решает, показываться ли — здесь условия не дублируем. */}
         <SubscriptionExpiryBanner user={user} onRenew={() => onAction('TARIFFS')} />
+
+        {/* «Моя премия» — только у сотрудника с назначенным процентом.
+            Компонент сам запрашивает числа с сервера и прячется, если процента нет. */}
+        {user?.role === 'employee' && <MyBonusCard />}
 
         {/* Tabs */}
         <div className="flex bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm p-1.5 rounded-2xl shadow-sm border border-white dark:border-slate-700">

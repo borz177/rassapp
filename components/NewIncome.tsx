@@ -405,8 +405,11 @@ const commonData = {
  
 
    // Берём только РЕАЛЬНЫЕ оплаченные платежи из истории — каждый (в т.ч. частичный) своей строкой.
+// 🔒 `isRealPayment !== false`, а не `isRealPayment && ...`: у старых записей поля isRealPayment
+// нет вообще, и строгая проверка их отбрасывала — реально полученные деньги пропадали из чека.
+// Тот же критерий, что на экране договора (CustomerDetails.tsx) и в печати (Contracts.tsx).
 const existingPayments: { date: Date; amount: number; discountAmount: number; isSchedule?: false }[] = (selectedSale.paymentPlan || [])
-    .filter(p => p.isRealPayment && p.isPaid)
+    .filter(p => p.isPaid && p.isRealPayment !== false)
     .map(p => ({
         date: new Date(p.date),
         amount: p.amount,
@@ -429,35 +432,46 @@ if (!currentPaymentAlreadyExists) {
     existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
-// 🔒 Каждый реальный платёж закрепляем за первым ещё не закрытым месяцем графика: пока месяц не
-// добран до своей суммы, туда же идут и следующие платежи. Месяц скрываем ТОЛЬКО если за ним
-// закрепилась своя строка платежа — она его и представляет. Месяц, на который лишь перетёк
-// остаток предыдущего платежа, остаётся плановой датой: по нему клиенту ещё платить. Считаем от
-// самих платежей, а не от флага isPaid планового слота — он бывает неактуален (платёж добавлен
-// без пересчёта reconcileSalePaymentPlan).
-const scheduledMonths = (selectedSale.paymentPlan || [])
-    .filter(p => p.isRealPayment !== true)
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-const monthsWithOwnPaymentRow = new Set<number>();
-let monthIdx = 0;
-let filledOnMonth = 0;
-for (const pay of [...existingPayments].sort((a, b) => a.date.getTime() - b.date.getTime())) {
-    if (monthIdx >= scheduledMonths.length) break;
-    monthsWithOwnPaymentRow.add(monthIdx);
-    filledOnMonth += pay.amount;
-    while (monthIdx < scheduledMonths.length && filledOnMonth >= scheduledMonths[monthIdx].amount - 0.01) {
-        filledOnMonth -= scheduledMonths[monthIdx].amount;
-        monthIdx++;
-    }
-}
-const scheduleDates = scheduledMonths
-    .filter((_, i) => !monthsWithOwnPaymentRow.has(i))
-    .map(p => new Date(p.date));
-
 // 🔹 РАСЧЁТ С УЧЁТОМ СКИДОК
 const totalPaid = existingPayments.reduce((sum, p) => sum + p.amount, 0);
 const totalDiscounts = existingPayments.reduce((sum, p) => sum + (p.discountAmount || 0), 0);
+
+// 🔒 Оставшиеся к оплате месяцы считаем ТОЧНО ТАК ЖЕ, как экран договора (CustomerDetails.tsx)
+// и печать договора (Contracts.tsx): берём месяцы БЕЗ отметки "оплачено", а излишек уже
+// полученных денег над закрытыми месяцами гасит ближайшие из них.
+// Раньше применялась эвристика "месяц скрываем, только если за ним закрепилась своя строка
+// платежа" — из-за неё месяцы, погашенные ОДНИМ крупным платежом вперёд, всё равно печатались
+// как неоплаченные (клиент внёс 72 900 ₽ за 7 месяцев вперёд, а в чеке эти месяцы висели как долг).
+//
+// Важно опираться именно на отметки, а не только на сумму денег: договор могли закрыть досрочно
+// со скидкой/списанием — тогда внесено меньше суммы графика, но долга уже нет, и чисто денежный
+// подсчёт ошибочно показывал бы разницу как долг.
+const savedReceived = (selectedSale.paymentPlan || [])
+    .filter(p => p.isPaid && p.isRealPayment !== false)
+    .reduce((sum, p) => sum + p.amount, 0);
+const allocatedOnSchedule = (selectedSale.paymentPlan || [])
+    .filter(p => p.isPaid && p.isRealPayment !== true)
+    .reduce((sum, p) => sum + p.amount, 0);
+// Текущий платёж ещё не сохранён в договоре, поэтому отметок на месяцах по нему нет —
+// добавляем его сумму к излишку вручную.
+const currentPaymentExtra = Math.max(0, totalPaid - savedReceived);
+
+// Скидки по УЖЕ сохранённым платежам сюда не добавляем: они и так учтены отметками "оплачено"
+// на месяцах графика, а повторный зачёт гасил бы лишний месяц (расхождение с экраном договора).
+let surplusToApply = Math.max(0, savedReceived - allocatedOnSchedule) + currentPaymentExtra;
+const scheduleDates = (selectedSale.paymentPlan || [])
+    .filter(p => !p.isPaid && p.isRealPayment !== true)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .map(p => {
+        const covered = Math.min(p.amount, surplusToApply);
+        surplusToApply = Math.max(0, surplusToApply - covered);
+        // Округляем до копеек: без этого накопленная погрешность double оставляла остаток
+        // вида 0.0100000000002, который проходил проверку "> 0.01", и в чек попадала лишняя
+        // строка с долгом в одну копейку по уже полностью оплаченному месяцу.
+        return { date: p.date, due: Math.round((p.amount - covered) * 100) / 100 };
+    })
+    .filter(p => p.due > 0.01)
+    .map(p => new Date(p.date));
 
 // 🔥 ВАЖНО: Если договор закрыт (status === 'COMPLETED'), остаток = 0
 // Иначе считаем: общая сумма - первый взнос - оплачено - скидки
