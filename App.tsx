@@ -1145,14 +1145,14 @@ useEffect(() => {
 
   // Ключ меняется вместе с содержимым окна: те, кто видел прошлое обновление,
   // должны увидеть и новое, а не считаться уже показанными.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v26';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v27';
   const REPEAT_AFTER = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
   const now = Date.now();
 
   if (!lastShown || now - Number(lastShown) >= REPEAT_AFTER) {
-    setShowTemplateUpdateModal(false);
+    setShowTemplateUpdateModal(true);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
