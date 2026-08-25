@@ -126,11 +126,16 @@
   }
 
 
-  .liquid-glass {
+  /* ВАЖНО: -webkit-backdrop-filter объявляется ПЕРЕД backdrop-filter.
+   В обратном порядке минификатор сборки считает стандартное свойство
+   перекрытым префиксным и выбрасывает его — а свежие Chrome (149+) уже не
+   понимают -webkit-версию, и размытие пропадает во всём приложении.
+   Проверка: в dist/assets/*.css обе строки должны остаться. */
+.liquid-glass {
   position: relative;
   background: rgba(255,255,255,0.15);
-  backdrop-filter: blur(30px);
   -webkit-backdrop-filter: blur(30px);
+  backdrop-filter: blur(30px);
   border-radius: 20px;
   border: 1px solid rgba(255,255,255,0.35);
   box-shadow:
@@ -209,8 +214,8 @@
 
 .nav-glass {
   /* Сама панель — полупрозрачная, иначе размывать под капсулой будет нечего */
-  backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
 }
 
 /* Дорожка отвечает ТОЛЬКО за положение и размер. Морфинг живёт на вложенном
@@ -234,8 +239,8 @@
   /* На светлой теме белое стекло на белом острове не читалось вовсе —
      поэтому лёгкая подкраска фирменным цветом, а не прозрачный белый. */
   background: linear-gradient(180deg, rgba(99, 102, 241, 0.16), rgba(99, 102, 241, 0.08));
-  backdrop-filter: blur(12px) saturate(200%);
   -webkit-backdrop-filter: blur(12px) saturate(200%);
+  backdrop-filter: blur(12px) saturate(200%);
   /* Верхний блик и нижняя тень внутри — объём стекла */
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
@@ -302,6 +307,40 @@
   .nav-glass-track { transition: opacity 0.2s ease; }
   .nav-glass-pill--moving { animation: none; }
   .nav-glass-pill--moving::after { animation: none; }
+}
+
+/* ВЕРХНЯЯ ПАНЕЛЬ — то же стекло, что у нижнего острова, но во всю ширину.
+   Плавающим островом её не сделать: сверху контент прокручивается под панелью
+   и проглядывал бы в зазорах по краям, а под статус-баром остался бы разрыв.
+   Поэтому панель тянется от края до края, а с островом её роднит материал —
+   размытие, полупрозрачность и скруглённый нижний край. */
+.topbar-glass {
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid transparent;
+  border-radius: 0 0 22px 22px;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+.dark .topbar-glass {
+  background: rgba(30, 41, 59, 0.72);
+}
+
+/* Разделитель и тень включаются только после начала прокрутки: на самом верху
+   панель и фон страницы одного цвета, и черта под ними выглядит случайной. */
+.topbar-glass--scrolled {
+  border-bottom-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 24px -14px rgba(15, 23, 42, 0.45);
+}
+.dark .topbar-glass--scrolled {
+  border-bottom-color: rgba(255, 255, 255, 0.10);
+  box-shadow: 0 10px 28px -14px rgba(0, 0, 0, 0.75);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar-glass { transition: none; }
 }
 
 /* ============================================
