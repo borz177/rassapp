@@ -1045,7 +1045,9 @@ useEffect(() => {
     StatusBar.setBackgroundColor({ color: resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff' }).catch(() => {});
   }
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', resolvedTheme === 'dark' ? '#0b0f1a' : '#ffffff');
+  // Не фон страницы, а цвет стекла шапки: системная полоса стоит вплотную к ней,
+  // и любое расхождение читается как чужеродная плашка над приложением.
+  if (meta) meta.setAttribute('content', resolvedTheme === 'dark' ? '#18243b' : '#fdfeff');
 }, [resolvedTheme]);
 
 

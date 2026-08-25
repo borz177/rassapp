@@ -63,7 +63,7 @@ export default defineConfig(({ mode }) => {
           name: 'FinUchet',
           short_name: 'FinUchet',
           description: 'Управление рассрочками и продажами',
-          theme_color: '#ffffff',
+          theme_color: '#fdfeff',
           background_color: '#ffffff',
           display: 'standalone',
           // Запуск сразу в приложение, а не на «/»: по корню отдаётся рекламный лендинг,
