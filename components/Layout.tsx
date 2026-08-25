@@ -116,16 +116,39 @@ const Layout: React.FC<LayoutProps> = ({
   // на мгновение появляется в старом месте и дёргается.
   useLayoutEffect(() => {
     const measure = () => {
+      const nav = navRef.current;
       const geom = measureTab(activeTab);
-      if (!geom) { setPillVisible(false); return; }
+      if (!nav || !geom) { setPillVisible(false); return; }
+      // На первом кадре подписи ещё набраны запасным шрифтом, а иконки не
+      // разложены — кнопка тогда шире и выше настоящей, и капсула застревала
+      // раскоряченной поверх острова до самой перезагрузки. Отбрасываем такие
+      // замеры: настоящий придёт с ResizeObserver, как только вёрстка устоится.
+      const navW = nav.getBoundingClientRect().width;
+      const plausible = navW > 0 && geom.h > 16 && geom.w > 24 && geom.w < navW * 0.6;
+      if (!plausible) { setPillVisible(false); return; }
       setPill(geom);
       setPillVisible(true);
     };
     measure();
+
+    // Кнопка меняет размер, когда подгружается шрифт подписи и раскладываются
+    // иконки — событий об этом нет, поэтому следим за размерами напрямую.
+    const nav = navRef.current;
+    const btn = activeTab ? tabRefs.current[activeTab] : null;
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (ro && nav) ro.observe(nav);
+    if (ro && btn) ro.observe(btn);
+
+    const raf = requestAnimationFrame(measure);
+    // Подстраховка для браузеров без ResizeObserver и на случай позднего swap шрифта
+    document.fonts?.ready.then(measure).catch(() => {});
+
     // Пересчёт при повороте экрана и смене размеров панели
     window.addEventListener('resize', measure);
     window.addEventListener('orientationchange', measure);
     return () => {
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
       window.removeEventListener('resize', measure);
       window.removeEventListener('orientationchange', measure);
     };
@@ -646,8 +669,8 @@ const counts = useMemo(() => {
           pointer-events-none, чтобы прозрачные поля по бокам не перехватывали нажатия
           по контенту под ними. */}
       <div
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-3 pointer-events-none"
-        style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))' }}
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-5 pointer-events-none"
+        style={{ paddingBottom: 'max(0.25rem, env(safe-area-inset-bottom, 0px))' }}
       >
       <nav
         ref={navRef}

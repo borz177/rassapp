@@ -432,7 +432,7 @@
   .mobile-main-offset {
     /* 🔥 ИСПРАВЛЕНО: высота меню = 4rem (h-16) + safe-area, а не 5.5rem */
     /* Высота острова (~4rem) + зазор до края экрана (0.75rem) + безопасная зона */
-    margin-bottom: calc(4.125rem + env(safe-area-inset-bottom, 0px)) !important;
+    margin-bottom: calc(4rem + env(safe-area-inset-bottom, 0px)) !important;
     /* Верхний хедер (.safe-area-top) растёт на высоту статус-бара/чёлки —
        контент должен растягивать отступ на ту же величину, иначе на Android
        он оказывается под хедером (Дашборд, Касса, Клиенты и т.д.). */
