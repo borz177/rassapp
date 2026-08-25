@@ -495,7 +495,7 @@ const counts = useMemo(() => {
           по контенту под ними. */}
       <div
         className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-3 pointer-events-none"
-        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
+        style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))' }}
       >
       <nav
         ref={navRef}
@@ -506,7 +506,7 @@ const counts = useMemo(() => {
         {pill && (
           <div
             aria-hidden
-            className={`nav-glass-pill ${pillMoving ? 'nav-glass-pill--moving' : ''}`}
+            className="nav-glass-track"
             style={{
               transform: `translate3d(${pill.x}px, ${pill.y}px, 0)`,
               width: pill.w,
@@ -515,7 +515,9 @@ const counts = useMemo(() => {
               top: 0,
               opacity: pillVisible ? 1 : 0,
             }}
-          />
+          >
+            <div className={`nav-glass-pill ${pillMoving ? 'nav-glass-pill--moving' : ''}`} />
+          </div>
         )}
 
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>

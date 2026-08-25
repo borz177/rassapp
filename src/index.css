@@ -190,7 +190,7 @@
    Раньше это была полоса во всю ширину, приклеенная к низу, — на фоне
    скруглённых карточек приложения она выглядела чужеродной плитой. */
 .nav-island {
-  border-radius: 26px;
+  border-radius: 34px;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.75);
   /* Две тени: широкая мягкая создаёт отрыв от фона, узкая — чёткость края */
@@ -213,8 +213,22 @@
   -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 
+/* Дорожка отвечает ТОЛЬКО за положение и размер. Морфинг живёт на вложенном
+   стекле: обе анимации используют transform, и на одном элементе они бы
+   перетирали друг друга — растяжение сбрасывало бы перемещение. */
+.nav-glass-track {
+  position: absolute;
+  pointer-events: none;
+  transition:
+    transform 0.46s cubic-bezier(0.34, 1.32, 0.52, 1),
+    width 0.46s cubic-bezier(0.34, 1.32, 0.52, 1),
+    opacity 0.25s ease;
+  will-change: transform, width;
+}
+
 .nav-glass-pill {
   position: absolute;
+  inset: 0;
   border-radius: 9999px;
   pointer-events: none;
   /* На светлой теме белое стекло на белом острове не читалось вовсе —
@@ -229,11 +243,20 @@
     0 3px 10px -4px rgba(79, 70, 229, 0.35);
   /* Пружинистое движение: лёгкий перелёт за цель, как в нативных панелях.
      Отдельно от width — ширина должна догонять плавно, без отскока. */
-  transition:
-    transform 0.44s cubic-bezier(0.34, 1.32, 0.52, 1),
-    width 0.44s cubic-bezier(0.34, 1.32, 0.52, 1),
-    opacity 0.25s ease;
-  will-change: transform, width;
+  will-change: transform;
+}
+
+/* «Перетекание»: в движении капсула вытягивается по ходу и слегка приседает,
+   в конце возвращает форму. Это то самое ощущение жидкости — без растяжения
+   капсула просто скользит, как твёрдая плашка. */
+.nav-glass-pill--moving {
+  animation: nav-pill-morph 0.46s cubic-bezier(0.34, 1.32, 0.52, 1);
+}
+@keyframes nav-pill-morph {
+  0%   { transform: scale(1, 1); }
+  30%  { transform: scale(1.12, 0.88); }
+  65%  { transform: scale(0.96, 1.04); }
+  100% { transform: scale(1, 1); }
 }
 
 .dark .nav-glass-pill {
@@ -289,7 +312,8 @@
 
 /* Без анимаций капсула просто стоит на месте — движение и блик отключаются */
 @media (prefers-reduced-motion: reduce) {
-  .nav-glass-pill { transition: opacity 0.2s ease; }
+  .nav-glass-track { transition: opacity 0.2s ease; }
+  .nav-glass-pill--moving { animation: none; }
   .nav-glass-pill--moving::after { animation: none; }
 }
 
@@ -353,7 +377,7 @@
   .mobile-main-offset {
     /* 🔥 ИСПРАВЛЕНО: высота меню = 4rem (h-16) + safe-area, а не 5.5rem */
     /* Высота острова (~4rem) + зазор до края экрана (0.75rem) + безопасная зона */
-    margin-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px)) !important;
+    margin-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px)) !important;
     /* Верхний хедер (.safe-area-top) растёт на высоту статус-бара/чёлки —
        контент должен растягивать отступ на ту же величину, иначе на Android
        он оказывается под хедером (Дашборд, Касса, Клиенты и т.д.). */
