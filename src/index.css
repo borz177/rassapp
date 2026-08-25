@@ -34,12 +34,6 @@
 
 :root {
 
-  /* Тема приложения задаётся в самом приложении и не обязана совпадать с
-     системной. Без color-scheme браузер считает страницу «как в системе» и в
-     установленном PWA красит системные полосы по системной теме: телефон в
-     тёмной теме — статус-бар чёрный, хотя приложение светлое. */
-  color-scheme: light;
-
   /* BACKGROUND + TEXT */
   --color-bg: #ffffff;
   --color-text: #111827;
@@ -74,8 +68,6 @@
 /* DARK THEME */
 
 .dark {
-
-  color-scheme: dark;
 
   --color-bg: #0b0f1a;
   --color-text: #e5e7eb;
@@ -382,9 +374,6 @@
      Рамка живёт отдельно от padding, а фон по умолчанию рисуется под ней
      (background-clip: border-box) — затемнение по-прежнему закрывает весь экран. */
   border-bottom: env(safe-area-inset-bottom, 0px) solid transparent;
-  /* То же сверху: там, где приложение рисуется под чёлкой (iOS, свежие Android),
-     шапка модалки иначе оказывается под часами и значками. */
-  border-top: env(safe-area-inset-top, 0px) solid transparent;
 }
 
 /* Окно подтверждения, открытое поверх уже открытой модалки (например «Отправить
@@ -393,7 +382,6 @@
 .z-modal-top {
   z-index: 110;
   border-bottom: env(safe-area-inset-bottom, 0px) solid transparent;
-  border-top: env(safe-area-inset-top, 0px) solid transparent;
 }
 
 /* ============================================

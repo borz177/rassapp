@@ -3,9 +3,6 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover" />
-    <!-- Цвет системной полосы = цвет шапки приложения (bg-white / dark:bg-slate-800),
-         чтобы полоса и шапка выглядели одним слоем.
-         Обновляется из App.tsx при смене темы. -->
     <meta name="theme-color" content="#ffffff" />
     <meta name="description" content="Manage installments with AI" />
 
@@ -16,7 +13,7 @@
           var isDark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
           if (isDark) {
             document.documentElement.classList.add('dark');
-            document.querySelector('meta[name="theme-color"]').setAttribute('content', '#1e293b');
+            document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0b0f1a');
           }
         } catch (e) {}
       })();
