@@ -267,30 +267,17 @@
     0 4px 16px -4px rgba(0, 0, 0, 0.5);
 }
 
-/* Переливающаяся кромка. Рисуется градиентом по контуру: фон обрезается маской
-   так, что остаётся только рамка толщиной 1px (приём mask-composite). */
+/* Кромка капсулы — тонкая и нейтральная, только чтобы отделить стекло от
+   острова. Радужный контур пробовали, но на маленькой капсуле он кричал
+   сильнее самой активной вкладки. */
 .nav-glass-pill::before {
   content: "";
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  padding: 1.2px;
-  background: conic-gradient(
-    from 210deg,
-    rgba(255, 122, 182, 0.9),
-    rgba(255, 211, 110, 0.9),
-    rgba(126, 240, 192, 0.9),
-    rgba(122, 182, 255, 0.9),
-    rgba(196, 140, 255, 0.9),
-    rgba(255, 122, 182, 0.9)
-  );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  opacity: 0.8;
+  border: 1px solid rgba(99, 102, 241, 0.22);
 }
-.dark .nav-glass-pill::before { opacity: 0.7; }
+.dark .nav-glass-pill::before { border-color: rgba(255, 255, 255, 0.16); }
 
 /* Блик, скользящий по стеклу при переезде капсулы */
 .nav-glass-pill::after {

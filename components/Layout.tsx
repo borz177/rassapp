@@ -102,8 +102,8 @@ const Layout: React.FC<LayoutProps> = ({
       // Небольшой отступ по вертикали: без него капсула упирается в края острова
       // и выглядит втиснутой. По горизонтали, наоборот, чуть шире кнопки —
       // так она читается как отдельный элемент, а не обводка текста.
-      const padY = 3;
-      const padX = 4;
+      const padY = 0;
+      const padX = 7;
       setPill({
         x: b.left - n.left - padX,
         y: b.top - n.top + padY,
