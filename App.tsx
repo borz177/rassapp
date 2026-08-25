@@ -1049,7 +1049,7 @@ useEffect(() => {
   // Тег не правим, а заменяем целиком: Chrome в установленном PWA нередко не
   // замечает правку content у существующего тега, и полоса не меняла цвет при
   // переключении темы — новый узел он читает заново.
-  const themeColor = resolvedTheme === 'dark' ? '#18243b' : '#fdfeff';
+  const themeColor = resolvedTheme === 'dark' ? '#1c2739' : '#ffffff';
   document.querySelectorAll('meta[name="theme-color"]').forEach(el => el.remove());
   const meta = document.createElement('meta');
   meta.setAttribute('name', 'theme-color');
