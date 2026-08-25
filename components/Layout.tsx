@@ -514,7 +514,7 @@ const counts = useMemo(() => {
       {/* Mobile Top Navbar */}
  {/* Mobile Top Navbar */}
 <header
-  className="md:hidden fixed top-0 left-0 right-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 z-40 safe-area-top rounded-b-[22px]"
+  className="md:hidden fixed top-0 left-0 right-0 topbar-glass border-b border-slate-200 dark:border-slate-700 z-40 safe-area-top rounded-b-[22px]"
 >
   <div className="h-16 flex items-center px-4">
     <div className="flex flex-col w-full">
