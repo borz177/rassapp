@@ -6,7 +6,7 @@
     <!-- Цвет системной полосы = фактический цвет стекла шапки (замерен с
          отрисованной страницы), чтобы полоса и шапка выглядели одним слоем.
          Обновляется из App.tsx при смене темы. -->
-    <meta name="theme-color" content="#fdfeff" />
+    <meta name="theme-color" content="#ffffff" />
     <meta name="description" content="Manage installments with AI" />
 
     <script>
@@ -16,7 +16,7 @@
           var isDark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
           if (isDark) {
             document.documentElement.classList.add('dark');
-            document.querySelector('meta[name="theme-color"]').setAttribute('content', '#18243b');
+            document.querySelector('meta[name="theme-color"]').setAttribute('content', '#1e293b');
           }
         } catch (e) {}
       })();

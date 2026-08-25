@@ -131,17 +131,6 @@ const Layout: React.FC<LayoutProps> = ({
     };
   }, [activeTab, isInvestor, measureTab]);
 
-  // Верхняя панель прозрачная, пока страница не прокручена: разделитель и тень
-  // появляются только когда под неё что-то уехало — иначе на самом верху видна
-  // лишняя черта там, где панель и фон одного цвета.
-  const [headerScrolled, setHeaderScrolled] = useState(false);
-  useEffect(() => {
-    const onScroll = () => setHeaderScrolled(window.scrollY > 4);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
   // Блик пробегает по стеклу только в момент переезда, а не постоянно
   useEffect(() => {
     if (!activeTab) return;
@@ -525,7 +514,7 @@ const counts = useMemo(() => {
       {/* Mobile Top Navbar */}
  {/* Mobile Top Navbar */}
 <header
-  className={`md:hidden fixed top-0 left-0 right-0 z-40 safe-area-top topbar-glass ${headerScrolled ? 'topbar-glass--scrolled' : ''}`}
+  className="md:hidden fixed top-0 left-0 right-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 z-40 safe-area-top rounded-b-[22px]"
 >
   <div className="h-16 flex items-center px-4">
     <div className="flex flex-col w-full">
