@@ -728,7 +728,13 @@ input, textarea, [contenteditable] {
    ============================================ */
 .page-push-layer {
   position: fixed;
-  top: calc(4rem + env(safe-area-inset-top, 0px)); /* below the mobile top header (h-16 + safe area) */
+  /* Слой начинается от самого верха экрана, а отступ под верхние пузыри даёт
+     padding. Раньше здесь стоял top: calc(4rem + env(...)) — слой начинался под
+     тогдашней сплошной шапкой, и она закрывала всё, что выше. Шапки не стало, и
+     в этой полосе проглядывала предыдущая страница: на «Отчётах» между пузырями
+     и заголовком висел кусок «Главной». */
+  top: 0;
+  padding-top: calc(4rem + env(safe-area-inset-top, 0px));
   left: 0;
   right: 0;
   bottom: 0;
@@ -753,6 +759,7 @@ input, textarea, [contenteditable] {
 @media (min-width: 768px) {
   .page-push-layer {
     top: 0;
+    padding-top: 0; /* на десктопе верхних пузырей нет — там сайдбар */
     left: 16rem; /* desktop sidebar width (w-64) */
     /* Desktop already has a persistent sidebar for navigation, so the mobile-style push
        animation and floating back arrow are unnecessary there — the page just appears
@@ -765,7 +772,11 @@ input, textarea, [contenteditable] {
 
 .page-push-back-btn {
   position: sticky;
-  top: max(0.75rem, env(safe-area-inset-top, 0px));
+  /* Липнет ниже верхних пузырей. Отсчёт у sticky идёт от верхнего края
+     прокручиваемого слоя, а он теперь начинается от самого верха экрана —
+     поэтому в top заложены и вырез, и высота полосы с пузырями, иначе кнопка
+     при прокрутке наезжала бы на капсулу с названием. */
+  top: calc(4rem + env(safe-area-inset-top, 0px) + 0.5rem);
   left: 0.75rem;
   z-index: 10;
   display: inline-flex;
