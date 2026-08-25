@@ -4690,52 +4690,56 @@ if (!user && !showSplash) {
 
 {showTemplateUpdateModal && (
   <div
-    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
+    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-fade-in"
     onClick={() => setShowTemplateUpdateModal(false)}
   >
     <div
-      className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-scale-in"
+      className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl w-full max-w-sm rounded-[32px] shadow-2xl shadow-black/20 border border-white/20 dark:border-white/10 overflow-hidden animate-scale-in"
       onClick={e => e.stopPropagation()}
     >
       <div className="p-6">
-        {/* Заголовок */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center text-2xl">
-            💰
+        {/* Заголовок с новым пузырьковым стилем */}
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-violet-400 via-purple-400 to-pink-400 flex items-center justify-center text-3xl shadow-lg shadow-purple-500/20">
+            ✨
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-              Обновление
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">
+              Обновление дизайна
             </h3>
+            <p className="text-sm text-gray-500 dark:text-slate-400 font-medium">
+              Новый стиль
+            </p>
           </div>
         </div>
 
-        {/* Список обновлений */}
-        <div className="divide-y divide-gray-100 dark:divide-slate-800 mb-6">
-          <div className="flex items-center gap-3 py-4">
-            <div className="text-2xl">📈</div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
-                Процент сотруднику
-              </p>
-              <p className="text-xs text-gray-500 dark:text-slate-500">
-                От его договоров, от его платежей или от общей прибыли — выбирайте удобный вариант
+        {/* Список обновлений в стиле карточек */}
+        <div className="space-y-4 mb-6">
+          
+
+          <div className="flex items-start gap-4 p-4 rounded-2xl bg-gradient-to-br from-emerald-50/50 to-teal-50/50 dark:from-emerald-950/30 dark:to-teal-950/30 border border-emerald-200/50 dark:border-emerald-800/30">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-teal-400 flex items-center justify-center text-xl shadow-md flex-shrink-0">
+              📱
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
+                Если у кого не правильно показывает стили переустановите приложение
               </p>
             </div>
           </div>
         </div>
 
+        {/* Кнопка в новом стиле */}
         <button
           onClick={() => setShowTemplateUpdateModal(false)}
-          className="w-full py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-semibold rounded-xl active:scale-[0.98] transition-all"
+          className="w-full py-3.5 bg-gradient-to-r from-violet-600 via-purple-600 to-pink-600 text-white font-bold rounded-2xl shadow-lg shadow-purple-500/30 active:scale-[0.97] transition-all duration-200 text-base tracking-wide"
         >
-          Понятно
+          🔥 Отлично, поехали!
         </button>
       </div>
     </div>
   </div>
 )}
-
 
 
 
