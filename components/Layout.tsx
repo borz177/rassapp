@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
 import { ICONS, APP_NAME, THEMES } from '../constants';
 import { calculateSaleOverdue } from '../src/utils';
@@ -90,26 +90,35 @@ const Layout: React.FC<LayoutProps> = ({
     return null;
   }, [currentView]);
 
+  // Геометрия капсулы для конкретного раздела. Вынесено из эффекта: то же самое
+  // нужно посчитать в момент, когда палец отпускает капсулу, — там ждать
+  // перерисовки нельзя, иначе она уедет домой и только потом к цели.
+  const measureTab = useCallback((id: string | null) => {
+    const nav = navRef.current;
+    const btn = id ? tabRefs.current[id] : null;
+    if (!nav || !btn) return null;
+    const n = nav.getBoundingClientRect();
+    const b = btn.getBoundingClientRect();
+    // Небольшой отступ по вертикали: без него капсула упирается в края острова
+    // и выглядит втиснутой. По горизонтали, наоборот, чуть шире кнопки —
+    // так она читается как отдельный элемент, а не обводка текста.
+    const padY = 0;
+    const padX = 7;
+    return {
+      x: b.left - n.left - padX,
+      y: b.top - n.top + padY,
+      w: b.width + padX * 2,
+      h: b.height - padY * 2,
+    };
+  }, []);
+
   // useLayoutEffect, а не useEffect: считаем до отрисовки, иначе капсула
   // на мгновение появляется в старом месте и дёргается.
   useLayoutEffect(() => {
     const measure = () => {
-      const nav = navRef.current;
-      const btn = activeTab ? tabRefs.current[activeTab] : null;
-      if (!nav || !btn) { setPillVisible(false); return; }
-      const n = nav.getBoundingClientRect();
-      const b = btn.getBoundingClientRect();
-      // Небольшой отступ по вертикали: без него капсула упирается в края острова
-      // и выглядит втиснутой. По горизонтали, наоборот, чуть шире кнопки —
-      // так она читается как отдельный элемент, а не обводка текста.
-      const padY = 0;
-      const padX = 7;
-      setPill({
-        x: b.left - n.left - padX,
-        y: b.top - n.top + padY,
-        w: b.width + padX * 2,
-        h: b.height - padY * 2,
-      });
+      const geom = measureTab(activeTab);
+      if (!geom) { setPillVisible(false); return; }
+      setPill(geom);
       setPillVisible(true);
     };
     measure();
@@ -120,7 +129,7 @@ const Layout: React.FC<LayoutProps> = ({
       window.removeEventListener('resize', measure);
       window.removeEventListener('orientationchange', measure);
     };
-  }, [activeTab, isInvestor]);
+  }, [activeTab, isInvestor, measureTab]);
 
   // Верхняя панель прозрачная, пока страница не прокручена: разделитель и тень
   // появляются только когда под неё что-то уехало — иначе на самом верху видна
@@ -143,6 +152,133 @@ const Layout: React.FC<LayoutProps> = ({
 
   const investorPermissions = activeInvestor?.permissions;
   const [showInvestorMobileMenu, setShowInvestorMobileMenu] = useState(false);
+
+  // ─── Перетаскивание капсулы ────────────────────────────────────────────────
+  // Капсулу можно зажать и вести пальцем: она следует за ним, по пути
+  // подсвечивая раздел, над которым находится, а на отпускании доезжает до
+  // ближайшего и открывает его.
+  const [dragPos, setDragPos] = useState<number | null>(null);   // абсолютный x во время перетаскивания
+  const [dragging, setDragging] = useState(false);
+  const [dragTab, setDragTab] = useState<string | null>(null);
+  const dragTabRef = useRef<string | null>(null);
+  // active=false, пока палец не сдвинулся дальше порога: до этого жест ещё
+  // может оказаться обычным нажатием, и перехватывать его нельзя.
+  const dragRef = useRef<{ id: number; startX: number; startY: number; baseX: number; active: boolean } | null>(null);
+  // После перетаскивания браузер всё равно шлёт click по кнопке под пальцем —
+  // его надо проглотить, иначе переход случится дважды.
+  const suppressClick = useRef(false);
+
+  const TAB_ORDER = ['dashboard', 'cash', 'customers', 'more'];
+  const visibleTabs = () => TAB_ORDER.filter(id => tabRefs.current[id]);
+
+  const goToTab = (id: string) => {
+    if (id === 'dashboard') return setView('DASHBOARD');
+    if (id === 'cash') return setView('CASH_REGISTER');
+    if (id === 'customers') return onGoToCustomers ? onGoToCustomers() : setView('CUSTOMERS');
+    if (id === 'more') return isInvestor ? setShowInvestorMobileMenu(true) : setView('MORE');
+  };
+
+  // Раздел, чей центр ближе всего к центру капсулы
+  const nearestTab = (x: number, w: number) => {
+    const center = x + w / 2;
+    let best: string | null = null;
+    let bestDist = Infinity;
+    for (const id of visibleTabs()) {
+      const g = measureTab(id);
+      if (!g) continue;
+      const d = Math.abs(center - (g.x + g.w / 2));
+      if (d < bestDist) { bestDist = d; best = id; }
+    }
+    return best;
+  };
+
+  const handleNavPointerDown = (e: React.PointerEvent) => {
+    if (!pill || !pillVisible || e.pointerType === 'mouse' && e.button !== 0) return;
+    const nav = navRef.current;
+    if (!nav) return;
+    const n = nav.getBoundingClientRect();
+    const lx = e.clientX - n.left;
+    const ly = e.clientY - n.top;
+    // Зона захвата чуть шире самой капсулы — в неё труднее не попасть пальцем
+    const grab = 10;
+    const inPill = lx >= pill.x - grab && lx <= pill.x + pill.w + grab
+                && ly >= pill.y - grab && ly <= pill.y + pill.h + grab;
+    if (!inPill) return;
+    dragRef.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, baseX: pill.x, active: false };
+  };
+
+  const handleNavPointerMove = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d || d.id !== e.pointerId || !pill) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.active) {
+      if (Math.abs(dx) < 6) return;                       // ещё не тянут — это обычное нажатие
+      if (Math.abs(dy) > Math.abs(dx)) { dragRef.current = null; return; }  // ведут вверх/вниз — жест не наш
+      d.active = true;
+      setDragging(true);
+      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* палец уже отпущен */ }
+    }
+    const tabs = visibleTabs();
+    const first = measureTab(tabs[0]);
+    const last = measureTab(tabs[tabs.length - 1]);
+    let x = d.baseX + dx;
+    // За крайними разделами капсула не останавливается намертво, а идёт с
+    // сопротивлением — так понятно, что дальше двигать некуда.
+    if (first && x < first.x) x = first.x - (first.x - x) * 0.3;
+    if (last && x > last.x) x = last.x + (x - last.x) * 0.3;
+    setDragPos(x);
+    const near = nearestTab(x, pill.w);
+    if (near !== dragTabRef.current) {
+      dragTabRef.current = near;
+      setDragTab(near);
+      // Короткий отклик на пересечении раздела — как у нативных переключателей
+      try { navigator.vibrate?.(8); } catch { /* устройство без вибромотора */ }
+    }
+  };
+
+  const endDrag = (commit: boolean) => {
+    const d = dragRef.current;
+    const target = commit ? dragTabRef.current : null;   // читаем до сброса
+    dragRef.current = null;
+    const wasActive = !!d?.active;
+    setDragPos(null);
+    setDragging(false);
+    setDragTab(null);
+    dragTabRef.current = null;
+    if (!wasActive) return;                 // палец не сдвинулся — обычное нажатие, кнопка отработает сама
+    suppressClick.current = true;
+    window.setTimeout(() => { suppressClick.current = false; }, 400);
+    if (!target || target === activeTab) return;
+    // Инвестору «Профиль» открывает лист, а не раздел: активная вкладка не
+    // меняется, поэтому капсулу оставляем ехать домой.
+    const willActivate = !(isInvestor && target === 'more');
+    if (willActivate) {
+      const geom = measureTab(target);
+      if (geom) setPill(geom);              // ставим цель сразу, иначе капсула сначала вернётся к старой
+      setPillMoving(true);
+      window.setTimeout(() => setPillMoving(false), 520);
+    }
+    goToTab(target);
+  };
+
+  const handleNavPointerUp = (e: React.PointerEvent) => {
+    if (dragRef.current && dragRef.current.id !== e.pointerId) return;
+    endDrag(true);
+  };
+
+  const handleNavPointerCancel = () => endDrag(false);
+
+  const handleNavClickCapture = (e: React.MouseEvent) => {
+    if (!suppressClick.current) return;
+    suppressClick.current = false;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  // Во время перетаскивания подсвечен раздел под капсулой, а не открытый
+  const tabActive = (id: string) => (dragTab ?? activeTab) === id;
+
 
   // Apply Theme
   useEffect(() => {
@@ -509,16 +645,23 @@ const counts = useMemo(() => {
       >
       <nav
         ref={navRef}
-        className="nav-glass nav-island pointer-events-auto px-2 pt-1 pb-2 flex justify-between items-end relative"
+        // touch-pan-y: вертикальную прокрутку страницы отдаём браузеру, горизонтальное
+        // ведение остаётся нам — иначе перетаскивание конфликтовало бы со скроллом.
+        className="nav-glass nav-island pointer-events-auto px-2 pt-1 pb-2 flex justify-between items-end relative touch-pan-y select-none"
+        onPointerDown={handleNavPointerDown}
+        onPointerMove={handleNavPointerMove}
+        onPointerUp={handleNavPointerUp}
+        onPointerCancel={handleNavPointerCancel}
+        onClickCapture={handleNavClickCapture}
       >
         {/* Стеклянная капсула активного раздела. Лежит под кнопками (z-0) и
             переезжает к активной — координаты считает useLayoutEffect выше. */}
         {pill && (
           <div
             aria-hidden
-            className="nav-glass-track"
+            className={`nav-glass-track ${dragging ? 'nav-glass-track--dragging' : ''}`}
             style={{
-              transform: `translate3d(${pill.x}px, ${pill.y}px, 0)`,
+              transform: `translate3d(${dragPos ?? pill.x}px, ${pill.y}px, 0)`,
               width: pill.w,
               height: pill.h,
               left: 0,
@@ -526,17 +669,17 @@ const counts = useMemo(() => {
               opacity: pillVisible ? 1 : 0,
             }}
           >
-            <div className={`nav-glass-pill ${pillMoving ? 'nav-glass-pill--moving' : ''}`} />
+            <div className={`nav-glass-pill ${dragging ? 'nav-glass-pill--grabbed' : pillMoving ? 'nav-glass-pill--moving' : ''}`} />
           </div>
         )}
 
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
-            <button ref={el => { tabRefs.current['dashboard'] = el; }} onClick={() => setView('DASHBOARD')} className={`relative z-10 flex flex-col items-center p-2 transition-colors ${currentView === 'DASHBOARD' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
+            <button ref={el => { tabRefs.current['dashboard'] = el; }} onClick={() => setView('DASHBOARD')} className={`relative z-10 flex flex-col items-center p-2 transition-colors ${tabActive('dashboard') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
                 {ICONS.Dashboard}
                 <span className="text-[10px] mt-1 font-medium">Главная</span>
             </button>
             {!isInvestor && (
-              <button ref={el => { tabRefs.current['cash'] = el; }} onClick={() => setView('CASH_REGISTER')} className={`relative z-10 flex flex-col items-center p-2 transition-colors ${currentView === 'CASH_REGISTER' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
+              <button ref={el => { tabRefs.current['cash'] = el; }} onClick={() => setView('CASH_REGISTER')} className={`relative z-10 flex flex-col items-center p-2 transition-colors ${tabActive('cash') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
                   {ICONS.Wallet}
                   <span className="text-[10px] mt-1 font-medium">Касса</span>
               </button>
@@ -556,7 +699,7 @@ const counts = useMemo(() => {
 
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
             {!isInvestor && (
-              <button ref={el => { tabRefs.current['customers'] = el; }} onClick={() => (onGoToCustomers ? onGoToCustomers() : setView('CUSTOMERS'))} className={`relative z-10 flex flex-col items-center p-2 transition-colors ${currentView === 'CUSTOMERS' || currentView === 'CUSTOMER_DETAILS' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
+              <button ref={el => { tabRefs.current['customers'] = el; }} onClick={() => (onGoToCustomers ? onGoToCustomers() : setView('CUSTOMERS'))} className={`relative z-10 flex flex-col items-center p-2 transition-colors ${tabActive('customers') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
                   {ICONS.Customers}
                   <span className="text-[10px] mt-1 font-medium">Клиенты</span>
               </button>
@@ -572,12 +715,7 @@ const counts = useMemo(() => {
                 }}
                 ref={el => { tabRefs.current['more'] = el; }}
                 className={`relative z-10 flex flex-col items-center p-2 transition-colors ${
-                    currentView === 'MORE' || currentView === 'PROFILE' ||
-                    currentView === 'CONTRACTS' || currentView === 'INVESTORS' ||
-                    currentView === 'EMPLOYEES' || currentView === 'SETTINGS' ||
-                    currentView === 'SUPPLIERS' || currentView === 'SUPPLIER_DETAILS' ||
-                    currentView === 'TARIFFS' || currentView === 'ADMIN_PANEL'
-                        ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'
+                    tabActive('more') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'
                 }`}
             >
                 {ICONS.Menu}
