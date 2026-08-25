@@ -546,7 +546,7 @@ const counts = useMemo(() => {
         <div aria-hidden className="topbar-scrim" />
 
         <div className="h-16 flex items-center justify-between gap-3 px-4">
-          <div className="topbar-bubble pointer-events-auto flex items-center gap-2 min-w-0 pl-4 pr-4 py-2">
+          <div className="glass-surface rounded-full pointer-events-auto flex items-center gap-2 min-w-0 pl-4 pr-4 py-2">
             <h1 className="text-lg font-bold tracking-tight text-indigo-600 dark:text-indigo-400 truncate">
               {appSettings.companyName}
             </h1>
@@ -568,7 +568,7 @@ const counts = useMemo(() => {
           {showNotificationsBell && (
             <button
               onClick={onOpenNotifications}
-              className="topbar-bubble pointer-events-auto relative shrink-0 w-11 h-11 flex items-center justify-center text-slate-500 dark:text-slate-300 active:scale-95 transition-transform"
+              className="glass-surface rounded-full pointer-events-auto relative shrink-0 w-11 h-11 flex items-center justify-center text-slate-600 dark:text-slate-200 active:scale-95 transition-transform"
               aria-label="Уведомления"
             >
               {ICONS.Bell}
@@ -639,11 +639,16 @@ const counts = useMemo(() => {
       {/* Mobile Quick Actions Menu (Triggered by FAB) - ONLY FOR MANAGER/EMPLOYEE */}
       {!isInvestor && isMenuOpen && (
         <div
-          className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden flex flex-col justify-end pb-32 px-4 ${isMenuClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
+          // Размытие держит слой затемнения, а не сама панель: элемент с
+          // backdrop-filter становится «корнем подложки», и вложенное стекло
+          // страницу под собой уже не видит. Раз панель стала полупрозрачной,
+          // размытие фона усилено с blur-sm — иначе сквозь меню читался бы текст
+          // карточек.
+          className={`fixed inset-0 bg-slate-900/60 backdrop-blur-xl z-40 md:hidden flex flex-col justify-end pb-32 px-4 ${isMenuClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
           onClick={closeMenu}
         >
           <div
-            className={`bg-white dark:bg-slate-800 rounded-2xl shadow-2xl overflow-hidden ${isMenuClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+            className={`glass-surface rounded-2xl overflow-hidden ${isMenuClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
             onClick={e => e.stopPropagation()}
           >
             <div className="px-4 pt-4 pb-2 border-b border-slate-100 dark:border-slate-700">
