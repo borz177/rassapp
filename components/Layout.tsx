@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
 import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
 import { ICONS, APP_NAME, THEMES } from '../constants';
 import { calculateSaleOverdue } from '../src/utils';
@@ -60,11 +60,76 @@ const Layout: React.FC<LayoutProps> = ({
   showTasks = false,
   showEmployees = false,
   showSuppliers = false,
-}) => {  const [isMenuOpen, setIsMenuOpen] = useState(false);
+}) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMenuClosing, setIsMenuClosing] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
   const isInvestor = user?.role === 'investor';
+
+  // 🫧 Стеклянная капсула активного раздела в нижней навигации.
+  // Положение считаем по реальным размерам кнопок: разделы разной ширины,
+  // между группами стоит круглая кнопка «+», и захардкодить координаты нельзя.
+  const navRef = useRef<HTMLElement | null>(null);
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [pill, setPill] = useState<{ x: number; w: number; h: number; y: number } | null>(null);
+  const [pillMoving, setPillMoving] = useState(false);
+  // Видимость отдельно от геометрии: на экранах вне навигации (операции, отчёты,
+  // создание договора) активного раздела нет. Если в этот момент убрать капсулу
+  // из разметки, при возврате она появится рывком в новом месте. Поэтому она
+  // остаётся на последней позиции и просто гаснет — возвращаясь, доезжает плавно.
+  const [pillVisible, setPillVisible] = useState(false);
+
+  // Какой раздел считать активным — те же условия, что подсвечивают иконки
+  const activeTab = useMemo(() => {
+    if (currentView === 'DASHBOARD') return 'dashboard';
+    if (currentView === 'CASH_REGISTER') return 'cash';
+    if (currentView === 'CUSTOMERS' || currentView === 'CUSTOMER_DETAILS') return 'customers';
+    if (['MORE', 'PROFILE', 'CONTRACTS', 'INVESTORS', 'EMPLOYEES', 'SETTINGS',
+         'SUPPLIERS', 'SUPPLIER_DETAILS', 'TARIFFS', 'ADMIN_PANEL'].includes(currentView)) return 'more';
+    return null;
+  }, [currentView]);
+
+  // useLayoutEffect, а не useEffect: считаем до отрисовки, иначе капсула
+  // на мгновение появляется в старом месте и дёргается.
+  useLayoutEffect(() => {
+    const measure = () => {
+      const nav = navRef.current;
+      const btn = activeTab ? tabRefs.current[activeTab] : null;
+      if (!nav || !btn) { setPillVisible(false); return; }
+      const n = nav.getBoundingClientRect();
+      const b = btn.getBoundingClientRect();
+      // Небольшой отступ по вертикали: без него капсула упирается в края острова
+      // и выглядит втиснутой. По горизонтали, наоборот, чуть шире кнопки —
+      // так она читается как отдельный элемент, а не обводка текста.
+      const padY = 3;
+      const padX = 4;
+      setPill({
+        x: b.left - n.left - padX,
+        y: b.top - n.top + padY,
+        w: b.width + padX * 2,
+        h: b.height - padY * 2,
+      });
+      setPillVisible(true);
+    };
+    measure();
+    // Пересчёт при повороте экрана и смене размеров панели
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+    };
+  }, [activeTab, isInvestor]);
+
+  // Блик пробегает по стеклу только в момент переезда, а не постоянно
+  useEffect(() => {
+    if (!activeTab) return;
+    setPillMoving(true);
+    const id = setTimeout(() => setPillMoving(false), 520);
+    return () => clearTimeout(id);
+  }, [activeTab]);
+
   const investorPermissions = activeInvestor?.permissions;
   const [showInvestorMobileMenu, setShowInvestorMobileMenu] = useState(false);
 
@@ -425,15 +490,41 @@ const counts = useMemo(() => {
       )}
 
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shadow-[0_-5px_10px_rgba(0,0,0,0.05)] z-50 px-2 flex justify-between items-end safe-area-pb">
+      {/* Обёртка держит отступы от краёв и безопасную зону, сам остров — внутри.
+          pointer-events-none, чтобы прозрачные поля по бокам не перехватывали нажатия
+          по контенту под ними. */}
+      <div
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-3 pointer-events-none"
+        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
+      >
+      <nav
+        ref={navRef}
+        className="nav-glass nav-island pointer-events-auto px-2 pt-1 pb-2 flex justify-between items-end relative"
+      >
+        {/* Стеклянная капсула активного раздела. Лежит под кнопками (z-0) и
+            переезжает к активной — координаты считает useLayoutEffect выше. */}
+        {pill && (
+          <div
+            aria-hidden
+            className={`nav-glass-pill ${pillMoving ? 'nav-glass-pill--moving' : ''}`}
+            style={{
+              transform: `translate3d(${pill.x}px, ${pill.y}px, 0)`,
+              width: pill.w,
+              height: pill.h,
+              left: 0,
+              top: 0,
+              opacity: pillVisible ? 1 : 0,
+            }}
+          />
+        )}
 
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
-            <button onClick={() => setView('DASHBOARD')} className={`flex flex-col items-center p-2 ${currentView === 'DASHBOARD' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`}>
+            <button ref={el => { tabRefs.current['dashboard'] = el; }} onClick={() => setView('DASHBOARD')} className={`relative z-10 flex flex-col items-center p-2 transition-colors ${currentView === 'DASHBOARD' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
                 {ICONS.Dashboard}
                 <span className="text-[10px] mt-1 font-medium">Главная</span>
             </button>
             {!isInvestor && (
-              <button onClick={() => setView('CASH_REGISTER')} className={`flex flex-col items-center p-2 ${currentView === 'CASH_REGISTER' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`}>
+              <button ref={el => { tabRefs.current['cash'] = el; }} onClick={() => setView('CASH_REGISTER')} className={`relative z-10 flex flex-col items-center p-2 transition-colors ${currentView === 'CASH_REGISTER' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
                   {ICONS.Wallet}
                   <span className="text-[10px] mt-1 font-medium">Касса</span>
               </button>
@@ -441,7 +532,7 @@ const counts = useMemo(() => {
         </div>
 
         {!isInvestor && (
-          <div className="relative -top-5">
+          <div className="relative -top-5 z-10">
               <button
                   onClick={handleFabClick}
                   className={`w-14 h-14 rounded-full flex items-center justify-center text-white transition-transform active:scale-95 ${isMenuOpen ? 'bg-slate-800 rotate-45' : 'bg-indigo-600'}`}
@@ -453,7 +544,7 @@ const counts = useMemo(() => {
 
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
             {!isInvestor && (
-              <button onClick={() => (onGoToCustomers ? onGoToCustomers() : setView('CUSTOMERS'))} className={`flex flex-col items-center p-2 ${currentView === 'CUSTOMERS' || currentView === 'CUSTOMER_DETAILS' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`}>
+              <button ref={el => { tabRefs.current['customers'] = el; }} onClick={() => (onGoToCustomers ? onGoToCustomers() : setView('CUSTOMERS'))} className={`relative z-10 flex flex-col items-center p-2 transition-colors ${currentView === 'CUSTOMERS' || currentView === 'CUSTOMER_DETAILS' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
                   {ICONS.Customers}
                   <span className="text-[10px] mt-1 font-medium">Клиенты</span>
               </button>
@@ -467,13 +558,14 @@ const counts = useMemo(() => {
                         setView('MORE');
                     }
                 }}
-                className={`flex flex-col items-center p-2 ${
+                ref={el => { tabRefs.current['more'] = el; }}
+                className={`relative z-10 flex flex-col items-center p-2 transition-colors ${
                     currentView === 'MORE' || currentView === 'PROFILE' ||
                     currentView === 'CONTRACTS' || currentView === 'INVESTORS' ||
                     currentView === 'EMPLOYEES' || currentView === 'SETTINGS' ||
                     currentView === 'SUPPLIERS' || currentView === 'SUPPLIER_DETAILS' ||
                     currentView === 'TARIFFS' || currentView === 'ADMIN_PANEL'
-                        ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'
+                        ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'
                 }`}
             >
                 {ICONS.Menu}
@@ -558,6 +650,7 @@ const counts = useMemo(() => {
         </div>
 
       </nav>
+      </div>
          {/* 🔹 Плавающая кнопка техподдержки (только десктоп) */}
 {supportButton && (
   <div className="hidden md:block">
