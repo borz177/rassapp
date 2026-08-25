@@ -107,6 +107,11 @@ export default function Landing() {
                 .delay-4 { animation-delay: 0.4s; }
                 .delay-5 { animation-delay: 0.5s; }
                 
+                .glass-nav, .glass-nav-scrolled {
+                    /* В APK приложение рисуется под статус-баром, и шапка лендинга
+                       (он открывается первым) иначе уезжает под часы. */
+                    padding-top: env(safe-area-inset-top, 0px);
+                }
                 .glass-nav {
                     backdrop-filter: blur(20px);
                     background: rgba(255, 255, 255, 0.8);
