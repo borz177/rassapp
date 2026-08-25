@@ -3,9 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover" />
-    <!-- Цвет системной полосы = цвет стекла шапки. Дальше его переставляет
-         App.tsx при каждой смене темы. -->
-    <meta name="theme-color" content="#ffffff" />
+    <!-- Цвет системной полосы = фон страницы: сплошной шапки нет, наверху
+         только плавающие пузыри. Дальше тег переставляет App.tsx при смене темы. -->
+    <meta name="theme-color" content="#f8fafc" />
     <meta name="description" content="Manage installments with AI" />
 
     <script>
@@ -15,7 +15,7 @@
           var isDark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
           if (isDark) {
             document.documentElement.classList.add('dark');
-            document.querySelector('meta[name="theme-color"]').setAttribute('content', '#1c2739');
+            document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0f172a');
           }
         } catch (e) {}
       })();

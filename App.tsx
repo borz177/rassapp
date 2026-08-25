@@ -1044,12 +1044,12 @@ useEffect(() => {
     // фона), Style.Light = тёмные иконки (для светлого фона) — см. definitions.d.ts.
     StatusBar.setStyle({ style: resolvedTheme === 'dark' ? Style.Dark : Style.Light }).catch(() => {});
   }
-  // Цвет системной полосы = цвет стекла шапки над фоном страницы (замерен с
-  // отрисованной страницы), чтобы стык полосы и шапки не бросался в глаза.
+  // Сплошной шапки нет — полоса должна совпадать с фоном страницы (slate-50 /
+  // slate-900), он же цвет растушёвки под чёлкой.
   // Тег не правим, а заменяем целиком: Chrome в установленном PWA нередко не
   // замечает правку content у существующего тега, и полоса не меняла цвет при
   // переключении темы — новый узел он читает заново.
-  const themeColor = resolvedTheme === 'dark' ? '#1c2739' : '#ffffff';
+  const themeColor = resolvedTheme === 'dark' ? '#0f172a' : '#f8fafc';
   document.querySelectorAll('meta[name="theme-color"]').forEach(el => el.remove());
   const meta = document.createElement('meta');
   meta.setAttribute('name', 'theme-color');
