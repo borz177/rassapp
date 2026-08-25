@@ -158,6 +158,9 @@ const Layout: React.FC<LayoutProps> = ({
   // подсвечивая раздел, над которым находится, а на отпускании доезжает до
   // ближайшего и открывает его.
   const [dragPos, setDragPos] = useState<number | null>(null);   // абсолютный x во время перетаскивания
+  // Отдельно от dragging: капсула отзывается на само касание, ещё до того как
+  // палец сдвинулся дальше порога и жест стал перетаскиванием.
+  const [pressed, setPressed] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [dragTab, setDragTab] = useState<string | null>(null);
   const dragTabRef = useRef<string | null>(null);
@@ -192,6 +195,19 @@ const Layout: React.FC<LayoutProps> = ({
     return best;
   };
 
+  // Слушаем на окне, а не на панели: палец нередко отпускают, уже уведя его с
+  // острова, и события panel'ю не достаётся — капсула так и осталась бы крупной.
+  useEffect(() => {
+    if (!pressed) return;
+    const release = () => setPressed(false);
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    return () => {
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', release);
+    };
+  }, [pressed]);
+
   const handleNavPointerDown = (e: React.PointerEvent) => {
     if (!pill || !pillVisible || e.pointerType === 'mouse' && e.button !== 0) return;
     const nav = navRef.current;
@@ -204,6 +220,7 @@ const Layout: React.FC<LayoutProps> = ({
     const inPill = lx >= pill.x - grab && lx <= pill.x + pill.w + grab
                 && ly >= pill.y - grab && ly <= pill.y + pill.h + grab;
     if (!inPill) return;
+    setPressed(true);
     dragRef.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, baseX: pill.x, active: false };
   };
 
@@ -647,7 +664,7 @@ const counts = useMemo(() => {
         ref={navRef}
         // touch-pan-y: вертикальную прокрутку страницы отдаём браузеру, горизонтальное
         // ведение остаётся нам — иначе перетаскивание конфликтовало бы со скроллом.
-        className="nav-glass nav-island pointer-events-auto px-2 pt-1 pb-2 flex justify-between items-end relative touch-pan-y select-none"
+        className="nav-glass nav-island pointer-events-auto px-2 pt-0 pb-1.5 flex justify-between items-end relative touch-pan-y select-none"
         onPointerDown={handleNavPointerDown}
         onPointerMove={handleNavPointerMove}
         onPointerUp={handleNavPointerUp}
@@ -669,7 +686,7 @@ const counts = useMemo(() => {
               opacity: pillVisible ? 1 : 0,
             }}
           >
-            <div className={`nav-glass-pill ${dragging ? 'nav-glass-pill--grabbed' : pillMoving ? 'nav-glass-pill--moving' : ''}`} />
+            <div className={`nav-glass-pill ${pressed || dragging ? 'nav-glass-pill--held' : pillMoving ? 'nav-glass-pill--moving' : ''}`} />
           </div>
         )}
 
