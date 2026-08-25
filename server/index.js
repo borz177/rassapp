@@ -2603,7 +2603,7 @@ app.get('/api/health', (req, res) => {
 // новые Capacitor-плагины, права и т.п.), синхронно с versionCode в android/app/build.gradle.
 // Обычные правки веб-кода сами подхватываются WebView с каждым открытием приложения — версию
 // бампать для них не нужно.
-const LATEST_ANDROID_VERSION_CODE = 2;
+const LATEST_ANDROID_VERSION_CODE = 3;
 
 app.get('/api/app-version', (req, res) => {
   res.json({
