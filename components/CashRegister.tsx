@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import SelectSheet from './SelectSheet';
 import { Sale, Account, Expense, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, shareDateForSale } from '../src/utils';
@@ -1152,33 +1153,33 @@ const investorProfitPayouts = useMemo(() => {
         {/* Фильтры */}
         <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 dark:border-slate-700">
             <div className="space-y-3">
-                <div>
-                    <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5 block">Фильтр по счету</label>
-                    <select
-                        className="w-full p-2.5 sm:p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-300 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
-                        value={profitFilterAccountId}
-                        onChange={e => { setProfitFilterAccountId(e.target.value); setProfitFilterInvestorId('ALL'); }}
-                    >
-                        <option value="ALL">Все счета</option>
-                        {accounts.filter(a => a.type !== 'SHARED' && (!a.isArchived || a.id === profitFilterAccountId)).map(acc => (
-                            <option key={acc.id} value={acc.id}>{acc.name}</option>
-                        ))}
-                    </select>
-                </div>
+                <SelectSheet
+                    label="Фильтр по счету"
+                    title="Счёт"
+                    value={profitFilterAccountId}
+                    onChange={id => { setProfitFilterAccountId(id); setProfitFilterInvestorId('ALL'); }}
+                    options={[
+                        { id: 'ALL', name: 'Все счета' },
+                        ...accounts
+                            .filter(a => a.type !== 'SHARED' && (!a.isArchived || a.id === profitFilterAccountId))
+                            .map(acc => ({
+                                id: acc.id,
+                                name: acc.name,
+                                hint: `${formatCurrency(accountBalances[acc.id] || 0, appSettings.showCents)} ₽`,
+                            })),
+                    ]}
+                />
                 {investorProfitBreakdown.length > 1 && (
-                    <div>
-                        <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5 block">Фильтр по инвестору</label>
-                        <select
-                            className="w-full p-2.5 sm:p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl outline-none text-sm text-slate-700 dark:text-slate-300 font-medium focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 transition-all"
-                            value={profitFilterInvestorId}
-                            onChange={e => setProfitFilterInvestorId(e.target.value)}
-                        >
-                            <option value="ALL">Все инвесторы</option>
-                            {investorProfitBreakdown.map(m => (
-                                <option key={m.investor.id} value={m.investor.id}>{m.investor.name}</option>
-                            ))}
-                        </select>
-                    </div>
+                    <SelectSheet
+                        label="Фильтр по инвестору"
+                        title="Инвестор"
+                        value={profitFilterInvestorId}
+                        onChange={setProfitFilterInvestorId}
+                        options={[
+                            { id: 'ALL', name: 'Все инвесторы' },
+                            ...investorProfitBreakdown.map(m => ({ id: m.investor.id, name: m.investor.name })),
+                        ]}
+                    />
                 )}
                 <div>
                     <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5 block">Период</label>
@@ -1189,8 +1190,8 @@ const investorProfitPayouts = useMemo(() => {
                                 onClick={() => applyPeriodMode(key)}
                                 className={`flex-1 min-w-[68px] py-2 rounded-xl text-xs font-bold transition-colors ${
                                     periodMode === key
-                                        ? 'bg-indigo-600 text-white'
-                                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                                        ? 'glass-surface text-indigo-600 dark:text-indigo-300'
+                                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                                 }`}
                             >
                                 {label}
