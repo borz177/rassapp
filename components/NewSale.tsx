@@ -1,6 +1,7 @@
 import React, {useState, useMemo, useEffect, useRef} from 'react';
 import { Customer, Product, Account, AppSettings, Sale, Payment, Supplier } from '../types';
 import { ICONS } from '../constants';
+import TabPill from './TabPill';
 import TopBarBack from './TopBarBack';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
@@ -1269,11 +1270,12 @@ if (mode === 'CASH') {
         </div>
       )}
 
-      <div className="flex bg-white dark:bg-slate-800 p-1 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">
+      <div className="relative flex p-1 rounded-xl bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+        <TabPill index={mode === 'INSTALLMENT' ? 0 : 1} count={2} />
         <button type="button" onClick={() => !formData.id && updateMode('INSTALLMENT')} disabled={!!formData.id}
-                className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${mode === 'INSTALLMENT' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'} ${formData.id ? 'cursor-not-allowed opacity-70' : ''}`}>Рассрочка</button>
+                className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${mode === 'INSTALLMENT' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'} ${formData.id ? 'cursor-not-allowed opacity-70' : ''}`}>Рассрочка</button>
         <button type="button" onClick={() => !formData.id && updateMode('CASH')} disabled={!!formData.id}
-                className={`flex-1 py-3 text-sm font-bold rounded-lg transition-all ${mode === 'CASH' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'} ${formData.id ? 'cursor-not-allowed opacity-70' : ''}`}>Наличные</button>
+                className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${mode === 'CASH' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'} ${formData.id ? 'cursor-not-allowed opacity-70' : ''}`}>Наличные</button>
       </div>
       {formData.id && (
           <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-2">

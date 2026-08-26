@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import TabPill from './TabPill';
 import { Account, Investor, Expense, User, Supplier, Sale } from '../types';
 import { ICONS } from '../constants';
 import { getInvestorAccount, getAccountShares, getManagerSharePercent, formatCurrency, getAccountProfitBalance } from '../src/utils';
@@ -420,11 +421,14 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
       {/* Switcher */}
       {!isSupplierPayment && (
-      <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-xl">
+      <div className="relative flex p-1 rounded-xl bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+        {/* Вкладка инвестора есть не всегда: без неё ряд из одной кнопки, и
+            капсула не рисуется — подсвечивать нечего. */}
+        <TabPill index={sourceType === 'OTHER' ? 0 : 1} count={investors.length > 0 ? 2 : 1} />
         <button
             onClick={() => { setSourceType('OTHER'); setAmount(''); }}
-            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
-                sourceType === 'OTHER' ? 'bg-white dark:bg-slate-800 text-red-600 dark:text-red-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'
+            className={`relative z-10 flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                sourceType === 'OTHER' ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'
             }`}
         >
             Общие расходы
@@ -432,8 +436,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
         {investors.length > 0 && (
             <button
                 onClick={() => { setSourceType('INVESTOR'); setAmount(''); }}
-                className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
-                    sourceType === 'INVESTOR' ? 'bg-white dark:bg-slate-800 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'
+                className={`relative z-10 flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                    sourceType === 'INVESTOR' ? 'text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400'
                 }`}
             >
                 Выплата инвестору

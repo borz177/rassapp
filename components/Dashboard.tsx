@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import ModalPortal from './ModalPortal';
 import { Sale, Customer, Account, AppSettings, Investor, User } from '../types';
 import { ICONS } from '../constants';
 import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
@@ -926,7 +927,25 @@ const Dashboard: React.FC<DashboardProps> = ({
       dueDate: Date;
       dueDayKey: string;
   } | null>(null);
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  // Выбранный счёт переживает и уход на другую вкладку, и перезапуск приложения:
+  // Dashboard размонтируется при каждом переключении вкладки, и держать выбор в
+  // обычном состоянии — значит терять его на каждом шаге.
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(() => {
+    try { return localStorage.getItem('finuchet_dashboard_account'); } catch { return null; }
+  });
+  useEffect(() => {
+    try {
+      if (selectedAccountId) localStorage.setItem('finuchet_dashboard_account', selectedAccountId);
+      else localStorage.removeItem('finuchet_dashboard_account');
+    } catch { /* приватный режим */ }
+  }, [selectedAccountId]);
+  // Счёт могли удалить с другого устройства — тогда экран показал бы пустоту по
+  // несуществующему счёту. Проверяем только когда счета уже загрузились, иначе
+  // сбросили бы выбор на первом кадре.
+  useEffect(() => {
+    if (!selectedAccountId || accounts.length === 0) return;
+    if (!accounts.some(a => a.id === selectedAccountId)) setSelectedAccountId(null);
+  }, [accounts, selectedAccountId]);
 
   // Кнопки под балансом гаснут по тем же правилам, что и меню «+»: инвестору
   // движения денег недоступны, сотруднику — только с правом на создание.
@@ -1614,6 +1633,11 @@ useEffect(() => {
                 {/* Выбор счёта. Нижний лист, а не выпадашка: на телефоне до него
                     легче дотянуться, и он не обрезается краем экрана. */}
                 {accountPickerOpen && (
+                  // Через портал в body: лист живёт внутри обёртки с анимацией
+                  // появления, а она задаёт transform — и position: fixed цепляется
+                  // за неё вместо экрана. Лист тогда не доходит ни до низа, ни до
+                  // краёв. См. ModalPortal.
+                  <ModalPortal>
                   <div
                     className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
                     onClick={() => setAccountPickerOpen(false)}
@@ -1655,6 +1679,7 @@ useEffect(() => {
                       </div>
                     </div>
                   </div>
+                  </ModalPortal>
                 )}
 
                 {/* Карточки статистики: 2 в ряд на мобилках, 4 на больших экранах */}

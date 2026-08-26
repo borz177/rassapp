@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import TabPill from './TabPill';
 import { Customer, Account, Investor, Sale, User } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
@@ -659,28 +660,36 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
         <button onClick={onClose} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">{ICONS.Back}</button>
         <h2 className="text-xl font-bold text-slate-800 dark:text-white">Оформление прихода</h2>
       </div>
-      <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-xl">
+      {(() => {
+        // Вкладка инвестора появляется не всегда — считаем ряд по факту,
+        // иначе капсула встала бы мимо.
+        const tabs: string[] = ['CUSTOMER', ...(investors.length > 0 ? ['INVESTOR'] : []), 'OTHER'];
+        return (
+      <div className="relative flex p-1 rounded-xl bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+        <TabPill index={Math.max(0, tabs.indexOf(sourceType))} count={tabs.length} />
         <button
           onClick={() => { setSourceType('CUSTOMER'); setAmount(''); }}
-          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
-            sourceType === 'CUSTOMER' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'
+          className={`relative z-10 flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
+            sourceType === 'CUSTOMER' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'
           }`}
         >Клиент</button>
         {investors.length > 0 && (
           <button
             onClick={() => { setSourceType('INVESTOR'); setAmount(''); }}
-            className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
-              sourceType === 'INVESTOR' ? 'bg-white dark:bg-slate-800 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'
+            className={`relative z-10 flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
+              sourceType === 'INVESTOR' ? 'text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400'
             }`}
           >Инвестор</button>
         )}
         <button
           onClick={() => { setSourceType('OTHER'); setAmount(''); }}
-          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all ${
-            sourceType === 'OTHER' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'
+          className={`relative z-10 flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
+            sourceType === 'OTHER' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'
           }`}
         >Прочее</button>
       </div>
+        );
+      })()}
       <form onSubmit={handleSubmit} className="space-y-4">
         {sourceType === 'CUSTOMER' && (
           <div className="space-y-4 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in">
