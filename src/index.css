@@ -806,6 +806,16 @@ input, textarea, [contenteditable] {
 /* Guarantees every pushed page clears the fixed mobile bottom nav, regardless of whether the
    page's own content remembers to reserve space for it. */
 @media (max-width: 767px) {
+  /* У страниц со стрелкой «назад» (договоры, отчёты, инвесторы, сотрудники,
+     поставщики) она переехала в верхнюю панель и освободила своё место в
+     потоке. Верхний отступ им нужен меньше, чем страницам с собственной шапкой
+     (клиент, оформление): там заголовок идёт следом за своим pt-2. */
+  .page-push-scroll--tight {
+    padding-top: 0.25rem;
+  }
+}
+
+@media (max-width: 767px) {
   .page-push-scroll {
     padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
   }
