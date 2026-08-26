@@ -208,8 +208,8 @@
      он «дышал» бы на весь экран и отвлекал от того, что происходит внутри.
      Кривая с перелётом, как у капсулы, чтобы движение читалось единым. */
   transition:
-    transform 0.3s cubic-bezier(0.34, 1.4, 0.5, 1),
-    box-shadow 0.3s ease;
+    transform 0.16s cubic-bezier(0.33, 1, 0.68, 1),
+    box-shadow 0.16s ease;
   border-radius: 34px;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.75);

@@ -487,6 +487,17 @@ const CashRegister: React.FC<CashRegisterProps> = ({
   // открывается его страницей — как выписка по карте в банке. Общий экран
   // остаётся списком счетов, а цифры показываются там, где к ним есть вопрос.
   const [detailsAccount, setDetailsAccount] = useState<Account | null>(null);
+  // Тот же ключ, что у баланса на Главной: «скрыть суммы» — одно намерение, и
+  // прятать их по отдельности в двух местах пришлось бы дважды.
+  const [hideTotal, setHideTotal] = useState(() => {
+    try { return localStorage.getItem('finuchet_hide_balance') === '1'; } catch { return false; }
+  });
+  const toggleHideTotal = () => {
+    setHideTotal(v => {
+      try { localStorage.setItem('finuchet_hide_balance', v ? '0' : '1'); } catch { /* приватный режим */ }
+      return !v;
+    });
+  };
   const [showProfitFilters, setShowProfitFilters] = useState(false);
 
   const openAccountDetails = (acc: Account) => {
@@ -1001,11 +1012,34 @@ const investorProfitPayouts = useMemo(() => {
               <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                 Всего в кассе
               </span>
-              <span className="mt-1 text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-none">
-                {total < 0 ? '−' : ''}{Number(whole).toLocaleString('ru-RU')}
-                {appSettings.showCents && <span className="text-slate-400 dark:text-slate-500">,{frac}</span>}
-                <span className="text-2xl text-slate-400 dark:text-slate-500 ml-1">₽</span>
-              </span>
+              <div className="mt-1 flex items-center gap-2">
+                {hideTotal ? (
+                  <span className="text-4xl font-extrabold tracking-tight text-slate-800 dark:text-white leading-none">••••••</span>
+                ) : (
+                  <span className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-none">
+                    {total < 0 ? '−' : ''}{Number(whole).toLocaleString('ru-RU')}
+                    {appSettings.showCents && <span className="text-slate-400 dark:text-slate-500">,{frac}</span>}
+                    <span className="text-2xl text-slate-400 dark:text-slate-500 ml-1">₽</span>
+                  </span>
+                )}
+                <button
+                  onClick={toggleHideTotal}
+                  aria-label={hideTotal ? 'Показать сумму' : 'Скрыть сумму'}
+                  className="text-slate-400 dark:text-slate-500 active:scale-90 transition-transform shrink-0"
+                >
+                  {hideTotal ? (
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                      <line x1="1" y1="1" x2="23" y2="23" />
+                    </svg>
+                  ) : (
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
           );
         })()}
