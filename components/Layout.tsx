@@ -707,7 +707,11 @@ const counts = useMemo(() => {
         // touch-pan-y: вертикальную прокрутку страницы отдаём браузеру, горизонтальное
         // ведение остаётся нам — иначе перетаскивание конфликтовало бы со скроллом.
         className={`nav-glass nav-island pointer-events-auto px-2 pt-0 pb-1.5 flex justify-between items-end relative touch-pan-y select-none ${
-          pressed || dragging || pillMoving ? 'nav-island--held' : ''
+          // Только пока палец на острове. Раньше сюда входил и pillMoving — остров
+          // держался увеличенным все 520 мс переезда капсулы и оседал сильно
+          // позже, чем отпускали палец. Само движение показывает капсула, острову
+          // достаточно откликнуться на касание и сразу вернуться.
+          pressed || dragging ? 'nav-island--held' : ''
         }`}
         onPointerDown={handleNavPointerDown}
         onPointerMove={handleNavPointerMove}
