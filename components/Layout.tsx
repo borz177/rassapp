@@ -546,7 +546,13 @@ const counts = useMemo(() => {
         <div aria-hidden className="topbar-scrim" />
 
         <div className="h-16 flex items-center justify-between gap-3 px-4">
-          <div className="glass-surface rounded-full pointer-events-auto flex items-center gap-2 min-w-0 pl-4 pr-4 py-2">
+          <div className="flex items-center gap-2 min-w-0">
+            {/* Сюда порталом из PagePush приходит стрелка «назад» толкнутой
+                страницы и встаёт отдельным пузырём перед названием.
+                display: contents — пустой слот не создаёт ни коробки, ни зазора,
+                поэтому без стрелки название прижато к краю как раньше. */}
+            <div id="topbar-back-slot" className="contents" />
+            <div className="glass-surface rounded-full pointer-events-auto flex items-center gap-2 min-w-0 pl-4 pr-4 py-2">
             <h1 className="text-lg font-bold tracking-tight text-indigo-600 dark:text-indigo-400 truncate">
               {appSettings.companyName}
             </h1>
@@ -562,7 +568,8 @@ const counts = useMemo(() => {
                   <polyline points="21 3 21 9 15 9" />
                 </svg>
               </span>
-            )}
+              )}
+            </div>
           </div>
 
           {showNotificationsBell && (

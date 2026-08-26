@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useScrollRestoration } from '../../src/hooks/useScrollRestoration';
 
 interface PagePushProps {
@@ -193,6 +194,26 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, cl
 
   const idle = entered && !closing;
 
+  // Стрелка «назад» живёт не в самой странице, а в верхней панели — отдельным
+  // пузырём перед названием компании. Слот ищем при первом рендере: Layout уже
+  // смонтирован к моменту, когда страницу толкают. Если слота вдруг нет
+  // (страница открыта первой, до отрисовки шапки), рисуем стрелку по-старому
+  // внутри слоя, чтобы навигация не пропала.
+  const [backSlot, setBackSlot] = useState<HTMLElement | null>(
+    () => (typeof document === 'undefined' ? null : document.getElementById('topbar-back-slot'))
+  );
+  useEffect(() => {
+    if (!backSlot) setBackSlot(document.getElementById('topbar-back-slot'));
+  }, [backSlot]);
+
+  const backButton = showBackButton ? (
+    <button onClick={requestClose} aria-label="Назад" className="page-push-back-btn glass-surface">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <polyline points="15 18 9 12 15 6" />
+      </svg>
+    </button>
+  ) : null;
+
   return (
     <div
       ref={rootRef}
@@ -203,14 +224,9 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, cl
       className={`page-push-layer bg-slate-50 dark:bg-slate-900 ${className}`}
       style={idle ? undefined : { transform: 'translateX(100%)', willChange: 'transform' }}
     >
-      {showBackButton && (
-        <button onClick={requestClose} aria-label="Назад" className="page-push-back-btn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-      )}
+      {backSlot ? null : backButton}
       <div className="page-push-scroll max-w-7xl mx-auto p-4 md:p-10">{typeof children === 'function' ? children(requestClose) : children}</div>
+      {backSlot && backButton && createPortal(backButton, backSlot)}
     </div>
   );
 };
