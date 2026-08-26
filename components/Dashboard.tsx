@@ -1479,7 +1479,7 @@ useEffect(() => {
             мерить кнопки не нужно. Контейнер без backdrop-blur намеренно: элемент
             с ним становится «корнем подложки», и стекло внутри перестало бы
             размывать страницу. */}
-        <div className="relative flex p-1.5 rounded-2xl bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+        <div className="relative flex p-1.5 rounded-[28px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
           <div
             aria-hidden
             className="nav-glass-track"

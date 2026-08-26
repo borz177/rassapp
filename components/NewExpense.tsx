@@ -420,7 +420,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
       {/* Switcher */}
       {!isSupplierPayment && (
-      <div className="relative flex p-1 rounded-xl bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+      <div className="relative flex p-1 rounded-[22px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
         {/* Вкладка инвестора есть не всегда: без неё ряд из одной кнопки, и
             капсула не рисуется — подсвечивать нечего. */}
         <TabPill index={sourceType === 'OTHER' ? 0 : 1} count={investors.length > 0 ? 2 : 1} />

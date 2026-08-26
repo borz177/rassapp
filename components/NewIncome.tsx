@@ -666,7 +666,7 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
         // иначе капсула встала бы мимо.
         const tabs: string[] = ['CUSTOMER', ...(investors.length > 0 ? ['INVESTOR'] : []), 'OTHER'];
         return (
-      <div className="relative flex p-1 rounded-xl bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+      <div className="relative flex p-1 rounded-[22px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
         <TabPill index={Math.max(0, tabs.indexOf(sourceType))} count={tabs.length} />
         <button
           onClick={() => { setSourceType('CUSTOMER'); setAmount(''); }}

@@ -1270,7 +1270,7 @@ if (mode === 'CASH') {
         </div>
       )}
 
-      <div className="relative flex p-1 rounded-xl bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+      <div className="relative flex p-1 rounded-[26px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
         <TabPill index={mode === 'INSTALLMENT' ? 0 : 1} count={2} />
         <button type="button" onClick={() => !formData.id && updateMode('INSTALLMENT')} disabled={!!formData.id}
                 className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${mode === 'INSTALLMENT' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'} ${formData.id ? 'cursor-not-allowed opacity-70' : ''}`}>Рассрочка</button>
