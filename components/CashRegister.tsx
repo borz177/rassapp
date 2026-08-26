@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import PagePush from './transitions/PagePush';
 import TabPill from './TabPill';
 import SelectSheet from './SelectSheet';
 import { Sale, Account, Expense, Investor, AppSettings, Customer } from '../types';
@@ -482,10 +483,24 @@ const CashRegister: React.FC<CashRegisterProps> = ({
   const isMasked = (accountId: string) => maskedAccountIds.includes(accountId);
 
   const [showHiddenAccounts, setShowHiddenAccounts] = useState(false);
-  // Страница делится надвое: счета и прибыль. Раньше всё шло одной простынёй,
-  // и фильтры прибыли стояли выше её заголовка — читались как фильтры счетов.
-  const [cashTab, setCashTab] = useState<'accounts' | 'profit'>('accounts');
+  // Прибыль больше не отдельная вкладка: она принадлежит конкретному счёту и
+  // открывается его страницей — как выписка по карте в банке. Общий экран
+  // остаётся списком счетов, а цифры показываются там, где к ним есть вопрос.
+  const [detailsAccount, setDetailsAccount] = useState<Account | null>(null);
   const [showProfitFilters, setShowProfitFilters] = useState(false);
+
+  const openAccountDetails = (acc: Account) => {
+    // Готовые расчёты прибыли уже фильтруются этим состоянием — переиспользуем
+    // его вместо второго механизма «текущий счёт».
+    setProfitFilterAccountId(acc.id);
+    setProfitFilterInvestorId('ALL');
+    setDetailsAccount(acc);
+  };
+  const closeAccountDetails = () => {
+    setDetailsAccount(null);
+    setProfitFilterAccountId('ALL');
+    setProfitFilterInvestorId('ALL');
+  };
 
   // Период хранится в App (myProfitPeriod) — здесь только режим выбора.
   // При возврате на страницу восстанавливаем его по уже выставленным датам.
@@ -945,11 +960,6 @@ const investorProfitPayouts = useMemo(() => {
       }
   }
 
-  const handleSharedAccountClick = (acc: Account) => {
-      if (acc.type === 'SHARED') {
-          setSelectedSharedAccount(acc);
-      }
-  }
 
   const handleMenuClick = (e: React.MouseEvent, acc: Account) => {
       e.stopPropagation();
@@ -1000,23 +1010,6 @@ const investorProfitPayouts = useMemo(() => {
           );
         })()}
 
-        {isManager && (
-          <div className="relative flex p-1.5 rounded-2xl bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
-            <TabPill index={cashTab === 'accounts' ? 0 : 1} count={2} pad={6} />
-            <button
-              onClick={() => setCashTab('accounts')}
-              className={`relative z-10 flex-1 py-2.5 text-sm font-bold rounded-xl transition-colors ${
-                cashTab === 'accounts' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500'
-              }`}
-            >Счета</button>
-            <button
-              onClick={() => setCashTab('profit')}
-              className={`relative z-10 flex-1 py-2.5 text-sm font-bold rounded-xl transition-colors ${
-                cashTab === 'profit' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
-              }`}
-            >Прибыль</button>
-          </div>
-        )}
       </div>
 
       {/* Modals */}
@@ -1025,9 +1018,6 @@ const investorProfitPayouts = useMemo(() => {
         <EditAccountModal account={editingAccount} onClose={() => setEditingAccount(null)} onUpdate={onUpdateAccount} />
       )}
 
-      {/* Вкладка «Счета». У сотрудника и инвестора вкладок нет — им видна только
-          эта часть, поэтому условие по cashTab к ним не применяем. */}
-      {(!isManager || cashTab === 'accounts') && (<>
       {/* Account Cards */}
       {accounts.length === 0 ? (
         <div className="bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-800 dark:to-indigo-950/30 rounded-3xl p-8 sm:p-12 text-center border-2 border-dashed border-indigo-200 dark:border-indigo-900/50">
@@ -1057,7 +1047,7 @@ const investorProfitPayouts = useMemo(() => {
             return (
             <div key={acc.id} className={`relative bg-white dark:bg-slate-800 rounded-2xl sm:rounded-3xl shadow-sm transition-all duration-300 overflow-hidden ${
               isLocked ? 'opacity-70 ring-1 ring-amber-300 dark:ring-amber-800' : ''
-            }`} onClick={() => { if (!isLocked) handleSharedAccountClick(acc); }}>
+            }`} onClick={() => { if (!isLocked) openAccountDetails(acc); }}>
               <div className={`absolute inset-0 bg-gradient-to-br ${getAccountTypeColor(acc.type)} opacity-0 hover:opacity-5 transition-opacity`}></div>
               <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${getAccountTypeColor(acc.type)}`}></div>
               <div className="relative p-4 sm:p-6">
@@ -1190,14 +1180,50 @@ const investorProfitPayouts = useMemo(() => {
         </div>
       )}
 
-      </>)}
-
       {activeMenuAccount && (
         <AccountActionModal account={activeMenuAccount} balance={accountBalances[activeMenuAccount.id] || 0} onClose={() => setActiveMenuAccount(null)} onSelectAccount={onSelectAccount} onEdit={setEditingAccount} onSetMain={onSetMainAccount} isManager={isManager} onUpdateAccount={onUpdateAccount} onToggleHidden={handleToggleHidden} appSettings={appSettings} isBalanceMasked={isMasked(activeMenuAccount.id)} />
       )}
 
-      {/* 🔹🔹🔹 БЛОК: Моя прибыль 🔹🔹🔹 */}
-     {isManager && cashTab === 'profit' && (
+      {/* Страница счёта: имя, баланс, действия и прибыль именно по нему.
+          PagePush — тот же выезд справа со свайпом назад, что на остальных
+          страницах, и стрелка «назад» уходит в верхнюю панель. */}
+      {detailsAccount && (
+      <PagePush onClose={closeAccountDetails} showBackButton scrollKey={`ACCOUNT:${detailsAccount.id}`}>
+        <div className="space-y-6">
+          <div className="flex flex-col items-center pt-1">
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r ${getAccountTypeColor(detailsAccount.type)} text-white`}>
+              {getAccountTypeLabel(detailsAccount.type)}
+            </div>
+            <h2 className="mt-2 text-xl font-bold text-slate-800 dark:text-white text-center truncate max-w-full">
+              {detailsAccount.name}
+            </h2>
+            {(() => {
+              const v = accountBalances[detailsAccount.id] || 0;
+              const shown = appSettings.showCents ? Math.abs(v) : Math.round(Math.abs(v));
+              const [whole, frac] = shown.toFixed(2).split('.');
+              return (
+                <span className="mt-2 text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-none">
+                  {v < 0 ? '−' : ''}{Number(whole).toLocaleString('ru-RU')}
+                  {appSettings.showCents && <span className="text-slate-400 dark:text-slate-500">,{frac}</span>}
+                  <span className="text-2xl text-slate-400 dark:text-slate-500 ml-1">₽</span>
+                </span>
+              );
+            })()}
+            <div className="flex items-stretch gap-2 mt-4 w-full max-w-xs">
+              <button
+                onClick={() => { const id = detailsAccount.id; closeAccountDetails(); onSelectAccount(id); }}
+                className="glass-surface rounded-2xl flex-1 py-2.5 text-[11px] font-bold text-slate-600 dark:text-slate-300 active:scale-95 transition-transform"
+              >Операции</button>
+              {detailsAccount.type === 'SHARED' && (
+                <button
+                  onClick={() => setSelectedSharedAccount(detailsAccount)}
+                  className="glass-surface rounded-2xl flex-1 py-2.5 text-[11px] font-bold text-slate-600 dark:text-slate-300 active:scale-95 transition-transform"
+                >Участники</button>
+              )}
+            </div>
+          </div>
+
+     {isManager && (
     <div className="space-y-6">
         {/* Фильтры. Свёрнуты по умолчанию: их меняют редко, а места они занимали
             полэкрана всегда. В строке видно текущий выбор — разворачивать, чтобы
@@ -1210,9 +1236,6 @@ const investorProfitPayouts = useMemo(() => {
             >
                 <span className="min-w-0 text-sm font-semibold text-slate-600 dark:text-slate-300 truncate">
                     {[
-                        profitFilterAccountId === 'ALL'
-                            ? 'Все счета'
-                            : (accounts.find(a => a.id === profitFilterAccountId)?.name || 'Счёт'),
                         ...(investorProfitBreakdown.length > 1
                             ? [profitFilterInvestorId === 'ALL'
                                 ? 'Все инвесторы'
@@ -1228,22 +1251,6 @@ const investorProfitPayouts = useMemo(() => {
                 </svg>
             </button>
             <div className={`space-y-3 ${showProfitFilters ? 'mt-3' : 'hidden'}`}>
-                <SelectSheet
-                    label="Фильтр по счету"
-                    title="Счёт"
-                    value={profitFilterAccountId}
-                    onChange={id => { setProfitFilterAccountId(id); setProfitFilterInvestorId('ALL'); }}
-                    options={[
-                        { id: 'ALL', name: 'Все счета' },
-                        ...accounts
-                            .filter(a => a.type !== 'SHARED' && (!a.isArchived || a.id === profitFilterAccountId))
-                            .map(acc => ({
-                                id: acc.id,
-                                name: acc.name,
-                                hint: `${formatCurrency(accountBalances[acc.id] || 0, appSettings.showCents)} ₽`,
-                            })),
-                    ]}
-                />
                 {investorProfitBreakdown.length > 1 && (
                     <SelectSheet
                         label="Фильтр по инвестору"
@@ -1314,12 +1321,10 @@ const investorProfitPayouts = useMemo(() => {
 
         {/* Заголовок */}
         <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-lg">
+            <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center text-white">
                 {ICONS.TrendingUp}
             </div>
-            <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-emerald-800 dark:from-white dark:to-emerald-400 bg-clip-text text-transparent">
-                Моя прибыль
-            </h3>
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Моя прибыль</h3>
         </div>
 
         {/* Карточки в стиле дашборда: 4 карточки, 2 в ряд */}
@@ -1406,13 +1411,11 @@ const investorProfitPayouts = useMemo(() => {
 
 
         {/* 🔹🔹🔹 БЛОК: Прибыль инвестора (только если есть инвесторы) 🔹🔹🔹 */}
-        {/* Тоже часть вкладки «Прибыль»: блок отдельный от блока прибыли менеджера,
-            и без этого условия оставался виден на вкладке «Счета». */}
-        {isManager && cashTab === 'profit' && investorProfitStats && (
+        {isManager && investorProfitStats && (
             <div className="space-y-6 pt-4">
                 <div className="flex items-center gap-3">
                     <div
-                        className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white shadow-lg">
+                        className="w-8 h-8 rounded-xl bg-purple-600 flex items-center justify-center text-white">
                 {ICONS.Users}
             </div>
             <h3 className="text-xl font-bold bg-gradient-to-r from-slate-800 to-purple-800 dark:from-white dark:to-purple-400 bg-clip-text text-transparent">
@@ -1502,6 +1505,9 @@ const investorProfitPayouts = useMemo(() => {
         </div>
     </div>
 )}
+        </div>
+      </PagePush>
+      )}
 
       {selectedSharedAccount && (
         <SharedAccountDetails account={selectedSharedAccount} sales={sales} expenses={expenses} investors={investors} onClose={() => setSelectedSharedAccount(null)} appSettings={appSettings} />
