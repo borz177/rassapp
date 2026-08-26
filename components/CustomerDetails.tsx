@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier, Task} from '../types';
 import { ICONS } from '../constants';
+import TopBarBack from './TopBarBack';
 import { formatCurrency, formatDate, normalizePhoneForWhatsApp } from '../src/utils';
 import { offlineStorage } from '../services/offlineStorage';
 import { api } from '../services/api';
@@ -859,7 +860,7 @@ ${customer.name}!
             <div className="space-y-4 animate-fade-in pb-20 relative">
                 <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-4 pt-2">
                     <div className="flex items-center gap-3">
-                        <button onClick={() => setSelectedSaleId(null)} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">{ICONS.Back}</button>
+                        <TopBarBack onClick={() => setSelectedSaleId(null)} />
                         <h2 className="text-xl font-bold text-slate-800 dark:text-white truncate">{selectedSale.productName}</h2>
                     </div>
                     <button onClick={handleSendSaleReminder} className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
@@ -1093,7 +1094,7 @@ ${customer.name}!
     return (
         <div className="space-y-4 animate-fade-in pb-20">
             <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 pt-2">
-                <button onClick={onBack} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">{ICONS.Back}</button>
+                <TopBarBack onClick={onBack} />
                 <h2 className="flex-1 text-xl font-bold text-slate-800 dark:text-white truncate">{customer.name}</h2>
                 {onCreateTask && (
                     <button

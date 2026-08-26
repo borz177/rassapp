@@ -789,7 +789,7 @@ input, textarea, [contenteditable] {
 /* Стрелка «назад» рисуется порталом в верхней панели (слот #topbar-back-slot),
    отдельным пузырём перед названием компании. Материал берёт из .glass-surface,
    здесь только форма и размер — под стать кнопке уведомлений справа. */
-.page-push-back-btn {
+.topbar-back-btn {
   pointer-events: auto;
   flex-shrink: 0;
   display: inline-flex;
@@ -800,17 +800,9 @@ input, textarea, [contenteditable] {
   border-radius: 9999px;
   color: #334155;
 }
-.dark .page-push-back-btn {
+.dark .topbar-back-btn {
   color: #e2e8f0;
 }
-/* Desktop has a persistent sidebar for navigation, so the floating back arrow is redundant
-   there. Placed after the base rule (equal specificity) so it actually wins the cascade. */
-@media (min-width: 768px) {
-  .page-push-back-btn {
-    display: none;
-  }
-}
-
 /* Guarantees every pushed page clears the fixed mobile bottom nav, regardless of whether the
    page's own content remembers to reserve space for it. */
 @media (max-width: 767px) {

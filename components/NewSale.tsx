@@ -1,6 +1,7 @@
 import React, {useState, useMemo, useEffect, useRef} from 'react';
 import { Customer, Product, Account, AppSettings, Sale, Payment, Supplier } from '../types';
 import { ICONS } from '../constants';
+import TopBarBack from './TopBarBack';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
 import { api } from '../services/api';
@@ -1244,7 +1245,7 @@ if (mode === 'CASH') {
       {renderContractContent()}
 
       <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 pt-2">
-        <button onClick={onClose} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">{ICONS.Back}</button>
+        <TopBarBack onClick={onClose} />
         <h2 className="text-xl font-bold text-slate-800 dark:text-white">
           {formData.id ? (
             <span className="flex items-center gap-2">
