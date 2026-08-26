@@ -1057,6 +1057,21 @@ useEffect(() => {
   document.head.appendChild(meta);
 }, [resolvedTheme]);
 
+// Вкладки нижней навигации живут на одной и той же прокрутке окна: пролистав
+// «Клиентов» вниз и переключившись на «Главную», человек попадал на её середину.
+// При смене вкладки возвращаем прокрутку наверх.
+// Возврат с толкнутой страницы сюда не относится: она скроллится внутри своего
+// слоя, вкладка под ней с места не двигалась — сбрасывать там нечего, да и
+// потерять найденное место в списке было бы обиднее всего.
+const TAB_ROOTS: ViewState[] = ['DASHBOARD', 'CASH_REGISTER', 'CUSTOMERS', 'MORE'];
+const lastTabRootRef = useRef<ViewState | null>(null);
+useEffect(() => {
+  if (!TAB_ROOTS.includes(currentView)) return;
+  if (lastTabRootRef.current === currentView) return;
+  lastTabRootRef.current = currentView;
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}, [currentView]);
+
 
 
 
