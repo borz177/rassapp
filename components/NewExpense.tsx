@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import TabPill from './TabPill';
+import TopBarBack from './TopBarBack';
 import { Account, Investor, Expense, User, Supplier, Sale } from '../types';
 import { ICONS } from '../constants';
 import { getInvestorAccount, getAccountShares, getManagerSharePercent, formatCurrency, getAccountProfitBalance } from '../src/utils';
@@ -403,10 +404,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
   return (
     <div className="space-y-4 animate-fade-in pb-20">
-      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 bg-white dark:bg-slate-800 sticky top-0 z-10 pt-2">
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
-             {ICONS.Back}
-          </button>
+      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 pt-2">
+          <TopBarBack onClick={onClose} />
           <h2 className="text-xl font-bold text-slate-800 dark:text-white">Оформление расхода</h2>
       </div>
 

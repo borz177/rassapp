@@ -7,6 +7,13 @@ interface PagePushProps {
   onClose: () => void;
   /** Renders a built-in floating back button (for screens with no back UI of their own). */
   showBackButton?: boolean;
+  /**
+   * Показывать стрелку и на десктопе. Обычным толкнутым страницам она там не
+   * нужна — из сайдбара видно, где ты. Но подстраницам вроде счёта в «Кассе»
+   * сайдбар не помогает: его пункт ведёт на тот же раздел, и без стрелки
+   * страница не закрывается вовсе.
+   */
+  backOnDesktop?: boolean;
   className?: string;
   /** Запоминает и восстанавливает прокрутку под этим ключом — как при возврате на список
       в мобильном приложении. Не передавайте, если у страницы нет смысла помнить позицию
@@ -48,7 +55,7 @@ interface DragState {
  * (played fully before the parent actually swaps `currentView`), and an edge-swipe-to-go-back
  * gesture that follows the finger in real time.
  */
-const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, className = '', scrollKey, children }) => {
+const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, backOnDesktop = false, className = '', scrollKey, children }) => {
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -207,7 +214,7 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, cl
       className={`page-push-layer bg-slate-50 dark:bg-slate-900 ${className}`}
       style={idle ? undefined : { transform: 'translateX(100%)', willChange: 'transform' }}
     >
-      {showBackButton && <TopBarBack onClick={requestClose} hideOnDesktop />}
+      {showBackButton && <TopBarBack onClick={requestClose} hideOnDesktop={!backOnDesktop} />}
       <div className={`page-push-scroll max-w-7xl mx-auto p-4 md:p-10${showBackButton ? ' page-push-scroll--tight' : ''}`}>{typeof children === 'function' ? children(requestClose) : children}</div>
     </div>
   );

@@ -1045,8 +1045,14 @@ const investorProfitPayouts = useMemo(() => {
             // Счёт инвестора сверх лимита тарифа: виден, но операции по нему закрыты
             const isLocked = lockedAccountIds.includes(acc.id);
             return (
-            <div key={acc.id} className={`relative bg-white dark:bg-slate-800 rounded-2xl sm:rounded-3xl shadow-sm transition-all duration-300 overflow-hidden ${
-              isLocked ? 'opacity-70 ring-1 ring-amber-300 dark:ring-amber-800' : ''
+            <div key={acc.id} className={`relative bg-white dark:bg-slate-800 rounded-2xl sm:rounded-3xl shadow-sm overflow-hidden
+              transition-transform duration-150 ${
+              // Отклик на нажатие: карточка теперь открывает страницу счёта, и без
+              // просадки палец не получает подтверждения, что нажатие поймано.
+              // У заблокированного счёта отклика нет — он никуда не ведёт.
+              isLocked
+                ? 'opacity-70 ring-1 ring-amber-300 dark:ring-amber-800'
+                : 'cursor-pointer active:scale-[0.98]'
             }`} onClick={() => { if (!isLocked) openAccountDetails(acc); }}>
               <div className={`absolute inset-0 bg-gradient-to-br ${getAccountTypeColor(acc.type)} opacity-0 hover:opacity-5 transition-opacity`}></div>
               <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${getAccountTypeColor(acc.type)}`}></div>
@@ -1188,7 +1194,7 @@ const investorProfitPayouts = useMemo(() => {
           PagePush — тот же выезд справа со свайпом назад, что на остальных
           страницах, и стрелка «назад» уходит в верхнюю панель. */}
       {detailsAccount && (
-      <PagePush onClose={closeAccountDetails} showBackButton scrollKey={`ACCOUNT:${detailsAccount.id}`}>
+      <PagePush onClose={closeAccountDetails} showBackButton backOnDesktop scrollKey={`ACCOUNT:${detailsAccount.id}`}>
         <div className="space-y-6">
           <div className="flex flex-col items-center pt-1">
             <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r ${getAccountTypeColor(detailsAccount.type)} text-white`}>

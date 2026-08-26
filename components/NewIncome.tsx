@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import TabPill from './TabPill';
+import TopBarBack from './TopBarBack';
 import { Customer, Account, Investor, Sale, User } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
@@ -656,8 +657,8 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
   return (
     <div className="space-y-4 animate-fade-in pb-20">
       {renderContractContent()}
-      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 bg-white dark:bg-slate-800 sticky top-0 z-10 pt-2">
-        <button onClick={onClose} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">{ICONS.Back}</button>
+      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 pt-2">
+        <TopBarBack onClick={onClose} />
         <h2 className="text-xl font-bold text-slate-800 dark:text-white">Оформление прихода</h2>
       </div>
       {(() => {
