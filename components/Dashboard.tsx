@@ -890,7 +890,7 @@ const ProfitDetailsModal = ({
 };
 
 const Dashboard: React.FC<DashboardProps> = ({
-    sales,
+    sales: allSales,
     customers,
     stats: globalStats,
     workingCapital: globalWorkingCapital,
@@ -927,6 +927,20 @@ const Dashboard: React.FC<DashboardProps> = ({
       dueDayKey: string;
   } | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+
+  // Архивные счета на главном экране не участвуют ни в суммах, ни в списках, ни
+  // в календаре платежей: счёт убрали из работы — его цифры не должны подмешиваться
+  // в общий итог. Отсекаем один раз здесь и дальше по компоненту работаем с этим
+  // набором, иначе условие пришлось бы повторить в полутора десятках мест.
+  // Исключение — счёт, выбранный прямо сейчас: его могли заархивировать уже после
+  // выбора, и подсовывать пустой экран вместо его данных было бы странно.
+  const sales = useMemo(() => {
+    const archived = new Set(accounts.filter(a => a.isArchived).map(a => a.id));
+    if (archived.size === 0) return allSales;
+    return allSales.filter(sale =>
+      !sale.accountId || !archived.has(sale.accountId) || sale.accountId === selectedAccountId
+    );
+  }, [allSales, accounts, selectedAccountId]);
   // Неделя, а не «сегодня и завтра»: у менеджера ближайший платёж часто через 2–3 дня,
   // и двухдневное окно показывало пустой экран, хотя на неделе ждут поступления.
   const [paymentDateFilter, setPaymentDateFilter] = useState<'WEEK' | 'TODAY' | 'TOMORROW'>('WEEK');
@@ -1056,8 +1070,17 @@ const currentMonthName = useMemo(() => {
           const cash = accountBalances[selectedAccountId] || 0;
           return cash + calculatedStats.totalOutstanding;
       }
-      return globalWorkingCapital;
-  }, [selectedAccountId, accountBalances, calculatedStats.totalOutstanding, globalWorkingCapital]);
+      // globalWorkingCapital приходит из App и посчитан по всем счетам, включая
+      // архивные. Если архивные есть — собираем сумму сами, из тех же слагаемых,
+      // что и в ветке выше. Когда архивных нет, отдаём готовое значение: незачем
+      // пересчитывать и рисковать разойтись с ним на копейку.
+      const archived = accounts.filter(a => a.isArchived);
+      if (archived.length === 0) return globalWorkingCapital;
+      const visibleCash = accounts
+        .filter(a => !a.isArchived)
+        .reduce((sum, a) => sum + (accountBalances[a.id] || 0), 0);
+      return visibleCash + calculatedStats.totalOutstanding;
+  }, [selectedAccountId, accountBalances, calculatedStats.totalOutstanding, globalWorkingCapital, accounts]);
 
   const lastFiveSales = useMemo(() => {
       let filtered = sales;
