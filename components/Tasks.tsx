@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import TabPill from './TabPill';
 import { createPortal } from 'react-dom';
 import { Task, User } from '../types';
 import { ICONS } from '../constants';
@@ -566,23 +567,29 @@ const Tasks: React.FC<TasksProps> = ({
       </div>
 
       {/* Вкладки */}
-      <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl">
+      {/* Вкладки сделаны равной ширины (звезда раньше была по содержимому, а между
+          кнопками стоял зазор): капсула считает положение в процентах, и разная
+          ширина ей не по зубам. Зазор убран — разделяет теперь сама капсула.
+          Радиус контейнера концентричен ей: радиус капсулы плюс отступ. */}
+      <div className="relative flex p-1 rounded-[24px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+        <TabPill index={TABS.findIndex(t => t.key === activeTab)} count={TABS.length} pad={4} />
         {TABS.map(({ key, label, count, title }) => (
           <button
             key={key}
             onClick={() => setActiveTab(key)}
             title={title}
-            className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
-              key === 'FAVORITES' ? 'px-3.5' : 'flex-1'
-            } ${
+            // min-w-0 обязателен: у flex-элемента минимальная ширина по умолчанию
+            // равна содержимому, и «Выполненные» с числом раздували свою треть —
+            // вкладки переставали быть равными, а капсула промахивалась мимо.
+            className={`relative z-10 flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-colors ${
               activeTab === key
-                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                ? 'text-indigo-600 dark:text-indigo-300'
+                : 'text-slate-500 dark:text-slate-400'
             }`}
           >
-            <span className={key === 'FAVORITES' && activeTab === key ? 'text-amber-500' : ''}>{label}</span>
+            <span className={`truncate ${key === 'FAVORITES' && activeTab === key ? 'text-amber-500' : ''}`}>{label}</span>
             {count > 0 && (
-              <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+              <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] ${
                 activeTab === key
                   ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
