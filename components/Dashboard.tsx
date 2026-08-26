@@ -76,7 +76,7 @@ interface DashboardProps {
   };
   workingCapital: number;
   accountBalances: Record<string, number>;
-  onAction: (action: string) => void;
+  onAction: (action: string, ctx?: { accountId?: string | null }) => void;
   onSelectCustomer: (id: string) => void;
   onInitiatePayment: (sale: Sale, amount: number) => void;
   onViewSchedule: (sale: Sale) => void;
@@ -928,6 +928,13 @@ const Dashboard: React.FC<DashboardProps> = ({
   } | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
+  // Кнопки под балансом гаснут по тем же правилам, что и меню «+»: инвестору
+  // движения денег недоступны, сотруднику — только с правом на создание.
+  // Иначе получилась бы кнопка, ведущая к отказу сервера.
+  const canMoveMoney =
+    user?.role !== 'investor' &&
+    !(user?.role === 'employee' && !user?.permissions?.canCreate);
+
   // Архивные счета на главном экране не участвуют ни в суммах, ни в списках, ни
   // в календаре платежей: счёт убрали из работы — его цифры не должны подмешиваться
   // в общий итог. Отсекаем один раз здесь и дальше по компоненту работаем с этим
@@ -1570,6 +1577,36 @@ useEffect(() => {
                           )}
                         </button>
                       </div>
+
+                      {/* Действия над деньгами этого счёта. Приход и расход есть и в
+                          меню «+», но там они в двух нажатиях и вне контекста счёта;
+                          здесь открываются сразу с выбранным. «Операции» замыкают
+                          связку: без них баланс — тупик, увидел странную цифру и
+                          некуда нажать. */}
+                      {canMoveMoney && (
+                        <div className="flex items-stretch gap-2 mt-4 w-full max-w-xs">
+                          {[
+                            { id: 'INCOME', label: 'Приход', tone: 'text-emerald-600 dark:text-emerald-400',
+                              icon: <><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></> },
+                            { id: 'EXPENSE', label: 'Расход', tone: 'text-rose-500 dark:text-rose-400',
+                              icon: <><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></> },
+                            { id: 'OPERATIONS', label: 'Операции', tone: 'text-slate-500 dark:text-slate-300',
+                              icon: <><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></> },
+                          ].map(a => (
+                            <button
+                              key={a.id}
+                              onClick={() => onAction(a.id, { accountId: current ? current.id : null })}
+                              className="glass-surface rounded-2xl flex-1 flex flex-col items-center gap-1 py-2.5 active:scale-95 transition-transform"
+                            >
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                   strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={a.tone}>
+                                {a.icon}
+                              </svg>
+                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">{a.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })()}

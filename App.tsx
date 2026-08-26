@@ -1566,16 +1566,19 @@ const dashboardStats = useMemo(() => {
       await loadData(loggedInUser);
   };
 
-  const handleAction = (action: string) => {
+  // Второй аргумент — счёт, в контексте которого нажали. Его передаёт блок
+  // баланса на Главной: форма должна открыться уже с выбранным счётом, иначе
+  // кнопка просто дублирует меню «+».
+  const handleAction = (action: string, ctx?: { accountId?: string | null }) => {
       switch (action) {
         case 'VIEW_OVERDUE':  // ← НОВОЕ: переход на просроченные договоры
             setActiveContractTab('OVERDUE');
             setCurrentView('CONTRACTS');
             break;
           case 'CREATE_SALE': setDraftSaleData({}); setEditingSale(null); setCurrentView('CREATE_SALE'); break;
-          case 'INCOME': setDraftSaleData({}); setCurrentView('CREATE_INCOME'); break;
-          case 'EXPENSE': setCurrentView('CREATE_EXPENSE'); break;
-          case 'OPERATIONS': setOperationsAccountId(null); setCurrentView('OPERATIONS'); break;
+          case 'INCOME': setDraftSaleData(ctx?.accountId ? { accountId: ctx.accountId } : {}); setCurrentView('CREATE_INCOME'); break;
+          case 'EXPENSE': setDraftExpenseData(ctx?.accountId ? { accountId: ctx.accountId } : null); setCurrentView('CREATE_EXPENSE'); break;
+          case 'OPERATIONS': setOperationsAccountId(ctx?.accountId ?? null); setCurrentView('OPERATIONS'); break;
           case 'CALCULATOR': setCurrentView('CALCULATOR'); break;
           case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break;
           case 'TASKS': setPreviousView(currentView); setCurrentView('TASKS'); break;
