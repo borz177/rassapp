@@ -374,7 +374,7 @@ const AccountActionModal = ({
                             onClick={() => { onSelectAccount(account.id); onClose(); }}
                             className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-xl flex items-center gap-3 transition-all group"
                         >
-                            <span className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/50 transition-all">
+                            <span className="w-8 h-8 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center text-indigo-600 dark:text-indigo-400 dark: transition-all">
                                 {ICONS.List}
                             </span>
                             <div>
@@ -388,7 +388,7 @@ const AccountActionModal = ({
                                 onClick={() => { onEdit(account); onClose(); }}
                                 className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-xl flex items-center gap-3 transition-all group"
                             >
-                                <span className="w-8 h-8 bg-amber-50 dark:bg-amber-900/30 rounded-lg flex items-center justify-center text-amber-600 dark:text-amber-400 group-hover:bg-amber-100 dark:group-hover:bg-amber-900/50 transition-all">
+                                <span className="w-8 h-8 bg-amber-50 dark:bg-amber-900/30 rounded-lg flex items-center justify-center text-amber-600 dark:text-amber-400 dark: transition-all">
                                     {ICONS.Edit}
                                 </span>
                                 <div>
@@ -403,7 +403,7 @@ const AccountActionModal = ({
                                 onClick={() => { onSetMain(account.id); onClose(); }}
                                 className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-xl flex items-center gap-3 transition-all group"
                             >
-                                <span className="w-8 h-8 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/50 transition-all">
+                                <span className="w-8 h-8 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center text-emerald-600 dark:text-emerald-400 dark: transition-all">
                                     {ICONS.Check}
                                 </span>
                                 <div>
@@ -419,7 +419,7 @@ const AccountActionModal = ({
                                 onClick={() => { onToggleHidden(account); onClose(); }}
                                 className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60 rounded-xl flex items-center gap-3 transition-all group"
                             >
-                                <span className="w-8 h-8 bg-slate-100 dark:bg-slate-700 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 group-hover:bg-slate-200 dark:group-hover:bg-slate-600 transition-all">
+                                <span className="w-8 h-8 bg-slate-100 dark:bg-slate-700 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 dark: transition-all">
                                     {account.isArchived ? ICONS.Unarchive : ICONS.Archive}
                                 </span>
                                 <div>
@@ -1056,7 +1056,7 @@ const investorProfitPayouts = useMemo(() => {
             const isLocked = lockedAccountIds.includes(acc.id);
             return (
             <div key={acc.id} className={`relative bg-white dark:bg-slate-800 rounded-2xl sm:rounded-3xl shadow-sm transition-all duration-300 overflow-hidden ${
-              isLocked ? 'opacity-70 ring-1 ring-amber-300 dark:ring-amber-800' : 'hover:shadow-xl'
+              isLocked ? 'opacity-70 ring-1 ring-amber-300 dark:ring-amber-800' : ''
             }`} onClick={() => { if (!isLocked) handleSharedAccountClick(acc); }}>
               <div className={`absolute inset-0 bg-gradient-to-br ${getAccountTypeColor(acc.type)} opacity-0 hover:opacity-5 transition-opacity`}></div>
               <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${getAccountTypeColor(acc.type)}`}></div>
@@ -1326,10 +1326,10 @@ const investorProfitPayouts = useMemo(() => {
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
 
             {/* 1. Ожидаемая прибыль */}
-            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-indigo-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-default">
 
                 <div
-                    className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+                    className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 z-10 relative transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor">
                         <text x="5" y="18" fontSize="16" fontWeight="bold">₽</text>
                     </svg>
@@ -1344,9 +1344,9 @@ const investorProfitPayouts = useMemo(() => {
             </div>
 
             {/* 2. Полученная прибыль */}
-            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-default">
 
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 z-10 relative transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                     </svg>
@@ -1361,9 +1361,9 @@ const investorProfitPayouts = useMemo(() => {
             </div>
 
             {/* 3. Выплачено */}
-            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-rose-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-default">
 
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-rose-100 dark:bg-rose-900/30 rounded-xl flex items-center justify-center text-rose-600 dark:text-rose-400 mb-4 z-10 relative group-hover:bg-rose-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-rose-100 dark:bg-rose-900/30 rounded-xl flex items-center justify-center text-rose-600 dark:text-rose-400 mb-4 z-10 relative transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
@@ -1380,12 +1380,10 @@ const investorProfitPayouts = useMemo(() => {
             {/* 4. Доступно к выводу (кликабельно) */}
             <div
                 onClick={() => setShowProfitDetails(true)}
-                className="group bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-700 hover:border-indigo-500 flex flex-col relative overflow-hidden cursor-pointer"
+                className="group bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-700 flex flex-col relative overflow-hidden cursor-pointer"
             >
                 <div
-                    className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full opacity-30 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
-                <div
-                    className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:bg-white/30 transition-colors duration-300 shadow-sm">
+                    className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                               d="M7 11l5-5m0 0l5 5m-5-5v12"/>
@@ -1408,7 +1406,9 @@ const investorProfitPayouts = useMemo(() => {
 
 
         {/* 🔹🔹🔹 БЛОК: Прибыль инвестора (только если есть инвесторы) 🔹🔹🔹 */}
-        {isManager && investorProfitStats && (
+        {/* Тоже часть вкладки «Прибыль»: блок отдельный от блока прибыли менеджера,
+            и без этого условия оставался виден на вкладке «Счета». */}
+        {isManager && cashTab === 'profit' && investorProfitStats && (
             <div className="space-y-6 pt-4">
                 <div className="flex items-center gap-3">
                     <div
@@ -1425,10 +1425,10 @@ const investorProfitPayouts = useMemo(() => {
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
 
             {/* 1. Ожидаемая прибыль инвестора */}
-            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-purple-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-default">
 
                 <div
-                    className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+                    className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 z-10 relative transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor">
                         <text x="5" y="18" fontSize="16" fontWeight="bold">₽</text>
                     </svg>
@@ -1443,9 +1443,9 @@ const investorProfitPayouts = useMemo(() => {
             </div>
 
             {/* 2. Полученная прибыль инвестора */}
-            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-violet-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-violet-200 flex flex-col relative overflow-hidden cursor-default">
 
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center text-violet-600 dark:text-violet-400 mb-4 z-10 relative group-hover:bg-violet-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center text-violet-600 dark:text-violet-400 mb-4 z-10 relative transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                     </svg>
@@ -1460,9 +1460,9 @@ const investorProfitPayouts = useMemo(() => {
             </div>
 
             {/* 3. Выплачено инвестору */}
-            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-rose-200 flex flex-col relative overflow-hidden cursor-default">
+            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-default">
 
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-rose-100 dark:bg-rose-900/30 rounded-xl flex items-center justify-center text-rose-600 dark:text-rose-400 mb-4 z-10 relative group-hover:bg-rose-500 group-hover:text-white transition-colors duration-300 shadow-sm">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-rose-100 dark:bg-rose-900/30 rounded-xl flex items-center justify-center text-rose-600 dark:text-rose-400 mb-4 z-10 relative transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
@@ -1479,11 +1479,10 @@ const investorProfitPayouts = useMemo(() => {
             {/* 4. Доступно инвестору (кликабельно) */}
             <div
                 onClick={() => setShowInvestorProfitDetails(true)}
-                className="group bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-700 hover:border-purple-500 flex flex-col relative overflow-hidden cursor-pointer"
+                className="group bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-700 flex flex-col relative overflow-hidden cursor-pointer"
             >
-                <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full opacity-30 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
                 <div
-                    className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:bg-white/30 transition-colors duration-300 shadow-sm">
+                    className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                               d="M7 11l5-5m0 0l5 5m-5-5v12"/>
