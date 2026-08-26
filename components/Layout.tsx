@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
+import ModalPortal from './ModalPortal';
 import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
 import { ICONS, APP_NAME, THEMES } from '../constants';
 import { calculateSaleOverdue } from '../src/utils';
@@ -705,7 +706,9 @@ const counts = useMemo(() => {
         ref={navRef}
         // touch-pan-y: вертикальную прокрутку страницы отдаём браузеру, горизонтальное
         // ведение остаётся нам — иначе перетаскивание конфликтовало бы со скроллом.
-        className="nav-glass nav-island pointer-events-auto px-2 pt-0 pb-1.5 flex justify-between items-end relative touch-pan-y select-none"
+        className={`nav-glass nav-island pointer-events-auto px-2 pt-0 pb-1.5 flex justify-between items-end relative touch-pan-y select-none ${
+          pressed || dragging || pillMoving ? 'nav-island--held' : ''
+        }`}
         onPointerDown={handleNavPointerDown}
         onPointerMove={handleNavPointerMove}
         onPointerUp={handleNavPointerUp}
@@ -782,6 +785,10 @@ const counts = useMemo(() => {
 
             {/* 📱 Мобильное меню для инвестора (показывает доступные разделы) */}
 {showInvestorMobileMenu && (
+  // Порталом в body: остров теперь масштабируется при нажатии, а элемент с
+  // transform становится точкой отсчёта для position: fixed внутри себя —
+  // меню схлопнулось бы до размеров острова. См. ModalPortal.
+  <ModalPortal>
   <div
     className="fixed inset-0 z-modal flex items-end justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in md:hidden"
     onClick={() => setShowInvestorMobileMenu(false)}
@@ -853,6 +860,7 @@ const counts = useMemo(() => {
       </button>
     </div>
   </div>
+  </ModalPortal>
 )}
 
         </div>

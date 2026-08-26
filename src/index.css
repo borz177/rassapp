@@ -203,6 +203,13 @@
    Раньше это была полоса во всю ширину, приклеенная к низу, — на фоне
    скруглённых карточек приложения она выглядела чужеродной плитой. */
 .nav-island {
+  /* Остров подрастает вместе с капсулой — на нажатии и пока она переезжает.
+     Масштаб намеренно мелкий: капсула прибавляет 8%, остров всего 2%, иначе
+     он «дышал» бы на весь экран и отвлекал от того, что происходит внутри.
+     Кривая с перелётом, как у капсулы, чтобы движение читалось единым. */
+  transition:
+    transform 0.3s cubic-bezier(0.34, 1.4, 0.5, 1),
+    box-shadow 0.3s ease;
   border-radius: 34px;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.75);
@@ -292,6 +299,18 @@
 }
 .dark .nav-glass-pill::before { border-color: rgba(255, 255, 255, 0.16); }
 
+.nav-island--held {
+  transform: scale(1.02);
+  box-shadow:
+    0 18px 40px -12px rgba(15, 23, 42, 0.38),
+    0 3px 10px -2px rgba(15, 23, 42, 0.16);
+}
+.dark .nav-island--held {
+  box-shadow:
+    0 20px 44px -12px rgba(0, 0, 0, 0.7),
+    0 3px 12px -2px rgba(0, 0, 0, 0.5);
+}
+
 /* Пока капсулу ведут пальцем, она обязана быть ровно под ним: любая анимация
    положения превращается в задержку и ощущается как залипание. */
 .nav-glass-track--dragging {
@@ -344,6 +363,8 @@
 /* Без анимаций капсула просто стоит на месте — движение и блик отключаются */
 @media (prefers-reduced-motion: reduce) {
   .nav-glass-track { transition: opacity 0.2s ease; }
+  .nav-island { transition: none; }
+  .nav-island--held { transform: none; }
   .nav-glass-pill { transition: none; }
   .nav-glass-pill--moving { animation: none; }
   .nav-glass-pill--moving::after { animation: none; }
