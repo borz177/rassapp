@@ -214,7 +214,7 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
       className={`page-push-layer bg-slate-50 dark:bg-slate-900 ${className}`}
       style={idle ? undefined : { transform: 'translateX(100%)', willChange: 'transform' }}
     >
-      {showBackButton && <TopBarBack onClick={requestClose} hideOnDesktop={!backOnDesktop} />}
+      {showBackButton && <TopBarBack onClick={requestClose} hideOnDesktop={!backOnDesktop} standalone />}
       <div className={`page-push-scroll max-w-7xl mx-auto p-4 md:p-10${showBackButton ? ' page-push-scroll--tight' : ''}`}>{typeof children === 'function' ? children(requestClose) : children}</div>
     </div>
   );

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import TopBarBack from './TopBarBack';
 import { User, Sale, Expense, Customer, Account, Investor } from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate, addMonthsClamped, getEmployeeProfitAccrued, getEmployeeSalaryPaid } from '../src/utils';
@@ -11,6 +12,9 @@ interface EmployeeActivityProps {
   // Нужны для расчёта премии: доля менеджера зависит от счёта и долей инвесторов
   accounts?: Account[];
   investors?: Investor[];
+  /** Возврат к списку сотрудников. Как у деталей инвестора — стрелка живёт в
+      шапке самой страницы, поэтому на десктопе она тоже видна. */
+  onBack?: () => void;
 }
 
 type Period = 'TODAY' | 'WEEK' | 'MONTH' | 'ALL';
@@ -61,7 +65,7 @@ type ActivityItem = {
   sub?: string;
 };
 
-const EmployeeActivity: React.FC<EmployeeActivityProps> = ({ employee, sales, expenses, customers, accounts = [], investors = [] }) => {
+const EmployeeActivity: React.FC<EmployeeActivityProps> = ({ employee, sales, expenses, customers, accounts = [], investors = [] , onBack}) => {
   const [period, setPeriod] = useState<Period>('MONTH');
 
   const customerName = (id: string) => customers.find(c => c.id === id)?.name || 'клиент';
@@ -142,6 +146,7 @@ const EmployeeActivity: React.FC<EmployeeActivityProps> = ({ employee, sales, ex
   return (
     <div className="space-y-4 pb-20 animate-fade-in">
       <div className="flex items-center gap-4">
+        {onBack && <TopBarBack onClick={onBack} />}
         <div className="w-14 h-14 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center font-bold text-xl flex-shrink-0">
           {employee.name.charAt(0)}
         </div>

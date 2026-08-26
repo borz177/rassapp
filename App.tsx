@@ -3858,8 +3858,10 @@ if (!user && !showSplash) {
               {currentView === 'EMPLOYEE_ACTIVITY' && selectedEmployeeId && (() => {
                   const emp = employees.find((e: User) => e.id === selectedEmployeeId);
                   return emp ? (
-                      <PagePush onClose={() => setCurrentView('EMPLOYEES')} showBackButton>
-                        <EmployeeActivity employee={emp} sales={sales} expenses={expenses} customers={customers} accounts={accounts} investors={investors}/>
+                      <PagePush onClose={() => setCurrentView('EMPLOYEES')} scrollKey={`EMPLOYEE_ACTIVITY:${selectedEmployeeId}`}>
+                        {(requestClose: () => void) => (
+                          <EmployeeActivity employee={emp} sales={sales} expenses={expenses} customers={customers} accounts={accounts} investors={investors} onBack={requestClose}/>
+                        )}
                       </PagePush>
                   ) : null;
               })()}

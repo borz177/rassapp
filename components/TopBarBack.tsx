@@ -6,6 +6,13 @@ interface TopBarBackProps {
   label?: string;
   /** Толкнутым страницам стрелка на десктопе не нужна — там постоянный сайдбар. */
   hideOnDesktop?: boolean;
+  /**
+   * Стрелка сама по себе, а не внутри шапки страницы. На десктопе такая рисуется
+   * заметной кнопкой с подписью: голый значок в углу слоя терялся — его почти не
+   * видно и непонятно, что он кликабелен. Внутри чужой шапки подпись, наоборот,
+   * лишняя — там рядом заголовок.
+   */
+  standalone?: boolean;
 }
 
 /**
@@ -26,7 +33,7 @@ const backStack: symbol[] = [];
 const backListeners = new Set<() => void>();
 const notifyBackStack = () => backListeners.forEach(l => l());
 
-const TopBarBack: React.FC<TopBarBackProps> = ({ onClick, label = 'Назад', hideOnDesktop = false }) => {
+const TopBarBack: React.FC<TopBarBackProps> = ({ onClick, label = 'Назад', hideOnDesktop = false, standalone = false }) => {
   const findSlot = () => {
     if (typeof document === 'undefined') return null;
     return window.matchMedia('(max-width: 767px)').matches
@@ -78,6 +85,18 @@ const TopBarBack: React.FC<TopBarBackProps> = ({ onClick, label = 'Назад', 
   }
 
   if (hideOnDesktop) return null;
+
+  if (standalone) {
+    return (
+      <button
+        onClick={onClick}
+        className="glass-surface inline-flex items-center gap-1.5 rounded-full pl-3 pr-4 py-2 mb-4 text-sm font-bold text-slate-600 dark:text-slate-200 active:scale-95 transition-transform"
+      >
+        {arrow}
+        <span>{label}</span>
+      </button>
+    );
+  }
 
   return (
     <button

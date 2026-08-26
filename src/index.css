@@ -808,6 +808,13 @@ input, textarea, [contenteditable] {
   border-radius: 9999px;
   color: #334155;
 }
+/* На десктопе стрелка рисуется в потоке страницы, первым её элементом. Без
+   отступа она упирается в самый угол слоя и теряется. */
+@media (min-width: 768px) {
+  .page-push-layer > .glass-surface:first-child {
+    margin: 0.75rem 0 0 0.25rem;
+  }
+}
 .dark .topbar-back-btn {
   color: #e2e8f0;
 }
