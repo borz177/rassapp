@@ -905,6 +905,18 @@ const Dashboard: React.FC<DashboardProps> = ({
     user,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
+  const [accountPickerOpen, setAccountPickerOpen] = useState(false);
+  // Скрытие суммы переживает перезапуск: человек прячет её, чтобы не светить
+  // баланс, и каждый раз заново нажимать глаз было бы бессмысленно.
+  const [hideBalance, setHideBalance] = useState(() => {
+    try { return localStorage.getItem('finuchet_hide_balance') === '1'; } catch { return false; }
+  });
+  const toggleHideBalance = () => {
+    setHideBalance(v => {
+      try { localStorage.setItem('finuchet_hide_balance', v ? '0' : '1'); } catch { /* приватный режим */ }
+      return !v;
+    });
+  };
   const [selectedSaleForModal, setSelectedSaleForModal] = useState<Sale | null>(null);
   const [selectedPaymentForAction, setSelectedPaymentForAction] = useState<{
       sale: Sale;
@@ -1410,12 +1422,29 @@ useEffect(() => {
         {user?.role === 'employee' && <MyBonusCard />}
 
         {/* Tabs */}
-        <div className="flex bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm p-1.5 rounded-2xl shadow-sm border border-white dark:border-slate-700">
+        {/* Обе вкладки flex-1, то есть равной ширины — капсуле хватает процентов,
+            мерить кнопки не нужно. Контейнер без backdrop-blur намеренно: элемент
+            с ним становится «корнем подложки», и стекло внутри перестало бы
+            размывать страницу. */}
+        <div className="relative flex p-1.5 rounded-2xl bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+          <div
+            aria-hidden
+            className="nav-glass-track"
+            style={{
+              left: 6,
+              top: 6,
+              bottom: 6,
+              width: 'calc(50% - 6px)',
+              transform: activeTab === 'overview' ? 'translateX(0)' : 'translateX(100%)',
+            }}
+          >
+            <div className={`nav-glass-pill ${activeTab === 'upcoming' ? 'nav-glass-pill--moving' : ''}`} />
+          </div>
           <button
             onClick={() => setActiveTab('overview')}
-            className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 ${
+            className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-300 ${
               activeTab === 'overview'
-                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white'
+                ? 'text-indigo-600 dark:text-indigo-300'
                 : 'text-slate-500 hover:text-indigo-600'
             }`}
           >
@@ -1423,15 +1452,15 @@ useEffect(() => {
           </button>
           <button
             onClick={() => setActiveTab('upcoming')}
-            className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all duration-300 relative ${
-              activeTab === 'upcoming' 
-                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white' 
+            className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-300 ${
+              activeTab === 'upcoming'
+                ? 'text-indigo-600 dark:text-indigo-300'
                 : 'text-slate-500 hover:text-indigo-600'
             }`}
           >
             Платежи
             {periodSummary.contracts > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[10px] rounded-full flex items-center justify-center border-2 border-white shadow-sm animate-pulse">
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[10px] rounded-full flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-sm">
                 {periodSummary.contracts}
               </span>
             )}
@@ -1441,36 +1470,109 @@ useEffect(() => {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
             <div className="space-y-6 animate-in fade-in duration-500">
-                {accounts.length > 1 && (
-                  <div className="relative ml-4">
-                    <div className="overflow-x-auto pb-2 scrollbar-hide">
-                        <div className="flex gap-2 min-w-max">
+                {/* Счёт и его баланс. Раньше здесь была лента чипов-фильтров:
+                    она занимала строку, но не отвечала на главный вопрос —
+                    сколько денег на счёте. Выбор счёта переехал в список по
+                    нажатию на название. */}
+                {(() => {
+                  const liveAccounts = accounts.filter(a => !a.isArchived || a.id === selectedAccountId);
+                  const current = selectedAccountId ? accounts.find(a => a.id === selectedAccountId) : null;
+                  const title = current ? current.name : 'Все счета';
+                  const value = selectedAccountId
+                    ? (accountBalances[selectedAccountId] || 0)
+                    : liveAccounts.reduce((sum, a) => sum + (accountBalances[a.id] || 0), 0);
+                  // Целую часть и копейки разводим по цвету: крупное число читается
+                  // с одного взгляда, копейки не отвлекают.
+                  const [whole, frac] = Math.abs(value).toFixed(2).split('.');
+                  const grouped = Number(whole).toLocaleString('ru-RU');
+                  return (
+                    <div className="flex flex-col items-center pt-1 pb-2">
+                      <button
+                        onClick={() => setAccountPickerOpen(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold text-slate-700 dark:text-slate-200 active:scale-95 transition-transform"
+                      >
+                        <span className="truncate max-w-[60vw]">{title}</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </button>
+
+                      <div className="flex items-center gap-2 mt-2">
+                        {hideBalance ? (
+                          <span className="text-4xl font-extrabold tracking-tight text-slate-800 dark:text-white leading-none">••••••</span>
+                        ) : (
+                          <span className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-none">
+                            {value < 0 ? '−' : ''}{grouped}
+                            <span className="text-slate-400 dark:text-slate-500">,{frac}</span>
+                            <span className="text-2xl text-slate-400 dark:text-slate-500 ml-1">₽</span>
+                          </span>
+                        )}
+                        <button
+                          onClick={toggleHideBalance}
+                          aria-label={hideBalance ? 'Показать сумму' : 'Скрыть сумму'}
+                          className="text-slate-400 dark:text-slate-500 active:scale-90 transition-transform shrink-0"
+                        >
+                          {hideBalance ? (
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                              <line x1="1" y1="1" x2="23" y2="23" />
+                            </svg>
+                          ) : (
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Выбор счёта. Нижний лист, а не выпадашка: на телефоне до него
+                    легче дотянуться, и он не обрезается краем экрана. */}
+                {accountPickerOpen && (
+                  <div
+                    className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+                    onClick={() => setAccountPickerOpen(false)}
+                  >
+                    <div
+                      className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[70vh] flex flex-col animate-slide-up-sheet"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700">
+                        <h3 className="font-bold text-slate-800 dark:text-white">Счёт</h3>
+                      </div>
+                      <div className="p-2 overflow-y-auto">
+                        {[{ id: null as string | null, name: 'Все счета' },
+                          ...accounts.filter(a => !a.isArchived || a.id === selectedAccountId)
+                                     .map(a => ({ id: a.id as string | null, name: a.name }))
+                        ].map(item => {
+                          const isActive = selectedAccountId === item.id;
+                          const sum = item.id
+                            ? (accountBalances[item.id] || 0)
+                            : accounts.filter(a => !a.isArchived)
+                                      .reduce((acc, a) => acc + (accountBalances[a.id] || 0), 0);
+                          return (
                             <button
-                              onClick={() => setSelectedAccountId(null)}
-                              className={`px-5 py-2.5 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-300 border ${
-                                !selectedAccountId
-                                  ? 'bg-gradient-to-r from-slate-800 to-slate-700 text-white border-slate-800 shadow-lg shadow-slate-200 dark:shadow-slate-900/30 scale-105'
-                                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-300 hover:text-indigo-600'
+                              key={item.id ?? 'all'}
+                              onClick={() => { setSelectedAccountId(item.id); setAccountPickerOpen(false); }}
+                              className={`w-full flex items-center justify-between gap-3 px-3.5 py-3 rounded-xl text-left transition-colors ${
+                                isActive ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'active:bg-slate-50 dark:active:bg-slate-700'
                               }`}
                             >
-                                Все счета
+                              <span className={`font-semibold truncate ${isActive ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                                {item.name}
+                              </span>
+                              <span className="shrink-0 text-sm font-bold text-slate-500 dark:text-slate-400">
+                                {hideBalance ? '••••' : `${formatCurrency(sum, appSettings.showCents)} ₽`}
+                              </span>
                             </button>
-                            {accounts.filter(acc => !acc.isArchived || acc.id === selectedAccountId).map(acc => (
-                                <button
-                                  key={acc.id}
-                                  onClick={() => setSelectedAccountId(acc.id)}
-                                  className={`px-5 py-2.5 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-300 border ${
-                                    selectedAccountId === acc.id
-                                      ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-indigo-600 shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30 scale-105'
-                                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-300 hover:text-indigo-600'
-                                  }`}
-                                >
-                                    {acc.name}
-                                </button>
-                            ))}
-                        </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-indigo-50/50 dark:from-indigo-950/20 to-transparent pointer-events-none"></div>
                   </div>
                 )}
 
