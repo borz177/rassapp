@@ -16,6 +16,16 @@ interface TopBarBackProps {
  * нет — она md:hidden, — поэтому там стрелка рисуется на своём месте в потоке
  * обычной кнопкой, иначе навигация просто исчезла бы.
  */
+// Слот в верхней панели один, а открытых страниц может быть несколько: под
+// деталями сотрудника лежит список сотрудников, под деталями инвестора — список
+// инвесторов, и обе страницы просят свою стрелку. Раньше нижняя пряталась за
+// верхним слоем сама собой, а в общем слоте они встали рядом — было две стрелки.
+// Держим стопку и рисуем только верхнюю: последняя смонтированная и есть та
+// страница, которую видит пользователь.
+const backStack: symbol[] = [];
+const backListeners = new Set<() => void>();
+const notifyBackStack = () => backListeners.forEach(l => l());
+
 const TopBarBack: React.FC<TopBarBackProps> = ({ onClick, label = 'Назад', hideOnDesktop = false }) => {
   const findSlot = () => {
     if (typeof document === 'undefined') return null;
@@ -36,6 +46,21 @@ const TopBarBack: React.FC<TopBarBackProps> = ({ onClick, label = 'Назад', 
     return () => mq.removeEventListener('change', sync);
   }, []);
 
+  const [token] = useState(() => Symbol('back'));
+  const [isTop, setIsTop] = useState(true);
+  useEffect(() => {
+    backStack.push(token);
+    const update = () => setIsTop(backStack[backStack.length - 1] === token);
+    backListeners.add(update);
+    notifyBackStack();
+    return () => {
+      const i = backStack.indexOf(token);
+      if (i >= 0) backStack.splice(i, 1);
+      backListeners.delete(update);
+      notifyBackStack();
+    };
+  }, [token]);
+
   const arrow = (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
       <polyline points="15 18 9 12 15 6" />
@@ -43,6 +68,7 @@ const TopBarBack: React.FC<TopBarBackProps> = ({ onClick, label = 'Назад', 
   );
 
   if (slot) {
+    if (!isTop) return null;
     return createPortal(
       <button onClick={onClick} aria-label={label} className="topbar-back-btn glass-surface">
         {arrow}

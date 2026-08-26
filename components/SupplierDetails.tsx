@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Customer, Expense, Sale, Supplier } from '../types';
 import { ICONS } from '../constants';
+import TopBarBack from './TopBarBack';
 import { formatCurrency, escapeHtml } from '../src/utils';
 
 interface SupplierDetailsProps {
@@ -122,8 +123,8 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
 
   return (
     <div className="space-y-4 animate-fade-in pb-20">
-      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 bg-white dark:bg-slate-900 sticky top-0 z-10 pt-2">
-        <button onClick={onBack} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">{ICONS.Back}</button>
+      <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 pt-2">
+        <TopBarBack onClick={onBack} />
         <h2 className="text-xl font-bold text-slate-800 dark:text-white flex-1">{supplier.name}</h2>
         <button
           onClick={handlePrintStatement}

@@ -3830,7 +3830,7 @@ if (!user && !showSplash) {
                                                                    onCancel={() => setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE')}
                                                                    onAddNew={handleQuickAddCustomer}/>}
               {(currentView === 'EMPLOYEES' || currentView === 'EMPLOYEE_ACTIVITY') && (
-                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton scrollKey="EMPLOYEES">
+                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton={currentView !== 'EMPLOYEE_ACTIVITY'} scrollKey="EMPLOYEES">
                     <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee}
                              onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee}
                              onSelectActivity={handleSelectEmployeeActivity}
