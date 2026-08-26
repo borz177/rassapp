@@ -1076,7 +1076,11 @@ const currentMonthName = useMemo(() => {
   // платежей (см. reconcileSalePaymentPlan в App.tsx, «не доверяем унаследованным
   // флагам»), и она может зависнуть после отмены платежа.
   const duePaymentsBySale = useMemo(() => {
-    return sales.map(sale => {
+    // Выбор счёта в «Обзоре» распространяется и на «Платежи»: список, календарь
+    // и счётчик на вкладке растут из этого массива, поэтому фильтруем в корне —
+    // иначе пришлось бы повторять условие в трёх местах и однажды забыть.
+    const scopedSales = selectedAccountId ? sales.filter(x => x.accountId === selectedAccountId) : sales;
+    return scopedSales.map(sale => {
       if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return null;
 
       let paymentPool = sale.paymentPlan
@@ -1100,7 +1104,7 @@ const currentMonthName = useMemo(() => {
 
       return due.length > 0 ? { sale, due } : null;
     }).filter((x): x is { sale: Sale; due: { date: Date; dayKey: string; amount: number }[] } => x !== null);
-  }, [sales]);
+  }, [sales, selectedAccountId]);
 
 // Платежи выбранного периода, сгруппированные по дням: так видно, что «11 августа ждём
 // троих на 20 300 ₽», а не просто плоский перечень договоров вперемешку.
@@ -1476,27 +1480,42 @@ useEffect(() => {
                     нажатию на название. */}
                 {(() => {
                   const liveAccounts = accounts.filter(a => !a.isArchived || a.id === selectedAccountId);
-                  const current = selectedAccountId ? accounts.find(a => a.id === selectedAccountId) : null;
+                  // Единственный счёт выбирать не из чего: показываем его имя и не
+                  // делаем заголовок кнопкой — нажатие открывало бы список из
+                  // одной строки.
+                  const onlyOne = liveAccounts.length <= 1;
+                  const current = selectedAccountId
+                    ? accounts.find(a => a.id === selectedAccountId)
+                    : (onlyOne ? liveAccounts[0] : null);
                   const title = current ? current.name : 'Все счета';
                   const value = selectedAccountId
                     ? (accountBalances[selectedAccountId] || 0)
                     : liveAccounts.reduce((sum, a) => sum + (accountBalances[a.id] || 0), 0);
                   // Целую часть и копейки разводим по цвету: крупное число читается
                   // с одного взгляда, копейки не отвлекают.
-                  const [whole, frac] = Math.abs(value).toFixed(2).split('.');
+                  // С выключенными копейками сумму округляем, а не отрезаем:
+                  // 1 850,99 должно показаться как 1 851, иначе рубль теряется.
+                  const shown = appSettings.showCents ? Math.abs(value) : Math.round(Math.abs(value));
+                  const [whole, frac] = shown.toFixed(2).split('.');
                   const grouped = Number(whole).toLocaleString('ru-RU');
                   return (
                     <div className="flex flex-col items-center pt-1 pb-2">
-                      <button
-                        onClick={() => setAccountPickerOpen(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold text-slate-700 dark:text-slate-200 active:scale-95 transition-transform"
-                      >
-                        <span className="truncate max-w-[60vw]">{title}</span>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                             strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
-                          <polyline points="6 9 12 15 18 9" />
-                        </svg>
-                      </button>
+                      {onlyOne ? (
+                        <div className="px-3 py-1.5 text-sm font-bold text-slate-700 dark:text-slate-200">
+                          <span className="truncate max-w-[70vw] inline-block align-bottom">{title}</span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setAccountPickerOpen(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold text-slate-700 dark:text-slate-200 active:scale-95 transition-transform"
+                        >
+                          <span className="truncate max-w-[60vw]">{title}</span>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                               strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </button>
+                      )}
 
                       <div className="flex items-center gap-2 mt-2">
                         {hideBalance ? (
@@ -1504,7 +1523,9 @@ useEffect(() => {
                         ) : (
                           <span className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-none">
                             {value < 0 ? '−' : ''}{grouped}
-                            <span className="text-slate-400 dark:text-slate-500">,{frac}</span>
+                            {appSettings.showCents && (
+                              <span className="text-slate-400 dark:text-slate-500">,{frac}</span>
+                            )}
                             <span className="text-2xl text-slate-400 dark:text-slate-500 ml-1">₽</span>
                           </span>
                         )}
