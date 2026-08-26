@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import TabPill from './TabPill';
 import SelectSheet from './SelectSheet';
 import { Sale, Account, Expense, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
@@ -481,6 +482,10 @@ const CashRegister: React.FC<CashRegisterProps> = ({
   const isMasked = (accountId: string) => maskedAccountIds.includes(accountId);
 
   const [showHiddenAccounts, setShowHiddenAccounts] = useState(false);
+  // Страница делится надвое: счета и прибыль. Раньше всё шло одной простынёй,
+  // и фильтры прибыли стояли выше её заголовка — читались как фильтры счетов.
+  const [cashTab, setCashTab] = useState<'accounts' | 'profit'>('accounts');
+  const [showProfitFilters, setShowProfitFilters] = useState(false);
 
   // Период хранится в App (myProfitPeriod) — здесь только режим выбора.
   // При возврате на страницу восстанавливаем его по уже выставленным датам.
@@ -953,25 +958,64 @@ const investorProfitPayouts = useMemo(() => {
 
   return (
     <div className="space-y-8 animate-fade-in pb-20 w-full max-w-7xl mx-auto px-4">
-      {/* Header */}
-      <div className="flex justify-between items-center pt-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white shadow-lg">
-            {ICONS.Wallet}
+      {/* Шапка. Градиенты (заливка значка, текст заголовка, кнопка) убраны: их было
+          три подряд, а градиентный текст на мелком кегле ещё и теряет контраст. */}
+      <div className="pt-6 space-y-5">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-sm">
+              {ICONS.Wallet}
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Мои Счета</h2>
           </div>
-          <h2 className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-indigo-800 dark:from-white dark:to-indigo-400 bg-clip-text text-transparent">
-            Мои Счета
-          </h2>
+
+          {isManager && (
+            <button
+              onClick={() => setIsAdding(true)}
+              className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm active:scale-95 transition-transform"
+            >
+              <span className="text-lg">{ICONS.Plus}</span>
+              <span className="hidden sm:inline">Новый счет</span>
+            </button>
+          )}
         </div>
 
+        {/* Главное число страницы: сколько всего денег в кассе. Раньше его
+            приходилось складывать в уме по карточкам счетов. */}
+        {visibleAccounts.length > 0 && (() => {
+          const total = visibleAccounts.reduce((sum, a) => sum + (accountBalances[a.id] || 0), 0);
+          const shown = appSettings.showCents ? Math.abs(total) : Math.round(Math.abs(total));
+          const [whole, frac] = shown.toFixed(2).split('.');
+          return (
+            <div className="flex flex-col items-center">
+              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                Всего в кассе
+              </span>
+              <span className="mt-1 text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-none">
+                {total < 0 ? '−' : ''}{Number(whole).toLocaleString('ru-RU')}
+                {appSettings.showCents && <span className="text-slate-400 dark:text-slate-500">,{frac}</span>}
+                <span className="text-2xl text-slate-400 dark:text-slate-500 ml-1">₽</span>
+              </span>
+            </div>
+          );
+        })()}
+
         {isManager && (
-          <button
-            onClick={() => setIsAdding(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all text-sm sm:text-base"
-          >
-            <span className="text-lg">{ICONS.Plus}</span>
-            <span className="hidden sm:inline">+Новый счет</span>
-          </button>
+          <div className="relative flex p-1.5 rounded-2xl bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+            <TabPill index={cashTab === 'accounts' ? 0 : 1} count={2} pad={6} />
+            <button
+              onClick={() => setCashTab('accounts')}
+              className={`relative z-10 flex-1 py-2.5 text-sm font-bold rounded-xl transition-colors ${
+                cashTab === 'accounts' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500'
+              }`}
+            >Счета</button>
+            <button
+              onClick={() => setCashTab('profit')}
+              className={`relative z-10 flex-1 py-2.5 text-sm font-bold rounded-xl transition-colors ${
+                cashTab === 'profit' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
+              }`}
+            >Прибыль</button>
+          </div>
         )}
       </div>
 
@@ -981,6 +1025,9 @@ const investorProfitPayouts = useMemo(() => {
         <EditAccountModal account={editingAccount} onClose={() => setEditingAccount(null)} onUpdate={onUpdateAccount} />
       )}
 
+      {/* Вкладка «Счета». У сотрудника и инвестора вкладок нет — им видна только
+          эта часть, поэтому условие по cashTab к ним не применяем. */}
+      {(!isManager || cashTab === 'accounts') && (<>
       {/* Account Cards */}
       {accounts.length === 0 ? (
         <div className="bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-800 dark:to-indigo-950/30 rounded-3xl p-8 sm:p-12 text-center border-2 border-dashed border-indigo-200 dark:border-indigo-900/50">
@@ -1143,16 +1190,44 @@ const investorProfitPayouts = useMemo(() => {
         </div>
       )}
 
+      </>)}
+
       {activeMenuAccount && (
         <AccountActionModal account={activeMenuAccount} balance={accountBalances[activeMenuAccount.id] || 0} onClose={() => setActiveMenuAccount(null)} onSelectAccount={onSelectAccount} onEdit={setEditingAccount} onSetMain={onSetMainAccount} isManager={isManager} onUpdateAccount={onUpdateAccount} onToggleHidden={handleToggleHidden} appSettings={appSettings} isBalanceMasked={isMasked(activeMenuAccount.id)} />
       )}
 
       {/* 🔹🔹🔹 БЛОК: Моя прибыль 🔹🔹🔹 */}
-     {isManager && (
-    <div className="space-y-6 pt-8">
-        {/* Фильтры */}
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 dark:border-slate-700">
-            <div className="space-y-3">
+     {isManager && cashTab === 'profit' && (
+    <div className="space-y-6">
+        {/* Фильтры. Свёрнуты по умолчанию: их меняют редко, а места они занимали
+            полэкрана всегда. В строке видно текущий выбор — разворачивать, чтобы
+            просто посмотреть, не нужно. */}
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-3 sm:p-4 shadow-sm border border-slate-100 dark:border-slate-700">
+            <button
+                type="button"
+                onClick={() => setShowProfitFilters(v => !v)}
+                className="w-full flex items-center justify-between gap-3 text-left"
+            >
+                <span className="min-w-0 text-sm font-semibold text-slate-600 dark:text-slate-300 truncate">
+                    {[
+                        profitFilterAccountId === 'ALL'
+                            ? 'Все счета'
+                            : (accounts.find(a => a.id === profitFilterAccountId)?.name || 'Счёт'),
+                        ...(investorProfitBreakdown.length > 1
+                            ? [profitFilterInvestorId === 'ALL'
+                                ? 'Все инвесторы'
+                                : (investorProfitBreakdown.find(m => m.investor.id === profitFilterInvestorId)?.investor.name || 'Инвестор')]
+                            : []),
+                        PERIOD_CONFIG.find(pc => pc.key === periodMode)?.label ?? '',
+                    ].filter(Boolean).join(' · ')}
+                </span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                     strokeLinecap="round" strokeLinejoin="round"
+                     className={`shrink-0 text-slate-400 transition-transform ${showProfitFilters ? 'rotate-180' : ''}`}>
+                    <polyline points="6 9 12 15 18 9" />
+                </svg>
+            </button>
+            <div className={`space-y-3 ${showProfitFilters ? 'mt-3' : 'hidden'}`}>
                 <SelectSheet
                     label="Фильтр по счету"
                     title="Счёт"
