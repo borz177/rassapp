@@ -569,3 +569,18 @@ export interface PartnerSummary {
   commissions?: PartnerCommission[];
   payouts?: PartnerPayout[];
 }
+
+// 🧾 Оплата подписки в админке. receipt_* — чек НПД из «Мой налог»:
+// кассовый чек по 54-ФЗ самозанятый не выдаёт, ККТ он не применяет.
+export interface AdminPayment {
+  id: string;
+  amount: string | number;
+  plan: string;
+  months: number;
+  paid_at: string;
+  receipt_number: string | null;
+  receipt_url: string | null;
+  refunded_at: string | null;
+  user_name: string | null;
+  user_email: string | null;
+}

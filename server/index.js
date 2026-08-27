@@ -988,6 +988,8 @@ const initDB = async () => {
 // 🔹 B-tree индексы для точных совпадений (ещё быстрее для простых запросов)
 await pool.query(`
   CREATE INDEX IF NOT EXISTS idx_subscription_payments_user ON subscription_payments(user_id);
+  ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS receipt_number TEXT;
+  ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS receipt_url TEXT;
   CREATE INDEX IF NOT EXISTS idx_partner_commissions_partner ON partner_commissions(partner_id, status);
   CREATE INDEX IF NOT EXISTS idx_partner_payouts_partner ON partner_payouts(partner_id);
 
@@ -1144,7 +1146,11 @@ await pool.query(`
     plan TEXT NOT NULL,
     months INTEGER NOT NULL,
     paid_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    refunded_at TIMESTAMP
+    refunded_at TIMESTAMP,
+    -- Чек НПД выписывается в «Мой налог» вручную; сюда кладём его номер и ссылку,
+    -- чтобы отправить человеку и не искать потом, за что был перевод.
+    receipt_number TEXT,
+    receipt_url TEXT
   );
 
   -- 🤝 Начисления партнёру. Процент и срок КОПИРУЮТСЯ в строку начисления, а не
@@ -3944,6 +3950,188 @@ app.patch('/api/admin/users/:userId/status', adminAuth, async (req, res) => {
 
 // === АДМИН: СБРОС ПАРОЛЯ ===
 // =====================================================
+// === 🧾 ПОДТВЕРЖДЕНИЕ ОПЛАТЫ И ЧЕК НПД ==============
+// =====================================================
+//
+// Важно про терминологию. Кассовый чек по 54-ФЗ самозанятый не выдаёт — ККТ он
+// не применяет. Его документ — чек НПД из «Мой налог», и формируется он там, а
+// не здесь: автоматически его выпустить можно только через партнёрский API ФНС,
+// это отдельная интеграция с регистрацией.
+//
+// Поэтому письма два:
+//   1. Сразу после оплаты — ПОДТВЕРЖДЕНИЕ: что оплачено, на сколько, до какого
+//      числа продлён доступ. Это то, чего люди ждут в первую очередь.
+//      Кассовым чеком оно себя не называет — иначе это вводило бы в заблуждение.
+//   2. Когда чек НПД выписан в «Мой налог» и его ссылка приложена в админке —
+//      письмо с самим чеком.
+const PLAN_TITLES = {
+  TRIAL: 'Пробный',
+  START: 'Старт',
+  STANDARD: 'Стандарт',
+  BUSINESS: 'Бизнес',
+  BUSINESS_PRO: 'Бизнес Pro'
+};
+
+const pluralMonths = (n) => {
+  const abs = Math.abs(n) % 100;
+  const last = abs % 10;
+  if (abs > 10 && abs < 20) return 'месяцев';
+  if (last === 1) return 'месяц';
+  if (last >= 2 && last <= 4) return 'месяца';
+  return 'месяцев';
+};
+
+const receiptEmailHtml = ({ name, plan, months, amount, paidAt, expiresAt, paymentId, receiptUrl }) => {
+  const planTitle = PLAN_TITLES[plan] || plan;
+  const money = Number(amount).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const row = (label, value) => `
+      <tr>
+        <td style="padding:8px 0;color:#64748b;font-size:14px">${label}</td>
+        <td style="padding:8px 0;color:#0f172a;font-size:14px;font-weight:600;text-align:right">${value}</td>
+      </tr>`;
+
+  return `
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden">
+  <div style="background:linear-gradient(135deg,#4f46e5,#6366f1);padding:24px">
+    <p style="margin:0;color:#e0e7ff;font-size:13px;letter-spacing:.08em;text-transform:uppercase;font-weight:700">
+      ${receiptUrl ? 'Чек' : 'Оплата получена'}
+    </p>
+    <p style="margin:6px 0 0;color:#ffffff;font-size:28px;font-weight:800">${money} &#8381;</p>
+  </div>
+
+  <div style="padding:24px">
+    <p style="margin:0 0 16px;color:#0f172a;font-size:15px">
+      ${name ? `${name}, с` : 'С'}пасибо за оплату. Подписка продлена.
+    </p>
+
+    <table style="width:100%;border-collapse:collapse">
+      ${row('Тариф', planTitle)}
+      ${row('Срок', `${months} ${pluralMonths(months)}`)}
+      ${row('Дата оплаты', paidAt)}
+      ${expiresAt ? row('Доступ до', expiresAt) : ''}
+      ${row('Номер платежа', `<span style="font-family:ui-monospace,monospace;font-size:12px">${paymentId}</span>`)}
+    </table>
+
+    ${receiptUrl ? `
+    <a href="${receiptUrl}"
+       style="display:block;margin-top:20px;padding:13px;background:#4f46e5;color:#ffffff;text-align:center;text-decoration:none;border-radius:12px;font-weight:700;font-size:15px">
+      Открыть чек
+    </a>` : `
+    <p style="margin:20px 0 0;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;color:#64748b;font-size:13px;line-height:1.5">
+      Это подтверждение оплаты. Чек НПД придёт отдельным письмом.
+    </p>`}
+  </div>
+
+  <div style="background:#f8fafc;padding:16px 24px;text-align:center;border-top:1px solid #e2e8f0">
+    <p style="margin:0;color:#94a3b8;font-size:13px">
+      &copy; ${new Date().getFullYear()} FinUchet &bull;
+      <a href="https://rassrochka.pro" style="color:#4f46e5;text-decoration:none">rassrochka.pro</a>
+    </p>
+  </div>
+</div>`;
+};
+
+// Письмо об оплате. Ошибки не пробрасываем: подписка уже продлена, и падение
+// почты не должно превращаться в ошибку вебхука — ЮKassa начнёт слать его снова.
+const sendPaymentReceiptEmail = async (paymentId) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.id, p.amount, p.plan, p.months, p.paid_at, p.receipt_url,
+              u.name, u.email, u.subscription
+         FROM subscription_payments p
+         JOIN users u ON u.id = p.user_id
+        WHERE p.id = $1`,
+      [paymentId]
+    );
+    const r = rows[0];
+    if (!r || !r.email) return false;
+
+    const fmt = (d) => d ? new Date(d).toLocaleDateString('ru-RU', {
+      day: 'numeric', month: 'long', year: 'numeric'
+    }) : null;
+
+    const html = receiptEmailHtml({
+      name: r.name,
+      plan: r.plan,
+      months: r.months,
+      amount: r.amount,
+      paidAt: fmt(r.paid_at),
+      expiresAt: fmt(r.subscription?.expiresAt),
+      paymentId: r.id,
+      receiptUrl: r.receipt_url
+    });
+
+    const money = Number(r.amount).toLocaleString('ru-RU');
+    const subject = r.receipt_url
+      ? `Чек на ${money} ₽ — FinUchet`
+      : `Оплата ${money} ₽ получена — FinUchet`;
+    const text = [
+      `${r.receipt_url ? 'Чек' : 'Подтверждение оплаты'}: ${money} ₽`,
+      `Тариф: ${PLAN_TITLES[r.plan] || r.plan}, ${r.months} ${pluralMonths(r.months)}`,
+      `Дата: ${fmt(r.paid_at)}`,
+      r.subscription?.expiresAt ? `Доступ до: ${fmt(r.subscription.expiresAt)}` : null,
+      `Номер платежа: ${r.id}`,
+      r.receipt_url ? `Чек: ${r.receipt_url}` : null
+    ].filter(Boolean).join('\n');
+
+    await sendEmail(r.email, subject, text, html);
+    return true;
+  } catch (e) {
+    console.error('⚠️ Не удалось отправить письмо об оплате:', e.message);
+    return false;
+  }
+};
+
+// Приложить чек НПД к оплате и отправить его человеку.
+// Ссылку берут в «Мой налог» после выписки чека — автоматически её не получить
+// без партнёрского API ФНС.
+app.post('/api/admin/payments/:paymentId/receipt', adminAuth, async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const { number, url, send } = req.body;
+    if (!url && !number) {
+      return res.status(400).json({ msg: 'Укажите ссылку на чек или его номер' });
+    }
+    const upd = await pool.query(
+      `UPDATE subscription_payments
+          SET receipt_number = $1, receipt_url = $2
+        WHERE id = $3
+        RETURNING id`,
+      [number || null, url || null, paymentId]
+    );
+    if (upd.rowCount === 0) return res.status(404).json({ msg: 'Платёж не найден' });
+
+    let sent = false;
+    if (send !== false) sent = await sendPaymentReceiptEmail(paymentId);
+
+    logAdminAction(req.user.id, 'PAYMENT_RECEIPT', null, { paymentId, number, url, sent });
+    res.json({ success: true, sent });
+  } catch (err) {
+    console.error('Attach receipt error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Журнал оплат для админки: видно, по каким платежам чек ещё не выписан.
+app.get('/api/admin/payments', adminAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT p.id, p.amount, p.plan, p.months, p.paid_at,
+             p.receipt_number, p.receipt_url, p.refunded_at,
+             u.name AS user_name, u.email AS user_email
+        FROM subscription_payments p
+        LEFT JOIN users u ON u.id = p.user_id
+       ORDER BY p.paid_at DESC
+       LIMIT 200
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('Payments list error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// =====================================================
 // === 🤝 БИЗНЕС-ПАРТНЁРЫ: АДМИНКА =====================
 // =====================================================
 
@@ -4634,6 +4822,9 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
                             paymentId: object.id, userId, amount: paid, plan, months: Number(months)
                         });
                         await accruePartnerCommission({ paymentId: object.id, clientId: userId, amount: paid });
+                        // Письмо об оплате. Отправляем после записи платежа: письмо
+                        // собирается из журнала, а не из переменных вебхука.
+                        sendPaymentReceiptEmail(object.id);
                     } catch (e) {
                         // Как и с реферальной наградой: подписка уже продлена, и ошибка в
                         // ответе заставила бы ЮKassa слать вебхук снова.

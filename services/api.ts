@@ -1,4 +1,4 @@
-import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary } from "../types";
+import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary, AdminPayment } from "../types";
 import { offlineStorage } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
 // Helper to determine the API URL dynamically
@@ -916,6 +916,27 @@ export const api = {
     },
 
     // --- ADMIN METHODS ---
+    // --- 🧾 ОПЛАТЫ И ЧЕКИ ---
+    adminGetPayments: async (): Promise<AdminPayment[]> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/payments`);
+        if (!res.ok) throw new Error('Не удалось загрузить оплаты');
+        return res.json();
+    },
+
+    // Прикладывает чек НПД к оплате и отправляет его человеку письмом.
+    adminAttachReceipt: async (
+        paymentId: string,
+        receipt: { number?: string; url?: string; send?: boolean }
+    ): Promise<{ success: boolean; sent: boolean }> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/payments/${paymentId}/receipt`, {
+            method: 'POST',
+            body: JSON.stringify(receipt)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Не удалось сохранить чек');
+        return data;
+    },
+
     // --- 🤝 БИЗНЕС-ПАРТНЁРЫ ---
     // Условия партнёрства. termMonths: null — бессрочно.
     adminSetPartner: async (
