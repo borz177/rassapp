@@ -924,6 +924,23 @@ const initDB = async () => {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='profit_since') THEN
           ALTER TABLE users ADD COLUMN profit_since DATE;
         END IF;
+        -- 🤝 Бизнес-партнёрство: процент с оплат приведённых клиентов.
+        -- Отдельно от реферальной программы (та даёт дни и срабатывает один раз
+        -- за клиента) — здесь начисление идёт с КАЖДОЙ оплаты.
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='partner_percent') THEN
+          ALTER TABLE users ADD COLUMN partner_percent NUMERIC(5,2);
+        END IF;
+        -- С какой даты начисляем. Без неё включение партнёрства сегодня создало бы
+        -- долг за всю прошлую историю клиентов.
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='partner_since') THEN
+          ALTER TABLE users ADD COLUMN partner_since TIMESTAMP;
+        END IF;
+        -- Сколько месяцев с РЕГИСТРАЦИИ клиента действует процент.
+        -- NULL — бессрочно. Считаем от регистрации, а не от платежа: иначе срок
+        -- обнулялся бы с каждым продлением и никогда не заканчивался.
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='partner_term_months') THEN
+          ALTER TABLE users ADD COLUMN partner_term_months INTEGER;
+        END IF;
         -- 🎁 Реферальная программа
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='referral_code') THEN
           ALTER TABLE users ADD COLUMN referral_code TEXT UNIQUE;
@@ -970,6 +987,10 @@ const initDB = async () => {
 
 // 🔹 B-tree индексы для точных совпадений (ещё быстрее для простых запросов)
 await pool.query(`
+  CREATE INDEX IF NOT EXISTS idx_subscription_payments_user ON subscription_payments(user_id);
+  CREATE INDEX IF NOT EXISTS idx_partner_commissions_partner ON partner_commissions(partner_id, status);
+  CREATE INDEX IF NOT EXISTS idx_partner_payouts_partner ON partner_payouts(partner_id);
+
   CREATE INDEX IF NOT EXISTS idx_data_items_data_user_id_btree 
   ON data_items ((data->>'userId'))
 `);
@@ -1111,6 +1132,51 @@ await pool.query(`CREATE INDEX IF NOT EXISTS idx_admin_audit_log_target_user_id 
 // (PUT со всем объектом AppSettings) и затирал бы служебные отметки планировщика —
 // next_run_at/last_run_at. Из-за этого копия либо ушла бы повторно, либо не ушла вовсе.
 await pool.query(`
+  -- 💳 Журнал оплат подписки. Раньше нигде не сохранялся: вебхук продлевал
+  -- подписку и забывал платёж. Без журнала нельзя ни посчитать долю партнёра,
+  -- ни свести выручку, ни разобрать спорную оплату.
+  -- id — идентификатор платежа ЮKassa: вебхук может прийти дважды, и первичный
+  -- ключ по нему делает повторную запись невозможной.
+  CREATE TABLE IF NOT EXISTS subscription_payments (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    amount NUMERIC(12,2) NOT NULL,
+    plan TEXT NOT NULL,
+    months INTEGER NOT NULL,
+    paid_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    refunded_at TIMESTAMP
+  );
+
+  -- 🤝 Начисления партнёру. Процент и срок КОПИРУЮТСЯ в строку начисления, а не
+  -- берутся из настроек партнёра при показе: иначе изменение процента переписало
+  -- бы задним числом всю историю, включая уже выплаченное.
+  -- payment_id UNIQUE — на один платёж не больше одного начисления.
+  CREATE TABLE IF NOT EXISTS partner_commissions (
+    id TEXT PRIMARY KEY,
+    partner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    payment_id TEXT NOT NULL UNIQUE REFERENCES subscription_payments(id) ON DELETE CASCADE,
+    base_amount NUMERIC(12,2) NOT NULL,
+    percent NUMERIC(5,2) NOT NULL,
+    amount NUMERIC(12,2) NOT NULL,
+    status TEXT NOT NULL DEFAULT 'accrued',
+    payout_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+
+  -- 💸 Выплаты партнёру. receipt — номер чека самозанятого: единственное
+  -- подтверждение, что перевод был за услугу, а не подарок.
+  CREATE TABLE IF NOT EXISTS partner_payouts (
+    id TEXT PRIMARY KEY,
+    partner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    amount NUMERIC(12,2) NOT NULL,
+    method TEXT,
+    receipt TEXT,
+    note TEXT,
+    created_by TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+
   CREATE TABLE IF NOT EXISTS backup_settings (
     user_id TEXT PRIMARY KEY,
     enabled BOOLEAN NOT NULL DEFAULT FALSE,
@@ -3877,6 +3943,213 @@ app.patch('/api/admin/users/:userId/status', adminAuth, async (req, res) => {
 });
 
 // === АДМИН: СБРОС ПАРОЛЯ ===
+// =====================================================
+// === 🤝 БИЗНЕС-ПАРТНЁРЫ: АДМИНКА =====================
+// =====================================================
+
+// Включение/выключение партнёрства и его условия.
+app.patch('/api/admin/users/:userId/partner', adminAuth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { enabled, percent, termMonths } = req.body;
+
+    if (!enabled) {
+      // Процент обнуляем, но partner_since и уже сделанные начисления оставляем:
+      // выключение партнёрства не должно стирать долг перед человеком.
+      await pool.query(
+        `UPDATE users SET partner_percent = NULL, updated_at = NOW() WHERE id = $1`,
+        [userId]
+      );
+      logAdminAction(req.user.id, 'PARTNER_DISABLE', userId, null);
+      return res.json({ success: true });
+    }
+
+    const pct = Number(percent);
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+      return res.status(400).json({ msg: 'Процент должен быть числом от 0 до 100' });
+    }
+    const term = termMonths === null || termMonths === undefined || termMonths === ''
+      ? null
+      : Number(termMonths);
+    if (term !== null && (!Number.isInteger(term) || term <= 0)) {
+      return res.status(400).json({ msg: 'Срок — целое число месяцев или пусто (бессрочно)' });
+    }
+
+    // partner_since ставим только при ПЕРВОМ включении: повторное сохранение с
+    // новым процентом не должно сдвигать дату и обнулять историю начислений.
+    await pool.query(
+      `UPDATE users
+          SET partner_percent = $1,
+              partner_term_months = $2,
+              partner_since = COALESCE(partner_since, NOW()),
+              updated_at = NOW()
+        WHERE id = $3`,
+      [pct, term, userId]
+    );
+    logAdminAction(req.user.id, 'PARTNER_ENABLE', userId, { percent: pct, termMonths: term });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Partner update error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Список партнёров с итогами. Заработано / выплачено / к выплате считаем из
+// начислений, а не из выплат: выплата может быть округлена или разбита на части.
+app.get('/api/admin/partners', adminAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.email, u.phone, u.referral_code,
+             u.partner_percent, u.partner_since, u.partner_term_months,
+             COALESCE(c.total, 0)   AS earned,
+             COALESCE(c.paid, 0)    AS paid,
+             COALESCE(c.pending, 0) AS pending,
+             COALESCE(c.clients, 0) AS clients
+        FROM users u
+        LEFT JOIN (
+          SELECT partner_id,
+                 SUM(amount) FILTER (WHERE status <> 'cancelled') AS total,
+                 SUM(amount) FILTER (WHERE status = 'paid')       AS paid,
+                 SUM(amount) FILTER (WHERE status = 'accrued')    AS pending,
+                 COUNT(DISTINCT client_id)                        AS clients
+            FROM partner_commissions
+           GROUP BY partner_id
+        ) c ON c.partner_id = u.id
+       WHERE u.partner_percent IS NOT NULL OR u.partner_since IS NOT NULL
+       ORDER BY COALESCE(c.pending, 0) DESC, u.name
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('Partners list error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Отметить выплату. Деньги переводятся вне системы (перевод по СБП, чек от
+// самозанятого), здесь фиксируется факт: сумма, способ, номер чека.
+app.post('/api/admin/partners/:partnerId/payout', adminAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { partnerId } = req.params;
+    const { amount, method, receipt, note } = req.body;
+    const sum = Number(amount);
+    if (!Number.isFinite(sum) || sum <= 0) {
+      return res.status(400).json({ msg: 'Сумма выплаты должна быть положительной' });
+    }
+
+    await client.query('BEGIN');
+
+    const pendingRes = await client.query(
+      `SELECT COALESCE(SUM(amount), 0) AS pending
+         FROM partner_commissions WHERE partner_id = $1 AND status = 'accrued'`,
+      [partnerId]
+    );
+    const pending = Number(pendingRes.rows[0].pending);
+    if (sum > pending + 0.01) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ msg: 'К выплате доступно ' + pending.toFixed(2) + ' руб.' });
+    }
+
+    const payoutId = 'po_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    await client.query(
+      `INSERT INTO partner_payouts (id, partner_id, amount, method, receipt, note, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [payoutId, partnerId, sum, method || null, receipt || null, note || null, req.user.id]
+    );
+
+    // Гасим начисления по очереди, от самых старых. Так «к выплате» всегда
+    // совпадает с суммой непогашенных строк, и видно, за какие именно платежи
+    // деньги уже отданы.
+    const open = await client.query(
+      `SELECT id, amount FROM partner_commissions
+        WHERE partner_id = $1 AND status = 'accrued'
+        ORDER BY created_at`,
+      [partnerId]
+    );
+    let left = sum;
+    for (const row of open.rows) {
+      if (left < 0.01) break;
+      const amt = Number(row.amount);
+      if (amt > left + 0.01) break;   // частично начисление не гасим
+      await client.query(
+        `UPDATE partner_commissions SET status = 'paid', payout_id = $1 WHERE id = $2`,
+        [payoutId, row.id]
+      );
+      left -= amt;
+    }
+
+    await client.query('COMMIT');
+    logAdminAction(req.user.id, 'PARTNER_PAYOUT', partnerId, { amount: sum, method, receipt });
+    res.json({ success: true, payoutId, unallocated: Math.round(left * 100) / 100 });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Partner payout error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// =====================================================
+// === 🤝 БИЗНЕС-ПАРТНЁР: СВОЯ СТАТИСТИКА ==============
+// =====================================================
+
+app.get('/api/partner/summary', auth, async (req, res) => {
+  try {
+    const me = await pool.query(
+      `SELECT partner_percent, partner_since, partner_term_months FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+    const row = me.rows[0];
+    if (!row || !row.partner_percent) return res.json({ isPartner: false });
+
+    // Имя клиента показываем, почту и телефон — нет: партнёр и так знает, кого
+    // привёл, а система не должна раздавать контакты.
+    const commissions = await pool.query(
+      `SELECT c.id, c.amount, c.base_amount, c.percent, c.status, c.created_at,
+              p.plan, p.months, u.name AS client_name
+         FROM partner_commissions c
+         JOIN subscription_payments p ON p.id = c.payment_id
+         LEFT JOIN users u ON u.id = c.client_id
+        WHERE c.partner_id = $1
+        ORDER BY c.created_at DESC
+        LIMIT 200`,
+      [req.user.id]
+    );
+    const payouts = await pool.query(
+      `SELECT id, amount, method, receipt, note, created_at
+         FROM partner_payouts WHERE partner_id = $1 ORDER BY created_at DESC LIMIT 50`,
+      [req.user.id]
+    );
+    const totals = await pool.query(
+      `SELECT COALESCE(SUM(amount) FILTER (WHERE status <> 'cancelled'), 0) AS earned,
+              COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0)       AS paid,
+              COALESCE(SUM(amount) FILTER (WHERE status = 'accrued'), 0)    AS pending,
+              COUNT(DISTINCT client_id)                                     AS clients
+         FROM partner_commissions WHERE partner_id = $1`,
+      [req.user.id]
+    );
+
+    res.json({
+      isPartner: true,
+      percent: Number(row.partner_percent),
+      since: row.partner_since,
+      termMonths: row.partner_term_months,
+      totals: {
+        earned: Number(totals.rows[0].earned),
+        paid: Number(totals.rows[0].paid),
+        pending: Number(totals.rows[0].pending),
+        clients: Number(totals.rows[0].clients)
+      },
+      commissions: commissions.rows,
+      payouts: payouts.rows
+    });
+  } catch (err) {
+    console.error('Partner summary error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
 app.post('/api/admin/users/:userId/reset-password', adminAuth, async (req, res) => {
   try {
     const { userId } = req.params;
@@ -4021,6 +4294,72 @@ app.post('/api/payment/create', auth, async (req, res) => {
 // без вычета расходов, поэтому денежная выплата уменьшала бы маржу, но не уменьшала
 // налог и не освобождала лимит 2,4 млн ₽. Бесплатные дни не стоят почти ничего.
 const REFERRAL_REWARD_DAYS = 10;
+
+// =====================================================
+// === 🤝 БИЗНЕС-ПАРТНЁРЫ: ЖУРНАЛ ОПЛАТ И НАЧИСЛЕНИЯ ===
+// =====================================================
+
+// Записывает оплату в журнал. Ключ — id платежа ЮKassa, поэтому повторный
+// вебхук (а он в порядке вещей) не создаст второй строки.
+const recordSubscriptionPayment = async ({ paymentId, userId, amount, plan, months }) => {
+  await pool.query(
+    `INSERT INTO subscription_payments (id, user_id, amount, plan, months)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (id) DO NOTHING`,
+    [paymentId, userId, amount, plan, months]
+  );
+};
+
+// Начисляет партнёру процент с оплаты приведённого им клиента.
+//
+// Процент и срок КОПИРУЮТСЯ в строку начисления. Считать их на лету из настроек
+// партнёра нельзя: подняли процент — и он задним числом «заработал» больше за
+// весь прошлый год, включая уже выплаченное. Деньги требуют неизменной истории.
+const accruePartnerCommission = async ({ paymentId, clientId, amount }) => {
+  const clientRes = await pool.query(
+    `SELECT referred_by, created_at FROM users WHERE id = $1`,
+    [clientId]
+  );
+  const client = clientRes.rows[0];
+  if (!client?.referred_by) return;              // клиент пришёл сам
+
+  const partnerRes = await pool.query(
+    `SELECT id, partner_percent, partner_since, partner_term_months
+       FROM users WHERE id = $1`,
+    [client.referred_by]
+  );
+  const partner = partnerRes.rows[0];
+  if (!partner) return;
+
+  const percent = Number(partner.partner_percent);
+  if (!percent || percent <= 0) return;          // не партнёр
+  if (!partner.partner_since) return;            // партнёрство не активировано
+
+  // Платежи до включения партнёрства не оплачиваем — иначе включение сегодня
+  // означало бы долг за всю прошлую историю.
+  if (new Date() < new Date(partner.partner_since)) return;
+
+  // Срок считаем от РЕГИСТРАЦИИ клиента: от даты платежа он обнулялся бы с
+  // каждым продлением и не заканчивался никогда.
+  if (partner.partner_term_months && client.created_at) {
+    const until = addMonthsClamped(new Date(client.created_at), Number(partner.partner_term_months));
+    if (new Date() > until) return;              // срок вышел
+  }
+
+  const base = Number(amount);
+  if (!Number.isFinite(base) || base <= 0) return;
+  const commission = Math.round(base * percent) / 100;
+
+  await pool.query(
+    `INSERT INTO partner_commissions
+       (id, partner_id, client_id, payment_id, base_amount, percent, amount)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (payment_id) DO NOTHING`,
+    [`pc_${paymentId}`, partner.id, clientId, paymentId, base, percent, commission]
+  );
+
+  console.log(`🤝 Партнёру ${partner.id} начислено ${commission} ₽ (${percent}% с ${base} ₽) за клиента ${clientId}`);
+};
 
 const grantReferralReward = async (paidUserId) => {
   const paid = await pool.query(
@@ -4287,6 +4626,19 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
                         [JSON.stringify({ plan, expiresAt: newExpiresAt.toISOString() }), userId]
                     );
                     console.log(`✅ Subscription updated for user ${userId} to ${plan} for ${months} months`);
+
+                    // 💳 Журнал оплат и доля партнёра. Обе операции идемпотентны по id
+                    // платежа, поэтому повторный вебхук ничего не задваивает.
+                    try {
+                        await recordSubscriptionPayment({
+                            paymentId: object.id, userId, amount: paid, plan, months: Number(months)
+                        });
+                        await accruePartnerCommission({ paymentId: object.id, clientId: userId, amount: paid });
+                    } catch (e) {
+                        // Как и с реферальной наградой: подписка уже продлена, и ошибка в
+                        // ответе заставила бы ЮKassa слать вебхук снова.
+                        console.error('⚠️ Не удалось записать оплату или начислить долю партнёра:', e.message);
+                    }
 
                     // 🎁 Награда пригласившему — 10 дней за приглашённого, который заплатил.
                     // Начисляется один раз и только за ПЕРВУЮ оплату: повторные платежи
