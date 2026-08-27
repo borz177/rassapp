@@ -520,3 +520,52 @@ export interface Task {
   // Отметка cron-скрипта, что напоминание о наступившем сроке уже отправлено
   notifiedAt?: string;
 }
+
+// 🤝 Бизнес-партнёрство: процент с оплат приведённых клиентов.
+// Отдельно от реферальной программы — та начисляет дни и один раз за клиента.
+export interface PartnerRow {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  referral_code?: string;
+  partner_percent: string | number | null;
+  partner_since: string | null;
+  /** null — бессрочно */
+  partner_term_months: number | null;
+  earned: string | number;
+  paid: string | number;
+  pending: string | number;
+  clients: string | number;
+}
+
+export interface PartnerCommission {
+  id: string;
+  amount: string | number;
+  base_amount: string | number;
+  percent: string | number;
+  status: 'accrued' | 'paid' | 'cancelled';
+  created_at: string;
+  plan: string;
+  months: number;
+  client_name: string | null;
+}
+
+export interface PartnerPayout {
+  id: string;
+  amount: string | number;
+  method: string | null;
+  receipt: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface PartnerSummary {
+  isPartner: boolean;
+  percent?: number;
+  since?: string | null;
+  termMonths?: number | null;
+  totals?: { earned: number; paid: number; pending: number; clients: number };
+  commissions?: PartnerCommission[];
+  payouts?: PartnerPayout[];
+}

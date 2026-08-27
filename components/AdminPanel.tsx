@@ -1,5 +1,6 @@
 // components/AdminPanel.tsx
 import React, { useState, useEffect, useMemo } from 'react';
+import AdminPartners from './AdminPartners';
 import { User, SubscriptionPlan } from '../types';
 import { addMonthsClamped } from '../src/utils';
 import { ICONS } from '../constants';
@@ -65,7 +66,7 @@ const AdminPanel: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [subscriptionFilter, setSubscriptionFilter] = useState<SubscriptionFilter>('all'); // 🔹 Новый фильтр
-    const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'referrals' | 'logs'>('users');
+    const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'referrals' | 'partners' | 'logs'>('users');
     // 🎁 Реферальная программа
     const [referrals, setReferrals] = useState<any>(null);
     const [referralsLoading, setReferralsLoading] = useState(false);
@@ -407,6 +408,7 @@ const getContractUsage = (user: User): {
                     { id: 'users', label: '👥 Пользователи' },
                     { id: 'stats', label: '📊 Статистика' },
                     { id: 'referrals', label: '🎁 Рефералы' },
+                    { id: 'partners', label: '🤝 Партнёры' },
                     { id: 'logs', label: '📜 Логи' },
                 ] as const).map(tab => (
                     <button
@@ -621,6 +623,8 @@ const getContractUsage = (user: User): {
             )}
             </>
             )}
+
+            {activeTab === 'partners' && <AdminPartners users={users} />}
 
             {activeTab === 'stats' && (
                 <div className="space-y-4">

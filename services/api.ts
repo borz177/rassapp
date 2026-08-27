@@ -1,4 +1,4 @@
-import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits } from "../types";
+import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary } from "../types";
 import { offlineStorage } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
 // Helper to determine the API URL dynamically
@@ -916,6 +916,49 @@ export const api = {
     },
 
     // --- ADMIN METHODS ---
+    // --- 🤝 БИЗНЕС-ПАРТНЁРЫ ---
+    // Условия партнёрства. termMonths: null — бессрочно.
+    adminSetPartner: async (
+        userId: string,
+        params: { enabled: boolean; percent?: number; termMonths?: number | null }
+    ): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/users/${userId}/partner`, {
+            method: 'PATCH',
+            body: JSON.stringify(params)
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.msg || 'Не удалось сохранить условия партнёрства');
+        }
+    },
+
+    adminGetPartners: async (): Promise<PartnerRow[]> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/partners`);
+        if (!res.ok) throw new Error('Не удалось загрузить партнёров');
+        return res.json();
+    },
+
+    adminPayPartner: async (
+        partnerId: string,
+        payout: { amount: number; method?: string; receipt?: string; note?: string }
+    ): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/partners/${partnerId}/payout`, {
+            method: 'POST',
+            body: JSON.stringify(payout)
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.msg || 'Не удалось записать выплату');
+        }
+    },
+
+    // Своя статистика партнёра. isPartner: false — блок просто не показывается.
+    getPartnerSummary: async (): Promise<PartnerSummary> => {
+        const res = await fetchWithAuth(`${API_URL}/partner/summary`);
+        if (!res.ok) return { isPartner: false };
+        return res.json();
+    },
+
     adminGetUsers: async (): Promise<User[]> => {
         const res = await fetchWithAuth(`${API_URL}/admin/users`);
         if (!res.ok) throw new Error('Failed to fetch users');

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import PartnerEarnings from './PartnerEarnings';
 import { ICONS } from '../constants';
 import { api } from '../services/api';
 import { hapticSuccess } from './feedback';
@@ -85,6 +86,11 @@ const Referral: React.FC<ReferralProps> = ({ onBack }) => {
                         <p className="text-sm">Загружаем…</p>
                     </div>
                 )}
+
+                {/* Партнёрское вознаграждение — выше блока с днями: если человек
+                    партнёр, деньги для него важнее бонусных дней. Компонент сам
+                    прячется, если партнёрство не включено. */}
+                <PartnerEarnings />
 
                 {stats && (
                     <>
