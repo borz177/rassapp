@@ -1548,7 +1548,34 @@ useEffect(() => {
                   const [whole, frac] = shown.toFixed(2).split('.');
                   const grouped = Number(whole).toLocaleString('ru-RU');
                   return (
-                    <div className="flex flex-col items-center pt-1 pb-2">
+                    <>
+                    {/* Десктоп: лента счетов. Крупный баланс с кнопками — приём
+                        мобильный, он рассчитан на большой палец и узкий экран;
+                        на широком мониторе та же связка растягивается пустотой
+                        поперёк всей страницы. Здесь удобнее ряд, где все счета
+                        видны сразу и переключаются одним щелчком. */}
+                    <div className="hidden md:flex flex-wrap items-center gap-2">
+                      {[{ id: null as string | null, name: 'Все счета' },
+                        ...liveAccounts.map(a => ({ id: a.id as string | null, name: a.name }))
+                      ].map(item => {
+                        const isActive = selectedAccountId === item.id;
+                        return (
+                          <button
+                            key={item.id ?? 'all'}
+                            onClick={() => setSelectedAccountId(item.id)}
+                            className={`px-5 py-2.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${
+                              isActive
+                                ? 'glass-surface text-indigo-600 dark:text-indigo-300'
+                                : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-indigo-600'
+                            }`}
+                          >
+                            {item.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="md:hidden flex flex-col items-center pt-1 pb-2">
                       {onlyOne ? (
                         <div className="px-3 py-1.5 text-sm font-bold text-slate-700 dark:text-slate-200">
                           <span className="truncate max-w-[70vw] inline-block align-bottom">{title}</span>
@@ -1627,6 +1654,7 @@ useEffect(() => {
                         </div>
                       )}
                     </div>
+                    </>
                   );
                 })()}
 
