@@ -987,12 +987,6 @@ const initDB = async () => {
 
 // 🔹 B-tree индексы для точных совпадений (ещё быстрее для простых запросов)
 await pool.query(`
-  CREATE INDEX IF NOT EXISTS idx_subscription_payments_user ON subscription_payments(user_id);
-  ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS receipt_number TEXT;
-  ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS receipt_url TEXT;
-  CREATE INDEX IF NOT EXISTS idx_partner_commissions_partner ON partner_commissions(partner_id, status);
-  CREATE INDEX IF NOT EXISTS idx_partner_payouts_partner ON partner_payouts(partner_id);
-
   CREATE INDEX IF NOT EXISTS idx_data_items_data_user_id_btree 
   ON data_items ((data->>'userId'))
 `);
@@ -1202,6 +1196,18 @@ await pool.query(`
 // Планировщик каждые 15 минут выбирает «кому пора» — без индекса это seq scan
 // по всей таблице пользователей на каждом тике.
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_backup_settings_due ON backup_settings(next_run_at) WHERE enabled = TRUE;`);
+
+// Индексы партнёрских таблиц и колонки под чек НПД — строго ПОСЛЕ их создания.
+// Стояли выше по файлу, там таблиц ещё не существует: запрос падал с
+// «relation does not exist» и обрывал всю инициализацию, из-за чего таблицы так
+// и не создавались.
+await pool.query(`
+  CREATE INDEX IF NOT EXISTS idx_subscription_payments_user ON subscription_payments(user_id);
+  CREATE INDEX IF NOT EXISTS idx_partner_commissions_partner ON partner_commissions(partner_id, status);
+  CREATE INDEX IF NOT EXISTS idx_partner_payouts_partner ON partner_payouts(partner_id);
+  ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS receipt_number TEXT;
+  ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS receipt_url TEXT;
+`);
 
     initSuperAdmin();
 
