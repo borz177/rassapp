@@ -1332,6 +1332,81 @@ app.post('/api/integrations/whatsapp/create', auth, async (req, res) => {
 
 
 // =====================================================
+// === 📅 WHATSAPP: СРОК ПОДПИСКИ ИНСТАНСА =============
+// =====================================================
+
+// Партнёрский метод отдаёт СРАЗУ ВСЕ инстансы партнёра, а не один. Дёргать его
+// на каждое открытие настроек — качать весь список ради одной строки, поэтому
+// держим короткий кэш в памяти: срок меняется раз в месяц, минута погрешности
+// роли не играет.
+let greenApiInstancesCache = { at: 0, list: null };
+const GREEN_API_CACHE_MS = 5 * 60 * 1000;
+
+async function getGreenApiInstances() {
+  const now = Date.now();
+  if (greenApiInstancesCache.list && now - greenApiInstancesCache.at < GREEN_API_CACHE_MS) {
+    return greenApiInstancesCache.list;
+  }
+  const partnerToken = process.env.GREEN_API_PARTNER_TOKEN ? process.env.GREEN_API_PARTNER_TOKEN.trim() : null;
+  if (!partnerToken) return null;
+
+  const url = `https://api.green-api.com/partner/getInstances/${partnerToken}`;
+  const { data } = await axios.get(url, {
+    timeout: 10000,
+    headers: { 'User-Agent': 'InstallMate/1.0 (NodeJS)' }
+  });
+  const list = Array.isArray(data) ? data : [];
+  greenApiInstancesCache = { at: now, list };
+  return list;
+}
+
+app.get('/api/integrations/whatsapp/subscription', auth, async (req, res) => {
+  try {
+    const targetId = getTargetUserId(req.user);
+    // idInstance берём из настроек на сервере, а не из запроса: партнёрский
+    // список общий на всех, и по чужому номеру клиент увидел бы чужой срок.
+    const result = await pool.query(
+      `SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'settings'`,
+      [`settings_${targetId}`, targetId]
+    );
+    const wa = result.rows[0]?.data?.whatsapp;
+    const idInstance = wa?.idInstance ? String(wa.idInstance).trim() : '';
+    if (!idInstance) return res.json({ connected: false });
+
+    const list = await getGreenApiInstances();
+    if (!list) return res.json({ connected: true, available: false, reason: 'no_partner_token' });
+
+    const found = list.find(i => String(i.idInstance) === idInstance);
+    if (!found) {
+      // Инстанс заведён вручную, не через нашего партнёра — срок нам не виден.
+      return res.json({ connected: true, available: false, reason: 'not_partner_instance' });
+    }
+
+    let daysLeft = null;
+    if (found.expirationDate) {
+      const end = new Date(found.expirationDate).getTime();
+      if (!Number.isNaN(end)) {
+        daysLeft = Math.ceil((end - Date.now()) / (24 * 60 * 60 * 1000));
+      }
+    }
+
+    res.json({
+      connected: true,
+      available: true,
+      expirationDate: found.expirationDate || null,
+      isExpired: !!found.isExpired,
+      isFree: !!found.isFree,
+      tariff: found.tariff || null,
+      daysLeft
+    });
+  } catch (e) {
+    console.warn('⚠️ Не удалось получить срок подписки Green API:', e.message);
+    // Настройки не должны падать из-за недоступности стороннего сервиса
+    res.json({ connected: true, available: false, reason: 'request_failed' });
+  }
+});
+
+// =====================================================
 // === 🔔 WHATSAPP: ОТПРАВКА НАПОМИНАНИЯ О ПРОСРОЧКЕ ===
 // =====================================================
 

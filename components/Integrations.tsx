@@ -48,6 +48,16 @@ const DEFAULT_TEMPLATES = {
 \`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``
 };
 
+// Русское склонение: 1 день, 2 дня, 5 дней
+const pluralDays = (n: number) => {
+  const abs = Math.abs(n) % 100;
+  const last = abs % 10;
+  if (abs > 10 && abs < 20) return 'дней';
+  if (last === 1) return 'день';
+  if (last >= 2 && last <= 4) return 'дня';
+  return 'дней';
+};
+
 const Integrations: React.FC<IntegrationsProps> = ({
     appSettings,
     onUpdateSettings,
@@ -57,6 +67,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
 }) => {
   // 🔹 НОВАЯ ЛОГИКА: isConnected вместо waEnabled
   const [isConnected, setIsConnected] = useState(false);
+  const [waSubscription, setWaSubscription] = useState<Awaited<ReturnType<typeof api.getWhatsAppSubscription>> | null>(null);
   const [showCredentials, setShowCredentials] = useState(false);
 
   const [idInstance, setIdInstance] = useState('');
@@ -103,6 +114,9 @@ const Integrations: React.FC<IntegrationsProps> = ({
 
       if (appSettings.whatsapp.enabled && appSettings.whatsapp.idInstance && appSettings.whatsapp.apiTokenInstance) {
         checkConnection(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance).catch(console.error);
+        // Срок подписки — справочная строка, поэтому ошибку глотаем: настройки
+        // не должны ломаться из-за недоступности стороннего сервиса.
+        api.getWhatsAppSubscription().then(setWaSubscription).catch(() => setWaSubscription(null));
         setIsTokenVisible(false);
       }
     }
@@ -351,6 +365,41 @@ const Integrations: React.FC<IntegrationsProps> = ({
           </div>
           {/* 🔹 Переключатель убран — теперь только кнопки */}
         </div>
+
+        {/* Срок подписки инстанса. Показываем, только если он вообще известен:
+            инстанс, заведённый мимо нашего партнёрского аккаунта, партнёрский
+            метод не отдаёт, и пустая строка «неизвестно» пользы не несёт. */}
+        {isConnected && waSubscription?.available && waSubscription.expirationDate && (() => {
+          const days = waSubscription.daysLeft ?? null;
+          const expired = waSubscription.isExpired || (days !== null && days < 0);
+          const soon = !expired && days !== null && days <= 7;
+          const date = new Date(waSubscription.expirationDate).toLocaleDateString('ru-RU', {
+            day: 'numeric', month: 'long', year: 'numeric'
+          });
+          return (
+            <div className={`mx-5 mb-5 rounded-xl px-4 py-3 text-sm border ${
+              expired
+                ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300'
+                : soon
+                  ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'
+                  : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+            }`}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-semibold">
+                  {expired ? 'Подписка истекла' : 'Подписка активна'}
+                </span>
+                {waSubscription.tariff && (
+                  <span className="text-xs font-bold opacity-70">{waSubscription.tariff}</span>
+                )}
+              </div>
+              <p className="mt-1 text-xs">
+                {expired
+                  ? `Срок закончился ${date}. Отправка сообщений не работает, пока не продлите её в личном кабинете Green API.`
+                  : `Действует до ${date}${days !== null ? ` · осталось ${days} ${pluralDays(days)}` : ''}.`}
+              </p>
+            </div>
+          );
+        })()}
 
         {/* 🔹 Кнопка "Подключить" (если не подключен и не в режиме редактирования) */}
         {!isConnected && !showCredentials && (

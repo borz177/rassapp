@@ -871,6 +871,26 @@ export const api = {
     },
 
     // --- INTEGRATIONS ---
+    /**
+     * Срок подписки инстанса WhatsApp. Живёт на сервере, а не здесь: срок отдаёт
+     * партнёрский метод Green API, а он требует партнёрский токен — секрет,
+     * которому в браузере не место.
+     */
+    getWhatsAppSubscription: async (): Promise<{
+        connected: boolean;
+        available?: boolean;
+        reason?: string;
+        expirationDate?: string | null;
+        isExpired?: boolean;
+        isFree?: boolean;
+        tariff?: string | null;
+        daysLeft?: number | null;
+    }> => {
+        const res = await fetchWithAuth(`${API_URL}/integrations/whatsapp/subscription`);
+        if (!res.ok) return { connected: false };
+        return res.json();
+    },
+
     createWhatsAppInstance: async (phoneNumber: string): Promise<{ idInstance: string, apiTokenInstance: string }> => {
         try {
             const res = await fetchWithAuth(`${API_URL}/integrations/whatsapp/create`, {
