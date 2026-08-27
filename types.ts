@@ -42,7 +42,14 @@ export interface WhatsAppSettings {
   companyName?: string;
   calculatorConfigId?: string;
   overdueReminderInterval?: number
-
+  /**
+   * Дата окончания подписки инстанса, введённая вручную.
+   * Нужна только для инстансов, заведённых мимо партнёрского аккаунта: Green API
+   * не отдаёт их срок ни одним методом уровня инстанса — эти данные видны лишь
+   * владельцу аккаунта в его личном кабинете. Для партнёрских инстансов срок
+   * приходит с сервера и это поле не используется.
+   */
+  expiresAt?: string; // YYYY-MM-DD
 }
 
 export interface User {

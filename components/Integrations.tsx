@@ -369,13 +369,23 @@ const Integrations: React.FC<IntegrationsProps> = ({
         {/* Срок подписки инстанса. Показываем, только если он вообще известен:
             инстанс, заведённый мимо нашего партнёрского аккаунта, партнёрский
             метод не отдаёт, и пустая строка «неизвестно» пользы не несёт. */}
-        {isConnected && waSubscription?.available && waSubscription.expirationDate && (() => {
-          const days = waSubscription.daysLeft ?? null;
-          const expired = waSubscription.isExpired || (days !== null && days < 0);
+        {isConnected && (waSubscription?.available
+          ? !!waSubscription.expirationDate
+          : waSubscription?.reason === 'not_partner_instance'
+            && (!!appSettings.whatsapp?.expiresAt || !!waSubscription.planIssue)) && (() => {
+          // Партнёрский инстанс — срок приходит с сервера. Свой — только тот, что
+          // пользователь вписал руками: Green API его не отдаёт.
+          const manual = !waSubscription?.available;
+          const iso = manual ? appSettings.whatsapp?.expiresAt : waSubscription?.expirationDate;
+          const days = manual
+            ? (iso ? Math.ceil((new Date(iso + 'T23:59:59').getTime() - Date.now()) / 86400000) : null)
+            : (waSubscription?.daysLeft ?? null);
+          const quota = waSubscription?.planIssue === 'quota';
+          const expired = !!waSubscription?.isExpired || (days !== null && days < 0) || quota;
           const soon = !expired && days !== null && days <= 7;
-          const date = new Date(waSubscription.expirationDate).toLocaleDateString('ru-RU', {
+          const date = iso ? new Date(iso).toLocaleDateString('ru-RU', {
             day: 'numeric', month: 'long', year: 'numeric'
-          });
+          }) : null;
           return (
             <div className={`mx-5 mb-5 rounded-xl px-4 py-3 text-sm border ${
               expired
@@ -386,20 +396,48 @@ const Integrations: React.FC<IntegrationsProps> = ({
             }`}>
               <div className="flex items-center justify-between gap-3">
                 <span className="font-semibold">
-                  {expired ? 'Подписка истекла' : 'Подписка активна'}
+                  {quota ? 'Лимит тарифа исчерпан' : expired ? 'Подписка истекла' : 'Подписка активна'}
                 </span>
-                {waSubscription.tariff && (
+                {waSubscription?.tariff && (
                   <span className="text-xs font-bold opacity-70">{waSubscription.tariff}</span>
                 )}
               </div>
               <p className="mt-1 text-xs">
-                {expired
-                  ? `Срок закончился ${date}. Отправка сообщений не работает, пока не продлите её в личном кабинете Green API.`
-                  : `Действует до ${date}${days !== null ? ` · осталось ${days} ${pluralDays(days)}` : ''}.`}
+                {quota
+                  ? 'Green API отвечает, что месячный лимит тарифа исчерпан. Отправка не работает, пока не смените тариф в личном кабинете.'
+                  : expired
+                    ? `Срок закончился${date ? ` ${date}` : ''}. Отправка сообщений не работает, пока не продлите её в личном кабинете Green API.`
+                    : `Действует до ${date}${days !== null ? ` · осталось ${days} ${pluralDays(days)}` : ''}.`}
               </p>
+              {manual && (
+                <p className="mt-1 text-[11px] opacity-70">
+                  Дата указана вручную: свой инстанс Green API не сообщает срок автоматически.
+                </p>
+              )}
             </div>
           );
         })()}
+
+        {/* Своим инстансам срок можно вписать руками: Green API отдаёт его только
+            для инстансов партнёрского аккаунта, ни один метод уровня инстанса
+            эту дату не возвращает. Без неё напомнить о продлении нечем. */}
+        {isConnected && waSubscription && !waSubscription.available
+          && waSubscription.reason === 'not_partner_instance' && (
+          <div className="mx-5 mb-5 flex flex-wrap items-center gap-3">
+            <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Подписка действует до
+            </label>
+            <input
+              type="date"
+              value={appSettings.whatsapp?.expiresAt || ''}
+              onChange={e => onUpdateSettings({
+                ...appSettings,
+                whatsapp: { ...appSettings.whatsapp!, expiresAt: e.target.value || undefined }
+              })}
+              className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-300"
+            />
+          </div>
+        )}
 
         {/* 🔹 Кнопка "Подключить" (если не подключен и не в режиме редактирования) */}
         {!isConnected && !showCredentials && (

@@ -1378,8 +1378,23 @@ app.get('/api/integrations/whatsapp/subscription', auth, async (req, res) => {
 
     const found = list.find(i => String(i.idInstance) === idInstance);
     if (!found) {
-      // Инстанс заведён вручную, не через нашего партнёра — срок нам не виден.
-      return res.json({ connected: true, available: false, reason: 'not_partner_instance' });
+      // Инстанс заведён мимо нашего партнёрского аккаунта. Точный срок Green API
+      // по нему не отдаёт — эти данные видит только владелец в своём кабинете.
+      // Но по коду ответа можно отличить исчерпанный тариф от живого инстанса:
+      // 466 — кончился лимит тарифа, 401/403 — инстанс недоступен.
+      let planIssue = null;
+      const token = wa?.apiTokenInstance ? String(wa.apiTokenInstance).trim() : '';
+      if (token) {
+        try {
+          const probe = await axios.get(
+            `https://api.green-api.com/waInstance${idInstance}/getStateInstance/${token}`,
+            { timeout: 8000, validateStatus: () => true }
+          );
+          if (probe.status === 466) planIssue = 'quota';
+          else if (probe.status === 401 || probe.status === 403) planIssue = 'unavailable';
+        } catch { /* сеть недоступна — просто не показываем предупреждение */ }
+      }
+      return res.json({ connected: true, available: false, reason: 'not_partner_instance', planIssue });
     }
 
     let daysLeft = null;

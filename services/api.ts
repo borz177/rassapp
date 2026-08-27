@@ -885,6 +885,7 @@ export const api = {
         isFree?: boolean;
         tariff?: string | null;
         daysLeft?: number | null;
+        planIssue?: 'quota' | 'unavailable' | null;
     }> => {
         const res = await fetchWithAuth(`${API_URL}/integrations/whatsapp/subscription`);
         if (!res.ok) return { connected: false };
