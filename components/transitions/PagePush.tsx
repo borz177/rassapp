@@ -126,7 +126,17 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
   // <PagePush> на том же месте дерева и просто меняет содержимое. Следующая
   // страница въезжала бы в уже сдвинутый слой — отсюда половина одного экрана и
   // половина другого.
+  const firstRunRef = useRef(true);
   useLayoutEffect(() => {
+    // Пропускаем самый первый проход. При монтировании страница специально стоит
+    // за правым краем (inline transform от !idle), из него она и выезжает —
+    // очистка на этом шаге стирала стартовое положение, и анимация въезда
+    // пропадала совсем. Сбрасывать нужно только при СМЕНЕ страницы в том же
+    // переиспользованном слое.
+    if (firstRunRef.current) {
+      firstRunRef.current = false;
+      return;
+    }
     const el = rootRef.current;
     if (!el) return;
     el.style.transform = '';
