@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import TopBarBack from '../TopBarBack';
 import { useScrollRestoration } from '../../src/hooks/useScrollRestoration';
 
@@ -109,12 +109,45 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
   // drag/animation has settled back to idle so fixed-position children behave normally again.
   const clearInlineTransform = () => {
     const el = rootRef.current;
-    if (el && !closingRef.current) {
+    if (!el) return;
+    // will-change снимаем всегда, даже во время закрытия: это подсказка
+    // композитору, к картинке она отношения не имеет, а оставленная навсегда
+    // делает слой отдельным и, что важнее, точкой отсчёта для position: fixed
+    // внутри него.
+    el.style.willChange = '';
+    if (closingRef.current) return;
+    el.style.transform = '';
+    el.style.transition = '';
+  };
+
+  // Сброс при смене страницы. Слой закрывается с inline-трансформом
+  // translateX(ширина) — снять его тогда нельзя, иначе страница прыгнет на место
+  // вместо того чтобы уехать. Но узел DOM переиспользуется: React видит тот же
+  // <PagePush> на том же месте дерева и просто меняет содержимое. Следующая
+  // страница въезжала бы в уже сдвинутый слой — отсюда половина одного экрана и
+  // половина другого.
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    el.style.transform = '';
+    el.style.transition = '';
+    el.style.willChange = '';
+    closingRef.current = false;
+    // entered здесь НЕ сбрасываем: анимация въезда запускается разово при
+    // монтировании, и сброшенный флаг оставил бы новую страницу за краем экрана
+    // навсегда. Закрытие снимаем, иначе таймер прошлой страницы закрыл бы новую.
+    setClosing(false);
+  }, [scrollKey]);
+
+  // И на размонтировании — узел могут переиспользовать после нас
+  useEffect(() => () => {
+    const el = rootRef.current;
+    if (el) {
       el.style.transform = '';
       el.style.transition = '';
       el.style.willChange = '';
     }
-  };
+  }, []);
 
   const resetDrag = () => {
     drag.current.active = false;
