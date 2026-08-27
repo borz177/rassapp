@@ -67,8 +67,19 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
   const drag = useRef<DragState>({ startX: 0, startY: 0, startT: 0, active: false, deciding: false, locked: false });
 
   useEffect(() => {
-    const raf = requestAnimationFrame(() => setEntered(true));
-    return () => cancelAnimationFrame(raf);
+    // Два кадра, а не один. Браузер обязан СНАЧАЛА отрисовать страницу в
+    // стартовом положении (за правым краем), и только потом получить новое —
+    // иначе он схлопнет оба состояния в один кадр и переход не проиграется.
+    // На лёгких страницах хватало и одного кадра, а тяжёлые (настройки, тарифы)
+    // не успевали отрисоваться до его срабатывания и появлялись сразу на месте.
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => setEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
   }, []);
 
   useEffect(() => {
