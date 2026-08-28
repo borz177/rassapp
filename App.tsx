@@ -3965,7 +3965,7 @@ if (!user && !showSplash) {
                   <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                     <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters}
                            data={reportData} appSettings={appSettings} sales={sales} expenses={expenses} accounts={accounts} customers={customers}
-                           retailSales={retailSales} products={products} showShop={checkAccess('SHOP') && !!appSettings.shopEnabled}/>
+                           retailSales={retailSales} products={products} stockMovements={stockMovements} showShop={checkAccess('SHOP') && !!appSettings.shopEnabled}/>
                   </PagePush>
               )}
 

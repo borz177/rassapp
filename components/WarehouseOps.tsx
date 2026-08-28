@@ -289,13 +289,15 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
           {products.length === 0 ? 'Сначала добавьте товары на вкладке «Товары».' : 'Ничего не найдено.'}
         </p>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 pb-24">
+        // Плитки крупнее витрины кассы: здесь по ним не пробивают чек за
+        // секунду, а сверяют остаток и попадают пальцем в нужный товар.
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 pb-24">
           {visible.map(p => {
             const inBatch = batch[p.id];
             const here = stockAt(p, fromWh);
             return (
               <button key={p.id} onClick={() => openPick(p)}
-                      className={`relative bg-white dark:bg-slate-800 rounded-2xl border p-2.5 text-left active:scale-95 transition-transform ${
+                      className={`relative bg-white dark:bg-slate-800 rounded-2xl border p-3.5 text-left active:scale-95 transition-transform ${
                         inBatch ? 'border-indigo-500 border-2' : 'border-slate-100 dark:border-slate-700'
                       }`}>
                 {inBatch && (
@@ -303,15 +305,16 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
                     {money(inBatch.qty)}
                   </span>
                 )}
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
                     {p.images?.[0]
                       ? <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" />
-                      : <span className="text-slate-400 text-xs">📦</span>}
+                      : <span className="text-slate-400 text-lg">📦</span>}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-bold text-slate-800 dark:text-white text-xs leading-tight line-clamp-2">{p.name}</p>
-                    <p className={`text-[11px] font-bold ${here < 0 ? 'text-rose-500' : 'text-slate-400'}`}>
+                    <p className="font-bold text-slate-800 dark:text-white text-sm leading-tight line-clamp-2">{p.name}</p>
+                    {p.sku && <p className="text-[11px] text-slate-400 truncate">{p.sku}</p>}
+                    <p className={`text-sm font-bold mt-0.5 ${here < 0 ? 'text-rose-500' : 'text-slate-500 dark:text-slate-400'}`}>
                       {money(here)} {p.unit || 'шт'}
                     </p>
                   </div>

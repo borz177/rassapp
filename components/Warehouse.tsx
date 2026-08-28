@@ -296,52 +296,40 @@ const Warehouse: React.FC<WarehouseProps> = ({
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Операции идут на выбранный склад, а выручка магазина — на привязанный к нему счёт.
           </p>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {shownWarehouses.map(w => {
               const account = accounts.find(a => a.id === w.accountId);
               const stat = warehouseStats(w.id);
               return (
                 <div key={w.id}
-                     className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-bold text-slate-800 dark:text-white truncate">{w.name}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                        {w.address || 'Адрес не указан'}
-                      </p>
-                    </div>
+                     className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3.5 flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-bold text-slate-800 dark:text-white truncate">{w.name}</p>
                     {w.isMain && (
-                      <span className="shrink-0 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wide">
+                      <span className="shrink-0 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wide">
                         Основной
                       </span>
                     )}
                   </div>
 
-                  <div className="flex gap-4">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Позиций</p>
-                      <p className="font-bold text-slate-800 dark:text-white">{stat.items}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Единиц</p>
-                      <p className="font-bold text-slate-800 dark:text-white">{money(stat.units)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">В закупе</p>
-                      <p className="font-bold text-slate-800 dark:text-white">{money(stat.cost)} ₽</p>
-                    </div>
-                  </div>
+                  {/* Цифры в строку: их три, и каждая в своей коробке растягивала
+                      карточку в высоту, ничего не добавляя к пониманию. */}
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {stat.items} поз. · {money(stat.units)} ед. · {money(stat.cost)} ₽ в закупе
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                    {w.address || 'Адрес не указан'}
+                  </p>
+                  <p className="text-xs truncate">
+                    <span className="text-slate-400">Счёт: </span>
+                    <span className={account ? 'font-semibold text-slate-700 dark:text-slate-200' : 'text-slate-400'}>
+                      {account ? account.name : 'не привязан'}
+                    </span>
+                  </p>
 
-                  <div className="rounded-xl bg-slate-50 dark:bg-slate-900 px-3 py-2">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Счёт выручки</p>
-                    <p className={`text-sm font-bold truncate ${account ? 'text-slate-800 dark:text-white' : 'text-slate-400 dark:text-slate-500'}`}>
-                      {account ? account.name : 'Не привязан'}
-                    </p>
-                  </div>
-
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 pt-0.5">
                     <button onClick={() => setWhForm(w)}
-                            className="flex-1 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">
+                            className="flex-1 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">
                       Изменить
                     </button>
                     {!w.isMain && (
@@ -349,7 +337,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
                                 if (!window.confirm(`Удалить склад «${w.name}»? Остатки на нём останутся в истории движений.`)) return;
                                 await onDeleteWarehouse(w.id);
                               }}
-                              className="px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-xs font-bold">
+                              className="px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-xs font-bold">
                         Удалить
                       </button>
                     )}

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import TabPill from './TabPill';
 import ShopReportBody from './ShopReportBody';
-import { Investor, AppSettings, Sale, Expense, Account, Customer, RetailSale as RetailSaleType, Product} from '../types';
+import { Investor, AppSettings, Sale, Expense, Account, Customer, RetailSale as RetailSaleType, Product, StockMovement} from '../types';
 import { formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor, calculateSaleOverdue, addMonthsClamped, shareDateForSale } from '../src/utils';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
@@ -32,8 +32,9 @@ interface ReportsProps {
     expenses: Expense[];
     accounts: Account[];
     customers: Customer[];
-    /** Розничные чеки и товары — для вкладки «Магазин». Пусто, когда магазин выключен. */
+    /** Розничные чеки, товары и движения — для вкладки «Наличные». Пусто, когда магазин выключен. */
     retailSales?: RetailSaleType[];
+    stockMovements?: StockMovement[];
     products?: Product[];
     showShop?: boolean;
 }
@@ -127,7 +128,7 @@ const ProgressRow: React.FC<ProgressRowProps> = ({ label, realized, expected, co
 const Reports: React.FC<ReportsProps> = ({
     investors, filters, onFiltersChange, data, appSettings,
     sales = [], expenses = [], accounts = [], customers = [],
-    retailSales = [], products = [], showShop = false
+    retailSales = [], products = [], stockMovements = [], showShop = false
 }) => {
     // Рассрочка и магазин считаются по разным данным: договоры с графиком против
     // розничных чеков. Смешивать их в одном отчёте нельзя — выручка сложилась бы,
@@ -778,12 +779,12 @@ const Reports: React.FC<ReportsProps> = ({
                     <button onClick={() => setReportTab('shop')}
                             className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-xl transition-colors ${
                               reportTab === 'shop' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
-                            }`}>Магазин</button>
+                            }`}>Наличные</button>
                   </div>
                 )}
 
                 {showShop && reportTab === 'shop' && (
-                  <ShopReportBody sales={retailSales} products={products} showCents={appSettings.showCents} />
+                  <ShopReportBody sales={retailSales} products={products} movements={stockMovements} showCents={appSettings.showCents} />
                 )}
 
                 {(!showShop || reportTab === 'installments') && (<>

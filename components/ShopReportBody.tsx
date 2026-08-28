@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import type { Product, RetailSale } from '../types';
+import type { Product, RetailSale, StockMovement } from '../types';
 import TabPill from './TabPill';
 
 interface ShopReportBodyProps {
   sales: RetailSale[];
   products: Product[];
+  /** Движения по складу — для раздела потерь */
+  movements?: StockMovement[];
   showCents?: boolean;
 }
 
@@ -39,8 +41,12 @@ const periodStart = (p: Period) => {
  * Свой период, независимый от фильтров рассрочки: у розницы другой горизонт —
  * там смотрят на день и неделю, а не на квартал.
  */
-const ShopReportBody: React.FC<ShopReportBodyProps> = ({ sales, products, showCents = false }) => {
+const ShopReportBody: React.FC<ShopReportBodyProps> = ({ sales, products, movements = [], showCents = false }) => {
   const [period, setPeriod] = useState<Period>('MONTH');
+  // Самый ходовой товар и самый прибыльный — редко один и тот же, а решения
+  // по закупу принимают по второму. Один список с переключателем показывает
+  // обе стороны, не заставляя листать два почти одинаковых.
+  const [rank, setRank] = useState<'revenue' | 'profit'>('revenue');
 
   const scoped = useMemo(() => {
     const from = periodStart(period).getTime();
@@ -85,6 +91,55 @@ const ShopReportBody: React.FC<ShopReportBodyProps> = ({ sales, products, showCe
       .slice(0, 10);
   }, [products, scoped]);
 
+  // Динамика: по дням для недели и месяца, по месяцам для всего времени —
+  // триста столбиков за год не читаются, а двенадцать отвечают на вопрос
+  // «когда торгуем лучше» сразу.
+  const byBucket = useMemo(() => {
+    const monthly = period === 'ALL';
+    const map = new Map<string, { label: string; revenue: number; profit: number; checks: number }>();
+    scoped.forEach(s => {
+      const d = new Date(s.date);
+      const key = monthly
+        ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        : d.toISOString().slice(0, 10);
+      const label = monthly
+        ? d.toLocaleDateString('ru-RU', { month: 'short' })
+        : d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+      const cur = map.get(key) || { label, revenue: 0, profit: 0, checks: 0 };
+      cur.revenue += s.total;
+      cur.profit += s.profit;
+      cur.checks += 1;
+      map.set(key, cur);
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, v]) => ({ key, ...v }))
+      .slice(-30);
+  }, [scoped, period]);
+
+  const peakBucket = Math.max(1, ...byBucket.map(b => b.revenue));
+
+  // Потери: товар ушёл со склада, но не через кассу. Эти деньги нигде больше не
+  // видны — в выручке их нет по определению, а в остатках они уже вычтены.
+  const losses = useMemo(() => {
+    const from = periodStart(period).getTime();
+    const rows = movements.filter(m => m.type === 'WRITE_OFF' && new Date(m.date).getTime() >= from);
+    const map = new Map<string, { name: string; qty: number; cost: number; reasons: Set<string> }>();
+    rows.forEach(m => {
+      const product = products.find(p => p.id === m.productId);
+      const cur = map.get(m.productId) || {
+        name: product?.name || 'Товар удалён', qty: 0, cost: 0, reasons: new Set<string>(),
+      };
+      const qty = Math.abs(m.quantity);
+      cur.qty += qty;
+      cur.cost += qty * (m.unitPrice ?? product?.buyPrice ?? 0);
+      if (m.note) cur.reasons.add(m.note.split(' · ')[0]);
+      map.set(m.productId, cur);
+    });
+    const list = Array.from(map.values()).sort((a, b) => b.cost - a.cost);
+    return { list, total: list.reduce((s, x) => s + x.cost, 0) };
+  }, [movements, products, period]);
+
   const card = 'bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4';
 
   return (
@@ -125,13 +180,43 @@ const ShopReportBody: React.FC<ShopReportBodyProps> = ({ sales, products, showCe
         ))}
       </div>
 
+      {byBucket.length > 1 && (
+        <div className={card}>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-3">
+            {period === 'ALL' ? 'Выручка по месяцам' : 'Выручка по дням'}
+          </p>
+          <div className="flex items-end gap-1 h-28 overflow-x-auto">
+            {byBucket.map(b => (
+              <div key={b.key} className="flex-1 min-w-[18px] flex flex-col items-center gap-1 group"
+                   title={`${b.label}: ${money(b.revenue, showCents)} ₽ · ${b.checks} чеков`}>
+                <div className="w-full flex-1 flex items-end">
+                  <div className="w-full rounded-t-md bg-gradient-to-t from-emerald-500 to-emerald-400 min-h-[2px]"
+                       style={{ height: `${(b.revenue / peakBucket) * 100}%` }} />
+                </div>
+                <span className="text-[9px] text-slate-400 whitespace-nowrap">{b.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
-        <h3 className="font-bold text-slate-800 dark:text-white mb-2">Товары по выручке</h3>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <h3 className="font-bold text-slate-800 dark:text-white">Товары</h3>
+          <div className="flex gap-1 p-0.5 rounded-full bg-slate-100 dark:bg-slate-700">
+            {([['revenue', 'По выручке'], ['profit', 'По прибыли']] as const).map(([id, label]) => (
+              <button key={id} onClick={() => setRank(id)}
+                      className={`px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${
+                        rank === id ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500'
+                      }`}>{label}</button>
+            ))}
+          </div>
+        </div>
         {byProduct.length === 0 ? (
           <p className="text-sm text-slate-500 dark:text-slate-400 py-4">За период продаж не было.</p>
         ) : (
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
-            {byProduct.slice(0, 20).map(p => (
+            {[...byProduct].sort((a, b) => (rank === 'profit' ? b.profit - a.profit : b.revenue - a.revenue)).slice(0, 20).map(p => (
               <div key={p.name} className="px-4 py-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-semibold text-slate-800 dark:text-white truncate">{p.name}</p>
@@ -148,6 +233,28 @@ const ShopReportBody: React.FC<ShopReportBodyProps> = ({ sales, products, showCe
           </div>
         )}
       </div>
+
+      {losses.list.length > 0 && (
+        <div>
+          <h3 className="font-bold text-slate-800 dark:text-white mb-1">Списано со склада</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+            Товар ушёл не через кассу — на {money(losses.total, showCents)} ₽ по закупу
+          </p>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
+            {losses.list.slice(0, 10).map(l => (
+              <div key={l.name} className="px-4 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-slate-800 dark:text-white truncate">{l.name}</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    {money(l.qty)} ед.{l.reasons.size ? ` · ${Array.from(l.reasons).join(', ')}` : ''}
+                  </p>
+                </div>
+                <p className="text-sm font-bold text-rose-500 shrink-0">−{money(l.cost, showCents)} ₽</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {stale.length > 0 && (
         <div>
