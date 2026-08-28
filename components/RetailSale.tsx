@@ -7,6 +7,8 @@ interface RetailSaleProps {
   products: Product[];
   customers: Customer[];
   accounts: Account[];
+  /** Счёт склада, с которого идёт торговля; подставляется в чек по умолчанию */
+  defaultAccountId?: string;
   /** Прошлые чеки — нужны только для следующего номера документа */
   existingSales?: RetailSaleType[];
   onSubmit: (sale: RetailSaleType) => Promise<void> | void;
@@ -39,7 +41,7 @@ const input = 'w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate
  * никому не понадобятся.
  */
 const RetailSale: React.FC<RetailSaleProps> = ({
-  products, customers, accounts, existingSales = [], onSubmit, onBack, showCents = false,
+  products, customers, accounts, defaultAccountId, existingSales = [], onSubmit, onBack, showCents = false,
 }) => {
   const [items, setItems] = useState<RetailSaleItem[]>([]);
   const [search, setSearch] = useState('');
@@ -50,8 +52,13 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   const [pickCustomer, setPickCustomer] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
 
+  // Счёт склада важнее общего «основного»: магазин сдаёт выручку в свою кассу,
+  // и если склад её назвал — спорить с ним незачем.
   const [accountId, setAccountId] = useState<string>(
-    accounts.find(a => a.isMain && !a.isArchived)?.id || accounts.find(a => !a.isArchived)?.id || ''
+    (defaultAccountId && accounts.some(a => a.id === defaultAccountId && !a.isArchived) ? defaultAccountId : '')
+    || accounts.find(a => a.isMain && !a.isArchived)?.id
+    || accounts.find(a => !a.isArchived)?.id
+    || ''
   );
   const [discount, setDiscount] = useState('');
   const [note, setNote] = useState('');

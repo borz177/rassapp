@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import type { Product, StockLocation, StockMovement, Supplier } from '../types';
+import type { Account, Product, StockLocation, StockMovement, Supplier } from '../types';
+import { DEFAULT_WAREHOUSE_ID } from '../types';
+import { stockAtWarehouse } from '../src/utils';
 import { api } from '../services/api';
 import { compressImageFile } from '../src/imageCompress';
 import TopBarBack from './TopBarBack';
@@ -12,6 +14,7 @@ interface WarehouseProps {
   movements: StockMovement[];
   warehouses: StockLocation[];
   suppliers: Supplier[];
+  accounts: Account[];
   /** Проведение складского документа: движения и обновлённые остатки разом */
   onPostBatch: (movements: StockMovement[], products: Product[]) => Promise<void> | void;
   onSaveWarehouse: (w: StockLocation) => Promise<void> | void;
@@ -54,7 +57,7 @@ const MOVEMENT_LABELS: Record<StockMovement['type'], string> = {
  * сходятся все споры о недостаче.
  */
 const Warehouse: React.FC<WarehouseProps> = ({
-  products, movements, warehouses, suppliers,
+  products, movements, warehouses, suppliers, accounts,
   onSaveProduct, onDeleteProduct, onAddMovement, onPostBatch,
   onSaveWarehouse, onDeleteWarehouse, onBack,
 }) => {
@@ -114,6 +117,26 @@ const Warehouse: React.FC<WarehouseProps> = ({
       low: live.filter(isLow).length,
     };
   }, [products]);
+
+  // Основной склад показываем карточкой всегда, даже если ничего не заводили:
+  // товары до появления складов лежат именно на нём, и без карточки к нему
+  // нельзя было бы привязать счёт.
+  const shownWarehouses = useMemo(() => {
+    const live = warehouses.filter(w => !w.isArchived);
+    if (live.some(w => w.isMain)) return live;
+    const fallback: StockLocation = { id: DEFAULT_WAREHOUSE_ID, userId: '', name: 'Основной склад', isMain: true };
+    return [fallback, ...live];
+  }, [warehouses]);
+
+  const warehouseStats = (warehouseId: string) => {
+    const live = products.filter(p => !p.isArchived);
+    const onIt = live.filter(p => stockAtWarehouse(p, warehouseId) !== 0);
+    return {
+      items: onIt.length,
+      units: onIt.reduce((s, p) => s + stockAtWarehouse(p, warehouseId), 0),
+      cost: onIt.reduce((s, p) => s + stockAtWarehouse(p, warehouseId) * (p.buyPrice || 0), 0),
+    };
+  };
 
   const openNew = () => { setEditing(null); setForm(emptyForm); setError(null); setShowForm(true); };
   const openEdit = (p: Product) => {
@@ -226,10 +249,21 @@ const Warehouse: React.FC<WarehouseProps> = ({
             {totals.items} позиций · {money(totals.units)} ед. · закуп {money(totals.cost)} ₽
           </p>
         </div>
-        <button onClick={openNew}
-                className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-sm active:scale-95 transition-transform shrink-0">
-          + Товар
-        </button>
+        {/* Действие принадлежит вкладке: на операциях добавлять нечего, а
+            «+ Склад» на своей вкладке живёт там же, где «+ Товар» на своей —
+            рука ищет кнопку в одном месте. */}
+        {section === 'catalog' && (
+          <button onClick={openNew}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-sm active:scale-95 transition-transform shrink-0">
+            + Товар
+          </button>
+        )}
+        {section === 'places' && (
+          <button onClick={() => setWhForm({ name: '', address: '' })}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-sm active:scale-95 transition-transform shrink-0">
+            + Склад
+          </button>
+        )}
       </div>
 
       {error && (
@@ -259,32 +293,55 @@ const Warehouse: React.FC<WarehouseProps> = ({
 
       {section === 'places' && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Пока склад один, выбирать не из чего — операции идут на него по умолчанию.
-            </p>
-            <button onClick={() => setWhForm({ name: '', address: '' })}
-                    className="shrink-0 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-sm">
-              + Склад
-            </button>
-          </div>
-          {warehouses.filter(w => !w.isArchived).length === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center">
-              Складов не заведено. Всё лежит на основном.
-            </p>
-          ) : (
-            <div className="grid gap-2">
-              {warehouses.filter(w => !w.isArchived).map(w => (
-                <div key={w.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-bold text-slate-800 dark:text-white truncate">
-                      {w.name} {w.isMain && <span className="text-amber-500">★</span>}
-                    </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{w.address || 'Адрес не указан'}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Операции идут на выбранный склад, а выручка магазина — на привязанный к нему счёт.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {shownWarehouses.map(w => {
+              const account = accounts.find(a => a.id === w.accountId);
+              const stat = warehouseStats(w.id);
+              return (
+                <div key={w.id}
+                     className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-800 dark:text-white truncate">{w.name}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                        {w.address || 'Адрес не указан'}
+                      </p>
+                    </div>
+                    {w.isMain && (
+                      <span className="shrink-0 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wide">
+                        Основной
+                      </span>
+                    )}
                   </div>
-                  <div className="flex gap-2 shrink-0">
+
+                  <div className="flex gap-4">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Позиций</p>
+                      <p className="font-bold text-slate-800 dark:text-white">{stat.items}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Единиц</p>
+                      <p className="font-bold text-slate-800 dark:text-white">{money(stat.units)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">В закупе</p>
+                      <p className="font-bold text-slate-800 dark:text-white">{money(stat.cost)} ₽</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-900 px-3 py-2">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Счёт выручки</p>
+                    <p className={`text-sm font-bold truncate ${account ? 'text-slate-800 dark:text-white' : 'text-slate-400 dark:text-slate-500'}`}>
+                      {account ? account.name : 'Не привязан'}
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
                     <button onClick={() => setWhForm(w)}
-                            className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">
+                            className="flex-1 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">
                       Изменить
                     </button>
                     {!w.isMain && (
@@ -292,15 +349,15 @@ const Warehouse: React.FC<WarehouseProps> = ({
                                 if (!window.confirm(`Удалить склад «${w.name}»? Остатки на нём останутся в истории движений.`)) return;
                                 await onDeleteWarehouse(w.id);
                               }}
-                              className="px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-xs font-bold">
+                              className="px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-xs font-bold">
                         Удалить
                       </button>
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -389,6 +446,18 @@ const Warehouse: React.FC<WarehouseProps> = ({
                      placeholder="Название" className={inputCls} />
               <input value={whForm.address || ''} onChange={e => setWhForm({ ...whForm, address: e.target.value })}
                      placeholder="Адрес" className={inputCls} />
+              <div>
+                <select value={whForm.accountId || ''} onChange={e => setWhForm({ ...whForm, accountId: e.target.value })}
+                        className={inputCls}>
+                  <option value="">Счёт выручки не выбран</option>
+                  {accounts.filter(a => !a.isArchived).map(a => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                  Продажи с этого склада будут по умолчанию попадать на выбранный счёт.
+                </p>
+              </div>
               <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                 <input type="checkbox" checked={!!whForm.isMain}
                        onChange={e => setWhForm({ ...whForm, isMain: e.target.checked })} />
@@ -407,6 +476,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
                       userId: whForm.userId || '',
                       name: whForm.name.trim(),
                       address: whForm.address?.trim() || undefined,
+                      accountId: whForm.accountId || undefined,
                       isMain: !!whForm.isMain,
                     });
                     setWhForm(null);

@@ -2855,16 +2855,19 @@ const confirmDeleteCustomer = async () => {
    * числом, и жёсткий запрет заставил бы людей обходить систему. Предупреждение
    * человек уже увидел в форме.
    */
+  // Склад, с которого торгует магазин. Выбор склада в чеке — лишний вопрос
+  // кассиру: точка продажи почти всегда одна, а её счёт задан в карточке склада.
+  const saleWarehouse = useMemo(
+    () => warehouses.find(w => w.isMain && !w.isArchived) || warehouses.find(w => !w.isArchived),
+    [warehouses]
+  );
+
   const handleRetailSale = async (sale: RetailSaleType) => {
     if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
     if (!user) return;
     const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
 
-    // Розница продаётся с основного склада: на кассе выбор склада — лишний
-    // вопрос кассиру, а магазин почти всегда торгует с одного места.
-    const saleWarehouseId = warehouses.find(w => w.isMain && !w.isArchived)?.id
-      || warehouses.find(w => !w.isArchived)?.id
-      || DEFAULT_WAREHOUSE_ID;
+    const saleWarehouseId = saleWarehouse?.id || DEFAULT_WAREHOUSE_ID;
 
     const savedSale = await api.saveItem('retailSales', {
       ...sale, userId: ownerId, createdByUserId: user.id,
@@ -4040,6 +4043,7 @@ if (!user && !showSplash) {
                       products={products}
                       customers={customers}
                       accounts={accounts}
+                      defaultAccountId={saleWarehouse?.accountId}
                       existingSales={retailSales}
                       showCents={appSettings.showCents}
                       onSubmit={handleRetailSale}
@@ -4057,6 +4061,7 @@ if (!user && !showSplash) {
                       movements={stockMovements}
                       warehouses={warehouses}
                       suppliers={suppliers}
+                      accounts={accounts}
                       onPostBatch={handlePostStockBatch}
                       onSaveWarehouse={handleSaveWarehouse}
                       onDeleteWarehouse={handleDeleteWarehouse}

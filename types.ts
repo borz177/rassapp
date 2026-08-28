@@ -324,6 +324,12 @@ export interface StockLocation {
   userId: string;
   name: string;
   address?: string;
+  /**
+   * Счёт, на который по умолчанию идёт выручка магазина с этого склада.
+   * Точка продажи почти всегда сдаёт деньги в одну и ту же кассу, и заставлять
+   * кассира выбирать её в каждом чеке — лишний шаг и лишняя ошибка.
+   */
+  accountId?: string;
   isMain?: boolean;
   isArchived?: boolean;
 }
