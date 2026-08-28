@@ -461,6 +461,29 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, o
               </label>
           </div>
 
+          {/* Вложенная настройка: у одних магазин — подсобная часть дела, у
+              других основное занятие. Первым половина главного экрана под кассу
+              только мешала бы, вторым без неё пришлось бы каждый раз идти в меню. */}
+          {shopAllowed && appSettings.shopEnabled && (
+          <div className="flex items-center justify-between pl-4 border-l-2 border-slate-100 dark:border-slate-700">
+              <div>
+                  <p className="font-medium text-slate-700 dark:text-slate-300">Вкладка «Наличные» на главном</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Касса и сводка по рознице прямо в «Обзоре», без захода в меню
+                  </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={appSettings.shopDashboardTab ?? false}
+                      onChange={(e) => onUpdateSettings({ ...appSettings, shopDashboardTab: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-slate-200 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+              </label>
+          </div>
+          )}
+
           <div className="flex items-center justify-between">
               <div>
                   <p className="font-medium text-slate-700 dark:text-slate-300">Показывать копейки</p>

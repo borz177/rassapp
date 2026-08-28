@@ -1419,7 +1419,12 @@ const dashboardStats = useMemo(() => {
     }
   });
   return { totalRevenue, totalOutstanding, overdueCount, installmentSalesTotal };
-}, [sales]);  const accountBalances = useMemo(() => { const balances: Record<string, number> = {}; accounts.forEach(acc => { let total = acc.initialBalance || 0; const accountSales = sales.filter(s => s.accountId === acc.id); accountSales.forEach(s => { total += s.downPayment; s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false).forEach(p => total += p.amount); }); const accountExpenses = expenses.filter(e => e.accountId === acc.id && e.isRefund !== true);  total -= accountExpenses.reduce((sum, e) => sum + e.amount, 0); balances[acc.id] = total; }); return balances; }, [accounts, sales, expenses]);
+}, [sales]);  const accountBalances = useMemo(() => { const balances: Record<string, number> = {}; accounts.forEach(acc => { let total = acc.initialBalance || 0; const accountSales = sales.filter(s => s.accountId === acc.id); accountSales.forEach(s => { total += s.downPayment; s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false).forEach(p => total += p.amount); }); const accountExpenses = expenses.filter(e => e.accountId === acc.id && e.isRefund !== true);  total -= accountExpenses.reduce((sum, e) => sum + e.amount, 0);
+    // Выручка магазина — такие же живые деньги на счёте, как взнос по
+    // рассрочке. Без этой строки чек пробивался, товар списывался, а касса
+    // показывала прежний баланс: счёт один, и он держит оба потока.
+    total += retailSales.filter(r => r.accountId === acc.id && !r.isCancelled).reduce((sum, r) => sum + r.total, 0);
+    balances[acc.id] = total; }); return balances; }, [accounts, sales, expenses, retailSales]);
   const workingCapital = useMemo(() => { const cashInAccounts = Object.values(accountBalances).reduce((sum: number, bal: number) => sum + bal, 0); return cashInAccounts + dashboardStats.totalOutstanding; }, [accountBalances, dashboardStats.totalOutstanding]);
   const totalExpectedProfit = useMemo(() => {
     if (!isManager) return 0;
@@ -3692,6 +3697,7 @@ if (!user && !showSplash) {
     showEmployees={checkAccess('EMPLOYEES')}
     showSuppliers={checkAccess('SUPPLIERS')}
     showShop={checkAccess('SHOP') && !!appSettings.shopEnabled}
+    showShopTab={checkAccess('SHOP') && !!appSettings.shopEnabled && !!appSettings.shopDashboardTab}
     // 🔹 Кнопка поддержки для десктопа (плавающая) — админа ведём в панель
     // управления обращениями, а не в чат "как у обычного пользователя"
     supportButton={
@@ -3713,7 +3719,9 @@ if (!user && !showSplash) {
                   <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital}
                              accountBalances={accountBalances} onAction={handleAction}
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
-                             accounts={accounts} appSettings={appSettings} investors={investors} user={user}/>}
+                             accounts={accounts} appSettings={appSettings} investors={investors} user={user} retailSales={retailSales} products={products}
+                  showShopTab={checkAccess('SHOP') && !!appSettings.shopEnabled && !!appSettings.shopDashboardTab}
+                  />}
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
 {/* 🔹 Дашборд инвестора — с проверкой на загрузку данных */}
 {currentView === 'DASHBOARD' && isInvestor && activeInvestor && (
@@ -4291,6 +4299,29 @@ if (!user && !showSplash) {
 </button>
 
         <div className="space-y-2 pt-4">
+          {/* Задачи — тарифы Бизнес и Бизнес Pro. Сотруднику видны поручения от менеджера */}
+          {(user.role === 'manager' || isEmployee) && checkAccess('TASKS') && (
+            <button onClick={() => { setPreviousView('MORE'); setCurrentView('TASKS'); }}
+                    className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
+              <div className="flex items-center gap-3">
+                <div className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 p-2 rounded-lg">{ICONS.Tasks}</div>
+                <span className="font-semibold text-slate-800 dark:text-white">Задачи</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {tasks.filter(t => !t.isDone).length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300">
+                    {tasks.filter(t => !t.isDone).length}
+                  </span>
+                )}
+                <span className="text-slate-400 dark:text-slate-500">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </span>
+              </div>
+            </button>
+          )}
+
           {/* Касса (аккордеон) */}
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden">
             <button onClick={() => toggleMoreSection('CASH')}
@@ -4418,28 +4449,6 @@ if (!user && !showSplash) {
             </button>
           )}
 
-          {/* Задачи — тарифы Бизнес и Бизнес Pro. Сотруднику видны поручения от менеджера */}
-          {(user.role === 'manager' || isEmployee) && checkAccess('TASKS') && (
-            <button onClick={() => { setPreviousView('MORE'); setCurrentView('TASKS'); }}
-                    className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
-              <div className="flex items-center gap-3">
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 p-2 rounded-lg">{ICONS.Tasks}</div>
-                <span className="font-semibold text-slate-800 dark:text-white">Задачи</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {tasks.filter(t => !t.isDone).length > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300">
-                    {tasks.filter(t => !t.isDone).length}
-                  </span>
-                )}
-                <span className="text-slate-400 dark:text-slate-500">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="9 18 15 12 9 6"/>
-                  </svg>
-                </span>
-              </div>
-            </button>
-          )}
 
           {/* Партнеры (поставщики) — только тариф Бизнес Pro */}
           {user.role === 'manager' && checkAccess('SUPPLIERS') && (
