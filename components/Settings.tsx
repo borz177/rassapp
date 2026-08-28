@@ -16,6 +16,8 @@ const BackupSettingsCard = lazy(() => import('./BackupSettingsCard'));
 
 interface SettingsProps {
   appSettings: AppSettings;
+  /** Разрешает ли тариф магазин. Решение принимает App — здесь только вид. */
+  shopAllowed?: boolean;
   onUpdateSettings: (settings: AppSettings) => void;
   onNavigate: (view: ViewState) => void;
   onSettingsChanged?: () => void;
@@ -102,7 +104,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
-const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNavigate, onSettingsChanged, currentUserId, user }) => {
+const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, onUpdateSettings, onNavigate, onSettingsChanged, currentUserId, user }) => {
   const isEmployee = user?.role === 'employee';
   const hasNotificationsAccess = user?.role === 'admin' || user?.role === 'employee' || user?.role === 'investor'
     || user?.subscription?.plan !== 'START';
@@ -429,6 +431,36 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, onUpdateSettings, onNa
 
       {/* Display Settings */}
       <SettingsAccordion title="Отображение">
+          {/* Магазин выключен по умолчанию: большинству он не нужен, а лишние
+              разделы в меню только мешают. На тарифах ниже Бизнес Про переключатель
+              показывается заблокированным — так видно, что функция есть, но
+              требует тарифа, вместо того чтобы просто отсутствовать. */}
+          <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+              <div className="pr-3">
+                  <p className="font-medium text-slate-700 dark:text-slate-300">
+                      Магазин и склад
+                      {!shopAllowed && (
+                          <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 align-middle">
+                              Бизнес Про
+                          </span>
+                      )}
+                  </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Розничные продажи за наличные и учёт остатков товаров
+                  </p>
+              </div>
+              <label className={`relative inline-flex items-center ${shopAllowed ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
+                  <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      disabled={!shopAllowed}
+                      checked={shopAllowed && (appSettings.shopEnabled ?? false)}
+                      onChange={(e) => onUpdateSettings({ ...appSettings, shopEnabled: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-slate-200 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+              </label>
+          </div>
+
           <div className="flex items-center justify-between">
               <div>
                   <p className="font-medium text-slate-700 dark:text-slate-300">Показывать копейки</p>

@@ -383,6 +383,13 @@ export interface AppSettings {
   showCents?: boolean;
   markupFromNetBuyPrice?: boolean;
   notifications?: NotificationSettings;
+  /**
+   * Режим магазина: розничные продажи за наличные и склад.
+   * Выключен по умолчанию — большинству он не нужен, а лишние разделы в меню
+   * мешают. Доступен только на тарифе Бизнес Про; одного этого флага мало,
+   * решение принимается вместе с проверкой тарифа.
+   */
+  shopEnabled?: boolean;
 }
 
 /**
@@ -400,6 +407,7 @@ export interface PlanLimits {
   investorPools: boolean;
   notifications: boolean;
   tasks: boolean;
+  shop: boolean;
 }
 
 export type BackupFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';

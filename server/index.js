@@ -90,11 +90,11 @@ const getTargetUserId = (user) => {
 // уведомления Роскомнадзора (ч. 3 ст. 12 152-ФЗ) и приостановки передачи на
 // 10 рабочих дней. Функция в интерфейсе не использовалась, поэтому выключена.
 const PLAN_LIMITS = {
-  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: false,  suppliers: true, investorPools: true, notifications: true,  tasks: true },
-  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false },
-  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false },
-  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: false, investorPools: false, notifications: true,  tasks: true  },
-  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: true,  investorPools: true,  notifications: true,  tasks: true  },
+  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: false,  suppliers: true, investorPools: true, notifications: true,  tasks: true , shop: true },
+  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false , shop: false },
+  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false },
+  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: false, investorPools: false, notifications: true,  tasks: true  , shop: false },
+  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: true,  investorPools: true,  notifications: true,  tasks: true  , shop: true },
 };
 
 

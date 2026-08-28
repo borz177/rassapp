@@ -1316,7 +1316,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 };
 
   // ... (Access checks and calculation logic remain the same)
-  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS'): boolean => {
+  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP'): boolean => {
     if (!user) return false;
     if (isEmployee || isInvestor || user.role === 'admin') return true;
 
@@ -1339,6 +1339,9 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         // 🔥 ИСПРАВЛЕНО: TRIAL имеет лимит 0, поэтому разрешаем только STANDARD и BUSINESS(_PRO)
         case 'EMPLOYEES': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
         case 'SUPPLIERS': return plan === 'BUSINESS_PRO';
+        // Магазин: розничные продажи и склад. TRIAL включён намеренно — пробный
+        // период показывает всё, и на сервере в PLAN_LIMITS у него тот же доступ.
+        case 'SHOP': return plan === 'BUSINESS_PRO' || plan === 'TRIAL';
         case 'INVESTOR_POOLS': return plan === 'BUSINESS_PRO';
         // Задачи — тарифы Бизнес и Бизнес Pro (см. PLAN_LIMITS.tasks на сервере)
         case 'TASKS': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
@@ -3882,7 +3885,7 @@ if (!user && !showSplash) {
 
               {currentView === 'SETTINGS' && (
                 <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
-                  <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings}
+                  <Settings appSettings={appSettings} shopAllowed={checkAccess('SHOP')} onUpdateSettings={handleUpdateSettings}
                                                        onNavigate={(v: ViewState) => { setPreviousView('SETTINGS'); setCurrentView(v); }} onImportData={handleImportData} currentUserId={user.id} user={user}/>
                 </PagePush>
               )}
