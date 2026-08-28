@@ -2529,7 +2529,7 @@ app.get('/api/auth/me', auth, async (req, res) => {
     try {
         // 🔥 ДОБАВИЛИ permissions и allowed_investor_ids в SELECT
         const result = await pool.query(
-            'SELECT id, name, email, phone, role, manager_id, subscription, whatsapp_settings, api_key, permissions, allowed_investor_ids, full_access_investor_ids, blocked FROM users WHERE id = $1',
+            'SELECT id, name, email, phone, role, manager_id, subscription, whatsapp_settings, api_key, permissions, allowed_investor_ids, full_access_investor_ids, blocked, partner_percent FROM users WHERE id = $1',
             [req.user.id]
         );
         if (result.rows.length === 0) return res.status(404).json({ msg: 'User not found' });
@@ -2563,6 +2563,10 @@ app.get('/api/auth/me', auth, async (req, res) => {
             profitPercentage: user.profit_percentage !== null && user.profit_percentage !== undefined ? Number(user.profit_percentage) : undefined,
             profitBase: user.profit_base || undefined,
             profitReducesManager: user.profit_reduces_manager !== false,
+            // Процент партнёра нужен интерфейсу, чтобы решить, показывать ли пункт
+            // «Бизнес-партнёр». Сами суммы приходят отдельным запросом.
+            partnerPercent: user.partner_percent !== null && user.partner_percent !== undefined
+                ? Number(user.partner_percent) : undefined,
             apiKey: user.role === 'admin' ? user.api_key : undefined
         });
     } catch (err) {

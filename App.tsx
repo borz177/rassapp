@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
+import PartnerPage from './components/PartnerPage';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import CashRegister from './components/CashRegister';
@@ -79,7 +80,7 @@ async function enablePersistentStorage() {
 // underneath, gated on previousView === 'MORE') so swiping back reveals the real menu, not blank space.
 const MORE_PUSH_VIEWS = new Set<ViewState>([
   'PROFILE', 'SETTINGS', 'EMPLOYEES', 'SUPPLIERS', 'TARIFFS', 'ADMIN_PANEL',
-  'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS', 'REFERRAL',
+  'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS', 'REFERRAL', 'PARTNER',
 ]);
 
 // 🎁 Код приглашения из адреса сохраняем СРАЗУ при загрузке любой страницы.
@@ -1580,6 +1581,7 @@ const dashboardStats = useMemo(() => {
           case 'EXPENSE': setDraftExpenseData(ctx?.accountId ? { accountId: ctx.accountId } : null); setCurrentView('CREATE_EXPENSE'); break;
           case 'OPERATIONS': setOperationsAccountId(ctx?.accountId ?? null); setCurrentView('OPERATIONS'); break;
           case 'CALCULATOR': setCurrentView('CALCULATOR'); break;
+          case 'PARTNER': setPreviousView(currentView); setCurrentView('PARTNER'); break;
           case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break;
           case 'TASKS': setPreviousView(currentView); setCurrentView('TASKS'); break;
           case 'ADD_CUSTOMER': setCurrentView('CUSTOMERS'); break;
@@ -3882,6 +3884,12 @@ if (!user && !showSplash) {
                 <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                   <Settings appSettings={appSettings} onUpdateSettings={handleUpdateSettings}
                                                        onNavigate={(v: ViewState) => { setPreviousView('SETTINGS'); setCurrentView(v); }} onImportData={handleImportData} currentUserId={user.id} user={user}/>
+                </PagePush>
+              )}
+
+              {currentView === 'PARTNER' && (
+                <PagePush onClose={() => setCurrentView(previousView)} scrollKey="PARTNER">
+                  {(requestClose: () => void) => <PartnerPage onBack={requestClose} />}
                 </PagePush>
               )}
 

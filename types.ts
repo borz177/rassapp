@@ -78,6 +78,8 @@ export interface User {
   profitBase?: 'CONTRACTS' | 'PAYMENTS' | 'ALL';
   /** Уменьшать прибыль менеджера сразу при начислении (по умолчанию) или только при выплате. */
   profitReducesManager?: boolean;
+  /** Процент бизнес-партнёра. Пусто — не партнёр. Суммы приходят отдельным запросом. */
+  partnerPercent?: number;
   /**
    * Из чьей прибыли платится премия сотруднику:
    *  MANAGER — из доли менеджера (по умолчанию): сотрудник нанят им.
@@ -463,6 +465,7 @@ export interface WhatsAppReminderPayload {
 export type ViewState =
   | 'DASHBOARD'
   | 'REFERRAL'
+  | 'PARTNER'
   | 'CASH_REGISTER'
   | 'CUSTOMERS'
   | 'CUSTOMER_DETAILS'

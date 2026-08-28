@@ -378,6 +378,9 @@ const counts = useMemo(() => {
   // Desktop Sidebar Items
   const allSidebarItems = [
     { id: 'TASKS' as const, label: 'Задачи', icon: ICONS.Tasks, visible: showTasks && !isInvestor },
+    // На десктопе меню «+» нет, поэтому партнёрство живёт в боковом меню —
+    // единственной постоянной навигации на широком экране.
+    { id: 'PARTNER' as const, label: 'Бизнес-партнёр', icon: ICONS.Star, visible: !!user?.partnerPercent },
     { id: 'DASHBOARD' as const, label: 'Главная', icon: ICONS.Dashboard, visible: true },
     {
       id: 'CASH_REGISTER' as const,
@@ -689,6 +692,14 @@ const counts = useMemo(() => {
                 <div className="bg-slate-100 dark:bg-slate-700 p-2.5 rounded-full text-slate-600 dark:text-slate-300">{ICONS.List}</div>
                 <span className="font-semibold text-[15px]">Все операции</span>
               </button>
+              {/* Только у партнёров: остальным пункт не нужен и только путал бы.
+                  Процент приходит вместе с профилем, сами суммы — уже на странице. */}
+              {!!user?.partnerPercent && (
+                <button onClick={() => handleActionClick('PARTNER')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                  <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2.5 rounded-full text-emerald-600 dark:text-emerald-400">{ICONS.Star}</div>
+                  <span className="font-semibold text-[15px]">Бизнес-партнёр</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
