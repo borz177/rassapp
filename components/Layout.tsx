@@ -28,6 +28,8 @@ interface LayoutProps {
   showTasks?: boolean;
   showEmployees?: boolean;
   showSuppliers?: boolean;
+  /** Магазин включён в настройках И разрешён тарифом. Решение принимает App. */
+  showShop?: boolean;
 }
 
 const PLAN_NAMES: Record<SubscriptionPlan, string> = {
@@ -61,6 +63,7 @@ const Layout: React.FC<LayoutProps> = ({
   showTasks = false,
   showEmployees = false,
   showSuppliers = false,
+  showShop = false,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMenuClosing, setIsMenuClosing] = useState(false);
@@ -381,6 +384,7 @@ const counts = useMemo(() => {
     // На десктопе меню «+» нет, поэтому партнёрство живёт в боковом меню —
     // единственной постоянной навигации на широком экране.
     { id: 'PARTNER' as const, label: 'Бизнес-партнёр', icon: ICONS.Star, visible: !!user?.partnerPercent },
+    { id: 'WAREHOUSE' as const, label: 'Склад', icon: ICONS.Archive, visible: showShop },
     { id: 'DASHBOARD' as const, label: 'Главная', icon: ICONS.Dashboard, visible: true },
     {
       id: 'CASH_REGISTER' as const,
@@ -694,6 +698,12 @@ const counts = useMemo(() => {
               </button>
               {/* Только у партнёров: остальным пункт не нужен и только путал бы.
                   Процент приходит вместе с профилем, сами суммы — уже на странице. */}
+              {showShop && (
+                <button onClick={() => handleActionClick('WAREHOUSE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                  <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2.5 rounded-full text-indigo-600 dark:text-indigo-400">{ICONS.Archive}</div>
+                  <span className="font-semibold text-[15px]">Склад</span>
+                </button>
+              )}
               {!!user?.partnerPercent && (
                 <button onClick={() => handleActionClick('PARTNER')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
                   <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2.5 rounded-full text-emerald-600 dark:text-emerald-400">{ICONS.Star}</div>

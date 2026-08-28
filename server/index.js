@@ -71,7 +71,7 @@ app.use((req, res, next) => {
 
 
 // ✅ БЕЛЫЙ СПИСОК ТИПОВ ДАННЫХ (защита от инъекций)
-const VALID_DATA_TYPES = ['customers', 'products', 'sales', 'expenses', 'accounts', 'investors', 'partnerships', 'suppliers', 'settings', 'tasks'];
+const VALID_DATA_TYPES = ['customers', 'products', 'sales', 'expenses', 'accounts', 'investors', 'partnerships', 'suppliers', 'settings', 'tasks', 'stockMovements'];
 
 // ✅ ХЕЛПЕР: Определение целевого пользователя для загрузки данных
 const getTargetUserId = (user) => {
@@ -2681,7 +2681,8 @@ app.get('/api/data', auth, async (req, res) => {
 
     const result = {
       customers: [], products: [], sales: [], expenses: [],
-      accounts: [], investors: [], partnerships: [], suppliers: [], tasks: [], settings: null
+      accounts: [], investors: [], partnerships: [], suppliers: [], tasks: [],
+      stockMovements: [], settings: null
     };
 
     itemsResult.rows.forEach(row => {
@@ -3303,6 +3304,32 @@ app.delete('/api/user/data', auth, async (req, res) => {
 
 
 // 🔹 Эндпоинт загрузки документа
+// 🛒 Картинка товара. Отдельно от документов: каталогу не нужна сторона 1920 —
+// карточка на телефоне занимает от силы 400 точек, а лишние пиксели это только
+// вес и трафик. 1000 хватает и для полноэкранного просмотра.
+app.post('/api/upload/product-image', auth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Файл не выбран' });
+    if (!req.file.mimetype.startsWith('image/')) {
+      return res.status(400).json({ error: 'Для товара нужна картинка' });
+    }
+
+    const compressed = await compressImage(req.file.buffer, req.file.mimetype, 1000, 75);
+    const filename = `product-${Date.now()}-${crypto.randomUUID().slice(0, 8)}${compressed.ext}`;
+    await fs.promises.writeFile(path.join(uploadDir, filename), compressed.buffer);
+
+    res.json({
+      success: true,
+      fileUrl: `/uploads/documents/${filename}`,
+      fileSize: compressed.buffer.length,
+      originalSize: req.file.size
+    });
+  } catch (err) {
+    console.error('Product image upload error:', err);
+    res.status(500).json({ error: 'Не удалось загрузить картинку' });
+  }
+});
+
 app.post('/api/upload/document', auth, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {

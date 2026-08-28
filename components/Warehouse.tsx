@@ -1,0 +1,472 @@
+import React, { useMemo, useState } from 'react';
+import type { Product, StockMovement } from '../types';
+import { api } from '../services/api';
+import { compressImageFile } from '../src/imageCompress';
+import TopBarBack from './TopBarBack';
+import ModalPortal from './ModalPortal';
+
+interface WarehouseProps {
+  products: Product[];
+  movements: StockMovement[];
+  onSaveProduct: (product: Product) => Promise<void> | void;
+  onDeleteProduct: (id: string) => Promise<void> | void;
+  onAddMovement: (movement: StockMovement) => Promise<void> | void;
+  onBack: () => void;
+  currency?: string;
+}
+
+const emptyForm = {
+  name: '', sku: '', price: '', buyPrice: '', category: '', unit: 'шт',
+  minStock: '', description: '', images: [] as string[],
+};
+
+const num = (v: string) => {
+  const n = Number(String(v).replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+};
+
+const money = (v: number) => v.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+
+const MOVEMENT_LABELS: Record<StockMovement['type'], string> = {
+  IN: 'Приход',
+  SALE: 'Продажа',
+  WRITE_OFF: 'Списание',
+  RETURN: 'Возврат',
+  CORRECTION: 'Корректировка',
+};
+
+/**
+ * Склад.
+ *
+ * Остаток здесь — не просто число в карточке товара, а следствие движений:
+ * приход, продажа, списание, возврат, корректировка. Поле Product.stock
+ * остаётся быстрым снимком для списков, но каждое его изменение сопровождается
+ * записью движения. Без истории остаток невозможно объяснить, а именно на нём
+ * сходятся все споры о недостаче.
+ */
+const Warehouse: React.FC<WarehouseProps> = ({
+  products, movements, onSaveProduct, onDeleteProduct, onAddMovement, onBack,
+}) => {
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<string>('ALL');
+  const [showArchived, setShowArchived] = useState(false);
+  const [onlyLow, setOnlyLow] = useState(false);
+
+  const [editing, setEditing] = useState<Product | null>(null);
+  // Видимость карточки держим отдельным флагом: сравнивать состояние формы
+  // с пустым образцом нельзя — «новый товар» ставит ровно ту же ссылку,
+  // и окно не открывалось бы.
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [movementFor, setMovementFor] = useState<Product | null>(null);
+  const [movementType, setMovementType] = useState<StockMovement['type']>('IN');
+  const [movementQty, setMovementQty] = useState('');
+  const [movementPrice, setMovementPrice] = useState('');
+  const [movementNote, setMovementNote] = useState('');
+
+  const [historyFor, setHistoryFor] = useState<Product | null>(null);
+
+  const categories = useMemo(
+    () => Array.from(new Set(products.map(p => p.category).filter(Boolean))).sort(),
+    [products]
+  );
+
+  const isLow = (p: Product) =>
+    p.minStock !== undefined && p.minStock !== null && (p.stock ?? 0) <= p.minStock;
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return products
+      .filter(p => (showArchived ? p.isArchived : !p.isArchived))
+      .filter(p => category === 'ALL' || p.category === category)
+      .filter(p => !onlyLow || isLow(p))
+      .filter(p => !q || p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }, [products, search, category, showArchived, onlyLow]);
+
+  const totals = useMemo(() => {
+    const live = products.filter(p => !p.isArchived);
+    return {
+      items: live.length,
+      units: live.reduce((s, p) => s + (p.stock || 0), 0),
+      cost: live.reduce((s, p) => s + (p.stock || 0) * (p.buyPrice || 0), 0),
+      low: live.filter(isLow).length,
+    };
+  }, [products]);
+
+  const openNew = () => { setEditing(null); setForm(emptyForm); setError(null); setShowForm(true); };
+  const openEdit = (p: Product) => {
+    setEditing(p);
+    setForm({
+      name: p.name, sku: p.sku || '', price: String(p.price ?? ''),
+      buyPrice: String(p.buyPrice ?? ''), category: p.category || '',
+      unit: p.unit || 'шт', minStock: p.minStock === undefined ? '' : String(p.minStock),
+      description: p.description || '', images: p.images || [],
+    });
+    setError(null);
+    setShowForm(true);
+  };
+
+  const addImages = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const file of Array.from(files).slice(0, 5)) {
+        const { file: compressed } = await compressImageFile(file);
+        urls.push(await api.uploadProductImage(compressed));
+      }
+      setForm(f => ({ ...f, images: [...f.images, ...urls].slice(0, 5) }));
+      setError(null);
+    } catch (e: any) {
+      setError(e.message || 'Не удалось загрузить картинку');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const save = async () => {
+    if (!form.name.trim()) { setError('Название обязательно'); return; }
+    setSaving(true);
+    try {
+      const product: Product = {
+        id: editing?.id || crypto.randomUUID(),
+        userId: editing?.userId || '',
+        name: form.name.trim(),
+        price: num(form.price),
+        category: form.category.trim() || 'Общее',
+        // Остаток правится только движениями — здесь берём текущий, чтобы
+        // редактирование карточки не превращалось в тихую корректировку склада.
+        stock: editing?.stock ?? 0,
+        sku: form.sku.trim() || undefined,
+        buyPrice: form.buyPrice === '' ? undefined : num(form.buyPrice),
+        unit: form.unit.trim() || 'шт',
+        images: form.images.length ? form.images : undefined,
+        minStock: form.minStock === '' ? undefined : num(form.minStock),
+        description: form.description.trim() || undefined,
+        isArchived: editing?.isArchived,
+        updatedAt: new Date().toISOString(),
+      };
+      await onSaveProduct(product);
+      setShowForm(false);
+      setEditing(null);
+      setForm(emptyForm);
+      setError(null);
+    } catch (e: any) {
+      setError(e.message || 'Не удалось сохранить товар');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const submitMovement = async () => {
+    if (!movementFor) return;
+    const qty = num(movementQty);
+    if (qty <= 0) { setError('Количество должно быть больше нуля'); return; }
+    // Приход и возврат увеличивают остаток, списание и продажа уменьшают.
+    const sign = movementType === 'IN' || movementType === 'RETURN' ? 1 : -1;
+    const delta = movementType === 'CORRECTION' ? qty - (movementFor.stock || 0) : sign * qty;
+
+    setSaving(true);
+    try {
+      await onAddMovement({
+        id: crypto.randomUUID(),
+        userId: movementFor.userId,
+        productId: movementFor.id,
+        type: movementType,
+        quantity: delta,
+        unitPrice: movementPrice === '' ? undefined : num(movementPrice),
+        note: movementNote.trim() || undefined,
+        date: new Date().toISOString(),
+      });
+      await onSaveProduct({
+        ...movementFor,
+        stock: (movementFor.stock || 0) + delta,
+        updatedAt: new Date().toISOString(),
+      });
+      setMovementFor(null); setMovementQty(''); setMovementPrice(''); setMovementNote('');
+      setError(null);
+    } catch (e: any) {
+      setError(e.message || 'Не удалось записать движение');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = 'w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-400';
+
+  return (
+    <div className="space-y-4 pb-10">
+      <div className="flex items-center gap-3">
+        <TopBarBack onClick={onBack} />
+        <div className="min-w-0 flex-1">
+          <h2 className="text-xl font-bold text-slate-800 dark:text-white">Склад</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {totals.items} позиций · {money(totals.units)} ед. · закуп {money(totals.cost)} ₽
+          </p>
+        </div>
+        <button onClick={openNew}
+                className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-sm active:scale-95 transition-transform shrink-0">
+          + Товар
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
+          {error}
+        </div>
+      )}
+
+      <input value={search} onChange={e => setSearch(e.target.value)}
+             placeholder="Поиск по названию или артикулу" className={inputCls} />
+
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => setCategory('ALL')}
+                className={`px-3.5 py-2 rounded-full text-xs font-bold ${category === 'ALL' ? 'glass-surface text-indigo-600 dark:text-indigo-300' : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
+          Все
+        </button>
+        {categories.map(c => (
+          <button key={c} onClick={() => setCategory(c)}
+                  className={`px-3.5 py-2 rounded-full text-xs font-bold ${category === c ? 'glass-surface text-indigo-600 dark:text-indigo-300' : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
+            {c}
+          </button>
+        ))}
+        {totals.low > 0 && (
+          <button onClick={() => setOnlyLow(v => !v)}
+                  className={`px-3.5 py-2 rounded-full text-xs font-bold ${onlyLow ? 'bg-amber-500 text-white' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'}`}>
+            Мало на складе · {totals.low}
+          </button>
+        )}
+        <button onClick={() => setShowArchived(v => !v)}
+                className={`px-3.5 py-2 rounded-full text-xs font-bold ${showArchived ? 'bg-slate-700 text-white' : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}>
+          Архив
+        </button>
+      </div>
+
+      {visible.length === 0 ? (
+        <p className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center">
+          {products.length === 0 ? 'Товаров пока нет. Добавьте первый.' : 'Ничего не найдено.'}
+        </p>
+      ) : (
+        <div className="grid gap-3">
+          {visible.map(p => (
+            <div key={p.id}
+                 className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3 flex items-center gap-3">
+              <div className="w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
+                {p.images?.[0] ? (
+                  <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" />
+                ) : (
+                  <span className="text-slate-400 text-xl">📦</span>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-slate-800 dark:text-white truncate">{p.name}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                  {p.sku ? `${p.sku} · ` : ''}{money(p.price)} ₽
+                  {p.buyPrice ? ` · закуп ${money(p.buyPrice)} ₽` : ''}
+                </p>
+                <p className={`text-xs font-bold mt-0.5 ${isLow(p) ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                  {money(p.stock || 0)} {p.unit || 'шт'}
+                  {isLow(p) ? ' · мало' : ''}
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-1.5 shrink-0">
+                <button onClick={() => { setMovementFor(p); setMovementType('IN'); setError(null); }}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold">Движение</button>
+                <button onClick={() => openEdit(p)}
+                        className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">Изменить</button>
+                <button onClick={() => setHistoryFor(p)}
+                        className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">История</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Модальное окно карточки */}
+      {showForm && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
+               onClick={() => { setShowForm(false); setEditing(null); setForm(emptyForm); }}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[88vh] overflow-y-auto p-5 space-y-3"
+                 onClick={e => e.stopPropagation()}>
+              <h3 className="font-bold text-slate-800 dark:text-white">
+                {editing ? 'Товар' : 'Новый товар'}
+              </h3>
+
+              <div className="flex gap-2 flex-wrap">
+                {form.images.map((src, i) => (
+                  <div key={src} className="relative w-20 h-20 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600">
+                    <img src={src} alt="" className="w-full h-full object-cover" />
+                    <button
+                      onClick={() => setForm(f => ({ ...f, images: f.images.filter((_, n) => n !== i) }))}
+                      className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-slate-900/70 text-white text-xs leading-none">×</button>
+                  </div>
+                ))}
+                {form.images.length < 5 && (
+                  <label className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-400 cursor-pointer">
+                    {uploading ? '…' : '+'}
+                    <input type="file" accept="image/*" multiple className="hidden"
+                           onChange={e => addImages(e.target.files)} />
+                  </label>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                До 5 картинок. Сжимаются в браузере до отправки — снимок с телефона едет как 100–300 КБ вместо нескольких мегабайт.
+              </p>
+
+              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Название" className={inputCls} />
+              <div className="grid grid-cols-2 gap-2">
+                <input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} placeholder="Артикул" className={inputCls} />
+                <input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="Категория" className={inputCls} />
+                <input value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} placeholder="Цена продажи" inputMode="decimal" className={inputCls} />
+                <input value={form.buyPrice} onChange={e => setForm({ ...form, buyPrice: e.target.value })} placeholder="Цена закупа" inputMode="decimal" className={inputCls} />
+                <input value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="Ед. изм." className={inputCls} />
+                <input value={form.minStock} onChange={e => setForm({ ...form, minStock: e.target.value })} placeholder="Мин. остаток" inputMode="decimal" className={inputCls} />
+              </div>
+              <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+                        placeholder="Описание" rows={2} className={inputCls} />
+
+              {editing && (
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  Остаток здесь не меняется — только через движения, иначе история склада не сойдётся.
+                </p>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => { setShowForm(false); setEditing(null); setForm(emptyForm); }}
+                        className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
+                  Отмена
+                </button>
+                <button disabled={saving} onClick={save}
+                        className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm disabled:opacity-50">
+                  Сохранить
+                </button>
+              </div>
+
+              {editing && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      await onSaveProduct({ ...editing, isArchived: !editing.isArchived, updatedAt: new Date().toISOString() });
+                      setShowForm(false); setEditing(null); setForm(emptyForm);
+                    }}
+                    className="flex-1 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-xs">
+                    {editing.isArchived ? 'Вернуть из архива' : 'В архив'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm(`Удалить «${editing.name}» без возможности восстановления?`)) return;
+                      await onDeleteProduct(editing.id);
+                      setShowForm(false); setEditing(null); setForm(emptyForm);
+                    }}
+                    className="flex-1 py-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-bold text-xs">
+                    Удалить
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {/* Движение по складу */}
+      {movementFor && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
+               onClick={() => setMovementFor(null)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-3"
+                 onClick={e => e.stopPropagation()}>
+              <h3 className="font-bold text-slate-800 dark:text-white">{movementFor.name}</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Сейчас на складе: {money(movementFor.stock || 0)} {movementFor.unit || 'шт'}
+              </p>
+
+              <div className="grid grid-cols-2 gap-2">
+                {(['IN', 'WRITE_OFF', 'RETURN', 'CORRECTION'] as const).map(t => (
+                  <button key={t} onClick={() => setMovementType(t)}
+                          className={`py-2 rounded-xl text-xs font-bold ${movementType === t ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                    {MOVEMENT_LABELS[t]}
+                  </button>
+                ))}
+              </div>
+
+              <input value={movementQty} onChange={e => setMovementQty(e.target.value)} inputMode="decimal"
+                     placeholder={movementType === 'CORRECTION' ? 'Фактический остаток' : 'Количество'} className={inputCls} />
+              {movementType === 'IN' && (
+                <input value={movementPrice} onChange={e => setMovementPrice(e.target.value)} inputMode="decimal"
+                       placeholder="Цена закупа за единицу" className={inputCls} />
+              )}
+              <input value={movementNote} onChange={e => setMovementNote(e.target.value)}
+                     placeholder="Комментарий" className={inputCls} />
+
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setMovementFor(null)}
+                        className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
+                  Отмена
+                </button>
+                <button disabled={saving} onClick={submitMovement}
+                        className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-sm disabled:opacity-50">
+                  Записать
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {/* История движений */}
+      {historyFor && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
+               onClick={() => setHistoryFor(null)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[80vh] flex flex-col"
+                 onClick={e => e.stopPropagation()}>
+              <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700">
+                <h3 className="font-bold text-slate-800 dark:text-white">{historyFor.name}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">История движений</p>
+              </div>
+              <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+                {movements.filter(m => m.productId === historyFor.id).length === 0 ? (
+                  <p className="p-5 text-sm text-slate-500 dark:text-slate-400">Движений пока нет.</p>
+                ) : (
+                  movements
+                    .filter(m => m.productId === historyFor.id)
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .map(m => (
+                      <div key={m.id} className="px-5 py-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-800 dark:text-white">{MOVEMENT_LABELS[m.type]}</p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                            {new Date(m.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            {m.note ? ` · ${m.note}` : ''}
+                          </p>
+                        </div>
+                        <p className={`text-sm font-bold shrink-0 ${m.quantity >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}`}>
+                          {m.quantity >= 0 ? '+' : ''}{money(m.quantity)}
+                        </p>
+                      </div>
+                    ))
+                )}
+              </div>
+              <div className="p-4 border-t border-slate-100 dark:border-slate-700">
+                <button onClick={() => setHistoryFor(null)}
+                        className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+    </div>
+  );
+};
+
+export default Warehouse;

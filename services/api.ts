@@ -916,6 +916,26 @@ export const api = {
     },
 
     // --- ADMIN METHODS ---
+    // --- 🛒 МАГАЗИН ---
+    /**
+     * Загружает картинку товара. Сжатие делается ДО вызова, в браузере
+     * (см. src/imageCompress.ts): снимок с телефона иначе упирается в лимит
+     * загрузки в 5 МБ и подолгу едет на мобильном интернете.
+     */
+    uploadProductImage: async (file: File): Promise<string> => {
+        const form = new FormData();
+        form.append('file', file);
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/upload/product-image`, {
+            method: 'POST',
+            headers: token ? { 'x-auth-token': token } : undefined,
+            body: form
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.fileUrl) throw new Error(data.error || 'Не удалось загрузить картинку');
+        return data.fileUrl as string;
+    },
+
     // --- 🧾 ОПЛАТЫ И ЧЕКИ ---
     adminGetPayments: async (): Promise<AdminPayment[]> => {
         const res = await fetchWithAuth(`${API_URL}/admin/payments`);

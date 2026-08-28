@@ -245,6 +245,47 @@ export interface Product {
   price: number;
   category: string;
   stock: number;
+
+  // 🛒 Поля магазина. Все необязательные: 14 товаров, заведённых до магазина,
+  // должны продолжать работать без миграции.
+  /** Артикул или штрихкод — по нему ищут на складе быстрее, чем по названию */
+  sku?: string;
+  /** Цена закупа: без неё маржу по рознице не посчитать */
+  buyPrice?: number;
+  /** Единица измерения: шт, кг, м. По умолчанию штуки */
+  unit?: string;
+  /** Ссылки на картинки. Первая — обложка карточки */
+  images?: string[];
+  /** Порог «мало на складе». Пусто — не следим */
+  minStock?: number;
+  description?: string;
+  isArchived?: boolean;
+  updatedAt?: string;
+}
+
+/**
+ * Движение по складу. Остаток товара — это сумма движений, а не отдельно
+ * хранимое число: без истории цифру невозможно объяснить, а именно на ней
+ * сходятся все споры о недостаче.
+ *
+ * Поле Product.stock остаётся как быстрый снимок для списков, но истина здесь.
+ */
+export type StockMovementType = 'IN' | 'SALE' | 'WRITE_OFF' | 'RETURN' | 'CORRECTION';
+
+export interface StockMovement {
+  id: string;
+  userId: string;
+  productId: string;
+  type: StockMovementType;
+  /** Со знаком: приход положительный, продажа и списание отрицательные */
+  quantity: number;
+  /** Цена за единицу на момент движения: закуп для прихода, продажи для продажи */
+  unitPrice?: number;
+  /** Продажа, из которой возникло движение */
+  saleId?: string;
+  note?: string;
+  date: string;
+  createdByUserId?: string;
 }
 
 export interface Payment {
@@ -474,6 +515,7 @@ export type ViewState =
   | 'DASHBOARD'
   | 'REFERRAL'
   | 'PARTNER'
+  | 'WAREHOUSE'
   | 'CASH_REGISTER'
   | 'CUSTOMERS'
   | 'CUSTOMER_DETAILS'

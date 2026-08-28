@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
+import Warehouse from './components/Warehouse';
 import PartnerPage from './components/PartnerPage';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -41,7 +42,7 @@ const LazyFallback: React.FC = () => (
     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
   </div>
 );
-import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent } from './types';
+import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement} from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
 import { api } from './services/api';
 import { ICONS } from './constants';
@@ -80,7 +81,7 @@ async function enablePersistentStorage() {
 // underneath, gated on previousView === 'MORE') so swiping back reveals the real menu, not blank space.
 const MORE_PUSH_VIEWS = new Set<ViewState>([
   'PROFILE', 'SETTINGS', 'EMPLOYEES', 'SUPPLIERS', 'TARIFFS', 'ADMIN_PANEL',
-  'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS', 'REFERRAL', 'PARTNER',
+  'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS', 'REFERRAL', 'PARTNER', 'WAREHOUSE',
 ]);
 
 // 🎁 Код приглашения из адреса сохраняем СРАЗУ при загрузке любой страницы.
@@ -141,6 +142,8 @@ const isLanding = path === "/"
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  // Движения склада: остаток товара — их сумма, а не отдельное число.
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   // Заготовка задачи, переданная со страницы договоров или карточки клиента
   const [taskDraft, setTaskDraft] = useState<Partial<Task> | null>(null);
   const [appSettings, setAppSettings] = useState<AppSettings>({ companyName: 'FinUchet' });
@@ -663,6 +666,7 @@ const handleSync = async () => {
         if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
         if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers'));
         if (freshData.tasks) setTasks(prev => mergeServerData(prev, freshData.tasks, 'tasks'));
+        if (freshData.stockMovements) setStockMovements(prev => mergeServerData(prev, freshData.stockMovements, 'stockMovements'));
 
         if (freshData.settings) {
           setAppSettings(freshData.settings);
@@ -873,6 +877,7 @@ useEffect(() => {
                 if (cachedData.partnerships) setPartnerships(cachedData.partnerships);
                 if (cachedData.suppliers) setSuppliers(cachedData.suppliers);
                 if (cachedData.tasks) setTasks(cachedData.tasks);
+                if (cachedData.stockMovements) setStockMovements(cachedData.stockMovements);
                 if (cachedData.employees) setEmployees(cachedData.employees);
                 if (cachedData.settings) setAppSettings(cachedData.settings);
             }
@@ -1585,6 +1590,7 @@ const dashboardStats = useMemo(() => {
           case 'OPERATIONS': setOperationsAccountId(ctx?.accountId ?? null); setCurrentView('OPERATIONS'); break;
           case 'CALCULATOR': setCurrentView('CALCULATOR'); break;
           case 'PARTNER': setPreviousView(currentView); setCurrentView('PARTNER'); break;
+          case 'WAREHOUSE': setPreviousView(currentView); setCurrentView('WAREHOUSE'); break;
           case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break;
           case 'TASKS': setPreviousView(currentView); setCurrentView('TASKS'); break;
           case 'ADD_CUSTOMER': setCurrentView('CUSTOMERS'); break;
@@ -2816,6 +2822,34 @@ const confirmDeleteCustomer = async () => {
 };
 
 
+  // 🛒 Склад. Товар сохраняется целиком, а не по полям: карточка большая, и
+  // точечные обновления пришлось бы держать в синхроне с каждым новым полем.
+  const handleSaveProduct = async (product: Product) => {
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+    if (!user) return;
+    const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+    const saved = await api.saveItem('products', { ...product, userId: product.userId || ownerId });
+    updateList(setProducts, saved);
+  };
+
+  const handleDeleteProductFull = async (id: string) => {
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+    await api.deleteItem('products', id);
+    setProducts(prev => prev.filter(p => p.id !== id));
+  };
+
+  const handleAddStockMovement = async (movement: StockMovement) => {
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+    if (!user) return;
+    const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+    const saved = await api.saveItem('stockMovements', {
+      ...movement,
+      userId: movement.userId || ownerId,
+      createdByUserId: user.id,
+    });
+    updateList(setStockMovements, saved);
+  };
+
   const handleAddProduct = async (name: string, price: number, stock: number) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } if (user) { const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newProd = { id: crypto.randomUUID(), userId: ownerId, name, price, category: 'Общее', stock }; const saved = await api.saveItem('products', newProd); updateList(setProducts, saved); } };
   const handleUpdateProduct = async (updated: Product) => { if (isEmployee && !user?.permissions?.canEdit) return; const saved = await api.saveItem('products', updated); updateList(setProducts, saved); };
  const handleDeleteProduct = async (id: string) => {
@@ -3548,6 +3582,7 @@ if (!user && !showSplash) {
     showTasks={checkAccess('TASKS')}
     showEmployees={checkAccess('EMPLOYEES')}
     showSuppliers={checkAccess('SUPPLIERS')}
+    showShop={checkAccess('SHOP') && !!appSettings.shopEnabled}
     // 🔹 Кнопка поддержки для десктопа (плавающая) — админа ведём в панель
     // управления обращениями, а не в чат "как у обычного пользователя"
     supportButton={
@@ -3887,6 +3922,21 @@ if (!user && !showSplash) {
                 <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                   <Settings appSettings={appSettings} shopAllowed={checkAccess('SHOP')} onUpdateSettings={handleUpdateSettings}
                                                        onNavigate={(v: ViewState) => { setPreviousView('SETTINGS'); setCurrentView(v); }} onImportData={handleImportData} currentUserId={user.id} user={user}/>
+                </PagePush>
+              )}
+
+              {currentView === 'WAREHOUSE' && (
+                <PagePush onClose={() => setCurrentView(previousView)} scrollKey="WAREHOUSE">
+                  {(requestClose: () => void) => (
+                    <Warehouse
+                      products={products}
+                      movements={stockMovements}
+                      onSaveProduct={handleSaveProduct}
+                      onDeleteProduct={handleDeleteProductFull}
+                      onAddMovement={handleAddStockMovement}
+                      onBack={requestClose}
+                    />
+                  )}
                 </PagePush>
               )}
 
