@@ -699,6 +699,12 @@ const counts = useMemo(() => {
               {/* Только у партнёров: остальным пункт не нужен и только путал бы.
                   Процент приходит вместе с профилем, сами суммы — уже на странице. */}
               {showShop && (
+                <button onClick={() => handleActionClick('RETAIL_SALE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                  <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2.5 rounded-full text-emerald-600 dark:text-emerald-400">{ICONS.Wallet}</div>
+                  <span className="font-semibold text-[15px]">Продажа за наличные</span>
+                </button>
+              )}
+              {showShop && (
                 <button onClick={() => handleActionClick('WAREHOUSE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
                   <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2.5 rounded-full text-indigo-600 dark:text-indigo-400">{ICONS.Archive}</div>
                   <span className="font-semibold text-[15px]">Склад</span>

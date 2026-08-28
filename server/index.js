@@ -71,7 +71,7 @@ app.use((req, res, next) => {
 
 
 // ✅ БЕЛЫЙ СПИСОК ТИПОВ ДАННЫХ (защита от инъекций)
-const VALID_DATA_TYPES = ['customers', 'products', 'sales', 'expenses', 'accounts', 'investors', 'partnerships', 'suppliers', 'settings', 'tasks', 'stockMovements'];
+const VALID_DATA_TYPES = ['customers', 'products', 'sales', 'expenses', 'accounts', 'investors', 'partnerships', 'suppliers', 'settings', 'tasks', 'stockMovements', 'retailSales'];
 
 // ✅ ХЕЛПЕР: Определение целевого пользователя для загрузки данных
 const getTargetUserId = (user) => {
@@ -2682,7 +2682,7 @@ app.get('/api/data', auth, async (req, res) => {
     const result = {
       customers: [], products: [], sales: [], expenses: [],
       accounts: [], investors: [], partnerships: [], suppliers: [], tasks: [],
-      stockMovements: [], settings: null
+      stockMovements: [], retailSales: [], settings: null
     };
 
     itemsResult.rows.forEach(row => {

@@ -270,6 +270,39 @@ export interface Product {
  *
  * Поле Product.stock остаётся как быстрый снимок для списков, но истина здесь.
  */
+/**
+ * Позиция розничного чека. Название и цены копируются в момент продажи: товар
+ * потом переименуют или переоценят, а чек должен остаться таким, каким был.
+ */
+export interface RetailSaleItem {
+  productId: string;
+  name: string;
+  quantity: number;
+  price: number;
+  buyPrice?: number;
+  unit?: string;
+}
+
+/** Розничная продажа за наличные. Отдельно от Sale: там рассрочка с графиком. */
+export interface RetailSale {
+  id: string;
+  userId: string;
+  accountId: string;
+  /** Пусто — розничный покупатель без карточки клиента */
+  customerId?: string;
+  items: RetailSaleItem[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  /** Себестоимость на момент продажи — чтобы маржа не поплыла при переоценке */
+  cost: number;
+  profit: number;
+  note?: string;
+  date: string;
+  createdByUserId?: string;
+  isCancelled?: boolean;
+}
+
 export type StockMovementType = 'IN' | 'SALE' | 'WRITE_OFF' | 'RETURN' | 'CORRECTION';
 
 export interface StockMovement {
@@ -516,6 +549,7 @@ export type ViewState =
   | 'REFERRAL'
   | 'PARTNER'
   | 'WAREHOUSE'
+  | 'RETAIL_SALE'
   | 'CASH_REGISTER'
   | 'CUSTOMERS'
   | 'CUSTOMER_DETAILS'

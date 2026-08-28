@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
+import RetailSale from './components/RetailSale';
 import Warehouse from './components/Warehouse';
 import PartnerPage from './components/PartnerPage';
 import Layout from './components/Layout';
@@ -42,7 +43,7 @@ const LazyFallback: React.FC = () => (
     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
   </div>
 );
-import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement} from './types';
+import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, RetailSale as RetailSaleType} from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
 import { api } from './services/api';
 import { ICONS } from './constants';
@@ -81,7 +82,7 @@ async function enablePersistentStorage() {
 // underneath, gated on previousView === 'MORE') so swiping back reveals the real menu, not blank space.
 const MORE_PUSH_VIEWS = new Set<ViewState>([
   'PROFILE', 'SETTINGS', 'EMPLOYEES', 'SUPPLIERS', 'TARIFFS', 'ADMIN_PANEL',
-  'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS', 'REFERRAL', 'PARTNER', 'WAREHOUSE',
+  'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS', 'REFERRAL', 'PARTNER', 'WAREHOUSE', 'RETAIL_SALE',
 ]);
 
 // 🎁 Код приглашения из адреса сохраняем СРАЗУ при загрузке любой страницы.
@@ -144,6 +145,7 @@ const isLanding = path === "/"
   const [tasks, setTasks] = useState<Task[]>([]);
   // Движения склада: остаток товара — их сумма, а не отдельное число.
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
+  const [retailSales, setRetailSales] = useState<RetailSaleType[]>([]);
   // Заготовка задачи, переданная со страницы договоров или карточки клиента
   const [taskDraft, setTaskDraft] = useState<Partial<Task> | null>(null);
   const [appSettings, setAppSettings] = useState<AppSettings>({ companyName: 'FinUchet' });
@@ -667,6 +669,7 @@ const handleSync = async () => {
         if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers'));
         if (freshData.tasks) setTasks(prev => mergeServerData(prev, freshData.tasks, 'tasks'));
         if (freshData.stockMovements) setStockMovements(prev => mergeServerData(prev, freshData.stockMovements, 'stockMovements'));
+        if (freshData.retailSales) setRetailSales(prev => mergeServerData(prev, freshData.retailSales, 'retailSales'));
 
         if (freshData.settings) {
           setAppSettings(freshData.settings);
@@ -878,6 +881,7 @@ useEffect(() => {
                 if (cachedData.suppliers) setSuppliers(cachedData.suppliers);
                 if (cachedData.tasks) setTasks(cachedData.tasks);
                 if (cachedData.stockMovements) setStockMovements(cachedData.stockMovements);
+                if (cachedData.retailSales) setRetailSales(cachedData.retailSales);
                 if (cachedData.employees) setEmployees(cachedData.employees);
                 if (cachedData.settings) setAppSettings(cachedData.settings);
             }
@@ -1591,6 +1595,7 @@ const dashboardStats = useMemo(() => {
           case 'CALCULATOR': setCurrentView('CALCULATOR'); break;
           case 'PARTNER': setPreviousView(currentView); setCurrentView('PARTNER'); break;
           case 'WAREHOUSE': setPreviousView(currentView); setCurrentView('WAREHOUSE'); break;
+          case 'RETAIL_SALE': setPreviousView(currentView); setCurrentView('RETAIL_SALE'); break;
           case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break;
           case 'TASKS': setPreviousView(currentView); setCurrentView('TASKS'); break;
           case 'ADD_CUSTOMER': setCurrentView('CUSTOMERS'); break;
@@ -2838,6 +2843,51 @@ const confirmDeleteCustomer = async () => {
     setProducts(prev => prev.filter(p => p.id !== id));
   };
 
+  /**
+   * Розничная продажа. Три вещи одной операцией: сам чек, движения склада по
+   * каждой позиции и уменьшение остатков. Порядок важен — чек пишем первым,
+   * чтобы движения ссылались на существующую продажу.
+   *
+   * Продажу в минус не запрещаем: на практике товар часто оприходуют задним
+   * числом, и жёсткий запрет заставил бы людей обходить систему. Предупреждение
+   * человек уже увидел в форме.
+   */
+  const handleRetailSale = async (sale: RetailSaleType) => {
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+    if (!user) return;
+    const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+
+    const savedSale = await api.saveItem('retailSales', {
+      ...sale, userId: ownerId, createdByUserId: user.id,
+    });
+    updateList(setRetailSales, savedSale);
+
+    for (const item of sale.items) {
+      const movement: StockMovement = {
+        id: crypto.randomUUID(),
+        userId: ownerId,
+        productId: item.productId,
+        type: 'SALE',
+        quantity: -item.quantity,
+        unitPrice: item.price,
+        saleId: sale.id,
+        date: sale.date,
+        createdByUserId: user.id,
+      };
+      const savedMovement = await api.saveItem('stockMovements', movement);
+      updateList(setStockMovements, savedMovement);
+
+      const product = products.find(p => p.id === item.productId);
+      if (product) {
+        const updated = { ...product, stock: (product.stock || 0) - item.quantity, updatedAt: new Date().toISOString() };
+        const savedProduct = await api.saveItem('products', updated);
+        updateList(setProducts, savedProduct);
+      }
+    }
+
+    setCurrentView('WAREHOUSE');
+  };
+
   const handleAddStockMovement = async (movement: StockMovement) => {
     if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
     if (!user) return;
@@ -3922,6 +3972,21 @@ if (!user && !showSplash) {
                 <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                   <Settings appSettings={appSettings} shopAllowed={checkAccess('SHOP')} onUpdateSettings={handleUpdateSettings}
                                                        onNavigate={(v: ViewState) => { setPreviousView('SETTINGS'); setCurrentView(v); }} onImportData={handleImportData} currentUserId={user.id} user={user}/>
+                </PagePush>
+              )}
+
+              {currentView === 'RETAIL_SALE' && (
+                <PagePush onClose={() => setCurrentView(previousView)} scrollKey="RETAIL_SALE">
+                  {(requestClose: () => void) => (
+                    <RetailSale
+                      products={products}
+                      customers={customers}
+                      accounts={accounts}
+                      showCents={appSettings.showCents}
+                      onSubmit={handleRetailSale}
+                      onBack={requestClose}
+                    />
+                  )}
                 </PagePush>
               )}
 
