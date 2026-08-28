@@ -261,6 +261,12 @@ export interface Product {
   description?: string;
   isArchived?: boolean;
   updatedAt?: string;
+  /**
+   * Остатки по складам. Поле stock остаётся суммой по всем складам — на него
+   * опираются витрина кассы, отчёты и пометка «мало на складе», и пересчитывать
+   * их все было бы куда рискованнее, чем держать итог рядом.
+   */
+  warehouseStocks?: Record<string, number>;
 }
 
 /**
@@ -305,7 +311,26 @@ export interface RetailSale {
   isCancelled?: boolean;
 }
 
-export type StockMovementType = 'IN' | 'SALE' | 'WRITE_OFF' | 'RETURN' | 'CORRECTION';
+/**
+ * Склад как место хранения. Назван StockLocation, а не Warehouse: компонент
+ * экрана уже занимает это имя, и одинаковые названия для сущности и экрана
+ * рано или поздно приводят к импорту не того.
+ *
+ * Если складов не заведено, всё лежит на складе с id 'main' — так остатки,
+ * записанные до появления складов, не теряются и не требуют миграции.
+ */
+export interface StockLocation {
+  id: string;
+  userId: string;
+  name: string;
+  address?: string;
+  isMain?: boolean;
+  isArchived?: boolean;
+}
+
+export const DEFAULT_WAREHOUSE_ID = 'main';
+
+export type StockMovementType = 'IN' | 'SALE' | 'WRITE_OFF' | 'RETURN' | 'CORRECTION' | 'TRANSFER';
 
 export interface StockMovement {
   id: string;
@@ -321,6 +346,16 @@ export interface StockMovement {
   note?: string;
   date: string;
   createdByUserId?: string;
+
+  /** Склад, с которым связано движение */
+  warehouseId?: string;
+  /** Склад-получатель у перемещения. Перемещение пишется двумя записями: минус
+      на складе-источнике и плюс на получателе, обе с общим batchId. */
+  toWarehouseId?: string;
+  /** Общий идентификатор документа: приход, перемещение и списание проводятся
+      пачкой, и без него разобрать, что пришло одной накладной, невозможно. */
+  batchId?: string;
+  supplierId?: string;
 }
 
 export interface Payment {

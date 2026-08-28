@@ -1,5 +1,5 @@
 import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js';
-import { Account, Investor, InvestmentPeriod, Sale, Expense } from '../types';
+import { Account, Investor, InvestmentPeriod, Sale, Expense, DEFAULT_WAREHOUSE_ID, Product} from '../types';
 
 export const escapeHtml = (str: unknown): string =>
   String(str ?? '')
@@ -471,4 +471,29 @@ export const addMonthsClamped = (date: Date, months: number): Date => {
   const daysInTargetMonth = new Date(targetFirst.getFullYear(), targetFirst.getMonth() + 1, 0).getDate();
   targetFirst.setDate(Math.min(date.getDate(), daysInTargetMonth));
   return targetFirst;
+};
+
+
+// ─── Остатки по складам ────────────────────────────────────────────────────
+// Product.stock — сумма по всем складам, warehouseStocks — разбивка. Итог держим
+// рядом намеренно: на него опираются витрина кассы, отчёты и пометка «мало на
+// складе», и пересчитывать их все по разбивке было бы куда рискованнее.
+
+/** Остаток товара на конкретном складе. */
+export const stockAtWarehouse = (p: Product, warehouseId: string): number => {
+  if (p.warehouseStocks) return p.warehouseStocks[warehouseId] || 0;
+  // Товары, заведённые до появления складов, целиком лежат на основном.
+  return warehouseId === DEFAULT_WAREHOUSE_ID ? (p.stock || 0) : 0;
+};
+
+/** Применяет изменение к складу и пересчитывает общий остаток как сумму. */
+export const applyStockDelta = (p: Product, warehouseId: string, delta: number): Product => {
+  const stocks = { ...(p.warehouseStocks || (p.stock ? { [DEFAULT_WAREHOUSE_ID]: p.stock } : {})) };
+  stocks[warehouseId] = (stocks[warehouseId] || 0) + delta;
+  return {
+    ...p,
+    warehouseStocks: stocks,
+    stock: Object.values(stocks).reduce((sum, v) => sum + v, 0),
+    updatedAt: new Date().toISOString(),
+  };
 };

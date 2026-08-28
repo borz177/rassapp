@@ -1,13 +1,21 @@
 import React, { useMemo, useState } from 'react';
-import type { Product, StockMovement } from '../types';
+import type { Product, StockLocation, StockMovement, Supplier } from '../types';
 import { api } from '../services/api';
 import { compressImageFile } from '../src/imageCompress';
 import TopBarBack from './TopBarBack';
 import ModalPortal from './ModalPortal';
+import TabPill from './TabPill';
+import WarehouseOps from './WarehouseOps';
 
 interface WarehouseProps {
   products: Product[];
   movements: StockMovement[];
+  warehouses: StockLocation[];
+  suppliers: Supplier[];
+  /** Проведение складского документа: движения и обновлённые остатки разом */
+  onPostBatch: (movements: StockMovement[], products: Product[]) => Promise<void> | void;
+  onSaveWarehouse: (w: StockLocation) => Promise<void> | void;
+  onDeleteWarehouse: (id: string) => Promise<void> | void;
   onSaveProduct: (product: Product) => Promise<void> | void;
   onDeleteProduct: (id: string) => Promise<void> | void;
   onAddMovement: (movement: StockMovement) => Promise<void> | void;
@@ -33,6 +41,7 @@ const MOVEMENT_LABELS: Record<StockMovement['type'], string> = {
   WRITE_OFF: 'Списание',
   RETURN: 'Возврат',
   CORRECTION: 'Корректировка',
+  TRANSFER: 'Перемещение',
 };
 
 /**
@@ -45,8 +54,16 @@ const MOVEMENT_LABELS: Record<StockMovement['type'], string> = {
  * сходятся все споры о недостаче.
  */
 const Warehouse: React.FC<WarehouseProps> = ({
-  products, movements, onSaveProduct, onDeleteProduct, onAddMovement, onBack,
+  products, movements, warehouses, suppliers,
+  onSaveProduct, onDeleteProduct, onAddMovement, onPostBatch,
+  onSaveWarehouse, onDeleteWarehouse, onBack,
 }) => {
+  // Три разных занятия под одной крышей: каталог (что у нас за товар),
+  // операции (движение) и сами склады (где лежит). Их разделение — не
+  // украшение: в каталоге правят описание и картинки, в операциях считают
+  // количество, и смешанные в одном списке они мешали бы друг другу.
+  const [section, setSection] = useState<'catalog' | 'ops' | 'places'>('catalog');
+  const [whForm, setWhForm] = useState<Partial<StockLocation> | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string>('ALL');
   const [showArchived, setShowArchived] = useState(false);
@@ -221,6 +238,73 @@ const Warehouse: React.FC<WarehouseProps> = ({
         </div>
       )}
 
+      <div className="relative flex p-1 rounded-[26px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+        <TabPill index={section === 'catalog' ? 0 : section === 'ops' ? 1 : 2} count={3} pad={4} />
+        {([['catalog', 'Товары'], ['ops', 'Операции'], ['places', 'Склады']] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setSection(id)}
+                  className={`relative z-10 flex-1 min-w-0 py-2.5 text-sm font-bold rounded-xl transition-colors ${
+                    section === id ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500'
+                  }`}>{label}</button>
+        ))}
+      </div>
+
+      {section === 'ops' && (
+        <WarehouseOps
+          products={products}
+          warehouses={warehouses}
+          suppliers={suppliers}
+          onPost={onPostBatch}
+        />
+      )}
+
+      {section === 'places' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Пока склад один, выбирать не из чего — операции идут на него по умолчанию.
+            </p>
+            <button onClick={() => setWhForm({ name: '', address: '' })}
+                    className="shrink-0 px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-sm">
+              + Склад
+            </button>
+          </div>
+          {warehouses.filter(w => !w.isArchived).length === 0 ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center">
+              Складов не заведено. Всё лежит на основном.
+            </p>
+          ) : (
+            <div className="grid gap-2">
+              {warehouses.filter(w => !w.isArchived).map(w => (
+                <div key={w.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-800 dark:text-white truncate">
+                      {w.name} {w.isMain && <span className="text-amber-500">★</span>}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{w.address || 'Адрес не указан'}</p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button onClick={() => setWhForm(w)}
+                            className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">
+                      Изменить
+                    </button>
+                    {!w.isMain && (
+                      <button onClick={async () => {
+                                if (!window.confirm(`Удалить склад «${w.name}»? Остатки на нём останутся в истории движений.`)) return;
+                                await onDeleteWarehouse(w.id);
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-xs font-bold">
+                        Удалить
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {section === 'catalog' && (<>
       <input value={search} onChange={e => setSearch(e.target.value)}
              placeholder="Поиск по названию или артикулу" className={inputCls} />
 
@@ -287,6 +371,53 @@ const Warehouse: React.FC<WarehouseProps> = ({
             </div>
           ))}
         </div>
+      )}
+
+      </>)}
+
+      {/* Форма склада */}
+      {whForm && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
+               onClick={() => setWhForm(null)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-3"
+                 onClick={e => e.stopPropagation()}>
+              <h3 className="font-bold text-slate-800 dark:text-white">
+                {whForm.id ? 'Склад' : 'Новый склад'}
+              </h3>
+              <input value={whForm.name || ''} onChange={e => setWhForm({ ...whForm, name: e.target.value })}
+                     placeholder="Название" className={inputCls} />
+              <input value={whForm.address || ''} onChange={e => setWhForm({ ...whForm, address: e.target.value })}
+                     placeholder="Адрес" className={inputCls} />
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                <input type="checkbox" checked={!!whForm.isMain}
+                       onChange={e => setWhForm({ ...whForm, isMain: e.target.checked })} />
+                Основной склад
+              </label>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setWhForm(null)}
+                        className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
+                  Отмена
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!whForm.name?.trim()) { setError('Название склада обязательно'); return; }
+                    await onSaveWarehouse({
+                      id: whForm.id || crypto.randomUUID(),
+                      userId: whForm.userId || '',
+                      name: whForm.name.trim(),
+                      address: whForm.address?.trim() || undefined,
+                      isMain: !!whForm.isMain,
+                    });
+                    setWhForm(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm">
+                  Сохранить
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
       )}
 
       {/* Модальное окно карточки */}

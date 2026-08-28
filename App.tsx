@@ -43,7 +43,7 @@ const LazyFallback: React.FC = () => (
     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
   </div>
 );
-import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, RetailSale as RetailSaleType} from './types';
+import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, RetailSale as RetailSaleType, StockLocation, DEFAULT_WAREHOUSE_ID} from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
 import { api } from './services/api';
 import { ICONS } from './constants';
@@ -53,7 +53,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale } from './src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta} from './src/utils';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
@@ -146,6 +146,7 @@ const isLanding = path === "/"
   // Движения склада: остаток товара — их сумма, а не отдельное число.
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [retailSales, setRetailSales] = useState<RetailSaleType[]>([]);
+  const [warehouses, setWarehouses] = useState<StockLocation[]>([]);
   // Заготовка задачи, переданная со страницы договоров или карточки клиента
   const [taskDraft, setTaskDraft] = useState<Partial<Task> | null>(null);
   const [appSettings, setAppSettings] = useState<AppSettings>({ companyName: 'FinUchet' });
@@ -670,6 +671,7 @@ const handleSync = async () => {
         if (freshData.tasks) setTasks(prev => mergeServerData(prev, freshData.tasks, 'tasks'));
         if (freshData.stockMovements) setStockMovements(prev => mergeServerData(prev, freshData.stockMovements, 'stockMovements'));
         if (freshData.retailSales) setRetailSales(prev => mergeServerData(prev, freshData.retailSales, 'retailSales'));
+        if (freshData.warehouses) setWarehouses(prev => mergeServerData(prev, freshData.warehouses, 'warehouses'));
 
         if (freshData.settings) {
           setAppSettings(freshData.settings);
@@ -882,6 +884,7 @@ useEffect(() => {
                 if (cachedData.tasks) setTasks(cachedData.tasks);
                 if (cachedData.stockMovements) setStockMovements(cachedData.stockMovements);
                 if (cachedData.retailSales) setRetailSales(cachedData.retailSales);
+                if (cachedData.warehouses) setWarehouses(cachedData.warehouses);
                 if (cachedData.employees) setEmployees(cachedData.employees);
                 if (cachedData.settings) setAppSettings(cachedData.settings);
             }
@@ -2857,6 +2860,12 @@ const confirmDeleteCustomer = async () => {
     if (!user) return;
     const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
 
+    // Розница продаётся с основного склада: на кассе выбор склада — лишний
+    // вопрос кассиру, а магазин почти всегда торгует с одного места.
+    const saleWarehouseId = warehouses.find(w => w.isMain && !w.isArchived)?.id
+      || warehouses.find(w => !w.isArchived)?.id
+      || DEFAULT_WAREHOUSE_ID;
+
     const savedSale = await api.saveItem('retailSales', {
       ...sale, userId: ownerId, createdByUserId: user.id,
     });
@@ -2871,6 +2880,7 @@ const confirmDeleteCustomer = async () => {
         quantity: -item.quantity,
         unitPrice: item.price,
         saleId: sale.id,
+        warehouseId: saleWarehouseId,
         date: sale.date,
         createdByUserId: user.id,
       };
@@ -2879,8 +2889,7 @@ const confirmDeleteCustomer = async () => {
 
       const product = products.find(p => p.id === item.productId);
       if (product) {
-        const updated = { ...product, stock: (product.stock || 0) - item.quantity, updatedAt: new Date().toISOString() };
-        const savedProduct = await api.saveItem('products', updated);
+        const savedProduct = await api.saveItem('products', applyStockDelta(product, saleWarehouseId, -item.quantity));
         updateList(setProducts, savedProduct);
       }
     }
@@ -2888,6 +2897,51 @@ const confirmDeleteCustomer = async () => {
     // Экран не покидаем: касса показывает подтверждение и остаётся готовой к
     // следующей продаже. Уводить отсюда после каждого чека — значит заставлять
     // возвращаться вручную на каждого покупателя.
+  };
+
+  /**
+   * Проведение складского документа: приход, перемещение, списание,
+   * инвентаризация. Движения пишем ПЕРЕД остатками — если сорвётся на середине,
+   * в истории останутся записи без применённого остатка, и расхождение видно.
+   * Обратный порядок дал бы изменённый остаток, который нечем объяснить.
+   */
+  const handlePostStockBatch = async (movements: StockMovement[], updatedProducts: Product[]) => {
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+    if (!user) return;
+    const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+
+    for (const m of movements) {
+      const saved = await api.saveItem('stockMovements', {
+        ...m, userId: m.userId || ownerId, createdByUserId: user.id,
+      });
+      updateList(setStockMovements, saved);
+    }
+    for (const p of updatedProducts) {
+      const saved = await api.saveItem('products', { ...p, userId: p.userId || ownerId });
+      updateList(setProducts, saved);
+    }
+  };
+
+  const handleSaveWarehouse = async (w: StockLocation) => {
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+    if (!user) return;
+    const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+    // Основной склад может быть только один: иначе непонятно, куда идут
+    // операции по умолчанию.
+    if (w.isMain) {
+      for (const other of warehouses.filter(x => x.isMain && x.id !== w.id)) {
+        const saved = await api.saveItem('warehouses', { ...other, isMain: false });
+        updateList(setWarehouses, saved);
+      }
+    }
+    const saved = await api.saveItem('warehouses', { ...w, userId: w.userId || ownerId });
+    updateList(setWarehouses, saved);
+  };
+
+  const handleDeleteWarehouse = async (id: string) => {
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+    await api.deleteItem('warehouses', id);
+    setWarehouses(prev => prev.filter(w => w.id !== id));
   };
 
   const handleAddStockMovement = async (movement: StockMovement) => {
@@ -4001,6 +4055,11 @@ if (!user && !showSplash) {
                     <Warehouse
                       products={products}
                       movements={stockMovements}
+                      warehouses={warehouses}
+                      suppliers={suppliers}
+                      onPostBatch={handlePostStockBatch}
+                      onSaveWarehouse={handleSaveWarehouse}
+                      onDeleteWarehouse={handleDeleteWarehouse}
                       onSaveProduct={handleSaveProduct}
                       onDeleteProduct={handleDeleteProductFull}
                       onAddMovement={handleAddStockMovement}
