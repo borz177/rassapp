@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Sale, Expense, Account, Customer, User, Investor } from '../types';
+import { Sale, Expense, Account, Customer, User, Investor, RetailSale} from '../types';
 import { formatCurrency, getManagerSharePercent, getAccountShares } from '../src/utils';
 import { ICONS } from '../constants';
 import ModalPortal from './ModalPortal';
@@ -12,6 +12,8 @@ interface OperationsProps {
   employees?: User[];
   investors?: Investor[];
   initialAccountId?: string | null;
+  /** Розничные чеки магазина. Пусто, когда магазин выключен. */
+  retailSales?: RetailSale[];
   canFilterByEmployee?: boolean;
   /** Отмена операции. Возвращает деньги на счёт и откатывает связанные записи. */
   onDelete?: (op: any) => Promise<void> | void;
@@ -19,7 +21,8 @@ interface OperationsProps {
 }
 
 const Operations: React.FC<OperationsProps> = ({ 
-    sales, expenses, accounts, customers, employees = [], investors = [], initialAccountId, canFilterByEmployee = false, onDelete
+    sales, expenses, accounts, customers, employees = [], investors = [], initialAccountId, canFilterByEmployee = false, onDelete,
+    retailSales = []
 }) => {
   // Отмена расхода: подтверждение с перечислением последствий, а не безликое «вы уверены?»
   const [cancelTarget, setCancelTarget] = useState<any | null>(null);
@@ -74,6 +77,27 @@ const Operations: React.FC<OperationsProps> = ({
 
   const operations = useMemo(() => {
     const incomeOps: any[] = [];
+
+    // 🛒 Розничные чеки. Показываем их наравне с остальными поступлениями: для
+    // кассы это такие же деньги на счёте, и прятать их в отдельный список
+    // значило бы, что история операций перестала отражать движение денег.
+    // В описании — состав чека, иначе строка «Продажа 3 400 ₽» ничего не говорит.
+    retailSales.forEach(rs => {
+      if (rs.isCancelled) return;
+      const names = rs.items.map(i => `${i.name} ×${i.quantity}`).join(', ');
+      incomeOps.push({
+        id: rs.id,
+        date: rs.date,
+        amount: rs.total,
+        title: rs.customerId ? getCustomerName(rs.customerId) : 'Розничный покупатель',
+        description: names || 'Розничная продажа',
+        accountId: rs.accountId,
+        type: 'INCOME',
+        category: 'Магазин',
+        raw: rs,
+        isRetail: true,
+      });
+    });
 
     // Process all sales to generate cash-flow based income operations
     sales.forEach(s => {
@@ -181,7 +205,7 @@ const Operations: React.FC<OperationsProps> = ({
     // 🔹 ШАГ 3: Сортируем для отображения (от новых к старым)
     return all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  }, [sales, expenses, filterType, filterAccountId, filterCategory, filterEmployeeId, customers, accounts]);
+  }, [sales, expenses, filterType, filterAccountId, filterCategory, filterEmployeeId, customers, accounts, retailSales]);
 
   const groupedOperations = useMemo(() => {
     const groups: { title: string; items: typeof operations }[] = [];

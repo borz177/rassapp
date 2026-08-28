@@ -550,7 +550,6 @@ export type ViewState =
   | 'PARTNER'
   | 'WAREHOUSE'
   | 'RETAIL_SALE'
-  | 'SHOP_REPORT'
   | 'CASH_REGISTER'
   | 'CUSTOMERS'
   | 'CUSTOMER_DETAILS'

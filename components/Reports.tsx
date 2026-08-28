@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Investor, AppSettings, Sale, Expense, Account, Customer } from '../types';
+import TabPill from './TabPill';
+import ShopReportBody from './ShopReportBody';
+import { Investor, AppSettings, Sale, Expense, Account, Customer, RetailSale as RetailSaleType, Product} from '../types';
 import { formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor, calculateSaleOverdue, addMonthsClamped, shareDateForSale } from '../src/utils';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
@@ -30,6 +32,10 @@ interface ReportsProps {
     expenses: Expense[];
     accounts: Account[];
     customers: Customer[];
+    /** Розничные чеки и товары — для вкладки «Магазин». Пусто, когда магазин выключен. */
+    retailSales?: RetailSaleType[];
+    products?: Product[];
+    showShop?: boolean;
 }
 
 type PeriodPreset = 'today' | 'week' | 'month' | 'lastMonth' | 'quarter' | 'year' | 'all';
@@ -120,8 +126,13 @@ const ProgressRow: React.FC<ProgressRowProps> = ({ label, realized, expected, co
 
 const Reports: React.FC<ReportsProps> = ({
     investors, filters, onFiltersChange, data, appSettings,
-    sales = [], expenses = [], accounts = [], customers = []
+    sales = [], expenses = [], accounts = [], customers = [],
+    retailSales = [], products = [], showShop = false
 }) => {
+    // Рассрочка и магазин считаются по разным данным: договоры с графиком против
+    // розничных чеков. Смешивать их в одном отчёте нельзя — выручка сложилась бы,
+    // а маржа и средний чек потеряли смысл. Поэтому вкладки, а не общий свод.
+    const [reportTab, setReportTab] = useState<'installments' | 'shop'>('installments');
     const hasInvestors = investors.length > 0;
     const showInvestorBreakdown = filters.accountId === 'ALL' && investors.length > 1;
 
@@ -757,6 +768,26 @@ const Reports: React.FC<ReportsProps> = ({
                     </div>
                 </header>
 
+                {showShop && (
+                  <div className="relative flex p-1 rounded-[26px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+                    <TabPill index={reportTab === 'installments' ? 0 : 1} count={2} pad={4} />
+                    <button onClick={() => setReportTab('installments')}
+                            className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-xl transition-colors ${
+                              reportTab === 'installments' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500'
+                            }`}>Рассрочка</button>
+                    <button onClick={() => setReportTab('shop')}
+                            className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-xl transition-colors ${
+                              reportTab === 'shop' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
+                            }`}>Магазин</button>
+                  </div>
+                )}
+
+                {showShop && reportTab === 'shop' && (
+                  <ShopReportBody sales={retailSales} products={products} showCents={appSettings.showCents} />
+                )}
+
+                {(!showShop || reportTab === 'installments') && (<>
+
                 {/* Filters */}
                 <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm p-5 rounded-2xl shadow-lg border border-white/20 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300 space-y-4">
                     <div className="flex items-center gap-2">
@@ -1236,6 +1267,8 @@ const Reports: React.FC<ReportsProps> = ({
 
                     </>
                 )}
+
+                </>)}
             </div>
 
             {/* Export Options Modal */}

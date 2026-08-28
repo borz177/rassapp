@@ -1,12 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import type { Product, RetailSale } from '../types';
-import TopBarBack from './TopBarBack';
 import TabPill from './TabPill';
 
-interface ShopReportProps {
+interface ShopReportBodyProps {
   sales: RetailSale[];
   products: Product[];
-  onBack: () => void;
   showCents?: boolean;
 }
 
@@ -32,13 +30,16 @@ const periodStart = (p: Period) => {
 };
 
 /**
- * Отчёты магазина.
+ * Отчёт по рознице — вкладка «Магазин» внутри общих отчётов.
  *
  * Считаем по данным самих чеков, а не по текущим ценам товаров: цена и
  * себестоимость зафиксированы в момент продажи, и пересчёт по нынешним
- * значениям задним числом переписал бы прошлую маржу после каждой переоценки.
+ * значениям переписывал бы прошлую маржу после каждой переоценки.
+ *
+ * Свой период, независимый от фильтров рассрочки: у розницы другой горизонт —
+ * там смотрят на день и неделю, а не на квартал.
  */
-const ShopReport: React.FC<ShopReportProps> = ({ sales, products, onBack, showCents = false }) => {
+const ShopReportBody: React.FC<ShopReportBodyProps> = ({ sales, products, showCents = false }) => {
   const [period, setPeriod] = useState<Period>('MONTH');
 
   const scoped = useMemo(() => {
@@ -49,7 +50,6 @@ const ShopReport: React.FC<ShopReportProps> = ({ sales, products, onBack, showCe
   const totals = useMemo(() => ({
     revenue: scoped.reduce((s, x) => s + x.total, 0),
     profit: scoped.reduce((s, x) => s + x.profit, 0),
-    cost: scoped.reduce((s, x) => s + x.cost, 0),
     discount: scoped.reduce((s, x) => s + x.discount, 0),
     checks: scoped.length,
     units: scoped.reduce((s, x) => s + x.items.reduce((n, i) => n + i.quantity, 0), 0),
@@ -73,7 +73,8 @@ const ShopReport: React.FC<ShopReportProps> = ({ sales, products, onBack, showCe
   }, [scoped]);
 
   // Залежавшийся товар: на складе есть, а за период не продавался ни разу.
-  // Это деньги, которые лежат мёртвым грузом, — их видно только таким сравнением.
+  // Это деньги, лежащие мёртвым грузом, — увидеть их можно только сравнением
+  // остатков с продажами, ни в одном из двух списков по отдельности их нет.
   const stale = useMemo(() => {
     const sold = new Set<string>();
     scoped.forEach(s => s.items.forEach(i => sold.add(i.productId)));
@@ -87,15 +88,7 @@ const ShopReport: React.FC<ShopReportProps> = ({ sales, products, onBack, showCe
   const card = 'bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4';
 
   return (
-    <div className="space-y-4 pb-10">
-      <div className="flex items-center gap-3">
-        <TopBarBack onClick={onBack} />
-        <div className="min-w-0">
-          <h2 className="text-xl font-bold text-slate-800 dark:text-white">Отчёт магазина</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Розничные продажи и маржа</p>
-        </div>
-      </div>
-
+    <div className="space-y-4">
       <div className="relative flex p-1 rounded-[22px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
         <TabPill index={PERIODS.findIndex(p => p.key === period)} count={PERIODS.length} pad={4} />
         {PERIODS.map(p => (
@@ -109,7 +102,7 @@ const ShopReport: React.FC<ShopReportProps> = ({ sales, products, onBack, showCe
       </div>
 
       <div className={`${card} text-center`}>
-        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Выручка</p>
+        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Выручка розницы</p>
         <p className="text-4xl font-extrabold text-slate-900 dark:text-white leading-none mt-1">
           {money(totals.revenue, showCents)} <span className="text-2xl text-slate-400">₽</span>
         </p>
@@ -118,7 +111,7 @@ const ShopReport: React.FC<ShopReportProps> = ({ sales, products, onBack, showCe
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: 'Чеков', value: String(totals.checks) },
           { label: 'Средний чек', value: `${money(avgCheck, showCents)} ₽` },
@@ -185,4 +178,4 @@ const ShopReport: React.FC<ShopReportProps> = ({ sales, products, onBack, showCe
   );
 };
 
-export default ShopReport;
+export default ShopReportBody;

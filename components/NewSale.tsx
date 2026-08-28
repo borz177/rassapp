@@ -18,6 +18,12 @@ interface NewSaleProps {
   suppliers?: Supplier[];
   showSupplierField?: boolean;
   onClose: () => void;
+  /**
+   * Открыть розничную продажу вместо режима «Наличные».
+   * Передаётся только при включённом магазине: тогда наличные оформляются
+   * корзиной со списанием со склада, а не договором с нулевым сроком.
+   */
+  onOpenRetail?: () => void;
   onSelectCustomer: (currentData: any) => void;
   onSubmit: (data: any) => Promise<any>;
   onUpdateSale?: (sale: Sale) => Promise<void>; // 🔹 Новый пропс для редактирования
@@ -84,6 +90,7 @@ const checkDuplicateSale = (
 const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales, suppliers, showSupplierField,
   onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user, propAppSettings,
+  onOpenRetail,
 }) => {
   const supplierList: Supplier[] = suppliers || [];
   const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(initialData.type || 'INSTALLMENT');
@@ -1274,7 +1281,11 @@ if (mode === 'CASH') {
         <TabPill index={mode === 'INSTALLMENT' ? 0 : 1} count={2} />
         <button type="button" onClick={() => !formData.id && updateMode('INSTALLMENT')} disabled={!!formData.id}
                 className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${mode === 'INSTALLMENT' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'} ${formData.id ? 'cursor-not-allowed opacity-70' : ''}`}>Рассрочка</button>
-        <button type="button" onClick={() => !formData.id && updateMode('CASH')} disabled={!!formData.id}
+        {/* При включённом магазине наличные ведут в розничную продажу: там корзина,
+            количество и списание со склада. Договор с нулевым сроком для этого не
+            нужен, а держать две формы для одного и того же — верный путь к тому,
+            что данные разъедутся. */}
+        <button type="button" onClick={() => { if (formData.id) return; if (onOpenRetail) onOpenRetail(); else updateMode('CASH'); }} disabled={!!formData.id}
                 className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${mode === 'CASH' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'} ${formData.id ? 'cursor-not-allowed opacity-70' : ''}`}>Наличные</button>
       </div>
       {formData.id && (
