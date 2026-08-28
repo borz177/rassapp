@@ -3986,6 +3986,7 @@ if (!user && !showSplash) {
                       products={products}
                       customers={customers}
                       accounts={accounts}
+                      existingSales={retailSales}
                       showCents={appSettings.showCents}
                       onSubmit={handleRetailSale}
                       onBack={requestClose}

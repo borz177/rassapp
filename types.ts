@@ -299,6 +299,8 @@ export interface RetailSale {
   profit: number;
   note?: string;
   date: string;
+  /** Номер документа. По умолчанию порядковый, но кассир может задать свой. */
+  docNumber?: string;
   createdByUserId?: string;
   isCancelled?: boolean;
 }
