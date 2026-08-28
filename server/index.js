@@ -4024,7 +4024,7 @@ const receiptEmailHtml = ({ name, plan, months, amount, paidAt, expiresAt, payme
       Открыть чек
     </a>` : `
     <p style="margin:20px 0 0;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;color:#64748b;font-size:13px;line-height:1.5">
-      Это подтверждение оплаты. Чек НПД придёт отдельным письмом.
+      Это подтверждение оплаты.
     </p>`}
   </div>
 
