@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
+import ShopReport from './components/ShopReport';
 import RetailSale from './components/RetailSale';
 import Warehouse from './components/Warehouse';
 import PartnerPage from './components/PartnerPage';
@@ -82,7 +83,7 @@ async function enablePersistentStorage() {
 // underneath, gated on previousView === 'MORE') so swiping back reveals the real menu, not blank space.
 const MORE_PUSH_VIEWS = new Set<ViewState>([
   'PROFILE', 'SETTINGS', 'EMPLOYEES', 'SUPPLIERS', 'TARIFFS', 'ADMIN_PANEL',
-  'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS', 'REFERRAL', 'PARTNER', 'WAREHOUSE', 'RETAIL_SALE',
+  'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS', 'REFERRAL', 'PARTNER', 'WAREHOUSE', 'RETAIL_SALE', 'SHOP_REPORT',
 ]);
 
 // 🎁 Код приглашения из адреса сохраняем СРАЗУ при загрузке любой страницы.
@@ -1596,6 +1597,7 @@ const dashboardStats = useMemo(() => {
           case 'PARTNER': setPreviousView(currentView); setCurrentView('PARTNER'); break;
           case 'WAREHOUSE': setPreviousView(currentView); setCurrentView('WAREHOUSE'); break;
           case 'RETAIL_SALE': setPreviousView(currentView); setCurrentView('RETAIL_SALE'); break;
+          case 'SHOP_REPORT': setPreviousView(currentView); setCurrentView('SHOP_REPORT'); break;
           case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break;
           case 'TASKS': setPreviousView(currentView); setCurrentView('TASKS'); break;
           case 'ADD_CUSTOMER': setCurrentView('CUSTOMERS'); break;
@@ -3972,6 +3974,19 @@ if (!user && !showSplash) {
                 <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                   <Settings appSettings={appSettings} shopAllowed={checkAccess('SHOP')} onUpdateSettings={handleUpdateSettings}
                                                        onNavigate={(v: ViewState) => { setPreviousView('SETTINGS'); setCurrentView(v); }} onImportData={handleImportData} currentUserId={user.id} user={user}/>
+                </PagePush>
+              )}
+
+              {currentView === 'SHOP_REPORT' && (
+                <PagePush onClose={() => setCurrentView(previousView)} scrollKey="SHOP_REPORT">
+                  {(requestClose: () => void) => (
+                    <ShopReport
+                      sales={retailSales}
+                      products={products}
+                      showCents={appSettings.showCents}
+                      onBack={requestClose}
+                    />
+                  )}
                 </PagePush>
               )}
 

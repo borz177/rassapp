@@ -385,6 +385,7 @@ const counts = useMemo(() => {
     // единственной постоянной навигации на широком экране.
     { id: 'PARTNER' as const, label: 'Бизнес-партнёр', icon: ICONS.Star, visible: !!user?.partnerPercent },
     { id: 'WAREHOUSE' as const, label: 'Склад', icon: ICONS.Archive, visible: showShop },
+    { id: 'SHOP_REPORT' as const, label: 'Отчёт магазина', icon: ICONS.TrendingUp, visible: showShop },
     { id: 'DASHBOARD' as const, label: 'Главная', icon: ICONS.Dashboard, visible: true },
     {
       id: 'CASH_REGISTER' as const,
