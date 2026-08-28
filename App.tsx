@@ -2885,7 +2885,9 @@ const confirmDeleteCustomer = async () => {
       }
     }
 
-    setCurrentView('WAREHOUSE');
+    // Экран не покидаем: касса показывает подтверждение и остаётся готовой к
+    // следующей продаже. Уводить отсюда после каждого чека — значит заставлять
+    // возвращаться вручную на каждого покупателя.
   };
 
   const handleAddStockMovement = async (movement: StockMovement) => {
