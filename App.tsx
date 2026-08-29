@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import RetailSale from './components/RetailSale';
 import Warehouse from './components/Warehouse';
+import Journal from './components/Journal';
 import PartnerPage from './components/PartnerPage';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -1608,6 +1609,7 @@ const dashboardStats = useMemo(() => {
           case 'CALCULATOR': setCurrentView('CALCULATOR'); break;
           case 'PARTNER': setPreviousView(currentView); setCurrentView('PARTNER'); break;
           case 'WAREHOUSE': setPreviousView(currentView); setCurrentView('WAREHOUSE'); break;
+          case 'JOURNAL': setPreviousView(currentView); setCurrentView('JOURNAL'); break;
           case 'SUPPLIERS': setPreviousView(currentView); setCurrentView('SUPPLIERS'); break;
           case 'RETAIL_SALE': setPreviousView(currentView); setCurrentView('RETAIL_SALE'); break;
           case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break;
@@ -4120,6 +4122,28 @@ if (!user && !showSplash) {
                       showCents={appSettings.showCents}
                       onSubmit={handleRetailSale}
                       onBack={requestClose}
+                    />
+                  )}
+                </PagePush>
+              )}
+
+              {currentView === 'JOURNAL' && (
+                <PagePush onClose={() => setCurrentView(previousView)} scrollKey="JOURNAL">
+                  {(requestClose: () => void) => (
+                    <Journal
+                      retailSales={retailSales}
+                      movements={stockMovements}
+                      products={products}
+                      customers={customers}
+                      warehouses={warehouses}
+                      suppliers={suppliers}
+                      accounts={accounts}
+                      employees={employees}
+                      appSettings={appSettings}
+                      user={user}
+                      onBack={requestClose}
+                      onSelectCustomer={handleSelectCustomer}
+                      onAcceptPayment={handleInitiateRetailPayment}
                     />
                   )}
                 </PagePush>

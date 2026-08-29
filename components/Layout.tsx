@@ -387,7 +387,19 @@ const counts = useMemo(() => {
     // На десктопе меню «+» нет, поэтому партнёрство живёт в боковом меню —
     // единственной постоянной навигации на широком экране.
     { id: 'PARTNER' as const, label: 'Бизнес-партнёр', icon: ICONS.Star, visible: !!user?.partnerPercent },
-    { id: 'WAREHOUSE' as const, label: 'Склад', icon: ICONS.Archive, visible: showShop },
+    {
+      // Склад и журнал — про один и тот же товар, но с разных сторон: где
+      // лежит и какими бумагами двигался. Держать их отдельными пунктами
+      // верхнего уровня значило бы дважды говорить о складе.
+      id: 'WAREHOUSE' as const,
+      label: 'Склад',
+      icon: ICONS.Archive,
+      visible: showShop,
+      subItems: [
+        { label: 'Склад', action: 'GOTO_WAREHOUSE', icon: ICONS.Archive },
+        { label: 'Журнал', action: 'JOURNAL', icon: ICONS.List },
+      ]
+    },
     { id: 'DASHBOARD' as const, label: 'Главная', icon: ICONS.Dashboard, visible: true },
     {
       id: 'CASH_REGISTER' as const,
@@ -460,6 +472,8 @@ const counts = useMemo(() => {
      if (subItem.action) {
          if (subItem.action === 'GOTO_CASH_REGISTER') {
              setView('CASH_REGISTER');
+         } else if (subItem.action === 'GOTO_WAREHOUSE') {
+             setView('WAREHOUSE');
          } else {
              onAction(subItem.action);
          }
@@ -714,6 +728,12 @@ const counts = useMemo(() => {
                 <button onClick={() => handleActionClick('WAREHOUSE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
                   <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2.5 rounded-full text-indigo-600 dark:text-indigo-400">{ICONS.Archive}</div>
                   <span className="font-semibold text-[15px]">Склад</span>
+                </button>
+              )}
+              {showShop && (
+                <button onClick={() => handleActionClick('JOURNAL')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                  <div className="bg-slate-100 dark:bg-slate-700 p-2.5 rounded-full text-slate-600 dark:text-slate-300">{ICONS.List}</div>
+                  <span className="font-semibold text-[15px]">Журнал</span>
                 </button>
               )}
               {!!user?.partnerPercent && (

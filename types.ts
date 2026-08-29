@@ -624,6 +624,7 @@ export type ViewState =
   | 'REFERRAL'
   | 'PARTNER'
   | 'WAREHOUSE'
+  | 'JOURNAL'
   | 'RETAIL_SALE'
   | 'CASH_REGISTER'
   | 'CUSTOMERS'
