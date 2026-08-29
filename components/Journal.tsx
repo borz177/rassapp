@@ -5,7 +5,7 @@ import type {
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { formatCurrency, retailPaidAmount, retailRemaining } from '../src/utils';
 import TopBarBack from './TopBarBack';
-import { useBackInterceptor } from './transitions/PagePush';
+import SubPage from './transitions/SubPage';
 import ModalPortal from './ModalPortal';
 import TabPill from './TabPill';
 
@@ -240,9 +240,6 @@ const Journal: React.FC<JournalProps> = ({
 
   const opened = docs.find(d => d.id === openId) || null;
 
-  // Пока открыт документ, «назад» возвращает к ленте, а не закрывает журнал.
-  useBackInterceptor(!!opened, () => setOpenId(null));
-
   const filtersActive = kind !== 'ALL' || pay !== 'ALL';
 
   /**
@@ -293,7 +290,12 @@ const Journal: React.FC<JournalProps> = ({
   };
 
   // ─── Карточка документа ───────────────────────────────────────────────────
-  if (opened) {
+  /**
+   * Карточка документа. Не ранний return, как было: список должен остаться
+   * смонтированным под карточкой — иначе выезжать не из-за чего, а при возврате
+   * лента перерисовывалась заново и теряла позицию прокрутки.
+   */
+  const renderDoc = (opened: JournalDoc, close: () => void) => {
     const paid = opened.sale ? retailPaidAmount(opened.sale) : 0;
     const author = authorName(opened.authorId);
     const accountName = opened.sale
@@ -312,7 +314,7 @@ const Journal: React.FC<JournalProps> = ({
     return (
       <div className="space-y-4 pb-10">
         <div className="flex items-center gap-3">
-          <TopBarBack onClick={() => setOpenId(null)} />
+          <TopBarBack onClick={close} />
           <div className="min-w-0 flex-1">
             <h2 className="text-xl font-bold text-slate-800 dark:text-white truncate">
               {KIND_LABEL[opened.kind]} №{opened.number}
@@ -480,10 +482,11 @@ const Journal: React.FC<JournalProps> = ({
         )}
       </div>
     );
-  }
+  };
 
   // ─── Лента документов ─────────────────────────────────────────────────────
   return (
+    <>
     <div className="space-y-3 pb-10">
       <div className="flex items-center gap-3">
         <TopBarBack onClick={onBack} />
@@ -652,6 +655,16 @@ const Journal: React.FC<JournalProps> = ({
         </ModalPortal>
       )}
     </div>
+
+    {/* Карточка выезжает справа и уезжает обратно — тем же движением, что и
+        остальные страницы приложения. Держится до конца анимации ухода:
+        состояние снимается в onClose, когда играть уже нечего. */}
+    {opened && (
+      <SubPage onClose={() => setOpenId(null)}>
+        {(close: () => void) => renderDoc(opened, close)}
+      </SubPage>
+    )}
+    </>
   );
 };
 
