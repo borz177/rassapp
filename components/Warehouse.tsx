@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Account, AppSettings, Customer, Product, RetailSale, StockLocation, StockMovement, Supplier, User } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { stockAtWarehouse } from '../src/utils';
@@ -85,6 +85,27 @@ const Warehouse: React.FC<WarehouseProps> = ({
   // открывается по троеточию и не должно уводить с экрана.
   const [openProductId, setOpenProductId] = useState<string | null>(null);
   const [menuProduct, setMenuProduct] = useState<Product | null>(null);
+  // Выбор нескольких товаров. Пустой набор — обычный режим: пока ничего не
+  // выбрано, каталог ведёт себя как всегда, и лишнего состояния у экрана нет.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState<string | null>(null);
+  // Перетаскивание — отдельный режим, а не жест поверх списка: длинное нажатие
+  // уже занято выбором, а таскать строки во время обычной прокрутки нельзя.
+  const [reorder, setReorder] = useState(false);
+  const [order, setOrder] = useState<string[]>([]);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const rowRects = useRef<Record<string, DOMRect>>({});
+  const longPress = useRef<{ timer: number; x: number; y: number; id: string } | null>(null);
+
+  const selection = selectedIds.length > 0;
+
+  // Выбор и перетаскивание принадлежат каталогу: уходя на операции или склады,
+  // человек оставляет их позади, и вернуться в наполовину выбранный список —
+  // неприятная неожиданность.
+  useEffect(() => {
+    if (section !== 'catalog') { setSelectedIds([]); setReorder(false); setDragId(null); }
+  }, [section]);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string>('ALL');
   const [showArchived, setShowArchived] = useState(false);
@@ -122,8 +143,27 @@ const Warehouse: React.FC<WarehouseProps> = ({
       .filter(p => category === 'ALL' || p.category === category)
       .filter(p => !onlyLow || isLow(p))
       .filter(p => !q || p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
-      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+      // Расставленные вручную идут первыми и в своём порядке, остальные —
+      // по алфавиту следом. Так один переставленный товар не выбрасывает
+      // остальные в случайный порядок.
+      .sort((a, b) => {
+        const ao = a.sortOrder, bo = b.sortOrder;
+        if (ao !== undefined && bo !== undefined) return ao - bo;
+        if (ao !== undefined) return -1;
+        if (bo !== undefined) return 1;
+        return a.name.localeCompare(b.name, 'ru');
+      });
   }, [products, search, category, showArchived, onlyLow]);
+
+  // В режиме перетаскивания порядок держим локально: строки должны следовать за
+  // пальцем сразу, не дожидаясь ответа сервера на каждое движение.
+  const listed = useMemo(() => {
+    if (!reorder || order.length === 0) return visible;
+    const byId = new Map(visible.map(p => [p.id, p]));
+    const ordered = order.map(id => byId.get(id)).filter(Boolean) as Product[];
+    const rest = visible.filter(p => !order.includes(p.id));
+    return [...ordered, ...rest];
+  }, [visible, reorder, order]);
 
   const totals = useMemo(() => {
     const live = products.filter(p => !p.isArchived);
@@ -153,6 +193,107 @@ const Warehouse: React.FC<WarehouseProps> = ({
       units: onIt.reduce((s, p) => s + stockAtWarehouse(p, warehouseId), 0),
       cost: onIt.reduce((s, p) => s + stockAtWarehouse(p, warehouseId) * (p.buyPrice || 0), 0),
     };
+  };
+
+  const toggleSelected = (id: string) =>
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const startLongPress = (id: string, x: number, y: number) => {
+    cancelLongPress();
+    longPress.current = {
+      id, x, y,
+      timer: window.setTimeout(() => {
+        longPress.current = null;
+        // Отклик телефона на удержание: без него непонятно, сработало ли.
+        if (navigator.vibrate) navigator.vibrate(12);
+        setSelectedIds(prev => prev.includes(id) ? prev : [...prev, id]);
+      }, 450),
+    };
+  };
+
+  const cancelLongPress = () => {
+    if (longPress.current) window.clearTimeout(longPress.current.timer);
+    longPress.current = null;
+  };
+
+  // Палец, поехавший вбок или вниз, — это прокрутка, а не удержание.
+  const moveLongPress = (x: number, y: number) => {
+    const s2 = longPress.current;
+    if (!s2) return;
+    if (Math.abs(x - s2.x) > 10 || Math.abs(y - s2.y) > 10) cancelLongPress();
+  };
+
+  /** Массовое действие. Ошибку показываем, но остальные товары всё равно
+      дообрабатываем: половина применённого лучше, чем откат всего из-за одного. */
+  const runBulk = async (fn: (p: Product) => Promise<void> | void) => {
+    setBulkBusy(true);
+    let failed = 0;
+    for (const id of selectedIds) {
+      const p2 = products.find(x => x.id === id);
+      if (!p2) continue;
+      try { await fn(p2); } catch { failed++; }
+    }
+    setBulkBusy(false);
+    setSelectedIds([]);
+    if (failed) setError(`Не удалось обработать ${failed} товар(ов)`);
+  };
+
+  const enterReorder = () => {
+    setSelectedIds([]);
+    setOrder(visible.map(p => p.id));
+    setReorder(true);
+  };
+
+  /**
+   * Сохраняем порядок. Пишем только те карточки, у которых номер действительно
+   * изменился: переставили один товар — уходит одна запись, а не весь каталог.
+   */
+  const saveOrder = async () => {
+    setBulkBusy(true);
+    try {
+      for (let i = 0; i < listed.length; i++) {
+        const p2 = listed[i];
+        const next = i * 1000;
+        if (p2.sortOrder === next) continue;
+        await onSaveProduct({ ...p2, sortOrder: next, updatedAt: new Date().toISOString() });
+      }
+    } finally {
+      setBulkBusy(false);
+      setReorder(false);
+      setOrder([]);
+    }
+  };
+
+  // Перетаскивание: меряем строки один раз в начале жеста. Мерить на каждом
+  // движении — значит просить браузер о layout по сорок раз в секунду.
+  const startDrag = (id: string) => {
+    const rects: Record<string, DOMRect> = {};
+    listed.forEach(p2 => {
+      const el = document.getElementById(`prow_${p2.id}`);
+      if (el) rects[p2.id] = el.getBoundingClientRect();
+    });
+    rowRects.current = rects;
+    setOrder(listed.map(p2 => p2.id));
+    setDragId(id);
+  };
+
+  const dragOver = (y: number) => {
+    if (!dragId) return;
+    const ids = order.length ? order : listed.map(p2 => p2.id);
+    const from = ids.indexOf(dragId);
+    if (from < 0) return;
+    // Целевую позицию ищем по исходным серединам строк: список под пальцем
+    // уже переставлен, и мерить его заново — гоняться за собственным хвостом.
+    const centers = ids.map(id => {
+      const r = rowRects.current[id];
+      return r ? r.top + r.height / 2 : Number.MAX_SAFE_INTEGER;
+    });
+    let to = centers.findIndex(c => y < c);
+    if (to < 0) to = ids.length - 1;
+    if (to === from) return;
+    const next = [...ids];
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    setOrder(next);
   };
 
   const openNew = () => { setEditing(null); setForm(emptyForm); setError(null); setShowForm(true); };
@@ -371,9 +512,67 @@ const Warehouse: React.FC<WarehouseProps> = ({
       )}
 
       {section === 'catalog' && (<>
-      <input value={search} onChange={e => setSearch(e.target.value)}
-             placeholder="Поиск по названию или артикулу" className={inputCls} />
+      {/* Панель выбора заменяет фильтры целиком: пока идёт выбор, человек
+          занят другим делом, и поиск с категориями ему только мешают. */}
+      {selection ? (
+        <div className="sticky top-0 z-20 bg-white dark:bg-slate-800 rounded-2xl border border-indigo-200 dark:border-indigo-900/50 shadow-sm p-3 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-bold text-slate-800 dark:text-white">Выбрано {selectedIds.length}</p>
+            <div className="flex gap-2">
+              <button onClick={() => setSelectedIds(listed.map(p => p.id))}
+                      className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">
+                Все
+              </button>
+              <button onClick={() => setSelectedIds([])}
+                      className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">
+                Снять
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <button disabled={bulkBusy} onClick={() => setBulkCategory('')}
+                    className="py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold disabled:opacity-50">
+              Категория
+            </button>
+            <button disabled={bulkBusy}
+                    onClick={() => runBulk(p => onSaveProduct({ ...p, isArchived: !showArchived, updatedAt: new Date().toISOString() }))}
+                    className="py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold disabled:opacity-50">
+              {showArchived ? 'Вернуть' : 'В архив'}
+            </button>
+            <button disabled={bulkBusy}
+                    onClick={() => {
+                      if (!window.confirm(`Удалить ${selectedIds.length} товар(ов) без возможности восстановления?`)) return;
+                      runBulk(p => onDeleteProduct(p.id));
+                    }}
+                    className="py-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-xs font-bold disabled:opacity-50">
+              Удалить
+            </button>
+          </div>
+        </div>
+      ) : reorder ? (
+        <div className="sticky top-0 z-20 bg-white dark:bg-slate-800 rounded-2xl border border-indigo-200 dark:border-indigo-900/50 shadow-sm p-3 flex items-center justify-between gap-3">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Тяните за ручку слева, чтобы поменять порядок
+          </p>
+          <button disabled={bulkBusy} onClick={saveOrder}
+                  className="shrink-0 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold disabled:opacity-50">
+            {bulkBusy ? 'Сохраняем…' : 'Готово'}
+          </button>
+        </div>
+      ) : null}
 
+      {!selection && !reorder && (
+      <div className="flex gap-2">
+        <input value={search} onChange={e => setSearch(e.target.value)}
+               placeholder="Поиск по названию или артикулу" className={inputCls} />
+        <button onClick={enterReorder} aria-label="Порядок"
+                className="shrink-0 px-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-300 text-lg">
+          ⇅
+        </button>
+      </div>
+      )}
+
+      {!selection && !reorder && (
       <div className="flex flex-wrap gap-2">
         <button onClick={() => setCategory('ALL')}
                 className={`px-3.5 py-2 rounded-full text-xs font-bold ${category === 'ALL' ? 'glass-surface text-indigo-600 dark:text-indigo-300' : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
@@ -396,20 +595,66 @@ const Warehouse: React.FC<WarehouseProps> = ({
           Архив
         </button>
       </div>
+      )}
 
-      {visible.length === 0 ? (
+      {listed.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center">
           {products.length === 0 ? 'Товаров пока нет. Добавьте первый.' : 'Ничего не найдено.'}
         </p>
       ) : (
-        <div className="grid gap-3">
-          {visible.map(p => (
-            <div key={p.id}
-                 onClick={() => setOpenProductId(p.id)}
-                 className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3 flex items-center gap-3 cursor-pointer active:bg-slate-50 dark:active:bg-slate-700/50">
+        <div className="grid gap-3"
+             onPointerMove={e => { if (dragId) dragOver(e.clientY); }}
+             onPointerUp={() => setDragId(null)}
+             onPointerCancel={() => setDragId(null)}>
+          {listed.map(p => {
+            const checked = selectedIds.includes(p.id);
+            return (
+            <div key={p.id} id={`prow_${p.id}`}
+                 onPointerDown={e => { if (!reorder && e.pointerType !== 'mouse') startLongPress(p.id, e.clientX, e.clientY); }}
+                 onPointerMove={e => moveLongPress(e.clientX, e.clientY)}
+                 onPointerUp={cancelLongPress}
+                 onPointerCancel={cancelLongPress}
+                 onContextMenu={e => { if (!reorder) { e.preventDefault(); toggleSelected(p.id); } }}
+                 onClick={() => {
+                   if (reorder) return;
+                   if (selection) { toggleSelected(p.id); return; }
+                   setOpenProductId(p.id);
+                 }}
+                 className={`bg-white dark:bg-slate-800 rounded-2xl border p-3 flex items-center gap-3 cursor-pointer transition-colors ${
+                   dragId === p.id
+                     ? 'border-indigo-500 shadow-lg opacity-90'
+                     : checked
+                     ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/30'
+                     : 'border-slate-100 dark:border-slate-700 active:bg-slate-50 dark:active:bg-slate-700/50'
+                 }`}>
+              {reorder && (
+                // Тянуть можно только за ручку: строка целиком осталась бы
+                // конфликтовать с прокруткой списка.
+                <span
+                  onPointerDown={e => {
+                    e.preventDefault(); e.stopPropagation();
+                    // Захват указателя: палец может уехать за пределы ручки, а
+                    // события должны продолжать приходить сюда — иначе строка
+                    // «отцепляется» на первом же резком движении.
+                    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+                    startDrag(p.id);
+                  }}
+                  onPointerMove={e => { if (dragId) dragOver(e.clientY); }}
+                  onPointerUp={() => setDragId(null)}
+                  onPointerCancel={() => setDragId(null)}
+                  className="shrink-0 w-8 h-10 flex items-center justify-center text-slate-400 text-lg cursor-grab touch-none select-none"
+                  aria-label="Перетащить">⣿</span>
+              )}
+
+              {selection && (
+                <span className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold ${
+                  checked ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300 dark:border-slate-600 text-transparent'
+                }`}>✓</span>
+              )}
+
               <div className="w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
                 {p.images?.[0] ? (
-                  <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" />
+                  <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" draggable={false} />
                 ) : (
                   <span className="text-slate-400 text-xl">📦</span>
                 )}
@@ -433,13 +678,16 @@ const Warehouse: React.FC<WarehouseProps> = ({
                   действий, которые нужны не в каждой строке. Само нажатие на
                   товар теперь открывает карточку, а действия ушли под
                   троеточие. */}
-              <button onClick={e => { e.stopPropagation(); setMenuProduct(p); }}
-                      aria-label="Действия"
-                      className="shrink-0 w-9 h-9 rounded-lg text-slate-400 text-lg leading-none active:bg-slate-100 dark:active:bg-slate-700">
-                ⋮
-              </button>
+              {!reorder && !selection && (
+                <button onClick={e => { e.stopPropagation(); setMenuProduct(p); }}
+                        aria-label="Действия"
+                        className="shrink-0 w-9 h-9 rounded-lg text-slate-400 text-lg leading-none active:bg-slate-100 dark:active:bg-slate-700">
+                  ⋮
+                </button>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -494,6 +742,52 @@ const Warehouse: React.FC<WarehouseProps> = ({
                       className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-400 active:bg-slate-50 dark:active:bg-slate-700">
                 Отмена
               </button>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {/* Категория для выбранных. Существующие списком, плюс поле для новой:
+          заводить категорию отдельным экраном ради одного слова — лишний шаг. */}
+      {bulkCategory !== null && (
+        <ModalPortal onClose={() => setBulkCategory(null)}>
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
+               onClick={() => setBulkCategory(null)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[75vh] flex flex-col"
+                 onClick={e => e.stopPropagation()}>
+              <div className="p-4 border-b border-slate-100 dark:border-slate-700 shrink-0">
+                <h3 className="font-bold text-slate-800 dark:text-white mb-2">
+                  Категория для {selectedIds.length} товар(ов)
+                </h3>
+                <input value={bulkCategory} onChange={e => setBulkCategory(e.target.value)}
+                       placeholder="Новая категория" className={inputCls} />
+              </div>
+              <div className="overflow-y-auto p-2">
+                {categories.map(c => (
+                  <button key={c} onClick={() => setBulkCategory(c)}
+                          className={`w-full text-left px-4 py-3 rounded-xl font-semibold active:bg-slate-50 dark:active:bg-slate-700 ${
+                            bulkCategory === c ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-200'
+                          }`}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <div className="p-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+                <button onClick={() => setBulkCategory(null)}
+                        className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
+                  Отмена
+                </button>
+                <button
+                  disabled={bulkBusy || !bulkCategory.trim()}
+                  onClick={async () => {
+                    const value = bulkCategory.trim();
+                    setBulkCategory(null);
+                    await runBulk(p => onSaveProduct({ ...p, category: value, updatedAt: new Date().toISOString() }));
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm disabled:opacity-50">
+                  Перенести
+                </button>
+              </div>
             </div>
           </div>
         </ModalPortal>
