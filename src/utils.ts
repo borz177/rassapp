@@ -511,3 +511,51 @@ export const retailPaidAmount = (sale: RetailSale): number =>
  */
 export const retailRemaining = (sale: RetailSale): number =>
   sale.isCredit ? Math.max(0, sale.total - retailPaidAmount(sale)) : 0;
+
+
+// ─── Баланс счёта ──────────────────────────────────────────────────────────
+
+/**
+ * Сколько денег лежит на каждом счёте.
+ *
+ * Единственное место, где складываются все потоки: начальный остаток, взносы и
+ * платежи по рассрочке, расходы, розничная выручка и погашение розничных долгов.
+ * Раньше формула жила выражением внутри App — её нельзя было ни прочитать, ни
+ * проверить, а ошибка здесь стоит дороже любой другой в приложении.
+ */
+export const computeAccountBalances = (
+  accounts: Account[],
+  sales: Sale[],
+  expenses: Expense[],
+  retailSales: RetailSale[] = [],
+): Record<string, number> => {
+  const balances: Record<string, number> = {};
+
+  accounts.forEach(acc => {
+    let total = acc.initialBalance || 0;
+
+    sales.filter(s => s.accountId === acc.id).forEach(s => {
+      total += s.downPayment;
+      // isRealPayment === false — плановая строка графика, а не полученные
+      // деньги: она не должна попадать в кассу.
+      s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false).forEach(p => { total += p.amount; });
+    });
+
+    // Возврат (isRefund) уменьшает не кассу, а обязательство: деньги по нему
+    // уже учтены другой записью.
+    total -= expenses
+      .filter(e => e.accountId === acc.id && e.isRefund !== true)
+      .reduce((sum, e) => sum + e.amount, 0);
+
+    retailSales.filter(r => !r.isCancelled).forEach(r => {
+      // Долговой чек денег в кассу не приносит — их приносят платежи по нему,
+      // и приходят они на тот счёт, куда их реально положили.
+      if (!r.isCredit && r.accountId === acc.id) total += r.total;
+      (r.payments || []).forEach(pm => { if (pm.accountId === acc.id) total += pm.amount; });
+    });
+
+    balances[acc.id] = total;
+  });
+
+  return balances;
+};

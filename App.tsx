@@ -54,7 +54,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse} from './src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances} from './src/utils';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
@@ -1424,17 +1424,10 @@ const dashboardStats = useMemo(() => {
     }
   });
   return { totalRevenue, totalOutstanding, overdueCount, installmentSalesTotal };
-}, [sales]);  const accountBalances = useMemo(() => { const balances: Record<string, number> = {}; accounts.forEach(acc => { let total = acc.initialBalance || 0; const accountSales = sales.filter(s => s.accountId === acc.id); accountSales.forEach(s => { total += s.downPayment; s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false).forEach(p => total += p.amount); }); const accountExpenses = expenses.filter(e => e.accountId === acc.id && e.isRefund !== true);  total -= accountExpenses.reduce((sum, e) => sum + e.amount, 0);
-    // Выручка магазина — такие же живые деньги на счёте, как взнос по
-    // рассрочке. Без этой строки чек пробивался, товар списывался, а касса
-    // показывала прежний баланс: счёт один, и он держит оба потока.
-    retailSales.filter(r => !r.isCancelled).forEach(r => {
-      // Долговой чек денег в кассу не приносит — их приносят платежи по нему,
-      // и приходят они на тот счёт, куда их реально положили.
-      if (!r.isCredit && r.accountId === acc.id) total += r.total;
-      (r.payments || []).forEach(pm => { if (pm.accountId === acc.id) total += pm.amount; });
-    });
-    balances[acc.id] = total; }); return balances; }, [accounts, sales, expenses, retailSales]);
+}, [sales]);  const accountBalances = useMemo(
+    () => computeAccountBalances(accounts, sales, expenses, retailSales),
+    [accounts, sales, expenses, retailSales]
+  );
   const workingCapital = useMemo(() => { const cashInAccounts = Object.values(accountBalances).reduce((sum: number, bal: number) => sum + bal, 0); return cashInAccounts + dashboardStats.totalOutstanding; }, [accountBalances, dashboardStats.totalOutstanding]);
   const totalExpectedProfit = useMemo(() => {
     if (!isManager) return 0;
@@ -4345,6 +4338,7 @@ if (!user && !showSplash) {
                       customers={customers}
                       accounts={accounts}
                       defaultAccountId={saleWarehouse?.accountId}
+                      warehouseId={saleWarehouse?.id || DEFAULT_WAREHOUSE_ID}
                       existingSales={retailSales}
                       showCents={appSettings.showCents}
                       onSubmit={handleRetailSale}

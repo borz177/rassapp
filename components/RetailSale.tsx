@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import type { Account, Customer, Product, RetailSale as RetailSaleType, RetailSaleItem } from '../types';
 import TopBarBack from './TopBarBack';
+import { stockAtWarehouse } from '../src/utils';
+import { DEFAULT_WAREHOUSE_ID } from '../types';
 import ModalPortal from './ModalPortal';
 
 interface RetailSaleProps {
@@ -9,6 +11,8 @@ interface RetailSaleProps {
   accounts: Account[];
   /** Счёт склада, с которого идёт торговля; подставляется в чек по умолчанию */
   defaultAccountId?: string;
+  /** Склад, с которого продаём: с него же и списывается товар */
+  warehouseId?: string;
   /** Прошлые чеки — нужны только для следующего номера документа */
   existingSales?: RetailSaleType[];
   onSubmit: (sale: RetailSaleType) => Promise<void> | void;
@@ -41,7 +45,8 @@ const input = 'w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate
  * никому не понадобятся.
  */
 const RetailSale: React.FC<RetailSaleProps> = ({
-  products, customers, accounts, defaultAccountId, existingSales = [], onSubmit, onBack, showCents = false,
+  products, customers, accounts, defaultAccountId, warehouseId = DEFAULT_WAREHOUSE_ID,
+  existingSales = [], onSubmit, onBack, showCents = false,
 }) => {
   const [items, setItems] = useState<RetailSaleItem[]>([]);
   const [search, setSearch] = useState('');
@@ -105,7 +110,13 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   const profit = total - cost;
   const totalQty = items.reduce((s, i) => s + i.quantity, 0);
 
-  const stockOf = (id: string) => products.find(p => p.id === id)?.stock ?? 0;
+  // Остаток берём того склада, с которого продаём, а не суммарный по всем.
+  // С суммарным касса молчала бы, когда в торговом зале пусто, а товар лежит в
+  // подсобке: чек прошёл бы, а остаток зала ушёл в минус.
+  const stockOf = (id: string) => {
+    const p = products.find(x => x.id === id);
+    return p ? stockAtWarehouse(p, warehouseId) : 0;
+  };
   const overdrawn = items.filter(i => i.quantity > stockOf(i.productId));
 
   const openProduct = (p: Product) => {
@@ -380,7 +391,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5">
               {visible.map(p => {
                 const inCart = items.find(i => i.productId === p.id);
-                const stock = p.stock || 0;
+                const stock = stockAtWarehouse(p, warehouseId);
                 return (
                   <button key={p.id} onClick={() => openProduct(p)}
                           className={`relative bg-white dark:bg-slate-800 rounded-2xl border p-2 text-left active:scale-95 transition-transform overflow-hidden ${
@@ -474,7 +485,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
                 <div className="min-w-0">
                   <h3 className="font-bold text-slate-800 dark:text-white truncate">{editing.product.name}</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    На складе {money(editing.product.stock || 0)} {editing.product.unit || 'шт'}
+                    На складе {money(stockAtWarehouse(editing.product, warehouseId))} {editing.product.unit || 'шт'}
                     {editing.product.buyPrice ? ` · закуп ${money(editing.product.buyPrice, showCents)} ₽` : ''}
                   </p>
                 </div>
