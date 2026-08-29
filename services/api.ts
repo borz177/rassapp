@@ -549,6 +549,54 @@ export const api = {
   },
 
     // CRUD
+    /**
+     * Что ещё не уехало на сервер.
+     *
+     * До этого очередь была видна только изнутри кода: человек видел свой
+     * договор на экране и не знал, что на сервере его нет и коллега его не видит.
+     */
+    getSyncStatus: async (): Promise<{
+      pending: number;
+      failed: number;
+      items: { id: string; collection?: string; action: string; failed: boolean; retryCount: number; error?: string; timestamp: number; payload?: any; itemId?: string }[];
+    }> => {
+      try {
+        const queue = await offlineStorage.getQueue();
+        return {
+          pending: queue.filter((i: any) => !i.failed).length,
+          failed: queue.filter((i: any) => i.failed).length,
+          items: queue.map((i: any) => ({
+            id: i.id,
+            collection: i.collection,
+            action: i.type,
+            failed: !!i.failed,
+            retryCount: i.retryCount || 0,
+            error: i.error,
+            timestamp: i.timestamp,
+            payload: i.payload,
+            itemId: i.itemId,
+          })),
+        };
+      } catch {
+        return { pending: 0, failed: 0, items: [] };
+      }
+    },
+
+    /**
+     * Снять пометку «не удалось» и попробовать снова.
+     *
+     * Без этого отказ был навсегда: запись, отвергнутая из-за истёкшей
+     * подписки или лимита, не уходила на сервер даже после оплаты тарифа.
+     */
+    retryFailed: async (): Promise<number> => {
+      const queue = await offlineStorage.getQueue();
+      const stuck = queue.filter((i: any) => i.failed);
+      for (const item of stuck) {
+        await offlineStorage.updateQueueItem({ ...item, failed: false, retryCount: 0, error: undefined });
+      }
+      return stuck.length;
+    },
+
     saveItem: async (type: string, item: any, options?: { skipLimitCheck?: boolean; sales?: Sale[] }): Promise<any> => {
       console.log(`💾 Saving ${type}:`, { id: item.id });
 

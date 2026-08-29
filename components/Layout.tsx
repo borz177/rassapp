@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import ModalPortal from './ModalPortal';
+import SyncStatus, { type SyncStatusData } from './SyncStatus';
 import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
 import { ICONS, APP_NAME, THEMES } from '../constants';
 import { calculateSaleOverdue } from '../src/utils';
@@ -20,6 +21,9 @@ interface LayoutProps {
   onGoToCustomers?: () => void;
   isOnline?: boolean;
   isSyncing?: boolean;
+  /** Что ещё не уехало на сервер. Пусто — значка нет. */
+  syncStatus?: SyncStatusData;
+  onRetrySync?: () => Promise<void> | void;
   supportButton?: React.ReactNode;
   supportUnreadCount?: number;
   unreadNotifCount?: number;
@@ -57,6 +61,8 @@ const Layout: React.FC<LayoutProps> = ({
   onGoToCustomers,
   isOnline = true,
   isSyncing = false,
+  syncStatus,
+  onRetrySync,
   supportButton, // 🔹 Добавили сюда
   supportUnreadCount = 0,
   unreadNotifCount = 0,
@@ -587,6 +593,9 @@ const counts = useMemo(() => {
             <h1 className="text-lg font-bold tracking-tight text-indigo-600 dark:text-indigo-400 truncate">
               {appSettings.companyName}
             </h1>
+            {syncStatus && onRetrySync && (
+              <SyncStatus status={syncStatus} isOnline={isOnline} isSyncing={isSyncing} onRetry={onRetrySync} />
+            )}
             {isOnline && isSyncing && (
               <span
                 className="shrink-0 text-indigo-500 dark:text-indigo-300 topbar-sync"
@@ -645,6 +654,9 @@ const counts = useMemo(() => {
           <div className="mt-2 flex gap-2">
               {/*{!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}*/}
               {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}
+              {syncStatus && onRetrySync && (
+                <SyncStatus status={syncStatus} isOnline={isOnline} isSyncing={isSyncing} onRetry={onRetrySync} />
+              )}
           </div>
 
         </div>

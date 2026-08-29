@@ -113,6 +113,11 @@ const isLanding = path === "/"
   const [isPublicMode, setIsPublicMode] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
+  // Сколько записей ещё не на сервере. Держим в состоянии, чтобы человек видел
+  // это постоянно, а не узнавал случайно.
+  const [syncStatus, setSyncStatus] = useState<{ pending: number; failed: number; items: any[] }>(
+    { pending: 0, failed: 0, items: [] }
+  );
   // 🔒 Синхронный guard от параллельных handleSync(): событие 'online' и стартовый
   // setTimeout(handleSync, 1000) вызывают handleSync() напрямую, без проверки isSyncing
   // (в отличие от 5-минутного интервала — см. ниже). React-стейт isSyncing тут не подходит:
@@ -642,6 +647,18 @@ useEffect(() => {
 
 
 // 🔹 В App.tsx — исправленная часть handleSync
+  const refreshSyncStatus = React.useCallback(async () => {
+    try { setSyncStatus(await api.getSyncStatus()); } catch { /* хранилище недоступно — не мешаем работе */ }
+  }, []);
+
+  // Очередь меняется и без синхронизации — при каждом сохранении без связи,
+  // поэтому опрашиваем её по времени, а не только после обмена с сервером.
+  React.useEffect(() => {
+    refreshSyncStatus();
+    const t = window.setInterval(refreshSyncStatus, 15000);
+    return () => window.clearInterval(t);
+  }, [refreshSyncStatus]);
+
 const handleSync = async () => {
   if (!navigator.onLine) return;
   if (isSyncingRef.current) {
@@ -691,9 +708,18 @@ const handleSync = async () => {
     console.error("❌ Sync failed", e);
   } finally {
     isSyncingRef.current = false;
+    refreshSyncStatus();
     setIsSyncing(false);
   }
 };
+
+  /** Повтор для записей, которые сервер отверг: снимаем пометку и шлём заново. */
+  const handleRetrySync = async () => {
+    await api.retryFailed();
+    await handleSync();
+    await refreshSyncStatus();
+  };
+
 
 
 // 🔹 Возврат из оплаты тарифа: YooKassa обрабатывает платёж и шлёт webhook серверу
@@ -3971,6 +3997,8 @@ if (!user && !showSplash) {
     onGoToCustomers={handleGoToCustomersTab}
     isOnline={isOnline}
     isSyncing={isSyncing}
+    syncStatus={syncStatus}
+    onRetrySync={handleRetrySync}
     supportUnreadCount={supportUnreadCount}
     unreadNotifCount={unreadNotifCount}
     onOpenNotifications={() => setShowNotificationsPanel(true)}
