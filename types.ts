@@ -770,3 +770,20 @@ export interface AdminPayment {
   user_name: string | null;
   user_email: string | null;
 }
+
+
+/**
+ * Лимит договоров по тарифам — зеркало PLAN_LIMITS в server/index.js.
+ * Нужен на клиенте только для офлайн-проверки: сервера в этот момент нет, а
+ * создать договор сверх тарифа нельзя. Живёт здесь, а не копией внутри api.ts,
+ * потому что копия уже успела разойтись с сервером: у TRIAL стояло 10 против
+ * серверной 1000, и офлайн-сохранение отказывало на одиннадцатом договоре.
+ * -1 — без ограничения.
+ */
+export const PLAN_CONTRACT_LIMITS: Record<string, number> = {
+  TRIAL: 1000,
+  START: 100,
+  STANDARD: 500,
+  BUSINESS: -1,
+  BUSINESS_PRO: -1,
+};

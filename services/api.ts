@@ -1,4 +1,4 @@
-import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary, AdminPayment } from "../types";
+import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary, AdminPayment, PLAN_CONTRACT_LIMITS} from "../types";
 import { offlineStorage } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
 // Helper to determine the API URL dynamically
@@ -598,32 +598,35 @@ export const api = {
   // 🔹 ИСПРАВЛЕННАЯ ПРОВЕРКА: теперь ловит таймауты и отмены
   const isNetworkError = isNetworkFailure(error);
 
+  // Сверка с лимитом без сети — только для записи в лог, без отказа.
+  //
+  // Офлайн мы не выбрасываем работу человека: число договоров здесь — догадка
+  // по кэшу, который мог устареть, а цена ошибки — потерянный договор или платёж.
+  // Решает сервер при синхронизации — там есть настоящий счёт.
+  //
+  // Раньше здесь был throw внутри собственного try/catch: ошибка тут же
+  // глоталась, то есть проверка ничего не делала, но выглядела работающей.
   if (isNetworkError && type === 'sales' && item.status !== 'DELETED') {
     try {
       const userStr = localStorage.getItem('user');
       if (userStr) {
         const user = JSON.parse(userStr);
-        const LIMITS: Record<string, { contracts: number }> = {
-          TRIAL: { contracts: 10 },
-          START: { contracts: 100 },
-          STANDARD: { contracts: 500 },
-          BUSINESS: { contracts: -1 },
-          BUSINESS_PRO: { contracts: -1 }
-        };
-        const limit = LIMITS[user.subscription?.plan]?.contracts ?? 0;
+        const limit = PLAN_CONTRACT_LIMITS[user.subscription?.plan] ?? 0;
         if (user.role !== 'admin' && limit !== -1) {
           const salesData = options?.sales ||
             (await offlineStorage.getCache('all_data'))?.sales || [];
+          // Лимит касается только НОВЫХ договоров — ровно как на сервере:
+          // правка и платёж по уже существующему лимитом не ограничены.
+          const isNewContract = !salesData.some((s: any) => s.id === item.id);
           const currentCount = salesData.filter((s: any) =>
             s.status === 'ACTIVE' || s.status === 'DRAFT'
           ).length;
-          if (currentCount >= limit) {
-            const limitError: any = new Error('LIMIT_EXCEEDED_OFFLINE');
-            limitError.isLimitError = true;
-            limitError.message = `Превышен лимит договоров для тарифа "${user.subscription?.plan}". Максимум: ${limit}. У вас сейчас: ${currentCount}.`;
-            limitError.details = { current: currentCount, limit };
-            limitError.hint = 'В офлайн-режиме тоже действует лимит!';
-            throw limitError;
+          if (isNewContract && currentCount >= limit) {
+            console.warn(
+              `⚠️ Офлайн-сохранение договора сверх лимита тарифа ` +
+              `${user.subscription?.plan}: сейчас ${currentCount}, лимит ${limit}. ` +
+              `Запись всё равно в очереди; решит сервер при синхронизации.`
+            );
           }
         }
       }
