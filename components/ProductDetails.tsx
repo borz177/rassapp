@@ -26,6 +26,8 @@ interface ProductDetailsProps {
   onEdit?: (p: Product) => void;
   onSelectCustomer?: (id: string) => void;
   onAcceptPayment?: (sale: RetailSale) => void;
+  onUpdateSale?: (sale: RetailSale) => Promise<void> | void;
+  onUpdateStockDoc?: (movements: StockMovement[]) => Promise<void> | void;
 }
 
 const dayTitle = (iso: string) => {
@@ -55,6 +57,7 @@ const dayTitle = (iso: string) => {
 const ProductDetails: React.FC<ProductDetailsProps> = ({
   product, movements, retailSales, products, customers, warehouses, suppliers, accounts,
   employees = [], appSettings, user, onBack, onEdit, onSelectCustomer, onAcceptPayment,
+  onUpdateSale, onUpdateStockDoc,
 }) => {
   const [tab, setTab] = useState<'INFO' | 'HISTORY'>('INFO');
   const [openDocId, setOpenDocId] = useState<string | null>(null);
@@ -285,6 +288,10 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
               onBack={close}
               onSelectCustomer={onSelectCustomer}
               onAcceptPayment={onAcceptPayment}
+              customers={customers}
+              suppliers={suppliers}
+              onUpdateSale={onUpdateSale}
+              onUpdateStockDoc={onUpdateStockDoc}
             />
           )}
         </SubPage>

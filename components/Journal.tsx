@@ -24,6 +24,8 @@ interface JournalProps {
   onBack: () => void;
   onSelectCustomer?: (id: string) => void;
   onAcceptPayment?: (sale: RetailSale) => void;
+  onUpdateSale?: (sale: RetailSale) => Promise<void> | void;
+  onUpdateStockDoc?: (movements: StockMovement[]) => Promise<void> | void;
 }
 
 type PayFilter = 'ALL' | 'DEBT' | 'PAID';
@@ -68,6 +70,7 @@ const timeOf = (d: string) =>
 const Journal: React.FC<JournalProps> = ({
   retailSales, movements, products, customers, warehouses, suppliers, accounts,
   employees = [], appSettings, user, onBack, onSelectCustomer, onAcceptPayment,
+  onUpdateSale, onUpdateStockDoc,
 }) => {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'ALL' | DocKind>('ALL');
@@ -303,6 +306,10 @@ const Journal: React.FC<JournalProps> = ({
             onBack={close}
             onSelectCustomer={onSelectCustomer}
             onAcceptPayment={onAcceptPayment}
+            customers={customers}
+            suppliers={suppliers}
+            onUpdateSale={onUpdateSale}
+            onUpdateStockDoc={onUpdateStockDoc}
           />
         )}
       </SubPage>

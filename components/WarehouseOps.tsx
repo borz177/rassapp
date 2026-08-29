@@ -8,6 +8,8 @@ type OpTab = 'IN' | 'TRANSFER' | 'WRITE_OFF' | 'INVENTORY';
 
 interface WarehouseOpsProps {
   products: Product[];
+  /** Нужны, чтобы продолжить нумерацию документов, а не начать её заново */
+  movements: StockMovement[];
   warehouses: StockLocation[];
   suppliers: Supplier[];
   /** Проводит документ целиком: движения и обновлённые остатки одной операцией */
@@ -48,7 +50,7 @@ const WRITE_OFF_REASONS = ['Порча', 'Брак', 'Потеря', 'Недос
  * недостачу — верный способ получить ошибку в самом важном месте.
  */
 const WarehouseOps: React.FC<WarehouseOpsProps> = ({
-  products, warehouses, suppliers, onPost, showCents = false,
+  products, movements, warehouses, suppliers, onPost, showCents = false,
 }) => {
   const liveWarehouses = useMemo(() => {
     const live = warehouses.filter(w => !w.isArchived);
@@ -56,6 +58,7 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
   }, [warehouses]);
 
   const [tab, setTab] = useState<OpTab>('IN');
+  const [docNumber, setDocNumber] = useState('');
   const [fromWh, setFromWh] = useState(liveWarehouses.find(w => w.isMain)?.id || liveWarehouses[0].id);
   const [toWh, setToWh] = useState('');
   const [search, setSearch] = useState('');
@@ -75,6 +78,23 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
   const [picking, setPicking] = useState<Product | null>(null);
   const [pickQty, setPickQty] = useState('1');
   const [pickCost, setPickCost] = useState('0');
+
+  // Инвентаризация пишется корректировками — тип движения у неё другой, чем
+  // имя вкладки. Держим соответствие в одном месте: разойдись оно, документы
+  // считались бы по одному признаку, а писались по другому.
+  const movementTypeFor = (t: OpTab): StockMovement['type'] =>
+    t === 'IN' ? 'IN' : t === 'TRANSFER' ? 'TRANSFER' : t === 'WRITE_OFF' ? 'WRITE_OFF' : 'CORRECTION';
+
+  /**
+   * Следующий номер документа этого вида. Считаем документы, а не движения:
+   * приход из двадцати позиций — одна накладная, а не двадцать.
+   */
+  const nextDocNumber = useMemo(() => {
+    const type = movementTypeFor(tab);
+    const docs = new Set<string>();
+    movements.forEach(m => { if (m.type === type) docs.add(m.batchId || m.id); });
+    return String(docs.size + 1).padStart(4, '0');
+  }, [movements, tab]);
 
   const categories = useMemo(
     () => Array.from(new Set(products.filter(p => !p.isArchived).map(p => p.category).filter(Boolean))).sort(),
@@ -98,6 +118,7 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
     // молча оставить её при смене вкладки — прямой путь провести не то.
     setTab(t);
     setBatch({});
+    setDocNumber('');
     setError(null);
   };
 
@@ -141,6 +162,7 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
       const [y, m, d] = docDate.split('-').map(Number);
       const date = new Date(y, (m || 1) - 1, d || 1, now.getHours(), now.getMinutes(), now.getSeconds()).toISOString();
       const batchId = `doc_${Date.now()}`;
+      const number = docNumber.trim() || nextDocNumber;
 
       const movements: StockMovement[] = [];
       const updated: Product[] = [];
@@ -153,7 +175,7 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
         if (tab === 'IN') {
           movements.push({
             id: crypto.randomUUID(), userId: product.userId, productId: id, type: 'IN',
-            quantity: qty, unitPrice: cost, warehouseId: fromWh, supplierId, batchId, date,
+            quantity: qty, unitPrice: cost, warehouseId: fromWh, supplierId, batchId, docNumber: number, date,
             note: note.trim() || undefined,
           });
           let next = withDelta(product, fromWh, qty);
@@ -164,7 +186,7 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
         } else if (tab === 'WRITE_OFF') {
           movements.push({
             id: crypto.randomUUID(), userId: product.userId, productId: id, type: 'WRITE_OFF',
-            quantity: -qty, warehouseId: fromWh, batchId, date,
+            quantity: -qty, warehouseId: fromWh, batchId, docNumber: number, date,
             note: [reason, note.trim()].filter(Boolean).join(' · '),
           });
           updated.push(withDelta(product, fromWh, -qty));
@@ -173,12 +195,12 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
           // перемещение не описать — иначе по складу-получателю прихода не видно.
           movements.push({
             id: crypto.randomUUID(), userId: product.userId, productId: id, type: 'TRANSFER',
-            quantity: -qty, warehouseId: fromWh, toWarehouseId: toWh, batchId, date,
+            quantity: -qty, warehouseId: fromWh, toWarehouseId: toWh, batchId, docNumber: number, date,
             note: note.trim() || undefined,
           });
           movements.push({
             id: crypto.randomUUID(), userId: product.userId, productId: id, type: 'TRANSFER',
-            quantity: qty, warehouseId: toWh, batchId, date,
+            quantity: qty, warehouseId: toWh, batchId, docNumber: number, date,
             note: note.trim() || undefined,
           });
           updated.push(withDelta(withDelta(product, fromWh, -qty), toWh, qty));
@@ -188,7 +210,7 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
           if (delta === 0) continue;
           movements.push({
             id: crypto.randomUUID(), userId: product.userId, productId: id, type: 'CORRECTION',
-            quantity: delta, warehouseId: fromWh, batchId, date,
+            quantity: delta, warehouseId: fromWh, batchId, docNumber: number, date,
             note: ['Инвентаризация', note.trim()].filter(Boolean).join(' · '),
           });
           updated.push(withDelta(product, fromWh, delta));
@@ -205,6 +227,7 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
       setBatch({});
       setDocOpen(false);
       setNote('');
+      setDocNumber('');
       setError(null);
       setOkMessage(`Документ проведён: ${movements.length} движ.`);
       window.setTimeout(() => setOkMessage(null), 3000);
@@ -421,6 +444,11 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
 
               <div className="overflow-y-auto p-4 space-y-3">
                 <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Номер</label>
+                    <input value={docNumber} onChange={e => setDocNumber(e.target.value)}
+                           placeholder={nextDocNumber} className={`${input} mt-1`} />
+                  </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Дата</label>
                     <input type="date" value={docDate} onChange={e => setDocDate(e.target.value)} className={`${input} mt-1`} />

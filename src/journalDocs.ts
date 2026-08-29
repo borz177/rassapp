@@ -36,6 +36,9 @@ export interface JournalDoc {
   authorId?: string;
   customerId?: string;
   sale?: RetailSale;
+  /** Движения складского документа — правка меняет их все разом */
+  movements?: StockMovement[];
+  supplierId?: string;
   /** Товары документа — по ним история товара находит свои бумаги */
   productIds: string[];
 }
@@ -134,7 +137,7 @@ export const buildJournalDocs = ({
     list.push({
       id: `doc_${key}`,
       kind: k,
-      number: head.batchId ? head.batchId.replace('doc_', '').slice(-6) : head.id.slice(0, 6),
+      number: head.docNumber || '',
       date: head.date,
       total: rows.reduce((sum, m) => sum + Math.abs(m.quantity) * (m.unitPrice || 0), 0),
       debt: 0,
@@ -149,11 +152,25 @@ export const buildJournalDocs = ({
       discount: 0,
       note: head.note,
       authorId: head.createdByUserId,
+      movements: rows,
+      supplierId: head.supplierId,
       productIds: Array.from(new Set(rows.map(m => m.productId))),
     });
   });
 
-  return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const sorted = list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Документам, заведённым до появления нумерации, номер присваиваем по порядку
+  // внутри своего вида — от старых к новым. Иначе в журнале рядом с «Приход
+  // №0001» стоял бы «Приход 1a3f9c»: обрывок идентификатора вместо номера.
+  const counters: Partial<Record<DocKind, number>> = {};
+  [...sorted].reverse().forEach(d => {
+    if (d.number) return;
+    counters[d.kind] = (counters[d.kind] || 0) + 1;
+    d.number = String(counters[d.kind]).padStart(4, '0');
+  });
+
+  return sorted;
 };
 
 /**

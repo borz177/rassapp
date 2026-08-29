@@ -25,6 +25,8 @@ interface WarehouseProps {
   user?: User | null;
   onSelectCustomer?: (id: string) => void;
   onAcceptPayment?: (sale: RetailSale) => void;
+  onUpdateSale?: (sale: RetailSale) => Promise<void> | void;
+  onUpdateStockDoc?: (movements: StockMovement[]) => Promise<void> | void;
   /** Проведение складского документа: движения и обновлённые остатки разом */
   onPostBatch: (movements: StockMovement[], products: Product[]) => Promise<void> | void;
   onSaveWarehouse: (w: StockLocation) => Promise<void> | void;
@@ -69,7 +71,7 @@ const MOVEMENT_LABELS: Record<StockMovement['type'], string> = {
 const Warehouse: React.FC<WarehouseProps> = ({
   products, movements, warehouses, suppliers, accounts,
   retailSales = [], customers = [], employees = [], appSettings, user,
-  onSelectCustomer, onAcceptPayment,
+  onSelectCustomer, onAcceptPayment, onUpdateSale, onUpdateStockDoc,
   onSaveProduct, onDeleteProduct, onAddMovement, onPostBatch,
   onSaveWarehouse, onDeleteWarehouse, onBack,
 }) => {
@@ -303,6 +305,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
       {section === 'ops' && (
         <WarehouseOps
           products={products}
+          movements={movements}
           warehouses={warehouses}
           suppliers={suppliers}
           onPost={onPostBatch}
@@ -463,6 +466,18 @@ const Warehouse: React.FC<WarehouseProps> = ({
                       className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
                 История
               </button>
+              {/* Архив и удаление — соседи по смыслу: и то и другое убирает товар
+                  из работы, разница лишь в том, можно ли вернуть. В форме правки
+                  им было не место: там правят карточку, а не судьбу товара. */}
+              <button
+                onClick={async () => {
+                  const p2 = menuProduct;
+                  setMenuProduct(null);
+                  await onSaveProduct({ ...p2, isArchived: !p2.isArchived, updatedAt: new Date().toISOString() });
+                }}
+                className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
+                {menuProduct.isArchived ? 'Вернуть из архива' : 'В архив'}
+              </button>
               <button
                 onClick={async () => {
                   const p2 = menuProduct;
@@ -601,27 +616,6 @@ const Warehouse: React.FC<WarehouseProps> = ({
                 </button>
               </div>
 
-              {editing && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={async () => {
-                      await onSaveProduct({ ...editing, isArchived: !editing.isArchived, updatedAt: new Date().toISOString() });
-                      setShowForm(false); setEditing(null); setForm(emptyForm);
-                    }}
-                    className="flex-1 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-xs">
-                    {editing.isArchived ? 'Вернуть из архива' : 'В архив'}
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!window.confirm(`Удалить «${editing.name}» без возможности восстановления?`)) return;
-                      await onDeleteProduct(editing.id);
-                      setShowForm(false); setEditing(null); setForm(emptyForm);
-                    }}
-                    className="flex-1 py-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-bold text-xs">
-                    Удалить
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </ModalPortal>
@@ -696,6 +690,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
             onEdit={p2 => { close(); openEdit(p2); }}
             onSelectCustomer={onSelectCustomer}
             onAcceptPayment={onAcceptPayment}
+            onUpdateSale={onUpdateSale}
+            onUpdateStockDoc={onUpdateStockDoc}
           />
         )}
       </SubPage>

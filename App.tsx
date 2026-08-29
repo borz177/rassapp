@@ -3010,6 +3010,44 @@ const confirmDeleteCustomer = async () => {
     setCurrentView('CREATE_INCOME');
   };
 
+  /**
+   * Правка проведённого документа. Меняются только его «бумажные» поля: номер,
+   * дата, комментарий, контрагент, счёт. Количества здесь не трогаем — остаток
+   * объясняется движениями, и переписать проведённый документ значит задним
+   * числом изменить историю склада так, что расхождение будет нечем объяснить.
+   * Для количеств есть возврат, списание и инвентаризация.
+   */
+  const handleUpdateRetailSale = async (sale: RetailSaleType) => {
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+    const previous = retailSales.find(r => r.id === sale.id);
+    updateList(setRetailSales, sale);
+    try {
+      const saved = await api.saveItem('retailSales', sale);
+      updateList(setRetailSales, saved);
+      // Дата чека — это и дата отгрузки: движения по складу должны совпасть с
+      // документом, иначе история товара разойдётся с журналом.
+      if (previous && previous.date !== sale.date) {
+        for (const m of stockMovements.filter(x => x.saleId === sale.id)) {
+          const savedMovement = await api.saveItem('stockMovements', { ...m, date: sale.date });
+          updateList(setStockMovements, savedMovement);
+        }
+      }
+    } catch (err: any) {
+      if (err?.message === 'TOKEN_EXPIRED') return;
+      if (previous) updateList(setRetailSales, previous);
+      alert(`❌ Не удалось сохранить документ.\n${err?.message || ''}`);
+    }
+  };
+
+  /** Правка складского документа: поля меняются сразу у всех его движений. */
+  const handleUpdateStockDoc = async (updated: StockMovement[]) => {
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+    for (const m of updated) {
+      const saved = await api.saveItem('stockMovements', m);
+      updateList(setStockMovements, saved);
+    }
+  };
+
   const handleRetailSale = async (sale: RetailSaleType) => {
     if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
     if (!user) return;
@@ -4225,6 +4263,8 @@ if (!user && !showSplash) {
                       onBack={requestClose}
                       onSelectCustomer={handleSelectCustomer}
                       onAcceptPayment={handleInitiateRetailPayment}
+                      onUpdateSale={handleUpdateRetailSale}
+                      onUpdateStockDoc={handleUpdateStockDoc}
                     />
                   )}
                 </PagePush>
@@ -4246,6 +4286,8 @@ if (!user && !showSplash) {
                       user={user}
                       onSelectCustomer={handleSelectCustomer}
                       onAcceptPayment={handleInitiateRetailPayment}
+                      onUpdateSale={handleUpdateRetailSale}
+                      onUpdateStockDoc={handleUpdateStockDoc}
                       onPostBatch={handlePostStockBatch}
                       onSaveWarehouse={handleSaveWarehouse}
                       onDeleteWarehouse={handleDeleteWarehouse}

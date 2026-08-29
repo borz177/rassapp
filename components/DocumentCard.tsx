@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import type { Account, AppSettings, RetailSale, User } from '../types';
+import type { Account, AppSettings, Customer, RetailSale, StockMovement, Supplier, User } from '../types';
 import { formatCurrency, retailPaidAmount } from '../src/utils';
 import { KIND_LABEL, printJournalDoc, type JournalDoc } from '../src/journalDocs';
 import TopBarBack from './TopBarBack';
 import TabPill from './TabPill';
+import ModalPortal from './ModalPortal';
 
 interface DocumentCardProps {
   doc: JournalDoc;
@@ -14,6 +15,12 @@ interface DocumentCardProps {
   onBack: () => void;
   onSelectCustomer?: (id: string) => void;
   onAcceptPayment?: (sale: RetailSale) => void;
+  customers?: Customer[];
+  suppliers?: Supplier[];
+  /** Правка чека: номер, дата, комментарий, покупатель, счёт, оплата */
+  onUpdateSale?: (sale: RetailSale) => Promise<void> | void;
+  /** Правка складского документа: те же поля сразу у всех его движений */
+  onUpdateStockDoc?: (movements: StockMovement[]) => Promise<void> | void;
 }
 
 /**
@@ -25,9 +32,71 @@ interface DocumentCardProps {
  */
 const DocumentCard: React.FC<DocumentCardProps> = ({
   doc, accounts, appSettings, employees = [], user, onBack, onSelectCustomer, onAcceptPayment,
+  customers = [], suppliers = [], onUpdateSale, onUpdateStockDoc,
 }) => {
   const [tab, setTab] = useState<'INFO' | 'PAY'>('INFO');
+  const [editOpen, setEditOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    number: '', date: '', note: '', customerId: '', accountId: '', supplierId: '', isCredit: false,
+  });
   const cents = appSettings.showCents;
+
+  const canEdit = doc.kind === 'SALE' ? !!onUpdateSale : !!onUpdateStockDoc;
+  // Признак оплаты трогать нельзя, когда деньги по документу уже приняты:
+  // переключение обнулило бы поступления, которые реально были.
+  const canSwitchPaid = doc.kind === 'SALE' && (doc.sale?.payments || []).length === 0;
+
+  const openEdit = () => {
+    setForm({
+      number: doc.number,
+      // input[type=date] понимает только YYYY-MM-DD, поэтому режем, а время
+      // документа сохраняем отдельно при записи — иначе порядок продаж внутри
+      // дня схлопнулся бы в полночь.
+      date: new Date(doc.date).toISOString().slice(0, 10),
+      note: doc.note || '',
+      customerId: doc.sale?.customerId || '',
+      accountId: doc.sale?.accountId || '',
+      supplierId: doc.supplierId || '',
+      isCredit: !!doc.sale?.isCredit,
+    });
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    setSaving(true);
+    try {
+      const [y, m, d] = form.date.split('-').map(Number);
+      const old = new Date(doc.date);
+      const date = new Date(y, (m || 1) - 1, d || 1, old.getHours(), old.getMinutes(), old.getSeconds()).toISOString();
+
+      if (doc.kind === 'SALE' && doc.sale && onUpdateSale) {
+        await onUpdateSale({
+          ...doc.sale,
+          docNumber: form.number.trim() || doc.sale.docNumber,
+          date,
+          note: form.note.trim() || undefined,
+          customerId: form.customerId || undefined,
+          accountId: form.accountId || doc.sale.accountId,
+          // Долг без покупателя не с кого спрашивать — снимаем вместе с клиентом.
+          isCredit: canSwitchPaid ? (!!form.customerId && form.isCredit) : doc.sale.isCredit,
+        });
+      } else if (doc.movements && onUpdateStockDoc) {
+        await onUpdateStockDoc(doc.movements.map(mv => ({
+          ...mv,
+          docNumber: form.number.trim() || mv.docNumber,
+          date,
+          note: form.note.trim() || undefined,
+          supplierId: doc.kind === 'IN' ? (form.supplierId || undefined) : mv.supplierId,
+        })));
+      }
+      setEditOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const input = 'w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-400';
 
   const paid = doc.sale ? retailPaidAmount(doc.sale) : 0;
   const author = doc.authorId
@@ -60,6 +129,12 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
             })}
           </p>
         </div>
+        {canEdit && (
+          <button onClick={openEdit} aria-label="Редактировать"
+                  className="shrink-0 w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center">
+            ✎
+          </button>
+        )}
         <button onClick={() => printJournalDoc(doc)}
                 className="shrink-0 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold">
           Печать
@@ -210,6 +285,102 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
             </button>
           )}
         </div>
+      )}
+      {editOpen && (
+        <ModalPortal onClose={() => setEditOpen(false)}>
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
+               onClick={() => setEditOpen(false)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[85vh] overflow-y-auto p-5 space-y-3"
+                 onClick={e => e.stopPropagation()}>
+              <h3 className="font-bold text-slate-800 dark:text-white">
+                {KIND_LABEL[doc.kind]} №{doc.number}
+              </h3>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Номер</label>
+                  <input value={form.number} onChange={e => setForm({ ...form, number: e.target.value })} className={`${input} mt-1`} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Дата</label>
+                  <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className={`${input} mt-1`} />
+                </div>
+              </div>
+
+              {doc.kind === 'SALE' && (
+                <>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Покупатель</label>
+                    <select value={form.customerId} onChange={e => setForm({ ...form, customerId: e.target.value })} className={`${input} mt-1`}>
+                      <option value="">Розничный покупатель</option>
+                      {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Счёт</label>
+                    <select value={form.accountId} onChange={e => setForm({ ...form, accountId: e.target.value })} className={`${input} mt-1`}>
+                      {accounts.filter(a => !a.isArchived || a.id === form.accountId)
+                               .map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  </div>
+                  {canSwitchPaid ? (
+                    form.customerId ? (
+                      <div className="relative flex p-1 rounded-2xl bg-slate-100 dark:bg-slate-700">
+                        {([[false, 'Оплачено'], [true, 'В долг']] as const).map(([v, label]) => (
+                          <button key={label} type="button" onClick={() => setForm({ ...form, isCredit: v })}
+                                  className={`flex-1 min-w-0 py-2 rounded-xl text-xs font-bold transition-colors ${
+                                    form.isCredit === v
+                                      ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm'
+                                      : 'text-slate-500 dark:text-slate-400'
+                                  }`}>{label}</button>
+                        ))}
+                      </div>
+                    ) : null
+                  ) : (
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                      Оплату уже принимали — признак долга менять нельзя, иначе поступления повиснут без документа.
+                    </p>
+                  )}
+                </>
+              )}
+
+              {doc.kind === 'IN' && (
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Поставщик</label>
+                  <select value={form.supplierId} onChange={e => setForm({ ...form, supplierId: e.target.value })} className={`${input} mt-1`}>
+                    <option value="">Не указан</option>
+                    {suppliers.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Комментарий</label>
+                <input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} className={`${input} mt-1`} />
+              </div>
+
+              {/* Количества правятся не здесь: остаток объясняется движениями, и
+                  переписать проведённый документ значит изменить историю склада
+                  так, что расхождение будет нечем объяснить. */}
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Состав и количества документа не меняются. Ошибку в количестве
+                исправляют {doc.kind === 'SALE' ? 'возвратом или инвентаризацией' : 'списанием или инвентаризацией'} —
+                так остаток остаётся объяснимым.
+              </p>
+
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setEditOpen(false)}
+                        className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
+                  Отмена
+                </button>
+                <button disabled={saving} onClick={saveEdit}
+                        className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm disabled:opacity-50">
+                  Сохранить
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
       )}
     </div>
   );
