@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import TabPill from './TabPill';
 import TopBarBack from './TopBarBack';
-import { Customer, Account, Investor, Sale, User } from '../types';
+import { Customer, Account, Investor, Sale, User, RetailSale } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
-import { getInvestorAccount } from '../src/utils';
+import { getInvestorAccount, retailRemaining } from '../src/utils';
 import { SuccessCheck, SendStageView, hapticSuccess, type SendStage } from './feedback';
 
 interface NewIncomeProps {
@@ -14,6 +14,8 @@ interface NewIncomeProps {
   investors: Investor[];
   accounts: Account[];
   sales: Sale[];
+  /** Розничные продажи в долг — их гасят тем же приходом, что и рассрочку */
+  retailSales?: RetailSale[];
   onClose: () => void;
   onSubmit: ( any) => void;
   onSelectCustomer: () => void;
@@ -33,7 +35,7 @@ const formatPhone = (raw: string | undefined): string => {
 };
 
 const NewIncome: React.FC<NewIncomeProps> = ({
-  initialData, customers, investors, accounts, sales, onClose, onSubmit, onSelectCustomer, user, appSettings
+  initialData, customers, investors, accounts, sales, retailSales = [], onClose, onSubmit, onSelectCustomer, user, appSettings
 }) => {
   const [sourceType, setSourceType] = useState<'CUSTOMER' | 'INVESTOR' | 'OTHER'>('CUSTOMER');
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId || '');
@@ -73,6 +75,20 @@ const isConfirmingRef = useRef(false);
   const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
   const activeCustomerSales = useMemo(() => sales.filter(s => s.customerId === selectedCustomerId && s.remainingAmount > 0), [sales, selectedCustomerId]);
   const selectedSale = useMemo(() => sales.find(s => s.id === selectedSaleId), [sales, selectedSaleId]);
+  // Долги магазина попадают в тот же список, что и договоры: для клиента это
+  // один и тот же вопрос «сколько я должен», и разводить его по двум экранам
+  // значило бы заставлять кассира помнить, откуда именно долг.
+  // Префикс в значении отличает их от договоров, не заводя второго поля.
+  const RETAIL_PREFIX = 'retail:';
+  const retailDebts = useMemo(
+    () => retailSales.filter(r => r.customerId === selectedCustomerId && !r.isCancelled && retailRemaining(r) > 0),
+    [retailSales, selectedCustomerId]
+  );
+  const selectedRetail = useMemo(
+    () => retailDebts.find(r => RETAIL_PREFIX + r.id === selectedSaleId),
+    [retailDebts, selectedSaleId]
+  );
+  const hasAnyDebt = activeCustomerSales.length > 0 || retailDebts.length > 0;
   const selectedInvestor = useMemo(() => investors.find(i => i.id === selectedInvestorId), [investors, selectedInvestorId]);
 
   
@@ -90,6 +106,12 @@ const isConfirmingRef = useRef(false);
       setSourceType('CUSTOMER');
       setSelectedCustomerId(initialData.customerId || '');
       setSelectedSaleId(initialData.saleId || '');
+      setAmount(initialData.amount?.toString() || '');
+    }
+    if (initialData?.type === 'RETAIL_PAYMENT') {
+      setSourceType('CUSTOMER');
+      setSelectedCustomerId(initialData.customerId || '');
+      setSelectedSaleId(initialData.retailSaleId ? `retail:${initialData.retailSaleId}` : '');
       setAmount(initialData.amount?.toString() || '');
     }
   }, [initialData]);
@@ -115,6 +137,13 @@ const isConfirmingRef = useRef(false);
   }, [selectedSale, showCents]);
 
 
+
+  useEffect(() => {
+    if (!selectedRetail) return;
+    const left = retailRemaining(selectedRetail);
+    setAmount(showCents ? left.toFixed(2) : Math.round(left).toString());
+    setTargetAccountId(selectedRetail.accountId);
+  }, [selectedRetail, showCents]);
 
   useEffect(() => {
     if (selectedInvestor) {
@@ -274,7 +303,7 @@ const isConfirmingRef = useRef(false);
 
     const numAmount = Number(amount);
     if (numAmount <= 0) { alert("Введите сумму больше нуля"); return; }
-    if (sourceType === 'CUSTOMER' && !selectedSaleId) { alert("Выберите договор"); return; }
+    if (sourceType === 'CUSTOMER' && !selectedSaleId) { alert("Выберите долг"); return; }
     if (sourceType === 'INVESTOR' && (!selectedInvestorId || !targetAccountId)) { alert("Ошибка выбора инвестора или счета"); return; }
     if (sourceType === 'OTHER' && !targetAccountId) { alert("Выберите счет"); return; }
 
@@ -382,7 +411,19 @@ const commonData = {
           setSendStage('idle');
         }
 
-        await finishWithSuccess({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
+        if (selectedRetail) {
+          // Долг магазина гасится своим обработчиком: договора у него нет, а
+          // значит нет ни графика, ни скидки за досрочное погашение.
+          await finishWithSuccess({
+            amount: Math.min(numAmount, retailRemaining(selectedRetail)),
+            date: finalDate, actualDate: now.toISOString(),
+            type: 'RETAIL_PAYMENT', retailSaleId: selectedRetail.id,
+            customerId: selectedCustomerId, accountId: targetAccountId,
+            note: note || undefined,
+          });
+        } else {
+          await finishWithSuccess({ ...commonData, type: 'CUSTOMER_PAYMENT', saleId: selectedSaleId, accountId: targetAccountId });
+        }
       } else if (sourceType === 'INVESTOR') {
         await finishWithSuccess({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
       } else {
@@ -711,20 +752,25 @@ const remainingDebt = selectedSale.status === 'COMPLETED'
             {selectedCustomerId && (
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Активный договор</label>
-                {activeCustomerSales.length > 0 ? (
+                {hasAnyDebt ? (
                   <select
                     className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
                     value={selectedSaleId} onChange={e => setSelectedSaleId(e.target.value)}>
-                    <option value="">-- Выберите товар/рассрочку --</option>
+                    <option value="">-- Выберите долг --</option>
                     {activeCustomerSales.map(s => <option key={s.id}
                                                           value={s.id}>{s.productName} (Долг: {formatNum(s.remainingAmount)} ₽)</option>)}
+                    {retailDebts.map(r => (
+                      <option key={r.id} value={`retail:${r.id}`}>
+                        Магазин{r.docNumber ? ` №${r.docNumber}` : ''} (Долг: {formatNum(retailRemaining(r))} ₽)
+                      </option>
+                    ))}
                   </select>
                 ) : <p className="text-slate-500 dark:text-slate-400 italic p-2">Нет активных долгов</p>}
               </div>
             )}
-            {selectedSale && <div className="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700 text-sm flex gap-2 items-center">
+            {(selectedSale || selectedRetail) && <div className="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700 text-sm flex gap-2 items-center">
               <span className="text-slate-500 dark:text-slate-400">Зачисление на счет:</span>
-              <span className="font-bold text-slate-800 dark:text-white">{getAccountName(selectedSale.accountId)}</span>
+              <span className="font-bold text-slate-800 dark:text-white">{getAccountName((selectedSale || selectedRetail)!.accountId)}</span>
             </div>}
           </div>
         )}

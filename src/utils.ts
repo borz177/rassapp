@@ -1,5 +1,5 @@
 import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js';
-import { Account, Investor, InvestmentPeriod, Sale, Expense, DEFAULT_WAREHOUSE_ID, Product} from '../types';
+import { Account, Investor, InvestmentPeriod, Sale, Expense, DEFAULT_WAREHOUSE_ID, Product, RetailSale} from '../types';
 
 export const escapeHtml = (str: unknown): string =>
   String(str ?? '')
@@ -497,3 +497,17 @@ export const applyStockDelta = (p: Product, warehouseId: string, delta: number):
     updatedAt: new Date().toISOString(),
   };
 };
+
+
+// ─── Розничный долг ────────────────────────────────────────────────────────
+
+/** Сколько денег уже получено по чеку. */
+export const retailPaidAmount = (sale: RetailSale): number =>
+  (sale.payments || []).reduce((sum, p) => sum + p.amount, 0);
+
+/**
+ * Остаток долга по чеку. У обычной продажи он равен нулю всегда: деньги взяты
+ * при продаже, и «остаток» там — понятие без смысла.
+ */
+export const retailRemaining = (sale: RetailSale): number =>
+  sale.isCredit ? Math.max(0, sale.total - retailPaidAmount(sale)) : 0;

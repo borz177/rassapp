@@ -53,7 +53,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta} from './src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining} from './src/utils';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
@@ -1423,7 +1423,12 @@ const dashboardStats = useMemo(() => {
     // Выручка магазина — такие же живые деньги на счёте, как взнос по
     // рассрочке. Без этой строки чек пробивался, товар списывался, а касса
     // показывала прежний баланс: счёт один, и он держит оба потока.
-    total += retailSales.filter(r => r.accountId === acc.id && !r.isCancelled).reduce((sum, r) => sum + r.total, 0);
+    retailSales.filter(r => !r.isCancelled).forEach(r => {
+      // Долговой чек денег в кассу не приносит — их приносят платежи по нему,
+      // и приходят они на тот счёт, куда их реально положили.
+      if (!r.isCredit && r.accountId === acc.id) total += r.total;
+      (r.payments || []).forEach(pm => { if (pm.accountId === acc.id) total += pm.amount; });
+    });
     balances[acc.id] = total; }); return balances; }, [accounts, sales, expenses, retailSales]);
   const workingCapital = useMemo(() => { const cashInAccounts = Object.values(accountBalances).reduce((sum: number, bal: number) => sum + bal, 0); return cashInAccounts + dashboardStats.totalOutstanding; }, [accountBalances, dashboardStats.totalOutstanding]);
   const totalExpectedProfit = useMemo(() => {
@@ -2105,6 +2110,17 @@ const handleDeleteSale = async (saleId: string) => {
 const handleViewSaleSchedule = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView('CONTRACTS'); setCurrentView('CUSTOMER_DETAILS'); };
 const handleIncomeSubmit = async (data: any) => {
     if (!user) return;
+
+    if (data.type === 'RETAIL_PAYMENT') {
+        await handleRetailPayment(data.retailSaleId, {
+            amount: data.amount, date: data.date,
+            accountId: data.accountId, note: data.note,
+        });
+        setSelectedCustomerId(data.customerId || null);
+        setPreviousView(currentView);
+        setCurrentView(data.customerId ? 'CUSTOMER_DETAILS' : 'OPERATIONS');
+        return;
+    }
 
     if (data.type === 'CUSTOMER_PAYMENT') {
         // 🆕 Извлекаем данные о скидке
@@ -2866,6 +2882,52 @@ const confirmDeleteCustomer = async () => {
     () => warehouses.find(w => w.isMain && !w.isArchived) || warehouses.find(w => !w.isArchived),
     [warehouses]
   );
+
+  /**
+   * Погашение розничного долга. Платёж кладём внутрь чека, а не отдельной
+   * записью: так он не может потеряться отдельно от продажи, к которой
+   * относится, и не нужен новый тип данных на сервере.
+   */
+  const handleRetailPayment = async (retailSaleId: string, payment: { amount: number; date: string; accountId: string; note?: string }) => {
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+    if (!user) return;
+    const sale = retailSales.find(r => r.id === retailSaleId);
+    if (!sale) return;
+
+    const remaining = retailRemaining(sale);
+    const updated: RetailSaleType = {
+      ...sale,
+      payments: [...(sale.payments || []), {
+        id: crypto.randomUUID(),
+        // Переплату не записываем: долг закрывается ровно на свою сумму, иначе
+        // остаток ушёл бы в минус и отчёты показали бы отрицательный долг.
+        amount: Math.min(payment.amount, remaining),
+        date: payment.date,
+        accountId: payment.accountId || sale.accountId,
+        note: payment.note,
+        recordedByUserId: user.id,
+      }],
+    };
+    updateList(setRetailSales, updated);
+    try {
+      const saved = await api.saveItem('retailSales', updated);
+      updateList(setRetailSales, saved);
+    } catch (err: any) {
+      if (err?.message === 'TOKEN_EXPIRED') return;
+      updateList(setRetailSales, sale);
+      alert(`❌ Не удалось сохранить платёж. Попробуйте ещё раз.\n${err?.message || ''}`);
+    }
+  };
+
+  const handleInitiateRetailPayment = (sale: RetailSaleType) => {
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+    setDraftSaleData({
+      type: 'RETAIL_PAYMENT', customerId: sale.customerId,
+      retailSaleId: sale.id, amount: retailRemaining(sale),
+    });
+    setPreviousView(currentView);
+    setCurrentView('CREATE_INCOME');
+  };
 
   const handleRetailSale = async (sale: RetailSaleType) => {
     if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
@@ -3938,6 +4000,7 @@ if (!user && !showSplash) {
                                        onDeleteCustomer={handleDeleteCustomer}
                                        suppliers={suppliers} onPaySupplier={handlePaySupplier}
                                        initialSaleId={initialSaleIdForDetails} appSettings={appSettings} user={user}
+                                       retailSales={retailSales} onInitiateRetailPayment={handleInitiateRetailPayment}
                                        onCreateTask={checkAccess("TASKS") ? handleCreateTaskFor : undefined}/>
                     )}
                   </PagePush>}
@@ -3973,7 +4036,7 @@ if (!user && !showSplash) {
                   <PagePush onClose={() => setCurrentView('DASHBOARD')}>
                     {(requestClose: () => void) => (
                       <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts}
-                             sales={sales} onClose={requestClose} onSubmit={handleIncomeSubmit}
+                             sales={sales} retailSales={retailSales} onClose={requestClose} onSubmit={handleIncomeSubmit}
                              onSelectCustomer={() => openSelection('SELECT_CUSTOMER', draftSaleData)}
                              appSettings={appSettings} user={user}/>
                     )}

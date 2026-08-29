@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import ModalPortal from './ModalPortal';
 import { Sale, Customer, Account, AppSettings, Investor, User, Product, RetailSale } from '../types';
 import DashboardCash from './DashboardCash';
+import TabPill from './TabPill';
 import { ICONS } from '../constants';
 import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
 import MyBonusCard from './MyBonusCard';
@@ -1533,13 +1534,12 @@ useEffect(() => {
 
         {/* Overview Tab */}
         {activeTab === 'overview' && showShopTab && (
-          <div className="flex gap-2">
+          <div className="relative flex p-1 rounded-[24px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+            <TabPill index={overviewMode === 'installments' ? 0 : 1} count={2} pad={4} />
             {([['installments', 'Рассрочка'], ['cash', 'Наличные']] as const).map(([id, label]) => (
               <button key={id} onClick={() => setOverviewMode(id)}
-                      className={`flex-1 min-w-0 py-2.5 rounded-2xl text-sm font-bold transition-all ${
-                        overviewMode === id
-                          ? 'bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 shadow-sm'
-                          : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-500 dark:text-slate-400'
+                      className={`relative z-10 flex-1 min-w-0 py-2.5 text-sm font-bold rounded-xl transition-colors ${
+                        overviewMode === id ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'
                       }`}>
                 {label}
               </button>

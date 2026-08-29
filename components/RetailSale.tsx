@@ -49,6 +49,10 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   const [cartOpen, setCartOpen] = useState(false);
 
   const [customerId, setCustomerId] = useState<string | null>(null);
+  // Долг возможен только с названным покупателем: с «розничного покупателя»
+  // потом некому спросить. Поэтому выбор клиента и включает долг, и снимается
+  // вместе с ним.
+  const [isCredit, setIsCredit] = useState(false);
   const [pickCustomer, setPickCustomer] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
 
@@ -168,13 +172,14 @@ const RetailSale: React.FC<RetailSaleProps> = ({
         accountId,
         customerId: customerId || undefined,
         items, subtotal, discount: discountValue, total, cost, profit,
+        isCredit: customerId ? isCredit : false,
         note: note.trim() || undefined,
         docNumber: docNumber.trim() || nextDocNumber,
         date: date.toISOString(),
       };
       await onSubmit(sale);
       setDone(sale);
-      setItems([]); setDiscount(''); setNote(''); setCustomerId(null);
+      setItems([]); setDiscount(''); setNote(''); setCustomerId(null); setIsCredit(false);
       setDocNumber(''); setSaleDate(new Date().toISOString().slice(0, 10));
       setCartOpen(false);
       setError(null);
@@ -253,16 +258,38 @@ const RetailSale: React.FC<RetailSaleProps> = ({
             {customer ? customer.name : 'Розничный покупатель'}
           </p>
         </div>
-        <button onClick={() => customer ? setCustomerId(null) : setPickCustomer(true)}
+        <button onClick={() => { if (customer) { setCustomerId(null); setIsCredit(false); } else setPickCustomer(true); }}
                 className="shrink-0 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">
           {customer ? 'Убрать' : 'Выбрать'}
         </button>
       </div>
 
+      {/* Клиента выбирают ровно тогда, когда его нужно потом найти, — то есть
+          когда деньги ещё не получены. Поэтому долг здесь по умолчанию, но
+          переключить можно: клиент может и заплатить сразу. */}
+      {customer && (
+        <div className="relative flex p-1 rounded-2xl bg-slate-100 dark:bg-slate-700">
+          {([[false, 'Оплачено'], [true, 'В долг']] as const).map(([v, label]) => (
+            <button key={label} type="button" onClick={() => setIsCredit(v)}
+                    className={`flex-1 min-w-0 py-2 rounded-xl text-xs font-bold transition-colors ${
+                      isCredit === v
+                        ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}>{label}</button>
+          ))}
+        </div>
+      )}
+
       <select value={accountId} onChange={e => setAccountId(e.target.value)} className={input}>
         {liveAccounts.length === 0 && <option value="">Нет счетов</option>}
         {liveAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
       </select>
+      {customer && isCredit && (
+        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+          Деньги в кассу не поступают — сумма встаёт долгом за клиентом. Погашение
+          проводится через «Приход», счёт подставится этот.
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <input value={discount} onChange={e => setDiscount(e.target.value)} inputMode="decimal"
@@ -295,8 +322,10 @@ const RetailSale: React.FC<RetailSaleProps> = ({
       )}
 
       <button disabled={saving || items.length === 0} onClick={submit}
-              className="w-full py-3.5 rounded-2xl bg-emerald-600 text-white font-bold disabled:opacity-40 active:scale-[0.99] transition-transform">
-        Провести продажу
+              className={`w-full py-3.5 rounded-2xl text-white font-bold disabled:opacity-40 active:scale-[0.99] transition-transform ${
+                customer && isCredit ? 'bg-amber-600' : 'bg-emerald-600'
+              }`}>
+        {customer && isCredit ? 'Отдать в долг' : 'Провести продажу'}
       </button>
     </>
   );
@@ -512,7 +541,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
                   })
                   .slice(0, 100)
                   .map(c => (
-                    <button key={c.id} onClick={() => { setCustomerId(c.id); setPickCustomer(false); }}
+                    <button key={c.id} onClick={() => { setCustomerId(c.id); setIsCredit(true); setPickCustomer(false); }}
                             className="w-full px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-700">
                       <p className="font-semibold text-slate-800 dark:text-white truncate">{c.name}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">{c.phone}</p>

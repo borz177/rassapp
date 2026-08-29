@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { Product, RetailSale, StockMovement } from '../types';
 import TabPill from './TabPill';
+import { retailRemaining } from '../src/utils';
 
 interface ShopReportBodyProps {
   sales: RetailSale[];
@@ -59,6 +60,9 @@ const ShopReportBody: React.FC<ShopReportBodyProps> = ({ sales, products, moveme
     discount: scoped.reduce((s, x) => s + x.discount, 0),
     checks: scoped.length,
     units: scoped.reduce((s, x) => s + x.items.reduce((n, i) => n + i.quantity, 0), 0),
+    // Долг считаем по чекам периода: это часть выручки, которая ещё
+    // не стала деньгами, и без неё цифра выручки вводит в заблуждение.
+    debt: scoped.reduce((s, x) => s + retailRemaining(x), 0),
   }), [scoped]);
 
   const avgCheck = totals.checks ? totals.revenue / totals.checks : 0;
@@ -164,6 +168,11 @@ const ShopReportBody: React.FC<ShopReportBodyProps> = ({ sales, products, moveme
         <p className="text-sm text-emerald-600 dark:text-emerald-400 font-bold mt-1">
           прибыль {money(totals.profit, showCents)} ₽ · маржа {margin.toFixed(1)}%
         </p>
+        {totals.debt > 0 && (
+          <p className="text-sm text-amber-600 dark:text-amber-400 font-bold mt-1">
+            из них не получено {money(totals.debt, showCents)} ₽
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

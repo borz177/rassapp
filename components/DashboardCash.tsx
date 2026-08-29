@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import type { Product, RetailSale } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency } from '../src/utils';
+import { formatCurrency, retailRemaining } from '../src/utils';
 
 interface DashboardCashProps {
   retailSales: RetailSale[];
@@ -53,6 +53,10 @@ const DashboardCash: React.FC<DashboardCashProps> = ({ retailSales, products, on
 
   const avgCheck = today.checks ? today.revenue / today.checks : 0;
 
+  // Выручка считается по отгрузке, но деньги за долговой чек ещё не
+  // пришли. Показать одну выручку значило бы обещать деньги, которых в кассе нет.
+  const debt = useMemo(() => live.reduce((sum, s) => sum + retailRemaining(s), 0), [live]);
+
   const recent = useMemo(
     () => [...live].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 6),
     [live]
@@ -81,6 +85,11 @@ const DashboardCash: React.FC<DashboardCashProps> = ({ retailSales, products, on
         <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-1">
           прибыль {formatCurrency(today.profit, showCents)} ₽
         </p>
+        {debt > 0 && (
+          <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mt-1">
+            за клиентами долг {formatCurrency(debt, showCents)} ₽
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">

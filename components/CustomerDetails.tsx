@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier, Task} from '../types';
+import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier, Task, RetailSale} from '../types';
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
-import { formatCurrency, formatDate, normalizePhoneForWhatsApp } from '../src/utils';
+import { formatCurrency, formatDate, normalizePhoneForWhatsApp, retailPaidAmount, retailRemaining } from '../src/utils';
 import { offlineStorage } from '../services/offlineStorage';
 import { api } from '../services/api';
 
@@ -24,6 +24,10 @@ interface CustomerDetailsProps {
   suppliers?: Supplier[];
   onPaySupplier?: (sale: Sale) => void;
   onCreateTask?: (draft: Partial<Task>) => void;
+  /** Покупки клиента в магазине. Пусто, когда магазин выключен. */
+  retailSales?: RetailSale[];
+  /** Открывает «Приход» с подставленным долгом магазина */
+  onInitiateRetailPayment?: (sale: RetailSale) => void;
 }
 
 const compressImage = (file: File, maxWidth = 1920): Promise<Blob> => {
@@ -583,11 +587,12 @@ const DocumentsModal = ({
 const CustomerDetails: React.FC<CustomerDetailsProps> = ({
     customer, sales, accounts, investors, appSettings, onBack,
     onInitiatePayment, onUndoPayment, onEditPayment, onUpdateCustomer,
-    initialSaleId, onDeleteCustomer, user, suppliers, onPaySupplier, onCreateTask
+    initialSaleId, onDeleteCustomer, user, suppliers, onPaySupplier, onCreateTask,
+    retailSales = [], onInitiateRetailPayment
 }) => {
     const supplierList: Supplier[] = suppliers || [];
     const isEmployee = user?.role === 'employee';
-    const [activeTab, setActiveTab] = useState<'INFO' | 'INSTALLMENTS'>('INFO');
+    const [activeTab, setActiveTab] = useState<'INFO' | 'INSTALLMENTS' | 'HISTORY'>('INFO');
     const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
     const [showEditModal, setShowEditModal] = useState(false);
     const [showDocumentsModal, setShowDocumentsModal] = useState(false);
@@ -617,7 +622,60 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
         setShowActionsMenu(false);
     }, [activeTab]);
 
+
     const customerSales = Array.isArray(sales) ? sales.filter(s => s.customerId === customer.id) : [];
+
+    // Покупки в магазине и деньги по ним. Считаем по самим чекам: цена
+    // зафиксирована в момент продажи, и пересчёт по нынешним ценам переписывал
+    // бы прошлое после каждой переоценки.
+    const customerRetail = useMemo(
+        () => retailSales
+            .filter(r => r.customerId === customer.id && !r.isCancelled)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+        [retailSales, customer.id]
+    );
+
+    const retailTotals = useMemo(() => ({
+        bought: customerRetail.reduce((sum, r) => sum + r.total, 0),
+        received: customerRetail.reduce((sum, r) => sum + (r.isCredit ? retailPaidAmount(r) : r.total), 0),
+        debt: customerRetail.reduce((sum, r) => sum + retailRemaining(r), 0),
+    }), [customerRetail]);
+
+    // Единая лента: покупка и полученные по ней деньги — события одной истории,
+    // и разложенные по двум спискам они перестают отвечать на вопрос «а что
+    // между ними произошло».
+    const retailTimeline = useMemo(() => {
+        const events: {
+            key: string; kind: 'BUY' | 'PAY'; date: string; amount: number;
+            title: string; subtitle?: string; sale: RetailSale;
+        }[] = [];
+        customerRetail.forEach(r => {
+            events.push({
+                key: `buy_${r.id}`, kind: 'BUY', date: r.date, amount: r.total, sale: r,
+                title: r.items.map(i => `${i.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`).join(', ') || 'Покупка',
+                subtitle: [r.docNumber ? `Чек №${r.docNumber}` : null, r.isCredit ? 'в долг' : 'оплачено'].filter(Boolean).join(' · '),
+            });
+            (r.payments || []).forEach(pm => {
+                events.push({
+                    key: `pay_${pm.id}`, kind: 'PAY', date: pm.date, amount: pm.amount, sale: r,
+                    title: 'Оплата',
+                    subtitle: [r.docNumber ? `по чеку №${r.docNumber}` : null, pm.note].filter(Boolean).join(' · '),
+                });
+            });
+        });
+        return events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [customerRetail]);
+
+    // Вкладку показываем только когда за ней что-то есть: пустая «Рассрочка» у
+    // розничного покупателя — обещание раздела, которого нет.
+    const showInstallmentsTab = customerSales.length > 0;
+    const showHistoryTab = customerRetail.length > 0;
+    // Последняя рассрочка может быть удалена, пока вкладка открыта — оставить
+    // пользователя на исчезнувшем разделе нельзя.
+    useEffect(() => {
+        if (activeTab === 'INSTALLMENTS' && !showInstallmentsTab) setActiveTab('INFO');
+        if (activeTab === 'HISTORY' && !showHistoryTab) setActiveTab('INFO');
+    }, [activeTab, showInstallmentsTab, showHistoryTab]);
     const selectedSale = customerSales.find(s => s.id === selectedSaleId);
 
     const handleEditClick = (payment: Payment) => {
@@ -1112,10 +1170,17 @@ ${customer.name}!
                     </button>
                 )}
             </div>
+            {(showInstallmentsTab || showHistoryTab) && (
             <div className="flex border-b border-slate-200 dark:border-slate-700">
                 <button onClick={() => setActiveTab('INFO')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INFO' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400'}`}>Информация</button>
+                {showInstallmentsTab && (
                 <button onClick={() => setActiveTab('INSTALLMENTS')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'INSTALLMENTS' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400'}`}>Рассрочки</button>
+                )}
+                {showHistoryTab && (
+                <button onClick={() => setActiveTab('HISTORY')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'HISTORY' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400'}`}>История</button>
+                )}
             </div>
+            )}
             {activeTab === 'INFO' && (
                 <div className="space-y-4 pt-2">
                     <div className="flex justify-center">
@@ -1248,6 +1313,74 @@ ${customer.name}!
                     </div>
                 </div>
             )}
+            {activeTab === 'HISTORY' && (
+                <div className="space-y-3 pt-2">
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4">
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                            <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Куплено на</p>
+                                <p className="font-bold text-slate-800 dark:text-white">{formatCurrency(retailTotals.bought, appSettings.showCents)} ₽</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Получено</p>
+                                <p className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(retailTotals.received, appSettings.showCents)} ₽</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Долг</p>
+                                <p className={`font-bold ${retailTotals.debt > 0 ? 'text-rose-500' : 'text-slate-400'}`}>
+                                    {formatCurrency(retailTotals.debt, appSettings.showCents)} ₽
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Незакрытые долги — отдельно и сверху: это то, ради чего в
+                        историю чаще всего и заходят. */}
+                    {customerRetail.filter(r => retailRemaining(r) > 0).map(r => (
+                        <div key={`debt_${r.id}`} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-4 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                                <p className="font-bold text-amber-800 dark:text-amber-300 truncate">
+                                    Долг {formatCurrency(retailRemaining(r), appSettings.showCents)} ₽
+                                </p>
+                                <p className="text-xs text-amber-700/80 dark:text-amber-400/80 truncate">
+                                    {r.docNumber ? `Чек №${r.docNumber} · ` : ''}{formatDate(r.date)}
+                                    {retailPaidAmount(r) > 0 ? ` · внесено ${formatCurrency(retailPaidAmount(r), appSettings.showCents)} ₽` : ''}
+                                </p>
+                            </div>
+                            {onInitiateRetailPayment && !isEmployee && (
+                                <button onClick={() => onInitiateRetailPayment(r)}
+                                        className="shrink-0 px-4 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold active:scale-95 transition-transform">
+                                    Принять оплату
+                                </button>
+                            )}
+                        </div>
+                    ))}
+
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
+                        {retailTimeline.map(e => (
+                            <div key={e.key} className="px-4 py-3 flex items-center gap-3">
+                                <div className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-sm ${
+                                    e.kind === 'BUY'
+                                        ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                                        : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                                }`}>
+                                    {e.kind === 'BUY' ? '🛒' : '₽'}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-semibold text-slate-800 dark:text-white truncate">{e.title}</p>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                        {formatDate(e.date)}{e.subtitle ? ` · ${e.subtitle}` : ''}
+                                    </p>
+                                </div>
+                                <p className={`font-bold shrink-0 ${e.kind === 'BUY' ? 'text-slate-800 dark:text-white' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                    {e.kind === 'BUY' ? '' : '+'}{formatCurrency(e.amount, appSettings.showCents)} ₽
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {activeTab === 'INSTALLMENTS' && (
                 <div className="space-y-3 pt-2">
                     {customerSales.length === 0 && <div className="text-center py-10 text-slate-400">Нет активных рассрочек</div>}

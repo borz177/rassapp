@@ -85,17 +85,39 @@ const Operations: React.FC<OperationsProps> = ({
     retailSales.forEach(rs => {
       if (rs.isCancelled) return;
       const names = rs.items.map(i => `${i.name} ×${i.quantity}`).join(', ');
-      incomeOps.push({
-        id: rs.id,
-        date: rs.date,
-        amount: rs.total,
-        title: rs.customerId ? getCustomerName(rs.customerId) : 'Розничный покупатель',
-        description: names || 'Розничная продажа',
-        accountId: rs.accountId,
-        type: 'INCOME',
-        category: 'Магазин',
-        raw: rs,
-        isRetail: true,
+      const who = rs.customerId ? getCustomerName(rs.customerId) : 'Розничный покупатель';
+
+      // Чек в долг денег не приносит — ему здесь не место: история операций
+      // отражает движение денег, а не отгрузку товара. Вместо него в ленту
+      // попадают полученные по нему платежи — каждый в свою дату.
+      if (!rs.isCredit) {
+        incomeOps.push({
+          id: rs.id,
+          date: rs.date,
+          amount: rs.total,
+          title: who,
+          description: names || 'Розничная продажа',
+          accountId: rs.accountId,
+          type: 'INCOME',
+          category: 'Магазин',
+          raw: rs,
+          isRetail: true,
+        });
+      }
+
+      (rs.payments || []).forEach(pm => {
+        incomeOps.push({
+          id: pm.id,
+          date: pm.date,
+          amount: pm.amount,
+          title: who,
+          description: `Оплата долга${rs.docNumber ? ` по чеку №${rs.docNumber}` : ''}${names ? ` · ${names}` : ''}`,
+          accountId: pm.accountId,
+          type: 'INCOME',
+          category: 'Магазин',
+          raw: rs,
+          isRetail: true,
+        });
       });
     });
 
