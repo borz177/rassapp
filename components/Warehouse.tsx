@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import type { Account, Product, StockLocation, StockMovement, Supplier } from '../types';
+import type { Account, AppSettings, Customer, Product, RetailSale, StockLocation, StockMovement, Supplier, User } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { stockAtWarehouse } from '../src/utils';
 import { api } from '../services/api';
@@ -8,6 +8,8 @@ import TopBarBack from './TopBarBack';
 import ModalPortal from './ModalPortal';
 import TabPill from './TabPill';
 import WarehouseOps from './WarehouseOps';
+import ProductDetails from './ProductDetails';
+import SubPage from './transitions/SubPage';
 
 interface WarehouseProps {
   products: Product[];
@@ -15,6 +17,14 @@ interface WarehouseProps {
   warehouses: StockLocation[];
   suppliers: Supplier[];
   accounts: Account[];
+  /** Для карточки товара: его история — это чеки и накладные */
+  retailSales?: RetailSale[];
+  customers?: Customer[];
+  employees?: User[];
+  appSettings?: AppSettings;
+  user?: User | null;
+  onSelectCustomer?: (id: string) => void;
+  onAcceptPayment?: (sale: RetailSale) => void;
   /** Проведение складского документа: движения и обновлённые остатки разом */
   onPostBatch: (movements: StockMovement[], products: Product[]) => Promise<void> | void;
   onSaveWarehouse: (w: StockLocation) => Promise<void> | void;
@@ -58,6 +68,8 @@ const MOVEMENT_LABELS: Record<StockMovement['type'], string> = {
  */
 const Warehouse: React.FC<WarehouseProps> = ({
   products, movements, warehouses, suppliers, accounts,
+  retailSales = [], customers = [], employees = [], appSettings, user,
+  onSelectCustomer, onAcceptPayment,
   onSaveProduct, onDeleteProduct, onAddMovement, onPostBatch,
   onSaveWarehouse, onDeleteWarehouse, onBack,
 }) => {
@@ -67,6 +79,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
   // количество, и смешанные в одном списке они мешали бы друг другу.
   const [section, setSection] = useState<'catalog' | 'ops' | 'places'>('catalog');
   const [whForm, setWhForm] = useState<Partial<StockLocation> | null>(null);
+  // Карточка товара и меню его действий — два разных состояния: меню
+  // открывается по троеточию и не должно уводить с экрана.
+  const [openProductId, setOpenProductId] = useState<string | null>(null);
+  const [menuProduct, setMenuProduct] = useState<Product | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string>('ALL');
   const [showArchived, setShowArchived] = useState(false);
@@ -88,7 +104,6 @@ const Warehouse: React.FC<WarehouseProps> = ({
   const [movementPrice, setMovementPrice] = useState('');
   const [movementNote, setMovementNote] = useState('');
 
-  const [historyFor, setHistoryFor] = useState<Product | null>(null);
 
   const categories = useMemo(
     () => Array.from(new Set(products.map(p => p.category).filter(Boolean))).sort(),
@@ -239,7 +254,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
 
   const inputCls = 'w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-400';
 
+  const openProduct = products.find(p => p.id === openProductId) || null;
+
   return (
+    <>
     <div className="space-y-4 pb-10">
       <div className="flex items-center gap-3">
         <TopBarBack onClick={onBack} />
@@ -384,7 +402,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
         <div className="grid gap-3">
           {visible.map(p => (
             <div key={p.id}
-                 className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3 flex items-center gap-3">
+                 onClick={() => setOpenProductId(p.id)}
+                 className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3 flex items-center gap-3 cursor-pointer active:bg-slate-50 dark:active:bg-slate-700/50">
               <div className="w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
                 {p.images?.[0] ? (
                   <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" />
@@ -405,20 +424,63 @@ const Warehouse: React.FC<WarehouseProps> = ({
                 </p>
               </div>
 
-              <div className="flex flex-col gap-1.5 shrink-0">
-                <button onClick={() => { setMovementFor(p); setMovementType('IN'); setError(null); }}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold">Движение</button>
-                <button onClick={() => openEdit(p)}
-                        className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">Изменить</button>
-                <button onClick={() => setHistoryFor(p)}
-                        className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">История</button>
-              </div>
+              {/* Три кнопки в строке съедали место у названия и цены — ради
+                  действий, которые нужны не в каждой строке. Само нажатие на
+                  товар теперь открывает карточку, а действия ушли под
+                  троеточие. */}
+              <button onClick={e => { e.stopPropagation(); setMenuProduct(p); }}
+                      aria-label="Действия"
+                      className="shrink-0 w-9 h-9 rounded-lg text-slate-400 text-lg leading-none active:bg-slate-100 dark:active:bg-slate-700">
+                ⋮
+              </button>
             </div>
           ))}
         </div>
       )}
 
       </>)}
+
+      {/* Действия над товаром. Отдельным листом, а не рядом кнопок в строке:
+          так строка остаётся про товар, а не про то, что с ним можно сделать. */}
+      {menuProduct && (
+        <ModalPortal onClose={() => setMenuProduct(null)}>
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
+               onClick={() => setMenuProduct(null)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl p-2"
+                 onClick={e => e.stopPropagation()}>
+              <p className="px-4 pt-3 pb-2 text-sm font-bold text-slate-500 dark:text-slate-400 truncate">
+                {menuProduct.name}
+              </p>
+              <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); openEdit(p2); }}
+                      className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
+                Редактировать
+              </button>
+              <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setMovementFor(p2); setMovementType('IN'); setError(null); }}
+                      className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
+                Добавить в документ
+              </button>
+              <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setOpenProductId(p2.id); }}
+                      className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
+                История
+              </button>
+              <button
+                onClick={async () => {
+                  const p2 = menuProduct;
+                  if (!window.confirm(`Удалить «${p2.name}» без возможности восстановления?`)) return;
+                  setMenuProduct(null);
+                  await onDeleteProduct(p2.id);
+                }}
+                className="w-full text-left px-4 py-3 rounded-xl font-semibold text-rose-600 dark:text-rose-400 active:bg-slate-50 dark:active:bg-slate-700">
+                Удалить
+              </button>
+              <button onClick={() => setMenuProduct(null)}
+                      className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-400 active:bg-slate-50 dark:active:bg-slate-700">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
 
       {/* Форма склада */}
       {whForm && (
@@ -610,51 +672,35 @@ const Warehouse: React.FC<WarehouseProps> = ({
         </ModalPortal>
       )}
 
-      {/* История движений */}
-      {historyFor && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setHistoryFor(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[80vh] flex flex-col"
-                 onClick={e => e.stopPropagation()}>
-              <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700">
-                <h3 className="font-bold text-slate-800 dark:text-white">{historyFor.name}</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">История движений</p>
-              </div>
-              <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
-                {movements.filter(m => m.productId === historyFor.id).length === 0 ? (
-                  <p className="p-5 text-sm text-slate-500 dark:text-slate-400">Движений пока нет.</p>
-                ) : (
-                  movements
-                    .filter(m => m.productId === historyFor.id)
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map(m => (
-                      <div key={m.id} className="px-5 py-3 flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-800 dark:text-white">{MOVEMENT_LABELS[m.type]}</p>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                            {new Date(m.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                            {m.note ? ` · ${m.note}` : ''}
-                          </p>
-                        </div>
-                        <p className={`text-sm font-bold shrink-0 ${m.quantity >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}`}>
-                          {m.quantity >= 0 ? '+' : ''}{money(m.quantity)}
-                        </p>
-                      </div>
-                    ))
-                )}
-              </div>
-              <div className="p-4 border-t border-slate-100 dark:border-slate-700">
-                <button onClick={() => setHistoryFor(null)}
-                        className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
-                  Закрыть
-                </button>
-              </div>
-            </div>
-          </div>
-        </ModalPortal>
-      )}
     </div>
+
+    {/* Карточка товара выезжает справа, как остальные страницы, и держит
+        список смонтированным под собой — при возврате каталог остаётся на том
+        же месте прокрутки. */}
+    {openProduct && appSettings && (
+      <SubPage onClose={() => setOpenProductId(null)}>
+        {(close: () => void) => (
+          <ProductDetails
+            product={openProduct}
+            movements={movements}
+            retailSales={retailSales}
+            products={products}
+            customers={customers}
+            warehouses={warehouses}
+            suppliers={suppliers}
+            accounts={accounts}
+            employees={employees}
+            appSettings={appSettings}
+            user={user}
+            onBack={close}
+            onEdit={p2 => { close(); openEdit(p2); }}
+            onSelectCustomer={onSelectCustomer}
+            onAcceptPayment={onAcceptPayment}
+          />
+        )}
+      </SubPage>
+    )}
+    </>
   );
 };
 

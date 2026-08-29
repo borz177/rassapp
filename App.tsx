@@ -4239,6 +4239,13 @@ if (!user && !showSplash) {
                       warehouses={warehouses}
                       suppliers={suppliers}
                       accounts={accounts}
+                      retailSales={retailSales}
+                      customers={customers}
+                      employees={employees}
+                      appSettings={appSettings}
+                      user={user}
+                      onSelectCustomer={handleSelectCustomer}
+                      onAcceptPayment={handleInitiateRetailPayment}
                       onPostBatch={handlePostStockBatch}
                       onSaveWarehouse={handleSaveWarehouse}
                       onDeleteWarehouse={handleDeleteWarehouse}

@@ -2,8 +2,9 @@ import React, { useMemo, useState } from 'react';
 import type {
   Account, AppSettings, Customer, Product, RetailSale, StockLocation, StockMovement, Supplier, User,
 } from '../types';
-import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { formatCurrency, retailPaidAmount, retailRemaining } from '../src/utils';
+import { formatCurrency } from '../src/utils';
+import { buildJournalDocs, KIND_LABEL, printJournalDoc, type DocKind, type JournalDoc } from '../src/journalDocs';
+import DocumentCard from './DocumentCard';
 import TopBarBack from './TopBarBack';
 import SubPage from './transitions/SubPage';
 import ModalPortal from './ModalPortal';
@@ -25,47 +26,7 @@ interface JournalProps {
   onAcceptPayment?: (sale: RetailSale) => void;
 }
 
-type DocKind = 'SALE' | 'IN' | 'TRANSFER' | 'WRITE_OFF' | 'INVENTORY';
 type PayFilter = 'ALL' | 'DEBT' | 'PAID';
-
-/** Одна строка состава документа — общая для чека и складской накладной. */
-interface DocLine {
-  name: string;
-  quantity: number;
-  price: number;
-  unit?: string;
-}
-
-/**
- * Документ журнала. Продажа и складская накладная приведены к одному виду
- * намеренно: в журнал заходят с вопросом «что за бумага была такого-то числа»,
- * и заставлять человека помнить, в каком из двух списков её искать, значит
- * отвечать на другой вопрос.
- */
-interface JournalDoc {
-  id: string;
-  kind: DocKind;
-  number: string;
-  date: string;
-  total: number;
-  debt: number;
-  from: string;
-  to: string;
-  lines: DocLine[];
-  discount: number;
-  note?: string;
-  authorId?: string;
-  customerId?: string;
-  sale?: RetailSale;
-}
-
-const KIND_LABEL: Record<DocKind, string> = {
-  SALE: 'Продажа',
-  IN: 'Приход',
-  TRANSFER: 'Перемещение',
-  WRITE_OFF: 'Списание',
-  INVENTORY: 'Инвентаризация',
-};
 
 const KIND_FILTERS: { id: 'ALL' | DocKind; label: string }[] = [
   { id: 'ALL', label: 'Все' },
@@ -119,97 +80,10 @@ const Journal: React.FC<JournalProps> = ({
   const cents = appSettings.showCents;
   const company = appSettings.companyName || 'Магазин';
 
-  const productName = (id: string) => products.find(p => p.id === id)?.name || 'Товар удалён';
-  const warehouseName = (id?: string) =>
-    warehouses.find(w => w.id === id)?.name
-    || (id === DEFAULT_WAREHOUSE_ID || !id ? 'Основной склад' : 'Склад удалён');
-  const customerName = (id?: string) =>
-    customers.find(c => c.id === id)?.name || (id ? 'Клиент удалён' : 'Розничный покупатель');
-  const authorName = (id?: string) => {
-    if (!id) return null;
-    if (id === user?.id) return user?.name || null;
-    return employees.find(e => e.id === id)?.name || null;
-  };
-
-  const docs = useMemo<JournalDoc[]>(() => {
-    const list: JournalDoc[] = [];
-
-    retailSales.filter(r => !r.isCancelled).forEach(r => {
-      list.push({
-        id: `sale_${r.id}`,
-        kind: 'SALE',
-        number: r.docNumber || r.id.slice(0, 6),
-        date: r.date,
-        total: r.total,
-        debt: retailRemaining(r),
-        from: company,
-        to: customerName(r.customerId),
-        lines: r.items.map(i => ({ name: i.name, quantity: i.quantity, price: i.price, unit: i.unit })),
-        discount: r.discount,
-        note: r.note,
-        authorId: r.createdByUserId,
-        customerId: r.customerId,
-        sale: r,
-      });
-    });
-
-    // Складские движения одного документа делят batchId — по нему и собираем.
-    // Записи без него остались от одиночных корректировок в карточке товара:
-    // каждая такая — сама себе документ.
-    const batches = new Map<string, StockMovement[]>();
-    movements.forEach(m => {
-      const key = m.batchId || `single_${m.id}`;
-      const arr = batches.get(key) || [];
-      arr.push(m);
-      batches.set(key, arr);
-    });
-
-    batches.forEach((rows, key) => {
-      const head = rows[0];
-      if (!head || head.type === 'SALE') return;
-
-      const kindOf = (): DocKind =>
-        head.type === 'IN' ? 'IN'
-        : head.type === 'TRANSFER' ? 'TRANSFER'
-        : head.type === 'WRITE_OFF' ? 'WRITE_OFF'
-        : 'INVENTORY';
-      const k = kindOf();
-
-      // У перемещения две записи на каждый товар — берём только расходную,
-      // иначе накладная показала бы удвоенное количество.
-      const lineRows = k === 'TRANSFER' ? rows.filter(m => m.quantity < 0) : rows;
-
-      const supplier = suppliers.find(x => x.id === head.supplierId);
-      const from = k === 'IN'
-        ? (supplier?.name || 'Поставщик не указан')
-        : warehouseName(head.warehouseId);
-      const to = k === 'IN' ? warehouseName(head.warehouseId)
-        : k === 'TRANSFER' ? warehouseName(head.toWarehouseId)
-        : k === 'WRITE_OFF' ? 'Списание'
-        : 'Пересчёт';
-
-      list.push({
-        id: `doc_${key}`,
-        kind: k,
-        number: head.batchId ? head.batchId.replace('doc_', '').slice(-6) : head.id.slice(0, 6),
-        date: head.date,
-        total: rows.reduce((sum, m) => sum + Math.abs(m.quantity) * (m.unitPrice || 0), 0),
-        debt: 0,
-        from, to,
-        lines: lineRows.map(m => ({
-          name: productName(m.productId),
-          quantity: Math.abs(m.quantity),
-          price: m.unitPrice || 0,
-          unit: products.find(p => p.id === m.productId)?.unit,
-        })),
-        discount: 0,
-        note: head.note,
-        authorId: head.createdByUserId,
-      });
-    });
-
-    return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [retailSales, movements, products, customers, warehouses, suppliers, company, user, employees]);
+  const docs = useMemo(
+    () => buildJournalDocs({ retailSales, movements, products, customers, warehouses, suppliers, company }),
+    [retailSales, movements, products, customers, warehouses, suppliers, company]
+  );
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -241,248 +115,6 @@ const Journal: React.FC<JournalProps> = ({
   const opened = docs.find(d => d.id === openId) || null;
 
   const filtersActive = kind !== 'ALL' || pay !== 'ALL';
-
-  /**
-   * Товарный чек в отдельном окне печати. Собирать разметку строкой, а не
-   * прятать блок на странице: у документа своя вёрстка под лист, и её правила
-   * не должны спорить с тёмной темой приложения.
-   */
-  const printDoc = (d: JournalDoc) => {
-    const rows = d.lines.map((l, i) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td>${l.name}</td>
-        <td class="r">${l.quantity} ${l.unit || 'шт'}</td>
-        <td class="r">${l.price.toLocaleString('ru-RU')}</td>
-        <td class="r">${(l.quantity * l.price).toLocaleString('ru-RU')}</td>
-      </tr>`).join('');
-
-    const win = window.open('', '_blank', 'width=760,height=900');
-    if (!win) return;
-    win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8">
-      <title>${KIND_LABEL[d.kind]} №${d.number}</title>
-      <style>
-        body { font: 14px/1.5 -apple-system, Segoe UI, Roboto, sans-serif; color: #111; padding: 32px; }
-        h1 { font-size: 20px; margin: 0 0 4px; }
-        .muted { color: #666; font-size: 13px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border-bottom: 1px solid #ddd; padding: 8px 6px; text-align: left; }
-        th { font-size: 12px; text-transform: uppercase; color: #666; }
-        .r { text-align: right; }
-        .total { margin-top: 16px; text-align: right; font-size: 18px; font-weight: 700; }
-        .debt { text-align: right; color: #b45309; font-weight: 700; }
-      </style></head><body>
-      <h1>${KIND_LABEL[d.kind]} №${d.number}</h1>
-      <p class="muted">${new Date(d.date).toLocaleString('ru-RU')}</p>
-      <p class="muted">${d.from} → ${d.to}</p>
-      <table>
-        <thead><tr><th>№</th><th>Наименование</th><th class="r">Кол-во</th><th class="r">Цена</th><th class="r">Сумма</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      ${d.discount > 0 ? `<p class="muted r">Скидка −${d.discount.toLocaleString('ru-RU')} ₽</p>` : ''}
-      <p class="total">Итого: ${d.total.toLocaleString('ru-RU')} ₽</p>
-      ${d.debt > 0 ? `<p class="debt">Долг: ${d.debt.toLocaleString('ru-RU')} ₽</p>` : ''}
-      ${d.note ? `<p class="muted">${d.note}</p>` : ''}
-    </body></html>`);
-    win.document.close();
-    win.focus();
-    win.print();
-  };
-
-  // ─── Карточка документа ───────────────────────────────────────────────────
-  /**
-   * Карточка документа. Не ранний return, как было: список должен остаться
-   * смонтированным под карточкой — иначе выезжать не из-за чего, а при возврате
-   * лента перерисовывалась заново и теряла позицию прокрутки.
-   */
-  const renderDoc = (opened: JournalDoc, close: () => void) => {
-    const paid = opened.sale ? retailPaidAmount(opened.sale) : 0;
-    const author = authorName(opened.authorId);
-    const accountName = opened.sale
-      ? accounts.find(a => a.id === opened.sale!.accountId)?.name || 'Счёт удалён'
-      : null;
-
-    const row = (label: string, value: React.ReactNode, sub?: string) => (
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
-        <div className="min-w-0">
-          <p className="font-semibold text-slate-800 dark:text-white truncate">{value}</p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">{sub || label}</p>
-        </div>
-      </div>
-    );
-
-    return (
-      <div className="space-y-4 pb-10">
-        <div className="flex items-center gap-3">
-          <TopBarBack onClick={close} />
-          <div className="min-w-0 flex-1">
-            <h2 className="text-xl font-bold text-slate-800 dark:text-white truncate">
-              {KIND_LABEL[opened.kind]} №{opened.number}
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {new Date(opened.date).toLocaleString('ru-RU', {
-                day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
-              })}
-            </p>
-          </div>
-          <button onClick={() => printDoc(opened)}
-                  className="shrink-0 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold">
-            Печать
-          </button>
-        </div>
-
-        {/* Вкладка оплаты нужна только там, где деньги вообще есть: у списания
-            или перемещения она была бы пустой страницей с прочерками. */}
-        {opened.kind === 'SALE' ? (
-          <div className="relative flex p-1 rounded-[24px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
-            <TabPill index={detailTab === 'INFO' ? 0 : 1} count={2} pad={4} />
-            {([['INFO', 'Информация'], ['PAY', 'Оплата']] as const).map(([id, label]) => (
-              <button key={id} onClick={() => setDetailTab(id)}
-                      className={`relative z-10 flex-1 min-w-0 py-2.5 text-sm font-bold rounded-xl transition-colors ${
-                        detailTab === id ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'
-                      }`}>{label}</button>
-            ))}
-          </div>
-        ) : null}
-
-        {(opened.kind !== 'SALE' || detailTab === 'INFO') && (
-          <div className="space-y-4">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
-              <div className="flex items-center gap-3 px-4 py-3">
-                <div className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center text-white ${
-                  opened.debt > 0 ? 'bg-amber-500' : 'bg-emerald-500'
-                }`}>✓</div>
-                <div>
-                  <p className="font-semibold text-slate-800 dark:text-white">
-                    {opened.debt > 0 ? 'Проведён, есть долг' : 'Проведён'}
-                  </p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Статус документа</p>
-                </div>
-              </div>
-              {author && row('Автор', author)}
-            </div>
-
-            <div>
-              <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-2 px-1">Контрагенты</p>
-              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
-                {row(opened.kind === 'IN' ? 'Поставщик' : 'Откуда', opened.from,
-                     opened.kind === 'IN' ? 'Поставщик' : opened.kind === 'SALE' ? 'Продавец' : 'Откуда')}
-                {opened.customerId && onSelectCustomer ? (
-                  <button onClick={() => onSelectCustomer(opened.customerId!)}
-                          className="w-full text-left active:bg-slate-50 dark:active:bg-slate-700/50">
-                    {row('Клиент', opened.to, 'Клиент · открыть карточку')}
-                  </button>
-                ) : row('Куда', opened.to, opened.kind === 'SALE' ? 'Покупатель' : 'Куда')}
-                {accountName && row('Счёт', accountName, 'Счёт')}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-2 px-1">Товары</p>
-              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
-                {opened.lines.map((l, i) => (
-                  <div key={`${l.name}_${i}`} className="px-4 py-3 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-slate-800 dark:text-white truncate">{l.name}</p>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        {l.quantity} {l.unit || 'шт'}{l.price > 0 ? ` × ${formatCurrency(l.price, cents)} ₽` : ''}
-                      </p>
-                    </div>
-                    {l.price > 0 && (
-                      <p className="font-bold text-slate-800 dark:text-white shrink-0">
-                        {formatCurrency(l.quantity * l.price, cents)} ₽
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4">
-              {opened.discount > 0 && (
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-500 dark:text-slate-400">Скидка</span>
-                  <span className="font-semibold text-amber-600 dark:text-amber-400">
-                    −{formatCurrency(opened.discount, cents)} ₽
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between items-end">
-                <span className="text-slate-500 dark:text-slate-400 text-sm">Итого</span>
-                <span className="text-2xl font-extrabold text-slate-800 dark:text-white">
-                  {formatCurrency(opened.total, cents)} ₽
-                </span>
-              </div>
-            </div>
-
-            {opened.note && (
-              <p className="text-sm text-slate-500 dark:text-slate-400 px-1">{opened.note}</p>
-            )}
-          </div>
-        )}
-
-        {opened.kind === 'SALE' && detailTab === 'PAY' && opened.sale && (
-          <div className="space-y-4">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500 dark:text-slate-400">Сумма документа</span>
-                <span className="font-bold text-slate-800 dark:text-white">{formatCurrency(opened.total, cents)} ₽</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500 dark:text-slate-400">Оплачено</span>
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                  {formatCurrency(opened.sale.isCredit ? paid : opened.total, cents)} ₽
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500 dark:text-slate-400">Долг</span>
-                <span className={`font-bold ${opened.debt > 0 ? 'text-rose-500' : 'text-slate-400'}`}>
-                  {formatCurrency(opened.debt, cents)} ₽
-                </span>
-              </div>
-            </div>
-
-            {opened.sale.isCredit ? (
-              <div>
-                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-2 px-1">Поступления</p>
-                {(opened.sale.payments || []).length === 0 ? (
-                  <p className="text-sm text-slate-500 dark:text-slate-400 px-1">Оплат пока не было.</p>
-                ) : (
-                  <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
-                    {opened.sale.payments!.map(pm => (
-                      <div key={pm.id} className="px-4 py-3 flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="font-semibold text-emerald-600 dark:text-emerald-400">
-                            +{formatCurrency(pm.amount, cents)} ₽
-                          </p>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                            {new Date(pm.date).toLocaleDateString('ru-RU')}
-                            {' · '}{accounts.find(a => a.id === pm.accountId)?.name || 'Счёт удалён'}
-                            {pm.note ? ` · ${pm.note}` : ''}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500 dark:text-slate-400 px-1">
-                Оплачено при продаже — деньги поступили на счёт сразу.
-              </p>
-            )}
-
-            {opened.debt > 0 && onAcceptPayment && (
-              <button onClick={() => onAcceptPayment(opened.sale!)}
-                      className="w-full py-3.5 rounded-2xl bg-amber-600 text-white font-bold active:scale-[0.99] transition-transform">
-                Принять оплату
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
 
   // ─── Лента документов ─────────────────────────────────────────────────────
   return (
@@ -630,7 +262,7 @@ const Journal: React.FC<JournalProps> = ({
                       className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
                 Открыть документ
               </button>
-              <button onClick={() => { const d = menuFor; setMenuFor(null); printDoc(d); }}
+              <button onClick={() => { const d = menuFor; setMenuFor(null); printJournalDoc(d); }}
                       className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
                 Товарный чек · печать
               </button>
@@ -661,7 +293,18 @@ const Journal: React.FC<JournalProps> = ({
         состояние снимается в onClose, когда играть уже нечего. */}
     {opened && (
       <SubPage onClose={() => setOpenId(null)}>
-        {(close: () => void) => renderDoc(opened, close)}
+        {(close: () => void) => (
+          <DocumentCard
+            doc={opened}
+            accounts={accounts}
+            appSettings={appSettings}
+            employees={employees}
+            user={user}
+            onBack={close}
+            onSelectCustomer={onSelectCustomer}
+            onAcceptPayment={onAcceptPayment}
+          />
+        )}
       </SubPage>
     )}
     </>
