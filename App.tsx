@@ -1613,6 +1613,64 @@ const dashboardStats = useMemo(() => {
     if (!FORM_VIEWS.includes(currentView)) setFormReturnView(currentView);
   };
 
+  /**
+   * Сколько записей ссылается на каждый счёт. Нужен ровно для одного вопроса:
+   * можно ли счёт удалить. Считаем ВСЕ ссылки, а не только видимые в кассе:
+   * розничный чек и платёж по нему тоже привязаны к счёту, и оставить их без
+   * него значило бы потерять деньги из баланса без единого следа.
+   */
+  const accountUsage = useMemo(() => {
+    const map: Record<string, number> = {};
+    const bump = (id?: string) => { if (id) map[id] = (map[id] || 0) + 1; };
+    sales.forEach(x => bump(x.accountId));
+    expenses.forEach(x => bump(x.accountId));
+    retailSales.forEach(r => {
+      bump(r.accountId);
+      (r.payments || []).forEach(pm => bump(pm.accountId));
+    });
+    warehouses.forEach(w => bump(w.accountId));
+    return map;
+  }, [sales, expenses, retailSales, warehouses]);
+
+  /**
+   * Удаление счёта. Разрешено только пустому: счёт — это не карточка, а точка,
+   * к которой привязаны деньги, и удалить его с историей значит оставить
+   * договоры и чеки без счёта, а суммы — не сходящимися ни с чем.
+   *
+   * Счёт с историей не удаляют, а скрывают: данные остаются, карточка уходит
+   * из списка. Поэтому здесь только отказ с объяснением — предлагать «удалить
+   * вместе со всеми операциями» нельзя, такую кнопку нажмут случайно.
+   */
+  const handleDeleteAccount = async (id: string) => {
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+    const acc = accounts.find(a => a.id === id);
+    if (!acc) return;
+
+    if (acc.type === 'INVESTOR' || acc.type === 'POOL') {
+      showNotificationModal('Счёт инвестора', 'Он удаляется вместе с самим инвестором — иначе инвестор останется без счёта.', 'warning');
+      return;
+    }
+    if (acc.isMain || acc.type === 'MAIN') {
+      showNotificationModal('Основной счёт', 'Сначала назначьте основным другой счёт — без него кассе некуда зачислять деньги.', 'warning');
+      return;
+    }
+    if (accountUsage[id]) {
+      showNotificationModal(
+        'Счёт не пустой',
+        `На нём ${accountUsage[id]} операций. Удаление оставило бы их без счёта, и суммы перестали бы сходиться. Скройте счёт — карточка уйдёт из списка, а данные останутся.`,
+        'warning'
+      );
+      return;
+    }
+
+    try {
+      await api.deleteItem('accounts', id);
+      setAccounts(prev => prev.filter(a => a.id !== id));
+    } catch (e: any) {
+      showNotificationModal('Не удалось удалить счёт', e?.message || 'Попробуйте ещё раз.', 'error');
+    }
+  };
+
   const handleAction = (action: string, ctx?: { accountId?: string | null }) => {
       switch (action) {
         case 'VIEW_OVERDUE':  // ← НОВОЕ: переход на просроченные договоры
@@ -3854,6 +3912,8 @@ if (!user && !showSplash) {
 )}
               {currentView === 'CASH_REGISTER' && (
   <CashRegister
+    accountUsage={accountUsage}
+    onDeleteAccount={handleDeleteAccount}
     accounts={isInvestor && user
       ? accounts.filter(a => isAccountForInvestor(a, user.id))
       : accounts}

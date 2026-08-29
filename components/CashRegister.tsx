@@ -29,6 +29,9 @@ const PERIOD_CONFIG: { key: PeriodMode; label: string }[] = [
 ];
 
 interface CashRegisterProps {
+  /** Сколько операций привязано к каждому счёту — для запрета удаления непустого */
+  accountUsage?: Record<string, number>;
+  onDeleteAccount?: (id: string) => void;
   accounts: Account[];
   sales: Sale[];
   expenses: Expense[];
@@ -309,6 +312,8 @@ const AccountActionModal = ({
     isManager,
     onUpdateAccount,
     onToggleHidden,
+    onDelete,
+    usage,
     appSettings,
     isBalanceMasked
 }: {
@@ -321,6 +326,9 @@ const AccountActionModal = ({
     isManager: boolean;
     onUpdateAccount?: (acc: Account) => void;
     onToggleHidden: (acc: Account) => void;
+    onDelete?: (id: string) => void;
+    /** Сколько операций привязано к счёту — от этого зависит, можно ли удалять */
+    usage: number;
     appSettings: AppSettings;
     isBalanceMasked: boolean;
 }) => {
@@ -433,6 +441,32 @@ const AccountActionModal = ({
                                 </div>
                             </button>
                         )}
+                        {/* Удаление — только у пустого счёта и только у своих:
+                            счёт инвестора уходит вместе с инвестором, основной
+                            нельзя оставить кассу без счёта по умолчанию.
+                            Непустой счёт скрывают, а не удаляют, поэтому кнопки
+                            там просто нет — вместо неё подсказка. */}
+                        {isManager && onDelete && account.type !== 'MAIN' && !account.isMain
+                          && account.type !== 'INVESTOR' && account.type !== 'POOL' && (
+                            usage > 0 ? (
+                              <p className="px-4 py-3 text-xs text-slate-400 dark:text-slate-500">
+                                Счёт нельзя удалить: на нём {usage} операц. Скройте его — данные останутся.
+                              </p>
+                            ) : (
+                              <button
+                                  onClick={() => { if (window.confirm(`Удалить счёт «${account.name}»? Операций на нём нет, отменить будет нельзя.`)) { onDelete(account.id); onClose(); } }}
+                                  className="w-full text-left px-4 py-3 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl flex items-center gap-3 transition-all group"
+                              >
+                                  <span className="w-8 h-8 bg-rose-50 dark:bg-rose-900/30 rounded-lg flex items-center justify-center text-rose-600 dark:text-rose-400 transition-all">
+                                      {ICONS.Delete}
+                                  </span>
+                                  <div>
+                                      <span className="font-medium">Удалить счёт</span>
+                                      <p className="text-xs text-slate-400 dark:text-slate-500">Пустой счёт, операций нет</p>
+                                  </div>
+                              </button>
+                            )
+                        )}
                     </div>
 
                     <button
@@ -451,7 +485,7 @@ const AccountActionModal = ({
 const CashRegister: React.FC<CashRegisterProps> = ({
     accounts, sales, expenses, investors, customers, onAddAccount, onAction, onSelectAccount, onSetMainAccount, onUpdateAccount,
     onSelectCustomer, isManager, myProfitPeriod, setMyProfitPeriod, appSettings,
-    lockedAccountIds = []
+    lockedAccountIds = [], accountUsage = {}, onDeleteAccount
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -1236,7 +1270,9 @@ const investorProfitPayouts = useMemo(() => {
       )}
 
       {activeMenuAccount && (
-        <AccountActionModal account={activeMenuAccount} balance={accountBalances[activeMenuAccount.id] || 0} onClose={() => setActiveMenuAccount(null)} onSelectAccount={onSelectAccount} onEdit={setEditingAccount} onSetMain={onSetMainAccount} isManager={isManager} onUpdateAccount={onUpdateAccount} onToggleHidden={handleToggleHidden} appSettings={appSettings} isBalanceMasked={isMasked(activeMenuAccount.id)} />
+        <AccountActionModal account={activeMenuAccount} balance={accountBalances[activeMenuAccount.id] || 0} onClose={() => setActiveMenuAccount(null)} onSelectAccount={onSelectAccount} onEdit={setEditingAccount} onSetMain={onSetMainAccount} isManager={isManager} onUpdateAccount={onUpdateAccount} onToggleHidden={handleToggleHidden}
+          onDelete={onDeleteAccount} usage={accountUsage[activeMenuAccount.id] || 0}
+          appSettings={appSettings} isBalanceMasked={isMasked(activeMenuAccount.id)} />
       )}
 
       {/* Страница счёта: имя, баланс, действия и прибыль именно по нему.
