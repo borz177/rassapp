@@ -1596,6 +1596,12 @@ const dashboardStats = useMemo(() => {
   // Второй аргумент — счёт, в контексте которого нажали. Его передаёт блок
   // баланса на Главной: форма должна открыться уже с выбранным счётом, иначе
   // кнопка просто дублирует меню «+».
+  // Магазин доступен, когда он есть в тарифе, включён в настройках и — для
+  // сотрудника — разрешён ему лично. Считаем один раз: тремя разными выражениями
+  // по коду эти условия рано или поздно разошлись бы.
+  const shopAvailable = checkAccess('SHOP') && !!appSettings.shopEnabled
+    && (!isEmployee || !!user?.permissions?.canUseShop);
+
   const handleAction = (action: string, ctx?: { accountId?: string | null }) => {
       switch (action) {
         case 'VIEW_OVERDUE':  // ← НОВОЕ: переход на просроченные договоры
@@ -1608,10 +1614,12 @@ const dashboardStats = useMemo(() => {
           case 'OPERATIONS': setOperationsAccountId(ctx?.accountId ?? null); setCurrentView('OPERATIONS'); break;
           case 'CALCULATOR': setCurrentView('CALCULATOR'); break;
           case 'PARTNER': setPreviousView(currentView); setCurrentView('PARTNER'); break;
-          case 'WAREHOUSE': setPreviousView(currentView); setCurrentView('WAREHOUSE'); break;
-          case 'JOURNAL': setPreviousView(currentView); setCurrentView('JOURNAL'); break;
+          // Разделы магазина закрыты и по переходу, а не только прятанием пунктов
+          // меню: право могли снять, пока экран уже открыт.
+          case 'WAREHOUSE': if (!shopAvailable) break; setPreviousView(currentView); setCurrentView('WAREHOUSE'); break;
+          case 'JOURNAL': if (!shopAvailable) break; setPreviousView(currentView); setCurrentView('JOURNAL'); break;
           case 'SUPPLIERS': setPreviousView(currentView); setCurrentView('SUPPLIERS'); break;
-          case 'RETAIL_SALE': setPreviousView(currentView); setCurrentView('RETAIL_SALE'); break;
+          case 'RETAIL_SALE': if (!shopAvailable) break; setPreviousView(currentView); setCurrentView('RETAIL_SALE'); break;
           case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break;
           case 'TASKS': setPreviousView(currentView); setCurrentView('TASKS'); break;
           case 'ADD_CUSTOMER': setCurrentView('CUSTOMERS'); break;
@@ -3761,8 +3769,8 @@ if (!user && !showSplash) {
     showTasks={checkAccess('TASKS')}
     showEmployees={checkAccess('EMPLOYEES')}
     showSuppliers={checkAccess('SUPPLIERS')}
-    showShop={checkAccess('SHOP') && !!appSettings.shopEnabled}
-    showShopTab={checkAccess('SHOP') && !!appSettings.shopEnabled && !!appSettings.shopDashboardTab}
+    showShop={shopAvailable}
+    showShopTab={shopAvailable && !!appSettings.shopDashboardTab}
     // 🔹 Кнопка поддержки для десктопа (плавающая) — админа ведём в панель
     // управления обращениями, а не в чат "как у обычного пользователя"
     supportButton={
@@ -3785,7 +3793,7 @@ if (!user && !showSplash) {
                              accountBalances={accountBalances} onAction={handleAction}
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
                              accounts={accounts} appSettings={appSettings} investors={investors} user={user} retailSales={retailSales} products={products} suppliers={suppliers}
-                  showShopTab={checkAccess('SHOP') && !!appSettings.shopEnabled && !!appSettings.shopDashboardTab}
+                  showShopTab={shopAvailable && !!appSettings.shopDashboardTab}
                   />}
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
 {/* 🔹 Дашборд инвестора — с проверкой на загрузку данных */}
@@ -4031,7 +4039,7 @@ if (!user && !showSplash) {
                   <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                     <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters}
                            data={reportData} appSettings={appSettings} sales={sales} expenses={expenses} accounts={accounts} customers={customers}
-                           retailSales={retailSales} products={products} stockMovements={stockMovements} showShop={checkAccess('SHOP') && !!appSettings.shopEnabled}/>
+                           retailSales={retailSales} products={products} stockMovements={stockMovements} showShop={shopAvailable}/>
                   </PagePush>
               )}
 
@@ -4060,7 +4068,7 @@ if (!user && !showSplash) {
                       <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products}
                            accounts={accounts} suppliers={suppliers} showSupplierField={checkAccess('SUPPLIERS')} onClose={requestClose}
                            onSelectCustomer={(data: any) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} onShowNotification={showNotificationModal}
-                           onOpenRetail={checkAccess('SHOP') && appSettings.shopEnabled ? () => { setPreviousView('DASHBOARD'); setCurrentView('RETAIL_SALE'); } : undefined}
+                           onOpenRetail={shopAvailable ? () => { setPreviousView('DASHBOARD'); setCurrentView('RETAIL_SALE'); } : undefined}
                            appSettings={appSettings} />
                     )}
                   </PagePush>
@@ -4077,6 +4085,7 @@ if (!user && !showSplash) {
                     <Employees employees={employees} investors={investors} onAddEmployee={handleAddEmployee}
                              onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee}
                              onSelectActivity={handleSelectEmployeeActivity}
+                             showShop={checkAccess('SHOP') && !!appSettings.shopEnabled}
                              appSettings={appSettings}/>
                   </PagePush>
               )}

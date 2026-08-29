@@ -127,7 +127,17 @@ const notificationAudience = async (user) => {
   }
 };
 
-const filterDataForEmployee = (dataByType, allowedInvestorIds, fullAccessInvestorIds, employeeId) => {
+const filterDataForEmployee = (dataByType, allowedInvestorIds, fullAccessInvestorIds, employeeId, permissions) => {
+    // 🛒 Магазин — отдельный раздел, а не часть доступа к счетам: продавцу за
+    // прилавком незачем видеть закупочные цены и остатки, если его туда не
+    // пускали. Право отсутствует у всех, кто заведён до появления магазина, —
+    // и это верно: доступа у них не было.
+    const shopAllowed = !!permissions?.canUseShop;
+    if (!shopAllowed) {
+        dataByType = { ...dataByType };
+        SHOP_DATA_TYPES.forEach(type => { dataByType[type] = []; });
+    }
+
     // 🔥 Если доступов нет вообще — возвращаем пустоту (безопасность)
     if (!allowedInvestorIds || allowedInvestorIds.length === 0) {
         return {
@@ -244,6 +254,12 @@ const checkEmployeeWriteAccess = async ({ user, type, itemId, accountId, isDelet
     if (!isNew && !perms.canEdit) {
       return { ok: false, status: 403, body: { msg: 'Нет прав на изменение записей' } };
     }
+  }
+
+  // 1.5 Магазин: без права на раздел писать в него нельзя. Проверяем здесь же,
+  //     а не только в интерфейсе — иначе запрет обходится прямым запросом к API.
+  if (SHOP_DATA_TYPES.includes(type) && !perms.canUseShop) {
+    return { ok: false, status: 403, body: { msg: 'Нет доступа к магазину и складу' } };
   }
 
   // 2. Область счетов: писать можно только по счетам, к которым выдан доступ.
@@ -395,7 +411,13 @@ const FEATURE_DENIED_MESSAGES = {
   investorPools: { msg: 'Общий инвестиционный пул доступен только на тарифе Бизнес Pro.', hint: 'Оформите тариф Бизнес Pro для распределения дохода между инвесторами в одном пуле.' },
   notifications: { msg: 'Уведомления доступны начиная с тарифа Стандарт.', hint: 'Оформите тариф Стандарт для доступа к уведомлениям о событиях.' },
   tasks: { msg: 'Задачи доступны на тарифах Бизнес и Бизнес Pro.', hint: 'Оформите тариф Бизнес для работы с задачами и поручениями сотрудникам.' },
+  shop: { msg: 'Магазин и склад доступны только на тарифе Бизнес Pro.', hint: 'Оформите тариф Бизнес Pro для розничных продаж и учёта остатков.' },
 };
+
+// 🛒 Данные, принадлежащие модулю «Магазин и склад». Перечислены в одном месте:
+// по этому списку и тариф проверяется, и доступ сотрудника — разойдись они,
+// одна из проверок молча перестала бы работать.
+const SHOP_DATA_TYPES = ['retailSales', 'stockMovements', 'warehouses'];
 // 🔒 Лимит инвесторов по тарифу.
 //
 // Раньше он проверялся только при создании ЛОГИНА инвестора (/api/users/manage), то есть
@@ -2731,12 +2753,14 @@ app.get('/api/data', auth, async (req, res) => {
     // Теперь берём актуальные права доступа прямо из БД.
     if (req.user.role === 'employee') {
       const empResult = await pool.query(
-        'SELECT allowed_investor_ids, full_access_investor_ids FROM users WHERE id = $1',
+        'SELECT permissions, allowed_investor_ids, full_access_investor_ids FROM users WHERE id = $1',
         [req.user.id]
       );
       const allowedIds = parseAllowedInvestorIds(empResult.rows[0]?.allowed_investor_ids);
       const fullAccessIds = parseAllowedInvestorIds(empResult.rows[0]?.full_access_investor_ids);
-      finalResult = filterDataForEmployee(finalResult, allowedIds, fullAccessIds, req.user.id);
+      const rawPerms = empResult.rows[0]?.permissions;
+      const empPerms = (typeof rawPerms === 'string' ? JSON.parse(rawPerms) : rawPerms) || {};
+      finalResult = filterDataForEmployee(finalResult, allowedIds, fullAccessIds, req.user.id, empPerms);
     }
 
     // 🔒 Кто из инвесторов сверх лимита тарифа. Считаем на сервере и отдаём готовым списком,
@@ -2838,6 +2862,15 @@ app.post('/api/data/:type', auth, async (req, res) => {
       user: req.user, type, itemId: itemData.id, accountId: itemData.accountId, isDelete: false
     });
     if (!empCheck.ok) return res.status(empCheck.status).json(empCheck.body);
+
+    // 🔒 Модуль "Магазин и склад" — только тариф BUSINESS_PRO. Раньше проверялось
+    // лишь в интерфейсе, то есть тариф обходился прямым запросом к API.
+    if (SHOP_DATA_TYPES.includes(type)) {
+      const shopAccess = await checkFeatureAccess(targetUserId, 'shop');
+      if (!shopAccess.allowed) {
+        return res.status(403).json({ msg: shopAccess.msg, hint: shopAccess.hint });
+      }
+    }
 
     // 🔒 Модуль "Партнеры" (поставщики) — только тариф BUSINESS_PRO
     if (type === 'suppliers' || (type === 'sales' && itemData.supplierId) || (type === 'expenses' && itemData.supplierId)) {

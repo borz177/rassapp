@@ -686,13 +686,18 @@ const counts = useMemo(() => {
           onClick={closeMenu}
         >
           <div
-            className={`glass-surface rounded-2xl overflow-hidden ${isMenuClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+            // max-h + прокрутка: на невысоком экране список действий (а с
+            // магазином их полтора десятка) не помещался, и нижние пункты
+            // просто уезжали за край без возможности до них добраться.
+            // overscroll-contain — чтобы докрутив до конца, не тянуть за собой
+            // страницу под меню.
+            className={`glass-surface rounded-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-13rem)] ${isMenuClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
             onClick={e => e.stopPropagation()}
           >
-            <div className="px-4 pt-4 pb-2 border-b border-slate-100 dark:border-slate-700">
+            <div className="shrink-0 px-4 pt-4 pb-2 border-b border-slate-100 dark:border-slate-700">
               <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm uppercase tracking-wide">Быстрые действия</h3>
             </div>
-            <div className="p-2">
+            <div className="p-2 overflow-y-auto overscroll-contain">
               <button onClick={() => handleActionClick('CALCULATOR')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
                 <div className="bg-violet-100 dark:bg-violet-900/30 p-2.5 rounded-full text-violet-600 dark:text-violet-400">{ICONS.Calculator}</div>
                 <span className="font-semibold text-[15px]">Калькулятор</span>

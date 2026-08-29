@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { User, Investor } from '../types';
+import { User, Investor, AppSettings } from '../types';
 import { ICONS } from '../constants';
 
 interface EmployeesProps {
@@ -10,10 +10,14 @@ interface EmployeesProps {
   onUpdateEmployee: (data: User) => void;
   onDeleteEmployee: (id: string) => void;
   onSelectActivity: (id: string) => void;
+  appSettings?: AppSettings;
+  /** Магазин включён у менеджера — иначе право выдавать не за что */
+  showShop?: boolean;
 }
 
 const Employees: React.FC<EmployeesProps> = ({
-    employees, investors, onAddEmployee, onUpdateEmployee, onDeleteEmployee, onSelectActivity
+    employees, investors, onAddEmployee, onUpdateEmployee, onDeleteEmployee, onSelectActivity,
+    showShop = false
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -29,7 +33,8 @@ const [fullAccessMainAccount, setFullAccessMainAccount] = useState(false);
   const [permissions, setPermissions] = useState({
       canCreate: true,
       canEdit: false,
-      canDelete: false
+      canDelete: false,
+      canUseShop: false
   });
   const [allowedInvestorIds, setAllowedInvestorIds] = useState<string[]>([]);
   // 💰 Мотивация: процент от прибыли, база расчёта и влияние на прибыль менеджера
@@ -44,7 +49,7 @@ const [fullAccessMainAccount, setFullAccessMainAccount] = useState(false);
     setName('');
     setEmail('');
     setPassword('');
-    setPermissions({ canCreate: true, canEdit: false, canDelete: false });
+    setPermissions({ canCreate: true, canEdit: false, canDelete: false, canUseShop: false });
     setAllowedInvestorIds([]);
     setFullAccessInvestorIds([]);
     setAllowMainAccount(false); // <-- СБРОС
@@ -62,7 +67,7 @@ const [fullAccessMainAccount, setFullAccessMainAccount] = useState(false);
     setName(emp.name);
     setEmail(emp.email);
     setPassword('');
-    setPermissions(emp.permissions || { canCreate: false, canEdit: false, canDelete: false });
+    setPermissions({ canCreate: false, canEdit: false, canDelete: false, canUseShop: false, ...(emp.permissions || {}) });
 
     const ids = emp.allowedInvestorIds || [];
     setAllowedInvestorIds(ids.filter((id: string) => id !== 'MAIN_ACCOUNT'));
@@ -352,6 +357,26 @@ const handleSubmit = (e: React.FormEvent) => {
                           <span className="text-sm text-slate-700 dark:text-slate-300">Удаление</span>
                       </label>
                   </div>
+
+                  {/* Доступ к разделу, а не к действию, — поэтому отдельной
+                      строкой под чертой, а не четвёртой галочкой в ряд с CRUD. */}
+                  {showShop && (
+                    <label className="flex items-start gap-3 cursor-pointer pt-3 border-t border-slate-200 dark:border-slate-600">
+                        <input
+                          type="checkbox"
+                          className="w-5 h-5 mt-0.5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
+                          checked={!!permissions.canUseShop}
+                          onChange={e => setPermissions({...permissions, canUseShop: e.target.checked})}
+                        />
+                        <span className="text-sm">
+                            <span className="font-semibold text-slate-800 dark:text-white block">Магазин и склад</span>
+                            <span className="text-slate-500 dark:text-slate-400 text-xs">
+                                Касса, товары, остатки и журнал документов. Без этого права разделы не видны,
+                                а закупочные цены и остатки сотруднику недоступны.
+                            </span>
+                        </span>
+                    </label>
+                  )}
               </div>
 
               {/* Investor Access */}
