@@ -358,22 +358,28 @@ const Operations: React.FC<OperationsProps> = ({
         key={op.id}
         onClick={() => setSelectedOp(op)}
         className={`bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-[0.99] transition-transform border-l-4 ${
-            op.category === 'Salary' 
-                ? 'border-l-blue-500' 
-                : op.type === 'INCOME' 
-                ? 'border-l-emerald-500' 
+            op.type === 'SHIPMENT'
+                ? 'border-l-amber-400'
+                : op.category === 'Salary'
+                ? 'border-l-blue-500'
+                : op.type === 'INCOME'
+                ? 'border-l-emerald-500'
                 : 'border-l-red-500'
         }`}
     >
         <div className="flex items-center gap-3">
-            <div className={`p-2.5 rounded-full ${
-                op.type === 'EXPENSE'
+<div className={`p-2.5 rounded-full ${
+                op.type === 'SHIPMENT'
+                    ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                    : op.type === 'EXPENSE'
                     ? op.category === 'Salary'
                         ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                         : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
                     : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
             }`}>
-                {op.type === 'EXPENSE'
+                {op.type === 'SHIPMENT'
+                    ? <span className="text-lg">📦</span>
+                    : op.type === 'EXPENSE'
                     ? op.category === 'Salary'
                         ? <span className="text-lg">💼</span>
                         : ICONS.Expense
@@ -411,9 +417,18 @@ const Operations: React.FC<OperationsProps> = ({
             </div>
         </div>
         <div className="text-right">
-            <span className={`font-bold block ${op.type === 'EXPENSE' ? 'text-slate-800 dark:text-white' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                {op.type === 'EXPENSE' ? '-' : '+'}{op.amount.toLocaleString()} ₽
+<span className={`font-bold block ${
+                op.type === 'SHIPMENT' ? 'text-amber-600 dark:text-amber-400'
+                : op.type === 'EXPENSE' ? 'text-slate-800 dark:text-white'
+                : 'text-emerald-600 dark:text-emerald-400'
+            }`}>
+                {op.type === 'SHIPMENT' ? '' : op.type === 'EXPENSE' ? '-' : '+'}{op.amount.toLocaleString()} ₽
             </span>
+            {op.type === 'SHIPMENT' && (
+                <span className="inline-block mt-1 text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-900/50">
+                    Отгрузка в долг
+                </span>
+            )}
 
             {/* 🆕 Бейдж скидки, если она была применена */}
             {op.discountAmount > 0 && (
@@ -438,7 +453,113 @@ const Operations: React.FC<OperationsProps> = ({
 ))}
       </div>
 
-      {selectedOp && (
+      {selectedOp && selectedOp.type === 'SHIPMENT' && (
+        <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+             onClick={() => setSelectedOp(null)}>
+          <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col"
+               onClick={e => e.stopPropagation()}>
+            <div className="p-6 bg-amber-500 text-white">
+              <p className="text-white/80 text-sm font-medium mb-1">
+                Отгрузка в долг{selectedOp.raw?.docNumber ? ` · чек №${selectedOp.raw.docNumber}` : ''}
+              </p>
+              <h3 className="text-3xl font-bold">{selectedOp.amount.toLocaleString('ru-RU')} ₽</h3>
+              <p className="text-white/80 text-sm mt-2 flex items-center gap-1 opacity-80">
+                {ICONS.Clock} {new Date(selectedOp.date).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} (МСК)
+              </p>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div className="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
+                <span className="text-slate-500 dark:text-slate-400 text-sm">Покупатель</span>
+                <span className="font-semibold text-slate-800 dark:text-white">{selectedOp.title}</span>
+              </div>
+
+              {/* Состав документа: ради него сюда и заходят — «отгрузка на
+                  12 400 ₽» без строк ничего не доказывает ни продавцу, ни
+                  покупателю. */}
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Состав</p>
+                <div className="rounded-xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
+                  {(selectedOp.raw?.items || []).map((i: any, n: number) => (
+                    <div key={`${i.productId}_${n}`} className="px-3 py-2 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{i.name}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {i.quantity} {i.unit || 'шт'} × {i.price.toLocaleString('ru-RU')} ₽
+                        </p>
+                      </div>
+                      <p className="text-sm font-bold text-slate-800 dark:text-white shrink-0">
+                        {(i.quantity * i.price).toLocaleString('ru-RU')} ₽
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                {selectedOp.raw?.discount > 0 && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 text-right">
+                    Скидка −{selectedOp.raw.discount.toLocaleString('ru-RU')} ₽
+                  </p>
+                )}
+              </div>
+
+              {/* Платежи по документу. Отдельно от состава: одно — что отдали,
+                  другое — что за это получили, и смешивать их нельзя. */}
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Оплаты по документу</p>
+                {(selectedOp.raw?.payments || []).length === 0 ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Оплат пока не было.</p>
+                ) : (
+                  <div className="rounded-xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
+                    {selectedOp.raw.payments.map((pm: any) => (
+                      <div key={pm.id} className="px-3 py-2 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                            +{pm.amount.toLocaleString('ru-RU')} ₽
+                          </p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                            {new Date(pm.date).toLocaleDateString('ru-RU')} · {getAccountName(pm.accountId)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {(() => {
+                const paid = (selectedOp.raw?.payments || []).reduce((sum: number, pm: any) => sum + pm.amount, 0);
+                const left = Math.max(0, (selectedOp.raw?.total || 0) - paid);
+                return (
+                  <div className={`rounded-xl p-3 ${left > 0 ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-emerald-50 dark:bg-emerald-900/20'}`}>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600 dark:text-slate-300">Оплачено</span>
+                      <span className="font-bold text-slate-800 dark:text-white">{paid.toLocaleString('ru-RU')} ₽</span>
+                    </div>
+                    <div className="flex justify-between text-sm mt-1">
+                      <span className="text-slate-600 dark:text-slate-300">Остаток долга</span>
+                      <span className={`font-bold ${left > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                        {left.toLocaleString('ru-RU')} ₽
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {selectedOp.raw?.note && (
+                <p className="text-sm text-slate-500 dark:text-slate-400">{selectedOp.raw.note}</p>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 dark:border-slate-700">
+              <button onClick={() => setSelectedOp(null)}
+                      className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedOp && selectedOp.type !== 'SHIPMENT' && (
     <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedOp(null)}>
         <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className={`p-6 text-white ${
@@ -493,6 +614,29 @@ const Operations: React.FC<OperationsProps> = ({
                     </div>
                 )}
                 
+                {/* Состав чека у розничных операций: строка «Продажа 3 400 ₽»
+                    ничего не говорит о том, что именно ушло. */}
+                {selectedOp.isRetail && selectedOp.raw?.items?.length > 0 && (
+                    <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Состав чека</p>
+                        <div className="rounded-xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
+                            {selectedOp.raw.items.map((i, n) => (
+                                <div key={`${i.productId}_${n}`} className="px-3 py-2 flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{i.name}</p>
+                                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                            {i.quantity} {i.unit || 'шт'} × {i.price.toLocaleString('ru-RU')} ₽
+                                        </p>
+                                    </div>
+                                    <p className="text-sm font-bold text-slate-800 dark:text-white shrink-0">
+                                        {(i.quantity * i.price).toLocaleString('ru-RU')} ₽
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {selectedOp.type === 'INCOME' && (
                     <>
                         {/* 🆕 Красивый блок со скидкой (появляется только если она была) */}

@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import ModalPortal from './ModalPortal';
-import { Sale, Customer, Account, AppSettings, Investor, User, Product, RetailSale } from '../types';
+import { Sale, Customer, Account, AppSettings, Investor, User, Product, RetailSale, Supplier } from '../types';
 import DashboardCash from './DashboardCash';
 import TabPill from './TabPill';
 import { ICONS } from '../constants';
@@ -92,6 +92,8 @@ interface DashboardProps {
   products?: Product[];
   /** Магазин включён и вынесен на главный экран отдельной вкладкой */
   showShopTab?: boolean;
+  /** Поставщики — для карточки «Мы должны». Пусто, если раздел недоступен. */
+  suppliers?: Supplier[];
 }
 
 const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: Sale, customerName: string, onClose: () => void, appSettings: AppSettings }) => {
@@ -913,11 +915,33 @@ const Dashboard: React.FC<DashboardProps> = ({
     retailSales,
     products,
     showShopTab = false,
+    suppliers = [],
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
   // Рассрочка и розница — два разных дела с разными числами, и складывать их в
   // один экран значило бы мешать «сколько мне должны» с «сколько наторговали».
   const [overviewMode, setOverviewMode] = useState<'installments' | 'cash'>('installments');
+  const [showSupplierDebt, setShowSupplierDebt] = useState(false);
+  // Долг перед поставщиками: закуп по договору минус уже выплаченное. Флаг
+  // isPartnerDebtPaid проверяем первым — он закрывает договор, даже если суммы
+  // разошлись на копейки при частичных выплатах.
+  const supplierDebt = useMemo(() => {
+    const map = new Map<string, number>();
+    allSales.forEach(sale => {
+      if (!sale.supplierId || !sale.buyPrice || sale.isPartnerDebtPaid) return;
+      const left = sale.buyPrice - (sale.partnerDebtPaidAmount || 0);
+      if (left <= 0) return;
+      map.set(sale.supplierId, (map.get(sale.supplierId) || 0) + left);
+    });
+    const rows = Array.from(map.entries())
+      .map(([supplierId, amount]) => ({
+        supplierId, amount,
+        name: suppliers.find(x => x.id === supplierId)?.name || 'Поставщик удалён',
+      }))
+      .sort((a, b) => b.amount - a.amount);
+    return { rows, total: rows.reduce((sum, r) => sum + r.amount, 0) };
+  }, [allSales, suppliers]);
+
   const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   // Скрытие суммы переживает перезапуск: человек прячет её, чтобы не светить
   // баланс, и каждый раз заново нажимать глаз было бы бессмысленно.
@@ -1532,6 +1556,39 @@ useEffect(() => {
           </button>
         </div>
 
+        {showSupplierDebt && (
+          <ModalPortal>
+            <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+                 onClick={() => setShowSupplierDebt(false)}>
+              <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[75vh] flex flex-col animate-slide-up-sheet"
+                   onClick={e => e.stopPropagation()}>
+                <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700">
+                  <h3 className="font-bold text-slate-800 dark:text-white">Мы должны</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Непогашенный закуп · {formatCurrency(supplierDebt.total, appSettings.showCents)} ₽
+                  </p>
+                </div>
+                <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+                  {supplierDebt.rows.map(r => (
+                    <div key={r.supplierId} className="px-5 py-3 flex items-center justify-between gap-3">
+                      <p className="font-semibold text-slate-800 dark:text-white truncate">{r.name}</p>
+                      <p className="font-bold text-rose-500 shrink-0">
+                        {formatCurrency(r.amount, appSettings.showCents)} ₽
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="p-4 border-t border-slate-100 dark:border-slate-700">
+                  <button onClick={() => { setShowSupplierDebt(false); onAction('SUPPLIERS'); }}
+                          className="w-full py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm">
+                    Открыть партнёров
+                  </button>
+                </div>
+              </div>
+            </div>
+          </ModalPortal>
+        )}
+
         {/* Overview Tab */}
         {activeTab === 'overview' && showShopTab && (
           <div className="relative flex p-1 rounded-[24px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
@@ -1551,6 +1608,8 @@ useEffect(() => {
           <DashboardCash
             retailSales={retailSales || []}
             products={products || []}
+            customers={customers}
+            onSelectCustomer={onSelectCustomer}
             onAction={onAction}
             showCents={appSettings.showCents}
           />
@@ -1743,6 +1802,36 @@ useEffect(() => {
                     </div>
                   </div>
                   </ModalPortal>
+                )}
+
+                {/* Мы должны — непогашенный закуп у поставщиков. Считается ровно
+                    так же, как в разделе «Партнеры»: закуп минус выплаченное по
+                    каждому договору. Карточка появляется только при долге:
+                    постоянный ноль на главной ничего не сообщает и лишь занимает
+                    место, а вот внезапно возникшая строка заметна. */}
+                {supplierDebt.total > 0 && (
+                  <button
+                    onClick={() => setShowSupplierDebt(true)}
+                    className="w-full text-left bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-rose-200 dark:border-rose-900/50 shadow-sm hover:shadow-md active:scale-[0.99] transition-all flex items-center gap-4"
+                  >
+                    <div className="w-11 h-11 shrink-0 rounded-xl bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+                      {ICONS.Suppliers}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Мы должны</p>
+                      <p className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-white leading-tight">
+                        {formatCurrency(supplierDebt.total, appSettings.showCents)} ₽
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        поставщикам · {supplierDebt.rows.length} {supplierDebt.rows.length === 1 ? 'партнёр' : 'партнёров'}
+                      </p>
+                    </div>
+                    <span className="text-slate-300 dark:text-slate-600 shrink-0">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                    </span>
+                  </button>
                 )}
 
                 {/* Карточки статистики: 2 в ряд на мобилках, 4 на больших экранах */}

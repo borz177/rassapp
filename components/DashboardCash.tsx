@@ -1,11 +1,16 @@
-import React, { useMemo } from 'react';
-import type { Product, RetailSale } from '../types';
+import React, { useMemo, useState } from 'react';
+import type { Customer, Product, RetailSale } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, retailRemaining } from '../src/utils';
+import { formatCurrency, retailPaidAmount, retailRemaining } from '../src/utils';
+import ModalPortal from './ModalPortal';
 
 interface DashboardCashProps {
   retailSales: RetailSale[];
   products: Product[];
+  /** Нужны, чтобы показать, кто именно должен */
+  customers?: Customer[];
+  /** Переход в карточку должника из расшифровки */
+  onSelectCustomer?: (id: string) => void;
   onAction: (action: string) => void;
   showCents?: boolean;
 }
@@ -32,7 +37,8 @@ const startOfMonth = () => {
  * продажи, и пересчёт по нынешним значениям переписывал бы прошлую маржу после
  * каждой переоценки.
  */
-const DashboardCash: React.FC<DashboardCashProps> = ({ retailSales, products, onAction, showCents = false }) => {
+const DashboardCash: React.FC<DashboardCashProps> = ({ retailSales, products, customers = [], onSelectCustomer, onAction, showCents = false }) => {
+  const [debtOpen, setDebtOpen] = useState(false);
   const live = useMemo(() => retailSales.filter(s => !s.isCancelled), [retailSales]);
 
   const sum = (list: RetailSale[]) => ({
@@ -53,9 +59,31 @@ const DashboardCash: React.FC<DashboardCashProps> = ({ retailSales, products, on
 
   const avgCheck = today.checks ? today.revenue / today.checks : 0;
 
-  // Выручка считается по отгрузке, но деньги за долговой чек ещё не
-  // пришли. Показать одну выручку значило бы обещать деньги, которых в кассе нет.
-  const debt = useMemo(() => live.reduce((sum, s) => sum + retailRemaining(s), 0), [live]);
+  // Выручка считается по отгрузке, но деньги за долговой чек ещё не пришли.
+  // Одна выручка обещала бы деньги, которых в кассе нет, — поэтому долг стоит
+  // рядом с ней отдельной карточкой, а не примечанием мелким шрифтом.
+  //
+  // Группируем по клиенту, а не по чеку: спрашивают долг с человека, и три его
+  // чека по отдельности заставляют складывать в уме.
+  const debtors = useMemo(() => {
+    const map = new Map<string, { name: string; amount: number; sales: RetailSale[] }>();
+    live.forEach(s => {
+      const left = retailRemaining(s);
+      if (left <= 0) return;
+      const key = s.customerId || 'unknown';
+      const cur = map.get(key) || {
+        name: customers.find(c => c.id === s.customerId)?.name || 'Без карточки клиента',
+        amount: 0, sales: [] as RetailSale[],
+      };
+      cur.amount += left;
+      cur.sales.push(s);
+      map.set(key, cur);
+    });
+    const rows = Array.from(map.entries())
+      .map(([customerId, v]) => ({ customerId, ...v }))
+      .sort((a, b) => b.amount - a.amount);
+    return { rows, total: rows.reduce((sum, r) => sum + r.amount, 0) };
+  }, [live, customers]);
 
   const recent = useMemo(
     () => [...live].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 6),
@@ -77,20 +105,82 @@ const DashboardCash: React.FC<DashboardCashProps> = ({ retailSales, products, on
 
   return (
     <div className="space-y-4 animate-in fade-in duration-500">
-      <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-6 text-center">
-        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Выручка сегодня</p>
-        <p className="text-4xl font-extrabold text-slate-900 dark:text-white leading-none mt-1">
-          {formatCurrency(today.revenue, showCents)} <span className="text-2xl text-slate-400">₽</span>
-        </p>
-        <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-          прибыль {formatCurrency(today.profit, showCents)} ₽
-        </p>
-        {debt > 0 && (
-          <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mt-1">
-            за клиентами долг {formatCurrency(debt, showCents)} ₽
+      {/* Долг встаёт рядом с выручкой, а не под ней: это две стороны одного
+          вопроса «сколько заработали и сколько из этого ещё не получили».
+          Карточка появляется только при долге — постоянный ноль ничего не
+          сообщает, а возникшая строка заметна. */}
+      <div className={`grid gap-3 ${debtors.total > 0 ? 'sm:grid-cols-[1.4fr_1fr]' : ''}`}>
+        <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-6 text-center">
+          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Выручка сегодня</p>
+          <p className="text-4xl font-extrabold text-slate-900 dark:text-white leading-none mt-1">
+            {formatCurrency(today.revenue, showCents)} <span className="text-2xl text-slate-400">₽</span>
           </p>
+          <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+            прибыль {formatCurrency(today.profit, showCents)} ₽
+          </p>
+        </div>
+
+        {debtors.total > 0 && (
+          <button onClick={() => setDebtOpen(true)}
+                  className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-3xl border border-amber-200 dark:border-amber-900/50 shadow-sm p-6 text-center active:scale-[0.99] transition-transform">
+            <p className="text-[11px] font-bold text-amber-500 dark:text-amber-400/80 uppercase tracking-wider">Нам должны</p>
+            <p className="text-3xl font-extrabold text-amber-600 dark:text-amber-400 leading-none mt-1">
+              {formatCurrency(debtors.total, showCents)} <span className="text-xl opacity-60">₽</span>
+            </p>
+            <p className="text-xs font-bold text-slate-400 mt-1">
+              {debtors.rows.length} {debtors.rows.length === 1 ? 'клиент' : 'клиентов'} · подробнее
+            </p>
+          </button>
         )}
       </div>
+
+      {debtOpen && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+               onClick={() => setDebtOpen(false)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[75vh] flex flex-col animate-slide-up-sheet"
+                 onClick={e => e.stopPropagation()}>
+              <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700">
+                <h3 className="font-bold text-slate-800 dark:text-white">Нам должны</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  По продажам в долг · {formatCurrency(debtors.total, showCents)} ₽
+                </p>
+              </div>
+              <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+                {debtors.rows.map(r => (
+                  <button key={r.customerId}
+                          onClick={() => {
+                            if (r.customerId !== 'unknown' && onSelectCustomer) {
+                              setDebtOpen(false);
+                              onSelectCustomer(r.customerId);
+                            }
+                          }}
+                          className="w-full px-5 py-3 text-left active:bg-slate-50 dark:active:bg-slate-700/50">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold text-slate-800 dark:text-white truncate">{r.name}</p>
+                      <p className="font-bold text-amber-600 dark:text-amber-400 shrink-0">
+                        {formatCurrency(r.amount, showCents)} ₽
+                      </p>
+                    </div>
+                    {/* Из чего сложился долг: без этого «12 400 ₽» невозможно
+                        ни проверить, ни обсудить с самим должником. */}
+                    <div className="mt-1 space-y-0.5">
+                      {r.sales.map(sale => (
+                        <p key={sale.id} className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          {sale.docNumber ? `№${sale.docNumber} · ` : ''}
+                          {new Date(sale.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                          {' · '}{formatCurrency(retailRemaining(sale), showCents)} ₽
+                          {retailPaidAmount(sale) > 0 ? ` (внесено ${formatCurrency(retailPaidAmount(sale), showCents)} ₽)` : ''}
+                        </p>
+                      ))}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <button

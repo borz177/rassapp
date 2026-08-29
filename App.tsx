@@ -1608,6 +1608,7 @@ const dashboardStats = useMemo(() => {
           case 'CALCULATOR': setCurrentView('CALCULATOR'); break;
           case 'PARTNER': setPreviousView(currentView); setCurrentView('PARTNER'); break;
           case 'WAREHOUSE': setPreviousView(currentView); setCurrentView('WAREHOUSE'); break;
+          case 'SUPPLIERS': setPreviousView(currentView); setCurrentView('SUPPLIERS'); break;
           case 'RETAIL_SALE': setPreviousView(currentView); setCurrentView('RETAIL_SALE'); break;
           case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break;
           case 'TASKS': setPreviousView(currentView); setCurrentView('TASKS'); break;
@@ -3781,7 +3782,7 @@ if (!user && !showSplash) {
                   <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital}
                              accountBalances={accountBalances} onAction={handleAction}
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
-                             accounts={accounts} appSettings={appSettings} investors={investors} user={user} retailSales={retailSales} products={products}
+                             accounts={accounts} appSettings={appSettings} investors={investors} user={user} retailSales={retailSales} products={products} suppliers={suppliers}
                   showShopTab={checkAccess('SHOP') && !!appSettings.shopEnabled && !!appSettings.shopDashboardTab}
                   />}
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
