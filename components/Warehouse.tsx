@@ -71,7 +71,7 @@ const MOVEMENT_LABELS: Record<StockMovement['type'], string> = {
 const Warehouse: React.FC<WarehouseProps> = ({
   products, movements, warehouses, suppliers, accounts,
   retailSales = [], customers = [], employees = [], appSettings, user,
-  onSelectCustomer, onAcceptPayment, onUpdateSale, onUpdateStockDoc,
+  onSelectCustomer, onAcceptPayment, onUpdateSale, onUpdateStockDoc, onAddDocLines,
   onSaveProduct, onDeleteProduct, onAddMovement, onPostBatch,
   onSaveWarehouse, onDeleteWarehouse, onBack,
 }) => {
@@ -417,9 +417,11 @@ const Warehouse: React.FC<WarehouseProps> = ({
 
               <div className="min-w-0 flex-1">
                 <p className="font-bold text-slate-800 dark:text-white truncate">{p.name}</p>
+                {/* Цена закупа из строки убрана: список открывают, чтобы найти
+                    товар и вспомнить, почём он продаётся, — а закуп виден
+                    посторонним через плечо. Он остался в карточке товара. */}
                 <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                   {p.sku ? `${p.sku} · ` : ''}{money(p.price)} ₽
-                  {p.buyPrice ? ` · закуп ${money(p.buyPrice)} ₽` : ''}
                 </p>
                 <p className={`text-xs font-bold mt-0.5 ${isLow(p) ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
                   {money(p.stock || 0)} {p.unit || 'шт'}
@@ -583,9 +585,6 @@ const Warehouse: React.FC<WarehouseProps> = ({
                   </label>
                 )}
               </div>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                До 5 картинок. Сжимаются в браузере до отправки — снимок с телефона едет как 100–300 КБ вместо нескольких мегабайт.
-              </p>
 
               <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Название" className={inputCls} />
               <div className="grid grid-cols-2 gap-2">
@@ -687,11 +686,16 @@ const Warehouse: React.FC<WarehouseProps> = ({
             appSettings={appSettings}
             user={user}
             onBack={close}
-            onEdit={p2 => { close(); openEdit(p2); }}
+            // Форма правки — портал в body, поэтому ложится поверх карточки
+            // товара. Закрывать карточку перед ней не нужно: человек правил
+            // товар, а не уходил из него, и после сохранения должен остаться
+            // там же.
+            onEdit={p2 => openEdit(p2)}
             onSelectCustomer={onSelectCustomer}
             onAcceptPayment={onAcceptPayment}
             onUpdateSale={onUpdateSale}
             onUpdateStockDoc={onUpdateStockDoc}
+            onAddDocLines={onAddDocLines}
           />
         )}
       </SubPage>

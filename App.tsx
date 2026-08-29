@@ -54,7 +54,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining} from './src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse} from './src/utils';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
@@ -3048,6 +3048,114 @@ const confirmDeleteCustomer = async () => {
     }
   };
 
+  /**
+   * Дописать позиции в проведённый документ.
+   *
+   * Добавление отличается от правки количеств тем, что оно ничего не переписывает:
+   * появляется новое движение с той же датой и номером, остаток меняется на его
+   * величину, и историю по-прежнему можно прочесть сверху вниз. Именно поэтому
+   * дописывать разрешено, а править задним числом уже проведённые строки — нет.
+   *
+   * Уже имеющийся в документе товар не задваивается строкой, а увеличивается в
+   * количестве: две строки одного товара в накладной — это почти всегда ошибка
+   * ввода, и разбираться с ней потом дороже, чем не допустить.
+   */
+  const handleAddDocLines = async (
+    docId: string,
+    lines: { productId: string; quantity: number; price: number }[]
+  ) => {
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+    if (!user || lines.length === 0) return;
+    const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+
+    // ── Чек магазина ──
+    if (docId.startsWith('sale_')) {
+      const sale = retailSales.find(r => `sale_${r.id}` === docId);
+      if (!sale) return;
+      const warehouseId = saleWarehouse?.id || DEFAULT_WAREHOUSE_ID;
+
+      const items = [...sale.items];
+      for (const line of lines) {
+        const product = products.find(p => p.id === line.productId);
+        if (!product) continue;
+        const at = items.findIndex(i => i.productId === line.productId);
+        if (at >= 0) items[at] = { ...items[at], quantity: items[at].quantity + line.quantity };
+        else items.push({
+          productId: product.id, name: product.name, quantity: line.quantity,
+          price: line.price, buyPrice: product.buyPrice, unit: product.unit || 'шт',
+        });
+
+        const movement: StockMovement = {
+          id: crypto.randomUUID(), userId: ownerId, productId: product.id, type: 'SALE',
+          quantity: -line.quantity, unitPrice: line.price, saleId: sale.id,
+          warehouseId, date: sale.date, createdByUserId: user.id,
+        };
+        const savedMovement = await api.saveItem('stockMovements', movement);
+        updateList(setStockMovements, savedMovement);
+
+        const savedProduct = await api.saveItem('products', applyStockDelta(product, warehouseId, -line.quantity));
+        updateList(setProducts, savedProduct);
+      }
+
+      // Итоги пересчитываем целиком по составу, а не прибавляем разницу:
+      // накопленная сумма разошлась бы со строками на копейки округлений.
+      const subtotal = items.reduce((n, i) => n + i.price * i.quantity, 0);
+      const cost = items.reduce((n, i) => n + (i.buyPrice || 0) * i.quantity, 0);
+      const total = Math.max(0, subtotal - sale.discount);
+      const updated: RetailSaleType = { ...sale, items, subtotal, cost, total, profit: total - cost };
+      updateList(setRetailSales, updated);
+      const saved = await api.saveItem('retailSales', updated);
+      updateList(setRetailSales, saved);
+      return;
+    }
+
+    // ── Складской документ ──
+    const batchKey = docId.replace(/^doc_/, '');
+    const head = stockMovements.find(m => (m.batchId || `single_${m.id}`) === batchKey);
+    if (!head) return;
+
+    const warehouseId = head.warehouseId || DEFAULT_WAREHOUSE_ID;
+    for (const line of lines) {
+      const product = products.find(p => p.id === line.productId);
+      if (!product) continue;
+
+      const base = {
+        userId: ownerId, productId: product.id, unitPrice: line.price || undefined,
+        batchId: head.batchId, docNumber: head.docNumber, date: head.date,
+        note: head.note, supplierId: head.supplierId, createdByUserId: user.id,
+      };
+
+      let next = product;
+      const write = async (m: StockMovement) => {
+        const saved = await api.saveItem('stockMovements', m);
+        updateList(setStockMovements, saved);
+      };
+
+      if (head.type === 'IN') {
+        await write({ ...base, id: crypto.randomUUID(), type: 'IN', quantity: line.quantity, warehouseId });
+        next = applyStockDelta(next, warehouseId, line.quantity);
+      } else if (head.type === 'WRITE_OFF') {
+        await write({ ...base, id: crypto.randomUUID(), type: 'WRITE_OFF', quantity: -line.quantity, warehouseId });
+        next = applyStockDelta(next, warehouseId, -line.quantity);
+      } else if (head.type === 'TRANSFER') {
+        const toWarehouseId = head.toWarehouseId || warehouseId;
+        await write({ ...base, id: crypto.randomUUID(), type: 'TRANSFER', quantity: -line.quantity, warehouseId, toWarehouseId });
+        await write({ ...base, id: crypto.randomUUID(), type: 'TRANSFER', quantity: line.quantity, warehouseId: toWarehouseId });
+        next = applyStockDelta(applyStockDelta(next, warehouseId, -line.quantity), toWarehouseId, line.quantity);
+      } else {
+        // Инвентаризация: вводят фактический остаток, разницу считаем сами —
+        // ровно так же, как при первом проведении документа.
+        const delta = line.quantity - stockAtWarehouse(product, warehouseId);
+        if (delta === 0) continue;
+        await write({ ...base, id: crypto.randomUUID(), type: 'CORRECTION', quantity: delta, warehouseId });
+        next = applyStockDelta(next, warehouseId, delta);
+      }
+
+      const savedProduct = await api.saveItem('products', next);
+      updateList(setProducts, savedProduct);
+    }
+  };
+
   const handleRetailSale = async (sale: RetailSaleType) => {
     if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
     if (!user) return;
@@ -4265,6 +4373,7 @@ if (!user && !showSplash) {
                       onAcceptPayment={handleInitiateRetailPayment}
                       onUpdateSale={handleUpdateRetailSale}
                       onUpdateStockDoc={handleUpdateStockDoc}
+                      onAddDocLines={handleAddDocLines}
                     />
                   )}
                 </PagePush>
@@ -4288,6 +4397,7 @@ if (!user && !showSplash) {
                       onAcceptPayment={handleInitiateRetailPayment}
                       onUpdateSale={handleUpdateRetailSale}
                       onUpdateStockDoc={handleUpdateStockDoc}
+                      onAddDocLines={handleAddDocLines}
                       onPostBatch={handlePostStockBatch}
                       onSaveWarehouse={handleSaveWarehouse}
                       onDeleteWarehouse={handleDeleteWarehouse}

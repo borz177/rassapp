@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { Account, AppSettings, Customer, RetailSale, StockMovement, Supplier, User } from '../types';
+import type { Account, AppSettings, Customer, Product, RetailSale, StockMovement, Supplier, User } from '../types';
 import { formatCurrency, retailPaidAmount } from '../src/utils';
 import { KIND_LABEL, printJournalDoc, type JournalDoc } from '../src/journalDocs';
 import TopBarBack from './TopBarBack';
@@ -32,7 +32,7 @@ interface DocumentCardProps {
  */
 const DocumentCard: React.FC<DocumentCardProps> = ({
   doc, accounts, appSettings, employees = [], user, onBack, onSelectCustomer, onAcceptPayment,
-  customers = [], suppliers = [], onUpdateSale, onUpdateStockDoc,
+  customers = [], suppliers = [], onUpdateSale, onUpdateStockDoc, onAddDocLines, products = [],
 }) => {
   const [tab, setTab] = useState<'INFO' | 'PAY'>('INFO');
   const [editOpen, setEditOpen] = useState(false);
@@ -97,6 +97,52 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
   };
 
   const input = 'w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-400';
+
+  // ─── Дописать позицию ──────────────────────────────────────────────────────
+  // Выбор товара и ввод количества — два шага, а не одна форма: в списке ищут
+  // глазами, а количество набирают, и объединять эти два занятия в один экран
+  // значит мешать поиску клавиатурой.
+  const [addOpen, setAddOpen] = useState(false);
+  const [addSearch, setAddSearch] = useState('');
+  const [picked, setPicked] = useState<Product | null>(null);
+  const [addQty, setAddQty] = useState('1');
+  const [addPrice, setAddPrice] = useState('0');
+
+  const canAdd = !!onAddDocLines;
+  const isInventory = doc.kind === 'INVENTORY';
+
+  const addCandidates = React.useMemo(() => {
+    const q = addSearch.trim().toLowerCase();
+    return products
+      .filter(p => !p.isArchived)
+      .filter(p => !q || p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+      .slice(0, 60);
+  }, [products, addSearch]);
+
+  const startAdd = (p: Product) => {
+    setPicked(p);
+    // Цену подставляем ту, которой этот документ живёт: чек — продажной,
+    // приход — закупочной. Иначе в накладную попадала бы цена не из той графы.
+    setAddPrice(String(doc.kind === 'SALE' ? (p.price || 0) : (p.buyPrice || 0)));
+    setAddQty(isInventory ? String(p.stock || 0) : '1');
+  };
+
+  const commitAdd = async () => {
+    if (!picked || !onAddDocLines) return;
+    const quantity = Number(String(addQty).replace(',', '.'));
+    const price = Number(String(addPrice).replace(',', '.'));
+    if (!Number.isFinite(quantity) || (!isInventory && quantity <= 0)) return;
+    setSaving(true);
+    try {
+      await onAddDocLines(doc.id, [{ productId: picked.id, quantity, price: Number.isFinite(price) ? price : 0 }]);
+      setPicked(null);
+      setAddOpen(false);
+      setAddSearch('');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const paid = doc.sale ? retailPaidAmount(doc.sale) : 0;
   const author = doc.authorId
@@ -188,7 +234,15 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
           </div>
 
           <div>
-            <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-2 px-1">Товары</p>
+            <div className="flex items-center justify-between gap-2 mb-2 px-1">
+              <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">Товары</p>
+              {canAdd && (
+                <button onClick={() => { setAddOpen(true); setPicked(null); setAddSearch(''); }}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 text-xs font-bold">
+                  + Товар
+                </button>
+              )}
+            </div>
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
               {doc.lines.map((l, i) => (
                 <div key={`${l.name}_${i}`} className="px-4 py-3 flex items-center justify-between gap-3">
@@ -286,6 +340,92 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
           )}
         </div>
       )}
+      {addOpen && !picked && (
+        <ModalPortal onClose={() => setAddOpen(false)}>
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
+               onClick={() => setAddOpen(false)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[80vh] flex flex-col"
+                 onClick={e => e.stopPropagation()}>
+              <div className="p-4 border-b border-slate-100 dark:border-slate-700 shrink-0">
+                <h3 className="font-bold text-slate-800 dark:text-white mb-2">Добавить в документ</h3>
+                <input value={addSearch} onChange={e => setAddSearch(e.target.value)} autoFocus
+                       placeholder="Поиск по названию или артикулу" className={input} />
+              </div>
+              <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+                {addCandidates.length === 0 ? (
+                  <p className="p-5 text-sm text-slate-500 dark:text-slate-400">Ничего не найдено.</p>
+                ) : addCandidates.map(p => (
+                  <button key={p.id} onClick={() => startAdd(p)}
+                          className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left active:bg-slate-50 dark:active:bg-slate-700/50">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-800 dark:text-white truncate">{p.name}</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                        {p.sku ? `${p.sku} · ` : ''}остаток {p.stock || 0} {p.unit || 'шт'}
+                      </p>
+                    </div>
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200 shrink-0">
+                      {formatCurrency(doc.kind === 'SALE' ? (p.price || 0) : (p.buyPrice || 0), cents)} ₽
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {picked && (
+        <ModalPortal onClose={() => setPicked(null)}>
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
+               onClick={() => setPicked(null)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-3"
+                 onClick={e => e.stopPropagation()}>
+              <div>
+                <h3 className="font-bold text-slate-800 dark:text-white truncate">{picked.name}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  На складе {picked.stock || 0} {picked.unit || 'шт'}
+                </p>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  {isInventory ? 'Фактический остаток' : 'Количество'}
+                </label>
+                <input value={addQty} onChange={e => setAddQty(e.target.value)} inputMode="decimal"
+                       autoFocus className={`${input} mt-1`} />
+              </div>
+
+              {!isInventory && (
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    {doc.kind === 'SALE' ? 'Цена продажи' : 'Цена'}
+                  </label>
+                  <input value={addPrice} onChange={e => setAddPrice(e.target.value)} inputMode="decimal"
+                         className={`${input} mt-1`} />
+                </div>
+              )}
+
+              {/* Дописанная строка меняет остаток и итог документа сразу — она
+                  такое же движение, как и все прочие, просто заведённое позже. */}
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Строка добавится в документ №{doc.number} той же датой, остаток и итог пересчитаются.
+              </p>
+
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setPicked(null)}
+                        className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
+                  Отмена
+                </button>
+                <button disabled={saving} onClick={commitAdd}
+                        className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm disabled:opacity-50">
+                  Добавить
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
       {editOpen && (
         <ModalPortal onClose={() => setEditOpen(false)}>
           <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
