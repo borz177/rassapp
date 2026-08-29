@@ -6111,9 +6111,20 @@ setInterval(async () => {
   }
 }, 24 * 60 * 60 * 1000); // Раз в 24 часа
 
-// --- VITE MIDDLEWARE ---
+// --- РАЗДАЧА ФРОНТЕНДА ---
+//
+// Дев-сервер Vite включается ТОЛЬКО явно. Раньше было наоборот: Vite поднимался
+// везде, где NODE_ENV не равен 'production'. На боевом сервере переменную не
+// задали — и дев-сервер тихо проработал в проде полгода, занимая память и
+// добавляя лишний слой. Забытая переменная не должна превращать боевой сервер в
+// отладочный: безопасный режим обязан быть режимом по умолчанию.
+//
+// Флаг вместо переменной окружения — чтобы npm-скрипт работал одинаково в
+// Windows и Linux без cross-env.
+const isDevServer = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+
 const startServer = async () => {
-  if (process.env.NODE_ENV !== 'production') {
+  if (isDevServer) {
     const viteModule = await import('vite');
     const vite = await viteModule.createServer({
       server: { middlewareMode: true },
@@ -6127,9 +6138,15 @@ const startServer = async () => {
       res.sendFile(path.join(__dirname, '../dist', 'index.html'));
     });
   }
-  
-  app.listen(PORT, '0.0.0.0', () => {
 
+  app.listen(PORT, '0.0.0.0', () => {
+    // Строка при старте — то, чего здесь не хватало: именно молчание позволило
+    // проду полгода работать в отладочном режиме незамеченным.
+    console.log(
+      `Сервер на порту ${PORT} — режим: ` +
+      (isDevServer ? 'DEV (Vite)' : 'PRODUCTION (статика из dist)') +
+      `, NODE_ENV=${process.env.NODE_ENV || 'не задан'}`
+    );
   });
 };
 
