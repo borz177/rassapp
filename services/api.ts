@@ -505,7 +505,13 @@ export const api = {
       try {
         const queue = await offlineStorage.getQueue();
         for (const item of queue) {
-          if (!item.collection || !data[item.collection]) continue;
+          if (!item.collection) continue;
+          // Ключа может не быть в ответе — например, фронт уже умеет
+          // коллекцию, а сервер ещё не выкачен. Раньше такая запись просто
+          // пропускалась: в очереди она лежала, а на экране исчезала после
+          // перезагрузки — человек видел, что чек пропал. Сравнение именно с
+          // undefined: settings приходит как null и массивом становиться не должен.
+          if (data[item.collection] === undefined) data[item.collection] = [];
           
           // 🔥 ИСПРАВЛЕНО: saveItem и deleteItem теперь на одном уровне!
           if (item.type === 'saveItem') {
