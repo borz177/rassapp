@@ -435,7 +435,10 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, o
               разделы в меню только мешают. На тарифах ниже Бизнес Про переключатель
               показывается заблокированным — так видно, что функция есть, но
               требует тарифа, вместо того чтобы просто отсутствовать. */}
-          <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+          {/* Магазин и его вложенная настройка — одна группа: черта отделяет её
+              целиком, а не вклинивается между родителем и потомком. */}
+          <div className="mb-5 pb-5 border-b border-slate-100 dark:border-slate-700 space-y-4">
+          <div className="flex items-center justify-between">
               <div className="pr-3">
                   <p className="font-medium text-slate-700 dark:text-slate-300">
                       Магазин и склад
@@ -465,7 +468,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, o
               других основное занятие. Первым половина главного экрана под кассу
               только мешала бы, вторым без неё пришлось бы каждый раз идти в меню. */}
           {shopAllowed && appSettings.shopEnabled && (
-          <div className="flex items-center justify-between pl-4 border-l-2 border-slate-100 dark:border-slate-700">
+          <div className="flex items-center justify-between gap-3 pl-4 border-l-2 border-indigo-200 dark:border-indigo-900/60">
               <div>
                   <p className="font-medium text-slate-700 dark:text-slate-300">Вкладка «Наличные» на главном</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -483,8 +486,9 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, o
               </label>
           </div>
           )}
+          </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
               <div>
                   <p className="font-medium text-slate-700 dark:text-slate-300">Показывать копейки</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400">Отображать дробную часть в суммах (например, 100.50 ₽)</p>
@@ -499,7 +503,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, o
                   <div className="w-11 h-6 bg-slate-200 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
               </label>
           </div>
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+          <div className="flex items-center justify-between gap-3 mt-5 pt-5 border-t border-slate-100 dark:border-slate-700">
               <div>
                   <p className="font-medium text-slate-700 dark:text-slate-300">Наценка от суммы за вычетом взноса</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400">Начислять % не на весь закуп, а только на часть, которая идёт в рассрочку (закуп − взнос)</p>

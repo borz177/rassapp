@@ -386,6 +386,9 @@ const counts = useMemo(() => {
     { id: 'TASKS' as const, label: 'Задачи', icon: ICONS.Tasks, visible: showTasks && !isInvestor },
     // На десктопе меню «+» нет, поэтому партнёрство живёт в боковом меню —
     // единственной постоянной навигации на широком экране.
+    // Главная — самый частый переход, и держать её ниже разделов, куда заходят
+    // раз в неделю, значило бы каждый раз искать её глазами.
+    { id: 'DASHBOARD' as const, label: 'Главная', icon: ICONS.Dashboard, visible: true },
     { id: 'PARTNER' as const, label: 'Бизнес-партнёр', icon: ICONS.Star, visible: !!user?.partnerPercent },
     {
       // Склад и журнал — про один и тот же товар, но с разных сторон: где
@@ -400,7 +403,6 @@ const counts = useMemo(() => {
         { label: 'Журнал', action: 'JOURNAL', icon: ICONS.List },
       ]
     },
-    { id: 'DASHBOARD' as const, label: 'Главная', icon: ICONS.Dashboard, visible: true },
     {
       id: 'CASH_REGISTER' as const,
       label: 'Касса',
@@ -459,6 +461,10 @@ const counts = useMemo(() => {
     if (isMenuOpen) closeMenu();
     else { setIsMenuOpen(true); setIsMenuClosing(false); }
   };
+
+  // Раздел склада в меню действий по умолчанию свёрнут: список действий должен
+  // читаться целиком с одного взгляда.
+  const [shopGroupOpen, setShopGroupOpen] = useState(false);
 
   const toggleMenu = (id: string) => {
     if (expandedMenu === id) {
@@ -724,17 +730,37 @@ const counts = useMemo(() => {
                   <span className="font-semibold text-[15px]">Продажа за наличные</span>
                 </button>
               )}
+              {/* Склад и журнал — про один товар с разных сторон: где лежит и
+                  какими бумагами двигался. Двумя пунктами подряд они удлиняли
+                  список, ничего не поясняя; раскрывающийся раздел показывает,
+                  что это одно место. */}
               {showShop && (
-                <button onClick={() => handleActionClick('WAREHOUSE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                  <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2.5 rounded-full text-indigo-600 dark:text-indigo-400">{ICONS.Archive}</div>
-                  <span className="font-semibold text-[15px]">Склад</span>
-                </button>
-              )}
-              {showShop && (
-                <button onClick={() => handleActionClick('JOURNAL')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                  <div className="bg-slate-100 dark:bg-slate-700 p-2.5 rounded-full text-slate-600 dark:text-slate-300">{ICONS.List}</div>
-                  <span className="font-semibold text-[15px]">Журнал</span>
-                </button>
+                <>
+                  <button onClick={() => setShopGroupOpen(v => !v)}
+                          className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                    <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2.5 rounded-full text-indigo-600 dark:text-indigo-400">{ICONS.Archive}</div>
+                    <span className="font-semibold text-[15px] flex-1 text-left">Склад</span>
+                    <span className={`text-slate-400 transition-transform duration-200 ${shopGroupOpen ? 'rotate-90' : ''}`}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                    </span>
+                  </button>
+                  {shopGroupOpen && (
+                    <div className="ml-8 pl-3 border-l border-slate-200 dark:border-slate-600 space-y-0.5">
+                      <button onClick={() => handleActionClick('WAREHOUSE')}
+                              className="w-full flex items-center gap-3 px-3 py-3 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                        <span className="opacity-70 scale-90">{ICONS.Archive}</span>
+                        <span className="font-semibold text-[14px]">Товары и операции</span>
+                      </button>
+                      <button onClick={() => handleActionClick('JOURNAL')}
+                              className="w-full flex items-center gap-3 px-3 py-3 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                        <span className="opacity-70 scale-90">{ICONS.List}</span>
+                        <span className="font-semibold text-[14px]">Журнал</span>
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
               {!!user?.partnerPercent && (
                 <button onClick={() => handleActionClick('PARTNER')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
