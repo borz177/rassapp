@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier, Task, RetailSale} from '../types';
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
-import { useBackInterceptor } from './transitions/PagePush';
+import SubPage from './transitions/SubPage';
 import { formatCurrency, formatDate, normalizePhoneForWhatsApp, retailPaidAmount, retailRemaining } from '../src/utils';
 import { offlineStorage } from '../services/offlineStorage';
 import { api } from '../services/api';
@@ -672,9 +672,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
     const showInstallmentsTab = customerSales.length > 0;
     const showHistoryTab = customerRetail.length > 0;
 
-    // Открытый договор — шаг внутрь карточки, а не отдельная страница,
-    // и свайп назад должен вернуть к списку договоров, а не закрывать клиента.
-    useBackInterceptor(!!selectedSaleId, () => setSelectedSaleId(null));
+
     // Последняя рассрочка может быть удалена, пока вкладка открыта — оставить
     // пользователя на исчезнувшем разделе нельзя.
     useEffect(() => {
@@ -912,7 +910,12 @@ ${customer.name}!
         return null;
     };
 
-    if (selectedSale) {
+    /**
+     * Карточка договора. Не ранний return: список должен остаться смонтированным
+     * под ней — иначе выезжать не из-за чего, а при возврате он перерисовывался
+     * бы заново и терял позицию прокрутки.
+     */
+    const renderSale = (selectedSale: Sale, close: () => void) => {
         const paidAmount = totalRealPaid + totalDiscounts;
         const profit = selectedSale.buyPrice > 0 ? selectedSale.totalAmount - selectedSale.buyPrice : 0;
         const monthlyProfit = selectedSale.installments > 0 && profit > 0 ? profit / selectedSale.installments : 0;
@@ -923,7 +926,7 @@ ${customer.name}!
             <div className="space-y-4 animate-fade-in pb-20 relative">
                 <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-4 pt-2">
                     <div className="flex items-center gap-3">
-                        <TopBarBack onClick={() => setSelectedSaleId(null)} />
+                        <TopBarBack onClick={close} />
                         <h2 className="text-xl font-bold text-slate-800 dark:text-white truncate">{selectedSale.productName}</h2>
                     </div>
                     <button onClick={handleSendSaleReminder} className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
@@ -1152,9 +1155,10 @@ ${customer.name}!
                 )}
             </div>
         );
-    }
+    };
 
     return (
+        <>
         <div className="space-y-4 animate-fade-in pb-20">
             <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 pt-2">
                 <TopBarBack onClick={onBack} />
@@ -1484,6 +1488,16 @@ ${customer.name}!
                 document.body
             )}
         </div>
+
+        {/* Договор выезжает справа и уезжает обратно — тем же движением, что и
+            остальные страницы. Держится до конца анимации ухода: состояние
+            снимается в onClose, когда играть уже нечего. */}
+        {selectedSale && (
+            <SubPage onClose={() => setSelectedSaleId(null)}>
+                {(close: () => void) => renderSale(selectedSale, close)}
+            </SubPage>
+        )}
+        </>
     );
 };
 

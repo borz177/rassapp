@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import PagePush from './transitions/PagePush';
+import PagePush, { useBackInterceptor } from './transitions/PagePush';
 import TabPill from './TabPill';
 import SelectSheet from './SelectSheet';
 import { Sale, Account, Expense, Investor, AppSettings, Customer } from '../types';
@@ -556,6 +556,21 @@ const [showInvestorProfitDetails, setShowInvestorProfitDetails] = useState(false
 const [profitDetailsTab, setProfitDetailsTab] = useState<'accruals' | 'payouts'>('accruals');
 const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL');
 const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('ALL');
+
+  // Шаг «назад» принадлежит самому верхнему окну, а не странице под ним.
+  // Без этого свайп от края закрывал карточку счёта ПОД открытым окном,
+  // и окно оставалось висеть над списком счетов. Порядок проверок — от самого
+  // верхнего слоя к нижнему.
+  useBackInterceptor(
+    !!(showProfitDetails || showInvestorProfitDetails || selectedSharedAccount || editingAccount || activeMenuAccount),
+    () => {
+      if (showProfitDetails) { setShowProfitDetails(false); return; }
+      if (showInvestorProfitDetails) { setShowInvestorProfitDetails(false); return; }
+      if (selectedSharedAccount) { setSelectedSharedAccount(null); return; }
+      if (editingAccount) { setEditingAccount(null); return; }
+      setActiveMenuAccount(null);
+    }
+  );
 
 // ... (остальной код без изменений до блока "Моя прибыль") ...
  const accountBalances = useMemo(() => {
