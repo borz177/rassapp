@@ -5,6 +5,7 @@ import type {
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { formatCurrency, retailPaidAmount, retailRemaining } from '../src/utils';
 import TopBarBack from './TopBarBack';
+import { useBackInterceptor } from './transitions/PagePush';
 import ModalPortal from './ModalPortal';
 import TabPill from './TabPill';
 
@@ -238,6 +239,9 @@ const Journal: React.FC<JournalProps> = ({
   }), [visible]);
 
   const opened = docs.find(d => d.id === openId) || null;
+
+  // Пока открыт документ, «назад» возвращает к ленте, а не закрывает журнал.
+  useBackInterceptor(!!opened, () => setOpenId(null));
 
   const filtersActive = kind !== 'ALL' || pay !== 'ALL';
 

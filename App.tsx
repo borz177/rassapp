@@ -168,6 +168,10 @@ const isLanding = path === "/"
   const [draftExpenseData, setDraftExpenseData] = useState<any>(null);
   const [operationsAccountId, setOperationsAccountId] = useState<string | null>(null);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  // Куда вернуться из формы договора, прихода и расхода. Раньше все три
+  // всегда закрывались на главную: отмена правки договора выбрасывала из списка
+  // договоров, хотя ничего не менялось и вернуться надо было туда же.
+  const [formReturnView, setFormReturnView] = useState<ViewState>('DASHBOARD');
   const [initialSaleIdForDetails, setInitialSaleIdForDetails] = useState<string | null>(null);
 
   const [moreExpandedSection, setMoreExpandedSection] = useState<string | null>(null);
@@ -1602,15 +1606,22 @@ const dashboardStats = useMemo(() => {
   const shopAvailable = checkAccess('SHOP') && !!appSettings.shopEnabled
     && (!isEmployee || !!user?.permissions?.canUseShop);
 
+  // Форма не может быть точкой возврата для другой формы: отмена уводила бы
+  // не назад, а в соседнюю незаполненную форму.
+  const FORM_VIEWS: ViewState[] = ['CREATE_SALE', 'CREATE_INCOME', 'CREATE_EXPENSE', 'SELECT_CUSTOMER'];
+  const rememberFormReturn = () => {
+    if (!FORM_VIEWS.includes(currentView)) setFormReturnView(currentView);
+  };
+
   const handleAction = (action: string, ctx?: { accountId?: string | null }) => {
       switch (action) {
         case 'VIEW_OVERDUE':  // ← НОВОЕ: переход на просроченные договоры
             setActiveContractTab('OVERDUE');
             setCurrentView('CONTRACTS');
             break;
-          case 'CREATE_SALE': setDraftSaleData({}); setEditingSale(null); setCurrentView('CREATE_SALE'); break;
-          case 'INCOME': setDraftSaleData(ctx?.accountId ? { accountId: ctx.accountId } : {}); setCurrentView('CREATE_INCOME'); break;
-          case 'EXPENSE': setDraftExpenseData(ctx?.accountId ? { accountId: ctx.accountId } : null); setCurrentView('CREATE_EXPENSE'); break;
+          case 'CREATE_SALE': setDraftSaleData({}); setEditingSale(null); rememberFormReturn(); setCurrentView('CREATE_SALE'); break;
+          case 'INCOME': setDraftSaleData(ctx?.accountId ? { accountId: ctx.accountId } : {}); rememberFormReturn(); setCurrentView('CREATE_INCOME'); break;
+          case 'EXPENSE': setDraftExpenseData(ctx?.accountId ? { accountId: ctx.accountId } : null); rememberFormReturn(); setCurrentView('CREATE_EXPENSE'); break;
           case 'OPERATIONS': setOperationsAccountId(ctx?.accountId ?? null); setCurrentView('OPERATIONS'); break;
           case 'CALCULATOR': setCurrentView('CALCULATOR'); break;
           case 'PARTNER': setPreviousView(currentView); setCurrentView('PARTNER'); break;
@@ -2000,7 +2011,7 @@ const handleStartEditSale = (sale: Sale) => {
         alert("⛔ У вас нет прав на редактирование договоров.");
         return;
     }
-  setEditingSale(sale); setCurrentView('CREATE_SALE'); };
+  setEditingSale(sale); rememberFormReturn(); setCurrentView('CREATE_SALE'); };
 
 
 
@@ -2936,6 +2947,7 @@ const confirmDeleteCustomer = async () => {
       type: 'RETAIL_PAYMENT', customerId: sale.customerId,
       retailSaleId: sale.id, amount: retailRemaining(sale),
     });
+    rememberFormReturn();
     setPreviousView(currentView);
     setCurrentView('CREATE_INCOME');
   };
@@ -3330,8 +3342,8 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
         }
     }
   };
-  const handleInitiateDashboardPayment = (sale: Sale, amount: number) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount }); setCurrentView('CREATE_INCOME'); };
-  const handleInitiateCustomerPayment = (sale: Sale, payment: Payment) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount: payment.amount }); setCurrentView('CREATE_INCOME'); };
+  const handleInitiateDashboardPayment = (sale: Sale, amount: number) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount }); rememberFormReturn(); setCurrentView('CREATE_INCOME'); };
+  const handleInitiateCustomerPayment = (sale: Sale, payment: Payment) => { if (!checkAccess('WRITE')) { showUpgradeAlert("Срок подписки истек."); return; } setDraftSaleData({ type: 'CUSTOMER_PAYMENT', customerId: sale.customerId, saleId: sale.id, amount: payment.amount }); rememberFormReturn(); setCurrentView('CREATE_INCOME'); };
   // 🔒 При открытии выбора (клиента и т.п.) форма <NewSale> размонтируется, а её initialData —
   // editingSale || draftSaleData. Если не синхронизировать editingSale тоже, все несохранённые
   // правки (и сам выбор) при возврате в форму терялись бы, т.к. editingSale имеет приоритет.
@@ -4044,7 +4056,7 @@ if (!user && !showSplash) {
               )}
 
               {currentView === 'CREATE_INCOME' && (
-                  <PagePush onClose={() => setCurrentView('DASHBOARD')}>
+                  <PagePush onClose={() => setCurrentView(formReturnView)}>
                     {(requestClose: () => void) => (
                       <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts}
                              sales={sales} retailSales={retailSales} onClose={requestClose} onSubmit={handleIncomeSubmit}
@@ -4054,7 +4066,7 @@ if (!user && !showSplash) {
                   </PagePush>
               )}
               {currentView === 'CREATE_EXPENSE' && (
-                  <PagePush onClose={() => { setCurrentView('DASHBOARD'); setDraftExpenseData(null); }}>
+                  <PagePush onClose={() => { setCurrentView(formReturnView); setDraftExpenseData(null); }}>
                     {(requestClose: () => void) => (
                       <NewExpense investors={investors} accounts={accounts} expenses={expenses} suppliers={suppliers} sales={sales}
                               showSupplierCategory={checkAccess('SUPPLIERS')} initialData={draftExpenseData} onClose={requestClose}
@@ -4063,7 +4075,7 @@ if (!user && !showSplash) {
                   </PagePush>
               )}
               {currentView === 'CREATE_SALE' && (
-                  <PagePush onClose={() => { setCurrentView('DASHBOARD'); setEditingSale(null); }}>
+                  <PagePush onClose={() => { setCurrentView(formReturnView); setEditingSale(null); }}>
                     {(requestClose: () => void) => (
                       <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products}
                            accounts={accounts} suppliers={suppliers} showSupplierField={checkAccess('SUPPLIERS')} onClose={requestClose}

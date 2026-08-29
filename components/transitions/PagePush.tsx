@@ -28,7 +28,60 @@ interface PagePushProps {
 // Android (см. App.tsx), чтобы он закрывал текущую выехавшую страницу тем же способом, что и
 // свайп/кнопка "Назад" на экране, а не сразу выходил из приложения.
 let activeRequestClose: (() => void) | null = null;
+
+/**
+ * Перехватчики шага «назад».
+ *
+ * У толкнутой страницы может быть своя внутренняя глубина: в журнале открыт
+ * документ, в карточке — договор. Для человека это шаг назад, а страница о нём
+ * ничего не знает и закрывалась целиком — вместо возврата к списку вылетали из
+ * раздела.
+ *
+ * Стек, а не одна ссылка: вложенность бывает и двойной, и вернуться нужно на
+ * один уровень, а не сразу наружу. Последний зарегистрированный — самый
+ * глубокий, поэтому спрашиваем с конца.
+ */
+type BackInterceptor = () => boolean;
+const backInterceptors: BackInterceptor[] = [];
+
+export function registerBackInterceptor(fn: BackInterceptor): () => void {
+  backInterceptors.push(fn);
+  return () => {
+    const i = backInterceptors.indexOf(fn);
+    if (i >= 0) backInterceptors.splice(i, 1);
+  };
+}
+
+/** Есть ли кому перехватить шаг назад — нужно ещё до начала жеста. */
+export function hasBackInterceptor(): boolean {
+  return backInterceptors.length > 0;
+}
+
+/** Отдаёт шаг назад самому глубокому перехватчику. true — шаг съеден. */
+function consumeBack(): boolean {
+  for (let i = backInterceptors.length - 1; i >= 0; i--) {
+    if (backInterceptors[i]()) return true;
+  }
+  return false;
+}
+
+/**
+ * Регистрирует внутренний шаг назад, пока `active`. Обработчик держим в ref:
+ * иначе каждое его пересоздание при перерисовке снимало бы и ставило
+ * перехватчик заново, а посреди жеста это означало бы потерянный шаг.
+ */
+export function useBackInterceptor(active: boolean, handler: () => void): void {
+  const ref = useRef(handler);
+  ref.current = handler;
+  useEffect(() => {
+    if (!active) return;
+    return registerBackInterceptor(() => { ref.current(); return true; });
+  }, [active]);
+}
+
 export function triggerPagePushBack(): boolean {
+  // Аппаратная кнопка «Назад» ведёт себя как жест: сначала внутренний шаг.
+  if (consumeBack()) return true;
   if (activeRequestClose) {
     activeRequestClose();
     return true;
@@ -48,6 +101,8 @@ interface DragState {
   active: boolean;
   deciding: boolean;
   locked: boolean;
+  /** Жест уводит на внутренний шаг назад — саму страницу двигать не нужно */
+  intercepted: boolean;
 }
 
 /**
@@ -64,7 +119,7 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
   // Synchronous guard (unlike the `closing` state, which only updates on the next render) so a
   // rapid second gesture during the close animation can never restart/interfere with it.
   const closingRef = useRef(false);
-  const drag = useRef<DragState>({ startX: 0, startY: 0, startT: 0, active: false, deciding: false, locked: false });
+  const drag = useRef<DragState>({ startX: 0, startY: 0, startT: 0, active: false, deciding: false, locked: false, intercepted: false });
 
   useEffect(() => {
     // Два кадра, а не один. Браузер обязан СНАЧАЛА отрисовать страницу в
@@ -91,6 +146,9 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
 
   const requestClose = () => {
     if (closingRef.current) return;
+    // Внутренний шаг важнее: если в странице открыт документ, «назад» должно
+    // вернуть к списку, а не выбросить из раздела.
+    if (consumeBack()) return;
     closingRef.current = true;
     setClosing(true);
   };
@@ -174,6 +232,7 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
     drag.current.active = false;
     drag.current.deciding = false;
     drag.current.locked = false;
+    drag.current.intercepted = false;
   };
 
   const onTouchStart = (e: React.TouchEvent) => {
@@ -182,7 +241,9 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
     if (e.touches.length !== 1) return; // ignore multi-touch (pinch etc.)
     const t = e.touches[0];
     if (t.clientX > EDGE_ZONE) return;
-    drag.current = { startX: t.clientX, startY: t.clientY, startT: Date.now(), active: true, deciding: true, locked: false };
+    // Решаем один раз в начале жеста: перехватчик мог бы исчезнуть посреди
+    // движения, и палец повёл бы страницу, которую уже некому удержать.
+    drag.current = { startX: t.clientX, startY: t.clientY, startT: Date.now(), active: true, deciding: true, locked: false, intercepted: hasBackInterceptor() };
   };
 
   const onTouchMove = (e: React.TouchEvent) => {
@@ -213,16 +274,25 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
       }
     }
     if (!s.locked) return;
+    // Страница никуда не уезжает — уезжает только её содержимое, и тащить весь
+    // слой за пальцем значило бы обещать выход из раздела, которого не будет.
+    if (s.intercepted) return;
     const width = rootRef.current?.offsetWidth || window.innerWidth;
     setLiveTransform(dx, width, false);
   };
 
-  const finishDrag = (clientX: number, startT: number, startX: number, commitEligible: boolean) => {
+  const finishDrag = (clientX: number, startT: number, startX: number, commitEligible: boolean, intercepted: boolean) => {
     const width = rootRef.current?.offsetWidth || window.innerWidth;
     const dx = Math.max(0, Math.min(clientX - startX, width));
     const dt = Math.max(1, Date.now() - startT);
     const velocity = dx / dt;
-    if (commitEligible && (dx > width * COMMIT_RATIO || velocity > VELOCITY_COMMIT)) {
+    const committed = dx > width * COMMIT_RATIO || velocity > VELOCITY_COMMIT;
+    if (intercepted) {
+      // Ничего не двигали — и снимать нечего; просто отдаём шаг внутрь.
+      if (commitEligible && committed) consumeBack();
+      return;
+    }
+    if (commitEligible && committed) {
       setLiveTransform(width, width, true);
       closingRef.current = true;
       setClosing(true);
@@ -235,19 +305,20 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
   const onTouchEnd = (e: React.TouchEvent) => {
     const s = drag.current;
     const wasLocked = s.active && s.locked;
-    const { startX, startT } = s;
+    const { startX, startT, intercepted } = s;
     s.active = false;
     if (!wasLocked || closingRef.current) return;
     const t = e.changedTouches[0];
-    finishDrag(t.clientX, startT, startX, true);
+    finishDrag(t.clientX, startT, startX, true, intercepted);
   };
 
   const onTouchCancel = () => {
     const s = drag.current;
     const wasLocked = s.active && s.locked;
+    const wasIntercepted = s.intercepted;
     s.active = false;
     // A cancelled gesture (e.g. the OS took over) never commits a close — always snap back.
-    if (!wasLocked || closingRef.current) return;
+    if (!wasLocked || closingRef.current || wasIntercepted) return;
     const width = rootRef.current?.offsetWidth || window.innerWidth;
     setLiveTransform(0, width, true);
     window.setTimeout(clearInlineTransform, CLOSE_DURATION);

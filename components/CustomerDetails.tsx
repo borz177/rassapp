@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier, Task, RetailSale} from '../types';
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
+import { useBackInterceptor } from './transitions/PagePush';
 import { formatCurrency, formatDate, normalizePhoneForWhatsApp, retailPaidAmount, retailRemaining } from '../src/utils';
 import { offlineStorage } from '../services/offlineStorage';
 import { api } from '../services/api';
@@ -670,6 +671,10 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
     // розничного покупателя — обещание раздела, которого нет.
     const showInstallmentsTab = customerSales.length > 0;
     const showHistoryTab = customerRetail.length > 0;
+
+    // Открытый договор — шаг внутрь карточки, а не отдельная страница,
+    // и свайп назад должен вернуть к списку договоров, а не закрывать клиента.
+    useBackInterceptor(!!selectedSaleId, () => setSelectedSaleId(null));
     // Последняя рассрочка может быть удалена, пока вкладка открыта — оставить
     // пользователя на исчезнувшем разделе нельзя.
     useEffect(() => {
