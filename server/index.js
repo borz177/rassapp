@@ -333,6 +333,17 @@ const checkPaymentDuplicate = async (saleData, amount, date, excludePaymentId = 
 };
 
 const uploadDir = '/var/www/rassapp/server/uploads/documents';
+
+// Картинки товаров лежат ОТДЕЛЬНО от документов клиентов и раздаются
+// без токена. Иначе их невозможно показать: <img src> не шлёт заголовок
+// x-auth-token, а маршрут /uploads/documents требует его и сверх того проверяет, что
+// файл записан документом клиента — картинка товара там не числится никогда.
+//
+// Паспорт и договор — личные документы, их закрываем. Фото товара — витрина,
+// её и показывают покупателю. Имя файла содержит случайный хвост, перебрать папку
+// нельзя — express.static без списка файлов каталог не отдаёт.
+const productImageDir = '/var/www/rassapp/server/uploads/products';
+try { fs.mkdirSync(productImageDir, { recursive: true }); } catch (e) { console.error('mkdir products:', e); }
 const upload = multer({
   // 🔹 Временное хранение в памяти для обработки
   storage: multer.memoryStorage(),
@@ -3349,11 +3360,11 @@ app.post('/api/upload/product-image', auth, upload.single('file'), async (req, r
 
     const compressed = await compressImage(req.file.buffer, req.file.mimetype, 1000, 75);
     const filename = `product-${Date.now()}-${crypto.randomUUID().slice(0, 8)}${compressed.ext}`;
-    await fs.promises.writeFile(path.join(uploadDir, filename), compressed.buffer);
+    await fs.promises.writeFile(path.join(productImageDir, filename), compressed.buffer);
 
     res.json({
       success: true,
-      fileUrl: `/uploads/documents/${filename}`,
+      fileUrl: `/uploads/products/${filename}`,
       fileSize: compressed.buffer.length,
       originalSize: req.file.size
     });
@@ -3438,6 +3449,16 @@ const userOwnsDocument = async (user, filename) => {
 };
 
 // 🔹 Отдача файлов (защищённая)
+// Картинки товаров — без проверки токена: их показывает обычный <img src>,
+// а он заголовки не отправляет. Кэш длинный: файл никогда не
+// меняется — новая картинка получает своё имя.
+app.use('/uploads/products', express.static(productImageDir, {
+  maxAge: '30d',
+  index: false,
+  dotfiles: 'deny',
+  fallthrough: false,
+}));
+
 app.get('/uploads/documents/:filename', auth, async (req, res) => {
   const filename = path.basename(req.params.filename); // защита от path traversal
   const filePath = path.join(uploadDir, filename);
