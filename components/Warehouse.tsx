@@ -803,12 +803,12 @@ const Warehouse: React.FC<WarehouseProps> = ({
               <h3 className="font-bold text-slate-800 dark:text-white">
                 {whForm.id ? 'Склад' : 'Новый склад'}
               </h3>
-              <input value={whForm.name || ''} onChange={e => setWhForm({ ...whForm, name: e.target.value })}
+              <input value={whForm.name || ''} onChange={e => setWhForm(prev => ({ ...prev, name: e.target.value }))}
                      placeholder="Название" className={inputCls} />
-              <input value={whForm.address || ''} onChange={e => setWhForm({ ...whForm, address: e.target.value })}
+              <input value={whForm.address || ''} onChange={e => setWhForm(prev => ({ ...prev, address: e.target.value }))}
                      placeholder="Адрес" className={inputCls} />
               <div>
-                <select value={whForm.accountId || ''} onChange={e => setWhForm({ ...whForm, accountId: e.target.value })}
+                <select value={whForm.accountId || ''} onChange={e => setWhForm(prev => ({ ...prev, accountId: e.target.value }))}
                         className={inputCls}>
                   <option value="">Счёт выручки не выбран</option>
                   {accounts.filter(a => !a.isArchived).map(a => (
@@ -821,7 +821,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
               </div>
               <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                 <input type="checkbox" checked={!!whForm.isMain}
-                       onChange={e => setWhForm({ ...whForm, isMain: e.target.checked })} />
+                       onChange={e => setWhForm(prev => ({ ...prev, isMain: e.target.checked }))} />
                 Основной склад
               </label>
               <div className="flex gap-2 pt-1">
@@ -880,16 +880,16 @@ const Warehouse: React.FC<WarehouseProps> = ({
                 )}
               </div>
 
-              <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Название" className={inputCls} />
+              <input value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Название" className={inputCls} />
               <div className="grid grid-cols-2 gap-2">
-                <input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} placeholder="Артикул" className={inputCls} />
-                <input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="Категория" className={inputCls} />
-                <input value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} placeholder="Цена продажи" inputMode="decimal" className={inputCls} />
-                <input value={form.buyPrice} onChange={e => setForm({ ...form, buyPrice: e.target.value })} placeholder="Цена закупа" inputMode="decimal" className={inputCls} />
-                <input value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="Ед. изм." className={inputCls} />
-                <input value={form.minStock} onChange={e => setForm({ ...form, minStock: e.target.value })} placeholder="Мин. остаток" inputMode="decimal" className={inputCls} />
+                <input value={form.sku} onChange={e => setForm(prev => ({ ...prev, sku: e.target.value }))} placeholder="Артикул" className={inputCls} />
+                <input value={form.category} onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))} placeholder="Категория" className={inputCls} />
+                <input value={form.price} onChange={e => setForm(prev => ({ ...prev, price: e.target.value }))} placeholder="Цена продажи" inputMode="decimal" className={inputCls} />
+                <input value={form.buyPrice} onChange={e => setForm(prev => ({ ...prev, buyPrice: e.target.value }))} placeholder="Цена закупа" inputMode="decimal" className={inputCls} />
+                <input value={form.unit} onChange={e => setForm(prev => ({ ...prev, unit: e.target.value }))} placeholder="Ед. изм." className={inputCls} />
+                <input value={form.minStock} onChange={e => setForm(prev => ({ ...prev, minStock: e.target.value }))} placeholder="Мин. остаток" inputMode="decimal" className={inputCls} />
               </div>
-              <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+              <textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
                         placeholder="Описание" rows={2} className={inputCls} />
 
               {editing && (

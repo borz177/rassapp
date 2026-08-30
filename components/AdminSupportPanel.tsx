@@ -700,14 +700,14 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
             <input
               type="text"
               value={broadcastData.title}
-              onChange={e => setBroadcastData({ ...broadcastData, title: e.target.value })}
+              onChange={e => setBroadcastData(prev => ({ ...prev, title: e.target.value }))}
               placeholder="Заголовок"
               className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl mb-3 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
             />
 
             <select
               value={broadcastData.targetRole}
-              onChange={e => setBroadcastData({ ...broadcastData, targetRole: e.target.value })}
+              onChange={e => setBroadcastData(prev => ({ ...prev, targetRole: e.target.value }))}
               className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl mb-3 text-sm focus:ring-2 focus:ring-purple-500 bg-white dark:bg-slate-900 dark:text-white"
             >
               <option value="">Все пользователи</option>
@@ -718,7 +718,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
 
             <textarea
               value={broadcastData.message}
-              onChange={e => setBroadcastData({ ...broadcastData, message: e.target.value })}
+              onChange={e => setBroadcastData(prev => ({ ...prev, message: e.target.value }))}
               placeholder="Текст сообщения..."
               rows={4}
               className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl mb-4 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"

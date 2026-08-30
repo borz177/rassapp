@@ -145,7 +145,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
       </label>
       <div className="flex-1 space-y-2">
-          <input
+          <input autoComplete="off" autoCorrect="off" spellCheck={false}
               placeholder="ФИО Клиента"
               className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
               value={newName}
@@ -155,7 +155,7 @@ const handleSubmit = async (e: React.FormEvent) => {
       </div>
     </div>
 
-    <input
+    <input autoComplete="off" autoCorrect="off" spellCheck={false}
       placeholder="Номер телефона"
       className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
       value={newPhone}
@@ -175,7 +175,7 @@ const handleSubmit = async (e: React.FormEvent) => {
         {/* 🔹 Адрес (перенесён сюда) */}
         <div>
           <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Адрес</label>
-          <input
+          <input autoComplete="off" autoCorrect="off" spellCheck={false}
             type="text"
             className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm"
             value={newAddress}
@@ -191,7 +191,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Серия</label>
-              <input
+              <input autoComplete="off" autoCorrect="off" spellCheck={false}
                 type="text"
                 placeholder="4501"
                 className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono uppercase"
@@ -202,7 +202,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             </div>
             <div>
               <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Номер</label>
-              <input
+              <input autoComplete="off" autoCorrect="off" spellCheck={false}
                 type="text"
                 placeholder="123456"
                 className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono"
@@ -216,7 +216,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           {/* Кем выдан */}
           <div className="mt-3">
             <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Кем выдан</label>
-            <input
+            <input autoComplete="off" autoCorrect="off" spellCheck={false}
               type="text"
               className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm"
               value={newPassportIssuedBy}

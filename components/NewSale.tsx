@@ -1299,7 +1299,7 @@ if (mode === 'CASH') {
               <input type="date" required
                      className="w-full p-2 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm border-slate-300 dark:border-slate-600 focus:border-indigo-500"
                      value={formData.startDate}
-                     onChange={e => setFormData({...formData, startDate: e.target.value})}/>
+                     onChange={e => setFormData(prev => ({ ...prev, startDate: e.target.value }))}/>
             </div>
             {mode === 'INSTALLMENT' && (
                 <div className="w-40">
@@ -1339,7 +1339,14 @@ if (mode === 'CASH') {
 
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Товар</label>
+          {/* autoComplete/autoCorrect выключены намеренно: у поля своя подсказка
+              по каталогу, а системное автозаполнение Android на переходе фокуса
+              подставляет собственное значение поверх набранного. */}
           <input type="text"
+                 autoComplete="off"
+                 autoCorrect="off"
+                 autoCapitalize="off"
+                 spellCheck={false}
                  className="w-full p-3 border rounded-lg outline-none text-slate-900 dark:text-white placeholder:text-slate-400 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
                  placeholder="Введите название товара..."
                  value={formData.productName}
@@ -1364,7 +1371,7 @@ if (mode === 'CASH') {
           <select required
                   className="w-full p-3 bg-white dark:bg-slate-900 border rounded-lg outline-none text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
                   value={formData.accountId}
-                  onChange={e => setFormData({...formData, accountId: e.target.value})}>
+                  onChange={e => setFormData(prev => ({ ...prev, accountId: e.target.value }))}>
             {/* Скрытые счета не предлагаем, но уже выбранный оставляем — иначе при
                 редактировании договора со скрытым счётом значение слетело бы на чужой */}
             {accounts.filter(a => !a.isArchived || a.id === formData.accountId)
@@ -1379,7 +1386,7 @@ if (mode === 'CASH') {
                 className={`w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white ${isFinancialLocked ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
                 value={formData.supplierId || ''}
                 disabled={isFinancialLocked}
-                onChange={e => { if (isFinancialLocked) return; setFormData({...formData, supplierId: e.target.value || undefined}); }}>
+                onChange={e => { if (isFinancialLocked) return; setFormData(prev => ({ ...prev, supplierId: e.target.value || undefined })); }}>
               <option value="">Без поставщика (списать закуп сразу)</option>
               {supplierList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
@@ -1405,7 +1412,7 @@ if (mode === 'CASH') {
                   value={formData.buyPrice === 0 ? '' : formData.buyPrice}
                   onChange={e => {
                     if (isFinancialLocked) return;
-                    setFormData({...formData, buyPrice: e.target.value});
+                    setFormData(prev => ({ ...prev, buyPrice: e.target.value }));
                     setIsPriceManual(false);
                   }}
                   placeholder="0"
@@ -1421,7 +1428,7 @@ if (mode === 'CASH') {
                       value={formData.interestRate === 0 ? '' : formData.interestRate}
                       onChange={e => {
                         if (isFinancialLocked) return;
-                        setFormData({...formData, interestRate: e.target.value});
+                        setFormData(prev => ({ ...prev, interestRate: e.target.value }));
                         setIsPriceManual(false);
                       }}
                       placeholder="0"
@@ -1463,10 +1470,7 @@ if (mode === 'CASH') {
                   onChange={e => {
                     if (isFinancialLocked) return;
                     const val = e.target.value;
-                    setFormData({
-                      ...formData,
-                      price: val === '' ? 0 : Number(val)
-                    });
+                    setFormData(prev => ({ ...prev, price: val === '' ? 0 : Number(val) }));
                     setIsPriceManual(true);
                   }}
                   placeholder="0"
@@ -1496,7 +1500,7 @@ if (mode === 'CASH') {
                       max="24"
                       className={`w-full p-3 border rounded-lg outline-none text-slate-900 dark:text-white bg-white dark:bg-slate-900 ${isFinancialLocked ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
                       value={formData.installments === 0 ? '' : formData.installments}
-                      onChange={e => !isFinancialLocked && setFormData({...formData, installments: e.target.value})}
+                      onChange={e => !isFinancialLocked && setFormData(prev => ({ ...prev, installments: e.target.value }))}
                       placeholder="0"
                       disabled={isFinancialLocked}/>
                   {isFinancialLocked && (
@@ -1524,7 +1528,7 @@ if (mode === 'CASH') {
                         value={formData.downPayment === 0 ? '' : formData.downPayment}
                         onChange={e => {
                           if (isFinancialLocked) return;
-                          setFormData({...formData, downPayment: e.target.value});
+                          setFormData(prev => ({ ...prev, downPayment: e.target.value }));
                           if (downPaymentFromMarkup) setDownPaymentFromMarkup(false);
                         }}
                         placeholder="0"
@@ -1578,12 +1582,12 @@ if (mode === 'CASH') {
                 type="text"
                 className="w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
                 value={formData.guarantorName}
-                onChange={e => setFormData({...formData, guarantorName: e.target.value})}/></div>
+                onChange={e => setFormData(prev => ({ ...prev, guarantorName: e.target.value }))}/></div>
             <div><label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Телефон поручителя</label><input
                 type="text"
                 className="w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
                 value={formData.guarantorPhone}
-                onChange={e => setFormData({...formData, guarantorPhone: e.target.value})}/></div>
+                onChange={e => setFormData(prev => ({ ...prev, guarantorPhone: e.target.value }))}/></div>
           </div>
         </div>
 

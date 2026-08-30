@@ -439,11 +439,11 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Номер</label>
-                  <input value={form.number} onChange={e => setForm({ ...form, number: e.target.value })} className={`${input} mt-1`} />
+                  <input value={form.number} onChange={e => setForm(prev => ({ ...prev, number: e.target.value }))} className={`${input} mt-1`} />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Дата</label>
-                  <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className={`${input} mt-1`} />
+                  <input type="date" value={form.date} onChange={e => setForm(prev => ({ ...prev, date: e.target.value }))} className={`${input} mt-1`} />
                 </div>
               </div>
 
@@ -451,14 +451,14 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
                 <>
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Покупатель</label>
-                    <select value={form.customerId} onChange={e => setForm({ ...form, customerId: e.target.value })} className={`${input} mt-1`}>
+                    <select value={form.customerId} onChange={e => setForm(prev => ({ ...prev, customerId: e.target.value }))} className={`${input} mt-1`}>
                       <option value="">Розничный покупатель</option>
                       {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Счёт</label>
-                    <select value={form.accountId} onChange={e => setForm({ ...form, accountId: e.target.value })} className={`${input} mt-1`}>
+                    <select value={form.accountId} onChange={e => setForm(prev => ({ ...prev, accountId: e.target.value }))} className={`${input} mt-1`}>
                       {accounts.filter(a => !a.isArchived || a.id === form.accountId)
                                .map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
@@ -467,7 +467,7 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
                     form.customerId ? (
                       <div className="relative flex p-1 rounded-2xl bg-slate-100 dark:bg-slate-700">
                         {([[false, 'Оплачено'], [true, 'В долг']] as const).map(([v, label]) => (
-                          <button key={label} type="button" onClick={() => setForm({ ...form, isCredit: v })}
+                          <button key={label} type="button" onClick={() => setForm(prev => ({ ...prev, isCredit: v }))}
                                   className={`flex-1 min-w-0 py-2 rounded-xl text-xs font-bold transition-colors ${
                                     form.isCredit === v
                                       ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm'
@@ -487,7 +487,7 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
               {doc.kind === 'IN' && (
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Поставщик</label>
-                  <select value={form.supplierId} onChange={e => setForm({ ...form, supplierId: e.target.value })} className={`${input} mt-1`}>
+                  <select value={form.supplierId} onChange={e => setForm(prev => ({ ...prev, supplierId: e.target.value }))} className={`${input} mt-1`}>
                     <option value="">Не указан</option>
                     {suppliers.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
                   </select>
@@ -496,7 +496,7 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
 
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Комментарий</label>
-                <input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} className={`${input} mt-1`} />
+                <input value={form.note} onChange={e => setForm(prev => ({ ...prev, note: e.target.value }))} className={`${input} mt-1`} />
               </div>
 
               {/* Количества правятся не здесь: остаток объясняется движениями, и
