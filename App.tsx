@@ -1083,6 +1083,24 @@ useEffect(() => {
       const installedCode = parseInt(info.build, 10); // на Android AppInfo.build === versionCode
       if (!Number.isFinite(installedCode) || latest.androidVersionCode <= installedCode) return;
 
+      // Об одной и той же версии не напоминаем чаще раза в сутки. Предложение
+      // обновиться при каждом запуске — это не забота, а помеха: человек уже
+      // видел его и ответил. А если обновление почему-то не встаёт (так и было,
+      // когда сервер объявлял версию, которой нет на раздаче), окно вообще
+      // превращается в неустранимое.
+      const DISMISS_KEY = 'finuchet_apk_update_dismissed';
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      try {
+        const seen = JSON.parse(localStorage.getItem(DISMISS_KEY) || '{}');
+        if (seen.code === latest.androidVersionCode && Date.now() - (seen.at || 0) < DAY_MS) return;
+      } catch { /* повреждённая запись — просто покажем окно */ }
+      const remember = () => {
+        try {
+          localStorage.setItem(DISMISS_KEY, JSON.stringify({ code: latest.androidVersionCode, at: Date.now() }));
+        } catch { /* хранилище недоступно — переживём */ }
+      };
+      remember();
+
       const apkUrl = new URL(latest.apkUrl, window.location.origin).toString();
       showNotificationModal(
         '📲 Доступно обновление',
