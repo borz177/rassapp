@@ -558,7 +558,7 @@ export const api = {
     getSyncStatus: async (): Promise<{
       pending: number;
       failed: number;
-      items: { id: string; collection?: string; action: string; failed: boolean; retryCount: number; error?: string; timestamp: number; payload?: any; itemId?: string }[];
+      items: { id: string; collection?: string; action: string; failed: boolean; retryCount: number; error?: string; timestamp: number; payload?: any; itemId?: string; intent?: { kind: string; label?: string } }[];
     }> => {
       try {
         const queue = await offlineStorage.getQueue();
@@ -575,6 +575,7 @@ export const api = {
             timestamp: i.timestamp,
             payload: i.payload,
             itemId: i.itemId,
+            intent: i.intent,
           })),
         };
       } catch {
@@ -597,7 +598,15 @@ export const api = {
       return stuck.length;
     },
 
-    saveItem: async (type: string, item: any, options?: { skipLimitCheck?: boolean; sales?: Sale[] }): Promise<any> => {
+    /**
+     * `intent` — чем эта запись является для человека.
+     *
+     * По самой записи это не восстановить: платёж по рассрочке и правка договора
+     * приходят одним и тем же объектом sales, и список неотправленного называл
+     * оба «Договором». Смысл операции знает только тот, кто её затеял, — он его и
+     * передаёт.
+     */
+    saveItem: async (type: string, item: any, options?: { skipLimitCheck?: boolean; sales?: Sale[]; intent?: { kind: string; label?: string } }): Promise<any> => {
       console.log(`💾 Saving ${type}:`, { id: item.id });
 
       try {
@@ -634,8 +643,9 @@ export const api = {
     await offlineStorage.addToQueue({
       type: 'saveItem',
       collection: type,
-      payload: item
-    });
+      payload: item,
+      intent: options?.intent,
+    } as any);
     throw error;
   }
 
@@ -688,8 +698,9 @@ export const api = {
     await offlineStorage.addToQueue({
       type: 'saveItem',
       collection: type,
-      payload: item
-    });
+      payload: item,
+      intent: options?.intent,
+    } as any);
     
     // 🔑 🔑 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: возвращаем с флагом _isOffline!
     return { ...item, _isOffline: true };

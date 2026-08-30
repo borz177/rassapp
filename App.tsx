@@ -1924,7 +1924,9 @@ const handleSaveSale = async (data: any): Promise<any> => {
     }
 
     // 🔹 3. Сохранение на сервер (или в очередь офлайн)
-    const savedSale = await api.saveItem('sales', saleToSave);
+    const savedSale = await api.saveItem('sales', saleToSave, {
+      intent: { kind: 'contract', label: saleToSave.productName },
+    });
     
     // 🔑 🔑 🔑 КЛЮЧЕВОЕ: проверяем флаг _isOffline
     const isOfflineMode = savedSale._isOffline === true;
@@ -2297,7 +2299,14 @@ const handleIncomeSubmit = async (data: any) => {
             // а если сохранение реально упало — откатываем локальное изменение и сообщаем
             // пользователю, чтобы платёж не "терялся" молча.
             try {
-                const savedSale = await api.saveItem('sales', finalSale);
+                const savedSale = await api.saveItem('sales', finalSale, {
+                  // Платёж сохраняется как договор целиком — без этой подписи
+                  // список неотправленного назвал бы его «Договором».
+                  intent: {
+                    kind: 'payment',
+                    label: `${Number(amount).toLocaleString('ru-RU')} ₽ · ${sale.productName}`,
+                  },
+                });
                 updateList(setSales, savedSale);
             } catch (err: any) {
                 // 🔒 При TOKEN_EXPIRED api.saveItem УЖЕ положил платёж в офлайн-очередь
@@ -3027,7 +3036,12 @@ const confirmDeleteCustomer = async () => {
     };
     updateList(setRetailSales, updated);
     try {
-      const saved = await api.saveItem('retailSales', updated);
+      const saved = await api.saveItem('retailSales', updated, {
+        intent: {
+          kind: 'retailPayment',
+          label: `${payment.amount.toLocaleString('ru-RU')} ₽${sale.docNumber ? ` по чеку №${sale.docNumber}` : ''}`,
+        },
+      });
       updateList(setRetailSales, saved);
     } catch (err: any) {
       if (err?.message === 'TOKEN_EXPIRED') return;
@@ -3202,6 +3216,11 @@ const confirmDeleteCustomer = async () => {
 
     const savedSale = await api.saveItem('retailSales', {
       ...sale, userId: ownerId, createdByUserId: user.id,
+    }, {
+      intent: {
+        kind: 'retailSale',
+        label: `${sale.total.toLocaleString('ru-RU')} ₽${sale.docNumber ? ` · №${sale.docNumber}` : ''}`,
+      },
     });
     updateList(setRetailSales, savedSale);
 
@@ -3550,7 +3569,9 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
             };
 
             try {
-                const saved = await api.saveItem('sales', updatedSale);
+                const saved = await api.saveItem('sales', updatedSale, {
+                  intent: { kind: 'paymentUndo', label: sale.productName },
+                });
                 updateList(setSales, saved);
 
                 //  Показываем уведомление о восстановленной сумме
@@ -4515,16 +4536,30 @@ if (!user && !showSplash) {
               onUpdateProfile={handleUpdateProfile}
               onBack={requestClose}
               onLogout={() => {
-                // Очередь живёт в хранилище браузера и привязана к устройству,
-                // а не к учётной записи. Выйти с неотправленными записями —
-                // законное право, но человек должен знать цену.
-                if (syncStatus.pending + syncStatus.failed > 0 && !window.confirm(
-                  `${syncStatus.pending + syncStatus.failed} записей ещё не отправлено на сервер. ` +
-                  `Если выйти сейчас, они останутся только на этом устройстве и могут потеряться. Всё равно выйти?`
-                )) return;
-                localStorage.removeItem('user');
-                localStorage.removeItem('token');
-                setUser(null);
+                const doLogout = () => {
+                  localStorage.removeItem('user');
+                  localStorage.removeItem('token');
+                  setUser(null);
+                };
+                // Очередь живёт в хранилище браузера и привязана к устройству, а
+                // не к учётной записи. Выйти с неотправленными записями — законное
+                // право, но человек должен знать цену. Спрашиваем своим окном, а не
+                // системным confirm: тот выглядит чужим и его проматывают не читая.
+                const stuck = syncStatus.pending + syncStatus.failed;
+                if (stuck > 0) {
+                  showNotificationModal(
+                    'Есть неотправленные записи',
+                    `${stuck} ${stuck === 1 ? 'запись ещё не отправлена' : 'записей ещё не отправлено'} на сервер. ` +
+                    'Они хранятся на этом устройстве и уедут при первой связи. ' +
+                    'Если выйти сейчас, добраться до них будет нельзя.',
+                    'warning',
+                    'Всё равно выйти',
+                    doLogout,
+                    'Остаться'
+                  );
+                  return;
+                }
+                doLogout();
               }}
 
             />

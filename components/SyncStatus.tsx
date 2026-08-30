@@ -11,6 +11,8 @@ export interface SyncQueueItem {
   timestamp: number;
   payload?: any;
   itemId?: string;
+  /** Чем запись является для человека: платёж, отмена платежа, договор */
+  intent?: { kind: string; label?: string };
 }
 
 export interface SyncStatusData {
@@ -47,7 +49,21 @@ const COLLECTION_LABEL: Record<string, string> = {
  * имя клиента, номер чека. Идентификатор показывать бессмысленно — по нему
  * ничего не вспомнить.
  */
+const INTENT_LABEL: Record<string, string> = {
+  payment: 'Платёж',
+  paymentUndo: 'Отмена платежа',
+  contract: 'Договор',
+  retailPayment: 'Оплата долга',
+  retailSale: 'Чек магазина',
+};
+
 const describe = (item: SyncQueueItem): string => {
+  // Смысл операции важнее того, в какой коллекции она лежит: приём платежа
+  // сохраняется как договор, и без этого список называл платёж «Договором».
+  if (item.intent) {
+    const kind = INTENT_LABEL[item.intent.kind] || item.intent.kind;
+    return item.intent.label ? `${kind} · ${item.intent.label}` : kind;
+  }
   const p = item.payload || {};
   const name = p.productName || p.name || p.title
     || (p.docNumber ? `№${p.docNumber}` : null)
