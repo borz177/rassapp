@@ -7,6 +7,7 @@ import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
 import { api } from '../services/api';
 import { getSellerPhone, escapeHtml, formatDate, addMonthsClamped } from '../src/utils';
+import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } from './feedback';
 
 interface NewSaleProps {
@@ -1018,21 +1019,17 @@ if (mode === 'CASH') {
       setShowWhatsAppConfirmModal(false);
       setSendStage('idle');
 
-      // Приложение обновилось, кеш устарел — просим перезагрузить
-      if (error?.isUpdateRequired || error?.message === 'APP_UPDATE_REQUIRED' ||
-          error?.message?.includes('MIME') || error?.message?.includes('text/html')) {
-        if (onShowNotification) {
+      // Старая сборка на руках: нужного куска приложения на сервере уже нет.
+      // Перезагружаемся сами — выбора у человека всё равно нет, а окно
+      // «Требуется обновление» выглядит поломкой и пугает. Договор при этом уже
+      // сохранён: сюда попадают только с отправки PDF, после записи на сервер.
+      if (isStaleBundleError(error)) {
+        if (!reloadForNewBuild() && onShowNotification) {
           onShowNotification(
-            '🔄 Требуется обновление',
-            'Приложение было обновлено. Перезагрузите страницу и попробуйте снова.',
-            'warning',
-            'Перезагрузить',
-            () => window.location.reload()
+            'Не удалось отправить',
+            'Приложение обновилось. Закройте и откройте его — договор уже сохранён.',
+            'warning'
           );
-        } else {
-          if (window.confirm('Приложение обновилось. Нажмите OK для перезагрузки.')) {
-            window.location.reload();
-          }
         }
         return;
       }

@@ -6,6 +6,7 @@ import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
 import { getInvestorAccount, retailRemaining } from '../src/utils';
+import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, type SendStage } from './feedback';
 
 interface NewIncomeProps {
@@ -399,11 +400,10 @@ const commonData = {
           } catch (error: any) {
             setSendStage('idle');
             console.error("PDF generation error:", error);
-            if (error?.isUpdateRequired || error?.message === 'APP_UPDATE_REQUIRED' ||
-                error?.message?.includes('MIME') || error?.message?.includes('text/html')) {
-              if (window.confirm('Приложение было обновлено. Нажмите OK для перезагрузки, затем повторите отправку.')) {
-                window.location.reload();
-              }
+            // Старая сборка: перезагружаемся сами, а не спрашиваем. Платёж уже
+            // зачислен — сюда попадают только с отправки PDF.
+            if (isStaleBundleError(error)) {
+              reloadForNewBuild();
             } else {
               alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
             }
