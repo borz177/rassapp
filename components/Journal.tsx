@@ -6,6 +6,7 @@ import { formatCurrency } from '../src/utils';
 import { buildJournalDocs, KIND_LABEL, printJournalDoc, type DocKind, type JournalDoc } from '../src/journalDocs';
 import DocumentCard from './DocumentCard';
 import TopBarBack from './TopBarBack';
+import UnsyncedMark from './UnsyncedMark';
 import SubPage from './transitions/SubPage';
 import ModalPortal from './ModalPortal';
 import TabPill from './TabPill';
@@ -175,6 +176,7 @@ const Journal: React.FC<JournalProps> = ({
                           <p className="font-bold text-slate-800 dark:text-white truncate">
                             {KIND_LABEL[d.kind]} №{d.number}
                           </p>
+                          <UnsyncedMark id={d.sale?.id || d.movements?.[0]?.id} />
                         </div>
                         <p className="font-bold text-slate-800 dark:text-white shrink-0">
                           {formatCurrency(d.total, cents)} ₽

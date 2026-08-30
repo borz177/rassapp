@@ -79,21 +79,6 @@ const SyncStatus: React.FC<SyncStatusProps> = ({ status, isOnline, isSyncing, on
 
   const alarming = status.failed > 0;
 
-  /**
-   * Выгрузка очереди в файл — аварийный выход. Данные лежат в хранилище
-   * браузера: очистка данных сайта, переустановка PWA или новое устройство — и
-   * несохранённого больше нет. Файл переживает всё это.
-   */
-  const saveToFile = () => {
-    const blob = new Blob([JSON.stringify(status.items, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `finuchet-неотправленное-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-
   return (
     <>
       <button
@@ -159,18 +144,12 @@ const SyncStatus: React.FC<SyncStatusProps> = ({ status, isOnline, isSyncing, on
               </div>
 
               <div className="p-4 border-t border-slate-100 dark:border-slate-700 space-y-2 shrink-0">
-                <div className="flex gap-2">
-                  <button onClick={saveToFile}
-                          className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
-                    Сохранить в файл
-                  </button>
-                  <button
-                    disabled={busy || isSyncing}
-                    onClick={async () => { setBusy(true); try { await onRetry(); } finally { setBusy(false); } }}
-                    className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm disabled:opacity-50">
-                    {busy || isSyncing ? 'Отправляем…' : 'Отправить снова'}
-                  </button>
-                </div>
+                <button
+                  disabled={busy || isSyncing}
+                  onClick={async () => { setBusy(true); try { await onRetry(); } finally { setBusy(false); } }}
+                  className="w-full py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm disabled:opacity-50">
+                  {busy || isSyncing ? 'Отправляем…' : 'Отправить снова'}
+                </button>
                 <button onClick={() => setOpen(false)}
                         className="w-full py-2 rounded-xl text-slate-400 font-bold text-sm">
                   Закрыть

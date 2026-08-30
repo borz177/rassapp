@@ -3,6 +3,7 @@ import { Sale, Expense, Account, Customer, User, Investor, RetailSale} from '../
 import { formatCurrency, getManagerSharePercent, getAccountShares } from '../src/utils';
 import { ICONS } from '../constants';
 import ModalPortal from './ModalPortal';
+import UnsyncedMark from './UnsyncedMark';
 
 interface OperationsProps {
   sales: Sale[];
@@ -380,7 +381,8 @@ const Operations: React.FC<OperationsProps> = ({
                     : ICONS.Income}
             </div>
             <div>
-                <p className="font-bold text-slate-800 dark:text-white text-sm">
+                <p className="font-bold text-slate-800 dark:text-white text-sm flex items-center gap-1.5">
+                    <UnsyncedMark id={op.raw?.id} />
                     {op.title}
                     {op.category === 'Salary' && op.raw?.employeeId && (
                         <span className="ml-1 text-xs text-blue-600 dark:text-blue-400 font-normal">

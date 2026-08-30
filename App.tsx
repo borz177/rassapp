@@ -55,6 +55,7 @@ import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
 import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances} from './src/utils';
+import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
@@ -282,11 +283,16 @@ const mergeServerData = <T extends { id: string }>(
     fresh: T[],
     collectionName: string = 'unknown'
 ): T[] => {
+    // 🔒 Записи, которые ещё не уехали на сервер, слияние не трогает НИКОГДА.
+    // Сервер о них не знает по определению, поэтому любое правило вида «сервер
+    // не вернул — значит нет» стёрло бы работу человека без следа: в очереди она
+    // осталась бы, а с экрана исчезла.
+    const keepUnsynced = (list: T[]) => list.filter(item => getUnsyncedIds().has(item.id));
+
     // 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ДЛЯ СОТРУДНИКОВ:
     // Если вошел сотрудник, и сервер вернул пустой массив (нет доступа), мы ОБЯЗАНЫ очистить кэш.
     if (user?.role === 'employee' && fresh.length === 0 && current.length > 0) {
-        
-        return [];
+        return keepUnsynced(current);
     }
 
     // 🔹 ЗАЩИТА 1: Если сервер вернул пустой массив — НЕ перезаписываем (ТОЛЬКО для менеджеров/админов)
@@ -538,7 +544,11 @@ useEffect(() => {
   window.addEventListener('offline', handleOffline);
 
   if (navigator.onLine) {
-    setTimeout(() => handleSync(), 1000);
+    // Снимаем пометку «не удалось» один раз за запуск. Отказ сервера почти
+    // всегда временный по сути — истёк тариф, кончился лимит, слетели права, —
+    // но помеченная запись не отправлялась больше НИКОГДА, даже после оплаты.
+    // Раз за запуск — и попытки ограничены, и запись не хоронится навсегда.
+    setTimeout(() => { api.retryFailed().finally(() => handleSync()); }, 1000);
   }
 
   return () => {
@@ -648,7 +658,15 @@ useEffect(() => {
 
 // 🔹 В App.tsx — исправленная часть handleSync
   const refreshSyncStatus = React.useCallback(async () => {
-    try { setSyncStatus(await api.getSyncStatus()); } catch { /* хранилище недоступно — не мешаем работе */ }
+    try {
+      const status = await api.getSyncStatus();
+      setSyncStatus(status);
+      // Идентификаторы отдаём в общее хранилище — по ним списки рисуют точку
+      // «есть только на этом устройстве», не получая ничего через пропсы.
+      setUnsyncedIds(
+        status.items.map(i => i.payload?.id || i.itemId).filter(Boolean) as string[]
+      );
+    } catch { /* хранилище недоступно — не мешаем работе */ }
   }, []);
 
   // Очередь меняется и без синхронизации — при каждом сохранении без связи,
@@ -4497,6 +4515,13 @@ if (!user && !showSplash) {
               onUpdateProfile={handleUpdateProfile}
               onBack={requestClose}
               onLogout={() => {
+                // Очередь живёт в хранилище браузера и привязана к устройству,
+                // а не к учётной записи. Выйти с неотправленными записями —
+                // законное право, но человек должен знать цену.
+                if (syncStatus.pending + syncStatus.failed > 0 && !window.confirm(
+                  `${syncStatus.pending + syncStatus.failed} записей ещё не отправлено на сервер. ` +
+                  `Если выйти сейчас, они останутся только на этом устройстве и могут потеряться. Всё равно выйти?`
+                )) return;
                 localStorage.removeItem('user');
                 localStorage.removeItem('token');
                 setUser(null);

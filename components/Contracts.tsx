@@ -4,6 +4,7 @@ import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
 import { formatCurrency, formatDate, escapeHtml, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
+import UnsyncedMark from './UnsyncedMark';
 import { createPortal } from 'react-dom';
 import { api } from '../services/api';
 
@@ -1090,8 +1091,10 @@ useEffect(() => {
 
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-slate-800 dark:text-white text-sm truncate" title={customer?.name}>
-                    {customer?.name || 'Неизвестно'}
+                  <p className="font-semibold text-slate-800 dark:text-white text-sm truncate flex items-center gap-1.5" title={customer?.name}>
+                    <span className="truncate">{customer?.name || 'Неизвестно'}</span>
+                    {/* Точка, если договор ещё только на этом устройстве. */}
+                    <UnsyncedMark id={sale.id} />
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5" title={sale.productName}>
                     {sale.productName}
