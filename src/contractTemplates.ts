@@ -314,16 +314,60 @@ const CLASSIC_STYLES = `
 
 // ─── Сборка документа ───────────────────────────────────────────────────────
 
+/**
+ * Ширина листа A4 при 96 dpi. По ней раскладывается договор везде: на печати, в
+ * предпросмотре и в PDF — иначе один и тот же документ выглядел бы по-разному в
+ * зависимости от того, с чего его открыли.
+ */
+export const CONTRACT_SHEET_WIDTH_PX = 794;
+
 const SHARED_HEAD = `
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { margin: 0; background: #fff; }
   .no-print { position: fixed; top: 10px; right: 10px; padding: 8px 14px; border: 0;
-              border-radius: 8px; background: #4f46e5; color: #fff; font: inherit; cursor: pointer; }
-  @media print { .no-print { display: none } .contract-sheet { padding: 12mm } }
+              border-radius: 8px; background: #4f46e5; color: #fff; font: inherit; cursor: pointer;
+              z-index: 10; }
+
+  /* Лист всегда раскладывается по ширине A4, а не по ширине экрана.
+     Без этого договор, открытый с телефона, верстался на 375 точек: строки
+     переносились, таблица растягивалась в высоту, и на бумаге тот же документ
+     занимал две-три страницы вместо одной. На компьютере окно и так близко к
+     A4, поэтому расхождение было видно только на телефоне. */
+  .contract-sheet { width: ${CONTRACT_SHEET_WIDTH_PX}px; margin: 0 auto; transform-origin: top center; }
+
+  @media print {
+    @page { size: A4 portrait; margin: 12mm; }
+    .no-print { display: none }
+    /* На бумаге поля задаёт @page — своя ширина и отступы листа тут только мешают. */
+    .contract-sheet { width: auto; margin: 0; padding: 0; transform: none !important; }
+  }
 `;
 
-/** Ширина листа A4 при 96 dpi — по ней снимается PDF, чтобы пропорции совпали с печатью. */
-export const CONTRACT_SHEET_WIDTH_PX = 794;
+/**
+ * Подгонка листа под узкий экран.
+ *
+ * Ширина листа фиксирована, поэтому на телефоне он не помещается и его пришлось
+ * бы двигать пальцем. Уменьшаем целиком — так виден весь документ сразу, а
+ * раскладка остаётся печатной. Только на экране: печать идёт по @page.
+ */
+const FIT_SCRIPT = `
+  (function () {
+    var sheet = document.querySelector('.contract-sheet');
+    if (!sheet) return;
+    function fit() {
+      var w = document.documentElement.clientWidth;
+      var scale = Math.min(1, w / ${CONTRACT_SHEET_WIDTH_PX});
+      sheet.style.transform = scale < 1 ? 'scale(' + scale + ')' : '';
+      // Уменьшенный лист занимает меньше места по высоте, но поток об этом не
+      // знает — иначе внизу оставалась бы пустая полоса в треть экрана.
+      document.body.style.height = scale < 1 ? (sheet.offsetHeight * scale) + 'px' : '';
+    }
+    fit();
+    window.addEventListener('resize', fit);
+    window.addEventListener('beforeprint', function () { sheet.style.transform = ''; });
+    window.addEventListener('afterprint', fit);
+  })();
+`;
 
 /**
  * Разметка договора без обёртки документа: тот же лист, но пригодный для вставки
@@ -365,6 +409,7 @@ export const buildContractHtml = (
 <body>
   ${options.withPrintButton ? '<button class="no-print" onclick="window.close()">✕ Закрыть</button>' : ''}
   <div class="contract-sheet">${body}</div>
+  <script>${FIT_SCRIPT}<\/script>
   ${options.withPrintButton ? '<script>window.onload = function () { setTimeout(function () { window.print(); }, 300); }<\/script>' : ''}
 </body>
 </html>`;
