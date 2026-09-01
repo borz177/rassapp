@@ -345,9 +345,18 @@ module.exports = ({ pool, transporter, auth, getEffectivePlan, generateCode }) =
 
     // --- РОУТЫ ---
 
-    const publicView = (row, user) => ({
+    const publicView = (row, user) => {
+      const allowed = allowedFrequencies(user.plan);
+      // Тариф мог понизиться после того, как выбрали ежедневную копию: в строке
+      // осталось DAILY, а на «Старте» его нет. Показывать сохранённое значение
+      // нельзя — отметка стояла бы на недоступном пункте, и включить копирование
+      // было невозможно: включение отправляло бы ту самую недоступную частоту,
+      // и сервер отвечал отказом. Показываем ближайшую доступную.
+      const stored = row?.frequency ?? 'MONTHLY';
+      const frequency = allowed.includes(stored) ? stored : allowed[allowed.length - 1];
+      return {
         enabled: row?.enabled ?? false,
-        frequency: row?.frequency ?? 'MONTHLY',
+        frequency,
         extraEmail: row?.extra_email ?? null,
         extraEmailVerified: row?.extra_email_verified ?? false,
         extraEmailPending: row?.extra_email_pending ?? null,
@@ -357,8 +366,9 @@ module.exports = ({ pool, transporter, auth, getEffectivePlan, generateCode }) =
         lastError: row?.last_error ?? null,
         accountEmail: user.email,
         plan: user.plan,
-        allowedFrequencies: allowedFrequencies(user.plan),
-    });
+        allowedFrequencies: allowed,
+      };
+    };
 
     const registerRoutes = (app) => {
         // Настройки резервного копирования принадлежат владельцу данных.

@@ -104,10 +104,17 @@ const BackupSettingsCard: React.FC<BackupSettingsCardProps> = ({ onNavigate }) =
 
   const save = (patch: { enabled?: boolean; frequency?: BackupFrequency }) => {
     if (!settings) return;
+    // Включение отправляет текущую частоту — и если она недоступна на тарифе
+    // (осталась с прежнего, более высокого тарифа), сервер отказывал, и включить
+    // копирование было нельзя вовсе. Берём ближайшую доступную.
+    const current = patch.frequency ?? settings.frequency;
+    const frequency = settings.allowedFrequencies.includes(current)
+      ? current
+      : settings.allowedFrequencies[settings.allowedFrequencies.length - 1];
     runAction(async () => {
       const updated = await api.updateBackupSettings({
         enabled: patch.enabled ?? settings.enabled,
-        frequency: patch.frequency ?? settings.frequency,
+        frequency,
       });
       setSettings(updated);
     });
