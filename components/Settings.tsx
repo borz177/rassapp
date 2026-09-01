@@ -663,7 +663,11 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, o
           />
       </SettingsAccordion>
 
-      <SettingsAccordion title="Тема оформления" subtitle="Светлая, тёмная или автоматически по системе.">
+      {/* Светлый/тёмный режим и акцентный цвет — один вопрос «как приложение
+          выглядит», а не два. Раздельными разделами человек выбирал цвет, не
+          видя, на каком фоне он окажется. */}
+      <SettingsAccordion title="Оформление" subtitle="Светлая или тёмная тема и основной цвет приложения.">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Тема</p>
           <div className="grid grid-cols-3 gap-3">
               {APPEARANCE_OPTIONS.map((option) => (
                   <button
@@ -686,10 +690,8 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, o
                   </button>
               ))}
           </div>
-      </SettingsAccordion>
 
-      {/* Theme Selection */}
-      <SettingsAccordion title="Цветовая тема" subtitle="Выберите основной цвет приложения.">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-5 mb-2">Основной цвет</p>
           <div className="grid grid-cols-2 gap-3">
               {(Object.keys(THEMES) as Array<keyof typeof THEMES>).map((themeKey) => (
                   <button

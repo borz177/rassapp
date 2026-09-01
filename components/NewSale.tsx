@@ -7,7 +7,7 @@ import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
 import { api } from '../services/api';
 import { getSellerPhone, escapeHtml, formatDate, addMonthsClamped } from '../src/utils';
-import { buildContractHtml } from '../src/contractTemplates';
+import { buildContractHtml, buildContractFragment, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } from './feedback';
 
@@ -87,6 +87,43 @@ const checkDuplicateSale = (
 
     return sameCustomer && sameProduct && sameDate && sameAmount;
   });
+};
+
+
+/**
+ * График для печатного договора: каждое фактическое поступление — своя строка с
+ * датой и суммой, ещё не покрытые месяцы — только дата, без суммы.
+ *
+ * Покрытие считаем от ОБЩЕЙ суммы реальных платежей, а не по флагу isPaid у
+ * планового слота: флаг бывает неактуален, и рядом с уже оплаченной датой
+ * оставался «призрачный» пустой дубль той же даты.
+ *
+ * Один расчёт на печать и на PDF: раньше их было два, и разойдись они — клиент
+ * получил бы график, отличающийся от того, что ему дали подписать.
+ */
+const contractScheduleRows = (sale: Sale) => {
+  const plan = sale.paymentPlan || [];
+  const real = plan.filter(p => p.isRealPayment === true);
+  let surplus = real.reduce((sum, p) => sum + p.amount, 0);
+
+  const uncovered = plan
+    .filter(p => p.isRealPayment !== true)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .filter(p => {
+      if (surplus >= p.amount - 0.01) { surplus -= p.amount; return false; }
+      return true;
+    });
+
+  let debt = sale.totalAmount - sale.downPayment;
+  return [
+    ...real.map(p => ({ date: p.date, paid: p.amount })),
+    ...uncovered.map(p => ({ date: p.date, paid: 0 })),
+  ]
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .map(p => {
+      if (p.paid > 0) debt -= p.paid;
+      return { date: p.date, paid: p.paid, remaining: Math.max(0, debt) };
+    });
 };
 
 const NewSale: React.FC<NewSaleProps> = ({
@@ -733,162 +770,58 @@ if (mode === 'CASH') {
   };
 
   // === renderContractContent (Скрытый рендер для PDF) ===
+  /**
+   * Скрытый лист договора, с которого снимается PDF для WhatsApp.
+   *
+   * Раньше здесь была отдельная React-разметка — третья копия договора после
+   * печати с этого экрана и печати из списка. Копии жили своей жизнью: правка
+   * формулировки в печати не доходила до PDF, и клиент получал не тот документ,
+   * который ему потом давали подписать. Теперь лист собирается тем же шаблоном,
+   * что и печать, и подчиняется тому же выбору в настройках.
+   *
+   * Ширина — ровно лист A4 в точках экрана: html2canvas снимает пиксели, и без
+   * фиксированной ширины пропорции PDF зависели бы от размера окна.
+   */
   const renderContractContent = () => {
-
-
     if (!createdSale || !selectedCustomer) return null;
     const sale = createdSale;
-    const companyName = appSettings?.companyName || "Компания";
-    const hasGuarantor = !!sale.guarantorName;
-    const sellerPhone = getSellerPhone(user, appSettings);
-
-    const styles = {
-      page: {
-        width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
-        fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '12pt', lineHeight: '1.5',
-        display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
-        position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
-      },
-      contentWrapper: { flex: 1 },
-      h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
-      headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
-      fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
-      fieldLabel: { fontWeight: 'bold' as const },
-      phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
-      section: { margin: '0 0 20px 0' },
-      sectionItem: { marginBottom: '12px' },
-      sectionItemLast: { marginBottom: 0 },
-      table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
-      th: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
-      td: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
-      footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
-      footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
-      signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
-      signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
-      signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
-    };
-
-    // 🔒 Та же модель графика, что и в печати договора (Contracts.tsx) и в чеке прихода
-    // (NewIncome.tsx): каждый реальный платёж закрепляется за первым ещё не закрытым месяцем
-    // графика, и месяц скрывается ТОЛЬКО если за ним закрепилась своя строка платежа. Месяц, на
-    // который лишь перетёк остаток предыдущего платежа, остаётся плановой датой — по нему клиенту
-    // ещё платить. Считаем от самих платежей, а не от флага isPaid планового слота — он бывает
-    // неактуален (платёж импортирован/добавлен без пересчёта reconcileSalePaymentPlan).
-    const realPaymentsForSchedule = (sale.paymentPlan || []).filter(p => p.isRealPayment === true);
-    const scheduledMonths = (sale.paymentPlan || [])
-        .filter(p => p.isRealPayment !== true)
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    const monthsWithOwnPaymentRow = new Set<number>();
-    let monthIdx = 0;
-    let filledOnMonth = 0;
-    for (const pay of [...realPaymentsForSchedule].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())) {
-        if (monthIdx >= scheduledMonths.length) break;
-        monthsWithOwnPaymentRow.add(monthIdx);
-        filledOnMonth += pay.amount;
-        while (monthIdx < scheduledMonths.length && filledOnMonth >= scheduledMonths[monthIdx].amount - 0.01) {
-            filledOnMonth -= scheduledMonths[monthIdx].amount;
-            monthIdx++;
-        }
-    }
-    const uncoveredScheduled = scheduledMonths.filter((_, i) => !monthsWithOwnPaymentRow.has(i));
-
-    // Сначала все фактические платежи по дате, затем оставшиеся плановые даты — чтобы пустая
-    // плановая строка не вклинивалась между двумя оплатами (см. Contracts.tsx).
-    let currentDebt = sale.totalAmount - sale.downPayment;
-    const scheduleRows = [
-        ...[...realPaymentsForSchedule]
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-            .map(p => ({ date: p.date, paid: p.amount })),
-        ...uncoveredScheduled.map(p => ({ date: p.date, paid: 0 }))
-    ].map(p => {
-        if (p.paid > 0) currentDebt -= p.paid;
-        return { date: new Date(p.date), paid: p.paid, remaining: Math.max(0, currentDebt) };
-    });
+    const { html, styles } = buildContractFragment(
+      appSettings?.contractTemplate || 'MODERN',
+      {
+        companyName: appSettings?.companyName || 'Компания',
+        sellerPhone: formatPhone(getSellerPhone(user, appSettings)),
+        customerName: selectedCustomer.name,
+        customerPhone: selectedCustomer.phone,
+        passportSeries: selectedCustomer.passportSeries,
+        passportNumber: selectedCustomer.passportNumber,
+        passportIssuedBy: selectedCustomer.passportIssuedBy,
+        customerAddress: selectedCustomer.address,
+        guarantorName: sale.guarantorName,
+        guarantorPhone: sale.guarantorPhone,
+        productName: sale.productName,
+        totalAmount: sale.totalAmount,
+        downPayment: sale.downPayment,
+        installments: sale.installments,
+        monthlyPayment: sale.paymentPlan?.[0]?.amount || 0,
+        startDate: sale.startDate,
+        rows: contractScheduleRows(sale),
+      }
+    );
 
     return (
-      <div ref={contractRef} style={styles.page}>
-        <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
-        <div style={styles.headerInfo}>Дата: {new Date(sale.startDate).toLocaleDateString()}</div>
-        <div style={styles.contentWrapper}>
-          <div style={styles.section}>
-            <div style={styles.fieldRow}>
-              <span><span style={styles.fieldLabel}>Продавец:</span> {companyName}</span>
-              <span style={styles.phoneField}>Тел: {formatPhone(sellerPhone)}</span>
-            </div>
-            <div style={styles.fieldRow}>
-              <span><span style={styles.fieldLabel}>Покупатель:</span> {selectedCustomer.name}</span>
-              <span style={styles.phoneField}>Тел: {formatPhone(selectedCustomer.phone)}</span>
-            </div>
-            {hasGuarantor && (
-              <div style={styles.fieldRow}>
-                <span><span style={styles.fieldLabel}>Поручитель:</span> {sale.guarantorName}</span>
-                <span style={styles.phoneField}>Тел: {formatPhone(sale.guarantorPhone)}</span>
-              </div>
-            )}
-          </div>
-          <div style={styles.section}>
-            <div style={styles.sectionItem}><span style={styles.fieldLabel}>Товар:</span> {sale.productName}</div>
-            <div style={{ ...styles.sectionItem, display: 'flex', justifyContent: 'space-between', marginTop: '10px' }}>
-              <span><span style={styles.fieldLabel}>Срок рассрочки:</span> {sale.installments} мес.</span>
-              <span><span style={styles.fieldLabel}>Стоимость:</span> {sale.totalAmount.toLocaleString()} ₽</span>
-            </div>
-            <div style={{ ...styles.sectionItemLast, display: 'flex', justifyContent: 'space-between' }}>
-              <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {(sale.paymentPlan[0]?.amount || 0).toLocaleString()} ₽</span>
-              <span><span style={styles.fieldLabel}>Первый взнос:</span> {sale.downPayment.toLocaleString()} ₽</span>
-            </div>
-          </div>
-
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={{ ...styles.th, width: '10%' }}>№</th>
-                <th style={{ ...styles.th, width: '30%' }}>Дата</th>
-                <th style={{ ...styles.th, width: '25%' }}>Сумма</th>
-                <th style={{ ...styles.th, width: '35%' }}>Остаток долга</th>
-              </tr>
-            </thead>
-            <tbody>
-              {scheduleRows.length > 0 ? scheduleRows.map((p, index) => (
-                <tr key={index}>
-                  <td style={styles.td}>{index + 1}</td>
-                  <td style={styles.td}>{p.date.toLocaleDateString()}</td>
-                  <td style={styles.td}>{p.paid > 0.01 ? `${p.paid.toLocaleString()} ₽` : ''}</td>
-                  <td style={styles.td}>{p.paid > 0.01 ? `${p.remaining.toLocaleString()} ₽` : ''}</td>
-                </tr>
-              )) : Array.from({ length: sale.installments || 1 }).map((_, index) => (
-                <tr key={index}>
-                  <td style={styles.td}>{index + 1}</td>
-                  <td style={styles.td}></td>
-                  <td style={styles.td}></td>
-                  <td style={styles.td}></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div style={{ margin: '25px 0', fontSize: '11pt', lineHeight: 1.4 }}>
-            Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку на указанных выше условиях.
-          </div>
-        </div>
-        <div style={styles.footerContainer}>
-          <div style={styles.footer}>
-            <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
-              <div style={styles.signatureLine}></div>
-              <div style={styles.signatureLabel}>Продавец</div>
-            </div>
-            {hasGuarantor && (
-              <div style={styles.signatureBlock('30%')}>
-                <div style={styles.signatureLine}></div>
-                <div style={styles.signatureLabel}>Поручитель</div>
-              </div>
-            )}
-            <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
-              <div style={styles.signatureLine}></div>
-              <div style={styles.signatureLabel}>Покупатель</div>
-            </div>
-          </div>
-        </div>
+      <div
+        ref={contractRef}
+        className="contract-sheet"
+        style={{
+          width: `${CONTRACT_SHEET_WIDTH_PX}px`,
+          position: 'absolute',
+          left: '-9999px',
+          top: '-9999px',
+          visibility: 'hidden',
+        }}
+      >
+        <style>{styles}</style>
+        <div dangerouslySetInnerHTML={{ __html: html }} />
       </div>
     );
   };
@@ -1071,36 +1004,7 @@ if (mode === 'CASH') {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }
 
-    // 🔒 Та же модель графика, что и в печати договора (Contracts.tsx), чеке прихода (NewIncome.tsx)
-    // и PDF-отправке (renderContractContent выше): каждый реальный (в т.ч. частичный) платёж —
-    // своя строка с датой и суммой; ещё не покрытые месяцы графика — только дата, без суммы.
-    // Покрытие пересчитываем от ОБЩЕЙ суммы реальных платежей (surplus), а не доверяем сохранённому
-    // флагу isPaid планового слота — он бывает неактуален, из-за чего рядом с уже оплаченной датой
-    // оставался "призрачный" пустой дубль той же даты. Раньше здесь были всегда пустые строки без
-    // единой даты.
-    const printRealPayments = (sale.paymentPlan || []).filter(p => p.isRealPayment === true);
-    let printSurplus = printRealPayments.reduce((sum, p) => sum + p.amount, 0);
-    const printUncoveredScheduled = (sale.paymentPlan || [])
-        .filter(p => p.isRealPayment !== true)
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        .filter(p => {
-            if (printSurplus >= p.amount - 0.01) {
-                printSurplus -= p.amount;
-                return false;
-            }
-            return true;
-        });
-
-    let printCurrentDebt = sale.totalAmount - sale.downPayment;
-    const printScheduleRows = [
-        ...printRealPayments.map(p => ({ date: p.date, paid: p.amount })),
-        ...printUncoveredScheduled.map(p => ({ date: p.date, paid: 0 }))
-    ]
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        .map(p => {
-            if (p.paid > 0) printCurrentDebt -= p.paid;
-            return { date: p.date, paid: p.paid, remaining: Math.max(0, printCurrentDebt) };
-        });
+    const printScheduleRows = contractScheduleRows(sale);
 
     // Разметка обеих форм живёт в src/contractTemplates.ts: договор печатают из
     // нескольких мест, и копии вёрстки разошлись бы на первой же правке.

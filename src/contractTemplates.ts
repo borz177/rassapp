@@ -23,12 +23,12 @@ export interface ContractTemplateInfo {
 export const CONTRACT_TEMPLATES: ContractTemplateInfo[] = [
   {
     id: 'MODERN',
-    name: 'Современный',
+    name: 'Договор 1',
     description: 'Короткий, на один лист: стороны, товар, график и подписи. Его же отправляют клиенту.',
   },
   {
     id: 'CLASSIC',
-    name: 'Классический',
+    name: 'Договор 2',
     description: 'Полный бланк: паспортные данные, адреса, поручитель, ответственность сторон и подпись под каждым платежом.',
   },
 ];
@@ -142,21 +142,21 @@ const modernBody = (d: ContractData): string => {
 };
 
 const MODERN_STYLES = `
-  body { font-family: 'Times New Roman', serif; color: #000; padding: 24px; }
-  h1 { text-align: center; font-size: 15pt; margin: 0 0 4px; }
-  .header-info { text-align: center; font-size: 10.5pt; margin-bottom: 18px; }
-  .section { margin-bottom: 14px; }
-  .field-row, .two-col { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
-  .field-label { font-weight: bold; }
-  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-  th, td { border: 1px solid #000; padding: 5px 6px; font-size: 10.5pt; }
-  th { background: #f1f1f1; }
-  td.c, th { text-align: center; }
-  .obligation { margin: 22px 0; font-size: 11pt; line-height: 1.45; }
-  .footer { display: flex; justify-content: space-between; margin-top: 36px; }
-  .signature-block { text-align: center; }
-  .signature-line { border-bottom: 1px solid #000; height: 28px; }
-  .signature-label { font-size: 10pt; margin-top: 4px; }
+  .contract-sheet { font-family: 'Times New Roman', serif; color: #000; background: #fff; padding: 24px; }
+  .contract-sheet h1 { text-align: center; font-size: 15pt; margin: 0 0 4px; }
+  .contract-sheet .header-info { text-align: center; font-size: 10.5pt; margin-bottom: 18px; }
+  .contract-sheet .section { margin-bottom: 14px; }
+  .contract-sheet .field-row, .contract-sheet .two-col { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+  .contract-sheet .field-label { font-weight: bold; }
+  .contract-sheet table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  .contract-sheet th, .contract-sheet td { border: 1px solid #000; padding: 5px 6px; font-size: 10.5pt; }
+  .contract-sheet th { background: #f1f1f1; }
+  .contract-sheet td.c, .contract-sheet th { text-align: center; }
+  .contract-sheet .obligation { margin: 22px 0; font-size: 11pt; line-height: 1.45; }
+  .contract-sheet .footer { display: flex; justify-content: space-between; margin-top: 36px; }
+  .contract-sheet .signature-block { text-align: center; }
+  .contract-sheet .signature-line { border-bottom: 1px solid #000; height: 28px; }
+  .contract-sheet .signature-label { font-size: 10pt; margin-top: 4px; }
 `;
 
 // ─── Классический ───────────────────────────────────────────────────────────
@@ -259,39 +259,59 @@ const classicBody = (d: ContractData): string => {
 };
 
 const CLASSIC_STYLES = `
-  body { font-family: 'Times New Roman', serif; color: #000; padding: 26px 30px; font-size: 12pt; line-height: 1.35; }
-  h1 { text-align: center; font-size: 14pt; margin: 0; font-weight: bold; }
-  .subtitle { text-align: center; font-size: 12pt; margin-bottom: 14px; }
-  .row-line { display: flex; justify-content: space-between; margin-bottom: 6px; }
-  .para { margin: 6px 0; text-align: justify; }
-  .para.small { font-size: 11pt; margin: 8px 0; }
-  .clause { margin: 8px 0 4px; }
-  .indent { padding-left: 22px; }
-  .label-line { margin: 4px 0; }
-  .label-line.sign { margin: 10px 0; }
+  .contract-sheet { font-family: 'Times New Roman', serif; color: #000; background: #fff; padding: 26px 30px; font-size: 12pt; line-height: 1.35; }
+  .contract-sheet h1 { text-align: center; font-size: 14pt; margin: 0; font-weight: bold; }
+  .contract-sheet .subtitle { text-align: center; font-size: 12pt; margin-bottom: 14px; }
+  .contract-sheet .row-line { display: flex; justify-content: space-between; margin-bottom: 6px; }
+  .contract-sheet .para { margin: 6px 0; text-align: justify; }
+  .contract-sheet .para.small { font-size: 11pt; margin: 8px 0; }
+  .contract-sheet .clause { margin: 8px 0 4px; }
+  .contract-sheet .indent { padding-left: 22px; }
+  .contract-sheet .label-line { margin: 4px 0; }
+  .contract-sheet .label-line.sign { margin: 10px 0; }
   /* Пустая линия под рукописное заполнение — сплошная, как в типографском бланке */
-  .blank { display: inline-block; border-bottom: 1px solid #000; height: 14px; }
-  .ins { display: inline-block; border-bottom: 1px solid #000; text-align: center; padding: 0 4px; }
-  .w60 { min-width: 60px } .w110 { min-width: 110px } .w120 { min-width: 120px } .w200 { min-width: 200px }
-  .filled { border-bottom: 1px solid #000; padding: 0 4px; }
-  .dots { display: inline-block; border-bottom: 1px solid #000; min-width: 110px; height: 13px; }
-  .dots-sm { display: inline-block; border-bottom: 1px solid #000; min-width: 26px; height: 13px; }
-  table.schedule { width: 100%; border-collapse: collapse; margin: 14px 0; }
-  table.schedule th, table.schedule td { border: 1px solid #000; padding: 4px 6px; font-size: 11pt; height: 24px; }
-  table.schedule th { text-align: center; font-weight: bold; }
-  td.c { text-align: center; }
-  td.num { font-weight: bold; }
+  .contract-sheet .blank { display: inline-block; border-bottom: 1px solid #000; height: 14px; }
+  .contract-sheet .ins { display: inline-block; border-bottom: 1px solid #000; text-align: center; padding: 0 4px; }
+  .contract-sheet .w60 { min-width: 60px } .contract-sheet .w110 { min-width: 110px }
+  .contract-sheet .w120 { min-width: 120px } .contract-sheet .w200 { min-width: 200px }
+  .contract-sheet .filled { border-bottom: 1px solid #000; padding: 0 4px; }
+  .contract-sheet .dots { display: inline-block; border-bottom: 1px solid #000; min-width: 110px; height: 13px; }
+  .contract-sheet .dots-sm { display: inline-block; border-bottom: 1px solid #000; min-width: 26px; height: 13px; }
+  .contract-sheet table.schedule { width: 100%; border-collapse: collapse; margin: 14px 0; }
+  .contract-sheet table.schedule th, .contract-sheet table.schedule td { border: 1px solid #000; padding: 4px 6px; font-size: 11pt; height: 24px; }
+  .contract-sheet table.schedule th { text-align: center; font-weight: bold; }
+  .contract-sheet td.c { text-align: center; }
+  .contract-sheet td.num { font-weight: bold; }
 `;
 
 // ─── Сборка документа ───────────────────────────────────────────────────────
 
 const SHARED_HEAD = `
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  body { margin: 0; }
+  body { margin: 0; background: #fff; }
   .no-print { position: fixed; top: 10px; right: 10px; padding: 8px 14px; border: 0;
               border-radius: 8px; background: #4f46e5; color: #fff; font: inherit; cursor: pointer; }
-  @media print { .no-print { display: none } body { padding: 12mm } }
+  @media print { .no-print { display: none } .contract-sheet { padding: 12mm } }
 `;
+
+/** Ширина листа A4 при 96 dpi — по ней снимается PDF, чтобы пропорции совпали с печатью. */
+export const CONTRACT_SHEET_WIDTH_PX = 794;
+
+/**
+ * Разметка договора без обёртки документа: тот же лист, но пригодный для вставки
+ * в страницу приложения — из него снимается PDF для WhatsApp.
+ *
+ * Стили вложены в `.contract-sheet` намеренно. Без этого правила вроде `body`,
+ * `h1` и `table` разъехались бы по всему приложению: лист живёт внутри общей
+ * страницы, а не в отдельном окне.
+ */
+export const buildContractFragment = (
+  template: ContractTemplateId,
+  data: ContractData
+): { html: string; styles: string } => ({
+  html: template === 'CLASSIC' ? classicBody(data) : modernBody(data),
+  styles: template === 'CLASSIC' ? CLASSIC_STYLES : MODERN_STYLES,
+});
 
 /**
  * Готовый HTML-документ договора.
@@ -304,9 +324,7 @@ export const buildContractHtml = (
   data: ContractData,
   options: { withPrintButton?: boolean } = {}
 ): string => {
-  const classic = template === 'CLASSIC';
-  const body = classic ? classicBody(data) : modernBody(data);
-  const styles = classic ? CLASSIC_STYLES : MODERN_STYLES;
+  const { html: body, styles } = buildContractFragment(template, data);
 
   return `<!DOCTYPE html>
 <html lang="ru">
@@ -318,7 +336,7 @@ export const buildContractHtml = (
 </head>
 <body>
   ${options.withPrintButton ? '<button class="no-print" onclick="window.close()">✕ Закрыть</button>' : ''}
-  ${body}
+  <div class="contract-sheet">${body}</div>
   ${options.withPrintButton ? '<script>window.onload = function () { setTimeout(function () { window.print(); }, 300); }<\/script>' : ''}
 </body>
 </html>`;
