@@ -2,6 +2,8 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
 import { AppSettings, ViewState, User, NotificationSettings, NotificationEventToggles } from '../types';
 import { ICONS, APP_VERSION, THEMES } from '../constants';
+import ContractTemplatePicker from './ContractTemplatePicker';
+import { getSellerPhone } from '../src/utils';
 import { PrivacyPolicy, DataProcessingAgreement, ClientDataTerms, PublicOffer } from './LegalDocs';
 import { api } from '../services/api';
 import { offlineStorage } from '../services/offlineStorage';
@@ -650,6 +652,17 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, o
       )}
 
       {/* Appearance / Dark Mode Selection */}
+      {/* Форма договора — рядом с оформлением: это тоже про то, как приложение
+          выглядит снаружи, только на бумаге, а не на экране. */}
+      <SettingsAccordion title="Печатная форма договора" subtitle="Какой бланк печатается и уходит клиенту.">
+          <ContractTemplatePicker
+            value={appSettings.contractTemplate || 'MODERN'}
+            companyName={appSettings.companyName || ''}
+            sellerPhone={getSellerPhone(user)}
+            onChange={id => onUpdateSettings({ ...appSettings, contractTemplate: id })}
+          />
+      </SettingsAccordion>
+
       <SettingsAccordion title="Тема оформления" subtitle="Светлая, тёмная или автоматически по системе.">
           <div className="grid grid-cols-3 gap-3">
               {APPEARANCE_OPTIONS.map((option) => (

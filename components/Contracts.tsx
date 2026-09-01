@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, User, AppSettings, Task, Payment } from '../types';
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
+import { buildContractHtml } from '../src/contractTemplates';
 import { formatCurrency, formatDate, escapeHtml, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
 import UnsyncedMark from './UnsyncedMark';
@@ -589,158 +590,32 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
         return { date: p.date, paid: p.paid, remaining: Math.max(0, currentDebt) };
     });
 
-    const scheduleRowsHtml = scheduleRows.length > 0
-        ? scheduleRows.map((p, index) => `<tr>
-                <td style="text-align:center">${index + 1}</td>
-                <td style="text-align:center">${formatDate(p.date)}</td>
-                <td style="text-align:center">${p.paid > 0.01 ? `${formatCurrency(p.paid, appSettings?.showCents)} ₽` : ''}</td>
-                <td style="text-align:center">${p.paid > 0.01 ? `${formatCurrency(p.remaining, appSettings?.showCents)} ₽` : ''}</td>
-            </tr>`).join('')
-        : Array.from({ length: sale.installments || 1 }).map((_, i) =>
-            `<tr>
-                <td style="text-align:center">${i + 1}</td>
-                <td style="text-align:center;height:30px"></td>
-                <td style="text-align:center"></td>
-                <td style="text-align:center"></td>
-            </tr>`
-        ).join('');
-
-    const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Договор</title>
-    <style>
-        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        body { 
-            font-family: 'Arial, Helvetica, sans-serif', Times, serif; 
-            font-size: 12pt; 
-            line-height: 1.5; 
-            padding: 30px 25px;
-            width: 100%;
-            max-width: 210mm;
-            margin: 0 auto;
-            display: flex;
-            flex-direction: column;
-            min-height: 297mm;
-        }
-        h1 { text-align: center; font-size: 15pt; font-weight: bold; margin: 0 0 25px 0; text-transform: uppercase; line-height: 1.3; }
-        .header-info { text-align: right; margin-bottom: 20px; font-size: 11pt; }
-        .field-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
-        .field-label { font-weight: bold; }
-        .section { margin: 0 0 20px 0; }
-        .section > div { margin-bottom: 12px; }
-        .section > div:last-child { margin-bottom: 0; }
-        table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 10.5pt; }
-        th, td { border: 1px solid #000; padding: 6px 8px; text-align: center; }
-        th { font-weight: bold; background: #f9f9f9; }
-        .content-wrapper { flex: 1 0 auto; }
-        .footer-container {
-            margin-top: auto;
-            padding-top: 20px;
-            width: 100%;
-            break-inside: avoid;
-            page-break-inside: avoid;
-        }
-        .footer { display: flex; justify-content: space-between; align-items: flex-end; width: 100%; }
-        .signature-block { text-align: center; break-inside: avoid; page-break-inside: avoid; }
-        .signature-line { border-bottom: 1px solid #000; margin: 35px 0 5px 0; min-height: 1px; }
-        .signature-label { font-size: 10pt; font-style: italic; }
-        .no-print {
-            position: fixed; top: 15px; right: 15px; padding: 10px 18px;
-            background: #ef4444; color: white; border: none; border-radius: 6px;
-            cursor: pointer; font-family: sans-serif; font-weight: 600; z-index: 1000;
-        }
-        @media print {
-            @page { margin: 1.5cm; size: A4 portrait; }
-            body { padding: 0; margin: 0; width: 100%; max-width: none; min-height: auto; display: block; }
-            .field-row { flex-wrap: nowrap !important; gap: 0 !important; justify-content: space-between !important; }
-            .field-row > span:first-child { flex-shrink: 0; }
-            .field-row > span:last-child { text-align: right !important; flex-shrink: 0; margin-left: 10px; }
-            .content-wrapper { margin-bottom: 150px; }
-            .footer-container { position: relative; margin-top: -130px; padding-top: 0; page-break-inside: avoid !important; break-inside: avoid !important; }
-            .no-print { display: none !important; }
-            h1 { font-size: 14pt; }
-            table { font-size: 10pt; }
-        }
-        @media screen and (max-width: 768px) {
-            body { font-size: 11pt; padding: 20px 15px; min-height: 100vh; }
-            h1 { font-size: 13pt; }
-            .field-row { flex-wrap: wrap; gap: 5px; }
-            .field-row > span:last-child { text-align: right; min-width: 120px; }
-            table { font-size: 9.5pt; }
-        }
-    </style>
-</head>
-<body>
-    <button class="no-print" onclick="window.close()">✕ Закрыть</button>
-    <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
-    <div class="header-info">Дата: ${formatDate(sale.startDate)}</div>
-    <div class="content-wrapper">
-        <div class="section">
-            <div class="field-row">
-                <span><span class="field-label">Продавец:</span> ${escapeHtml(companyName)}</span>
-                <span>Тел: ${escapeHtml(formatPhone(sellerPhone))}</span>
-            </div>
-            <div class="field-row">
-                <span><span class="field-label">Покупатель:</span> ${customer?.name ? escapeHtml(customer.name) : '__________________'}</span>
-                <span>Тел: ${escapeHtml(formatPhone(customer.phone))}</span>
-            </div>
-            ${hasGuarantor ? `
-            <div class="field-row">
-                <span><span class="field-label">Поручитель:</span> ${escapeHtml(sale.guarantorName)}</span>
-                <span>Тел: ${escapeHtml(formatPhone(sale.guarantorPhone))}</span>
-            </div>` : ''}
-        </div>
-        <div class="section">
-            <div><span class="field-label">Товар:</span> ${escapeHtml(sale.productName)}</div>
-            <div style="display: flex; justify-content: space-between; margin-top: 10px;">
-                <span><span class="field-label">Срок рассрочки:</span> ${sale.installments} мес.</span>
-                <span><span class="field-label">Стоимость:</span> ${formatCurrency(sale.totalAmount, appSettings?.showCents)} ₽</span>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-                <span><span class="field-label">Ежемесячный платеж:</span> ${formatCurrency(sale.paymentPlan[0]?.amount || 0, appSettings?.showCents)} ₽</span>
-                <span><span class="field-label">Первый взнос:</span> ${formatCurrency(sale.downPayment, appSettings?.showCents)} ₽</span>
-            </div>
-        </div>
-        <table>
-            <thead>
-                <tr>
-                    <th style="width: 10%;">№</th>
-                    <th style="width: 30%;">Дата</th>
-                    <th style="width: 30%;">Оплачено</th>
-                    <th style="width: 30%;">Остаток</th>
-                </tr>
-            </thead>
-            <tbody>${scheduleRowsHtml}</tbody>
-        </table>
-        <div style="margin: 25px 0; font-size: 11pt; line-height: 1.4;">
-            Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в рассрочку на указанных выше условиях.
-        </div>
-    </div>
-    <div class="footer-container">
-        <div class="footer">
-            <div class="signature-block" style="width: ${hasGuarantor ? '30%' : '45%'}">
-                <div class="signature-line"></div>
-                <div class="signature-label">Продавец</div>
-            </div>
-            ${hasGuarantor ? `
-            <div class="signature-block" style="width: 30%">
-                <div class="signature-line"></div>
-                <div class="signature-label">Поручитель</div>
-            </div>` : ''}
-            <div class="signature-block" style="width: ${hasGuarantor ? '30%' : '45%'}">
-                <div class="signature-line"></div>
-                <div class="signature-label">Покупатель</div>
-            </div>
-        </div>
-    </div>
-    <script>
-        window.onload = function() { setTimeout(() => { window.print(); }, 300); }
-    </script>
-</body>
-</html>`;
+    // Обе печатные формы собираются в src/contractTemplates.ts — там же, откуда
+    // печатает экран оформления. Иначе выбранный в настройках бланк применялся бы
+    // только к одному из двух путей печати.
+    const htmlContent = buildContractHtml(
+      appSettings?.contractTemplate || 'MODERN',
+      {
+        companyName,
+        sellerPhone,
+        customerName: customer?.name,
+        customerPhone: customer?.phone,
+        passportSeries: customer?.passportSeries,
+        passportNumber: customer?.passportNumber,
+        passportIssuedBy: customer?.passportIssuedBy,
+        customerAddress: customer?.address,
+        guarantorName: sale.guarantorName,
+        guarantorPhone: sale.guarantorPhone,
+        productName: sale.productName,
+        totalAmount: sale.totalAmount,
+        downPayment: sale.downPayment,
+        installments: sale.installments,
+        monthlyPayment: sale.paymentPlan?.[0]?.amount || 0,
+        startDate: sale.startDate,
+        rows: scheduleRows,
+      },
+      { withPrintButton: true }
+    );
 
     printWindow.document.write(htmlContent);
     printWindow.document.close();
