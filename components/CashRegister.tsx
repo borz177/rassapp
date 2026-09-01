@@ -1019,14 +1019,19 @@ const investorProfitPayouts = useMemo(() => {
       };
     });
 
+    // Прибыль менеджера по этому же счёту и периоду — уже посчитана для карточек ниже.
+    // Своего капитала в пуле у него нет, но доля прибыли есть, и без её суммы строка
+    // «Менеджер» стояла с прочерками, а итог не сходился с реальной прибылью счёта.
     return {
       rows,
       totalCapital,
       managerShare: getManagerSharePercent(acc, investors),
-      expectedTotal: rows.reduce((sum, r) => sum + r.expectedProfit, 0),
-      receivedTotal: rows.reduce((sum, r) => sum + r.receivedProfit, 0),
+      managerExpected: calculatedExpectedProfit,
+      managerReceived: totalManagerProfitEarned,
+      expectedTotal: rows.reduce((sum, r) => sum + r.expectedProfit, 0) + calculatedExpectedProfit,
+      receivedTotal: rows.reduce((sum, r) => sum + r.receivedProfit, 0) + totalManagerProfitEarned,
     };
-  }, [detailsAccount, investors, investorProfitBreakdown]);
+  }, [detailsAccount, investors, investorProfitBreakdown, calculatedExpectedProfit, totalManagerProfitEarned]);
 
   // Если выбран конкретный инвестор — показываем только его цифры, иначе сумму по всем.
   const investorProfitStats = useMemo(() => {
@@ -1439,14 +1444,20 @@ const investorProfitPayouts = useMemo(() => {
                           <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-200 text-xs font-bold shrink-0">М</div>
                           <div className="min-w-0">
                             <p className="font-medium text-slate-700 dark:text-slate-200">Менеджер</p>
-                            <p className="text-[11px] text-slate-400 dark:text-slate-500">{Math.round(poolComposition.managerShare * 10) / 10}% прибыли</p>
+                            <p className="text-[11px] text-slate-400 dark:text-slate-500">{Math.round(poolComposition.managerShare * 10) / 10}% приб. · без вложений</p>
                           </div>
                         </div>
                       </td>
+                      {/* Капитала в пуле у менеджера нет — прочерк здесь по делу,
+                          а прибыль его доли такая же настоящая, как у остальных. */}
                       <td className="hidden sm:table-cell py-3 text-right text-slate-400 dark:text-slate-500">—</td>
                       <td className="py-3 text-right text-slate-400 dark:text-slate-500">—</td>
-                      <td className="hidden sm:table-cell py-3 text-right text-slate-400 dark:text-slate-500">—</td>
-                      <td className="py-3 pr-1 text-right text-slate-400 dark:text-slate-500">—</td>
+                      <td className="hidden sm:table-cell py-3 text-right text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                        {formatCurrency(poolComposition.managerExpected, appSettings.showCents)} ₽
+                      </td>
+                      <td className="py-3 pr-1 text-right font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                        {formatCurrency(poolComposition.managerReceived, appSettings.showCents)} ₽
+                      </td>
                     </tr>
                   </tbody>
                   <tfoot>
