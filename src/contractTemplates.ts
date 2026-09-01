@@ -313,12 +313,12 @@ const classicBody = (d: ContractData): string => {
 };
 
 const CLASSIC_STYLES = `
-  .contract-sheet { font-family: 'Times New Roman', serif; color: #000; background: #fff; padding: 14mm 15mm; font-size: 11.5pt; line-height: 1.25; }
+  .contract-sheet { font-family: 'Times New Roman', serif; color: #000; background: #fff; padding: 16mm 17mm; font-size: 12pt; line-height: 1.32; }
   .contract-sheet h1 { text-align: center; font-size: 14pt; margin: 0; font-weight: bold; }
   .contract-sheet .subtitle { text-align: center; font-size: 11.5pt; margin-bottom: 10px; }
   .contract-sheet .row-line { display: flex; justify-content: space-between; margin-bottom: 6px; }
-  .contract-sheet .para { margin: 4px 0; text-align: justify; }
-  .contract-sheet .para.small { font-size: 10.5pt; margin: 5px 0; }
+  .contract-sheet .para { margin: 5px 0; text-align: justify; }
+  .contract-sheet .para.small { font-size: 11pt; margin: 6px 0; }
   .contract-sheet .clause { margin: 6px 0 3px; }
   .contract-sheet .indent { padding-left: 22px; }
   .contract-sheet .label-line { margin: 3px 0; }
@@ -334,7 +334,7 @@ const CLASSIC_STYLES = `
   .contract-sheet .dots { display: inline-block; border-bottom: 1px solid #000; min-width: 110px; height: 13px; }
   .contract-sheet .dots-sm { display: inline-block; border-bottom: 1px solid #000; min-width: 26px; height: 13px; }
   .contract-sheet table.schedule { width: 100%; border-collapse: collapse; margin: 10px 0; }
-  .contract-sheet table.schedule th, .contract-sheet table.schedule td { border: 1px solid #000; padding: 2px 6px; font-size: 10.5pt; height: 20px; }
+  .contract-sheet table.schedule th, .contract-sheet table.schedule td { border: 1px solid #000; padding: 3px 6px; font-size: 11pt; height: 22px; }
   .contract-sheet table.schedule th { text-align: center; font-weight: bold; }
   .contract-sheet td.c { text-align: center; }
   .contract-sheet td.num { font-weight: bold; }
@@ -388,41 +388,58 @@ const FIT_SCRIPT = `
     var sheet = document.querySelector('.contract-sheet');
     if (!sheet) return;
 
+    /* Лист занимает страницу целиком — в обе стороны.
+     *
+     * Короткий договор на три платежа оставлял внизу половину пустого листа и
+     * читался мелко; длинный не помещался и уезжал на второй. Задавать «правильный»
+     * кегль руками бессмысленно: он зависит от числа платежей, а их бывает и три,
+     * и пятнадцать. Поэтому базовый размер выбран удобным для чтения, а лист
+     * подгоняется под страницу целиком — пропорционально растёт и текст, и поля,
+     * и таблица.
+     *
+     * zoom, а не transform: transform не меняет высоту в потоке, и браузер разорвал
+     * бы страницу в прежнем месте — выглядело бы как исправление, не будучи им.
+     *
+     * Пределы намеренно узкие. Ниже 0.65 договор становится нечитаемым, и честные
+     * две страницы лучше. Выше 1.35 документ на один платёж превратился бы в
+     * плакат с гигантскими буквами.
+     */
+    function fitPage() {
+      sheet.style.zoom = '';
+      var h = sheet.scrollHeight;
+      if (!h) return;
+      var z = ${CONTRACT_SHEET_HEIGHT_PX} / h;
+      sheet.style.zoom = Math.min(1.35, Math.max(0.65, z));
+    }
+
     /* Подгонка под узкий экран. Ширина листа фиксирована, поэтому на телефоне он
        не помещается и его пришлось бы двигать пальцем. Уменьшаем целиком — так
        виден весь документ сразу, а раскладка остаётся печатной. */
     function fitWidth() {
-      sheet.style.zoom = '';
       var w = document.documentElement.clientWidth;
       var scale = Math.min(1, w / ${CONTRACT_SHEET_WIDTH_PX});
       sheet.style.transform = scale < 1 ? 'scale(' + scale + ')' : '';
       document.body.style.height = scale < 1 ? (sheet.offsetHeight * scale) + 'px' : '';
     }
 
-    /* Подгонка под один лист. Договор с длинным графиком перерастает страницу, и
-       на бумагу уходит вторая — обычно ради трёх последних строк. Ужимаем весь
-       лист так, чтобы он поместился целиком.
+    function refresh() { fitPage(); fitWidth(); }
 
-       zoom, а не transform: transform не меняет высоту в потоке, и браузер всё
-       равно разорвал бы страницу в прежнем месте. Ниже 0.65 не опускаемся —
-       мельче договор становится нечитаемым, и лучше честные две страницы. */
-    function fitHeight() {
+    refresh();
+    window.addEventListener('resize', refresh);
+    window.addEventListener('beforeprint', function () {
+      // На бумаге лист не уменьшают под ширину экрана — только под страницу.
       sheet.style.transform = '';
       document.body.style.height = '';
-      sheet.style.zoom = '';
-      var h = sheet.scrollHeight;
-      if (h > ${CONTRACT_SHEET_HEIGHT_PX}) {
-        sheet.style.zoom = Math.max(0.65, ${CONTRACT_SHEET_HEIGHT_PX} / h);
-      }
-    }
-
-    fitWidth();
-    window.addEventListener('resize', fitWidth);
-    window.addEventListener('beforeprint', fitHeight);
-    window.addEventListener('afterprint', fitWidth);
+      fitPage();
+    });
+    window.addEventListener('afterprint', refresh);
     // Печать с телефона идёт через системный диалог, и beforeprint там срабатывает
     // не всегда — подгоняем заранее, до самого вызова печати.
-    window.__fitContractForPrint = fitHeight;
+    window.__fitContractForPrint = function () {
+      sheet.style.transform = '';
+      document.body.style.height = '';
+      fitPage();
+    };
   })();
 `;
 
