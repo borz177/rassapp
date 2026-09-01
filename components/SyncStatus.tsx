@@ -26,6 +26,8 @@ interface SyncStatusProps {
   isOnline: boolean;
   isSyncing: boolean;
   onRetry: () => Promise<void> | void;
+  /** Убрать застрявшую запись: сервер её не примет, а висеть вечно она не должна */
+  onDiscard?: (id: string) => Promise<void> | void;
 }
 
 const COLLECTION_LABEL: Record<string, string> = {
@@ -73,6 +75,19 @@ const describe = (item: SyncQueueItem): string => {
   return name ? `${label} · ${name}` : label;
 };
 
+/**
+ * Ответ сервера человеческим языком. В поле error лежит сырой JSON — он ничего не
+ * объясняет тому, кто его читает, а объяснение внутри есть.
+ */
+const readableError = (raw: string): string => {
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed.msg || parsed.error || parsed.hint || raw.slice(0, 200);
+  } catch {
+    return raw.slice(0, 200);
+  }
+};
+
 const when = (ts: number) =>
   new Date(ts).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
@@ -86,7 +101,7 @@ const when = (ts: number) =>
  * ждёт связи, делать ничего не нужно. «Не удалось отправить» — сервер отказал, и
  * без человека это не разрешится: истёк тариф, кончился лимит, нет прав.
  */
-const SyncStatus: React.FC<SyncStatusProps> = ({ status, isOnline, isSyncing, onRetry }) => {
+const SyncStatus: React.FC<SyncStatusProps> = ({ status, isOnline, isSyncing, onRetry, onDiscard }) => {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -151,8 +166,22 @@ const SyncStatus: React.FC<SyncStatusProps> = ({ status, isOnline, isSyncing, on
                       </p>
                       {item.failed && item.error && (
                         <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5 break-words">
-                          {item.error.slice(0, 200)}
+                          {readableError(item.error)}
                         </p>
+                      )}
+                      {/* Снять можно только то, что сервер уже отверг: запись,
+                          которая просто ждёт связи, убирать нельзя — она ещё уедет. */}
+                      {item.failed && onDiscard && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm('Убрать эту запись из списка? Отправить её на сервер уже не получится.')) {
+                              onDiscard(item.id);
+                            }
+                          }}
+                          className="mt-1 text-[11px] font-bold text-slate-400 underline underline-offset-2"
+                        >
+                          Убрать из списка
+                        </button>
                       )}
                     </div>
                   </div>

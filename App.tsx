@@ -731,6 +731,12 @@ const handleSync = async () => {
   }
 };
 
+  /** Убрать запись, которую сервер принять не может: висеть вечно она не должна. */
+  const handleDiscardQueueItem = async (id: string) => {
+    await api.discardQueueItem(id);
+    await refreshSyncStatus();
+  };
+
   /** Повтор для записей, которые сервер отверг: снимаем пометку и шлём заново. */
   const handleRetrySync = async () => {
     await api.retryFailed();
@@ -4060,6 +4066,7 @@ if (!user && !showSplash) {
     isSyncing={isSyncing}
     syncStatus={syncStatus}
     onRetrySync={handleRetrySync}
+    onDiscardSyncItem={handleDiscardQueueItem}
     supportUnreadCount={supportUnreadCount}
     unreadNotifCount={unreadNotifCount}
     onOpenNotifications={() => setShowNotificationsPanel(true)}

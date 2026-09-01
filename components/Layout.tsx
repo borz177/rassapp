@@ -24,6 +24,7 @@ interface LayoutProps {
   /** Что ещё не уехало на сервер. Пусто — значка нет. */
   syncStatus?: SyncStatusData;
   onRetrySync?: () => Promise<void> | void;
+  onDiscardSyncItem?: (id: string) => Promise<void> | void;
   supportButton?: React.ReactNode;
   supportUnreadCount?: number;
   unreadNotifCount?: number;
@@ -63,6 +64,7 @@ const Layout: React.FC<LayoutProps> = ({
   isSyncing = false,
   syncStatus,
   onRetrySync,
+  onDiscardSyncItem,
   supportButton, // 🔹 Добавили сюда
   supportUnreadCount = 0,
   unreadNotifCount = 0,
@@ -594,7 +596,7 @@ const counts = useMemo(() => {
               {appSettings.companyName}
             </h1>
             {syncStatus && onRetrySync && (
-              <SyncStatus status={syncStatus} isOnline={isOnline} isSyncing={isSyncing} onRetry={onRetrySync} />
+              <SyncStatus status={syncStatus} isOnline={isOnline} isSyncing={isSyncing} onRetry={onRetrySync} onDiscard={onDiscardSyncItem} />
             )}
             {isOnline && isSyncing && (
               <span
@@ -655,7 +657,7 @@ const counts = useMemo(() => {
               {/*{!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}*/}
               {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}
               {syncStatus && onRetrySync && (
-                <SyncStatus status={syncStatus} isOnline={isOnline} isSyncing={isSyncing} onRetry={onRetrySync} />
+                <SyncStatus status={syncStatus} isOnline={isOnline} isSyncing={isSyncing} onRetry={onRetrySync} onDiscard={onDiscardSyncItem} />
               )}
           </div>
 

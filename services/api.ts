@@ -229,6 +229,19 @@ export const api = {
           return true;
         } else {
           const errorText = await res.text().catch(() => '');
+
+          // 409 — сервер говорит «это у меня уже есть» (например, дубликат
+          // платежа). Значит запись доехала раньше, и цель элемента очереди
+          // выполнена: убираем его, а не копим бесконечные попытки. Иначе он
+          // висел бы в списке неотправленного навсегда, хотя терять нечего —
+          // и человек привыкал бы не обращать внимания на предупреждение.
+          if (res.status === 409) {
+            console.warn(`↩️ ${item.collection}/${item.payload?.id || item.itemId}: сервер уже имеет эту запись — снимаем из очереди`);
+            await offlineStorage.removeFromQueue(item.id);
+            if (item.collection) syncedCollections.add(item.collection);
+            return true;
+          }
+
           console.error(`❌ Sync failed for ${item.collection}/${item.payload?.id || item.itemId}:`,
             res.status, errorText);
 
@@ -581,6 +594,18 @@ export const api = {
       } catch {
         return { pending: 0, failed: 0, items: [] };
       }
+    },
+
+    /**
+     * Убрать запись из очереди — когда отправить её невозможно и не нужно.
+     *
+     * Без этого отвергнутая сервером запись висела в списке вечно: повтор
+     * упирался в ту же причину, а убрать её было нечем. Постоянный значок с
+     * единицей приучает не смотреть на предупреждения, и следующая — настоящая —
+     * потеря прошла бы незамеченной.
+     */
+    discardQueueItem: async (id: string): Promise<void> => {
+      await offlineStorage.removeFromQueue(id);
     },
 
     /**
