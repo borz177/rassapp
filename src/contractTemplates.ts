@@ -255,11 +255,10 @@ const classicBody = (d: ContractData): string => {
       выданный ${orBlank(d.passportIssuedBy, '280px')}
     </p>
 
-    <div class="label-line">Адрес Покупателя ${orBlank(d.customerAddress, '520px')}</div>
-    <div class="label-line">Адрес Доставки ${orBlank(d.deliveryAddress, '540px')}</div>
-    <div class="label-line">Поручитель ${orBlank(
-      d.guarantorName ? `${d.guarantorName}${d.guarantorPhone ? `, тел. ${d.guarantorPhone}` : ''}` : undefined,
-      '560px'
+    <div class="label-line fill">Адрес Покупателя ${orBlank(d.customerAddress)}</div>
+    <div class="label-line fill">Адрес Доставки ${orBlank(d.deliveryAddress)}</div>
+    <div class="label-line fill">Поручитель ${orBlank(
+      d.guarantorName ? `${d.guarantorName}${d.guarantorPhone ? `, тел. ${d.guarantorPhone}` : ''}` : undefined
     )}</div>
 
     <p class="para">с другой стороны, заключили настоящий договор о нижеследующем.</p>
@@ -306,31 +305,36 @@ const classicBody = (d: ContractData): string => {
       }
     </p>
 
-    <div class="label-line sign">Продавец: Подпись <span class="blank" style="min-width:420px"></span></div>
-    <div class="label-line sign">Покупатель: Подпись <span class="blank" style="min-width:400px"></span></div>
-    <div class="label-line sign">Поручитель: Подпись <span class="blank" style="min-width:400px"></span></div>
-    <div class="label-line sign">Номер Покупателя: ${orBlank(d.customerPhone, '380px')}</div>
-    <div class="label-line sign">Номер Поручителя: ${orBlank(d.guarantorPhone, '380px')}</div>`;
+    <div class="label-line sign fill">Продавец: Подпись <span class="blank grow"></span></div>
+    <div class="label-line sign fill">Покупатель: Подпись <span class="blank grow"></span></div>
+    <div class="label-line sign fill">Поручитель: Подпись <span class="blank grow"></span></div>
+    <div class="label-line sign fill">Номер Покупателя: ${orBlank(d.customerPhone)}</div>
+    <div class="label-line sign fill">Номер Поручителя: ${orBlank(d.guarantorPhone)}</div>`;
 };
 
 const CLASSIC_STYLES = `
-  .contract-sheet { font-family: 'Times New Roman', serif; color: #000; background: #fff; padding: 26px 30px; font-size: 12pt; line-height: 1.35; }
+  .contract-sheet { font-family: 'Times New Roman', serif; color: #000; background: #fff; padding: 14mm 15mm; font-size: 11.5pt; line-height: 1.25; }
   .contract-sheet h1 { text-align: center; font-size: 14pt; margin: 0; font-weight: bold; }
-  .contract-sheet .subtitle { text-align: center; font-size: 12pt; margin-bottom: 14px; }
+  .contract-sheet .subtitle { text-align: center; font-size: 11.5pt; margin-bottom: 10px; }
   .contract-sheet .row-line { display: flex; justify-content: space-between; margin-bottom: 6px; }
-  .contract-sheet .para { margin: 6px 0; text-align: justify; }
-  .contract-sheet .para.small { font-size: 11pt; margin: 8px 0; }
-  .contract-sheet .clause { margin: 8px 0 4px; }
+  .contract-sheet .para { margin: 4px 0; text-align: justify; }
+  .contract-sheet .para.small { font-size: 10.5pt; margin: 5px 0; }
+  .contract-sheet .clause { margin: 6px 0 3px; }
   .contract-sheet .indent { padding-left: 22px; }
-  .contract-sheet .label-line { margin: 4px 0; }
-  .contract-sheet .label-line.sign { margin: 10px 0; }
+  .contract-sheet .label-line { margin: 3px 0; }
+  .contract-sheet .label-line.sign { margin: 7px 0; }
+  /* Подпись и линия — на одной строке: с фиксированной шириной линия не влезала
+     рядом с подписью и переносилась вниз, съедая по строке на каждый пункт. */
+  .contract-sheet .label-line.fill { display: flex; align-items: baseline; gap: 6px; }
+  .contract-sheet .label-line.fill .blank,
+  .contract-sheet .label-line.fill .filled { flex: 1; min-width: 0 !important; }
   /* Пустая линия под рукописное заполнение — сплошная, как в типографском бланке */
   .contract-sheet .blank { display: inline-block; border-bottom: 1px solid #000; height: 14px; }
   .contract-sheet .filled { padding: 0 4px; }
   .contract-sheet .dots { display: inline-block; border-bottom: 1px solid #000; min-width: 110px; height: 13px; }
   .contract-sheet .dots-sm { display: inline-block; border-bottom: 1px solid #000; min-width: 26px; height: 13px; }
-  .contract-sheet table.schedule { width: 100%; border-collapse: collapse; margin: 14px 0; }
-  .contract-sheet table.schedule th, .contract-sheet table.schedule td { border: 1px solid #000; padding: 4px 6px; font-size: 11pt; height: 24px; }
+  .contract-sheet table.schedule { width: 100%; border-collapse: collapse; margin: 10px 0; }
+  .contract-sheet table.schedule th, .contract-sheet table.schedule td { border: 1px solid #000; padding: 2px 6px; font-size: 10.5pt; height: 20px; }
   .contract-sheet table.schedule th { text-align: center; font-weight: bold; }
   .contract-sheet td.c { text-align: center; }
   .contract-sheet td.num { font-weight: bold; }
@@ -344,6 +348,9 @@ const CLASSIC_STYLES = `
  * зависимости от того, с чего его открыли.
  */
 export const CONTRACT_SHEET_WIDTH_PX = 794;
+
+/** Высота листа A4 при 96 dpi. По ней решаем, поместится ли договор на страницу. */
+export const CONTRACT_SHEET_HEIGHT_PX = 1123;
 
 const SHARED_HEAD = `
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -360,10 +367,12 @@ const SHARED_HEAD = `
   .contract-sheet { width: ${CONTRACT_SHEET_WIDTH_PX}px; margin: 0 auto; transform-origin: top center; }
 
   @media print {
-    @page { size: A4 portrait; margin: 12mm; }
+    /* Поля нулевые, а отступы даёт сам лист. Иначе печатная область уже экранной
+       (A4 минус поля), текст перевёрстывается на другую ширину — и документ,
+       занимавший один лист на экране, на бумаге уезжает на второй. */
+    @page { size: A4 portrait; margin: 0; }
     .no-print { display: none }
-    /* На бумаге поля задаёт @page — своя ширина и отступы листа тут только мешают. */
-    .contract-sheet { width: auto; margin: 0; padding: 0; transform: none !important; }
+    .contract-sheet { width: ${CONTRACT_SHEET_WIDTH_PX}px; margin: 0; transform: none !important; }
   }
 `;
 
@@ -378,18 +387,42 @@ const FIT_SCRIPT = `
   (function () {
     var sheet = document.querySelector('.contract-sheet');
     if (!sheet) return;
-    function fit() {
+
+    /* Подгонка под узкий экран. Ширина листа фиксирована, поэтому на телефоне он
+       не помещается и его пришлось бы двигать пальцем. Уменьшаем целиком — так
+       виден весь документ сразу, а раскладка остаётся печатной. */
+    function fitWidth() {
+      sheet.style.zoom = '';
       var w = document.documentElement.clientWidth;
       var scale = Math.min(1, w / ${CONTRACT_SHEET_WIDTH_PX});
       sheet.style.transform = scale < 1 ? 'scale(' + scale + ')' : '';
-      // Уменьшенный лист занимает меньше места по высоте, но поток об этом не
-      // знает — иначе внизу оставалась бы пустая полоса в треть экрана.
       document.body.style.height = scale < 1 ? (sheet.offsetHeight * scale) + 'px' : '';
     }
-    fit();
-    window.addEventListener('resize', fit);
-    window.addEventListener('beforeprint', function () { sheet.style.transform = ''; });
-    window.addEventListener('afterprint', fit);
+
+    /* Подгонка под один лист. Договор с длинным графиком перерастает страницу, и
+       на бумагу уходит вторая — обычно ради трёх последних строк. Ужимаем весь
+       лист так, чтобы он поместился целиком.
+
+       zoom, а не transform: transform не меняет высоту в потоке, и браузер всё
+       равно разорвал бы страницу в прежнем месте. Ниже 0.65 не опускаемся —
+       мельче договор становится нечитаемым, и лучше честные две страницы. */
+    function fitHeight() {
+      sheet.style.transform = '';
+      document.body.style.height = '';
+      sheet.style.zoom = '';
+      var h = sheet.scrollHeight;
+      if (h > ${CONTRACT_SHEET_HEIGHT_PX}) {
+        sheet.style.zoom = Math.max(0.65, ${CONTRACT_SHEET_HEIGHT_PX} / h);
+      }
+    }
+
+    fitWidth();
+    window.addEventListener('resize', fitWidth);
+    window.addEventListener('beforeprint', fitHeight);
+    window.addEventListener('afterprint', fitWidth);
+    // Печать с телефона идёт через системный диалог, и beforeprint там срабатывает
+    // не всегда — подгоняем заранее, до самого вызова печати.
+    window.__fitContractForPrint = fitHeight;
   })();
 `;
 
@@ -434,7 +467,7 @@ export const buildContractHtml = (
   ${options.withPrintButton ? '<button class="no-print" onclick="window.close()">✕ Закрыть</button>' : ''}
   <div class="contract-sheet">${body}</div>
   <script>${FIT_SCRIPT}<\/script>
-  ${options.withPrintButton ? '<script>window.onload = function () { setTimeout(function () { window.print(); }, 300); }<\/script>' : ''}
+  ${options.withPrintButton ? '<script>window.onload = function () { setTimeout(function () { if (window.__fitContractForPrint) window.__fitContractForPrint(); window.print(); }, 300); }<\/script>' : ''}
 </body>
 </html>`;
 };
