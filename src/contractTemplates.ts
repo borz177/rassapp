@@ -161,33 +161,57 @@ const modernBody = (d: ContractData): string => {
         и оплатить его в рассрочку на указанных выше условиях.
       </p>
     </div>
-    <div class="footer">
-      <div class="signature-block" style="width:${hasGuarantor ? '30%' : '45%'}">
-        <div class="signature-line"></div><div class="signature-label">Продавец</div>
-      </div>
-      ${hasGuarantor ? '<div class="signature-block" style="width:30%"><div class="signature-line"></div><div class="signature-label">Поручитель</div></div>' : ''}
-      <div class="signature-block" style="width:${hasGuarantor ? '30%' : '45%'}">
-        <div class="signature-line"></div><div class="signature-label">Покупатель</div>
+    <div class="footer-container">
+      <div class="footer">
+        <div class="signature-block" style="width:${hasGuarantor ? '30%' : '45%'}">
+          <div class="signature-line"></div><div class="signature-label">Продавец</div>
+        </div>
+        ${hasGuarantor ? '<div class="signature-block" style="width:30%"><div class="signature-line"></div><div class="signature-label">Поручитель</div></div>' : ''}
+        <div class="signature-block" style="width:${hasGuarantor ? '30%' : '45%'}">
+          <div class="signature-line"></div><div class="signature-label">Покупатель</div>
+        </div>
       </div>
     </div>`;
 };
 
 const MODERN_STYLES = `
-  .contract-sheet { font-family: 'Times New Roman', serif; color: #000; background: #fff; padding: 24px; }
-  .contract-sheet h1 { text-align: center; font-size: 15pt; margin: 0 0 4px; }
-  .contract-sheet .header-info { text-align: center; font-size: 10.5pt; margin-bottom: 18px; }
-  .contract-sheet .section { margin-bottom: 14px; }
-  .contract-sheet .field-row, .contract-sheet .two-col { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+  /* Ровно те правила, по которым эта форма печаталась до появления выбора: Arial,
+     12pt, дата справа, поля 20 мм. Вид не меняли намеренно — у людей на руках
+     подписанные договоры, и печать «того же» документа не должна отличаться от
+     прошлой. Изменилось только одно: правила вложены в .contract-sheet, потому
+     что лист теперь бывает и внутри страницы приложения (снимок для PDF). */
+  .contract-sheet {
+    font-family: 'Arial', Helvetica, sans-serif;
+    font-size: 12pt;
+    line-height: 1.5;
+    padding: 20mm;
+    color: #000;
+    background: #fff;
+  }
+  .contract-sheet h1 { text-align: center; font-size: 15pt; font-weight: bold; margin: 0 0 25px 0; text-transform: uppercase; }
+  .contract-sheet .header-info { text-align: right; margin-bottom: 20px; font-size: 11pt; }
+  .contract-sheet .field-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
+  .contract-sheet .two-col { display: flex; justify-content: space-between; margin-top: 10px; }
   .contract-sheet .field-label { font-weight: bold; }
-  .contract-sheet table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-  .contract-sheet th, .contract-sheet td { border: 1px solid #000; padding: 5px 6px; font-size: 10.5pt; }
-  .contract-sheet th { background: #f1f1f1; }
-  .contract-sheet td.c, .contract-sheet th { text-align: center; }
-  .contract-sheet .obligation { margin: 22px 0; font-size: 11pt; line-height: 1.45; }
-  .contract-sheet .footer { display: flex; justify-content: space-between; margin-top: 36px; }
-  .contract-sheet .signature-block { text-align: center; }
-  .contract-sheet .signature-line { border-bottom: 1px solid #000; height: 28px; }
-  .contract-sheet .signature-label { font-size: 10pt; margin-top: 4px; }
+  .contract-sheet .section { margin: 0 0 20px 0; }
+  .contract-sheet .section > div { margin-bottom: 12px; }
+  .contract-sheet .section > div:last-child { margin-bottom: 0; }
+  .contract-sheet table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 10.5pt; }
+  .contract-sheet th, .contract-sheet td { border: 1px solid #000; padding: 8px; text-align: center; }
+  .contract-sheet th { font-weight: bold; background: #f9f9f9; }
+  .contract-sheet .content-wrapper { width: 100%; }
+  .contract-sheet .obligation { margin: 25px 0; font-size: 11pt; line-height: 1.4; }
+  .contract-sheet .footer-container { width: 100%; margin-top: 40px; break-inside: avoid; page-break-inside: avoid; }
+  .contract-sheet .footer { display: flex; justify-content: space-between; align-items: flex-end; width: 100%; }
+  .contract-sheet .signature-block { text-align: center; break-inside: avoid; page-break-inside: avoid; }
+  .contract-sheet .signature-line { border-bottom: 1px solid #000; margin: 40px 0 5px 0; min-height: 1px; }
+  .contract-sheet .signature-label { font-size: 10pt; font-style: italic; }
+  @media print {
+    .contract-sheet .field-row { flex-wrap: nowrap !important; gap: 0 !important; }
+    .contract-sheet .field-row > span:last-child { text-align: right !important; margin-left: 10px; }
+    .contract-sheet h1 { font-size: 14pt; }
+    .contract-sheet table { font-size: 10pt; }
+  }
 `;
 
 // ─── Классический ───────────────────────────────────────────────────────────
