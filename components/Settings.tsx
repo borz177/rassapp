@@ -20,6 +20,8 @@ interface SettingsProps {
   appSettings: AppSettings;
   /** Разрешает ли тариф магазин. Решение принимает App — здесь только вид. */
   shopAllowed?: boolean;
+  /** Вторая печатная форма договора — со «Стандарта» и выше */
+  contractTemplatesAllowed?: boolean;
   onUpdateSettings: (settings: AppSettings) => void;
   onNavigate: (view: ViewState) => void;
   onSettingsChanged?: () => void;
@@ -106,7 +108,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
-const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, onUpdateSettings, onNavigate, onSettingsChanged, currentUserId, user }) => {
+const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, contractTemplatesAllowed = true, onUpdateSettings, onNavigate, onSettingsChanged, currentUserId, user }) => {
   const isEmployee = user?.role === 'employee';
   const hasNotificationsAccess = user?.role === 'admin' || user?.role === 'employee' || user?.role === 'investor'
     || user?.subscription?.plan !== 'START';
@@ -656,6 +658,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, o
           выглядит снаружи, только на бумаге, а не на экране. */}
       <SettingsAccordion title="Печатная форма договора" subtitle="Какой бланк печатается и уходит клиенту.">
           <ContractTemplatePicker
+            allowPaid={contractTemplatesAllowed}
             value={appSettings.contractTemplate || 'MODERN'}
             companyName={appSettings.companyName || ''}
             sellerPhone={getSellerPhone(user)}

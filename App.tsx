@@ -1395,7 +1395,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 };
 
   // ... (Access checks and calculation logic remain the same)
-  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP'): boolean => {
+  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP' | 'CONTRACT_TEMPLATES'): boolean => {
     if (!user) return false;
     if (isEmployee || isInvestor || user.role === 'admin') return true;
 
@@ -1415,6 +1415,9 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         // должен быть разрешён и BUSINESS_PRO — иначе BUSINESS_PRO ошибочно лишался этих функций.
         case 'AI': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO' || plan === 'TRIAL';
         case 'WHATSAPP': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'BUSINESS_PRO' || plan === 'TRIAL';
+        // Вторая печатная форма — со «Стандарта». На пробном тоже открыта: пробный
+        // период для того и нужен, чтобы увидеть, за что платят.
+        case 'CONTRACT_TEMPLATES': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'BUSINESS_PRO' || plan === 'TRIAL';
         // 🔥 ИСПРАВЛЕНО: TRIAL имеет лимит 0, поэтому разрешаем только STANDARD и BUSINESS(_PRO)
         case 'EMPLOYEES': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
         case 'SUPPLIERS': return plan === 'BUSINESS_PRO';
@@ -4006,7 +4009,8 @@ const handleUpdateSettings = async (newSettings: AppSettings) => {
 
 if (isPublicMode) {
     return (
-        <Suspense fallback={<LazyFallback />}>
+        <Suspense fallback={<LazyFallback  contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')}
+                             />}>
             <Calculator
                 isPublic={true}
                 appSettings={appSettings}
@@ -4191,7 +4195,8 @@ if (!user && !showSplash) {
                       employees={employees}
                       appSettings={appSettings}
                       onCreateTask={checkAccess("TASKS") ? handleCreateTaskFor : undefined}
-                  />
+                   contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')}
+                             />
                   </PagePush>
               )}
               {(currentView === 'INVESTORS' || currentView === 'INVESTOR_DETAILS') && (
@@ -4345,7 +4350,8 @@ if (!user && !showSplash) {
                       <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts}
                              sales={sales} retailSales={retailSales} onClose={requestClose} onSubmit={handleIncomeSubmit}
                              onSelectCustomer={() => openSelection('SELECT_CUSTOMER', draftSaleData)}
-                             appSettings={appSettings} user={user}/>
+                             appSettings={appSettings} user={user} contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')}
+                             />
                     )}
                   </PagePush>
               )}
@@ -4410,7 +4416,8 @@ if (!user && !showSplash) {
 
               {currentView === 'SETTINGS' && (
                 <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
-                  <Settings appSettings={appSettings} shopAllowed={checkAccess('SHOP')} onUpdateSettings={handleUpdateSettings}
+                  <Settings appSettings={appSettings} shopAllowed={checkAccess('SHOP')}
+                            contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')} onUpdateSettings={handleUpdateSettings}
                                                        onNavigate={(v: ViewState) => { setPreviousView('SETTINGS'); setCurrentView(v); }} onImportData={handleImportData} currentUserId={user.id} user={user}/>
                 </PagePush>
               )}

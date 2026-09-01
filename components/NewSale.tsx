@@ -7,7 +7,7 @@ import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
 import { api } from '../services/api';
 import { getSellerPhone, escapeHtml, formatDate, addMonthsClamped } from '../src/utils';
-import { buildContractHtml, buildContractFragment, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
+import { buildContractHtml, buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } from './feedback';
 
@@ -38,6 +38,8 @@ interface NewSaleProps {
   ) => void;
   user?: any;
   appSettings?: AppSettings; 
+  /** Вторая печатная форма доступна со «Стандарта» и выше */
+  contractTemplatesAllowed?: boolean;
 }
 
 // Форматирует любой российский номер в вид +7 (XXX) XXX-XX-XX
@@ -129,7 +131,7 @@ const contractScheduleRows = (sale: Sale) => {
 const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales, suppliers, showSupplierField,
   onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user, propAppSettings,
-  onOpenRetail,
+  onOpenRetail, contractTemplatesAllowed = true,
 }) => {
   const supplierList: Supplier[] = suppliers || [];
   const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(initialData.type || 'INSTALLMENT');
@@ -786,7 +788,7 @@ if (mode === 'CASH') {
     if (!createdSale || !selectedCustomer) return null;
     const sale = createdSale;
     const { html, styles } = buildContractFragment(
-      appSettings?.contractTemplate || 'MODERN',
+      resolveContractTemplate(appSettings?.contractTemplate, contractTemplatesAllowed),
       {
         companyName: appSettings?.companyName || 'Компания',
         sellerPhone: formatPhone(getSellerPhone(user, appSettings)),
@@ -1009,7 +1011,7 @@ if (mode === 'CASH') {
     // Разметка обеих форм живёт в src/contractTemplates.ts: договор печатают из
     // нескольких мест, и копии вёрстки разошлись бы на первой же правке.
     const htmlContent = buildContractHtml(
-      appSettings?.contractTemplate || 'MODERN',
+      resolveContractTemplate(appSettings?.contractTemplate, contractTemplatesAllowed),
       {
         companyName,
         sellerPhone: formatPhone(sellerPhone),

@@ -20,6 +20,29 @@ export interface ContractTemplateInfo {
   description: string;
 }
 
+/**
+ * Формы, доступные не на всех тарифах. «Договор 2» — со «Стандарта» и выше.
+ *
+ * Список держим рядом с самими формами: разойдись он с проверкой доступа —
+ * человек выбрал бы бланк, который потом молча заменится другим при печати.
+ */
+export const PAID_CONTRACT_TEMPLATES: ContractTemplateId[] = ['CLASSIC'];
+
+/**
+ * Какую форму печатать на самом деле.
+ *
+ * Тариф могли понизить уже после выбора: в настройках останется «Договор 2», а
+ * права на него больше нет. Печатать по сохранённому значению значило бы отдавать
+ * платную форму бесплатно; молча возвращаемся к базовой.
+ */
+export const resolveContractTemplate = (
+  chosen: ContractTemplateId | undefined,
+  allowPaid: boolean
+): ContractTemplateId => {
+  const id = chosen || 'MODERN';
+  return !allowPaid && PAID_CONTRACT_TEMPLATES.includes(id) ? 'MODERN' : id;
+};
+
 export const CONTRACT_TEMPLATES: ContractTemplateInfo[] = [
   {
     id: 'MODERN',

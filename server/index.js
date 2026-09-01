@@ -90,11 +90,11 @@ const getTargetUserId = (user) => {
 // уведомления Роскомнадзора (ч. 3 ст. 12 152-ФЗ) и приостановки передачи на
 // 10 рабочих дней. Функция в интерфейсе не использовалась, поэтому выключена.
 const PLAN_LIMITS = {
-  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: false,  suppliers: true, investorPools: true, notifications: true,  tasks: true , shop: true },
-  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false , shop: false },
-  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false },
-  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: false, investorPools: false, notifications: true,  tasks: true  , shop: false },
-  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: true,  investorPools: true,  notifications: true,  tasks: true  , shop: true },
+  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: false,  suppliers: true, investorPools: true, notifications: true,  tasks: true , shop: true , contractTemplates: true },
+  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false , shop: false , contractTemplates: false },
+  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false , contractTemplates: true },
+  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: false, investorPools: false, notifications: true,  tasks: true  , shop: false , contractTemplates: true },
+  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: true,  investorPools: true,  notifications: true,  tasks: true  , shop: true , contractTemplates: true },
 };
 
 
@@ -423,6 +423,7 @@ const FEATURE_DENIED_MESSAGES = {
   notifications: { msg: 'Уведомления доступны начиная с тарифа Стандарт.', hint: 'Оформите тариф Стандарт для доступа к уведомлениям о событиях.' },
   tasks: { msg: 'Задачи доступны на тарифах Бизнес и Бизнес Pro.', hint: 'Оформите тариф Бизнес для работы с задачами и поручениями сотрудникам.' },
   shop: { msg: 'Магазин и склад доступны только на тарифе Бизнес Pro.', hint: 'Оформите тариф Бизнес Pro для розничных продаж и учёта остатков.' },
+  contractTemplates: { msg: 'Вторая форма договора доступна начиная с тарифа Стандарт.', hint: 'Оформите тариф Стандарт, чтобы печатать полный бланк договора.' },
 };
 
 // 🛒 Данные, принадлежащие модулю «Магазин и склад». Перечислены в одном месте:
@@ -2878,6 +2879,16 @@ app.post('/api/data/:type', auth, async (req, res) => {
       user: req.user, type, itemId: itemData.id, accountId: itemData.accountId, isDelete: false
     });
     if (!empCheck.ok) return res.status(empCheck.status).json(empCheck.body);
+
+    // 🔒 Вторая печатная форма договора — со «Стандарта». Настройки НЕ отклоняем
+    // целиком, а возвращаем форму к базовой: настройки сохраняются одним объектом,
+    // и отказ из-за одного поля запер бы человеку весь экран настроек после
+    // понижения тарифа. Выбор молча вернётся к «Договору 1» — ровно это и
+    // покажет интерфейс.
+    if (type === 'settings' && itemData.contractTemplate && itemData.contractTemplate !== 'MODERN') {
+      const tplAccess = await checkFeatureAccess(targetUserId, 'contractTemplates');
+      if (!tplAccess.allowed) itemData.contractTemplate = 'MODERN';
+    }
 
     // 🔒 Модуль "Магазин и склад" — только тариф BUSINESS_PRO. Раньше проверялось
     // лишь в интерфейсе, то есть тариф обходился прямым запросом к API.

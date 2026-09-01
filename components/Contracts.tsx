@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Sale, Customer, Account, User, AppSettings, Task, Payment } from '../types';
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
-import { buildContractHtml } from '../src/contractTemplates';
+import { buildContractHtml, resolveContractTemplate } from '../src/contractTemplates';
 import { formatCurrency, formatDate, escapeHtml, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
 import UnsyncedMark from './UnsyncedMark';
@@ -22,6 +22,8 @@ interface ContractsProps {
   user?: User | null;
   employees?: User[];
   appSettings?: AppSettings;
+  /** Вторая печатная форма доступна со «Стандарта» и выше */
+  contractTemplatesAllowed?: boolean;
   onCreateTask?: (draft: Partial<Task>) => void;
 
 }
@@ -34,6 +36,7 @@ const ContractInfoModal = ({
   customer,
   onClose,
   appSettings,
+  contractTemplatesAllowed = true,
   activeTab,
   readOnly
 }: {
@@ -41,6 +44,7 @@ const ContractInfoModal = ({
   customer?: Customer,
   onClose: () => void,
   appSettings?: AppSettings,
+  contractTemplatesAllowed?: boolean,
   activeTab?: 'ALL' | 'ACTIVE' | 'OVERDUE' | 'ARCHIVE',
   readOnly?: boolean
 }) => {
@@ -336,7 +340,7 @@ const formatPhone = (raw: string | undefined): string => {
 const Contracts: React.FC<ContractsProps> = ({
   sales, customers, accounts, activeTab, onTabChange,
   onViewSchedule, onEditSale, onDeleteSale, readOnly = false,
-  user, employees = [], appSettings, onCreateTask
+  user, employees = [], appSettings, contractTemplatesAllowed = true, onCreateTask
 }) => {
   const isEmployee = user?.role === 'employee';
   const [searchTerm, setSearchTerm] = useState('');
@@ -594,7 +598,7 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
     // печатает экран оформления. Иначе выбранный в настройках бланк применялся бы
     // только к одному из двух путей печати.
     const htmlContent = buildContractHtml(
-      appSettings?.contractTemplate || 'MODERN',
+      resolveContractTemplate(appSettings?.contractTemplate, contractTemplatesAllowed),
       {
         companyName,
         sellerPhone,
@@ -1147,6 +1151,7 @@ useEffect(() => {
           sale={sales.find(s => s.id === selectedSaleForInfo.id) || selectedSaleForInfo}
           customer={customers.find(c => c.id === selectedSaleForInfo.customerId)}
           onClose={() => setSelectedSaleForInfo(null)}
+          contractTemplatesAllowed={contractTemplatesAllowed}
           appSettings={appSettings}
           activeTab={activeTab}
           readOnly={readOnly}

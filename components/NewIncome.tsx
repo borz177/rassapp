@@ -6,7 +6,7 @@ import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
 import { getInvestorAccount, retailRemaining } from '../src/utils';
-import { buildContractFragment, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
+import { buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, type SendStage } from './feedback';
 
@@ -23,6 +23,8 @@ interface NewIncomeProps {
   onSelectCustomer: () => void;
   user?: User;
   appSettings?: AppSettings; 
+  /** Вторая печатная форма доступна со «Стандарта» и выше */
+  contractTemplatesAllowed?: boolean;
 }
 
 // Форматирует любой российский номер в вид +7 (XXX) XXX-XX-XX
@@ -37,7 +39,7 @@ const formatPhone = (raw: string | undefined): string => {
 };
 
 const NewIncome: React.FC<NewIncomeProps> = ({
-  initialData, customers, investors, accounts, sales, retailSales = [], onClose, onSubmit, onSelectCustomer, user, appSettings
+  initialData, customers, investors, accounts, sales, retailSales = [], onClose, onSubmit, onSelectCustomer, user, appSettings, contractTemplatesAllowed = true
 }) => {
   const [sourceType, setSourceType] = useState<'CUSTOMER' | 'INVESTOR' | 'OTHER'>('CUSTOMER');
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId || '');
@@ -490,7 +492,7 @@ const commonData = {
       });
 
     const { html, styles } = buildContractFragment(
-      appSettings?.contractTemplate || 'MODERN',
+      resolveContractTemplate(appSettings?.contractTemplate, contractTemplatesAllowed),
       {
         companyName: appSettings?.companyName || 'Компания',
         sellerPhone: formatPhone(user?.phone || appSettings?.sellerPhone),
