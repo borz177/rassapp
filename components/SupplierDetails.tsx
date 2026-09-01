@@ -1,14 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import { Customer, Expense, Sale, Supplier } from '../types';
+import { Customer, Expense, Product, Sale, StockMovement, Supplier } from '../types';
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
 import { formatCurrency, escapeHtml } from '../src/utils';
+import { supplierSupplies, supplierSupplyDebt } from '../src/supplierLedger';
 
 interface SupplierDetailsProps {
   supplier: Supplier;
   sales: Sale[];
   expenses: Expense[];
   customers: Customer[];
+  /** Приходы со склада: товар от этого поставщика, принятый накладной */
+  movements?: StockMovement[];
+  products?: Product[];
   showCents?: boolean;
   appSettings?: any;
   onBack: () => void;
@@ -16,7 +20,7 @@ interface SupplierDetailsProps {
   onViewContract: (sale: Sale) => void;
 }
 
-const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expenses, customers, showCents, appSettings, onBack, onPaySupplier, onViewContract }) => {
+const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expenses, customers, movements = [], products = [], showCents, appSettings, onBack, onPaySupplier, onViewContract }) => {
   const [contractFilter, setContractFilter] = useState<'ALL' | 'DEBT' | 'PAID'>('ALL');
   const supplierSales = useMemo(
     () => sales.filter(s => s.supplierId === supplier.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
@@ -30,7 +34,7 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
     [expenses, supplier]
   );
 
-  const totalDebt = useMemo(
+  const contractDebt = useMemo(
     () => supplierSales.reduce((sum, s) => {
       if (s.isPartnerDebtPaid) return sum;
       return sum + Math.max(0, s.buyPrice - (s.partnerDebtPaidAmount || 0));
@@ -38,7 +42,23 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
     [supplierSales]
   );
 
-  const totalVolume = useMemo(() => supplierSales.reduce((sum, s) => sum + (s.buyPrice || 0), 0), [supplierSales]);
+  // Поставки на склад — такое же обязательство, как товар по договору: приняли
+  // накладной, значит должны. До сих пор на карточке партнёра их не было вовсе.
+  const supplies = useMemo(
+    () => supplierSupplies(movements, products, supplier.id),
+    [movements, products, supplier.id]
+  );
+  const suppliesTotal = useMemo(() => supplies.reduce((sum, d) => sum + d.total, 0), [supplies]);
+  const supplyDebt = useMemo(
+    () => supplierSupplyDebt(movements, products, expenses, supplier.id),
+    [movements, products, expenses, supplier.id]
+  );
+
+  const totalVolume = useMemo(
+    () => supplierSales.reduce((sum, s) => sum + (s.buyPrice || 0), 0) + suppliesTotal,
+    [supplierSales, suppliesTotal]
+  );
+  const totalDebt = contractDebt + supplyDebt;
   const totalPaid = useMemo(() => payments.reduce((sum, p) => sum + p.amount, 0), [payments]);
   const openContractsCount = useMemo(() => supplierSales.filter(s => !s.isPartnerDebtPaid && (s.buyPrice - (s.partnerDebtPaidAmount || 0)) > 0).length, [supplierSales]);
   const paidContractsCount = supplierSales.length - openContractsCount;
@@ -51,9 +71,12 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
 
   const handlePrintStatement = () => {
     const companyName = appSettings?.companyName || 'Компания';
-    type StatementRow = { date: string; type: 'Договор' | 'Оплата'; title: string; debit: number; credit: number };
+    type StatementRow = { date: string; type: 'Договор' | 'Поставка' | 'Оплата'; title: string; debit: number; credit: number };
     const rows: StatementRow[] = [
       ...supplierSales.map(s => ({ date: s.startDate, type: 'Договор' as const, title: s.productName, debit: s.buyPrice || 0, credit: 0 })),
+      // Поставка со склада в сверке равноправна договору: товар получен, деньги
+      // за него причитаются — без этих строк акт не сходился бы с долгом.
+      ...supplies.map(d => ({ date: d.date, type: 'Поставка' as const, title: `Приход №${d.number}`, debit: d.total, credit: 0 })),
       ...payments.map(p => ({ date: p.date, type: 'Оплата' as const, title: p.title, debit: 0, credit: p.amount })),
     ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -149,6 +172,13 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
           <p className={`text-3xl font-bold mt-1 ${totalDebt > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
             {formatCurrency(totalDebt, showCents)} ₽
           </p>
+          {/* Из чего сложился долг — иначе непонятно, почему число выросло после
+              приёмки товара, к которой не было ни одного договора. */}
+          {supplyDebt > 0 && contractDebt > 0 && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              по договорам {formatCurrency(contractDebt, showCents)} ₽ · за поставки {formatCurrency(supplyDebt, showCents)} ₽
+            </p>
+          )}
         </div>
       </div>
 
@@ -164,6 +194,42 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
           <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(totalPaid, showCents)} ₽</p>
         </div>
       </div>
+
+      {supplies.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-slate-800 dark:text-white">Поставки на склад</h3>
+            <span className="text-sm font-bold text-slate-500 dark:text-slate-400">
+              {formatCurrency(suppliesTotal, showCents)} ₽
+            </span>
+          </div>
+          {supplies.map(doc => (
+            <div key={doc.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-800 dark:text-white truncate">Приход №{doc.number}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {new Date(doc.date).toLocaleDateString('ru-RU')} · {doc.lines.length} поз.
+                  </p>
+                </div>
+                <p className="font-bold text-slate-800 dark:text-white shrink-0">
+                  {formatCurrency(doc.total, showCents)} ₽
+                </p>
+              </div>
+              <div className="mt-2 space-y-0.5">
+                {doc.lines.slice(0, 4).map((l, i) => (
+                  <p key={`${l.productId}_${i}`} className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    {l.name} — {l.quantity} × {formatCurrency(l.price, showCents)} ₽
+                  </p>
+                ))}
+                {doc.lines.length > 4 && (
+                  <p className="text-[11px] text-slate-400">и ещё {doc.lines.length - 4} поз.</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">

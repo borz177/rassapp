@@ -4099,7 +4099,8 @@ if (!user && !showSplash) {
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
                              accounts={accounts} appSettings={appSettings} investors={investors} user={user} retailSales={retailSales} products={products} suppliers={suppliers}
                   showShopTab={shopAvailable && !!appSettings.shopDashboardTab}
-                  />}
+                   stockMovements={stockMovements} expenses={expenses}
+                             />}
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
 {/* 🔹 Дашборд инвестора — с проверкой на загрузку данных */}
 {currentView === 'DASHBOARD' && isInvestor && activeInvestor && (
@@ -4281,7 +4282,8 @@ if (!user && !showSplash) {
                       onUpdateSupplier={handleUpdateSupplier}
                       onDeleteSupplier={handleDeleteSupplier}
                       onViewDetails={handleSelectSupplier}
-                  />
+                   movements={stockMovements} products={products} expenses={expenses}
+                             />
                   </PagePush>
               )}
               {currentView === 'SUPPLIER_DETAILS' && selectedSupplierId && (
@@ -4297,7 +4299,8 @@ if (!user && !showSplash) {
                       onBack={requestClose}
                       onPaySupplier={handlePaySupplier}
                       onViewContract={handleViewSupplierContract}
-                      />
+                       movements={stockMovements} products={products}
+                             />
                     )}
                   </PagePush>
               )}

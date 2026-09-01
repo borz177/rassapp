@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import ModalPortal from './ModalPortal';
-import { Sale, Customer, Account, AppSettings, Investor, User, Product, RetailSale, Supplier } from '../types';
+import { Sale, Customer, Account, AppSettings, Investor, User, Product, RetailSale, Supplier, StockMovement, Expense } from '../types';
 import DashboardCash from './DashboardCash';
+import { supplierSupplyDebt } from '../src/supplierLedger';
 import TabPill from './TabPill';
 import { ICONS } from '../constants';
 import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
@@ -94,6 +95,9 @@ interface DashboardProps {
   showShopTab?: boolean;
   /** Поставщики — для карточки «Мы должны». Пусто, если раздел недоступен. */
   suppliers?: Supplier[];
+  /** Приходы со склада: долг за принятый товар считается и по ним */
+  stockMovements?: StockMovement[];
+  expenses?: Expense[];
 }
 
 const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: Sale, customerName: string, onClose: () => void, appSettings: AppSettings }) => {
@@ -916,6 +920,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     products,
     showShopTab = false,
     suppliers = [],
+    stockMovements = [],
+    expenses = [],
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
   // Рассрочка и розница — два разных дела с разными числами, и складывать их в
@@ -933,6 +939,13 @@ const Dashboard: React.FC<DashboardProps> = ({
       if (left <= 0) return;
       map.set(sale.supplierId, (map.get(sale.supplierId) || 0) + left);
     });
+    // Долг за товар, принятый на склад накладной: договора у него нет, но деньги
+    // за него должны ровно так же.
+    suppliers.forEach(sup => {
+      const supplyDebt = supplierSupplyDebt(stockMovements, [], expenses, sup.id);
+      if (supplyDebt > 0) map.set(sup.id, (map.get(sup.id) || 0) + supplyDebt);
+    });
+
     const rows = Array.from(map.entries())
       .map(([supplierId, amount]) => ({
         supplierId, amount,
@@ -940,7 +953,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       }))
       .sort((a, b) => b.amount - a.amount);
     return { rows, total: rows.reduce((sum, r) => sum + r.amount, 0) };
-  }, [allSales, suppliers]);
+  }, [allSales, suppliers, stockMovements, expenses]);
 
   const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   // Скрытие суммы переживает перезапуск: человек прячет её, чтобы не светить

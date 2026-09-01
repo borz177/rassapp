@@ -1,11 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { Sale, Supplier } from '../types';
+import { Expense, Product, Sale, StockMovement, Supplier } from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency } from '../src/utils';
+import { supplierSupplies, supplierSupplyDebt } from '../src/supplierLedger';
 
 interface SuppliersProps {
   suppliers: Supplier[];
   sales: Sale[];
+  /** Приходы со склада — второй источник долга перед партнёром */
+  movements?: StockMovement[];
+  products?: Product[];
+  expenses?: Expense[];
   showCents?: boolean;
   onAddSupplier: (data: { name: string; phone?: string; email?: string; notes?: string }) => void;
   onUpdateSupplier: (supplier: Supplier) => void;
@@ -14,7 +19,7 @@ interface SuppliersProps {
 }
 
 const Suppliers: React.FC<SuppliersProps> = ({
-  suppliers, sales, showCents, onAddSupplier, onUpdateSupplier, onDeleteSupplier, onViewDetails
+  suppliers, sales, movements = [], products = [], expenses = [], showCents, onAddSupplier, onUpdateSupplier, onDeleteSupplier, onViewDetails
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -34,8 +39,15 @@ const Suppliers: React.FC<SuppliersProps> = ({
       if (remaining <= 0) return;
       map[s.supplierId] = (map[s.supplierId] || 0) + remaining;
     });
+    // Товар, принятый на склад накладной, — такой же долг, как взятый под
+    // договор. Без этого партнёр с одними складскими поставками показывался
+    // без долга вовсе.
+    suppliers.forEach(sup => {
+      const supplyDebt = supplierSupplyDebt(movements, products, expenses, sup.id);
+      if (supplyDebt > 0) map[sup.id] = (map[sup.id] || 0) + supplyDebt;
+    });
     return map;
-  }, [sales]);
+  }, [sales, suppliers, movements, products, expenses]);
 
   const statsBySupplier = useMemo(() => {
     const map: Record<string, { count: number; volume: number; lastDate: string | null }> = {};
@@ -49,8 +61,18 @@ const Suppliers: React.FC<SuppliersProps> = ({
         stat.lastDate = s.startDate;
       }
     });
+    suppliers.forEach(sup => {
+      const supplies = supplierSupplies(movements, products, sup.id);
+      if (supplies.length === 0) return;
+      if (!map[sup.id]) map[sup.id] = { count: 0, volume: 0, lastDate: null };
+      const stat = map[sup.id];
+      stat.count += supplies.length;
+      stat.volume += supplies.reduce((sum, d) => sum + d.total, 0);
+      const newest = supplies[0].date;
+      if (!stat.lastDate || new Date(newest) > new Date(stat.lastDate)) stat.lastDate = newest;
+    });
     return map;
-  }, [sales]);
+  }, [sales, suppliers, movements, products]);
 
   const resetForm = () => {
     setFormName('');
