@@ -4,7 +4,11 @@ import TabPill from './TabPill';
 import SelectSheet from './SelectSheet';
 import { Sale, Account, Expense, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, shareDateForSale } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, shareDateForSale } from '../src/utils';
+
+// Цвета участников пула — те же роли, что у палитры инвесторов в отчётах:
+// человека узнают по кружку, а не вычитывают имя в таблице.
+const POOL_PALETTE = ['#6366f1', '#a855f7', '#ec4899', '#f59e0b', '#10b981', '#06b6d4'];
 
 // Пресеты периода — те же, что в карточке инвестора.
 // 'ALL' сохранён отдельно: до этого касса по умолчанию показывала данные за всё время,
@@ -977,6 +981,53 @@ const investorProfitPayouts = useMemo(() => {
         .sort((a, b) => b.receivedProfit - a.receivedProfit);
 }, [sales, accounts, investors, expenses, profitFilterAccountId, myProfitPeriod]);
 
+  // 🔹 Состав пула — тот же разрез, что в отчётах: чей это капитал, какая у человека
+  // доля и что с неё набежало за выбранный период. На странице общего счёта до сих пор
+  // были только суммарные цифры, и понять, кому принадлежат деньги в общей кассе,
+  // можно было лишь уйдя в карточку каждого инвестора.
+  const poolComposition = useMemo(() => {
+    const acc = detailsAccount;
+    if (!acc || acc.type !== 'POOL') return null;
+
+    const nowMs = Date.now();
+    const members = (acc.poolMemberIds || [])
+      .map(id => investors.find(i => i.id === id))
+      .filter((i): i is Investor => !!i);
+    if (members.length === 0) return null;
+
+    // Вышедшие из пула капитал больше не держат — их доля равна нулю, но строку
+    // оставляем: иначе история «кто здесь был» пропадает из виду совсем.
+    const totalCapital = members.reduce((sum, m) => {
+      const period = getActivePeriodAt(m, nowMs);
+      return sum + (period ? period.initialAmount : 0);
+    }, 0);
+    const profitShares = getAccountShares(acc, investors);
+
+    const rows = members.map((m, idx) => {
+      const period = getActivePeriodAt(m, nowMs);
+      const amount = period ? period.initialAmount : 0;
+      const stats = investorProfitBreakdown.find(b => b.investor.id === m.id);
+      return {
+        investor: m,
+        isActive: period !== null,
+        amount,
+        capitalShare: totalCapital > 0 ? amount / totalCapital * 100 : 0,
+        profitShare: profitShares.find(sh => sh.investor.id === m.id)?.percentage ?? 0,
+        expectedProfit: stats?.expectedProfit ?? 0,
+        receivedProfit: stats?.receivedProfit ?? 0,
+        color: POOL_PALETTE[idx % POOL_PALETTE.length],
+      };
+    });
+
+    return {
+      rows,
+      totalCapital,
+      managerShare: getManagerSharePercent(acc, investors),
+      expectedTotal: rows.reduce((sum, r) => sum + r.expectedProfit, 0),
+      receivedTotal: rows.reduce((sum, r) => sum + r.receivedProfit, 0),
+    };
+  }, [detailsAccount, investors, investorProfitBreakdown]);
+
   // Если выбран конкретный инвестор — показываем только его цифры, иначе сумму по всем.
   const investorProfitStats = useMemo(() => {
     const relevant = profitFilterInvestorId === 'ALL'
@@ -1313,6 +1364,113 @@ const investorProfitPayouts = useMemo(() => {
               )}
             </div>
           </div>
+
+          {/* Состав пула. Показываем сразу под балансом: в общей кассе лежат чужие
+              деньги, и первый вопрос к такому счёту — чьи именно и сколько. */}
+          {isManager && poolComposition && (
+            <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 dark:border-slate-700">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-1 h-5 bg-fuchsia-500 rounded-full shrink-0"></span>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Состав пула</h4>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                      Общий капитал: {formatCurrency(poolComposition.totalCapital, appSettings.showCents)} ₽
+                    </p>
+                  </div>
+                </div>
+                <span className="shrink-0 text-xs font-semibold bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-700 dark:text-fuchsia-400 px-2 py-1 rounded-full">
+                  {poolComposition.rows.length} участн.
+                </span>
+              </div>
+
+              <div className="overflow-x-auto -mx-1">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th className="pb-3 text-left text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pl-1">Инвестор</th>
+                      {/* На телефоне колонок помещается меньше — прячем те, что можно
+                          восстановить в уме: вложенное видно долей, ожидаемое — полученным. */}
+                      <th className="hidden sm:table-cell pb-3 text-right text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Вложено</th>
+                      <th className="pb-3 text-right text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Доля</th>
+                      <th className="hidden sm:table-cell pb-3 text-right text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Ожидается</th>
+                      <th className="pb-3 text-right text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider pr-1">Получено</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
+                    {poolComposition.rows.map(row => (
+                      <tr key={row.investor.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-700/50 transition-colors">
+                        <td className="py-3 pl-1">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                                 style={{ backgroundColor: row.isActive ? row.color : '#94a3b8' }}>
+                              {row.investor.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-slate-700 dark:text-slate-200 truncate">{row.investor.name}</p>
+                              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                                {row.isActive ? `${row.investor.profitPercentage}% ставка · ${Math.round(row.profitShare * 10) / 10}% приб.` : 'вышел из пула'}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="hidden sm:table-cell py-3 text-right font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                          {formatCurrency(row.amount, appSettings.showCents)} ₽
+                        </td>
+                        <td className="py-3 text-right">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap"
+                                style={{ backgroundColor: row.color + '18', color: row.color }}>
+                            {Math.round(row.capitalShare * 10) / 10}%
+                          </span>
+                        </td>
+                        <td className="hidden sm:table-cell py-3 text-right text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                          {formatCurrency(row.expectedProfit, appSettings.showCents)} ₽
+                        </td>
+                        <td className="py-3 pr-1 text-right font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                          {formatCurrency(row.receivedProfit, appSettings.showCents)} ₽
+                        </td>
+                      </tr>
+                    ))}
+                    {/* Остаток процентов после долей инвесторов — доля менеджера.
+                        Без неё таблица не сходится до 100% и выглядит недосчитанной. */}
+                    <tr>
+                      <td className="py-3 pl-1">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-200 text-xs font-bold shrink-0">М</div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-700 dark:text-slate-200">Менеджер</p>
+                            <p className="text-[11px] text-slate-400 dark:text-slate-500">{Math.round(poolComposition.managerShare * 10) / 10}% прибыли</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="hidden sm:table-cell py-3 text-right text-slate-400 dark:text-slate-500">—</td>
+                      <td className="py-3 text-right text-slate-400 dark:text-slate-500">—</td>
+                      <td className="hidden sm:table-cell py-3 text-right text-slate-400 dark:text-slate-500">—</td>
+                      <td className="py-3 pr-1 text-right text-slate-400 dark:text-slate-500">—</td>
+                    </tr>
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-200 dark:border-slate-600">
+                      <td className="pt-3 pl-1 font-semibold text-slate-700 dark:text-slate-200">Итого</td>
+                      <td className="hidden sm:table-cell pt-3 text-right font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                        {formatCurrency(poolComposition.totalCapital, appSettings.showCents)} ₽
+                      </td>
+                      <td className="pt-3 text-right text-slate-500 dark:text-slate-400">100%</td>
+                      <td className="hidden sm:table-cell pt-3 text-right font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        {formatCurrency(poolComposition.expectedTotal, appSettings.showCents)} ₽
+                      </td>
+                      <td className="pt-3 pr-1 text-right font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                        {formatCurrency(poolComposition.receivedTotal, appSettings.showCents)} ₽
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-3">
+                Прибыль — за выбранный ниже период; доли — на сегодня.
+              </p>
+            </div>
+          )}
 
      {isManager && (
     <div className="space-y-6">

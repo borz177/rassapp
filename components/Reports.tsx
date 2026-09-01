@@ -733,6 +733,9 @@ const Reports: React.FC<ReportsProps> = ({
         }
     };
 
+    // Вкладка «Наличные» живёт своей шапкой: у неё другой источник данных и свои итоги.
+    const isShopTab = showShop && reportTab === 'shop';
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-900 dark:to-slate-900 pb-24 w-full">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
@@ -743,12 +746,17 @@ const Reports: React.FC<ReportsProps> = ({
                         <h2 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-indigo-400 bg-clip-text text-transparent">
                             Отчеты
                         </h2>
+                        {/* Подпись про период и выгрузки относятся к рассрочке: и период,
+                            и CSV/PDF собираются из договоров. На вкладке «Наличные» они
+                            обещали бы не то, что выгрузится, — поэтому их там нет. */}
+                        {!isShopTab && (
                         <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 flex items-center gap-2">
                             <span className="w-1 h-1 bg-indigo-400 rounded-full inline-block"></span>
                             Финансовая аналитика · {filters.period.start} — {filters.period.end}
                         </p>
+                        )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className={`items-center gap-2 ${isShopTab ? 'hidden' : 'flex'}`}>
                         {hasData && (
                             <div className={`hidden sm:block px-4 py-2 rounded-xl text-sm font-semibold ${efficiencyColor === 'emerald' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : efficiencyColor === 'amber' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
                                 Эффективность {efficiency}%
