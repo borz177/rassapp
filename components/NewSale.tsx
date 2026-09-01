@@ -1,12 +1,14 @@
 import React, {useState, useMemo, useEffect, useRef} from 'react';
-import { Customer, Product, Account, AppSettings, Sale, Payment, Supplier } from '../types';
+import { Customer, Product, Account, AppSettings, Sale, SaleStockItem, Payment, Supplier } from '../types';
+import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { ICONS } from '../constants';
 import TabPill from './TabPill';
+import StockPicker from './StockPicker';
 import TopBarBack from './TopBarBack';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
 import { api } from '../services/api';
-import { getSellerPhone, escapeHtml, formatDate, addMonthsClamped } from '../src/utils';
+import { getSellerPhone, escapeHtml, formatDate, addMonthsClamped, stockAtWarehouse, formatCurrency } from '../src/utils';
 import { buildContractHtml, buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } from './feedback';
@@ -40,6 +42,10 @@ interface NewSaleProps {
   appSettings?: AppSettings; 
   /** Вторая печатная форма доступна со «Стандарта» и выше */
   contractTemplatesAllowed?: boolean;
+  /** Магазин включён: товар можно взять со склада, а не набирать строкой */
+  showShop?: boolean;
+  /** Склад, с которого отгружают. Тот же, с которого торгует касса. */
+  warehouseId?: string;
 }
 
 // Форматирует любой российский номер в вид +7 (XXX) XXX-XX-XX
@@ -131,7 +137,7 @@ const contractScheduleRows = (sale: Sale) => {
 const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales, suppliers, showSupplierField,
   onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user, propAppSettings,
-  onOpenRetail, contractTemplatesAllowed = true,
+  onOpenRetail, contractTemplatesAllowed = true, showShop = false, warehouseId = DEFAULT_WAREHOUSE_ID,
 }) => {
   const supplierList: Supplier[] = suppliers || [];
   const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(initialData.type || 'INSTALLMENT');
@@ -183,6 +189,7 @@ const NewSale: React.FC<NewSaleProps> = ({
       supplierId: '',
       partnerDebtPaidAmount: 0,
       isPartnerDebtPaid: false,
+      stockItems: [] as SaleStockItem[],
     };
 
     const merged = { ...defaultData, ...initialData };
@@ -196,6 +203,7 @@ const NewSale: React.FC<NewSaleProps> = ({
       downPayment: initialData.downPayment || 0,
       installments: initialData.installments || 3,
       interestRate: initialData.interestRate || 30,
+      stockItems: initialData.stockItems || [],
       startDate: initialData.startDate
         ? new Date(initialData.startDate).toISOString().split('T')[0]
         : new Date().toISOString().split('T')[0],
@@ -206,6 +214,7 @@ const NewSale: React.FC<NewSaleProps> = ({
     };
   });
 
+  const [stockPickerOpen, setStockPickerOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<Product[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [downPaymentFromMarkup, setDownPaymentFromMarkup] = useState(false);
@@ -519,6 +528,36 @@ const regeneratePaymentPlan = (
     }
   };
 
+  /**
+   * Товар взят со склада: сумма продажи выбранного становится закупом договора.
+   *
+   * Название собираем из позиций только если человек ещё ничего не написал сам —
+   * набранное вручную название договора важнее автоматического, его пишут для
+   * печатной формы. При нескольких позициях складываем суммы: договор один, и
+   * себестоимость у него одна.
+   */
+  const applyStockItems = (items: SaleStockItem[]) => {
+    const sum = items.reduce((n, i) => n + i.price * i.quantity, 0);
+    setFormData(prev => {
+      const wasAuto = !prev.productName
+        || prev.productName === (prev.stockItems || [])
+             .map((i: SaleStockItem) => i.quantity > 1 ? `${i.name} ×${i.quantity}` : i.name).join(', ');
+      const autoName = items
+        .map(i => i.quantity > 1 ? `${i.name} ×${i.quantity}` : i.name).join(', ');
+      return {
+        ...prev,
+        stockItems: items,
+        productName: wasAuto ? autoName : prev.productName,
+        // Ссылку на одиночный товар каталога снимаем: состав теперь описан
+        // позициями, и старое поле только путало бы списание.
+        productId: '',
+        buyPrice: items.length > 0 ? sum : prev.buyPrice,
+      };
+    });
+    setIsPriceManual(false);
+    setStockPickerOpen(false);
+  };
+
   const handleSuggestionClick = (product: Product) => {
     setFormData(prev => ({
       ...prev,
@@ -660,6 +699,10 @@ const regeneratePaymentPlan = (
         interestRate: Number(formData.interestRate),
         roundingMode,
         roundingStep,
+        // Состав со склада и склад отгрузки — по ним договор спишет товар и
+        // вернёт его, если договор удалят.
+        stockItems: formData.stockItems || [],
+        stockWarehouseId: (formData.stockItems || []).length > 0 ? warehouseId : undefined,
       };
 
       let finalSaleData;
@@ -1136,15 +1179,66 @@ if (mode === 'CASH') {
           {/* autoComplete/autoCorrect выключены намеренно: у поля своя подсказка
               по каталогу, а системное автозаполнение Android на переходе фокуса
               подставляет собственное значение поверх набранного. */}
-          <input type="text"
-                 autoComplete="off"
-                 autoCorrect="off"
-                 autoCapitalize="off"
-                 spellCheck={false}
-                 className="w-full p-3 border rounded-lg outline-none text-slate-900 dark:text-white placeholder:text-slate-400 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
-                 placeholder="Введите название товара..."
-                 value={formData.productName}
-                 onChange={(e) => handleProductChange(e.target.value)}/>
+          <div className="flex items-stretch gap-2">
+            <input type="text"
+                   autoComplete="off"
+                   autoCorrect="off"
+                   autoCapitalize="off"
+                   spellCheck={false}
+                   className="flex-1 min-w-0 p-3 border rounded-lg outline-none text-slate-900 dark:text-white placeholder:text-slate-400 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600"
+                   placeholder="Введите название товара..."
+                   value={formData.productName}
+                   onChange={(e) => handleProductChange(e.target.value)}/>
+            {/* Товар со склада. Кнопка только при включённом магазине: без склада
+                выбирать не из чего. При уже внесённых платежах состав не трогаем —
+                он определяет закуп, а закуп в этот момент заблокирован. */}
+            {showShop && !isFinancialLocked && (
+              <button type="button" onClick={() => setStockPickerOpen(true)}
+                      title="Выбрать со склада"
+                      className="shrink-0 w-12 rounded-lg bg-indigo-600 text-white text-xl font-bold active:scale-95 transition-transform">
+                +
+              </button>
+            )}
+          </div>
+
+          {/* Состав со склада. Показываем строками, а не одной суммой: человек
+              должен видеть, что именно спишется, до того как нажмёт «Оформить». */}
+          {(formData.stockItems || []).length > 0 && (
+            <div className="mt-3 rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/50 dark:bg-indigo-900/10 divide-y divide-indigo-100 dark:divide-indigo-900/40">
+              {(formData.stockItems as SaleStockItem[]).map(item => (
+                <div key={item.productId} className="px-3 py-2 flex items-center justify-between gap-3">
+                  <p className="text-sm text-slate-700 dark:text-slate-200 truncate">
+                    {item.name} <span className="text-slate-400">× {item.quantity}</span>
+                  </p>
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 shrink-0">
+                    {formatCurrency(item.price * item.quantity, appSettings.showCents)} ₽
+                  </p>
+                </div>
+              ))}
+              <div className="px-3 py-2 flex items-center justify-between gap-3">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                  {isFinancialLocked ? 'Списано со склада' : 'Спишется со склада'}
+                </span>
+                <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 shrink-0">
+                  {formatCurrency(
+                    (formData.stockItems as SaleStockItem[]).reduce((n, i) => n + i.price * i.quantity, 0),
+                    appSettings.showCents
+                  )} ₽
+                </span>
+              </div>
+            </div>
+          )}
+
+          {stockPickerOpen && (
+            <StockPicker
+              products={products}
+              warehouseId={warehouseId}
+              initial={formData.stockItems || []}
+              showCents={appSettings.showCents}
+              onCancel={() => setStockPickerOpen(false)}
+              onApply={applyStockItems}
+            />
+          )}
           {showSuggestions && suggestions.length > 0 && (
               <div
                   className="absolute left-4 right-4 top-[72px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
@@ -1211,6 +1305,11 @@ if (mode === 'CASH') {
                   }}
                   placeholder="0"
                   disabled={isFinancialLocked}/>
+              {(formData.stockItems || []).length > 0 && (
+                <p className="text-[11px] text-indigo-500 dark:text-indigo-400 mt-1">
+                  Сумма товаров со склада
+                </p>
+              )}
             </div>
             {mode === 'INSTALLMENT' && (
                 <div>

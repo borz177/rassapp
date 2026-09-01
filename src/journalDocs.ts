@@ -1,10 +1,10 @@
 import type {
-  Customer, Product, RetailSale, StockLocation, StockMovement, Supplier,
+  Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier,
 } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { retailRemaining } from './utils';
 
-export type DocKind = 'SALE' | 'IN' | 'TRANSFER' | 'WRITE_OFF' | 'INVENTORY';
+export type DocKind = 'SALE' | 'CONTRACT' | 'IN' | 'TRANSFER' | 'WRITE_OFF' | 'INVENTORY';
 
 /** Одна строка состава документа — общая для чека и складской накладной. */
 export interface DocLine {
@@ -45,6 +45,7 @@ export interface JournalDoc {
 
 export const KIND_LABEL: Record<DocKind, string> = {
   SALE: 'Продажа',
+  CONTRACT: 'Договор',
   IN: 'Приход',
   TRANSFER: 'Перемещение',
   WRITE_OFF: 'Списание',
@@ -59,6 +60,8 @@ interface BuildArgs {
   warehouses: StockLocation[];
   suppliers: Supplier[];
   company: string;
+  /** Договоры рассрочки — по ним у отгрузки появляется имя покупателя. */
+  contracts?: Sale[];
 }
 
 /**
@@ -70,6 +73,7 @@ interface BuildArgs {
  */
 export const buildJournalDocs = ({
   retailSales, movements, products, customers, warehouses, suppliers, company,
+  contracts = [],
 }: BuildArgs): JournalDoc[] => {
   const productName = (id: string) => products.find(p => p.id === id)?.name || 'Товар удалён';
   const warehouseName = (id?: string) =>
@@ -113,10 +117,15 @@ export const buildJournalDocs = ({
 
   batches.forEach((rows, key) => {
     const head = rows[0];
-    if (!head || head.type === 'SALE') return;
+    // Движения розничного чека документом не становятся: чек уже добавлен выше,
+    // и вторая запись о той же продаже была бы дублем. А вот отгрузка по договору
+    // рассрочки — самостоятельная бумага: договор живёт в другом разделе, и в
+    // журнале иначе не видно, что товар ушёл со склада.
+    if (!head || (head.type === 'SALE' && !head.contractId)) return;
 
     const k: DocKind =
-      head.type === 'IN' ? 'IN'
+      head.contractId ? 'CONTRACT'
+      : head.type === 'IN' ? 'IN'
       : head.type === 'TRANSFER' ? 'TRANSFER'
       : head.type === 'WRITE_OFF' ? 'WRITE_OFF'
       : 'INVENTORY';
@@ -126,10 +135,14 @@ export const buildJournalDocs = ({
     const lineRows = k === 'TRANSFER' ? rows.filter(m => m.quantity < 0) : rows;
 
     const supplier = suppliers.find(x => x.id === head.supplierId);
+    const contract = k === 'CONTRACT' ? contracts.find(c => c.id === head.contractId) : undefined;
     const from = k === 'IN'
       ? (supplier?.name || 'Поставщик не указан')
       : warehouseName(head.warehouseId);
     const to = k === 'IN' ? warehouseName(head.warehouseId)
+      // Без списка договоров (карточка товара их не грузит) имени покупателя
+      // взять негде — тогда честнее назвать бумагу, чем выдумать получателя.
+      : k === 'CONTRACT' ? (contract ? customerName(contract.customerId) : 'Договор рассрочки')
       : k === 'TRANSFER' ? warehouseName(head.toWarehouseId)
       : k === 'WRITE_OFF' ? 'Списание'
       : 'Пересчёт';
@@ -152,6 +165,7 @@ export const buildJournalDocs = ({
       discount: 0,
       note: head.note,
       authorId: head.createdByUserId,
+      customerId: contract?.customerId,
       movements: rows,
       supplierId: head.supplierId,
       productIds: Array.from(new Set(rows.map(m => m.productId))),

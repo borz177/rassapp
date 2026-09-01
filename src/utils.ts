@@ -1,5 +1,5 @@
 import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js';
-import { Account, Investor, InvestmentPeriod, Sale, Expense, DEFAULT_WAREHOUSE_ID, Product, RetailSale} from '../types';
+import { Account, Investor, InvestmentPeriod, Sale, SaleStockItem, Expense, DEFAULT_WAREHOUSE_ID, Product, RetailSale} from '../types';
 
 export const escapeHtml = (str: unknown): string =>
   String(str ?? '')
@@ -606,4 +606,48 @@ export const buyPriceExpenseAction = (
     && linked.title === `Закуп: ${next.productName}`
     && linked.accountId === next.accountId;
   return matches ? 'none' : 'save';
+};
+
+
+/**
+ * Что изменить на складе при сохранении договора.
+ *
+ * Договор хранит состав, а не историю списаний, поэтому при каждой правке нужно
+ * сравнить, что было отгружено, с тем, что стало. Движение на позицию одно, с
+ * предсказуемым id, и остаток двигается ровно на разницу — иначе повторное
+ * сохранение договора списало бы товар второй раз.
+ *
+ * stockDelta — со знаком склада: минус, когда товар уходит, плюс, когда
+ * возвращается на полку.
+ */
+export interface StockShipmentChange {
+  productId: string;
+  /** Сколько должно быть отгружено после правки; 0 — позицию убрали */
+  quantity: number;
+  price: number;
+  unit?: string;
+  name: string;
+  /** На сколько изменить остаток склада */
+  stockDelta: number;
+}
+
+export const stockShipmentPlan = (
+  prev: SaleStockItem[] = [],
+  next: SaleStockItem[] = []
+): StockShipmentChange[] => {
+  const ids = Array.from(new Set([...prev.map(i => i.productId), ...next.map(i => i.productId)]));
+  return ids.map(productId => {
+    const before = prev.find(i => i.productId === productId);
+    const after = next.find(i => i.productId === productId);
+    const prevQty = before?.quantity || 0;
+    const nextQty = after?.quantity || 0;
+    return {
+      productId,
+      quantity: nextQty,
+      price: after?.price ?? before?.price ?? 0,
+      unit: after?.unit ?? before?.unit,
+      name: after?.name ?? before?.name ?? '',
+      stockDelta: prevQty - nextQty,
+    };
+  });
 };

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type {
-  Account, AppSettings, Customer, Product, RetailSale, StockLocation, StockMovement, Supplier, User,
+  Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User,
 } from '../types';
 import { formatCurrency } from '../src/utils';
 import { buildJournalDocs, KIND_LABEL, printJournalDoc, type DocKind, type JournalDoc } from '../src/journalDocs';
@@ -20,6 +20,8 @@ interface JournalProps {
   suppliers: Supplier[];
   accounts: Account[];
   employees?: User[];
+  /** Договоры рассрочки — по ним отгрузка со склада подписывается покупателем. */
+  contracts?: Sale[];
   appSettings: AppSettings;
   user?: User | null;
   onBack: () => void;
@@ -35,6 +37,7 @@ type PayFilter = 'ALL' | 'DEBT' | 'PAID';
 const KIND_FILTERS: { id: 'ALL' | DocKind; label: string }[] = [
   { id: 'ALL', label: 'Все' },
   { id: 'SALE', label: 'Продажи' },
+  { id: 'CONTRACT', label: 'Договоры' },
   { id: 'IN', label: 'Приход' },
   { id: 'TRANSFER', label: 'Перемещение' },
   { id: 'WRITE_OFF', label: 'Списание' },
@@ -71,7 +74,7 @@ const timeOf = (d: string) =>
  */
 const Journal: React.FC<JournalProps> = ({
   retailSales, movements, products, customers, warehouses, suppliers, accounts,
-  employees = [], appSettings, user, onBack, onSelectCustomer, onAcceptPayment,
+  employees = [], contracts = [], appSettings, user, onBack, onSelectCustomer, onAcceptPayment,
   onUpdateSale, onUpdateStockDoc, onAddDocLines,
 }) => {
   const [search, setSearch] = useState('');
@@ -86,8 +89,8 @@ const Journal: React.FC<JournalProps> = ({
   const company = appSettings.companyName || 'Магазин';
 
   const docs = useMemo(
-    () => buildJournalDocs({ retailSales, movements, products, customers, warehouses, suppliers, company }),
-    [retailSales, movements, products, customers, warehouses, suppliers, company]
+    () => buildJournalDocs({ retailSales, movements, products, customers, warehouses, suppliers, company, contracts }),
+    [retailSales, movements, products, customers, warehouses, suppliers, company, contracts]
   );
 
   const visible = useMemo(() => {

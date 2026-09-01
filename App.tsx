@@ -44,7 +44,7 @@ const LazyFallback: React.FC = () => (
     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
   </div>
 );
-import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, RetailSale as RetailSaleType, StockLocation, DEFAULT_WAREHOUSE_ID} from './types';
+import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, SaleStockItem, RetailSale as RetailSaleType, StockLocation, DEFAULT_WAREHOUSE_ID} from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
 import { api } from './services/api';
 import { ICONS } from './constants';
@@ -54,7 +54,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { buyPriceExpenseAction, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances} from './src/utils';
+import { buyPriceExpenseAction, stockShipmentPlan, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -1940,6 +1940,8 @@ const handleSaveSale = async (data: any): Promise<any> => {
     };
 
     const existingSaleIndex = sales.findIndex(s => s.id === data.id);
+    // Договор до правки — эталон того, что уже списано со счёта и отгружено со склада.
+    const prevSale = existingSaleIndex >= 0 ? sales[existingSaleIndex] : null;
     saleToSave = existingSaleIndex >= 0
       ? { ...sales[existingSaleIndex], ...saleData }
       : { ...saleData, status: data.type === 'CASH' ? 'COMPLETED' : 'ACTIVE' };
@@ -1968,8 +1970,6 @@ const handleSaveSale = async (data: any): Promise<any> => {
       const buyPriceExpenseId = `exp_sale_${saleId}`;
       const linkedExpense = expenses.find(e => e.id === buyPriceExpenseId);
       const newBuyPrice = Number(data.buyPrice);
-      // Договор до правки — эталон того, что уже списано со счёта.
-      const prevSale = existingSaleIndex >= 0 ? sales[existingSaleIndex] : null;
       // 🔒 Правка, не затрагивающая закуп, не заводит расход заново. У части договоров
       // расхода нет вовсе (оформлен офлайн и запись не дошла, сохранение упало, договор
       // старше связки) — и раньше смена даты или клиента списывала закуп второй раз.
@@ -2005,8 +2005,71 @@ const handleSaveSale = async (data: any): Promise<any> => {
       }
     }
 
+    // 🔹 🔑 🔑 5.5 ОТГРУЗКА СО СКЛАДА ПО ДОГОВОРУ
+    //
+    // Товар, взятый со склада, списывается движением с contractId — по нему
+    // журнал собирает отдельный документ «Договор». Движение на каждую позицию
+    // одно, с предсказуемым id: правка договора обновляет его, а не добавляет
+    // второе, и остаток двигается ровно на разницу. Иначе повторное сохранение
+    // списывало бы товар второй раз — ровно так же, как это делал закуп.
+    {
+      const nextItems: SaleStockItem[] = Array.isArray(data.stockItems) ? data.stockItems : [];
+      const prevItems: SaleStockItem[] = (prevSale?.stockItems || []) as SaleStockItem[];
+
+      if (nextItems.length > 0 || prevItems.length > 0) {
+        const shipWarehouseId = data.stockWarehouseId || (prevSale as any)?.stockWarehouseId
+          || saleWarehouse?.id || DEFAULT_WAREHOUSE_ID;
+        const batchId = `ship_${saleId}`;
+        // Номер держится за договором: у уже проведённой отгрузки он не должен
+        // смениться оттого, что договор открыли на правку.
+        const alreadyShipped = stockMovements.filter(m => m.contractId === saleId);
+        const docNumber = alreadyShipped[0]?.docNumber
+          || String(new Set(stockMovements.filter(m => m.contractId).map(m => m.contractId)).size + 1).padStart(4, '0');
+
+        for (const change of stockShipmentPlan(prevItems, nextItems)) {
+          const movementId = `mv_sale_${saleId}_${change.productId}`;
+          try {
+            if (change.quantity > 0) {
+              const movement: StockMovement = {
+                id: movementId,
+                userId: ownerId,
+                createdByUserId: user.id,
+                productId: change.productId,
+                type: 'SALE',
+                quantity: -change.quantity,
+                unitPrice: change.price,
+                saleId,
+                contractId: saleId,
+                warehouseId: shipWarehouseId,
+                batchId,
+                docNumber,
+                date: data.startDate,
+              };
+              const savedMovement = await api.saveItem('stockMovements', movement);
+              updateList(setStockMovements, savedMovement);
+            } else {
+              await api.deleteItem('stockMovements', movementId);
+              removeFromList(setStockMovements, movementId);
+            }
+
+            if (change.stockDelta !== 0) {
+              const prod = products.find(pr => pr.id === change.productId);
+              if (prod) {
+                const savedProd = await api.saveItem('products', applyStockDelta(prod, shipWarehouseId, change.stockDelta));
+                updateList(setProducts, savedProd);
+              }
+            }
+          } catch (e: any) {
+            console.warn('⚠️ Отгрузка со склада не синхронизирована:', e?.message);
+          }
+        }
+      }
+    }
+
     // 🔹 🔑 🔑 6. ОБНОВЛЯЕМ ОСТАТКИ ТОВАРА — ОБЯЗАТЕЛЬНО И ОНЛАЙН, И ОФЛАЙН!
-    if (existingSaleIndex < 0 && data.productId) {
+    // Состав со склада списан выше, по позициям: старое «минус одна штука по
+    // productId» здесь только задвоило бы списание.
+    if (existingSaleIndex < 0 && data.productId && !(Array.isArray(data.stockItems) && data.stockItems.length > 0)) {
       try {
         const prod = products.find(p => p.id === data.productId);
         if (prod) {
@@ -2224,6 +2287,29 @@ const handleDeleteSale = async (saleId: string) => {
       }
     } catch (e) {
       console.warn('⚠️ Buy expense delete failed:', e);
+    }
+
+    // 🔹 2.5 ВОЗВРАТ ТОВАРА НА СКЛАД (изолированно)
+    // Договора нет — значит и отгрузки по нему не было: товар возвращаем на тот
+    // склад, с которого он ушёл, а движение убираем, чтобы документ не остался
+    // висеть в журнале без своего договора.
+    try {
+      const shippedItems: SaleStockItem[] = ((sale as any).stockItems || []) as SaleStockItem[];
+      if (shippedItems.length > 0) {
+        const shipWarehouseId = (sale as any).stockWarehouseId || DEFAULT_WAREHOUSE_ID;
+        for (const item of shippedItems) {
+          const movementId = `mv_sale_${saleId}_${item.productId}`;
+          await api.deleteItem('stockMovements', movementId);
+          removeFromList(setStockMovements, movementId);
+          const prod = products.find(pr => pr.id === item.productId);
+          if (prod) {
+            const savedProd = await api.saveItem('products', applyStockDelta(prod, shipWarehouseId, item.quantity));
+            updateList(setProducts, savedProd);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ Возврат товара на склад не выполнен:', e);
     }
 
     // 🔹 3. УДАЛЕНИЕ САМОГО ДОГОВОРА (изолированно)
@@ -4387,6 +4473,7 @@ if (!user && !showSplash) {
                            accounts={accounts} suppliers={suppliers} showSupplierField={checkAccess('SUPPLIERS')} onClose={requestClose}
                            onSelectCustomer={(data: any) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} onShowNotification={showNotificationModal}
                            onOpenRetail={shopAvailable ? () => { setPreviousView('DASHBOARD'); setCurrentView('RETAIL_SALE'); } : undefined}
+                           showShop={shopAvailable} warehouseId={saleWarehouse?.id || DEFAULT_WAREHOUSE_ID}
                            appSettings={appSettings} />
                     )}
                   </PagePush>
@@ -4468,6 +4555,7 @@ if (!user && !showSplash) {
                       suppliers={suppliers}
                       accounts={accounts}
                       employees={employees}
+                      contracts={sales}
                       appSettings={appSettings}
                       user={user}
                       onBack={requestClose}

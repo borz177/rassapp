@@ -76,7 +76,11 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   // ту же бумагу, что и журнал, иначе из карточки товара и из журнала виден
   // разный документ на одну операцию.
   const docFor = (m: StockMovement): JournalDoc | undefined =>
-    docs.find(d => (m.saleId ? d.sale?.id === m.saleId : d.id === `doc_${m.batchId || `single_${m.id}`}`));
+    docs.find(d => (m.saleId && !m.contractId
+      // Отгрузка по договору рассрочки — складская бумага, а не чек: у неё есть
+      // saleId, но искать её надо по документу, иначе строка истории не открылась бы.
+      ? d.sale?.id === m.saleId
+      : d.id === `doc_${m.batchId || `single_${m.id}`}`));
 
   const history = useMemo(() => {
     const rows = movements

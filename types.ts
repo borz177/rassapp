@@ -410,6 +410,12 @@ export interface StockMovement {
    */
   docNumber?: string;
   supplierId?: string;
+  /**
+   * Договор рассрочки, по которому ушёл товар. Отличает отгрузку по договору от
+   * розничного чека: у обоих type === 'SALE', но чек сам себе документ, а
+   * отгрузка по договору — отдельная бумага в журнале.
+   */
+  contractId?: string;
 }
 
 export interface Payment {
@@ -503,6 +509,30 @@ export interface Sale {
   supplierId?: string;
   partnerDebtPaidAmount?: number; // сколько уже оплачено поставщику по этому договору
   isPartnerDebtPaid?: boolean; // true когда partnerDebtPaidAmount >= buyPrice
+
+  /**
+   * Товары, взятые под этот договор со склада. Пусто у договоров, оформленных
+   * без магазина: там товар просто называют строкой, и склад к делу не причастен.
+   */
+  stockItems?: SaleStockItem[];
+  /** Склад, с которого отгрузили. Нужен, чтобы вернуть товар при удалении договора. */
+  stockWarehouseId?: string;
+}
+
+/**
+ * Позиция со склада, ушедшая по договору рассрочки.
+ *
+ * Цена здесь — цена продажи склада на момент оформления: магазин отдаёт товар в
+ * рассрочку по своей розничной цене, и она же становится себестоимостью договора,
+ * на которую считается наценка. Копируем её в договор, а не берём из карточки
+ * товара: переоценка склада не должна задним числом переписывать прибыль.
+ */
+export interface SaleStockItem {
+  productId: string;
+  name: string;
+  quantity: number;
+  price: number;
+  unit?: string;
 }
 
 export interface TermRate {

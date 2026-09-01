@@ -42,7 +42,12 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
   });
   const cents = appSettings.showCents;
 
-  const canEdit = doc.kind === 'SALE' ? !!onUpdateSale : !!onUpdateStockDoc;
+  // Отгрузка по договору рассрочки — зеркало договора: состав и суммы приходят
+  // оттуда, и правка бумаги в журнале разошлась бы с закупом договора. Менять
+  // такое нужно в самом договоре, поэтому здесь документ только для чтения.
+  const isContractDoc = doc.kind === 'CONTRACT';
+  const canEdit = isContractDoc ? false
+    : doc.kind === 'SALE' ? !!onUpdateSale : !!onUpdateStockDoc;
   // Признак оплаты трогать нельзя, когда деньги по документу уже приняты:
   // переключение обнулило бы поступления, которые реально были.
   const canSwitchPaid = doc.kind === 'SALE' && (doc.sale?.payments || []).length === 0;
@@ -108,7 +113,7 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
   const [addQty, setAddQty] = useState('1');
   const [addPrice, setAddPrice] = useState('0');
 
-  const canAdd = !!onAddDocLines;
+  const canAdd = !!onAddDocLines && !isContractDoc;
   const isInventory = doc.kind === 'INVENTORY';
 
   const addCandidates = React.useMemo(() => {
@@ -228,7 +233,7 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
                         className="w-full text-left active:bg-slate-50 dark:active:bg-slate-700/50">
                   {row('Клиент', doc.to, 'Клиент · открыть карточку')}
                 </button>
-              ) : row('Куда', doc.to, doc.kind === 'SALE' ? 'Покупатель' : 'Куда')}
+              ) : row('Куда', doc.to, doc.kind === 'SALE' || isContractDoc ? 'Покупатель' : 'Куда')}
               {accountName && row('Счёт', accountName, 'Счёт')}
             </div>
           </div>
