@@ -13,6 +13,8 @@ interface DashboardCashProps {
   onSelectCustomer?: (id: string) => void;
   onAction: (action: string) => void;
   showCents?: boolean;
+  /** Долг за товар, принятый на склад накладной. К рассрочке отношения не имеет. */
+  supplierDebt?: { rows: { supplierId: string; name: string; amount: number }[]; total: number };
 }
 
 const startOfToday = () => {
@@ -37,8 +39,9 @@ const startOfMonth = () => {
  * продажи, и пересчёт по нынешним значениям переписывал бы прошлую маржу после
  * каждой переоценки.
  */
-const DashboardCash: React.FC<DashboardCashProps> = ({ retailSales, products, customers = [], onSelectCustomer, onAction, showCents = false }) => {
+const DashboardCash: React.FC<DashboardCashProps> = ({ retailSales, products, customers = [], onSelectCustomer, onAction, showCents = false, supplierDebt }) => {
   const [debtOpen, setDebtOpen] = useState(false);
+  const [supplierDebtOpen, setSupplierDebtOpen] = useState(false);
   const live = useMemo(() => retailSales.filter(s => !s.isCancelled), [retailSales]);
 
   const sum = (list: RetailSale[]) => ({
@@ -176,6 +179,68 @@ const DashboardCash: React.FC<DashboardCashProps> = ({ retailSales, products, cu
                     </div>
                   </button>
                 ))}
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
+      {/* Мы должны — за товар, принятый на склад накладной. Договора у такой
+          поставки нет, поэтому на вкладке «Рассрочка» ей не место: там долг
+          считается по конкретным договорам. Стоит после выручки и перед
+          действиями — сначала сколько заработали, потом сколько из этого чужое. */}
+      {supplierDebt && supplierDebt.total > 0 && (
+        <button
+          onClick={() => setSupplierDebtOpen(true)}
+          className="w-full text-left bg-white dark:bg-slate-800 p-4 rounded-2xl border border-rose-200 dark:border-rose-900/50 shadow-sm active:scale-[0.99] transition-transform flex items-center gap-4"
+        >
+          <div className="w-11 h-11 shrink-0 rounded-xl bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+            {ICONS.Suppliers}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Мы должны</p>
+            <p className="text-xl font-bold text-slate-800 dark:text-white leading-tight">
+              {formatCurrency(supplierDebt.total, showCents)} ₽
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              за товар на складе · {supplierDebt.rows.length} {supplierDebt.rows.length === 1 ? 'партнёр' : 'партнёров'}
+            </p>
+          </div>
+          <span className="text-slate-300 dark:text-slate-600 shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </span>
+        </button>
+      )}
+
+      {supplierDebtOpen && supplierDebt && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+               onClick={() => setSupplierDebtOpen(false)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[75vh] flex flex-col animate-slide-up-sheet"
+                 onClick={e => e.stopPropagation()}>
+              <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700">
+                <h3 className="font-bold text-slate-800 dark:text-white">Мы должны</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  За товар, принятый на склад · {formatCurrency(supplierDebt.total, showCents)} ₽
+                </p>
+              </div>
+              <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+                {supplierDebt.rows.map(r => (
+                  <div key={r.supplierId} className="px-5 py-3 flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-800 dark:text-white truncate">{r.name}</p>
+                    <p className="font-bold text-rose-500 shrink-0">
+                      {formatCurrency(r.amount, showCents)} ₽
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 border-t border-slate-100 dark:border-slate-700">
+                <button onClick={() => { setSupplierDebtOpen(false); onAction('SUPPLIERS'); }}
+                        className="w-full py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm">
+                  Открыть партнёров
+                </button>
               </div>
             </div>
           </div>

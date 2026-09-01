@@ -931,29 +931,47 @@ const Dashboard: React.FC<DashboardProps> = ({
   // Долг перед поставщиками: закуп по договору минус уже выплаченное. Флаг
   // isPartnerDebtPaid проверяем первым — он закрывает договор, даже если суммы
   // разошлись на копейки при частичных выплатах.
+  // 🔒 Два источника долга, и путать их нельзя. Закуп по договору — товар, купленный
+  // под конкретную рассрочку. Поставка на склад — накладная без всякой продажи. Раньше
+  // они складывались в одну сумму, и принятый на склад товар всплывал на вкладке
+  // «Рассрочка», где ему нечего делать: договора у него нет.
   const supplierDebt = useMemo(() => {
-    const map = new Map<string, number>();
+    const contractMap = new Map<string, number>();
     allSales.forEach(sale => {
       if (!sale.supplierId || !sale.buyPrice || sale.isPartnerDebtPaid) return;
       const left = sale.buyPrice - (sale.partnerDebtPaidAmount || 0);
       if (left <= 0) return;
-      map.set(sale.supplierId, (map.get(sale.supplierId) || 0) + left);
-    });
-    // Долг за товар, принятый на склад накладной: договора у него нет, но деньги
-    // за него должны ровно так же.
-    suppliers.forEach(sup => {
-      const supplyDebt = supplierSupplyDebt(stockMovements, [], expenses, sup.id);
-      if (supplyDebt > 0) map.set(sup.id, (map.get(sup.id) || 0) + supplyDebt);
+      contractMap.set(sale.supplierId, (contractMap.get(sale.supplierId) || 0) + left);
     });
 
-    const rows = Array.from(map.entries())
-      .map(([supplierId, amount]) => ({
-        supplierId, amount,
-        name: suppliers.find(x => x.id === supplierId)?.name || 'Поставщик удалён',
-      }))
-      .sort((a, b) => b.amount - a.amount);
-    return { rows, total: rows.reduce((sum, r) => sum + r.amount, 0) };
+    const supplyMap = new Map<string, number>();
+    suppliers.forEach(sup => {
+      const debt = supplierSupplyDebt(stockMovements, [], expenses, sup.id);
+      if (debt > 0) supplyMap.set(sup.id, debt);
+    });
+
+    const nameOf = (id: string) => suppliers.find(x => x.id === id)?.name || 'Поставщик удалён';
+    const build = (entries: [string, number][]) => {
+      const rows = entries
+        .map(([supplierId, amount]) => ({ supplierId, amount, name: nameOf(supplierId) }))
+        .sort((a, b) => b.amount - a.amount);
+      return { rows, total: rows.reduce((sum, r) => sum + r.amount, 0) };
+    };
+
+    // Общий свод нужен там, где склада нет: один долг одному партнёру, одной строкой.
+    const allMap = new Map<string, number>(contractMap);
+    supplyMap.forEach((amount, id) => allMap.set(id, (allMap.get(id) || 0) + amount));
+
+    return {
+      contract: build(Array.from(contractMap.entries())),
+      supply: build(Array.from(supplyMap.entries())),
+      all: build(Array.from(allMap.entries())),
+    };
   }, [allSales, suppliers, stockMovements, expenses]);
+
+  // Вкладка «Рассрочка» показывает долг по договорам. Когда магазина нет, показываем
+  // всё вместе — иначе долг за поставки просто исчез бы с глаз.
+  const overviewSupplierDebt = showShopTab ? supplierDebt.contract : supplierDebt.all;
 
   const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   // Скрытие суммы переживает перезапуск: человек прячет её, чтобы не светить
@@ -1578,11 +1596,11 @@ useEffect(() => {
                 <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700">
                   <h3 className="font-bold text-slate-800 dark:text-white">Мы должны</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Непогашенный закуп · {formatCurrency(supplierDebt.total, appSettings.showCents)} ₽
+                    {showShopTab ? 'Закуп по договорам' : 'Непогашенный закуп'} · {formatCurrency(overviewSupplierDebt.total, appSettings.showCents)} ₽
                   </p>
                 </div>
                 <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
-                  {supplierDebt.rows.map(r => (
+                  {overviewSupplierDebt.rows.map(r => (
                     <div key={r.supplierId} className="px-5 py-3 flex items-center justify-between gap-3">
                       <p className="font-semibold text-slate-800 dark:text-white truncate">{r.name}</p>
                       <p className="font-bold text-rose-500 shrink-0">
@@ -1625,6 +1643,7 @@ useEffect(() => {
             onSelectCustomer={onSelectCustomer}
             onAction={onAction}
             showCents={appSettings.showCents}
+            supplierDebt={supplierDebt.supply}
           />
         )}
 
@@ -1815,36 +1834,6 @@ useEffect(() => {
                     </div>
                   </div>
                   </ModalPortal>
-                )}
-
-                {/* Мы должны — непогашенный закуп у поставщиков. Считается ровно
-                    так же, как в разделе «Партнеры»: закуп минус выплаченное по
-                    каждому договору. Карточка появляется только при долге:
-                    постоянный ноль на главной ничего не сообщает и лишь занимает
-                    место, а вот внезапно возникшая строка заметна. */}
-                {supplierDebt.total > 0 && (
-                  <button
-                    onClick={() => setShowSupplierDebt(true)}
-                    className="w-full text-left bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-rose-200 dark:border-rose-900/50 shadow-sm hover:shadow-md active:scale-[0.99] transition-all flex items-center gap-4"
-                  >
-                    <div className="w-11 h-11 shrink-0 rounded-xl bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 flex items-center justify-center">
-                      {ICONS.Suppliers}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Мы должны</p>
-                      <p className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-white leading-tight">
-                        {formatCurrency(supplierDebt.total, appSettings.showCents)} ₽
-                      </p>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        поставщикам · {supplierDebt.rows.length} {supplierDebt.rows.length === 1 ? 'партнёр' : 'партнёров'}
-                      </p>
-                    </div>
-                    <span className="text-slate-300 dark:text-slate-600 shrink-0">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <polyline points="9 18 15 12 9 6"/>
-                      </svg>
-                    </span>
-                  </button>
                 )}
 
                 {/* Карточки статистики: 2 в ряд на мобилках, 4 на больших экранах */}
@@ -2102,6 +2091,36 @@ useEffect(() => {
 
 
 
+
+                {/* Мы должны — непогашенный закуп у поставщиков: закуп минус
+                    выплаченное по каждому договору, ровно как в разделе «Партнеры».
+                    Стоит после прибыли: сначала сколько заработали, потом сколько из
+                    этого ещё не наше. Появляется только при долге — постоянный ноль
+                    ничего не сообщает, а возникшая строка заметна. */}
+                {overviewSupplierDebt.total > 0 && (
+                  <button
+                    onClick={() => setShowSupplierDebt(true)}
+                    className="w-full text-left bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-rose-200 dark:border-rose-900/50 shadow-sm hover:shadow-md active:scale-[0.99] transition-all flex items-center gap-4"
+                  >
+                    <div className="w-11 h-11 shrink-0 rounded-xl bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+                      {ICONS.Suppliers}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Мы должны</p>
+                      <p className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-white leading-tight">
+                        {formatCurrency(overviewSupplierDebt.total, appSettings.showCents)} ₽
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {showShopTab ? 'за товар по договорам' : 'поставщикам'} · {overviewSupplierDebt.rows.length} {overviewSupplierDebt.rows.length === 1 ? 'партнёр' : 'партнёров'}
+                      </p>
+                    </div>
+                    <span className="text-slate-300 dark:text-slate-600 shrink-0">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                    </span>
+                  </button>
+                )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div
