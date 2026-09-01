@@ -54,7 +54,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances} from './src/utils';
+import { buyPriceExpenseAction, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -1968,44 +1968,36 @@ const handleSaveSale = async (data: any): Promise<any> => {
       const buyPriceExpenseId = `exp_sale_${saleId}`;
       const linkedExpense = expenses.find(e => e.id === buyPriceExpenseId);
       const newBuyPrice = Number(data.buyPrice);
+      // Договор до правки — эталон того, что уже списано со счёта.
+      const prevSale = existingSaleIndex >= 0 ? sales[existingSaleIndex] : null;
+      // 🔒 Правка, не затрагивающая закуп, не заводит расход заново. У части договоров
+      // расхода нет вовсе (оформлен офлайн и запись не дошла, сохранение упало, договор
+      // старше связки) — и раньше смена даты или клиента списывала закуп второй раз.
+      const buyAction = buyPriceExpenseAction(prevSale, data, linkedExpense);
 
       try {
-        if (data.supplierId) {
-          // 🔒 Выбран поставщик — деньги за закуп НЕ списываем со счёта, заводится долг (Sale.supplierId/partnerDebtPaidAmount).
-          // Если ранее (до выбора поставщика) уже был обычный расход закупа — убираем его, чтобы не задвоить списание.
-          if (linkedExpense) {
-            await api.deleteItem('expenses', buyPriceExpenseId);
-            setExpenses(prev => prev.filter(e => e.id !== buyPriceExpenseId));
-          }
-        } else if (newBuyPrice > 0) {
-          if (
-            !linkedExpense ||
-            linkedExpense.amount !== newBuyPrice ||
-            linkedExpense.title !== `Закуп: ${data.productName}` ||
-            linkedExpense.accountId !== data.accountId
-          ) {
-            const buyPriceExpense: Expense = {
-              ...linkedExpense,
-              id: buyPriceExpenseId,
-              userId: ownerId,
-              // Без автора расход невидим сотруднику без полного доступа к счёту
-              // (filterDataForEmployee оставляет только свои записи) — и тогда при
-              // удалении договора его нечем было найти, списание закупа оставалось висеть.
-              createdByUserId: linkedExpense?.createdByUserId || user.id,
-              accountId: data.accountId,
-              title: `Закуп: ${data.productName}`,
-              amount: newBuyPrice,
-              category: 'Себестоимость',
-              date: linkedExpense?.date || data.startDate,
-              isRefund: false
-            };
-            const savedExpense = await api.saveItem('expenses', buyPriceExpense);
-            updateList(setExpenses, savedExpense);
-          }
-        } else if (linkedExpense) {
-          // Закуп обнулили при редактировании — убираем связанный расход
+        if (buyAction === 'delete') {
+          // Появился поставщик (это долг, а не трата) или закуп обнулили.
           await api.deleteItem('expenses', buyPriceExpenseId);
           setExpenses(prev => prev.filter(e => e.id !== buyPriceExpenseId));
+        } else if (buyAction === 'save') {
+          const buyPriceExpense: Expense = {
+            ...linkedExpense,
+            id: buyPriceExpenseId,
+            userId: ownerId,
+            // Без автора расход невидим сотруднику без полного доступа к счёту
+            // (filterDataForEmployee оставляет только свои записи) — и тогда при
+            // удалении договора его нечем было найти, списание закупа оставалось висеть.
+            createdByUserId: linkedExpense?.createdByUserId || user.id,
+            accountId: data.accountId,
+            title: `Закуп: ${data.productName}`,
+            amount: newBuyPrice,
+            category: 'Себестоимость',
+            date: linkedExpense?.date || data.startDate,
+            isRefund: false
+          };
+          const savedExpense = await api.saveItem('expenses', buyPriceExpense);
+          updateList(setExpenses, savedExpense);
         }
       } catch (e: any) {
         console.warn('⚠️ Расход закупа не синхронизирован (будет учтён при синхронизации):', e.message);
@@ -2090,21 +2082,35 @@ const handleSaveSale = async (data: any): Promise<any> => {
         : { ...data, id: `temp_${Date.now()}`, _isOffline: true };
       updateList(setSales, tempSale);
 
-      // 🔹 🔑 СОЗДАЁМ РАСХОД ЗАКУПА ЛОКАЛЬНО (только если поставщик не выбран — иначе это долг, а не списание)
-      if (!data.supplierId && Number(data.buyPrice) > 0) {
+      // 🔹 🔑 СОЗДАЁМ РАСХОД ЗАКУПА (только если поставщик не выбран — иначе это долг, а не списание)
+      const offlineBuyExpenseId = `exp_sale_${tempSale.id}`;
+      const offlineLinked = expenses.find(e => e.id === offlineBuyExpenseId);
+      const prevSaleOffline = data.id ? sales.find((s: any) => s.id === data.id) : null;
+      // Та же защита, что и в онлайн-ветке: правка, не касающаяся закупа, расход не заводит.
+      if (buyPriceExpenseAction(prevSaleOffline, data, offlineLinked) === 'save') {
         const buyPriceExpense: Expense = {
-          id: `exp_sale_${tempSale.id}`,
+          ...offlineLinked,
+          id: offlineBuyExpenseId,
           userId: isEmployee && user.managerId ? user.managerId : user.id,
-          createdByUserId: user.id,
+          createdByUserId: offlineLinked?.createdByUserId || user.id,
           accountId: data.accountId,
           title: `Закуп: ${data.productName}`,
           amount: Number(data.buyPrice),
           category: 'Себестоимость',
-          date: data.startDate,
+          date: offlineLinked?.date || data.startDate,
           isRefund: false
         };
         updateList(setExpenses, buyPriceExpense);
-        
+        // 🔒 Раньше расход оставался только в памяти: на сервер он не уходил вовсе и
+        // после перезагрузки исчезал — закуп «возвращался» на счёт, а при следующем
+        // редактировании договора списывался заново. Ставим его в очередь, как договор.
+        try {
+          await api.saveItem('expenses', buyPriceExpense, {
+            intent: { kind: 'buyPrice', label: data.productName },
+          });
+        } catch (e: any) {
+          console.warn('⚠️ Расход закупа не встал в очередь:', e?.message);
+        }
       }
       
       // 🔹 🔑 ОБНОВЛЯЕМ ОСТАТОК ТОВАРА ЛОКАЛЬНО (только для новых договоров)

@@ -559,3 +559,51 @@ export const computeAccountBalances = (
 
   return balances;
 };
+
+
+/**
+ * Что делать с расходом закупа при сохранении договора.
+ *
+ * Закуп списывается со счёта отдельным расходом с детерминированным id
+ * (`exp_sale_<id договора>`). Правило одно: расход существует ровно тогда, когда
+ * товар куплен за свои деньги, и повторяет закуп договора.
+ *
+ * Ключевая тонкость — договор, у которого расхода нет вовсе: оформлен офлайн и
+ * запись не дошла до сервера, сохранение расхода упало, договор старше самой
+ * связки. Заводить расход при правке, не касающейся закупа, нельзя: со счёта
+ * уйдёт сумма, которую пользователь второй раз не тратил. Поэтому создаём расход
+ * только для нового договора или когда закуп действительно изменили.
+ */
+export type BuyExpenseAction = 'none' | 'save' | 'delete';
+
+interface BuySide {
+  buyPrice?: number | string;
+  accountId?: string;
+  productName?: string;
+  supplierId?: string;
+}
+
+export const buyPriceExpenseAction = (
+  prevSale: BuySide | null | undefined,
+  next: BuySide,
+  linked: { amount: number; title?: string; accountId?: string } | null | undefined
+): BuyExpenseAction => {
+  const buyPrice = Number(next.buyPrice) || 0;
+
+  // Взяли у поставщика — это долг перед ним, а не трата со счёта.
+  if (next.supplierId) return linked ? 'delete' : 'none';
+  if (buyPrice <= 0) return linked ? 'delete' : 'none';
+
+  const purchaseUntouched = !!prevSale
+    && Number(prevSale.buyPrice || 0) === buyPrice
+    && (prevSale.accountId || '') === (next.accountId || '')
+    && (prevSale.productName || '') === (next.productName || '')
+    && (prevSale.supplierId || '') === (next.supplierId || '');
+
+  if (!linked) return purchaseUntouched ? 'none' : 'save';
+
+  const matches = linked.amount === buyPrice
+    && linked.title === `Закуп: ${next.productName}`
+    && linked.accountId === next.accountId;
+  return matches ? 'none' : 'save';
+};

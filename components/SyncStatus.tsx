@@ -55,6 +55,7 @@ const INTENT_LABEL: Record<string, string> = {
   payment: 'Платёж',
   paymentUndo: 'Отмена платежа',
   contract: 'Договор',
+  buyPrice: 'Закуп по договору',
   retailPayment: 'Оплата долга',
   retailSale: 'Чек магазина',
 };
