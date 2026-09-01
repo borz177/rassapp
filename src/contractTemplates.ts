@@ -228,8 +228,8 @@ const classicBody = (d: ContractData): string => {
     return `
       <tr>
         <td class="c num">${i + 1}.</td>
-        <td class="c">${p && p.paid > 0.01 ? money(p.paid) : '<span class="dots"></span> руб.'}</td>
-        <td class="c">${p ? day(p.date) : '<span class="dots-sm"></span> / <span class="dots-sm"></span> 20___ г.'}</td>
+        <td class="c">${p && p.paid > 0.01 ? money(p.paid) : 'руб.'}</td>
+        <td class="c">${p ? day(p.date) : '__ / __ 20___ г.'}</td>
         <td></td>
         <td></td>
       </tr>`;
@@ -331,10 +331,14 @@ const CLASSIC_STYLES = `
   /* Пустая линия под рукописное заполнение — сплошная, как в типографском бланке */
   .contract-sheet .blank { display: inline-block; border-bottom: 1px solid #000; height: 14px; }
   .contract-sheet .filled { padding: 0 4px; }
-  .contract-sheet .dots { display: inline-block; border-bottom: 1px solid #000; min-width: 110px; height: 13px; }
-  .contract-sheet .dots-sm { display: inline-block; border-bottom: 1px solid #000; min-width: 26px; height: 13px; }
   .contract-sheet table.schedule { width: 100%; border-collapse: collapse; margin: 10px 0; }
-  .contract-sheet table.schedule th, .contract-sheet table.schedule td { border: 1px solid #000; padding: 3px 6px; font-size: 11pt; height: 22px; }
+  /* Номер, сумма и дата стоят по центру клетки — и по ширине, и по высоте.
+     Раньше они лежали на базовой линии внизу: под суммой шла черта для записи от
+     руки, и «руб.» прижималось к ней, из-за чего строка выглядела съехавшей. */
+  .contract-sheet table.schedule th, .contract-sheet table.schedule td {
+    border: 1px solid #000; padding: 3px 6px; font-size: 11pt; height: 22px;
+    vertical-align: middle;
+  }
   .contract-sheet table.schedule th { text-align: center; font-weight: bold; }
   .contract-sheet td.c { text-align: center; }
   .contract-sheet td.num { font-weight: bold; }
