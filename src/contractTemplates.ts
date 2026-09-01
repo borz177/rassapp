@@ -74,11 +74,19 @@ const escapeHtml = (value: unknown): string =>
 const money = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₽`;
 const day = (d: string) => new Date(d).toLocaleDateString('ru-RU');
 
-/** Пустая линия под рукописное заполнение, если значения нет. */
-const orBlank = (value: string | undefined, width = '100%') =>
-  value && value.trim()
-    ? `<span class="filled">${escapeHtml(value)}</span>`
+/**
+ * Значение — или пустая линия под рукописное заполнение.
+ *
+ * Черта нужна ровно там, где писать будут от руки. Под уже подставленным
+ * значением она превращает документ в бланк, который будто не заполнили: глаз
+ * читает подчёркнутое как место для записи, а не как ответ.
+ */
+const orBlank = (value: string | number | undefined, width = '100%') => {
+  const text = value === undefined || value === null ? '' : String(value).trim();
+  return text
+    ? `<span class="filled">${escapeHtml(text)}</span>`
     : `<span class="blank" style="min-width:${width}"></span>`;
+};
 
 // ─── Современный ────────────────────────────────────────────────────────────
 
@@ -187,10 +195,10 @@ const classicBody = (d: ContractData): string => {
     <div class="subtitle">товаров с условием о рассрочке платежа.</div>
 
     <div class="row-line">
-      <span>«<span class="ins w60">${d.startDate ? new Date(d.startDate).getDate() : ''}</span>»
-      <span class="ins w110">${d.startDate ? new Date(d.startDate).toLocaleDateString('ru-RU', { month: 'long' }) : ''}</span>
+      <span>«${orBlank(d.startDate ? new Date(d.startDate).getDate() : undefined, '46px')}»
+      ${orBlank(d.startDate ? new Date(d.startDate).toLocaleDateString('ru-RU', { month: 'long' }) : undefined, '110px')}
       ${d.startDate ? new Date(d.startDate).getFullYear() : '202__'} г.</span>
-      <span>№ <span class="ins w120">${escapeHtml(d.contractNumber || '')}</span></span>
+      <span>№ ${orBlank(d.contractNumber, '120px')}</span>
     </div>
 
     <p class="para">
@@ -212,9 +220,9 @@ const classicBody = (d: ContractData): string => {
     <div class="clause"><b>4. Наименование, стоимость товаров и порядок расчетов:</b></div>
     <div class="label-line indent">4.1.1. Наименование Товара ${orBlank(d.productName, '430px')}</div>
     <div class="label-line indent">4.1.2. Общая стоимость товаров составляет
-      <span class="ins w200">${money(d.totalAmount)}</span>) руб., с учетом НДС</div>
+      ${orBlank(money(d.totalAmount), '200px')}) руб., с учетом НДС</div>
     <div class="label-line">Предоплата составляет
-      <span class="ins w200">${money(d.downPayment)}</span>) руб., с учетом НДС</div>
+      ${orBlank(money(d.downPayment), '200px')}) руб., с учетом НДС</div>
     <div class="clause indent">4.2. Расчеты производятся в кассу Продавца.</div>
 
     <table class="schedule">
@@ -271,10 +279,7 @@ const CLASSIC_STYLES = `
   .contract-sheet .label-line.sign { margin: 10px 0; }
   /* Пустая линия под рукописное заполнение — сплошная, как в типографском бланке */
   .contract-sheet .blank { display: inline-block; border-bottom: 1px solid #000; height: 14px; }
-  .contract-sheet .ins { display: inline-block; border-bottom: 1px solid #000; text-align: center; padding: 0 4px; }
-  .contract-sheet .w60 { min-width: 60px } .contract-sheet .w110 { min-width: 110px }
-  .contract-sheet .w120 { min-width: 120px } .contract-sheet .w200 { min-width: 200px }
-  .contract-sheet .filled { border-bottom: 1px solid #000; padding: 0 4px; }
+  .contract-sheet .filled { padding: 0 4px; }
   .contract-sheet .dots { display: inline-block; border-bottom: 1px solid #000; min-width: 110px; height: 13px; }
   .contract-sheet .dots-sm { display: inline-block; border-bottom: 1px solid #000; min-width: 26px; height: 13px; }
   .contract-sheet table.schedule { width: 100%; border-collapse: collapse; margin: 14px 0; }

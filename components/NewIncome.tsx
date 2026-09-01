@@ -458,7 +458,18 @@ const commonData = {
 
     const plan = selectedSale.paymentPlan || [];
     const real = plan.filter(p => p.isPaid && p.isRealPayment !== false);
-    let surplus = real.reduce((sum, p) => sum + p.amount, 0);
+
+    // Платёж, который принимают прямо сейчас. В договоре его ещё нет: PDF
+    // собирается ДО сохранения — форма должна быть на экране, пока с неё
+    // снимают снимок. Без этой строки клиент получал документ, где только что
+    // внесённых денег не видно вовсе.
+    const payingNow = Number(String(amount).replace(',', '.')) || 0;
+    const paidRows = [
+      ...real.map(p => ({ date: p.date, paid: p.amount })),
+      ...(payingNow > 0 ? [{ date, paid: payingNow }] : []),
+    ];
+
+    let surplus = paidRows.reduce((sum, p) => sum + p.paid, 0);
     const uncovered = plan
       .filter(p => !p.isPaid || p.isRealPayment === false)
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -469,7 +480,7 @@ const commonData = {
 
     let debt = selectedSale.totalAmount - selectedSale.downPayment;
     const rows = [
-      ...real.map(p => ({ date: p.date, paid: p.amount })),
+      ...paidRows,
       ...uncovered.map(p => ({ date: p.date, paid: 0 })),
     ]
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
