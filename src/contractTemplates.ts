@@ -332,13 +332,14 @@ const CLASSIC_STYLES = `
   .contract-sheet .blank { display: inline-block; border-bottom: 1px solid #000; height: 14px; }
   .contract-sheet .filled { padding: 0 4px; }
   .contract-sheet table.schedule { width: 100%; border-collapse: collapse; margin: 10px 0; }
-  /* Номер, сумма и дата стоят по центру клетки — и по ширине, и по высоте.
-     Своя высота строки, а не унаследованная от листа: у листа она рассчитана на
-     абзацы, и в клетке высотой 22px текст ложился прямо на линейку — строки
-     выглядели слипшимися, а буквы задевали границу. */
+  /* Высоту клетки задают равные поля сверху и снизу, а не height + vertical-align.
+     На vertical-align полагаться нельзя: html2canvas, которым снимается PDF для
+     WhatsApp, кладёт текст на базовую линию и прижимает его к нижней границе — в
+     печати ровно, а в PDF текст сидит на линейке. Равные поля центрируют строку
+     самой раскладкой, и обе картинки совпадают. */
   .contract-sheet table.schedule th, .contract-sheet table.schedule td {
-    border: 1px solid #000; padding: 6px; font-size: 11pt; height: 28px;
-    line-height: 1.15; vertical-align: middle;
+    border: 1px solid #000; padding: 7px 6px; font-size: 11pt;
+    line-height: 1.2; vertical-align: middle;
   }
   .contract-sheet table.schedule th { text-align: center; font-weight: bold; }
   .contract-sheet td.c { text-align: center; }
