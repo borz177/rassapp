@@ -228,7 +228,7 @@ const classicBody = (d: ContractData): string => {
     return `
       <tr>
         <td class="c num">${i + 1}.</td>
-        <td class="c">${p && p.paid > 0.01 ? money(p.paid) : 'руб.'}</td>
+        <td class="c">${p && p.paid > 0.01 ? money(p.paid) : ''}</td>
         <td class="c">${p ? day(p.date) : '__ / __ 20___ г.'}</td>
         <td></td>
         <td></td>
@@ -333,11 +333,12 @@ const CLASSIC_STYLES = `
   .contract-sheet .filled { padding: 0 4px; }
   .contract-sheet table.schedule { width: 100%; border-collapse: collapse; margin: 10px 0; }
   /* Номер, сумма и дата стоят по центру клетки — и по ширине, и по высоте.
-     Раньше они лежали на базовой линии внизу: под суммой шла черта для записи от
-     руки, и «руб.» прижималось к ней, из-за чего строка выглядела съехавшей. */
+     Своя высота строки, а не унаследованная от листа: у листа она рассчитана на
+     абзацы, и в клетке высотой 22px текст ложился прямо на линейку — строки
+     выглядели слипшимися, а буквы задевали границу. */
   .contract-sheet table.schedule th, .contract-sheet table.schedule td {
-    border: 1px solid #000; padding: 3px 6px; font-size: 11pt; height: 22px;
-    vertical-align: middle;
+    border: 1px solid #000; padding: 6px; font-size: 11pt; height: 28px;
+    line-height: 1.15; vertical-align: middle;
   }
   .contract-sheet table.schedule th { text-align: center; font-weight: bold; }
   .contract-sheet td.c { text-align: center; }
