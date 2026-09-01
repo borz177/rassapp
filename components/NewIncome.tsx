@@ -6,6 +6,7 @@ import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
 import { getInvestorAccount, retailRemaining } from '../src/utils';
+import { buildContractFragment, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, type SendStage } from './feedback';
 
@@ -444,251 +445,76 @@ const commonData = {
     isSubmittingRef.current = false;
   };
 
+  /**
+   * Лист договора, который уходит клиенту в WhatsApp вместе с принятым платежом.
+   *
+   * Это была четвёртая копия договора в приложении, со своей вёрсткой и своим
+   * расчётом графика. Клиент получал документ, не совпадающий с тем, что ему
+   * печатали на подпись, и выбранная в настройках форма его не касалась.
+   * Теперь лист собирается общим шаблоном и слушается той же настройки.
+   */
   const renderContractContent = () => {
     if (!selectedSale || !selectedCustomer) return null;
-    const companyName = appSettings?.companyName || "Компания";
-    const hasGuarantor = !!selectedSale.guarantorName;
-    const sellerPhone = formatPhone(user?.phone || appSettings?.sellerPhone);
 
+    const plan = selectedSale.paymentPlan || [];
+    const real = plan.filter(p => p.isPaid && p.isRealPayment !== false);
+    let surplus = real.reduce((sum, p) => sum + p.amount, 0);
+    const uncovered = plan
+      .filter(p => !p.isPaid || p.isRealPayment === false)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .filter(p => {
+        if (surplus >= p.amount - 0.01) { surplus -= p.amount; return false; }
+        return true;
+      });
 
+    let debt = selectedSale.totalAmount - selectedSale.downPayment;
+    const rows = [
+      ...real.map(p => ({ date: p.date, paid: p.amount })),
+      ...uncovered.map(p => ({ date: p.date, paid: 0 })),
+    ]
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .map(p => {
+        if (p.paid > 0) debt -= p.paid;
+        return { date: p.date, paid: p.paid, remaining: Math.max(0, debt) };
+      });
 
- 
- 
-
-   // Берём только РЕАЛЬНЫЕ оплаченные платежи из истории — каждый (в т.ч. частичный) своей строкой.
-// 🔒 `isRealPayment !== false`, а не `isRealPayment && ...`: у старых записей поля isRealPayment
-// нет вообще, и строгая проверка их отбрасывала — реально полученные деньги пропадали из чека.
-// Тот же критерий, что на экране договора (CustomerDetails.tsx) и в печати (Contracts.tsx).
-const existingPayments: { date: Date; amount: number; discountAmount: number; isSchedule?: false }[] = (selectedSale.paymentPlan || [])
-    .filter(p => p.isPaid && p.isRealPayment !== false)
-    .map(p => ({
-        date: new Date(p.date),
-        amount: p.amount,
-        discountAmount: (p as any).discountAmount || 0  // 🆕 Добавляем скидку
-    }))
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
-
-// Добавляем ТЕКУЩИЙ платёж (он ещё не сохранён в sale, поэтому добавляем вручную)
-const currentPaymentAlreadyExists = existingPayments.some(
-    p => Math.abs(p.amount - Number(amount)) < 0.01 &&
-         new Date(p.date).getTime() === new Date(date).getTime()
-);
-
-if (!currentPaymentAlreadyExists) {
-    existingPayments.push({
-        date: new Date(date),
-        amount: Number(amount),
-        discountAmount: 0  // Текущий платёж пока без скидки
-    });
-    existingPayments.sort((a, b) => a.date.getTime() - b.date.getTime());
-}
-
-// 🔹 РАСЧЁТ С УЧЁТОМ СКИДОК
-const totalPaid = existingPayments.reduce((sum, p) => sum + p.amount, 0);
-const totalDiscounts = existingPayments.reduce((sum, p) => sum + (p.discountAmount || 0), 0);
-
-// 🔒 Оставшиеся к оплате месяцы считаем ТОЧНО ТАК ЖЕ, как экран договора (CustomerDetails.tsx)
-// и печать договора (Contracts.tsx): берём месяцы БЕЗ отметки "оплачено", а излишек уже
-// полученных денег над закрытыми месяцами гасит ближайшие из них.
-// Раньше применялась эвристика "месяц скрываем, только если за ним закрепилась своя строка
-// платежа" — из-за неё месяцы, погашенные ОДНИМ крупным платежом вперёд, всё равно печатались
-// как неоплаченные (клиент внёс 72 900 ₽ за 7 месяцев вперёд, а в чеке эти месяцы висели как долг).
-//
-// Важно опираться именно на отметки, а не только на сумму денег: договор могли закрыть досрочно
-// со скидкой/списанием — тогда внесено меньше суммы графика, но долга уже нет, и чисто денежный
-// подсчёт ошибочно показывал бы разницу как долг.
-const savedReceived = (selectedSale.paymentPlan || [])
-    .filter(p => p.isPaid && p.isRealPayment !== false)
-    .reduce((sum, p) => sum + p.amount, 0);
-const allocatedOnSchedule = (selectedSale.paymentPlan || [])
-    .filter(p => p.isPaid && p.isRealPayment !== true)
-    .reduce((sum, p) => sum + p.amount, 0);
-// Текущий платёж ещё не сохранён в договоре, поэтому отметок на месяцах по нему нет —
-// добавляем его сумму к излишку вручную.
-const currentPaymentExtra = Math.max(0, totalPaid - savedReceived);
-
-// Скидки по УЖЕ сохранённым платежам сюда не добавляем: они и так учтены отметками "оплачено"
-// на месяцах графика, а повторный зачёт гасил бы лишний месяц (расхождение с экраном договора).
-let surplusToApply = Math.max(0, savedReceived - allocatedOnSchedule) + currentPaymentExtra;
-const scheduleDates = (selectedSale.paymentPlan || [])
-    .filter(p => !p.isPaid && p.isRealPayment !== true)
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .map(p => {
-        const covered = Math.min(p.amount, surplusToApply);
-        surplusToApply = Math.max(0, surplusToApply - covered);
-        // Округляем до копеек: без этого накопленная погрешность double оставляла остаток
-        // вида 0.0100000000002, который проходил проверку "> 0.01", и в чек попадала лишняя
-        // строка с долгом в одну копейку по уже полностью оплаченному месяцу.
-        return { date: p.date, due: Math.round((p.amount - covered) * 100) / 100 };
-    })
-    // Порог 1 ₽: копеечный остаток — артефакт округления долей платежа, а не долг
-    // (та же логика, что на экране договора — CustomerDetails.tsx).
-    .filter(p => p.due >= 1)
-    .map(p => new Date(p.date));
-
-// 🔥 ВАЖНО: Если договор закрыт (status === 'COMPLETED'), остаток = 0
-// Иначе считаем: общая сумма - первый взнос - оплачено - скидки
-const remainingDebt = selectedSale.status === 'COMPLETED' 
-    ? 0 
-    : Math.max(0, selectedSale.totalAmount - selectedSale.downPayment - totalPaid - totalDiscounts);
-
-    const styles = {
-      page: {
-        width: '210mm', minHeight: '297mm', padding: '20mm', background: 'white', color: 'black',
-        fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '12pt', lineHeight: '1.5',
-        display: 'flex', flexDirection: 'column' as const, boxSizing: 'border-box' as const, margin: '0 auto',
-        position: 'absolute' as const, left: '-9999px', top: '-9999px', visibility: 'hidden' as const
-      },
-      contentWrapper: { flex: 1 },
-      h1: { textAlign: 'center' as const, fontSize: '16pt', fontWeight: 'bold' as const, marginBottom: '30px', textTransform: 'uppercase' as const, marginTop: 0, lineHeight: 1.3 },
-      headerInfo: { textAlign: 'right' as const, marginBottom: '20px', fontSize: '11pt' },
-      fieldRow: { display: 'flex', justifyContent: 'space-between' as const, marginBottom: '10px', alignItems: 'flex-start' as const },
-      fieldLabel: { fontWeight: 'bold' as const },
-      phoneField: { textAlign: 'right' as const, marginLeft: '10px', flexShrink: 0, whiteSpace: 'nowrap' as const },
-      section: { margin: '0 0 20px 0' },
-      sectionItem: { marginBottom: '12px' },
-      table: { width: '100%' as const, borderCollapse: 'collapse' as const, margin: '20px 0', fontSize: '11pt' },
-      th: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const, fontWeight: 'bold' as const, background: '#f9f9f9' },
-      td: { border: '1px solid #000', padding: '10px', textAlign: 'center' as const, verticalAlign: 'middle' as const },
-      footerContainer: { marginTop: 'auto', paddingTop: '20px', width: '100%', breakInside: 'avoid' as const },
-      footer: { display: 'flex', justifyContent: 'space-between' as const, alignItems: 'flex-end' as const, width: '100%' },
-      signatureBlock: (width: string) => ({ textAlign: 'center' as const, width, breakInside: 'avoid' as const }),
-      signatureLine: { borderBottom: '1px solid #000', margin: '35px 0 5px 0', minHeight: '1px' },
-      signatureLabel: { fontSize: '10pt', fontStyle: 'italic' as const }
-    };
-
-    let currentDebt = selectedSale.totalAmount - selectedSale.downPayment;
-
-    // 🔒 Та же модель, что и в печати договора (Contracts.tsx): СНАЧАЛА все фактические платежи
-    // (по возрастанию даты), ПОТОМ оставшиеся месяцы графика. Обе группы вместе по дате не
-    // сортируем — иначе пустая плановая строка вклинивается между двумя оплатами.
-    const tableRows: { date: Date; amount: number | null; discountAmount: number }[] = [
-        ...[...existingPayments]
-            .sort((a, b) => a.date.getTime() - b.date.getTime())
-            .map(p => ({ date: p.date, amount: p.amount, discountAmount: p.discountAmount })),
-        ...scheduleDates.map(d => ({ date: d, amount: null, discountAmount: 0 }))
-    ];
+    const { html, styles } = buildContractFragment(
+      appSettings?.contractTemplate || 'MODERN',
+      {
+        companyName: appSettings?.companyName || 'Компания',
+        sellerPhone: formatPhone(user?.phone || appSettings?.sellerPhone),
+        customerName: selectedCustomer.name,
+        customerPhone: formatPhone(selectedCustomer.phone),
+        passportSeries: selectedCustomer.passportSeries,
+        passportNumber: selectedCustomer.passportNumber,
+        passportIssuedBy: selectedCustomer.passportIssuedBy,
+        customerAddress: selectedCustomer.address,
+        guarantorName: selectedSale.guarantorName,
+        guarantorPhone: selectedSale.guarantorPhone,
+        productName: selectedSale.productName,
+        totalAmount: selectedSale.totalAmount,
+        downPayment: selectedSale.downPayment,
+        installments: selectedSale.installments,
+        monthlyPayment: plan[0]?.amount || 0,
+        startDate: selectedSale.startDate,
+        rows,
+      }
+    );
 
     return (
-      <div ref={contractRef} style={styles.page}>
-        <h1 style={styles.h1}>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
-        <div style={styles.headerInfo}>Дата: {new Date(selectedSale.startDate).toLocaleDateString()}</div>
-        <div style={styles.contentWrapper}>
-          <div style={styles.section}>
-            <div style={styles.fieldRow}>
-              <span><span style={styles.fieldLabel}>Продавец:</span> {companyName}</span>
-              <span style={styles.phoneField}>Тел: {formatPhone(sellerPhone)}</span>
-            </div>
-            <div style={styles.fieldRow}>
-              <span><span style={styles.fieldLabel}>Покупатель:</span> {selectedCustomer.name}</span>
-              <span style={styles.phoneField}>Тел: {formatPhone(selectedCustomer.phone)}</span>
-            </div>
-            {hasGuarantor && (
-              <div style={styles.fieldRow}>
-                <span><span style={styles.fieldLabel}>Поручитель:</span> {selectedSale.guarantorName}</span>
-                <span style={styles.phoneField}>Тел: {formatPhone(selectedSale.guarantorPhone)} </span>
-              </div>
-            )}
-          </div>
-          <div style={styles.section}>
-            <div style={{
-              ...styles.sectionItem,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '15px'
-            }}>
-              <span><span style={styles.fieldLabel}>Товар:</span> {selectedSale.productName}</span>
-              <span><span style={styles.fieldLabel}>Стоимость:</span> {formatNum(selectedSale.totalAmount)} ₽</span>
-            </div>
-
-            <div style={{
-              ...styles.sectionItem,
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginTop: '10px'
-            }}>
-              <span><span style={styles.fieldLabel}>Срок рассрочки:</span> {selectedSale.installments} мес.</span>
-              <span><span style={styles.fieldLabel}>Первый взнос:</span> {formatNum(selectedSale.downPayment)} ₽</span>
-            </div>
-
-            <div style={{
-              ...styles.sectionItem,
-              display: 'flex',
-              justifyContent: 'space-between',
-              marginTop: '10px'
-            }}>
-              <span><span style={styles.fieldLabel}>Ежемесячный платеж:</span> {formatNum(selectedSale.paymentPlan[0]?.amount || 0)} ₽</span>
-              <span style={{
-                fontWeight: 'bold',
-                color: '#ef8228',
-                fontSize: '12pt'
-              }}>
-                Остаток: {formatNum(remainingDebt)} ₽
-              </span>
-            </div>
-          </div>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={{...styles.th, width: '10%'}}>№</th>
-                <th style={{...styles.th, width: '30%'}}>Дата</th>
-                <th style={{...styles.th, width: '25%'}}>Сумма</th>
-                <th style={{...styles.th, width: '35%'}}>Остаток долга</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tableRows.map((p, index) => {
-                const hasAmount = p.amount !== null;
-                if (hasAmount) currentDebt -= p.amount as number;
-                const displayDebt = Math.max(0, currentDebt);
-                return (
-                  <tr key={index}>
-                    <td style={styles.td}>{index + 1}</td>
-                    <td style={styles.td}>{p.date.toLocaleDateString()}</td>
-                    <td style={styles.td}>
-    {hasAmount && <div>{formatNum(p.amount as number)} ₽</div>}
-    {/* 🆕 Показываем скидку, если она была */}
-    {p.discountAmount > 0 && (
-        <div style={{
-            fontSize: '9pt',
-            color: '#d97706',
-            fontStyle: 'italic',
-            marginTop: '2px'
-        }}>
-             Скидка: {formatNum(p.discountAmount)} ₽
-        </div>
-    )}
-</td>
-                    <td style={styles.td}>{hasAmount ? `${formatNum(displayDebt)} ₽` : ''}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <div style={{margin: '25px 0', fontSize: '11pt', lineHeight: 1.4}}>
-            Продавец обязуется передать Покупателю товар, а Покупатель обязуется принять и оплатить его в
-            рассрочку на указанных выше условиях.
-          </div>
-        </div>
-        <div style={styles.footerContainer}>
-          <div style={styles.footer}>
-            <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
-              <div style={styles.signatureLine}></div>
-              <div style={styles.signatureLabel}>Продавец</div>
-            </div>
-            {hasGuarantor && (
-              <div style={styles.signatureBlock('30%')}>
-                <div style={styles.signatureLine}></div>
-                <div style={styles.signatureLabel}>Поручитель</div>
-              </div>
-            )}
-            <div style={styles.signatureBlock(hasGuarantor ? '30%' : '45%')}>
-              <div style={styles.signatureLine}></div>
-              <div style={styles.signatureLabel}>Покупатель</div>
-            </div>
-          </div>
-        </div>
+      <div
+        ref={contractRef}
+        className="contract-sheet"
+        style={{
+          width: `${CONTRACT_SHEET_WIDTH_PX}px`,
+          position: 'absolute',
+          left: '-9999px',
+          top: '-9999px',
+          visibility: 'hidden',
+        }}
+      >
+        <style>{styles}</style>
+        <div dangerouslySetInnerHTML={{ __html: html }} />
       </div>
     );
   };
