@@ -3,7 +3,8 @@ import { Customer, Product, Account, AppSettings, Sale, SaleStockItem, Payment, 
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { ICONS } from '../constants';
 import TabPill from './TabPill';
-import StockPicker from './StockPicker';
+import ProductPickerPage from './ProductPickerPage';
+import SubPage from './transitions/SubPage';
 import TopBarBack from './TopBarBack';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
@@ -555,7 +556,6 @@ const regeneratePaymentPlan = (
       };
     });
     setIsPriceManual(false);
-    setStockPickerOpen(false);
   };
 
   const handleSuggestionClick = (product: Product) => {
@@ -1251,15 +1251,24 @@ if (mode === 'CASH') {
             </div>
           )}
 
+          {/* Выбор товара — страницей с витриной, а не списком в окне: товар
+              узнают по фотографии, и в половине экрана она не помещалась. */}
           {stockPickerOpen && (
-            <StockPicker
-              products={products}
-              warehouseId={warehouseId}
-              initial={formData.stockItems || []}
-              showCents={appSettings.showCents}
-              onCancel={() => setStockPickerOpen(false)}
-              onApply={applyStockItems}
-            />
+            <SubPage onClose={() => setStockPickerOpen(false)}>
+              {(close: () => void) => (
+                <ProductPickerPage
+                  products={products}
+                  warehouseId={warehouseId}
+                  title="Товар со склада"
+                  subtitle="Сумма выбранного встанет в «Закуп», товар спишется при оформлении"
+                  showCents={appSettings.showCents}
+                  initial={formData.stockItems || []}
+                  emptyActionLabel="Убрать товар"
+                  onClose={close}
+                  onApply={items => { applyStockItems(items); close(); }}
+                />
+              )}
+            </SubPage>
           )}
           {showSuggestions && suggestions.length > 0 && (
               <div

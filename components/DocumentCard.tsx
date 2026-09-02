@@ -5,6 +5,8 @@ import { KIND_LABEL, printJournalDoc, type JournalDoc } from '../src/journalDocs
 import TopBarBack from './TopBarBack';
 import TabPill from './TabPill';
 import ModalPortal from './ModalPortal';
+import ProductPickerPage from './ProductPickerPage';
+import SubPage from './transitions/SubPage';
 
 interface DocumentCardProps {
   doc: JournalDoc;
@@ -108,22 +110,15 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
   // глазами, а количество набирают, и объединять эти два занятия в один экран
   // значит мешать поиску клавиатурой.
   const [addOpen, setAddOpen] = useState(false);
-  const [addSearch, setAddSearch] = useState('');
   const [picked, setPicked] = useState<Product | null>(null);
+  // Выбранный товар придерживаем до конца ухода страницы: если открыть окно
+  // количества сразу, витрина исчезнет рывком посреди перехода.
+  const [pendingPick, setPendingPick] = useState<Product | null>(null);
   const [addQty, setAddQty] = useState('1');
   const [addPrice, setAddPrice] = useState('0');
 
   const canAdd = !!onAddDocLines && !isContractDoc;
   const isInventory = doc.kind === 'INVENTORY';
-
-  const addCandidates = React.useMemo(() => {
-    const q = addSearch.trim().toLowerCase();
-    return products
-      .filter(p => !p.isArchived)
-      .filter(p => !q || p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
-      .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
-      .slice(0, 60);
-  }, [products, addSearch]);
 
   const startAdd = (p: Product) => {
     setPicked(p);
@@ -143,7 +138,6 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
       await onAddDocLines(doc.id, [{ productId: picked.id, quantity, price: Number.isFinite(price) ? price : 0 }]);
       setPicked(null);
       setAddOpen(false);
-      setAddSearch('');
     } finally {
       setSaving(false);
     }
@@ -242,7 +236,7 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
             <div className="flex items-center justify-between gap-2 mb-2 px-1">
               <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">Товары</p>
               {canAdd && (
-                <button onClick={() => { setAddOpen(true); setPicked(null); setAddSearch(''); }}
+                <button onClick={() => { setAddOpen(true); setPicked(null); }}
                         className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 text-xs font-bold">
                   + Товар
                 </button>
@@ -345,38 +339,27 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
           )}
         </div>
       )}
-      {addOpen && !picked && (
-        <ModalPortal onClose={() => setAddOpen(false)}>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setAddOpen(false)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[80vh] flex flex-col"
-                 onClick={e => e.stopPropagation()}>
-              <div className="p-4 border-b border-slate-100 dark:border-slate-700 shrink-0">
-                <h3 className="font-bold text-slate-800 dark:text-white mb-2">Добавить в документ</h3>
-                <input value={addSearch} onChange={e => setAddSearch(e.target.value)} autoFocus
-                       placeholder="Поиск по названию или артикулу" className={input} />
-              </div>
-              <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
-                {addCandidates.length === 0 ? (
-                  <p className="p-5 text-sm text-slate-500 dark:text-slate-400">Ничего не найдено.</p>
-                ) : addCandidates.map(p => (
-                  <button key={p.id} onClick={() => startAdd(p)}
-                          className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left active:bg-slate-50 dark:active:bg-slate-700/50">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-slate-800 dark:text-white truncate">{p.name}</p>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                        {p.sku ? `${p.sku} · ` : ''}остаток {p.stock || 0} {p.unit || 'шт'}
-                      </p>
-                    </div>
-                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200 shrink-0">
-                      {formatCurrency(doc.kind === 'SALE' ? (p.price || 0) : (p.buyPrice || 0), cents)} ₽
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </ModalPortal>
+      {/* Выбор товара — страницей с витриной: в списке одной строкой «Айфон 15
+          128 чёрный» и «Айфон 15 256 чёрный» различают, только вчитавшись, а по
+          фотографии узнают сразу. Количество спрашиваем следующим шагом: товар
+          ищут глазами, а число набирают, и на одном экране одно мешает другому. */}
+      {addOpen && (
+        <SubPage onClose={() => {
+          setAddOpen(false);
+          if (pendingPick) { startAdd(pendingPick); setPendingPick(null); }
+        }}>
+          {(close: () => void) => (
+            <ProductPickerPage
+              products={products}
+              title="Добавить в документ"
+              subtitle={`${KIND_LABEL[doc.kind]} №${doc.number}`}
+              showCents={cents}
+              priceOf={p => (doc.kind === 'SALE' ? (p.price || 0) : (p.buyPrice || 0))}
+              onClose={close}
+              onPick={p => { setPendingPick(p); close(); }}
+            />
+          )}
+        </SubPage>
       )}
 
       {picked && (
