@@ -4,6 +4,8 @@ import TopBarBack from './TopBarBack';
 import { stockAtWarehouse } from '../src/utils';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import ModalPortal from './ModalPortal';
+import SubPage from './transitions/SubPage';
+import SelectionList from './SelectionList';
 
 interface RetailSaleProps {
   products: Product[];
@@ -16,6 +18,11 @@ interface RetailSaleProps {
   /** Прошлые чеки — нужны только для следующего номера документа */
   existingSales?: RetailSaleType[];
   onSubmit: (sale: RetailSaleType) => Promise<void> | void;
+  /** Завести клиента прямо из выбора, не уходя из чека */
+  onQuickAddCustomer?: (data: {
+    name: string; phone: string; address?: string;
+    passportSeries?: string; passportNumber?: string; passportIssuedBy?: string;
+  }) => Promise<Customer | undefined>;
   onBack: () => void;
   showCents?: boolean;
 }
@@ -45,7 +52,7 @@ const input = 'w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate
  * никому не понадобятся.
  */
 const RetailSale: React.FC<RetailSaleProps> = ({
-  products, customers, accounts, defaultAccountId, warehouseId = DEFAULT_WAREHOUSE_ID,
+  products, customers, accounts, defaultAccountId, warehouseId = DEFAULT_WAREHOUSE_ID, onQuickAddCustomer,
   existingSales = [], onSubmit, onBack, showCents = false,
 }) => {
   const [items, setItems] = useState<RetailSaleItem[]>([]);
@@ -59,7 +66,6 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   // вместе с ним.
   const [isCredit, setIsCredit] = useState(false);
   const [pickCustomer, setPickCustomer] = useState(false);
-  const [customerSearch, setCustomerSearch] = useState('');
 
   // Счёт склада важнее общего «основного»: магазин сдаёт выручку в свою кассу,
   // и если склад её назвал — спорить с ним незачем.
@@ -532,36 +538,29 @@ const RetailSale: React.FC<RetailSaleProps> = ({
         </ModalPortal>
       )}
 
-      {/* Выбор клиента */}
+      {/* Выбор клиента — та же страница, что и при оформлении рассрочки, и тот же
+          выезд справа. Раньше здесь было своё окно с урезанным поиском: нового
+          клиента из него завести было нельзя, а список обрывался на сотне.
+          Подстраницей, а не отдельным экраном: корзина остаётся смонтированной,
+          и набранный чек не теряется на время выбора. */}
       {pickCustomer && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-modal-top flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setPickCustomer(false)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[75vh] flex flex-col"
-                 onClick={e => e.stopPropagation()}>
-              <div className="p-4 border-b border-slate-100 dark:border-slate-700">
-                <h3 className="font-bold text-slate-800 dark:text-white mb-2">Клиент</h3>
-                <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)}
-                       placeholder="Поиск по имени или телефону" className={input} />
-              </div>
-              <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
-                {customers
-                  .filter(c => {
-                    const q = customerSearch.trim().toLowerCase();
-                    return !q || c.name.toLowerCase().includes(q) || (c.phone || '').includes(q);
-                  })
-                  .slice(0, 100)
-                  .map(c => (
-                    <button key={c.id} onClick={() => { setCustomerId(c.id); setIsCredit(true); setPickCustomer(false); }}
-                            className="w-full px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-700">
-                      <p className="font-semibold text-slate-800 dark:text-white truncate">{c.name}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">{c.phone}</p>
-                    </button>
-                  ))}
-              </div>
-            </div>
-          </div>
-        </ModalPortal>
+        <SubPage onClose={() => setPickCustomer(false)}>
+          {(close: () => void) => (
+            <SelectionList
+              title="Выберите клиента"
+              items={customers.map(c => ({ id: c.id, title: c.name, subtitle: c.phone }))}
+              onSelect={id => { setCustomerId(id); setIsCredit(true); close(); }}
+              onCancel={close}
+              onAddNew={async data => {
+                const saved = await onQuickAddCustomer?.(data);
+                // Клиента заводят прямо посреди продажи ради этой самой продажи —
+                // выбираем его сразу, иначе список пришлось бы листать заново.
+                if (saved) { setCustomerId(saved.id); setIsCredit(true); }
+                close();
+              }}
+            />
+          )}
+        </SubPage>
       )}
 
       {/* Продажа проведена */}

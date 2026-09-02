@@ -3730,6 +3730,50 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
   // правки (и сам выбор) при возврате в форму терялись бы, т.к. editingSale имеет приоритет.
   const openSelection = (view: ViewState, currentData: any) => { setDraftSaleData(currentData); if (editingSale) setEditingSale(currentData); setPreviousView(currentView); setCurrentView(view); };
   const handleSelection = (key: 'customerId', id: string) => { setDraftSaleData({ ...draftSaleData, [key]: id }); if (editingSale) setEditingSale({ ...editingSale, [key]: id }); setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE'); };
+/**
+ * Создание клиента «на лету» без перехода куда-либо.
+ *
+ * Выбор клиента нужен из двух мест — договора и чека магазина, — и оба
+ * заканчиваются по-разному: договор возвращается в свою форму, чек остаётся на
+ * месте с уже набранной корзиной. Поэтому запись отделена от навигации: кто
+ * позвал, тот и решает, куда идти дальше.
+ */
+const createCustomerQuick = async (data: {
+  name: string;
+  phone: string;
+  address?: string;
+  passportSeries?: string;
+  passportNumber?: string;
+  passportIssuedBy?: string;
+}) => {
+  if (!user) return;
+  if (!checkAccess('WRITE')) {
+    showUpgradeAlert("Срок подписки истек.");
+    return;
+  }
+  const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+  const newCustomer: any = {
+    id: crypto.randomUUID(),
+    userId: ownerId,
+    name: data.name.trim(),
+    phone: data.phone.trim(),
+    email: '',
+    trustScore: 50,
+    notes: '',
+    photo: '',
+    address: data.address?.trim() || undefined,
+    passportSeries: data.passportSeries?.trim() || undefined,
+    passportNumber: data.passportNumber?.trim() || undefined,
+    passportIssuedBy: data.passportIssuedBy?.trim() || undefined,
+    allowWhatsappNotification: true,
+    documents: [],
+    createdAt: new Date().toISOString(),
+  };
+  const saved = await api.saveItem('customers', newCustomer);
+  updateList(setCustomers, saved);
+  return saved;
+};
+
 const handleQuickAddCustomer = async (data: {
   name: string;
   phone: string;
@@ -3747,63 +3791,11 @@ const handleQuickAddCustomer = async (data: {
     return;
   }
 
-  const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+  const saved = await createCustomerQuick(data);
+  if (!saved) return;
 
-  // 🔹 Создаём клиента с паспортными данными
-  const newCustomer: {
-      passportNumber: string;
-      notes: string;
-      address: string;
-      documents: any[];
-      photo: string;
-      userId: string;
-      passportSeries: string;
-      createdAt: string;
-      trustScore: number;
-      phone: string;
-      name: string;
-      id: `${string}-${string}-${string}-${string}-${string}`;
-      email: string;
-      passportIssuedBy: string;
-      allowWhatsappNotification: boolean
-  } = {
-    id: crypto.randomUUID(),
-    userId: ownerId,
-
-    // Обязательные поля
-    name: data.name.trim(),
-    phone: data.phone.trim(),
-
-    // Опциональные поля
-    email: '',
-    trustScore: 50,
-    notes: '',
-    photo: '',
-
-    // 🔹 Адрес (может быть пустым)
-    address: data.address?.trim() || undefined,
-
-    // 🔹 Паспортные данные (все необязательные)
-    passportSeries: data.passportSeries?.trim() || undefined,
-    passportNumber: data.passportNumber?.trim() || undefined,
-    passportIssuedBy: data.passportIssuedBy?.trim() || undefined,
-
-    // Поля по умолчанию
-    allowWhatsappNotification: true,
-    documents: [],
-    createdAt: new Date().toISOString(),
-  };
-
-  // 🔹 Сохраняем в базу
-  const saved = await api.saveItem('customers', newCustomer);
-
-  // 🔹 Обновляем список клиентов в стейте
-  updateList(setCustomers, saved);
-
-  // 🔹 Автоматически выбираем созданного клиента в форме
+  // 🔹 Автоматически выбираем созданного клиента в форме договора
   handleSelection('customerId', saved.id);
-
-  // 🔹 Возвращаем клиента (для цепочки вызовов)
   return saved;
 };  const handleSelectAccountForOperations = (accountId: string) => { setOperationsAccountId(accountId); setCurrentView('OPERATIONS'); };
   const handleSelectCustomer = (id: string) => { setSelectedCustomerId(id); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
@@ -4537,6 +4529,7 @@ if (!user && !showSplash) {
                       existingSales={retailSales}
                       showCents={appSettings.showCents}
                       onSubmit={handleRetailSale}
+                      onQuickAddCustomer={createCustomerQuick}
                       onBack={requestClose}
                     />
                   )}

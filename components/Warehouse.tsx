@@ -405,7 +405,9 @@ const Warehouse: React.FC<WarehouseProps> = ({
     <>
     <div className="space-y-4 pb-10">
       <div className="flex items-center gap-3">
-        <TopBarBack onClick={onBack} />
+        {/* На десктопе стрелка не нужна: раздел виден в сайдбаре, и уходить
+            из него некуда — это не подстраница, а сам раздел. */}
+        <TopBarBack onClick={onBack} hideOnDesktop />
         <div className="min-w-0 flex-1">
           <h2 className="text-xl font-bold text-slate-800 dark:text-white">Склад</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">

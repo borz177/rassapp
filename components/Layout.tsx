@@ -397,6 +397,10 @@ const counts = useMemo(() => {
     // Главная — самый частый переход, и держать её ниже разделов, куда заходят
     // раз в неделю, значило бы каждый раз искать её глазами.
     { id: 'DASHBOARD' as const, label: 'Главная', icon: ICONS.Dashboard, visible: true },
+    // «Оформить» — не раздел, а действие, и самое частое из всех. Внутри
+    // «Договоров», за раскрытием списка, до него было два клика — на то, ради
+    // чего программу открывают.
+    { id: 'CREATE_SALE' as const, label: 'Оформить', icon: ICONS.AddSmall, action: 'CREATE_SALE', visible: !isInvestor },
     { id: 'PARTNER' as const, label: 'Бизнес-партнёр', icon: ICONS.Star, visible: !!user?.partnerPercent },
     {
       // Склад и журнал — про один и тот же товар, но с разных сторон: где
@@ -429,7 +433,6 @@ const counts = useMemo(() => {
       icon: ICONS.File,
       visible: !isInvestor || (isInvestor && !!investorPermissions?.canViewContracts),
       subItems: [
-        { label: 'Оформить', action: 'CREATE_SALE', icon: ICONS.AddSmall, visible: !isInvestor },
         { label: 'Активные', tab: 'ACTIVE', icon: ICONS.Check, count: counts.active, visible: true },
         { label: 'Просроченные', tab: 'OVERDUE', icon: ICONS.Alert, count: counts.overdue, visible: true },
         { label: 'Архив', tab: 'ARCHIVE', icon: ICONS.Clock, count: counts.archive, visible: true },
@@ -500,7 +503,11 @@ const counts = useMemo(() => {
   };
 
   const handleMainItemClick = (item: any) => {
-      if ('subItems' in item) {
+      // Пункт-действие открывает форму, а не раздел: раскрывать у него нечего,
+      // и переход должен идти тем же путём, что из подпунктов.
+      if (item.action) {
+          onAction(item.action);
+      } else if ('subItems' in item) {
           toggleMenu(item.id);
       } else {
           setView(item.id);
