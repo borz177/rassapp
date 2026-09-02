@@ -77,7 +77,7 @@ const TopBarBack: React.FC<TopBarBackProps> = ({ onClick, label = 'Назад', 
   if (slot) {
     if (!isTop) return null;
     return createPortal(
-      <button onClick={onClick} aria-label={label} className="topbar-back-btn glass-surface">
+      <button type="button" onClick={onClick} aria-label={label} className="topbar-back-btn glass-surface">
         {arrow}
       </button>,
       slot
@@ -89,6 +89,7 @@ const TopBarBack: React.FC<TopBarBackProps> = ({ onClick, label = 'Назад', 
   if (standalone) {
     return (
       <button
+        type="button"
         onClick={onClick}
         className="glass-surface inline-flex items-center gap-1.5 rounded-full pl-3 pr-4 py-2 mb-4 text-sm font-bold text-slate-600 dark:text-slate-200 active:scale-95 transition-transform"
       >
@@ -100,6 +101,7 @@ const TopBarBack: React.FC<TopBarBackProps> = ({ onClick, label = 'Назад', 
 
   return (
     <button
+      type="button"
       onClick={onClick}
       aria-label={label}
       className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white shrink-0"

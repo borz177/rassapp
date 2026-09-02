@@ -129,13 +129,13 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
       <div className="space-y-3">
         {categories.length > 0 && (
           <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-            <button onClick={() => setCategory('ALL')}
+            <button type="button" onClick={() => setCategory('ALL')}
                     className={`shrink-0 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap ${
                       category === 'ALL' ? 'glass-surface text-indigo-600 dark:text-indigo-300'
                                          : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                     }`}>Все</button>
             {categories.map(c => (
-              <button key={c} onClick={() => setCategory(c)}
+              <button type="button" key={c} onClick={() => setCategory(c)}
                       className={`shrink-0 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap ${
                         category === c ? 'glass-surface text-indigo-600 dark:text-indigo-300'
                                        : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-600 dark:text-slate-300'
@@ -158,7 +158,7 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
               const qty = picked[p.id] || 0;
               const left = stockOf(p);
               return (
-                <button key={p.id} onClick={() => tap(p)}
+                <button type="button" key={p.id} onClick={() => tap(p)}
                         className={`relative bg-white dark:bg-slate-800 rounded-2xl border p-2 text-left active:scale-95 transition-transform overflow-hidden ${
                           qty > 0 ? 'border-indigo-500 border-2' : 'border-slate-100 dark:border-slate-700'
                         }`}>
@@ -210,7 +210,7 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
       {multi && (
         <div className="fixed left-4 right-4 lg:left-auto lg:right-8 lg:w-96 z-40"
              style={{ bottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}>
-          <button onClick={() => onApply?.(items)}
+          <button type="button" onClick={() => onApply?.(items)}
                   className="w-full rounded-2xl bg-indigo-600 text-white py-3.5 px-5 shadow-2xl flex items-center justify-between active:scale-[0.98] transition-transform">
             <span className="flex items-center gap-2 font-bold">
               {items.length > 0 && (
