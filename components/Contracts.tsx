@@ -3,7 +3,7 @@ import { Sale, Customer, Account, User, AppSettings, Task, Payment } from '../ty
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
 import { buildContractHtml, resolveContractTemplate } from '../src/contractTemplates';
-import { formatCurrency, formatDate, escapeHtml, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
+import { contractNumbers, formatCurrency, formatDate, escapeHtml, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
 import UnsyncedMark from './UnsyncedMark';
 import { createPortal } from 'react-dom';
@@ -363,6 +363,10 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
 const [riskAcknowledged, setRiskAcknowledged] = useState(false);
 
   const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Неизвестно';
+
+  // Номера считаем по всему списку, а не по отфильтрованному: у пятидесятого
+  // договора номер 0050 и в архиве, и в поиске по одному клиенту.
+  const contractNo = useMemo(() => contractNumbers(sales), [sales]);
 
   const { filteredList } = useMemo(() => {
     const today = new Date();
@@ -979,7 +983,9 @@ useEffect(() => {
                     {sale.productName}
                   </p>
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
-                    {formatDate(sale.startDate)} • {sale.installments} мес.
+                    {/* Номер договора — тот же, что в журнале склада: одна бумага,
+                        один номер, где бы на неё ни смотрели. */}
+                    №{contractNo[sale.id] || '—'} • {formatDate(sale.startDate)} • {sale.installments} мес.
                   </p>
                   {employees.length > 0 && getCreatorName(sale) && (
                     <p className="text-[10px] text-indigo-500 dark:text-indigo-400 mt-0.5 flex items-center gap-1">

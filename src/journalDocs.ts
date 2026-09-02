@@ -2,7 +2,7 @@ import type {
   Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier,
 } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { retailRemaining } from './utils';
+import { contractNumbers, retailRemaining } from './utils';
 
 export type DocKind = 'SALE' | 'CONTRACT' | 'IN' | 'TRANSFER' | 'WRITE_OFF' | 'INVENTORY';
 
@@ -81,6 +81,10 @@ export const buildJournalDocs = ({
     || (id === DEFAULT_WAREHOUSE_ID || !id ? 'Основной склад' : 'Склад удалён');
   const customerName = (id?: string) =>
     customers.find(c => c.id === id)?.name || (id ? 'Клиент удалён' : 'Розничный покупатель');
+  // Отгрузка по договору носит номер самого договора, а не свой собственный:
+  // это одна и та же бумага, и два разных номера на неё сбивали бы с толку —
+  // в списке договоров пятидесятый, а в журнале первый.
+  const contractNo = contracts.length > 0 ? contractNumbers(contracts) : {};
 
   const list: JournalDoc[] = [];
 
@@ -150,7 +154,7 @@ export const buildJournalDocs = ({
     list.push({
       id: `doc_${key}`,
       kind: k,
-      number: head.docNumber || '',
+      number: (k === 'CONTRACT' && head.contractId ? contractNo[head.contractId] : '') || head.docNumber || '',
       date: head.date,
       total: rows.reduce((sum, m) => sum + Math.abs(m.quantity) * (m.unitPrice || 0), 0),
       debt: 0,

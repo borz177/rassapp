@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type {
-  Account, AppSettings, Customer, Product, RetailSale, StockLocation, StockMovement, Supplier, User,
+  Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User,
 } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { formatCurrency, stockAtWarehouse } from '../src/utils';
@@ -20,6 +20,8 @@ interface ProductDetailsProps {
   suppliers: Supplier[];
   accounts: Account[];
   employees?: User[];
+  /** Договоры рассрочки — по ним у отгрузки со склада свой номер и покупатель */
+  contracts?: Sale[];
   appSettings: AppSettings;
   user?: User | null;
   onBack: () => void;
@@ -57,7 +59,7 @@ const dayTitle = (iso: string) => {
  */
 const ProductDetails: React.FC<ProductDetailsProps> = ({
   product, movements, retailSales, products, customers, warehouses, suppliers, accounts,
-  employees = [], appSettings, user, onBack, onEdit, onSelectCustomer, onAcceptPayment,
+  employees = [], contracts = [], appSettings, user, onBack, onEdit, onSelectCustomer, onAcceptPayment,
   onUpdateSale, onUpdateStockDoc, onAddDocLines,
 }) => {
   const [tab, setTab] = useState<'INFO' | 'HISTORY'>('INFO');
@@ -66,10 +68,10 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
 
   const docs = useMemo(
     () => buildJournalDocs({
-      retailSales, movements, products, customers, warehouses, suppliers,
+      retailSales, movements, products, customers, warehouses, suppliers, contracts,
       company: appSettings.companyName || 'Магазин',
     }),
-    [retailSales, movements, products, customers, warehouses, suppliers, appSettings.companyName]
+    [retailSales, movements, products, customers, warehouses, suppliers, contracts, appSettings.companyName]
   );
 
   // Документ ищем по товару, а не по движению: строка истории должна открывать

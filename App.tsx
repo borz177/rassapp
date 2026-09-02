@@ -4581,6 +4581,7 @@ if (!user && !showSplash) {
                       retailSales={retailSales}
                       customers={customers}
                       employees={employees}
+                      contracts={sales}
                       appSettings={appSettings}
                       user={user}
                       onSelectCustomer={handleSelectCustomer}

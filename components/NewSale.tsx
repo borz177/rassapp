@@ -559,6 +559,28 @@ const regeneratePaymentPlan = (
   };
 
   const handleSuggestionClick = (product: Product) => {
+    // При включённом магазине подсказка — это тот же склад, только другим путём:
+    // выбрали товар — он попал в состав договора, его цена продажи встала в
+    // закуп и он спишется при оформлении. Разное поведение у кнопки «+» и у
+    // подсказки означало бы, что один и тот же выбор даёт разный результат.
+    if (showShop) {
+      const already = (formData.stockItems || []) as SaleStockItem[];
+      // Повторный выбор того же товара количество не удваивает: чтобы взять две
+      // штуки, есть счётчик в окне склада.
+      const items = already.some(i => i.productId === product.id)
+        ? already
+        : [...already, {
+            productId: product.id,
+            name: product.name,
+            quantity: 1,
+            price: product.price,
+            unit: product.unit,
+          }];
+      applyStockItems(items);
+      setShowSuggestions(false);
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
       productName: product.name,
@@ -1247,7 +1269,13 @@ if (mode === 'CASH') {
                          className="p-3 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer border-b border-slate-50 dark:border-slate-700 last:border-0 text-slate-800 dark:text-white"
                          onClick={() => handleSuggestionClick(s)}>
                       <p className="font-medium text-slate-800 dark:text-white">{s.name}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">Цена: {s.price} ₽</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Цена: {s.price} ₽
+                        {/* Остаток по складу отгрузки: выбирая товар из подсказки,
+                            человек списывает его со склада, и знать, сколько там
+                            лежит, нужно до нажатия, а не после. */}
+                        {showShop && ` · остаток ${stockAtWarehouse(s, warehouseId)} ${s.unit || 'шт'}`}
+                      </p>
                     </div>
                 ))}
               </div>

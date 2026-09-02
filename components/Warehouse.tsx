@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { Account, AppSettings, Customer, Product, RetailSale, StockLocation, StockMovement, Supplier, User } from '../types';
+import type { Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { stockAtWarehouse } from '../src/utils';
 import { api } from '../services/api';
@@ -21,6 +21,8 @@ interface WarehouseProps {
   retailSales?: RetailSale[];
   customers?: Customer[];
   employees?: User[];
+  /** Договоры рассрочки — карточке товара, чтобы показать отгрузку по договору */
+  contracts?: Sale[];
   appSettings?: AppSettings;
   user?: User | null;
   onSelectCustomer?: (id: string) => void;
@@ -70,7 +72,7 @@ const MOVEMENT_LABELS: Record<StockMovement['type'], string> = {
  */
 const Warehouse: React.FC<WarehouseProps> = ({
   products, movements, warehouses, suppliers, accounts,
-  retailSales = [], customers = [], employees = [], appSettings, user,
+  retailSales = [], customers = [], employees = [], contracts = [], appSettings, user,
   onSelectCustomer, onAcceptPayment, onUpdateSale, onUpdateStockDoc, onAddDocLines,
   onSaveProduct, onDeleteProduct, onAddMovement, onPostBatch,
   onSaveWarehouse, onDeleteWarehouse, onBack,
@@ -977,6 +979,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
             suppliers={suppliers}
             accounts={accounts}
             employees={employees}
+            contracts={contracts}
             appSettings={appSettings}
             user={user}
             onBack={close}
