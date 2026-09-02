@@ -206,10 +206,16 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
       </div>
 
       {/* Итог выбора внизу — как корзина в кассе: видно, что набрал, не
-          прокручивая обратно наверх. */}
+          прокручивая обратно наверх.
+
+          Полоса идёт по ширине самого содержимого, а не пузырём в углу: в углу
+          она налезала на кнопку поддержки, и сумма уходила под неё. Отступ
+          справа на десктопе как раз под этот пузырь, а снизу на телефоне —
+          выше нижней навигации, за которой кнопка пряталась целиком. */}
       {multi && (
-        <div className="fixed left-4 right-4 lg:left-auto lg:right-8 lg:w-96 z-40"
-             style={{ bottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}>
+        <div className="fixed left-0 right-0 md:left-64 z-40 px-4 md:px-10 pointer-events-none
+                        bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:bottom-6">
+          <div className="max-w-7xl mx-auto md:pr-24 pointer-events-auto">
           <button type="button" onClick={() => onApply?.(items)}
                   className="w-full rounded-2xl bg-indigo-600 text-white py-3.5 px-5 shadow-2xl flex items-center justify-between active:scale-[0.98] transition-transform">
             <span className="flex items-center gap-2 font-bold">
@@ -224,6 +230,7 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
               <span className="font-extrabold text-lg">{formatCurrency(total, showCents)} ₽</span>
             )}
           </button>
+          </div>
         </div>
       )}
     </div>

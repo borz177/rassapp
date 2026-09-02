@@ -351,7 +351,7 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
       {/* Очередь документа */}
       {batchIds.length > 0 && !picking && (
         <button onClick={() => setDocOpen(true)}
-                className="fixed left-4 right-4 lg:left-auto lg:right-8 lg:w-96 z-40 rounded-2xl bg-indigo-600 text-white py-3.5 px-5 shadow-2xl flex items-center justify-between active:scale-[0.98] transition-transform"
+                className="fixed left-4 right-4 lg:left-auto lg:right-28 lg:w-96 z-40 rounded-2xl bg-indigo-600 text-white py-3.5 px-5 shadow-2xl flex items-center justify-between active:scale-[0.98] transition-transform"
                 style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}>
           <span className="flex items-center gap-2 font-bold">
             <span className="bg-white/20 rounded-full min-w-[26px] h-6 px-1.5 flex items-center justify-center text-xs">
