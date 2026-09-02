@@ -98,6 +98,8 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   const [price, setPrice] = useState('0');
   const [field, setField] = useState<'qty' | 'price'>('qty');
 
+
+
   const categories = useMemo(
     () => Array.from(new Set(products.filter(p => !p.isArchived).map(p => p.category).filter(Boolean))).sort(),
     [products]
@@ -429,7 +431,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
 
                     <div className="w-full aspect-[4/3] rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden mb-1.5 mt-3 flex items-center justify-center">
                       {p.images?.[0]
-                        ? <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" />
+                        ? <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" decoding="sync" />
                         : <span className="text-2xl text-slate-300">📦</span>}
                     </div>
 
@@ -472,7 +474,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
 
       {/* Корзина листом — только на телефоне */}
       {cartOpen && (
-        <ModalPortal>
+        <ModalPortal onClose={() => setCartOpen(false)}>
           <div className="lg:hidden fixed inset-0 z-modal flex items-end justify-center bg-slate-900/60 backdrop-blur-sm"
                onClick={() => setCartOpen(false)}>
             <div className="bg-white dark:bg-slate-800 w-full rounded-t-3xl shadow-2xl max-h-[92vh] flex flex-col"
@@ -494,7 +496,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
 
       {/* Количество и цена */}
       {editing && (
-        <ModalPortal>
+        <ModalPortal onClose={() => setEditing(null)}>
           <div className="fixed inset-0 z-modal-top flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
                onClick={() => setEditing(null)}>
             <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-3"
@@ -577,7 +579,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
 
       {/* Продажа проведена */}
       {done && (
-        <ModalPortal>
+        <ModalPortal onClose={() => setDone(null)}>
           <div className="fixed inset-0 z-modal-top flex items-center justify-center p-6 bg-slate-900/70 backdrop-blur-sm"
                onClick={() => setDone(null)}>
             <div className="bg-white dark:bg-slate-800 w-full max-w-xs rounded-3xl shadow-2xl p-6 text-center space-y-4"

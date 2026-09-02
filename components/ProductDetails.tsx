@@ -6,6 +6,7 @@ import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { formatCurrency, stockAtWarehouse } from '../src/utils';
 import { buildJournalDocs, KIND_LABEL, type JournalDoc } from '../src/journalDocs';
 import TopBarBack from './TopBarBack';
+import ImageViewer from './ImageViewer';
 import TabPill from './TabPill';
 import SubPage from './transitions/SubPage';
 import DocumentCard from './DocumentCard';
@@ -64,6 +65,8 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
 }) => {
   const [tab, setTab] = useState<'INFO' | 'HISTORY'>('INFO');
   const [openDocId, setOpenDocId] = useState<string | null>(null);
+  // Какую фотографию раскрыли во весь экран. null — просмотр закрыт.
+  const [viewerAt, setViewerAt] = useState<number | null>(null);
   const cents = appSettings.showCents;
 
   const docs = useMemo(
@@ -147,10 +150,32 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
           )}
         </div>
 
+        {/* Снимок в карточке обрезан по полосе — разглядеть на нём состояние
+            товара нельзя, а возвращаются к фотографии именно за этим. Нажатие
+            раскрывает её целиком. */}
         {product.images?.[0] && (
-          <div className="rounded-3xl overflow-hidden bg-slate-100 dark:bg-slate-800 aspect-[16/10]">
-            <img src={product.images[0]} alt="" className="w-full h-full object-contain" />
+          <div className="space-y-2">
+            <button type="button" onClick={() => setViewerAt(0)}
+                    className="block w-full rounded-3xl overflow-hidden bg-slate-100 dark:bg-slate-800 aspect-[16/10] active:scale-[0.99] transition-transform">
+              <img src={product.images[0]} alt="" decoding="sync" className="w-full h-full object-contain" />
+            </button>
+            {/* Остальные снимки строкой: иначе о них не узнать — в карточке
+                всегда была видна только первая фотография. */}
+            {product.images.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {product.images.map((src, i) => (
+                  <button key={`${src}_${i}`} type="button" onClick={() => setViewerAt(i)}
+                          className="shrink-0 w-16 h-16 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:scale-95 transition-transform">
+                    <img src={src} alt="" decoding="sync" className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+        )}
+
+        {viewerAt !== null && product.images && (
+          <ImageViewer images={product.images} startIndex={viewerAt} onClose={() => setViewerAt(null)} />
         )}
 
         <div className="relative flex p-1 rounded-[24px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">

@@ -212,7 +212,7 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
 
                   <div className="w-full aspect-[4/3] rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden mb-1.5 mt-3 flex items-center justify-center">
                     {p.images?.[0]
-                      ? <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" />
+                      ? <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" decoding="sync" />
                       : <span className="text-2xl text-slate-300">📦</span>}
                   </div>
 

@@ -658,7 +658,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
 
               <div className="w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
                 {p.images?.[0] ? (
-                  <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" draggable={false} />
+                  <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" decoding="sync" draggable={false} />
                 ) : (
                   <span className="text-slate-400 text-xl">📦</span>
                 )}
@@ -887,12 +887,34 @@ const Warehouse: React.FC<WarehouseProps> = ({
               <input value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Название" className={inputCls} />
               <div className="grid grid-cols-2 gap-2">
                 <input value={form.sku} onChange={e => setForm(prev => ({ ...prev, sku: e.target.value }))} placeholder="Артикул" className={inputCls} />
-                <input value={form.category} onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))} placeholder="Категория" className={inputCls} />
+                <input value={form.category} onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))} placeholder="Категория" className={inputCls} list="warehouse-categories" />
                 <input value={form.price} onChange={e => setForm(prev => ({ ...prev, price: e.target.value }))} placeholder="Цена продажи" inputMode="decimal" className={inputCls} />
                 <input value={form.buyPrice} onChange={e => setForm(prev => ({ ...prev, buyPrice: e.target.value }))} placeholder="Цена закупа" inputMode="decimal" className={inputCls} />
                 <input value={form.unit} onChange={e => setForm(prev => ({ ...prev, unit: e.target.value }))} placeholder="Ед. изм." className={inputCls} />
                 <input value={form.minStock} onChange={e => setForm(prev => ({ ...prev, minStock: e.target.value }))} placeholder="Мин. остаток" inputMode="decimal" className={inputCls} />
               </div>
+
+              {/* Уже заведённые категории — нажатием. Набирать их заново значит
+                  рано или поздно завести «Телефоны» и «телефоны» двумя разными
+                  разделами каталога; новую по-прежнему можно просто напечатать. */}
+              {categories.length > 0 && (
+                <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-0.5 px-0.5">
+                  <datalist id="warehouse-categories">
+                    {categories.map(c => <option key={c} value={c} />)}
+                  </datalist>
+                  {categories.map(c => (
+                    <button key={c} type="button"
+                            onClick={() => setForm(prev => ({ ...prev, category: prev.category === c ? '' : c }))}
+                            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${
+                              form.category === c
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                            }`}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              )}
               <textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
                         placeholder="Описание" rows={2} className={inputCls} />
 

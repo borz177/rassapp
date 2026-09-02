@@ -331,7 +331,7 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
                 <div className="flex items-center gap-3">
                   <div className="w-14 h-14 rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
                     {p.images?.[0]
-                      ? <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" />
+                      ? <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" decoding="sync" />
                       : <span className="text-slate-400 text-lg">📦</span>}
                   </div>
                   <div className="min-w-0">
