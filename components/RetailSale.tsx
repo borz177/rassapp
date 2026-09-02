@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { Account, Customer, Product, RetailSale as RetailSaleType, RetailSaleItem } from '../types';
 import TopBarBack from './TopBarBack';
-import { stockAtWarehouse } from '../src/utils';
+import { maxPickableQty, stockAtWarehouse } from '../src/utils';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import ModalPortal from './ModalPortal';
 import SubPage from './transitions/SubPage';
@@ -18,6 +18,8 @@ interface RetailSaleProps {
   /** Прошлые чеки — нужны только для следующего номера документа */
   existingSales?: RetailSaleType[];
   onSubmit: (sale: RetailSaleType) => Promise<void> | void;
+  /** Настройка магазина: можно ли пробить больше, чем лежит на складе */
+  allowNegativeStock?: boolean;
   /** Завести клиента прямо из выбора, не уходя из чека */
   onQuickAddCustomer?: (data: {
     name: string; phone: string; address?: string;
@@ -53,6 +55,7 @@ const input = 'w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate
  */
 const RetailSale: React.FC<RetailSaleProps> = ({
   products, customers, accounts, defaultAccountId, warehouseId = DEFAULT_WAREHOUSE_ID, onQuickAddCustomer,
+  allowNegativeStock = false,
   existingSales = [], onSubmit, onBack, showCents = false,
 }) => {
   const [items, setItems] = useState<RetailSaleItem[]>([]);
@@ -155,9 +158,18 @@ const RetailSale: React.FC<RetailSaleProps> = ({
 
   const applyEditing = () => {
     if (!editing) return;
-    const q = num(qty);
     const pr = num(price);
     const id = editing.product.id;
+    // Продажа в минус выключена — дальше остатка не пускаем и говорим почему.
+    // Молча урезать количество нельзя: кассир увидел бы в чеке не то, что набрал.
+    const left = stockAtWarehouse(editing.product, warehouseId);
+    if (num(qty) > maxPickableQty(left, allowNegativeStock)) {
+      setError(left > 0
+        ? `На складе ${money(left)} ${editing.product.unit || 'шт'} — продажа в минус выключена в настройках магазина.`
+        : `«${editing.product.name}» нет на складе — продажа в минус выключена в настройках магазина.`);
+      return;
+    }
+    const q = num(qty);
     if (q <= 0) {
       setItems(prev => prev.filter(i => i.productId !== id));
     } else {
@@ -332,7 +344,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
         )}
       </div>
 
-      {overdrawn.length > 0 && (
+      {allowNegativeStock && overdrawn.length > 0 && (
         <p className="text-[11px] text-amber-600 dark:text-amber-400">
           По {overdrawn.length} позиц. остаток уйдёт в минус — проверьте приход.
         </p>

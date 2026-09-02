@@ -4529,6 +4529,7 @@ if (!user && !showSplash) {
                       existingSales={retailSales}
                       showCents={appSettings.showCents}
                       onSubmit={handleRetailSale}
+                      allowNegativeStock={!!appSettings.shopAllowNegativeStock}
                       onQuickAddCustomer={createCustomerQuick}
                       onBack={requestClose}
                     />

@@ -678,3 +678,17 @@ export const contractNumbers = (
     .forEach((sale, idx) => { map[sale.id] = String(idx + 1).padStart(4, '0'); });
   return map;
 };
+
+/**
+ * Сколько единиц товара можно взять со склада.
+ *
+ * Правило одно на все места, где товар выбирают, — витрину договора и кассу:
+ * иначе в одном экране запрет действует, в другом нет, и человек считает это
+ * поломкой, а не правилом.
+ *
+ * Math.max(0, ...) здесь несущий: у товара с остатком −60 потолок был
+ * отрицательным, и любое количество тут же схлопывалось в ноль — товар нельзя
+ * было выбрать вовсе, причём молча.
+ */
+export const maxPickableQty = (stock: number, allowNegativeStock: boolean): number =>
+  allowNegativeStock ? Number.MAX_SAFE_INTEGER : Math.max(0, stock);

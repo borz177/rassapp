@@ -1263,6 +1263,7 @@ if (mode === 'CASH') {
                   subtitle="Сумма выбранного встанет в «Закуп», товар спишется при оформлении"
                   showCents={appSettings.showCents}
                   initial={formData.stockItems || []}
+                  allowNegativeStock={!!appSettings.shopAllowNegativeStock}
                   emptyActionLabel="Убрать товар"
                   onClose={close}
                   onApply={items => { applyStockItems(items); close(); }}

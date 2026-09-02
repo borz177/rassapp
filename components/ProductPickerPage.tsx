@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { Product, SaleStockItem } from '../types';
-import { formatCurrency, stockAtWarehouse } from '../src/utils';
+import { formatCurrency, maxPickableQty, stockAtWarehouse } from '../src/utils';
 import TopBarBack from './TopBarBack';
 
 interface ProductPickerPageProps {
@@ -24,6 +24,8 @@ interface ProductPickerPageProps {
   onApply?: (items: SaleStockItem[]) => void;
   /** Не давать взять больше, чем лежит на складе */
   limitToStock?: boolean;
+  /** Продажа в минус разрешена настройкой магазина — тогда потолка по остатку нет */
+  allowNegativeStock?: boolean;
   /** Подпись кнопки подтверждения, когда ничего не выбрано */
   emptyActionLabel?: string;
 }
@@ -53,12 +55,16 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
   initial = [],
   onApply,
   limitToStock = true,
+  allowNegativeStock = false,
   emptyActionLabel = 'Готово',
 }) => {
   const multi = !!onApply;
 
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string>('ALL');
+  // Почему нажатие не сработало — говорим вслух. Раньше плитка товара с нулевым
+  // остатком просто не отзывалась, и это выглядело поломкой, а не запретом.
+  const [blocked, setBlocked] = useState<string | null>(null);
   const [picked, setPicked] = useState<Record<string, number>>(() => {
     const map: Record<string, number> = {};
     initial.forEach(i => { map[i.productId] = i.quantity; });
@@ -100,19 +106,28 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
 
   const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
 
+  // Сколько ещё можно взять — по общему правилу, тому же, что в кассе.
+  const capFor = (p: Product) =>
+    limitToStock ? maxPickableQty(stockOf(p), allowNegativeStock) : Number.MAX_SAFE_INTEGER;
+
   const change = (p: Product, delta: number) => {
     setPicked(prev => {
       const current = prev[p.id] || 0;
-      const max = limitToStock ? stockOf(p) : Number.MAX_SAFE_INTEGER;
-      // Товар, которого нет на складе, добавить нельзя: договор с отрицательным
-      // остатком потом пришлось бы разбирать вручную.
-      const next = Math.max(0, Math.min(max, current + delta));
+      const next = Math.max(0, Math.min(capFor(p), current + delta));
       return { ...prev, [p.id]: next };
     });
   };
 
   const tap = (p: Product) => {
     if (!multi) { onPick?.(p); return; }
+    const cap = capFor(p);
+    if ((picked[p.id] || 0) >= cap) {
+      setBlocked(cap <= 0
+        ? `«${p.name}» нет на складе. Разрешить продажу в минус можно в настройках магазина.`
+        : `«${p.name}»: на складе ${cap} ${p.unit || 'шт'} — больше не взять без продажи в минус.`);
+      return;
+    }
+    setBlocked(null);
     change(p, 1);
   };
 
@@ -148,6 +163,14 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
                placeholder="Поиск по названию или артикулу"
                className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 outline-none" />
 
+        {blocked && (
+          <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-2.5 text-sm text-amber-700 dark:text-amber-300 flex items-start justify-between gap-3">
+            <span className="min-w-0">{blocked}</span>
+            <button type="button" onClick={() => setBlocked(null)}
+                    className="shrink-0 font-bold opacity-60">✕</button>
+          </div>
+        )}
+
         {visible.length === 0 ? (
           <p className="text-sm text-slate-500 dark:text-slate-400 py-10 text-center">
             {live.length === 0 ? 'Сначала добавьте товары на склад.' : 'Ничего не найдено.'}
@@ -161,7 +184,7 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
                 <button type="button" key={p.id} onClick={() => tap(p)}
                         className={`relative bg-white dark:bg-slate-800 rounded-2xl border p-2 text-left active:scale-95 transition-transform overflow-hidden ${
                           qty > 0 ? 'border-indigo-500 border-2' : 'border-slate-100 dark:border-slate-700'
-                        }`}>
+                        } ${multi && capFor(p) <= 0 ? 'opacity-50' : ''}`}>
                   <span className={`absolute top-0 left-0 z-10 px-1.5 py-0.5 rounded-br-lg text-[9px] font-bold ${
                     left > 0 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
                              : 'bg-rose-50 dark:bg-rose-900/30 text-rose-500'
