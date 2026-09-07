@@ -1626,7 +1626,7 @@ useEffect(() => {
             строку целиком ради двух слов. */}
         {activeTab === 'overview' && showShopTab && (
           <ModeSwitch
-            className="w-fit"
+            className="w-fit mx-auto"
             value={overviewMode}
             onChange={setOverviewMode}
             options={[
