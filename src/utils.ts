@@ -692,3 +692,62 @@ export const contractNumbers = (
  */
 export const maxPickableQty = (stock: number, allowNegativeStock: boolean): number =>
   allowNegativeStock ? Number.MAX_SAFE_INTEGER : Math.max(0, stock);
+
+/**
+ * Свои деньги, вложенные в счёт, и сколько из них уже вернули.
+ *
+ * У инвестора вложенное лежит в его карточке и уменьшается выплатой
+ * «Инвестиция». У владельца такой карточки нет вовсе: его деньги входят
+ * стартовым балансом счёта и приходами «Прочее» (форма прихода так и
+ * подсказывает — «Внесение личных средств»), а возвращаются выплатой себе
+ * «Из инвестиций». Разбросанные по трём местам, эти суммы нигде не сходились —
+ * ответить, сколько своего в деле осталось, было негде.
+ *
+ * Возврат считаем только по выплатам с явно указанным источником: у записей,
+ * сделанных до появления выбора, источника нет, и объявлять их возвратом
+ * вложенного значило бы задним числом переписать историю.
+ */
+export interface AccountInvestment {
+  /** Стартовый баланс счёта */
+  initial: number;
+  /** Внесено приходами «Прочее» */
+  deposits: number;
+  /** Вложено всего */
+  invested: number;
+  /** Возвращено себе выплатами «Из инвестиций» */
+  returned: number;
+  /** Осталось вложенного */
+  left: number;
+}
+
+/** Приход «Прочее» — техническая запись прихода, а не продажа клиенту. */
+export const SYSTEM_INCOME_CUSTOMER = 'system_income';
+
+export const accountInvestment = (
+  account: Pick<Account, 'id' | 'initialBalance'> | undefined,
+  sales: Sale[],
+  expenses: Expense[]
+): AccountInvestment => {
+  if (!account) return { initial: 0, deposits: 0, invested: 0, returned: 0, left: 0 };
+
+  const initial = Number(account.initialBalance) || 0;
+
+  const deposits = sales
+    .filter(s => s.accountId === account.id && s.customerId === SYSTEM_INCOME_CUSTOMER)
+    .reduce((sum, s) => sum + (Number(s.downPayment) || 0), 0);
+
+  const returned = expenses
+    .filter(e => e.accountId === account.id
+      && e.category === 'Моя выплата'
+      && e.managerPayoutSource === 'CAPITAL'
+      && e.isRefund !== true)
+    .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+  const invested = initial + deposits;
+  return {
+    initial, deposits, invested, returned,
+    // В минус не уводим: «вернул больше, чем вложил» — это уже прибыль, и она
+    // считается своим блоком. Здесь такая цифра читалась бы как долг перед делом.
+    left: Math.max(0, invested - returned),
+  };
+};

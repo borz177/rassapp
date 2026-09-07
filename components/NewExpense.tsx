@@ -3,7 +3,7 @@ import TabPill from './TabPill';
 import TopBarBack from './TopBarBack';
 import { Account, Investor, Expense, User, Supplier, Sale } from '../types';
 import { ICONS } from '../constants';
-import { getInvestorAccount, getAccountShares, getManagerSharePercent, formatCurrency, getAccountProfitBalance } from '../src/utils';
+import { getInvestorAccount, getAccountShares, getManagerSharePercent, formatCurrency, getAccountProfitBalance, accountInvestment } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
 
 interface NewExpenseProps {
@@ -93,6 +93,10 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
   const selectedInvestor = investors.find(i => i.id === selectedInvestorId);
   const selectedAccount = accounts.find(a => a.id === sourceAccountId);
+  // Сколько своих денег осталось вложено в этот счёт — та же цифра, что на
+  // карточке «Инвестировано» в кассе. Без неё «Из инвестиций» пришлось бы
+  // выбирать вслепую, не зная, есть ли что возвращать.
+  const investment = accountInvestment(selectedAccount, saleList, expenses || []);
 
   // Остаток прибыли по счёту — чтобы предупредить, если из неё списывают больше,
   // чем заработано. Не блокируем: в учёте бывают ситуации, когда так и надо,
@@ -696,8 +700,11 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                           <div className={`grid ${selectedAccount?.ownerId ? 'grid-cols-1' : 'grid-cols-2'} gap-2`}>
                               {!selectedAccount?.ownerId && (
                                   <button type="button" onClick={() => setManagerPayoutSource('CAPITAL')} className={`p-4 rounded-xl border-2 text-center ${managerPayoutSource === 'CAPITAL' ? 'border-purple-600 bg-purple-50 dark:bg-purple-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
-                                      <span className="font-bold text-sm text-purple-800 dark:text-purple-300">Из Капитала</span>
-                                      <span className="text-xs text-slate-500 dark:text-slate-400 block">Личные средства</span>
+                                      {/* Раньше называлось «Из Капитала» — слово ничего не
+                                          говорило о том, откуда деньги и что уменьшается.
+                                          Сохранённое значение прежнее, менять историю незачем. */}
+                                      <span className="font-bold text-sm text-purple-800 dark:text-purple-300">Из инвестиций</span>
+                                      <span className="text-xs text-slate-500 dark:text-slate-400 block">Возврат вложенного</span>
                                   </button>
                               )}
                               <button type="button" onClick={() => setManagerPayoutSource('PROFIT')} className={`p-4 rounded-xl border-2 text-center ${managerPayoutSource === 'PROFIT' ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
@@ -705,6 +712,17 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                                   <span className="text-xs text-slate-500 dark:text-slate-400 block">Заработанные</span>
                               </button>
                           </div>
+                          {/* Сколько ещё можно вернуть: выплата «Из инвестиций»
+                              уменьшает именно эту сумму, и видеть её надо до
+                              нажатия, а не идти потом сверять в кассу. */}
+                          {managerPayoutSource === 'CAPITAL' && (
+                              <p className={`text-xs mt-2 ${Number(amount) > investment.left ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                                  {investment.left > 0
+                                      ? `Вложено в счёт: ${formatCurrency(investment.left, false)} ₽`
+                                      : 'По этому счёту вложенного не числится'}
+                                  {Number(amount) > investment.left && ' — выплата больше вложенного, остальное уйдёт из оборота'}
+                              </p>
+                          )}
                      </div>
                  )}
             </div>

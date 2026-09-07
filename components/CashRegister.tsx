@@ -2,9 +2,10 @@ import React, { useMemo, useState } from 'react';
 import PagePush, { useBackInterceptor } from './transitions/PagePush';
 import TabPill from './TabPill';
 import SelectSheet from './SelectSheet';
+import ModalPortal from './ModalPortal';
 import { Sale, Account, Expense, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, shareDateForSale } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, shareDateForSale } from '../src/utils';
 
 // Цвета участников пула — те же роли, что у палитры инвесторов в отчётах:
 // человека узнают по кружку, а не вычитывают имя в таблице.
@@ -537,6 +538,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
     });
   };
   const [showProfitFilters, setShowProfitFilters] = useState(false);
+  const [showInvestment, setShowInvestment] = useState(false);
 
   const openAccountDetails = (acc: Account) => {
     // Готовые расчёты прибыли уже фильтруются этим состоянием — переиспользуем
@@ -1033,6 +1035,38 @@ const investorProfitPayouts = useMemo(() => {
     };
   }, [detailsAccount, investors, investorProfitBreakdown, calculatedExpectedProfit, totalManagerProfitEarned]);
 
+  // 🔹 Свои деньги в этом счёте: сколько вложено и сколько уже вернули себе.
+  // У инвестора вложенное видно в его карточке, у владельца до сих пор не было
+  // видно нигде — стартовый баланс, внесения и выплаты себе лежали в трёх разных
+  // местах и нигде не сходились.
+  const investment = useMemo(
+    () => accountInvestment(detailsAccount || undefined, sales, expenses),
+    [detailsAccount, sales, expenses]
+  );
+
+  // Из чего сложилось — чтобы цифру можно было проверить, а не поверить ей.
+  const investmentRows = useMemo(() => {
+    if (!detailsAccount) return [] as { id: string; date: string; title: string; amount: number; kind: 'IN' | 'OUT' }[];
+    const rows = [
+      ...sales
+        .filter(x => x.accountId === detailsAccount.id && x.customerId === SYSTEM_INCOME_CUSTOMER)
+        .map(x => ({
+          id: x.id, date: x.startDate, title: x.productName || 'Внесение',
+          amount: Number(x.downPayment) || 0, kind: 'IN' as const,
+        })),
+      ...expenses
+        .filter(e => e.accountId === detailsAccount.id
+          && e.category === 'Моя выплата'
+          && e.managerPayoutSource === 'CAPITAL'
+          && e.isRefund !== true)
+        .map(e => ({
+          id: e.id, date: e.date, title: e.title || 'Выплата себе',
+          amount: Number(e.amount) || 0, kind: 'OUT' as const,
+        })),
+    ];
+    return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [detailsAccount, sales, expenses]);
+
   // Если выбран конкретный инвестор — показываем только его цифры, иначе сумму по всем.
   const investorProfitStats = useMemo(() => {
     const relevant = profitFilterInvestorId === 'ALL'
@@ -1325,6 +1359,77 @@ const investorProfitPayouts = useMemo(() => {
         </div>
       )}
 
+      {/* Расшифровка вложенного: из чего сложилось и что уже вернули. Без неё
+          цифре остаётся только верить — а речь о собственных деньгах. */}
+      {showInvestment && detailsAccount && (
+        <ModalPortal onClose={() => setShowInvestment(false)}>
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+               onClick={() => setShowInvestment(false)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[75vh] flex flex-col animate-slide-up-sheet"
+                 onClick={e => e.stopPropagation()}>
+              <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700">
+                <h3 className="font-bold text-slate-800 dark:text-white">Инвестировано</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Свои средства в счёте «{detailsAccount.name}»
+                </p>
+              </div>
+
+              <div className="px-5 py-3 space-y-1.5 border-b border-slate-100 dark:border-slate-700 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500 dark:text-slate-400">Стартовый баланс</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    {formatCurrency(investment.initial, appSettings.showCents)} ₽
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500 dark:text-slate-400">Внесено приходами</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    {formatCurrency(investment.deposits, appSettings.showCents)} ₽
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500 dark:text-slate-400">Возвращено себе</span>
+                  <span className="font-semibold text-rose-500">
+                    −{formatCurrency(investment.returned, appSettings.showCents)} ₽
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3 pt-1.5 border-t border-slate-100 dark:border-slate-700">
+                  <span className="font-bold text-slate-700 dark:text-slate-200">Осталось вложено</span>
+                  <span className="font-bold text-purple-600 dark:text-purple-400">
+                    {formatCurrency(investment.left, appSettings.showCents)} ₽
+                  </span>
+                </div>
+              </div>
+
+              <div className="overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+                {investmentRows.length === 0 ? (
+                  <p className="px-5 py-4 text-sm text-slate-500 dark:text-slate-400">
+                    Движений не было — вложен только стартовый баланс счёта.
+                  </p>
+                ) : investmentRows.map(r => (
+                  <div key={r.id} className="px-5 py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-800 dark:text-white truncate">{r.title}</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">{formatDate(r.date)}</p>
+                    </div>
+                    <p className={`font-bold shrink-0 ${r.kind === 'IN' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}`}>
+                      {r.kind === 'IN' ? '+' : '−'}{formatCurrency(r.amount, appSettings.showCents)} ₽
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-4 border-t border-slate-100 dark:border-slate-700">
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  Вернуть вложенное — «Расход» → «Моя выплата» → «Из инвестиций».
+                  Из прибыли деньги берутся отдельной кнопкой и этой суммы не касаются.
+                </p>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
       {activeMenuAccount && (
         <AccountActionModal account={activeMenuAccount} balance={accountBalances[activeMenuAccount.id] || 0} onClose={() => setActiveMenuAccount(null)} onSelectAccount={onSelectAccount} onEdit={setEditingAccount} onSetMain={onSetMainAccount} isManager={isManager} onUpdateAccount={onUpdateAccount} onToggleHidden={handleToggleHidden}
           onDelete={onDeleteAccount} usage={accountUsage[activeMenuAccount.id] || 0}
@@ -1369,6 +1474,37 @@ const investorProfitPayouts = useMemo(() => {
               )}
             </div>
           </div>
+
+          {/* Инвестировано — свои деньги в этом счёте. Стоит рядом с балансом:
+              баланс отвечает «сколько лежит», а эта карточка — «сколько из этого
+              моё вложенное, которое я ещё не вернул». Появляется, только когда
+              вложение есть: пустая строка с нулём ничего не сообщает. */}
+          {isManager && investment.invested > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowInvestment(true)}
+              className="w-full text-left bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-purple-200 dark:border-purple-900/50 shadow-sm hover:shadow-md active:scale-[0.99] transition-all flex items-center gap-4"
+            >
+              <div className="w-11 h-11 shrink-0 rounded-xl bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                {ICONS.Wallet}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Инвестировано</p>
+                <p className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-white leading-tight">
+                  {formatCurrency(investment.left, appSettings.showCents)} ₽
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  вложено {formatCurrency(investment.invested, appSettings.showCents)} ₽
+                  {investment.returned > 0 && ` · возвращено ${formatCurrency(investment.returned, appSettings.showCents)} ₽`}
+                </p>
+              </div>
+              <span className="text-slate-300 dark:text-slate-600 shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </span>
+            </button>
+          )}
 
           {/* Состав пула. Показываем сразу под балансом: в общей кассе лежат чужие
               деньги, и первый вопрос к такому счёту — чьи именно и сколько. */}
