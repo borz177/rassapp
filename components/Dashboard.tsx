@@ -3,7 +3,7 @@ import ModalPortal from './ModalPortal';
 import { Sale, Customer, Account, AppSettings, Investor, User, Product, RetailSale, Supplier, StockMovement, Expense } from '../types';
 import DashboardCash from './DashboardCash';
 import { supplierSupplyDebt } from '../src/supplierLedger';
-import TabPill from './TabPill';
+import ModeSwitch from './ModeSwitch';
 import { ICONS } from '../constants';
 import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
 import MyBonusCard from './MyBonusCard';
@@ -1620,19 +1620,20 @@ useEffect(() => {
           </ModalPortal>
         )}
 
-        {/* Overview Tab */}
+        {/* Overview Tab.
+            Раскрыта только выбранная вкладка: её название человек и так знает —
+            он сам его выбрал, — а вторая сжата до значка. Ряд перестал занимать
+            строку целиком ради двух слов. */}
         {activeTab === 'overview' && showShopTab && (
-          <div className="relative flex p-1 rounded-[24px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
-            <TabPill index={overviewMode === 'installments' ? 0 : 1} count={2} pad={4} />
-            {([['installments', 'Рассрочка'], ['cash', 'Наличные']] as const).map(([id, label]) => (
-              <button key={id} onClick={() => setOverviewMode(id)}
-                      className={`relative z-10 flex-1 min-w-0 py-2.5 text-sm font-bold rounded-xl transition-colors ${
-                        overviewMode === id ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'
-                      }`}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <ModeSwitch
+            className="w-fit"
+            value={overviewMode}
+            onChange={setOverviewMode}
+            options={[
+              { id: 'installments' as const, label: 'Рассрочка', icon: ICONS.File },
+              { id: 'cash' as const, label: 'Наличные', icon: ICONS.Wallet },
+            ]}
+          />
         )}
 
         {activeTab === 'overview' && showShopTab && overviewMode === 'cash' && (
