@@ -48,7 +48,10 @@ function ModeSwitch<T extends string>({
   };
 
   return (
-    <div className={`flex gap-1.5 p-1 rounded-[24px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm ${className}`}>
+    // Общей рамки вокруг двух кружков нет: она обводила пустоту между ними и
+    // читалась как недорисованная карточка. Каждая кнопка — самостоятельная
+    // поверхность, а выбранную отмечает то же стекло, что и везде.
+    <div className={`flex items-center gap-2 ${className}`}>
       {options.map(opt => {
         const active = opt.id === value;
         const open = revealed === opt.id;
@@ -75,8 +78,13 @@ function ModeSwitch<T extends string>({
                 'color 0.25s ease',
               ].join(', '),
             }}
-            className={`relative shrink-0 overflow-hidden flex items-center justify-center gap-2 h-11 rounded-[20px] text-sm font-bold ${
-              active ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400 active:scale-95'
+            // rounded-full, а не своё скругление: стеклянная подложка внутри
+            // скруглена полностью, и при 20px её углы срезались краем кнопки —
+            // с этого капсула и «барахлила».
+            className={`relative shrink-0 overflow-hidden flex items-center justify-center gap-2 h-11 rounded-full border text-sm font-bold ${
+              active
+                ? 'text-indigo-600 dark:text-indigo-300 border-white/70 dark:border-slate-700'
+                : 'text-slate-500 dark:text-slate-400 bg-white/60 dark:bg-slate-800/60 border-white/70 dark:border-slate-700 shadow-sm active:scale-95'
             }`}
           >
             {/* Стекло — тот же слой, что под активной вкладкой в остальных
