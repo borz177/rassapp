@@ -64,24 +64,21 @@ function ModeSwitch<T extends string>({
             aria-label={opt.label}
             title={opt.label}
             style={{
-              flexGrow: open ? 1 : 0,
-              flexBasis: open ? 0 : '3rem',
-              // Раскрытая кнопка растёт ровно по содержимому — ряд стоит по
-              // центру и своей свободной ширины не имеет. Поэтому воздух по
-              // краям задаём отступами: без них текст упирался в край стекла.
-              paddingLeft: open ? '1.1rem' : 0,
-              paddingRight: open ? '1.1rem' : 0,
-              transition: [
-                'flex-grow 0.46s cubic-bezier(0.34, 1.32, 0.52, 1)',
-                'flex-basis 0.46s cubic-bezier(0.34, 1.32, 0.52, 1)',
-                'padding 0.42s ease-out',
-                'color 0.25s ease',
-              ].join(', '),
+              // Ширину не задаём вовсе: кнопка растёт за своим содержимым, а
+              // плавность даёт раскрывающаяся подпись. Раньше здесь стояло
+              // flex-basis: 0 с ростом — в ряду по ширине содержимого такой
+              // кнопке доставалось меньше, чем нужно тексту, и он обрезался.
+              paddingLeft: open ? '1.05rem' : 0,
+              paddingRight: open ? '1.05rem' : 0,
+              transition: 'padding 0.42s ease-out, color 0.25s ease',
             }}
             // rounded-full, а не своё скругление: стеклянная подложка внутри
             // скруглена полностью, и при 20px её углы срезались краем кнопки —
             // с этого капсула и «барахлила».
-            className={`relative shrink-0 overflow-hidden flex items-center justify-center gap-2 h-11 rounded-full border text-sm font-bold ${
+            // Без gap: он остаётся и при пустой подписи, и значок съезжал бы с
+            // центра кружка. Отступ живёт на самой подписи и появляется вместе
+            // с ней. min-w-11 равен высоте — в свёрнутом виде это ровный круг.
+            className={`relative shrink-0 overflow-hidden flex items-center justify-center min-w-11 h-11 rounded-full border text-sm font-bold ${
               active
                 ? 'text-indigo-600 dark:text-indigo-300 border-white/70 dark:border-slate-700'
                 : 'text-slate-500 dark:text-slate-400 bg-white/60 dark:bg-slate-800/60 border-white/70 dark:border-slate-700 shadow-sm active:scale-95'
@@ -95,9 +92,9 @@ function ModeSwitch<T extends string>({
             <span
               className="relative z-10 whitespace-nowrap overflow-hidden transition-[max-width,opacity,margin] duration-[420ms] ease-out"
               style={{
-                maxWidth: open ? '10rem' : 0,
+                maxWidth: open ? '12rem' : 0,
                 opacity: open ? 1 : 0,
-                marginRight: open ? undefined : '-0.5rem',
+                marginLeft: open ? '0.5rem' : 0,
               }}
             >
               {opt.label}
