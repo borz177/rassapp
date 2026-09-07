@@ -694,6 +694,34 @@ export const maxPickableQty = (stock: number, allowNegativeStock: boolean): numb
   allowNegativeStock ? Number.MAX_SAFE_INTEGER : Math.max(0, stock);
 
 /**
+ * Настоящий вид счёта.
+ *
+ * Поле type у части счетов испорчено: старая версия «сделать основным» писала
+ * выбранному счёту type: 'MAIN', затирая его настоящий вид, а следующее
+ * назначение основного демонтировало этот счёт обратно — но уже в 'CUSTOM',
+ * потому что откуда он пришёл, никто не помнил. Так счёт инвестора становился
+ * «Дополнительным».
+ *
+ * Кто владеет счётом — видно и без type: у личного счёта инвестора есть
+ * ownerId, у пула poolMemberIds, у общего partners. Эти поля никто не затирал,
+ * поэтому вид считаем от них, а сохранённый type берём только как запасной.
+ * Заодно уже испорченные счета показываются правильно, без правки данных.
+ */
+export const realAccountType = (
+  account: Pick<Account, 'type' | 'ownerId' | 'poolMemberIds' | 'partners'> | undefined
+): Account['type'] => {
+  if (!account) return 'CUSTOM';
+  if ((account.poolMemberIds || []).length > 0) return 'POOL';
+  if (account.ownerId) return 'INVESTOR';
+  if ((account.partners || []).length > 0) return 'SHARED';
+  // Ничего своего у счёта нет — это счёт самого владельца дела. 'MAIN' оставляем
+  // как есть: он ещё встречается в данных и означает «основной».
+  return account.type === 'INVESTOR' || account.type === 'POOL' || account.type === 'SHARED'
+    ? 'CUSTOM'
+    : (account.type || 'CUSTOM');
+};
+
+/**
  * Свои деньги, вложенные в счёт, и сколько из них уже вернули.
  *
  * У инвестора вложенное лежит в его карточке и уменьшается выплатой
@@ -724,11 +752,21 @@ export interface AccountInvestment {
 export const SYSTEM_INCOME_CUSTOMER = 'system_income';
 
 export const accountInvestment = (
-  account: Pick<Account, 'id' | 'initialBalance'> | undefined,
+  account: Pick<Account, 'id' | 'initialBalance' | 'type' | 'ownerId' | 'poolMemberIds' | 'partners'> | undefined,
   sales: Sale[],
   expenses: Expense[]
 ): AccountInvestment => {
-  if (!account) return { initial: 0, deposits: 0, invested: 0, returned: 0, left: 0 };
+  const empty = { initial: 0, deposits: 0, invested: 0, returned: 0, left: 0 };
+  if (!account) return empty;
+
+  // 🔒 Только счёт, который целиком принадлежит владельцу дела. На счёте
+  // инвестора и в пуле деньги чужие: сколько вложил инвестор, видно в его
+  // карточке, а приход «Прочее» туда — пополнение его счёта, а не вложение
+  // владельца. На общем счёте партнёров непонятно, чьё внесение, и приписывать
+  // его себе — догадка. Считать чужие деньги своими вложениями нельзя ни в
+  // одном из этих случаев.
+  const kind = realAccountType(account);
+  if (kind === 'INVESTOR' || kind === 'POOL' || kind === 'SHARED') return empty;
 
   const initial = Number(account.initialBalance) || 0;
 
@@ -752,30 +790,3 @@ export const accountInvestment = (
   };
 };
 
-/**
- * Настоящий вид счёта.
- *
- * Поле type у части счетов испорчено: старая версия «сделать основным» writeла
- * выбранному счёту type: 'MAIN', затирая его настоящий вид, а следующее
- * назначение основного демонтировало этот счёт обратно — но уже в 'CUSTOM',
- * потому что откуда он пришёл, никто не помнил. Так счёт инвестора становился
- * «Дополнительным».
- *
- * Кто владеет счётом — видно и без type: у личного счёта инвестора есть
- * ownerId, у пула poolMemberIds, у общего partners. Эти поля никто не затирал,
- * поэтому вид считаем от них, а сохранённый type берём только как запасной.
- * Заодно уже испорченные счета показываются правильно, без правки данных.
- */
-export const realAccountType = (
-  account: Pick<Account, 'type' | 'ownerId' | 'poolMemberIds' | 'partners'> | undefined
-): Account['type'] => {
-  if (!account) return 'CUSTOM';
-  if ((account.poolMemberIds || []).length > 0) return 'POOL';
-  if (account.ownerId) return 'INVESTOR';
-  if ((account.partners || []).length > 0) return 'SHARED';
-  // Ничего своего у счёта нет — это счёт самого владельца дела. 'MAIN' оставляем
-  // как есть: он ещё встречается в данных и означает «основной».
-  return account.type === 'INVESTOR' || account.type === 'POOL' || account.type === 'SHARED'
-    ? 'CUSTOM'
-    : (account.type || 'CUSTOM');
-};

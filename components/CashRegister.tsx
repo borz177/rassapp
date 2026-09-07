@@ -1378,12 +1378,16 @@ const investorProfitPayouts = useMemo(() => {
               </div>
 
               <div className="px-5 py-3 space-y-1.5 border-b border-slate-100 dark:border-slate-700 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-slate-500 dark:text-slate-400">Стартовый баланс</span>
-                  <span className="font-semibold text-slate-700 dark:text-slate-200">
-                    {formatCurrency(investment.initial, appSettings.showCents)} ₽
-                  </span>
-                </div>
+                {/* Стартовый баланс заполняют не все — строку с нулём показывать
+                    незачем, она только заставляет искать, где его задать. */}
+                {investment.initial > 0 && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-500 dark:text-slate-400">Стартовый баланс</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-200">
+                      {formatCurrency(investment.initial, appSettings.showCents)} ₽
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-slate-500 dark:text-slate-400">Внесено приходами</span>
                   <span className="font-semibold text-slate-700 dark:text-slate-200">
