@@ -5,7 +5,7 @@ import SelectSheet from './SelectSheet';
 import ModalPortal from './ModalPortal';
 import { Sale, Account, Expense, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, shareDateForSale } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, shareDateForSale } from '../src/utils';
 
 // Цвета участников пула — те же роли, что у палитры инвесторов в отчётах:
 // человека узнают по кружку, а не вычитывают имя в таблице.
@@ -362,20 +362,23 @@ const AccountActionModal = ({
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
             <div className="bg-white dark:bg-slate-800 w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
-                <div className={`h-2 bg-gradient-to-r ${getAccountTypeColor(account.type)}`}></div>
+                <div className={`h-2 bg-gradient-to-r ${getAccountTypeColor(realAccountType(account))}`}></div>
 
                 <div className="p-5">
                     <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-100 dark:border-slate-700">
-                        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${getAccountTypeColor(account.type)} flex items-center justify-center text-white text-xl shadow-lg`}>
-                            {getAccountTypeIcon(account.type)}
+                        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${getAccountTypeColor(realAccountType(account))} flex items-center justify-center text-white text-xl shadow-lg`}>
+                            {getAccountTypeIcon(realAccountType(account))}
                         </div>
                         <div className="flex-1">
                             <h3 className="font-bold text-lg text-slate-800 dark:text-white">{account.name}</h3>
                             <p className="text-xs text-slate-500 dark:text-slate-400">
-                                {account.type === 'MAIN' ? 'Основной счет' :
-                                 account.type === 'INVESTOR' ? 'Счет инвестора' :
-                                 account.type === 'SHARED' ? 'Общий счет' :
-                                 account.type === 'POOL' ? 'Инвестиционный пул' : 'Дополнительный счет'}
+                                {(() => {
+                                  const kind = realAccountType(account);
+                                  return kind === 'MAIN' ? 'Основной счет'
+                                    : kind === 'INVESTOR' ? 'Счет инвестора'
+                                    : kind === 'SHARED' ? 'Общий счет'
+                                    : kind === 'POOL' ? 'Инвестиционный пул' : 'Дополнительный счет';
+                                })()}
                             </p>
                             <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-1">
                                 {isBalanceMasked ? '•••••• ₽' : `${formatCurrency(balance, appSettings.showCents)} ₽`}
@@ -1227,14 +1230,14 @@ const investorProfitPayouts = useMemo(() => {
                 ? 'opacity-70 ring-1 ring-amber-300 dark:ring-amber-800'
                 : 'cursor-pointer active:scale-[0.98]'
             }`} onClick={() => { if (!isLocked) openAccountDetails(acc); }}>
-              <div className={`absolute inset-0 bg-gradient-to-br ${getAccountTypeColor(acc.type)} opacity-0 hover:opacity-5 transition-opacity`}></div>
-              <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${getAccountTypeColor(acc.type)}`}></div>
+              <div className={`absolute inset-0 bg-gradient-to-br ${getAccountTypeColor(realAccountType(acc))} opacity-0 hover:opacity-5 transition-opacity`}></div>
+              <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${getAccountTypeColor(realAccountType(acc))}`}></div>
               <div className="relative p-4 sm:p-6">
                 <div className="flex items-start justify-between mb-3 sm:mb-4">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-bold bg-gradient-to-r ${getAccountTypeColor(acc.type)} text-white shadow-sm`}>
+                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-bold bg-gradient-to-r ${getAccountTypeColor(realAccountType(acc))} text-white shadow-sm`}>
                       {acc.type === 'SHARED' && <span className="text-[10px] sm:text-xs">{ICONS.Users}</span>}
-                      <span className="truncate max-w-[80px] sm:max-w-none">{getAccountTypeLabel(acc.type)}</span>
+                      <span className="truncate max-w-[80px] sm:max-w-none">{getAccountTypeLabel(realAccountType(acc))}</span>
                     </div>
                     {acc.isMain && acc.type !== 'MAIN' && (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-[10px] sm:text-xs font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">⭐ Основной</span>
@@ -1325,7 +1328,7 @@ const investorProfitPayouts = useMemo(() => {
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div>
                       <h3 className="font-bold text-base sm:text-lg text-slate-600 dark:text-slate-300 truncate">{acc.name}</h3>
-                      <p className="text-[11px] text-slate-400 dark:text-slate-500">{getAccountTypeLabel(acc.type)}</p>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500">{getAccountTypeLabel(realAccountType(acc))}</p>
                     </div>
                     <span className="shrink-0 px-2 py-1 rounded-full text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
                       Скрыт
@@ -1443,8 +1446,8 @@ const investorProfitPayouts = useMemo(() => {
       <PagePush onClose={closeAccountDetails} showBackButton backOnDesktop scrollKey={`ACCOUNT:${detailsAccount.id}`}>
         <div className="space-y-6">
           <div className="flex flex-col items-center pt-1">
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r ${getAccountTypeColor(detailsAccount.type)} text-white`}>
-              {getAccountTypeLabel(detailsAccount.type)}
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r ${getAccountTypeColor(realAccountType(detailsAccount))} text-white`}>
+              {getAccountTypeLabel(realAccountType(detailsAccount))}
             </div>
             <h2 className="mt-2 text-xl font-bold text-slate-800 dark:text-white text-center truncate max-w-full">
               {detailsAccount.name}

@@ -751,3 +751,31 @@ export const accountInvestment = (
     left: Math.max(0, invested - returned),
   };
 };
+
+/**
+ * Настоящий вид счёта.
+ *
+ * Поле type у части счетов испорчено: старая версия «сделать основным» writeла
+ * выбранному счёту type: 'MAIN', затирая его настоящий вид, а следующее
+ * назначение основного демонтировало этот счёт обратно — но уже в 'CUSTOM',
+ * потому что откуда он пришёл, никто не помнил. Так счёт инвестора становился
+ * «Дополнительным».
+ *
+ * Кто владеет счётом — видно и без type: у личного счёта инвестора есть
+ * ownerId, у пула poolMemberIds, у общего partners. Эти поля никто не затирал,
+ * поэтому вид считаем от них, а сохранённый type берём только как запасной.
+ * Заодно уже испорченные счета показываются правильно, без правки данных.
+ */
+export const realAccountType = (
+  account: Pick<Account, 'type' | 'ownerId' | 'poolMemberIds' | 'partners'> | undefined
+): Account['type'] => {
+  if (!account) return 'CUSTOM';
+  if ((account.poolMemberIds || []).length > 0) return 'POOL';
+  if (account.ownerId) return 'INVESTOR';
+  if ((account.partners || []).length > 0) return 'SHARED';
+  // Ничего своего у счёта нет — это счёт самого владельца дела. 'MAIN' оставляем
+  // как есть: он ещё встречается в данных и означает «основной».
+  return account.type === 'INVESTOR' || account.type === 'POOL' || account.type === 'SHARED'
+    ? 'CUSTOM'
+    : (account.type || 'CUSTOM');
+};

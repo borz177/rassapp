@@ -54,7 +54,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { buyPriceExpenseAction, stockShipmentPlan, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances} from './src/utils';
+import { buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -3548,18 +3548,20 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
     // и делало его "невидимым" для инвесторов (getAccountShares/getInvestorAccount
     // проверяют именно type). Теперь "основной" — отдельный флаг isMain, type не трогаем.
     const updatedAccounts = accounts.map(acc => {
+      // 🔒 Настоящий вид счёта восстанавливаем всем и всегда. Старая версия
+      // писала выбранному счёту type: 'MAIN', затирая его настоящий вид, а
+      // снимала «основной» уже вслепую — в 'CUSTOM'. Так счёт инвестора
+      // становился «Дополнительным», а на сервере ещё и считался общим, то есть
+      // попадал в доступ сотрудника к основному счёту. Вид виден по ownerId,
+      // poolMemberIds и partners — их никто не затирал.
+      const kind = realAccountType(acc);
+
       if (acc.id === accountId) {
-        return { ...acc, isMain: true };
+        return { ...acc, type: kind, isMain: true };
       }
-      if (acc.isMain) {
-        return { ...acc, isMain: false };
-      }
-      if (acc.type === 'MAIN') {
-        // Единственный случай, где "основной" исторически был закодирован в type —
-        // снимаем его, чтобы не было двух счетов с type === 'MAIN' одновременно.
-        return { ...acc, type: 'CUSTOM' as const };
-      }
-      return acc;
+      // Основной теперь ровно один, и он выбран выше: у остальных снимаем и флаг,
+      // и исторический type: 'MAIN' — иначе счёт остаётся «основным» на сервере.
+      return { ...acc, type: kind === 'MAIN' ? 'CUSTOM' as const : kind, isMain: false };
     });
     setAccounts(updatedAccounts);
     for (const acc of updatedAccounts) await api.saveItem('accounts', acc);
