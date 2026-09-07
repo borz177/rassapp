@@ -63,7 +63,17 @@ function ModeSwitch<T extends string>({
             style={{
               flexGrow: open ? 1 : 0,
               flexBasis: open ? 0 : '3rem',
-              transition: 'flex-grow 0.46s cubic-bezier(0.34, 1.32, 0.52, 1), flex-basis 0.46s cubic-bezier(0.34, 1.32, 0.52, 1), color 0.25s ease',
+              // Раскрытая кнопка растёт ровно по содержимому — ряд стоит по
+              // центру и своей свободной ширины не имеет. Поэтому воздух по
+              // краям задаём отступами: без них текст упирался в край стекла.
+              paddingLeft: open ? '1.1rem' : 0,
+              paddingRight: open ? '1.1rem' : 0,
+              transition: [
+                'flex-grow 0.46s cubic-bezier(0.34, 1.32, 0.52, 1)',
+                'flex-basis 0.46s cubic-bezier(0.34, 1.32, 0.52, 1)',
+                'padding 0.42s ease-out',
+                'color 0.25s ease',
+              ].join(', '),
             }}
             className={`relative shrink-0 overflow-hidden flex items-center justify-center gap-2 h-11 rounded-[20px] text-sm font-bold ${
               active ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400 active:scale-95'
