@@ -39,7 +39,11 @@ const LABELS: { key: keyof PassportFields; label: string }[] = [
  * человек видит текст и считает, что сам его ввёл.
  */
 const PassportScan: React.FC<PassportScanProps> = ({ onApply, className = '' }) => {
-  const fileRef = useRef<HTMLInputElement | null>(null);
+  // Два отдельных поля вместо одного: `capture` заставляет систему открыть
+  // камеру, и снять его на лету нельзя — атрибут читается в момент нажатия.
+  // Дёргать DOM ради этого не стоит, а два скрытых поля ничего не стоят.
+  const cameraRef = useRef<HTMLInputElement | null>(null);
+  const galleryRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PassportFields | null>(null);
@@ -79,23 +83,30 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, className = '' }) 
 
   return (
     <div className={className}>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handleFile}
-      />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment"
+             className="hidden" onChange={handleFile} />
+      <input ref={galleryRef} type="file" accept="image/*"
+             className="hidden" onChange={handleFile} />
 
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => fileRef.current?.click()}
-        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 text-sm font-bold disabled:opacity-60 active:scale-95 transition-transform"
-      >
-        {busy ? 'Распознаём…' : '📷 Заполнить из фото паспорта'}
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => cameraRef.current?.click()}
+          className="flex-[1.6] flex items-center justify-center gap-2 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 text-sm font-bold disabled:opacity-60 active:scale-95 transition-transform"
+        >
+          {busy ? 'Распознаём…' : '📷 Снять паспорт'}
+        </button>
+        {/* Снимок бывает уже сделан — переснимать его только ради формы незачем. */}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => galleryRef.current?.click()}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold disabled:opacity-60 active:scale-95 transition-transform"
+        >
+          🖼 Галерея
+        </button>
+      </div>
 
       {error && (
         <div className="mt-2 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
