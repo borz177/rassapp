@@ -14,6 +14,7 @@ interface CustomersProps {
     passportSeries?: string;
     passportNumber?: string;
     passportIssuedBy?: string;
+    birthDate?: string;
   }) => Promise<Customer>;
   onSelectCustomer: (id: string) => void;
   /** Распознавание паспорта — только там, где его разрешает тариф */
@@ -22,6 +23,23 @@ interface CustomersProps {
       клиента (открытая поверх списка) только что закрылась и список снова на переднем плане. */
   isActive?: boolean;
 }
+
+/**
+ * Дата из паспорта в вид, понятный полю ввода.
+ *
+ * Распознаётся она так, как написана в документе — 07.03.1990, — а input[type=date]
+ * принимает только 1990-03-07. Всё, что не разобралось, отбрасываем: пустое поле
+ * честнее выдуманной даты.
+ */
+const toIsoDate = (value: string | undefined): string => {
+  const m = String(value || '').match(/^(\d{2})[.\-/](\d{2})[.\-/](\d{4})$/);
+  if (!m) return '';
+  const [, dd, mm, yyyy] = m;
+  const year = Number(yyyy);
+  if (Number(mm) < 1 || Number(mm) > 12 || Number(dd) < 1 || Number(dd) > 31) return '';
+  if (year < 1900 || year > new Date().getFullYear()) return '';
+  return `${yyyy}-${mm}-${dd}`;
+};
 
 const Customers: React.FC<CustomersProps> = ({
   customers,
@@ -44,6 +62,7 @@ const Customers: React.FC<CustomersProps> = ({
   const [newPassportSeries, setNewPassportSeries] = useState('');
 const [newPassportNumber, setNewPassportNumber] = useState('');
 const [newPassportIssuedBy, setNewPassportIssuedBy] = useState('');
+  const [newBirthDate, setNewBirthDate] = useState('');
 
   // === ЛОГИКА ФИЛЬТРАЦИИ И СОРТИРОВКИ ОТ А ДО Я ===
   const sortedFilteredCustomers = useMemo(() => {
@@ -74,6 +93,9 @@ const [newPassportIssuedBy, setNewPassportIssuedBy] = useState('');
     if (f.series) setNewPassportSeries(prev => prev.trim() ? prev : f.series);
     if (f.number) setNewPassportNumber(prev => prev.trim() ? prev : f.number);
     if (f.issuedBy) setNewPassportIssuedBy(prev => prev.trim() ? prev : f.issuedBy);
+    // Дата приходит в паспортном виде ДД.ММ.ГГГГ, а полю нужен ISO.
+    const iso = toIsoDate(f.birthDate);
+    if (iso) setNewBirthDate(prev => prev ? prev : iso);
   };
 
 const handleSubmit = async (e: React.FormEvent) => {
@@ -89,6 +111,7 @@ const handleSubmit = async (e: React.FormEvent) => {
         passportSeries: newPassportSeries.trim() || undefined,
         passportNumber: newPassportNumber.trim() || undefined,
         passportIssuedBy: newPassportIssuedBy.trim() || undefined,
+        birthDate: newBirthDate || undefined,
       });
 
       // Очищаем форму
@@ -99,6 +122,7 @@ const handleSubmit = async (e: React.FormEvent) => {
       setNewPassportSeries('');
       setNewPassportNumber('');
       setNewPassportIssuedBy('');
+      setNewBirthDate('');
       setIsAdding(false);
 
       // 🚀 Переходим на страницу созданного клиента
@@ -194,6 +218,19 @@ const handleSubmit = async (e: React.FormEvent) => {
             className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm"
             value={newAddress}
             onChange={e => setNewAddress(e.target.value)}
+          />
+        </div>
+
+        {/* Дата рождения — здесь же, у документов: её и спрашивают вместе с
+            паспортом, и читают оттуда же. */}
+        <div>
+          <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Дата рождения</label>
+          <input
+            type="date"
+            className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm"
+            value={newBirthDate}
+            max={new Date().toISOString().slice(0, 10)}
+            onChange={e => setNewBirthDate(e.target.value)}
           />
         </div>
 

@@ -245,6 +245,14 @@ export interface Customer {
     passportSeries?: string;
   passportNumber?: string;
   passportIssuedBy?: string;
+  /**
+   * Дата рождения, ISO (YYYY-MM-DD).
+   *
+   * Хранится строкой, а не Date: карточку заводят и по фотографии паспорта, где
+   * дата может прочитаться неполно, и вручную — тип Date заставил бы выдумывать
+   * значение там, где его нет.
+   */
+  birthDate?: string;
 
 }
 

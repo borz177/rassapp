@@ -3500,6 +3500,7 @@ const handleAddCustomer = async (data: {
   passportSeries?: string;
   passportNumber?: string;
   passportIssuedBy?: string;
+  birthDate?: string;
 }) => {
   // 🔹 Проверка доступа
   if (!checkAccess('WRITE')) {
@@ -3511,25 +3512,10 @@ const handleAddCustomer = async (data: {
 
   const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
 
-  // 🔹 Создаём нового клиента с паспортными данными
-  const newCustomer: {
-      passportNumber: string;
-      address: string;
-      notes: string;
-      documents: any[];
-      photo: string;
-      userId: string;
-      createdByUserId: string;
-      passportSeries: string;
-      createdAt: string;
-      trustScore: number;
-      phone: string;
-      name: string;
-      id: `${string}-${string}-${string}-${string}-${string}`;
-      email: string;
-      passportIssuedBy: string;
-      allowWhatsappNotification: boolean
-  } = {
+  // 🔹 Создаём нового клиента с паспортными данными.
+  // Тип берём из модели, а не переписываем поля списком: прежний ручной список
+  // уже разошёлся с Customer, и каждое новое поле пришлось бы дописывать дважды.
+  const newCustomer: Customer = {
     id: crypto.randomUUID(),
     userId: ownerId,
     createdByUserId: user.id,
@@ -3548,6 +3534,7 @@ const handleAddCustomer = async (data: {
     passportSeries: data.passportSeries?.trim() || undefined,
     passportNumber: data.passportNumber?.trim() || undefined,
     passportIssuedBy: data.passportIssuedBy?.trim() || undefined,
+    birthDate: data.birthDate || undefined,
 
     // Поля по умолчанию
     trustScore: 50,

@@ -74,6 +74,7 @@ const EditCustomerModal = ({
     const [passportSeries, setPassportSeries] = useState(customer.passportSeries || '');
     const [passportNumber, setPassportNumber] = useState(customer.passportNumber || '');
     const [passportIssuedBy, setPassportIssuedBy] = useState(customer.passportIssuedBy || '');
+    const [birthDate, setBirthDate] = useState(customer.birthDate || '');
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -84,6 +85,7 @@ const EditCustomerModal = ({
             passportSeries: passportSeries.trim() || undefined,
             passportNumber: passportNumber.trim() || undefined,
             passportIssuedBy: passportIssuedBy.trim() || undefined,
+            birthDate: birthDate || undefined,
         });
         onClose();
     };
@@ -114,6 +116,10 @@ const EditCustomerModal = ({
                     <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Адрес</label>
                         <input className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" placeholder="г. Москва, ул. Ленина, д. 1" value={address} onChange={e => setAddress(e.target.value)}/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Дата рождения</label>
+                        <input type="date" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={birthDate} max={new Date().toISOString().slice(0, 10)} onChange={e => setBirthDate(e.target.value)}/>
                     </div>
                     <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
                         <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">🪪 Паспортные данные <span className="font-normal text-slate-400 dark:text-slate-500">(необязательно)</span></p>
@@ -1262,6 +1268,26 @@ ${customer.name}!
                             <div>
                                 <label className="text-xs text-slate-400 uppercase">Адрес</label>
                                 <p className="text-base font-medium text-slate-800 dark:text-white">{customer.address}</p>
+                            </div>
+                        )}
+                        {customer.birthDate && (
+                            <div>
+                                <label className="text-xs text-slate-400 uppercase">Дата рождения</label>
+                                <p className="text-base font-medium text-slate-800 dark:text-white">
+                                    {/* Из ISO в привычный вид. Возраст рядом: по дате рождения
+                                        обычно и хотят узнать именно его. */}
+                                    {new Date(customer.birthDate).toLocaleDateString('ru-RU')}
+                                    {(() => {
+                                        const born = new Date(customer.birthDate);
+                                        const now = new Date();
+                                        let age = now.getFullYear() - born.getFullYear();
+                                        const m = now.getMonth() - born.getMonth();
+                                        if (m < 0 || (m === 0 && now.getDate() < born.getDate())) age--;
+                                        return age >= 0 && age < 130
+                                            ? <span className="text-slate-400 dark:text-slate-500 font-normal"> · {age} лет</span>
+                                            : null;
+                                    })()}
+                                </p>
                             </div>
                         )}
                         {(customer.passportSeries || customer.passportNumber) && (
