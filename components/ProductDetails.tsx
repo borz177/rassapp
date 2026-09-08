@@ -118,8 +118,11 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
     .map(w => ({ name: w.name, qty: stockAtWarehouse(product, w.id) }))
     .filter(x => x.qty !== 0);
 
+  // Наценка — процент К ЗАКУПУ, как её понимают в договоре: цена = закуп плюс
+  // наценка на него. Считалась же доля прибыли в цене продажи, и товар за
+  // 50 000, проданный за 100 000, показывал 50% вместо 100%.
   const margin = product.buyPrice && product.price
-    ? ((product.price - product.buyPrice) / product.price) * 100
+    ? ((product.price - product.buyPrice) / product.buyPrice) * 100
     : null;
 
   const infoRow = (label: string, value: React.ReactNode, accent = false) => (

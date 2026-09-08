@@ -3187,6 +3187,53 @@ const confirmDeleteCustomer = async () => {
    * числом изменить историю склада так, что расхождение будет нечем объяснить.
    * Для количеств есть возврат, списание и инвентаризация.
    */
+  /**
+   * Удаление розничной продажи.
+   *
+   * Чек — не одна запись, а три следа: товар ушёл со склада, деньги пришли на
+   * счёт, а по долговому чеку могли поступить платежи. Убрать только сам чек
+   * значило бы оставить остаток заниженным навсегда, поэтому товар
+   * возвращается на тот склад, с которого ушёл, вместе со своими движениями.
+   *
+   * Платежи по чеку лежат внутри него самого (RetailPayment) — отдельно их
+   * удалять нечего и невозможно потерять: уходят вместе с чеком, и деньги,
+   * которые они приносили на счёт, перестают считаться в тот же момент. Это же
+   * снимает и долг покупателя — как с карточкой клиента, так и без неё.
+   */
+  const handleDeleteRetailSale = async (sale: RetailSaleType) => {
+    if (!user) return;
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
+
+    // Движения ищем по чеку: у розничной продажи id движений случайные.
+    // contractId отсекает отгрузку по договору — у неё тоже type 'SALE'.
+    const related = stockMovements.filter(m => m.saleId === sale.id && m.type === 'SALE' && !m.contractId);
+
+    for (const m of related) {
+      try {
+        await api.deleteItem('stockMovements', m.id);
+        removeFromList(setStockMovements, m.id);
+        const prod = products.find(p => p.id === m.productId);
+        if (prod) {
+          const savedProd = await api.saveItem(
+            'products',
+            applyStockDelta(prod, m.warehouseId || DEFAULT_WAREHOUSE_ID, Math.abs(m.quantity))
+          );
+          updateList(setProducts, savedProd);
+        }
+      } catch (e: any) {
+        console.warn('⚠️ Возврат товара по удалённому чеку не выполнен:', e?.message);
+      }
+    }
+
+    // Сам чек — последним: пока он на месте, по нему видно, что возвращать.
+    removeFromList(setRetailSales, sale.id);
+    try {
+      await api.deleteItem('retailSales', sale.id);
+    } catch (e: any) {
+      console.warn('⚠️ Чек не удалён на сервере:', e?.message);
+    }
+  };
+
   const handleUpdateRetailSale = async (sale: RetailSaleType) => {
     if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
     const previous = retailSales.find(r => r.id === sale.id);
@@ -4560,6 +4607,7 @@ if (!user && !showSplash) {
                       onUpdateSale={handleUpdateRetailSale}
                       onUpdateStockDoc={handleUpdateStockDoc}
                       onAddDocLines={handleAddDocLines}
+                      onDeleteSale={handleDeleteRetailSale}
                     />
                   )}
                 </PagePush>

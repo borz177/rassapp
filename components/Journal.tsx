@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import type {
   Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User,
 } from '../types';
-import { formatCurrency } from '../src/utils';
+import { formatCurrency, retailPaidAmount } from '../src/utils';
 import { buildJournalDocs, KIND_LABEL, printJournalDoc, type DocKind, type JournalDoc } from '../src/journalDocs';
 import DocumentCard from './DocumentCard';
 import TopBarBack from './TopBarBack';
@@ -30,6 +30,8 @@ interface JournalProps {
   onUpdateSale?: (sale: RetailSale) => Promise<void> | void;
   onUpdateStockDoc?: (movements: StockMovement[]) => Promise<void> | void;
   onAddDocLines?: (docId: string, lines: { productId: string; quantity: number; price: number }[]) => Promise<void> | void;
+  /** Удаление розничной продажи: товар вернётся на склад, платежи уйдут вместе с чеком */
+  onDeleteSale?: (sale: RetailSale) => Promise<void> | void;
 }
 
 type PayFilter = 'ALL' | 'DEBT' | 'PAID';
@@ -75,7 +77,7 @@ const timeOf = (d: string) =>
 const Journal: React.FC<JournalProps> = ({
   retailSales, movements, products, customers, warehouses, suppliers, accounts,
   employees = [], contracts = [], appSettings, user, onBack, onSelectCustomer, onAcceptPayment,
-  onUpdateSale, onUpdateStockDoc, onAddDocLines,
+  onUpdateSale, onUpdateStockDoc, onAddDocLines, onDeleteSale,
 }) => {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'ALL' | DocKind>('ALL');
@@ -84,6 +86,10 @@ const Journal: React.FC<JournalProps> = ({
   const [openId, setOpenId] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState<'INFO' | 'PAY'>('INFO');
   const [menuFor, setMenuFor] = useState<JournalDoc | null>(null);
+  // Чек, который собираются удалить. Спрашиваем отдельным окном: удаление
+  // возвращает товар и снимает принятые деньги — это не то, что делают «на всякий».
+  const [deleting, setDeleting] = useState<JournalDoc | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   const cents = appSettings.showCents;
   const company = appSettings.companyName || 'Магазин';
@@ -260,6 +266,90 @@ const Journal: React.FC<JournalProps> = ({
         </ModalPortal>
       )}
 
+      {/* Что именно исчезнет — перечисляем до нажатия, а не после. Удаление
+          чека трогает три вещи сразу: остаток склада, выручку и принятые по
+          долгу деньги, и «Вы уверены?» об этом не говорит ничего. */}
+      {deleting && deleting.sale && (
+        <ModalPortal onClose={() => !removing && setDeleting(null)}>
+          <div className="fixed inset-0 z-modal-top flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+               onClick={() => !removing && setDeleting(null)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl animate-slide-up-sheet"
+                 onClick={e => e.stopPropagation()}>
+              <div className="px-5 pt-5 pb-3">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white">Удалить продажу №{deleting.number}?</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  {deleting.to} · {formatCurrency(deleting.total, cents)} ₽
+                </p>
+              </div>
+
+              <div className="px-5 pb-4 space-y-2 text-sm">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-emerald-500 shrink-0">↩</span>
+                  <span className="text-slate-600 dark:text-slate-300">
+                    Товар вернётся на склад: {deleting.lines.length}&nbsp;поз.
+                    {' '}({deleting.lines.reduce((n, l) => n + l.quantity, 0)}&nbsp;шт)
+                  </span>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <span className="text-rose-500 shrink-0">−</span>
+                  <span className="text-slate-600 dark:text-slate-300">
+                    Выручка и прибыль уменьшатся на {formatCurrency(deleting.total, cents)}&nbsp;₽
+                  </span>
+                </div>
+                {retailPaidAmount(deleting.sale) > 0 && (
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-rose-500 shrink-0">−</span>
+                    <span className="text-slate-600 dark:text-slate-300">
+                      Принятые платежи ({(deleting.sale.payments || []).length} на{' '}
+                      {formatCurrency(retailPaidAmount(deleting.sale), cents)}&nbsp;₽) удалятся вместе с чеком,
+                      и эти деньги перестанут числиться на счёте
+                    </span>
+                  </div>
+                )}
+                {deleting.debt > 0 && (
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-amber-500 shrink-0">≡</span>
+                    <span className="text-slate-600 dark:text-slate-300">
+                      Долг {formatCurrency(deleting.debt, cents)}&nbsp;₽ спишется — покупатель перестанет
+                      числиться должником
+                    </span>
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 pt-1">
+                  Отменить удаление нельзя. Если чек нужен для истории, а товар вернулся, проведите возврат.
+                </p>
+              </div>
+
+              <div className="p-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+                <button type="button" disabled={removing} onClick={() => setDeleting(null)}
+                        className="flex-1 py-3 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 font-bold text-sm disabled:opacity-50">
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={removing}
+                  onClick={async () => {
+                    const sale = deleting.sale!;
+                    setRemoving(true);
+                    try {
+                      await onDeleteSale?.(sale);
+                      setDeleting(null);
+                      // Если удалили открытый документ — закрываем и его карточку.
+                      setOpenId(prev => (prev === deleting.id ? null : prev));
+                    } finally {
+                      setRemoving(false);
+                    }
+                  }}
+                  className="flex-[1.4] py-3 rounded-2xl bg-rose-600 text-white font-bold text-sm disabled:opacity-50 active:scale-95 transition-transform"
+                >
+                  {removing ? 'Удаляем…' : 'Удалить'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+
       {menuFor && (
         <ModalPortal>
           <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
@@ -287,6 +377,15 @@ const Journal: React.FC<JournalProps> = ({
                 <button onClick={() => { const d = menuFor; setMenuFor(null); onSelectCustomer(d.customerId!); }}
                         className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
                   Открыть клиента
+                </button>
+              )}
+              {/* Удалять умеем только розничный чек: складские накладные
+                  исправляют списанием и инвентаризацией — так остаток остаётся
+                  объяснимым, — а отгрузка по договору живёт вместе с договором. */}
+              {menuFor.kind === 'SALE' && menuFor.sale && onDeleteSale && (
+                <button onClick={() => { const d = menuFor; setMenuFor(null); setDeleting(d); }}
+                        className="w-full text-left px-4 py-3 rounded-xl font-semibold text-rose-600 dark:text-rose-400 active:bg-rose-50 dark:active:bg-rose-950/40">
+                  Удалить продажу
                 </button>
               )}
               <button onClick={() => setMenuFor(null)}
