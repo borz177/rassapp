@@ -4441,6 +4441,7 @@ if (!user && !showSplash) {
               {(currentView === 'CUSTOMERS' || (currentView === 'CUSTOMER_DETAILS' && previousView === 'CUSTOMERS')) && (
                   <Customers
                       customers={customers}
+                      canScanPassport={checkAccess('AI')}
                       onAddCustomer={handleAddCustomer}
                       onSelectCustomer={handleSelectCustomer}
                       isActive={currentView === 'CUSTOMERS'}

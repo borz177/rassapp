@@ -3475,6 +3475,145 @@ app.use('/uploads/products', express.static(productImageDir, {
   fallthrough: false,
 }));
 
+/**
+ * Распознавание паспорта.
+ *
+ * Ключ Gemini живёт только здесь: в браузер он не попадает ни при какой сборке.
+ * Из фотографии достаём ровно те поля, которые есть в карточке клиента, — всё
+ * остальное (место рождения, код подразделения) не запрашиваем вовсе, чтобы не
+ * гонять через сервис лишние личные данные.
+ *
+ * Снимок нигде не сохраняется: он уменьшается в памяти, уходит на распознавание
+ * и на этом заканчивается. В базу попадает только то, что человек подтвердит в
+ * форме.
+ */
+app.post('/api/ai/passport', auth, async (req, res) => {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({
+        error: 'Распознавание не подключено',
+        msg: 'Администратору нужно добавить GEMINI_API_KEY в настройки сервера.',
+      });
+    }
+
+    // Тариф решает тот же флаг, что и остальные возможности ИИ. Сейчас он
+    // выключен во всех тарифах намеренно — см. комментарий над PLAN_LIMITS:
+    // отправка в Google Gemini это трансграничная передача персональных данных.
+    // Паспорт — самые чувствительные данные в приложении, поэтому включение
+    // флага здесь остаётся отдельным осознанным решением владельца.
+    const targetUserId = getTargetUserId(req.user);
+    const subRes = await pool.query('SELECT subscription FROM users WHERE id = $1', [targetUserId]);
+    const subRaw = subRes.rows[0] && subRes.rows[0].subscription;
+    const sub = typeof subRaw === 'string' ? JSON.parse(subRaw) : subRaw;
+    const plan = getEffectivePlan(sub) || 'TRIAL';
+    if (!PLAN_LIMITS[plan] || !PLAN_LIMITS[plan].ai) {
+      return res.status(403).json({
+        error: 'Недоступно на вашем тарифе',
+        msg: 'Распознавание паспорта входит в тариф «Бизнес».',
+      });
+    }
+
+    const raw = String(req.body && req.body.image || '');
+    const match = raw.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+    if (!match) return res.status(400).json({ error: 'Ожидается изображение' });
+
+    const input = Buffer.from(match[2], 'base64');
+    if (input.length > 12 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Файл слишком большой' });
+    }
+
+    // Уменьшаем на сервере, а не доверяем клиенту: фотография с телефона весит
+    // мегабайты, а для чтения текста хватает полутора тысяч пикселей по длинной
+    // стороне — и отвечает распознавание тогда заметно быстрее.
+    const prepared = await sharp(input)
+      .rotate()
+      .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 82 })
+      .toBuffer();
+
+    const model = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const { data } = await axios.post(url, {
+      contents: [{
+        parts: [
+          {
+            text: [
+              'На фотографии — российский паспорт. Извлеки данные и верни строго JSON.',
+              'name — фамилия, имя и отчество одной строкой в именительном падеже, как в паспорте.',
+              'series — четыре цифры серии, number — шесть цифр номера.',
+              'issuedBy — кем выдан, одной строкой.',
+              'address — адрес регистрации со страницы прописки, если она на фото.',
+              'birthDate — дата рождения в формате ДД.ММ.ГГГГ.',
+              'Поле, которого на фотографии нет или которое не читается, оставь пустой строкой.',
+              'Ничего не выдумывай и не дополняй по смыслу.',
+            ].join(' '),
+          },
+          { inline_data: { mime_type: 'image/jpeg', data: prepared.toString('base64') } },
+        ],
+      }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            name: { type: 'STRING' },
+            series: { type: 'STRING' },
+            number: { type: 'STRING' },
+            issuedBy: { type: 'STRING' },
+            address: { type: 'STRING' },
+            birthDate: { type: 'STRING' },
+          },
+          required: ['name', 'series', 'number', 'issuedBy', 'address', 'birthDate'],
+        },
+      },
+    }, { timeout: 45000 });
+
+    const text = data
+      && data.candidates
+      && data.candidates[0]
+      && data.candidates[0].content
+      && data.candidates[0].content.parts
+      && data.candidates[0].content.parts[0]
+      && data.candidates[0].content.parts[0].text;
+
+    let parsed = {};
+    try { parsed = JSON.parse(text || '{}'); } catch (e) { parsed = {}; }
+
+    const clean = (v, max) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
+    const result = {
+      name: clean(parsed.name, 120),
+      // Серию и номер приводим к цифрам здесь же: модель иногда отдаёт их одной
+      // строкой с пробелом, и в поле формы такая строка не встанет.
+      series: clean(parsed.series, 10).replace(/\D/g, '').slice(0, 4),
+      number: clean(parsed.number, 10).replace(/\D/g, '').slice(0, 6),
+      issuedBy: clean(parsed.issuedBy, 200),
+      address: clean(parsed.address, 200),
+      birthDate: clean(parsed.birthDate, 10),
+    };
+
+    const recognized = Object.values(result).filter(Boolean).length;
+    if (recognized === 0) {
+      return res.status(422).json({
+        error: 'Ничего не распознано',
+        msg: 'Снимите паспорт целиком при хорошем освещении, без бликов.',
+      });
+    }
+
+    res.json(result);
+  } catch (e) {
+    const status = e.response && e.response.status;
+    console.error('❌ Passport OCR:', status || '', e.message);
+    res.status(502).json({
+      error: 'Распознавание не удалось',
+      msg: status === 429
+        ? 'Сервис распознавания перегружен, попробуйте через минуту.'
+        : 'Попробуйте ещё раз или заполните поля вручную.',
+    });
+  }
+});
+
 app.get('/uploads/documents/:filename', auth, async (req, res) => {
   const filename = path.basename(req.params.filename); // защита от path traversal
   const filePath = path.join(uploadDir, filename);

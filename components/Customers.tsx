@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react'; // Добавили useMemo
 import { Customer } from '../types';
 import { ICONS } from '../constants';
 import { useScrollRestoration } from '../src/hooks/useScrollRestoration';
+import PassportScan, { type PassportFields } from './PassportScan';
 
 interface CustomersProps {
   customers: Customer[];
@@ -15,6 +16,8 @@ interface CustomersProps {
     passportIssuedBy?: string;
   }) => Promise<Customer>;
   onSelectCustomer: (id: string) => void;
+  /** Распознавание паспорта — только там, где его разрешает тариф */
+  canScanPassport?: boolean;
   /** true, когда эта страница видна поверх остальных — включая случай, когда карточка
       клиента (открытая поверх списка) только что закрылась и список снова на переднем плане. */
   isActive?: boolean;
@@ -24,6 +27,7 @@ const Customers: React.FC<CustomersProps> = ({
   customers,
   onAddCustomer,
   onSelectCustomer,
+  canScanPassport = false,
   isActive = true,
 }) => {
   // Список не размонтируется, пока открыта карточка клиента (она выезжает поверх него),
@@ -60,6 +64,16 @@ const [newPassportIssuedBy, setNewPassportIssuedBy] = useState('');
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const applyPassport = (f: PassportFields) => {
+    // Заполняем только пустые поля: набранное руками важнее — его вводили
+    // осознанно, а распознавание ошибается. Затирать чужой ввод нельзя.
+    if (f.name) setNewName(prev => prev.trim() ? prev : f.name);
+    if (f.address) setNewAddress(prev => prev.trim() ? prev : f.address);
+    if (f.series) setNewPassportSeries(prev => prev.trim() ? prev : f.series);
+    if (f.number) setNewPassportNumber(prev => prev.trim() ? prev : f.number);
+    if (f.issuedBy) setNewPassportIssuedBy(prev => prev.trim() ? prev : f.issuedBy);
   };
 
 const handleSubmit = async (e: React.FormEvent) => {
@@ -187,6 +201,10 @@ const handleSubmit = async (e: React.FormEvent) => {
         <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
           <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">🪪 Паспортные данные <span className="font-normal text-slate-400 dark:text-slate-500">(необязательно)</span></p>
 
+          {/* Съёмка стоит перед полями: набирать серию и номер вручную нужно
+              только тогда, когда фотографии нет. */}
+          {canScanPassport && <PassportScan onApply={applyPassport} className="mb-3" />}
+
           {/* Серия и номер */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -229,7 +247,12 @@ const handleSubmit = async (e: React.FormEvent) => {
         {/* Подсказка о безопасности */}
         <p className="text-[10px] text-slate-400 dark:text-slate-500 flex items-start gap-1">
           <span>🔒</span>
-          Данные хранятся локально и не передаются третьим лицам
+          {/* Прежний текст обещал, что данные не уходят никуда. С распознаванием
+              это перестало быть безусловной правдой, и обещание надо было
+              поправить, а не оставить как есть. */}
+          {canScanPassport
+            ? 'Введённые данные хранятся в вашей базе. Наружу уходит только фотография, отправленная на распознавание.'
+            : 'Данные хранятся локально и не передаются третьим лицам'}
         </p>
       </div>
     </details>

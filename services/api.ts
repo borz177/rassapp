@@ -561,6 +561,36 @@ export const api = {
     return data;
   },
 
+    /**
+     * Распознавание паспорта по фотографии.
+     *
+     * Снимок уходит на наш сервер, а он уже обращается к сервису распознавания:
+     * ключ не должен попадать в браузер, иначе его достанет любой желающий из
+     * публичного бандла. Сам снимок нигде не сохраняется — ни у нас, ни в
+     * очереди синхронизации: в базу попадёт только то, что человек подтвердит
+     * в форме.
+     *
+     * Офлайн-очереди здесь нет намеренно. Распознавание имеет смысл только
+     * сейчас, пока форма открыта; отложенный ответ через час пришёл бы в пустоту.
+     */
+    recognizePassport: async (imageDataUrl: string): Promise<{
+      name: string; series: string; number: string;
+      issuedBy: string; address: string; birthDate: string;
+    }> => {
+      const res = await fetch(`${API_URL}/ai/passport`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: JSON.stringify({ image: imageDataUrl }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // Сервер объясняет отказ человеческими словами — показываем именно их,
+        // а не «HTTP 503», за которым не видно, что делать дальше.
+        throw new Error(data.msg || data.error || 'Не удалось распознать паспорт');
+      }
+      return data;
+    },
+
     // CRUD
     /**
      * Что ещё не уехало на сервер.
