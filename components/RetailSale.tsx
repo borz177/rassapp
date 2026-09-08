@@ -3,7 +3,8 @@ import type { Account, Customer, Product, RetailSale as RetailSaleType, RetailSa
 import TopBarBack from './TopBarBack';
 import { maxPickableQty, stockAtWarehouse } from '../src/utils';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import ModalPortal from './ModalPortal';
+import Sheet from './Sheet';
+import { SuccessCheck, hapticSuccess } from './feedback';
 import SubPage from './transitions/SubPage';
 import SelectionList from './SelectionList';
 
@@ -158,8 +159,8 @@ const RetailSale: React.FC<RetailSaleProps> = ({
     });
   };
 
-  const applyEditing = () => {
-    if (!editing) return;
+  const applyEditing = (): boolean => {
+    if (!editing) return false;
     const pr = num(price);
     const id = editing.product.id;
     // Продажа в минус выключена — дальше остатка не пускаем и говорим почему.
@@ -169,7 +170,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
       setError(left > 0
         ? `На складе ${money(left)} ${editing.product.unit || 'шт'} — продажа в минус выключена в настройках магазина.`
         : `«${editing.product.name}» нет на складе — продажа в минус выключена в настройках магазина.`);
-      return;
+      return false;
     }
     const q = num(qty);
     if (q <= 0) {
@@ -182,8 +183,8 @@ const RetailSale: React.FC<RetailSaleProps> = ({
             buyPrice: editing.product.buyPrice, unit: editing.product.unit || 'шт',
           }]);
     }
-    setEditing(null);
     setError(null);
+    return true;
   };
 
   const submit = async () => {
@@ -209,6 +210,9 @@ const RetailSale: React.FC<RetailSaleProps> = ({
         date: date.toISOString(),
       };
       await onSubmit(sale);
+      // Короткий отклик в руку — как при оформлении договора: подтверждение
+      // приходит раньше, чем глаз доберётся до галочки.
+      hapticSuccess();
       setDone(sale);
       setItems([]); setDiscount(''); setNote(''); setCustomerId(null); setIsCredit(false);
       setDocNumber(''); setSaleDate(new Date().toISOString().slice(0, 10));
@@ -474,33 +478,29 @@ const RetailSale: React.FC<RetailSaleProps> = ({
 
       {/* Корзина листом — только на телефоне */}
       {cartOpen && (
-        <ModalPortal onClose={() => setCartOpen(false)}>
-          <div className="lg:hidden fixed inset-0 z-modal flex items-end justify-center bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setCartOpen(false)}>
-            <div className="bg-white dark:bg-slate-800 w-full rounded-t-3xl shadow-2xl max-h-[92vh] flex flex-col"
-                 onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setCartOpen(false)} className="lg:hidden max-h-[92vh] flex flex-col">
+          {(close: () => void) => (
+            <>
               <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between shrink-0">
                 <h3 className="font-bold text-slate-800 dark:text-white">
                   Корзина <span className="text-slate-400 text-sm font-normal">{items.length}</span>
                 </h3>
-                <button onClick={() => setCartOpen(false)}
-                        className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold">×</button>
+                <button type="button" onClick={close}
+                        className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold active:scale-90 transition-transform">×</button>
               </div>
               <div className="overflow-y-auto p-4 space-y-3">
                 {cartBody}
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </>
+          )}
+        </Sheet>
       )}
 
       {/* Количество и цена */}
       {editing && (
-        <ModalPortal onClose={() => setEditing(null)}>
-          <div className="fixed inset-0 z-modal-top flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setEditing(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-3"
-                 onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setEditing(null)} className="sm:max-w-sm p-5 space-y-3">
+          {(close: () => void) => (
+            <>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="font-bold text-slate-800 dark:text-white truncate">{editing.product.name}</h3>
@@ -510,7 +510,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
                   </p>
                 </div>
                 {editing.existing && (
-                  <button onClick={() => { setItems(prev => prev.filter(i => i.productId !== editing.product.id)); setEditing(null); }}
+                  <button type="button" onClick={() => { setItems(prev => prev.filter(i => i.productId !== editing.product.id)); close(); }}
                           className="shrink-0 px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-xs font-bold">
                     Убрать
                   </button>
@@ -542,14 +542,14 @@ const RetailSale: React.FC<RetailSaleProps> = ({
                     {k === 'DEL' ? '←' : k}
                   </button>
                 ))}
-                <button type="button" onClick={applyEditing}
+                <button type="button" onClick={() => { if (applyEditing()) close(); }}
                         className="h-12 rounded-xl bg-indigo-600 text-white font-bold active:scale-95 transition-transform">
                   ✓
                 </button>
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </>
+          )}
+        </Sheet>
       )}
 
       {/* Выбор клиента — та же страница, что и при оформлении рассрочки, и тот же
@@ -579,25 +579,25 @@ const RetailSale: React.FC<RetailSaleProps> = ({
 
       {/* Продажа проведена */}
       {done && (
-        <ModalPortal onClose={() => setDone(null)}>
-          <div className="fixed inset-0 z-modal-top flex items-center justify-center p-6 bg-slate-900/70 backdrop-blur-sm"
-               onClick={() => setDone(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full max-w-xs rounded-3xl shadow-2xl p-6 text-center space-y-4"
-                 onClick={e => e.stopPropagation()}>
-              <div className="w-16 h-16 rounded-full bg-emerald-500 text-white text-3xl flex items-center justify-center mx-auto">✓</div>
+        <Sheet variant="dialog" onClose={() => setDone(null)} className="p-6 text-center space-y-4">
+          {(close: () => void) => (
+            <>
+              {/* Та же галочка, что после оформления договора и расхода: успех
+                  в приложении выглядит одинаково, где бы его ни подтверждали. */}
+              <SuccessCheck size={68} />
               <div>
                 <h3 className="text-xl font-bold text-slate-800 dark:text-white">Продажа проведена</h3>
                 <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
                   № {done.docNumber} · {money(done.total, showCents)} ₽ · {done.items.length} поз.
                 </p>
               </div>
-              <button onClick={() => setDone(null)}
-                      className="w-full py-3 rounded-2xl bg-indigo-600 text-white font-bold">
+              <button type="button" onClick={close}
+                      className="w-full py-3 rounded-2xl bg-indigo-600 text-white font-bold active:scale-95 transition-transform">
                 Новая продажа
               </button>
-            </div>
-          </div>
-        </ModalPortal>
+            </>
+          )}
+        </Sheet>
       )}
     </div>
   );

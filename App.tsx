@@ -4300,6 +4300,7 @@ if (!user && !showSplash) {
       : expenses}
     investors={investors}
     customers={customers}
+    retailSales={isInvestor ? [] : retailSales}
     onSelectCustomer={handleSelectCustomer}
     onAddAccount={handleAddAccount}
     onAction={handleAction}

@@ -3,9 +3,9 @@ import PagePush, { useBackInterceptor } from './transitions/PagePush';
 import TabPill from './TabPill';
 import SelectSheet from './SelectSheet';
 import ModalPortal from './ModalPortal';
-import { Sale, Account, Expense, Investor, AppSettings, Customer } from '../types';
+import { Sale, Account, Expense, Investor, AppSettings, Customer, RetailSale } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, shareDateForSale } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, shareDateForSale, computeAccountBalances } from '../src/utils';
 
 // Цвета участников пула — те же роли, что у палитры инвесторов в отчётах:
 // человека узнают по кружку, а не вычитывают имя в таблице.
@@ -42,6 +42,8 @@ interface CashRegisterProps {
   expenses: Expense[];
   investors: Investor[];
   customers: Customer[];
+  /** Розничные чеки: их выручка и платежи по долгу тоже лежат на счетах */
+  retailSales?: RetailSale[];
   onAddAccount: (name: string, type: Account['type'], partners?: string[]) => void;
   onAction: (action: string) => void;
   onSelectAccount: (accountId: string) => void;
@@ -491,7 +493,7 @@ const AccountActionModal = ({
 };
 
 const CashRegister: React.FC<CashRegisterProps> = ({
-    accounts, sales, expenses, investors, customers, onAddAccount, onAction, onSelectAccount, onSetMainAccount, onUpdateAccount,
+    accounts, sales, expenses, investors, customers, retailSales = [], onAddAccount, onAction, onSelectAccount, onSetMainAccount, onUpdateAccount,
     onSelectCustomer, isManager, myProfitPeriod, setMyProfitPeriod, appSettings,
     lockedAccountIds = [], accountUsage = {}, onDeleteAccount
 }) => {
@@ -616,32 +618,15 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
   );
 
 // ... (остальной код без изменений до блока "Моя прибыль") ...
- const accountBalances = useMemo(() => {
-    const balances: Record<string, number> = {};
-
-    accounts.forEach(acc => {
-      let total = 0;
-
-      // ➕ Приход из договоров
-      const accountSales = sales.filter(s => s.accountId === acc.id);
-      accountSales.forEach(s => {
-          total += Number(s.downPayment);
-          s.paymentPlan
-            .filter(p => p.isPaid && p.isRealPayment !== false)
-            .forEach(p => total += Number(p.amount));
-      });
-
-      // ➖ Расходы, ИСКЛЮЧАЯ возвраты
-      const accountExpenses = expenses.filter(e => e.accountId === acc.id);
-      const regularExpenses = accountExpenses.filter(e => e.isRefund !== true);
-
-      total -= regularExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
-
-      balances[acc.id] = total;
-    });
-
-    return balances;
-}, [accounts, sales, expenses]);
+  // 🔒 Та же формула, что на Главной и везде, где показывают деньги счёта.
+  // Здесь была своя копия, и она не знала ни о розничных чеках, ни о стартовом
+  // балансе: продажа за наличные проходила, деньги на Главной появлялись, а в
+  // кассе счёт оставался прежним — два экрана называли разные суммы остатком
+  // одного и того же счёта.
+  const accountBalances = useMemo(
+    () => computeAccountBalances(accounts, sales, expenses, retailSales),
+    [accounts, sales, expenses, retailSales]
+  );
 
   // 🔹 Прибыль менеджера (ожидаемая)
   const calculatedExpectedProfit = useMemo(() => {
