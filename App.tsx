@@ -1419,7 +1419,9 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         // 🔒 BUSINESS_PRO — надстройка над BUSINESS (см. server/index.js PLAN_LIMITS: у обоих
         // ai/whatsapp/employees одинаково включены), поэтому везде, где разрешён BUSINESS,
         // должен быть разрешён и BUSINESS_PRO — иначе BUSINESS_PRO ошибочно лишался этих функций.
-        case 'AI': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO' || plan === 'TRIAL';
+        // Распознавание паспорта стоит денег за каждый снимок, поэтому,
+        // в отличие от прочих платных возможностей, на пробном оно закрыто.
+        case 'AI': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
         case 'WHATSAPP': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'BUSINESS_PRO' || plan === 'TRIAL';
         // Вторая печатная форма — со «Стандарта». На пробном тоже открыта: пробный
         // период для того и нужен, чтобы увидеть, за что платят.
@@ -4512,7 +4514,7 @@ if (!user && !showSplash) {
                   id: c.id,
                   title: c.name,
                   subtitle: c.phone
-              }))} onSelect={(id) => handleSelection('customerId', id)}
+              }))} canScanPassport={checkAccess('AI')} onSelect={(id) => handleSelection('customerId', id)}
                                                                    onCancel={() => setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE')}
                                                                    onAddNew={handleQuickAddCustomer}/>}
               {(currentView === 'EMPLOYEES' || currentView === 'EMPLOYEE_ACTIVITY') && (
@@ -4568,6 +4570,7 @@ if (!user && !showSplash) {
                       showCents={appSettings.showCents}
                       onSubmit={handleRetailSale}
                       allowNegativeStock={!!appSettings.shopAllowNegativeStock}
+                      canScanPassport={checkAccess('AI')}
                       onQuickAddCustomer={createCustomerQuick}
                       onBack={requestClose}
                     />

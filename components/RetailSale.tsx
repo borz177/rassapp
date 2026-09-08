@@ -21,6 +21,8 @@ interface RetailSaleProps {
   onSubmit: (sale: RetailSaleType) => Promise<void> | void;
   /** Настройка магазина: можно ли пробить больше, чем лежит на складе */
   allowNegativeStock?: boolean;
+  /** Распознавание паспорта в форме нового клиента */
+  canScanPassport?: boolean;
   /** Завести клиента прямо из выбора, не уходя из чека */
   onQuickAddCustomer?: (data: {
     name: string; phone: string; address?: string;
@@ -56,7 +58,7 @@ const input = 'w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate
  */
 const RetailSale: React.FC<RetailSaleProps> = ({
   products, customers, accounts, defaultAccountId, warehouseId = DEFAULT_WAREHOUSE_ID, onQuickAddCustomer,
-  allowNegativeStock = false,
+  allowNegativeStock = false, canScanPassport = false,
   existingSales = [], onSubmit, onBack, showCents = false,
 }) => {
   const [items, setItems] = useState<RetailSaleItem[]>([]);
@@ -562,6 +564,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
           {(close: () => void) => (
             <SelectionList
               title="Выберите клиента"
+              canScanPassport={canScanPassport}
               items={customers.map(c => ({ id: c.id, title: c.name, subtitle: c.phone }))}
               onSelect={id => { setCustomerId(id); setIsCredit(true); close(); }}
               onCancel={close}

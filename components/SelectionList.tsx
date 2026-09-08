@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ICONS } from '../constants';
+import PassportScan, { type PassportFields } from './PassportScan';
 
 interface SelectionItem {
   id: string;
@@ -21,9 +22,11 @@ interface SelectionListProps {
     passportNumber?: string;
     passportIssuedBy?: string;
   }) => void;
+  /** Распознавание паспорта — только там, где его разрешает тариф */
+  canScanPassport?: boolean;
 }
 
-const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, onCancel, onAddNew }) => {
+const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, onCancel, onAddNew, canScanPassport = false }) => {
   const [search, setSearch] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
@@ -41,6 +44,16 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
     item.title.toLowerCase().includes(search.toLowerCase()) ||
     (item.subtitle && item.subtitle.toLowerCase().includes(search.toLowerCase()))
   );
+
+  // Заполняем только пустые поля: набранное руками важнее — его вводили
+  // осознанно, а распознавание ошибается. Затирать чужой ввод нельзя.
+  const applyPassport = (f: PassportFields) => {
+    if (f.name) setNewName(prev => prev.trim() ? prev : f.name);
+    if (f.address) setNewAddress(prev => prev.trim() ? prev : f.address);
+    if (f.series) setNewPassportSeries(prev => prev.trim() ? prev : f.series);
+    if (f.number) setNewPassportNumber(prev => prev.trim() ? prev : f.number);
+    if (f.issuedBy) setNewPassportIssuedBy(prev => prev.trim() ? prev : f.issuedBy);
+  };
 
   const handleCreateSubmit = (e: React.FormEvent) => {
       e.preventDefault();
@@ -172,6 +185,10 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                         <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">
                           🪪 Паспортные данные <span className="font-normal text-slate-400 dark:text-slate-500">(необязательно)</span>
                         </p>
+
+                        {/* Съёмка перед полями: набирать серию и номер руками
+                            нужно только тогда, когда фотографии нет. */}
+                        {canScanPassport && <PassportScan onApply={applyPassport} className="mb-3" />}
 
                         {/* Серия и Номер */}
                         <div className="grid grid-cols-2 gap-3">

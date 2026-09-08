@@ -97,13 +97,6 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, className = '' }) 
         {busy ? 'Распознаём…' : '📷 Заполнить из фото паспорта'}
       </button>
 
-      {/* Куда уходит снимок — говорим до нажатия, а не в пользовательском
-          соглашении: это паспорт клиента, и человек вправе решать сам. */}
-      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 leading-snug">
-        Фотография уйдёт на сервер для распознавания и нигде не сохранится.
-        Сохранится только то, что вы подтвердите в форме.
-      </p>
-
       {error && (
         <div className="mt-2 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
           {error}
@@ -147,9 +140,6 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, className = '' }) 
               </button>
             </div>
           )}
-          <p className="text-[10px] text-slate-400 dark:text-slate-500">
-            Проверьте данные перед сохранением — распознавание может ошибиться.
-          </p>
         </div>
       )}
     </div>

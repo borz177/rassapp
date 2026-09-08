@@ -86,14 +86,15 @@ const getTargetUserId = (user) => {
 
 // ✅ КОНФИГУРАЦИЯ ЛИМИТОВ ТАРИФОВ
 // ИИ-функции включены там же, где их обещает интерфейс (checkAccess('AI')):
-// «Бизнес», «Бизнес Про» и пробный период. Раньше флаг стоял выключенным во
-// всех тарифах: обращение к зарубежной модели — это трансграничная передача
+// «Бизнес» и «Бизнес Про». На пробном закрыто: распознавание стоит денег за
+// каждый снимок. Раньше флаг стоял выключенным во всех тарифах: обращение к
+// зарубежной модели — это трансграничная передача
 // персональных данных, требующая уведомления Роскомнадзора (ч. 3 ст. 12
 // 152-ФЗ). Владелец включил распознавание паспорта осознанно, зная об этом;
 // провайдер задаётся ключом в окружении и может быть заменён на российский без
 // правки кода. Выключить обратно — вернуть ai: false в нужных строках.
 const PLAN_LIMITS = {
-  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: true,  suppliers: true, investorPools: true, notifications: true,  tasks: true , shop: true , contractTemplates: true },
+  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: false,  suppliers: true, investorPools: true, notifications: true,  tasks: true , shop: true , contractTemplates: true },
   START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false , shop: false , contractTemplates: false },
   STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false , contractTemplates: true },
   BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: false, investorPools: false, notifications: true,  tasks: true  , shop: false , contractTemplates: true },
