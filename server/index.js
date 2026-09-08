@@ -85,16 +85,19 @@ const getTargetUserId = (user) => {
 
 
 // ✅ КОНФИГУРАЦИЯ ЛИМИТОВ ТАРИФОВ
-// ИИ-функции отключены во всех тарифах: обращения к Google Gemini означали бы
-// трансграничную передачу персональных данных в США, требующую отдельного
-// уведомления Роскомнадзора (ч. 3 ст. 12 152-ФЗ) и приостановки передачи на
-// 10 рабочих дней. Функция в интерфейсе не использовалась, поэтому выключена.
+// ИИ-функции включены там же, где их обещает интерфейс (checkAccess('AI')):
+// «Бизнес», «Бизнес Про» и пробный период. Раньше флаг стоял выключенным во
+// всех тарифах: обращение к зарубежной модели — это трансграничная передача
+// персональных данных, требующая уведомления Роскомнадзора (ч. 3 ст. 12
+// 152-ФЗ). Владелец включил распознавание паспорта осознанно, зная об этом;
+// провайдер задаётся ключом в окружении и может быть заменён на российский без
+// правки кода. Выключить обратно — вернуть ai: false в нужных строках.
 const PLAN_LIMITS = {
-  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: false,  suppliers: true, investorPools: true, notifications: true,  tasks: true , shop: true , contractTemplates: true },
+  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: true,  suppliers: true, investorPools: true, notifications: true,  tasks: true , shop: true , contractTemplates: true },
   START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false , shop: false , contractTemplates: false },
   STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false , contractTemplates: true },
-  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: false, investorPools: false, notifications: true,  tasks: true  , shop: false , contractTemplates: true },
-  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: true,  investorPools: true,  notifications: true,  tasks: true  , shop: true , contractTemplates: true },
+  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: false, investorPools: false, notifications: true,  tasks: true  , shop: false , contractTemplates: true },
+  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,  suppliers: true,  investorPools: true,  notifications: true,  tasks: true  , shop: true , contractTemplates: true },
 };
 
 
@@ -3476,32 +3479,95 @@ app.use('/uploads/products', express.static(productImageDir, {
 }));
 
 /**
- * Распознавание паспорта.
+ * Поля паспорта из фотографии.
  *
- * Ключ Gemini живёт только здесь: в браузер он не попадает ни при какой сборке.
- * Из фотографии достаём ровно те поля, которые есть в карточке клиента, — всё
- * остальное (место рождения, код подразделения) не запрашиваем вовсе, чтобы не
- * гонять через сервис лишние личные данные.
+ * Провайдер выбирается ключом в окружении, а не переписыванием кода: сегодня
+ * это Claude через OpenRouter, завтра может быть российский OCR — вызов
+ * распознавания меняется в одном месте, а всё, что вокруг (тариф, уменьшение
+ * снимка, чистка полей), остаётся общим.
  *
- * Снимок нигде не сохраняется: он уменьшается в памяти, уходит на распознавание
- * и на этом заканчивается. В базу попадает только то, что человек подтвердит в
- * форме.
+ * Запрашиваем ровно те поля, которые есть в карточке клиента: место рождения и
+ * код подразделения не спрашиваем вовсе, чтобы не гонять через чужой сервис
+ * лишние личные данные.
  */
+const PASSPORT_PROMPT = [
+  'На фотографии — российский паспорт. Извлеки данные и верни ТОЛЬКО JSON без пояснений и без markdown.',
+  'Формат: {"name":"","series":"","number":"","issuedBy":"","address":"","birthDate":""}',
+  'name — фамилия, имя и отчество одной строкой в именительном падеже, как в паспорте.',
+  'series — четыре цифры серии, number — шесть цифр номера.',
+  'issuedBy — кем выдан, одной строкой. address — адрес регистрации, если страница прописки на фото.',
+  'birthDate — дата рождения в формате ДД.ММ.ГГГГ.',
+  'Поле, которого на фотографии нет или которое не читается, оставь пустой строкой.',
+  'Ничего не выдумывай и не дополняй по смыслу.',
+].join(' ');
+
+/** Ответ модели в объект. Модели любят обрамлять JSON тройными кавычками. */
+const parseModelJson = (text) => {
+  const cleaned = String(text || '').replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/, '').trim();
+  try { return JSON.parse(cleaned); } catch (e) { /* ниже вернём пустое */ }
+  // Последняя попытка: выхватить первый объект из текста вокруг.
+  const m = cleaned.match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch (e2) { /* сдаёмся */ } }
+  return {};
+};
+
+const recognizePassportViaOpenRouter = async (base64Jpeg) => {
+  const model = process.env.OPENROUTER_MODEL || 'anthropic/claude-opus-5';
+  const { data } = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+    model,
+    max_tokens: 1000,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: PASSPORT_PROMPT },
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Jpeg}` } },
+      ],
+    }],
+  }, {
+    timeout: 60000,
+    headers: {
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      // OpenRouter просит назвать приложение — по этим заголовкам он показывает
+      // расход в личном кабинете и отличает наш трафик от чужого.
+      'HTTP-Referer': process.env.APP_PUBLIC_URL || 'https://rassrochka.pro',
+      'X-Title': 'FinUchet',
+    },
+  });
+  return parseModelJson(data && data.choices && data.choices[0]
+    && data.choices[0].message && data.choices[0].message.content);
+};
+
+const recognizePassportViaGemini = async (base64Jpeg) => {
+  const model = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+  const { data } = await axios.post(url, {
+    contents: [{
+      parts: [
+        { text: PASSPORT_PROMPT },
+        { inline_data: { mime_type: 'image/jpeg', data: base64Jpeg } },
+      ],
+    }],
+    generationConfig: { responseMimeType: 'application/json' },
+  }, { timeout: 60000 });
+  return parseModelJson(data && data.candidates && data.candidates[0]
+    && data.candidates[0].content && data.candidates[0].content.parts
+    && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text);
+};
+
 app.post('/api/ai/passport', auth, async (req, res) => {
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    const recognize = process.env.OPENROUTER_API_KEY ? recognizePassportViaOpenRouter
+      : process.env.GEMINI_API_KEY ? recognizePassportViaGemini
+      : null;
+    if (!recognize) {
       return res.status(503).json({
         error: 'Распознавание не подключено',
-        msg: 'Администратору нужно добавить GEMINI_API_KEY в настройки сервера.',
+        msg: 'Администратору нужно добавить OPENROUTER_API_KEY в настройки сервера.',
       });
     }
 
-    // Тариф решает тот же флаг, что и остальные возможности ИИ. Сейчас он
-    // выключен во всех тарифах намеренно — см. комментарий над PLAN_LIMITS:
-    // отправка в Google Gemini это трансграничная передача персональных данных.
-    // Паспорт — самые чувствительные данные в приложении, поэтому включение
-    // флага здесь остаётся отдельным осознанным решением владельца.
+    // Тариф решает тот же флаг, что и остальные возможности ИИ.
     const targetUserId = getTargetUserId(req.user);
     const subRes = await pool.query('SELECT subscription FROM users WHERE id = $1', [targetUserId]);
     const subRaw = subRes.rows[0] && subRes.rows[0].subscription;
@@ -3525,61 +3591,14 @@ app.post('/api/ai/passport', auth, async (req, res) => {
 
     // Уменьшаем на сервере, а не доверяем клиенту: фотография с телефона весит
     // мегабайты, а для чтения текста хватает полутора тысяч пикселей по длинной
-    // стороне — и отвечает распознавание тогда заметно быстрее.
+    // стороне. Заодно это прямо режет счёт: картинка тарифицируется по размеру.
     const prepared = await sharp(input)
       .rotate()
       .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
       .jpeg({ quality: 82 })
       .toBuffer();
 
-    const model = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-    const { data } = await axios.post(url, {
-      contents: [{
-        parts: [
-          {
-            text: [
-              'На фотографии — российский паспорт. Извлеки данные и верни строго JSON.',
-              'name — фамилия, имя и отчество одной строкой в именительном падеже, как в паспорте.',
-              'series — четыре цифры серии, number — шесть цифр номера.',
-              'issuedBy — кем выдан, одной строкой.',
-              'address — адрес регистрации со страницы прописки, если она на фото.',
-              'birthDate — дата рождения в формате ДД.ММ.ГГГГ.',
-              'Поле, которого на фотографии нет или которое не читается, оставь пустой строкой.',
-              'Ничего не выдумывай и не дополняй по смыслу.',
-            ].join(' '),
-          },
-          { inline_data: { mime_type: 'image/jpeg', data: prepared.toString('base64') } },
-        ],
-      }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'OBJECT',
-          properties: {
-            name: { type: 'STRING' },
-            series: { type: 'STRING' },
-            number: { type: 'STRING' },
-            issuedBy: { type: 'STRING' },
-            address: { type: 'STRING' },
-            birthDate: { type: 'STRING' },
-          },
-          required: ['name', 'series', 'number', 'issuedBy', 'address', 'birthDate'],
-        },
-      },
-    }, { timeout: 45000 });
-
-    const text = data
-      && data.candidates
-      && data.candidates[0]
-      && data.candidates[0].content
-      && data.candidates[0].content.parts
-      && data.candidates[0].content.parts[0]
-      && data.candidates[0].content.parts[0].text;
-
-    let parsed = {};
-    try { parsed = JSON.parse(text || '{}'); } catch (e) { parsed = {}; }
+    const parsed = await recognize(prepared.toString('base64'));
 
     const clean = (v, max) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
     const result = {
@@ -3593,8 +3612,7 @@ app.post('/api/ai/passport', auth, async (req, res) => {
       birthDate: clean(parsed.birthDate, 10),
     };
 
-    const recognized = Object.values(result).filter(Boolean).length;
-    if (recognized === 0) {
+    if (Object.values(result).filter(Boolean).length === 0) {
       return res.status(422).json({
         error: 'Ничего не распознано',
         msg: 'Снимите паспорт целиком при хорошем освещении, без бликов.',
@@ -3607,8 +3625,8 @@ app.post('/api/ai/passport', auth, async (req, res) => {
     console.error('❌ Passport OCR:', status || '', e.message);
     res.status(502).json({
       error: 'Распознавание не удалось',
-      msg: status === 429
-        ? 'Сервис распознавания перегружен, попробуйте через минуту.'
+      msg: status === 429 ? 'Сервис распознавания перегружен, попробуйте через минуту.'
+        : status === 401 || status === 403 ? 'Ключ распознавания не принят — проверьте настройки сервера.'
         : 'Попробуйте ещё раз или заполните поля вручную.',
     });
   }
