@@ -1403,6 +1403,14 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
   // ... (Access checks and calculation logic remain the same)
   const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP' | 'CONTRACT_TEMPLATES'): boolean => {
     if (!user) return false;
+
+    // 🔒 ИИ решается до общего пропуска: строкой ниже админ, сотрудник и
+    // инвестор получают доступ ко всему, и кнопка распознавания у них
+    // оставалась бы видимой при выключенном ИИ. Проверять тариф для неё
+    // бессмысленно — до провайдеров с этого сервера нет доступа вовсе
+    // (см. развёрнутое объяснение у case 'AI' ниже).
+    if (feature === 'AI') return false;
+
     if (isEmployee || isInvestor || user.role === 'admin') return true;
 
     const sub = user.subscription || { plan: 'TRIAL', expiresAt: new Date(0).toISOString() };
