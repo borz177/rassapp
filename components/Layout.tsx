@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import ModalPortal from './ModalPortal';
+import PullToRefresh from './PullToRefresh';
 import SyncStatus, { type SyncStatusData } from './SyncStatus';
 import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
 import { ICONS, APP_NAME, THEMES } from '../constants';
@@ -8,6 +9,8 @@ import { calculateSaleOverdue } from '../src/utils';
 
 interface LayoutProps {
   children: React.ReactNode;
+  /** Обновление потягиванием вниз. Без него жест просто не появится. */
+  onPullRefresh?: () => Promise<void> | void;
   currentView: ViewState;
   setView: (view: ViewState) => void;
   onAction: (action: string) => void;
@@ -66,6 +69,7 @@ const Layout: React.FC<LayoutProps> = ({
   onRetrySync,
   onDiscardSyncItem,
   supportButton, // 🔹 Добавили сюда
+  onPullRefresh,
   supportUnreadCount = 0,
   unreadNotifCount = 0,
   onOpenNotifications,
@@ -687,6 +691,13 @@ const counts = useMemo(() => {
              </div>
         )}
       </aside>
+
+      {/* Обновление потягиванием вниз. Индикатор — отдельный слой рядом с
+          контентом, а не обёртка вокруг него: обёртке пришлось бы двигаться
+          через transform, а он превращает элемент в точку отсчёта для
+          position: fixed внутри — ровно та ловушка, из-за которой в этом
+          приложении появился ModalPortal. */}
+      {onPullRefresh && <PullToRefresh onRefresh={onPullRefresh} />}
 
       {/* Main Content Area - Updated margins and centering */}
       <main className="flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50 dark:bg-slate-900 mobile-main-offset">

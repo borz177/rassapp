@@ -1437,7 +1437,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         // Vision — он с этого сервера отвечает): вернуть здесь
         // `plan === 'BUSINESS' || plan === 'BUSINESS_PRO'` и поставить ai: true
         // тем же тарифам в PLAN_LIMITS на сервере.
-        case 'AI': return false;
+        // (сам case не нужен: выход стоит выше, и TypeScript его уже исключил)
         case 'WHATSAPP': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'BUSINESS_PRO' || plan === 'TRIAL';
         // Вторая печатная форма — со «Стандарта». На пробном тоже открыта: пробный
         // период для того и нужен, чтобы увидеть, за что платят.
@@ -4216,6 +4216,10 @@ if (!user && !showSplash) {
     showShopTab={shopAvailable && !!appSettings.shopDashboardTab}
     // 🔹 Кнопка поддержки для десктопа (плавающая) — админа ведём в панель
     // управления обращениями, а не в чат "как у обычного пользователя"
+    // Тянем вниз — тот же путь, что при возврате сети: отправляем очередь и
+    // забираем свежие данные. Отдельная «перезагрузка страницы» не нужна,
+    // приложение и так живёт на локальных данных.
+    onPullRefresh={handleSync}
     supportButton={
       <SupportButton
         unreadCount={supportUnreadCount}
