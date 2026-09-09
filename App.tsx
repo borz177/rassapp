@@ -1255,7 +1255,7 @@ useEffect(() => {
 
   // Ключ меняется вместе с содержимым окна: те, кто видел прошлое обновление,
   // должны увидеть и новое, а не считаться уже показанными.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v30';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v31';
   const REPEAT_AFTER = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -5524,7 +5524,7 @@ if (!user && !showSplash) {
               Обновление
             </h3>
             <p className="text-sm text-gray-500 dark:text-slate-400">
-              Приложение стало открываться быстрее
+              Улучшено запуск приложения
             </p>
           </div>
         </div>
@@ -5537,26 +5537,14 @@ if (!user && !showSplash) {
           <div className="flex items-center gap-3 py-4">
             <div className="text-2xl">⚡</div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
-                Быстрый запуск
-              </p>
+             
               <p className="text-xs text-gray-500 dark:text-slate-500">
-                Приложение открывается сразу. Раньше при медленной связи или включённом VPN экран мог долго оставаться пустым.
+                У части пользователей раньше при медленной связи или включённом VPN показывал белый экран и зависал.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 py-4">
-            <div className="text-2xl">📴</div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
-                Работает без интернета
-              </p>
-              <p className="text-xs text-gray-500 dark:text-slate-500">
-                Данные и записи открываются без сети. Всё, что вы внесёте, уйдёт на сервер само, как только появится связь.
-              </p>
-            </div>
-          </div>
+         
         </div>
 
         <button
