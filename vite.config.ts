@@ -92,7 +92,9 @@ export default defineConfig(({ mode }) => {
         workbox: {
           // 🔔 Подключаем обработчики Web Push (push/notificationclick) к автогенерируемому SW
           importScripts: ['/push-sw.js'],
-          globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+          // woff2 обязателен: без него шрифт не попадает в офлайн-кэш, и при
+          // запуске без сети текст подменялся бы системным начертанием.
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
           // увеличиваем лимит файла для PWA
   maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           // игнорируем electron сборки

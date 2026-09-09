@@ -21,9 +21,10 @@
       })();
     </script>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Шрифт лежит у нас: см. @font-face в src/index.css. Ссылка на
+         fonts.googleapis.com отсюда убрана намеренно — внешняя таблица стилей
+         блокирует отрисовку страницы целиком, и через VPN это давало белый
+         экран на десятки секунд вместо заставки. -->
     
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/icon-192.png">
