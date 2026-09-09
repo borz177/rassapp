@@ -305,6 +305,14 @@ const mergeServerData = <T extends { id: string }>(
     const now = Date.now();
     const updated = current.map(item => {
         if (!freshMap.has(item.id)) return item;
+        // 🔒 Запись всё ещё в очереди — сервер о нашей правке не знает по определению,
+        // и то, что он вернул, заведомо старее. Тридцатисекундного гарда ниже тут мало:
+        // запись, отвергнутая сервером (истёк тариф, лимит, дубликат), лежит в очереди
+        // часами, и после гарда правка откатывалась бы на экране к старой версии.
+        // Человек продолжил бы работать от неё — и вот тогда его работа терялась бы
+        // по-настоящему. Про сам факт «не отправлено» он видит и точку в списке,
+        // и запись в списке неотправленных.
+        if (getUnsyncedIds().has(item.id)) return item;
         // 🔒 Эту запись только что записали локально (см. updateList) — сервер мог ответить
         // данными, полученными ДО этой записи (гонка с фоновым handleSync, см. комментарий
         // у recentLocalWritesRef выше). Доверяем локальной версии ещё RECENT_WRITE_GUARD_MS,
@@ -318,6 +326,10 @@ const mergeServerData = <T extends { id: string }>(
     // локально, но сервер в этом ответе (запрошенном ДО удаления) её ещё вернул, не добавляем
     // её обратно как "новую".
     const newItems = Array.from(freshMap.values()).filter(item => {
+        // Удаление, ещё не уехавшее на сервер, — по той же причине: пока оно в
+        // очереди, сервер продолжает отдавать запись, и она воскресала бы на
+        // экране после каждого обновления.
+        if (getUnsyncedIds().has(item.id)) return false;
         const writtenAt = recentLocalWritesRef.current.get(item.id);
         return !(writtenAt && now - writtenAt < RECENT_WRITE_GUARD_MS);
     });
