@@ -790,3 +790,18 @@ export const accountInvestment = (
   };
 };
 
+/**
+ * Русское склонение после числа: 1 платёж, 2 платежа, 5 платежей.
+ *
+ * Свои копии этой функции уже лежат в трёх компонентах — при следующей правке
+ * они разъедутся. Здесь она одна на всех.
+ */
+export const pluralRu = (n: number, one: string, few: string, many: string): string => {
+  const abs = Math.abs(n) % 100;
+  const last = abs % 10;
+  // 11–14 — исключение: они читаются как «одиннадцать платежей», а не «платёж».
+  if (abs > 10 && abs < 20) return many;
+  if (last === 1) return one;
+  if (last >= 2 && last <= 4) return few;
+  return many;
+};

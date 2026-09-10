@@ -3,7 +3,7 @@ import { Sale, Customer, Account, User, AppSettings, Task, Payment } from '../ty
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
 import { buildContractHtml, resolveContractTemplate } from '../src/contractTemplates';
-import { contractNumbers, formatCurrency, formatDate, escapeHtml, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
+import { contractNumbers, formatCurrency, formatDate, escapeHtml, calculateSaleOverdue, normalizePhoneForWhatsApp, pluralRu } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
 import UnsyncedMark from './UnsyncedMark';
 import { createPortal } from 'react-dom';
@@ -146,7 +146,28 @@ const overduePaymentsList = sortedPlan.filter((p, index) => {
       showNotice('warn', `У клиента${customer?.name ? ` «${customer.name}»` : ''} не указан корректный номер телефона. Добавьте его в карточке клиента.`);
       return;
     }
-    const text = `Здравствуйте, ${customer?.name}. Напоминаем о задолженности по договору "${sale.productName}" в размере ${formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽.`;
+    // Тот же вид, что у напоминаний с Главной: обращение, пустая строка, суть,
+    // сумма отдельной строкой и подпись компании. Одной сплошной строкой в
+    // WhatsApp это читалось хуже всего — там сообщение видно узкой колонкой.
+    const missed = overduePaymentsList.length;
+    const sum = `*${formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽*`;
+    const company = appSettings?.companyName;
+
+    const body = missed > 0
+      ? `По договору «${sale.productName}» есть просроченная задолженность: ${missed} ${pluralRu(missed, 'платёж', 'платежа', 'платежей')}.`
+      : `По договору «${sale.productName}» есть просроченная задолженность.`;
+
+    const text = [
+      `${customer?.name || 'Здравствуйте'}!`,
+      '',
+      body,
+      '',
+      `💰 К оплате: ${sum}`,
+      '',
+      'Просим погасить задолженность.',
+      ...(company ? ['', company] : []),
+    ].join('\n');
+
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
