@@ -65,7 +65,7 @@ const buildPaymentReminder = (opts: {
     body = `Напоминаем о предстоящем платеже по договору «${productName}».\n\n📅 Дата: ${when} (через ${days} ${pluralRu(days, 'день', 'дня', 'дней')})\n💰 Сумма: ${sum}`;
   }
 
-  return `Здравствуйте, ${customerName}!\n\n${body}${companyName ? `\n\n${companyName}` : ''}`;
+  return `${customerName}!\n\n${body}${companyName ? `\n\n${companyName}` : ''}`;
 };
 
 
