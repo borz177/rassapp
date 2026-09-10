@@ -1215,6 +1215,24 @@ await pool.query(`
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
 
+  -- 📨 Заявка партнёра на вывод. Отдельно от partner_payouts: там факт перевода,
+  -- здесь просьба о нём. Смешать их в одной таблице значило бы либо считать
+  -- непереведённые деньги выплаченными, либо потерять историю отказов.
+  CREATE TABLE IF NOT EXISTS partner_payout_requests (
+    id TEXT PRIMARY KEY,
+    partner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    amount NUMERIC(12,2) NOT NULL,
+    method TEXT,
+    details TEXT,
+    comment TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    payout_id TEXT,
+    reject_reason TEXT,
+    reviewed_by TEXT,
+    reviewed_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+
   CREATE TABLE IF NOT EXISTS backup_settings (
     user_id TEXT PRIMARY KEY,
     enabled BOOLEAN NOT NULL DEFAULT FALSE,
@@ -1243,6 +1261,7 @@ await pool.query(`
   CREATE INDEX IF NOT EXISTS idx_subscription_payments_user ON subscription_payments(user_id);
   CREATE INDEX IF NOT EXISTS idx_partner_commissions_partner ON partner_commissions(partner_id, status);
   CREATE INDEX IF NOT EXISTS idx_partner_payouts_partner ON partner_payouts(partner_id);
+  CREATE INDEX IF NOT EXISTS idx_partner_requests_partner ON partner_payout_requests(partner_id, status);
   ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS receipt_number TEXT;
   ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS receipt_url TEXT;
 `);
@@ -4531,6 +4550,17 @@ app.post('/api/admin/partners/:partnerId/payout', adminAuth, async (req, res) =>
       left -= amt;
     }
 
+    // Заявка закрывается тем же переводом, что её исполнил: без связи партнёр
+    // видел бы деньги пришедшими, а просьбу — всё ещё висящей.
+    if (req.body.requestId) {
+      await client.query(
+        `UPDATE partner_payout_requests
+            SET status = 'paid', payout_id = $1, reviewed_by = $2, reviewed_at = NOW()
+          WHERE id = $3 AND partner_id = $4 AND status = 'pending'`,
+        [payoutId, req.user.id, req.body.requestId, partnerId]
+      );
+    }
+
     await client.query('COMMIT');
     logAdminAction(req.user.id, 'PARTNER_PAYOUT', partnerId, { amount: sum, method, receipt });
     res.json({ success: true, payoutId, unallocated: Math.round(left * 100) / 100 });
@@ -4546,6 +4576,162 @@ app.post('/api/admin/partners/:partnerId/payout', adminAuth, async (req, res) =>
 // =====================================================
 // === 🤝 БИЗНЕС-ПАРТНЁР: СВОЯ СТАТИСТИКА ==============
 // =====================================================
+
+/**
+ * Минимум для заявки на вывод.
+ *
+ * Живёт одним числом на сервере и уезжает клиенту в summary: если бы порог был
+ * прописан и в интерфейсе, они разошлись бы при первой же правке, и человек
+ * получал бы отказ на кнопку, которая выглядела доступной.
+ */
+const PARTNER_MIN_PAYOUT = 5000;
+
+/** Сколько партнёру начислено и ещё не выплачено. */
+const partnerPendingAmount = async (client, partnerId) => {
+  const res = await client.query(
+    `SELECT COALESCE(SUM(amount), 0) AS pending
+       FROM partner_commissions WHERE partner_id = $1 AND status = 'accrued'`,
+    [partnerId]
+  );
+  return Number(res.rows[0].pending);
+};
+
+/**
+ * Заявка на вывод.
+ *
+ * Открытая заявка может быть только одна: иначе две заявки по 4000 при остатке
+ * 5000 прошли бы обе проверки по отдельности и вместе перевалили за доступное.
+ */
+app.post('/api/partner/payout-request', auth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const me = await client.query('SELECT partner_percent FROM users WHERE id = $1', [req.user.id]);
+    if (!me.rows[0] || !me.rows[0].partner_percent) {
+      return res.status(403).json({ msg: 'Партнёрство не подключено' });
+    }
+
+    const amount = Number(req.body && req.body.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ msg: 'Укажите сумму вывода' });
+    }
+    if (amount < PARTNER_MIN_PAYOUT) {
+      return res.status(400).json({
+        msg: `Минимальная сумма вывода — ${PARTNER_MIN_PAYOUT.toLocaleString('ru-RU')} ₽`,
+      });
+    }
+
+    const method = String(req.body.method || '').trim().slice(0, 60);
+    const details = String(req.body.details || '').trim().slice(0, 200);
+    if (!details) {
+      return res.status(400).json({ msg: 'Укажите, куда перевести деньги' });
+    }
+
+    await client.query('BEGIN');
+
+    const open = await client.query(
+      `SELECT id FROM partner_payout_requests
+        WHERE partner_id = $1 AND status = 'pending' FOR UPDATE`,
+      [req.user.id]
+    );
+    if (open.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ msg: 'Заявка уже отправлена — дождитесь ответа или отмените её' });
+    }
+
+    const pending = await partnerPendingAmount(client, req.user.id);
+    if (amount > pending + 0.01) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        msg: `К выводу доступно ${pending.toLocaleString('ru-RU')} ₽`,
+      });
+    }
+
+    const id = 'req_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    await client.query(
+      `INSERT INTO partner_payout_requests (id, partner_id, amount, method, details, comment)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, req.user.id, amount, method || null, details,
+       String(req.body.comment || '').trim().slice(0, 300) || null]
+    );
+
+    await client.query('COMMIT');
+    res.json({ success: true, id });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Partner payout request error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
+/** Отмена своей заявки, пока её не рассмотрели. */
+app.post('/api/partner/payout-request/:id/cancel', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE partner_payout_requests
+          SET status = 'cancelled', reviewed_at = NOW()
+        WHERE id = $1 AND partner_id = $2 AND status = 'pending'
+        RETURNING id`,
+      [req.params.id, req.user.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ msg: 'Заявка не найдена или уже рассмотрена' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Partner payout cancel error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+/** Заявки на вывод — для админа. По умолчанию только ожидающие ответа. */
+app.get('/api/admin/partner-payout-requests', adminAuth, async (req, res) => {
+  try {
+    const onlyPending = req.query.status !== 'all';
+    const result = await pool.query(
+      `SELECT r.id, r.partner_id, r.amount, r.method, r.details, r.comment,
+              r.status, r.reject_reason, r.created_at, r.reviewed_at,
+              u.name AS partner_name, u.email AS partner_email,
+              COALESCE((SELECT SUM(amount) FROM partner_commissions
+                         WHERE partner_id = r.partner_id AND status = 'accrued'), 0) AS pending
+         FROM partner_payout_requests r
+         LEFT JOIN users u ON u.id = r.partner_id
+        ${onlyPending ? "WHERE r.status = 'pending'" : ''}
+        ORDER BY r.created_at DESC
+        LIMIT 100`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Partner requests list error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+/** Отказ по заявке. Причина обязательна: без неё партнёр не поймёт, что исправить. */
+app.post('/api/admin/partner-payout-requests/:id/reject', adminAuth, async (req, res) => {
+  try {
+    const reason = String(req.body && req.body.reason || '').trim().slice(0, 300);
+    if (!reason) return res.status(400).json({ msg: 'Укажите причину отказа' });
+
+    const result = await pool.query(
+      `UPDATE partner_payout_requests
+          SET status = 'rejected', reject_reason = $1, reviewed_by = $2, reviewed_at = NOW()
+        WHERE id = $3 AND status = 'pending'
+        RETURNING partner_id, amount`,
+      [reason, req.user.id, req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ msg: 'Заявка не найдена или уже рассмотрена' });
+    }
+    logAdminAction(req.user.id, 'PARTNER_PAYOUT_REJECT', result.rows[0].partner_id,
+                   { amount: result.rows[0].amount, reason });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Partner request reject error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
 
 app.get('/api/partner/summary', auth, async (req, res) => {
   try {
@@ -4574,6 +4760,11 @@ app.get('/api/partner/summary', auth, async (req, res) => {
          FROM partner_payouts WHERE partner_id = $1 ORDER BY created_at DESC LIMIT 50`,
       [req.user.id]
     );
+    const requests = await pool.query(
+      `SELECT id, amount, method, details, comment, status, reject_reason, created_at, reviewed_at
+         FROM partner_payout_requests WHERE partner_id = $1 ORDER BY created_at DESC LIMIT 20`,
+      [req.user.id]
+    );
     const totals = await pool.query(
       `SELECT COALESCE(SUM(amount) FILTER (WHERE status <> 'cancelled'), 0) AS earned,
               COALESCE(SUM(amount) FILTER (WHERE status = 'paid'), 0)       AS paid,
@@ -4595,7 +4786,10 @@ app.get('/api/partner/summary', auth, async (req, res) => {
         clients: Number(totals.rows[0].clients)
       },
       commissions: commissions.rows,
-      payouts: payouts.rows
+      payouts: payouts.rows,
+      payoutRequests: requests.rows,
+      // Порог приезжает с сервера, чтобы интерфейс не хранил своё число.
+      minPayout: PARTNER_MIN_PAYOUT
     });
   } catch (err) {
     console.error('Partner summary error:', err);

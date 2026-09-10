@@ -1104,7 +1104,9 @@ export const api = {
 
     adminPayPartner: async (
         partnerId: string,
-        payout: { amount: number; method?: string; receipt?: string; note?: string }
+        // requestId — если выплата закрывает заявку партнёра: тогда она
+        // помечается исполненной той же транзакцией, что записывает перевод.
+        payout: { amount: number; method?: string; receipt?: string; note?: string; requestId?: string }
     ): Promise<void> => {
         const res = await fetchWithAuth(`${API_URL}/admin/partners/${partnerId}/payout`, {
             method: 'POST',
@@ -1121,6 +1123,54 @@ export const api = {
         const res = await fetchWithAuth(`${API_URL}/partner/summary`);
         if (!res.ok) return { isPartner: false };
         return res.json();
+    },
+
+    /**
+     * Заявка на вывод партнёрского вознаграждения.
+     *
+     * Без офлайн-очереди намеренно: это просьба к живому человеку, а не запись
+     * в свой учёт. Отложенная на сутки заявка пришла бы с суммой, которой уже
+     * может не быть, — лучше честный отказ «нет связи» и повтор.
+     */
+    requestPartnerPayout: async (body: {
+      amount: number; method?: string; details: string; comment?: string;
+    }): Promise<{ success: boolean; id: string }> => {
+        const res = await fetchWithAuth(`${API_URL}/partner/payout-request`, {
+            method: 'POST',
+            body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        // Сервер объясняет отказ словами — показываем именно их: за «HTTP 400»
+        // не видно ни порога, ни доступной суммы.
+        if (!res.ok) throw new Error(data.msg || 'Не удалось отправить заявку');
+        return data;
+    },
+
+    cancelPartnerPayout: async (id: string): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/partner/payout-request/${id}/cancel`, {
+            method: 'POST',
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.msg || 'Не удалось отменить заявку');
+        }
+    },
+
+    getPartnerPayoutRequests: async (status: 'pending' | 'all' = 'pending'): Promise<any[]> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/partner-payout-requests?status=${status}`);
+        if (!res.ok) return [];
+        return res.json();
+    },
+
+    rejectPartnerPayout: async (id: string, reason: string): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/partner-payout-requests/${id}/reject`, {
+            method: 'POST',
+            body: JSON.stringify({ reason }),
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.msg || 'Не удалось отклонить заявку');
+        }
     },
 
     adminGetUsers: async (): Promise<User[]> => {

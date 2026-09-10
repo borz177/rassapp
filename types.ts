@@ -798,6 +798,25 @@ export interface PartnerPayout {
   created_at: string;
 }
 
+/**
+ * Заявка партнёра на вывод.
+ *
+ * Отдельно от PartnerPayout: там факт перевода, здесь просьба о нём. Пока
+ * заявка висит, деньги ещё не выплачены, и путать одно с другим нельзя.
+ */
+export interface PartnerPayoutRequest {
+  id: string;
+  amount: string | number;
+  method: string | null;
+  /** Куда переводить: номер карты, телефон для СБП и т. п. */
+  details: string | null;
+  comment: string | null;
+  status: 'pending' | 'paid' | 'rejected' | 'cancelled';
+  reject_reason: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
 export interface PartnerSummary {
   isPartner: boolean;
   percent?: number;
@@ -806,6 +825,9 @@ export interface PartnerSummary {
   totals?: { earned: number; paid: number; pending: number; clients: number };
   commissions?: PartnerCommission[];
   payouts?: PartnerPayout[];
+  payoutRequests?: PartnerPayoutRequest[];
+  /** Порог вывода приходит с сервера — своего числа интерфейс не держит */
+  minPayout?: number;
 }
 
 // 🧾 Оплата подписки в админке. receipt_* — чек НПД из «Мой налог»:

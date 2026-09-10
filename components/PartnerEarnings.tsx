@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import type { PartnerSummary } from '../types';
+import PartnerPayoutRequestBlock from './PartnerPayoutRequest';
 
 const money = (v: string | number | null | undefined) =>
   Number(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -26,10 +27,14 @@ const longDate = (iso: string) =>
 const PartnerEarnings: React.FC = () => {
   const [data, setData] = useState<PartnerSummary | null>(null);
 
-  useEffect(() => {
+  // Перечитываем сводку после заявки: меняется и её состояние, и доступная
+  // сумма — держать это в двух местах значило бы рано или поздно разойтись.
+  const load = () => {
     // Ошибку глотаем: блок дополнительный, и падать из-за него страница не должна.
     api.getPartnerSummary().then(setData).catch(() => setData(null));
-  }, []);
+  };
+
+  useEffect(load, []);
 
   if (!data?.isPartner || !data.totals) return null;
 
@@ -52,6 +57,14 @@ const PartnerEarnings: React.FC = () => {
           заработано {money(earned)} ₽ · выплачено {money(paid)} ₽
         </p>
       </div>
+
+      {/* Вывод стоит сразу под суммой: за ним сюда и приходят, когда она набралась. */}
+      <PartnerPayoutRequestBlock
+        pending={Number(pending) || 0}
+        minPayout={data.minPayout ?? 5000}
+        requests={data.payoutRequests || []}
+        onChanged={load}
+      />
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
         {data.percent}% с каждой оплаты клиентов, пришедших по вашей ссылке.

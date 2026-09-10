@@ -26,7 +26,14 @@ const AdminPartners: React.FC<{ users: User[] }> = ({ users }) => {
   const [percent, setPercent] = useState('20');
   const [termMonths, setTermMonths] = useState('');
 
-  // Форма выплаты
+  // Заявки на вывод: партнёр просит, админ переводит и закрывает заявку.
+  const [requests, setRequests] = useState<any[]>([]);
+  const [rejectFor, setRejectFor] = useState<any | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+
+  // Форма выплаты. requestId заполняется, когда выплату начали из заявки —
+  // тогда она закроется тем же переводом.
+  const [payoutRequestId, setPayoutRequestId] = useState<string | undefined>(undefined);
   const [payoutFor, setPayoutFor] = useState<PartnerRow | null>(null);
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('СБП');
@@ -36,7 +43,14 @@ const AdminPartners: React.FC<{ users: User[] }> = ({ users }) => {
   const load = async () => {
     setLoading(true);
     try {
-      setRows(await api.adminGetPartners());
+      const [partners, pendingRequests] = await Promise.all([
+        api.adminGetPartners(),
+        // Заявки не критичны для страницы: если их не отдали, партнёры всё
+        // равно должны показаться.
+        api.getPartnerPayoutRequests('pending').catch(() => []),
+      ]);
+      setRows(partners);
+      setRequests(pendingRequests);
       setError(null);
     } catch (e: any) {
       setError(e.message || 'Не удалось загрузить партнёров');
@@ -75,8 +89,10 @@ const AdminPartners: React.FC<{ users: User[] }> = ({ users }) => {
         method: payMethod || undefined,
         receipt: payReceipt || undefined,
         note: payNote || undefined,
+        requestId: payoutRequestId,
       });
       setPayoutFor(null);
+      setPayoutRequestId(undefined);
       setPayAmount(''); setPayReceipt(''); setPayNote('');
       await load();
       setError(null);
@@ -87,6 +103,33 @@ const AdminPartners: React.FC<{ users: User[] }> = ({ users }) => {
     }
   };
 
+  const submitReject = async () => {
+    if (!rejectFor || !rejectReason.trim()) return;
+    setSaving(true);
+    try {
+      await api.rejectPartnerPayout(rejectFor.id, rejectReason.trim());
+      setRejectFor(null);
+      setRejectReason('');
+      await load();
+      setError(null);
+    } catch (e: any) {
+      setError(e.message || 'Не удалось отклонить заявку');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** Открыть выплату из заявки: сумма и способ уже известны. */
+  const payFromRequest = (req: any) => {
+    const partner = rows.find(r => r.id === req.partner_id);
+    if (!partner) { setError('Партнёр не найден в списке'); return; }
+    setPayoutFor(partner);
+    setPayoutRequestId(req.id);
+    setPayAmount(String(Number(req.amount)));
+    setPayMethod(req.method || 'СБП');
+    setPayNote(req.details || '');
+  };
+
   const alreadyPartner = new Set(rows.filter(r => r.partner_percent).map(r => r.id));
   const candidates = users.filter(u => u.role === 'manager' && !alreadyPartner.has(u.id));
 
@@ -95,6 +138,83 @@ const AdminPartners: React.FC<{ users: User[] }> = ({ users }) => {
       {error && (
         <div className="rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
           {error}
+        </div>
+      )}
+
+      {/* Заявки — первым блоком: это единственное, что требует действия прямо
+          сейчас, остальное на странице справочное. */}
+      {requests.length > 0 && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-amber-200 dark:border-amber-800 overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center gap-2">
+            <h3 className="font-bold text-slate-800 dark:text-white">Заявки на вывод</h3>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+              {requests.length}
+            </span>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-700">
+            {requests.map(req => (
+              <div key={req.id} className="px-4 py-3 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-800 dark:text-white truncate">
+                      {req.partner_name || req.partner_email || req.partner_id}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {formatDate(req.created_at)}
+                      {req.method ? ` · ${req.method}` : ''}
+                    </p>
+                    <p className="text-xs text-slate-700 dark:text-slate-300 mt-1 break-words">
+                      {req.details}
+                    </p>
+                    {req.comment && (
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{req.comment}</p>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-bold text-slate-800 dark:text-white">{money(req.amount)} ₽</p>
+                    {/* Сколько у партнёра доступно сейчас: заявка могла полежать,
+                        а начисления за это время изменились. */}
+                    <p className="text-[10px] text-slate-400">из {money(req.pending)} ₽</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setRejectFor(req)} disabled={saving}
+                          className="flex-1 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold disabled:opacity-50">
+                    Отклонить
+                  </button>
+                  <button onClick={() => payFromRequest(req)} disabled={saving}
+                          className="flex-[1.5] py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold disabled:opacity-50">
+                    Выплатить
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Причину отказа партнёр увидит у себя — без неё он не поймёт, что делать. */}
+      {rejectFor && (
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-rose-200 dark:border-rose-800 p-4 space-y-3">
+          <h4 className="font-bold text-slate-800 dark:text-white">
+            Отклонить заявку на {money(rejectFor.amount)} ₽
+          </h4>
+          <input
+            value={rejectReason}
+            onChange={e => setRejectReason(e.target.value)}
+            placeholder="Причина — её увидит партнёр"
+            className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none"
+          />
+          <div className="flex gap-2">
+            <button onClick={() => { setRejectFor(null); setRejectReason(''); }} disabled={saving}
+                    className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold disabled:opacity-50">
+              Отмена
+            </button>
+            <button onClick={submitReject} disabled={saving || !rejectReason.trim()}
+                    className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-bold disabled:opacity-50">
+              Отклонить
+            </button>
+          </div>
         </div>
       )}
 
