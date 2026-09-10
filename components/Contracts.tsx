@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Sale, Customer, Account, User, AppSettings, Task, Payment } from '../types';
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
@@ -54,6 +54,27 @@ const ContractInfoModal = ({
   // 🔥 STATE для подтверждения отправки напоминания
   const [showConfirmReminder, setShowConfirmReminder] = useState(false);
   const [isSending, setIsSending] = useState(false);
+
+  /**
+   * Сообщение об исходе действия — полосой внутри самого листа, а не alert'ом.
+   *
+   * Системное окно выглядит чужим: оно перекрывает лист, пишет заголовком адрес
+   * сайта и закрывается единственной кнопкой «ОК». Здесь же человек стоит в
+   * карточке должника и хочет остаться в ней — ответ должен появиться рядом с
+   * кнопками, которые он нажал.
+   */
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'warn'; text: string } | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showNotice = (kind: 'ok' | 'warn', text: string) => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    setNotice({ kind, text });
+    // Удача уходит сама: она подтверждает уже случившееся, держать её незачем.
+    // Проблема остаётся на экране — её надо прочитать и что-то сделать.
+    if (kind === 'ok') noticeTimer.current = setTimeout(() => setNotice(null), 4000);
+  };
+
+  useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current); }, []);
 
 
   const [isClosing, setIsClosing] = useState(false);
@@ -120,7 +141,9 @@ const overduePaymentsList = sortedPlan.filter((p, index) => {
     // а украинский +380... превращался в 7380... Пустая строка давала wa.me/7.
     const phone = normalizePhoneForWhatsApp(customer?.phone);
     if (!phone) {
-      alert(`У клиента${customer?.name ? ` «${customer.name}»` : ''} не указан корректный номер телефона.`);
+      // Говорим не только о проблеме, но и о том, где её чинить: телефон
+      // правится в карточке клиента, а не здесь.
+      showNotice('warn', `У клиента${customer?.name ? ` «${customer.name}»` : ''} не указан корректный номер телефона. Добавьте его в карточке клиента.`);
       return;
     }
     const text = `Здравствуйте, ${customer?.name}. Напоминаем о задолженности по договору "${sale.productName}" в размере ${formatCurrency(realOverdueAmount, appSettings?.showCents)} ₽.`;
@@ -153,13 +176,15 @@ const handleSendReminder = async () => {
   template: 'overdue'
 });
 
-    alert('✅ Напоминание отправлено!');
     setShowConfirmReminder(false);
+    showNotice('ok', `Напоминание отправлено${customer?.name ? ` клиенту ${customer.name}` : ''} в WhatsApp.`);
   } catch (e: any) {
     console.error('❌ Reminder error:', e);
-    alert(`⚠️ ${e.message || 'Ошибка отправки'}`);
-    handleWhatsApp(); // Fallback
     setShowConfirmReminder(false);
+    // Полосу ставим до запасного пути: если у клиента ещё и номер негодный,
+    // handleWhatsApp напишет об этом поверх — там причина конкретнее.
+    showNotice('warn', `${e.message || 'Не удалось отправить напоминание'}. Открываем WhatsApp — отправьте сообщение вручную.`);
+    handleWhatsApp(); // Fallback
   } finally {
     setIsSending(false);
   }
@@ -245,6 +270,21 @@ const handleSendReminder = async () => {
             </div>
           )}
         </div>
+
+        {/* Ответ на действие — здесь же, у кнопок, которые его вызвали.
+            shrink-0: полоса не должна съедаться прокруткой списка выше. */}
+        {notice && (
+          <div className={`shrink-0 mx-3 mt-3 rounded-xl border px-3 py-2.5 text-sm flex items-start justify-between gap-3 ${
+            notice.kind === 'ok'
+              ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300'
+              : 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300'
+          }`}>
+            <span className="min-w-0">{notice.text}</span>
+            <button type="button" onClick={() => setNotice(null)}
+                    aria-label="Скрыть сообщение"
+                    className="shrink-0 font-bold opacity-60">✕</button>
+          </div>
+        )}
 
         {/* 🔘 НИЖНИЕ КНОПКИ: Позвонить / WhatsApp */}
         <div className="p-3 bg-slate-50 dark:bg-slate-700/50 border-t border-slate-100 dark:border-slate-700 flex gap-2 shrink-0">
