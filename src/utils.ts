@@ -805,3 +805,30 @@ export const pluralRu = (n: number, one: string, few: string, many: string): str
   if (last >= 2 && last <= 4) return few;
   return many;
 };
+
+/**
+ * «Обновлено 4 мин назад» — человеческим языком, а не отметкой времени.
+ *
+ * Точное время («14:32») заставляет вычитать в уме; здесь нужен ответ на один
+ * вопрос — свежие ли данные, — и он читается с одного взгляда.
+ *
+ * Первую минуту говорим «только что»: секунды в этом ответе ничего не меняют,
+ * а бегущий счётчик отвлекал бы.
+ */
+export const timeAgoRu = (timestamp: number | null | undefined, now: number = Date.now()): string => {
+  if (!timestamp) return '';
+  const sec = Math.floor((now - timestamp) / 1000);
+  // Часы на устройстве могут уйти вперёд — отрицательная разница не должна
+  // превращаться в «-3 мин назад».
+  if (sec < 60) return 'только что';
+
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} ${pluralRu(min, 'минуту', 'минуты', 'минут')} назад`;
+
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return `${hours} ${pluralRu(hours, 'час', 'часа', 'часов')} назад`;
+
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'вчера';
+  return `${days} ${pluralRu(days, 'день', 'дня', 'дней')} назад`;
+};

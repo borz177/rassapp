@@ -5,7 +5,7 @@ import PullToRefresh from './PullToRefresh';
 import SyncStatus, { type SyncStatusData } from './SyncStatus';
 import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
 import { ICONS, APP_NAME, THEMES } from '../constants';
-import { calculateSaleOverdue } from '../src/utils';
+import { calculateSaleOverdue, timeAgoRu } from '../src/utils';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -27,6 +27,8 @@ interface LayoutProps {
   /** Что ещё не уехало на сервер. Пусто — значка нет. */
   syncStatus?: SyncStatusData;
   onRetrySync?: () => Promise<void> | void;
+  /** Когда данные последний раз доехали с сервера — для подписи под кнопкой */
+  lastSyncedAt?: number | null;
   onDiscardSyncItem?: (id: string) => Promise<void> | void;
   supportButton?: React.ReactNode;
   supportUnreadCount?: number;
@@ -67,6 +69,7 @@ const Layout: React.FC<LayoutProps> = ({
   isSyncing = false,
   syncStatus,
   onRetrySync,
+  lastSyncedAt,
   onDiscardSyncItem,
   supportButton, // 🔹 Добавили сюда
   onPullRefresh,
@@ -80,6 +83,34 @@ const Layout: React.FC<LayoutProps> = ({
   showShop = false,
   showShopTab = false,
 }) => {
+  /**
+   * Обновление по кнопке — десктопная замена жеста «потянуть вниз».
+   *
+   * На широком экране тянуть нечем: жест построен на касаниях. Без кнопки
+   * человек тянется к F5, а это полная перезагрузка — заново качается бандл,
+   * приложение переинициализируется, теряется место прокрутки. Здесь тот же
+   * путь, что у жеста: очередь уходит, свежие данные приезжают, страница
+   * остаётся на месте.
+   */
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  // Подпись «обновлено N назад» должна стареть сама, пока на неё смотрят.
+  const [, setAgoTick] = useState(0);
+  useEffect(() => {
+    if (!lastSyncedAt) return;
+    const id = setInterval(() => setAgoTick(t => t + 1), 30000);
+    return () => clearInterval(id);
+  }, [lastSyncedAt]);
+
+  const runManualRefresh = async () => {
+    if (!onPullRefresh || manualRefreshing) return;
+    setManualRefreshing(true);
+    try {
+      await onPullRefresh();
+    } finally {
+      setManualRefreshing(false);
+    }
+  };
+
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMenuClosing, setIsMenuClosing] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
@@ -649,6 +680,22 @@ const counts = useMemo(() => {
             <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
               {appSettings.companyName}
             </h1>
+            {/* Обновление стоит рядом с колокольчиком: это единственный
+                постоянный угол на десктопе, и строкой ниже уже живёт состояние
+                синхронизации — действие и его результат оказываются вместе. */}
+            {onPullRefresh && (
+              <button
+                onClick={runManualRefresh}
+                disabled={manualRefreshing || isSyncing}
+                className="p-2 rounded-full text-slate-400 hover:bg-slate-800 hover:text-white shrink-0 disabled:opacity-60"
+                aria-label="Обновить данные"
+                title="Обновить данные"
+              >
+                <span className={`block ${manualRefreshing || isSyncing ? 'animate-spin' : ''}`}>
+                  {ICONS.Refresh}
+                </span>
+              </button>
+            )}
             {showNotificationsBell && (
               <button
                 onClick={onOpenNotifications}
@@ -664,9 +711,14 @@ const counts = useMemo(() => {
               </button>
             )}
           </div>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex gap-2 items-center flex-wrap">
               {/*{!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}*/}
               {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}
+              {/* Отвечает на вопрос «свежее ли это?» без единого нажатия —
+                  чаще нужна как раз подпись, а не сама кнопка. */}
+              {!isSyncing && lastSyncedAt && (
+                <span className="text-[10px] text-slate-500">Обновлено {timeAgoRu(lastSyncedAt)}</span>
+              )}
               {syncStatus && onRetrySync && (
                 <SyncStatus status={syncStatus} isOnline={isOnline} isSyncing={isSyncing} onRetry={onRetrySync} onDiscard={onDiscardSyncItem} />
               )}

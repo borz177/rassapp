@@ -190,6 +190,9 @@ const isLanding = path === "/"
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showTemplateUpdateModal, setShowTemplateUpdateModal] = useState(false);
+  // Когда данные последний раз реально доехали с сервера. Нужен ровно для
+  // подписи «обновлено N назад»: без неё непонятно, свежее ли то, что на экране.
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
 
 
   const [showSplash, setShowSplash] = useState(true);
@@ -730,6 +733,9 @@ const handleSync = async () => {
           saveAppSettings(freshData.settings);
         }
        
+        // Отметку ставим только здесь: очередь могла уехать, а данные не
+        // приехать — тогда «обновлено только что» было бы неправдой.
+        setLastSyncedAt(Date.now());
       }
     } catch (fetchErr: any) {
       console.warn('⚠️ Failed to fetch fresh data:', fetchErr.message);
@@ -4232,6 +4238,7 @@ if (!user && !showSplash) {
     // забираем свежие данные. Отдельная «перезагрузка страницы» не нужна,
     // приложение и так живёт на локальных данных.
     onPullRefresh={handleSync}
+    lastSyncedAt={lastSyncedAt}
     supportButton={
       <SupportButton
         unreadCount={supportUnreadCount}
