@@ -54,7 +54,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances} from './src/utils';
+import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -279,65 +279,43 @@ const recentLocalWritesRef = React.useRef<Map<string, number>>(new Map());
 // свежие данные по ней всё равно приедут следующей синхронизацией.
 const RECENT_WRITE_GUARD_MS = 30000;
 
- // 🔹 Вспомогательная функция для "умного" слияния данных (исправленная версия)
-// 🔹 Улучшенная версия с защитой от потери данных
+/**
+ * Верна ли локальная версия записи больше серверной прямо сейчас.
+ *
+ * Тот же вопрос, что решает mergeServerLists для списков, — но настройки
+ * приходят одним объектом, а не списком, и через слияние не проходят. Без этой
+ * проверки переключатель, только что сдвинутый человеком, откатывался бы на
+ * экране ответом, собранным до его нажатия.
+ */
+const isLocallyFresher = (
+  id: string,
+  writes: Map<string, number>,
+  unsynced: ReadonlySet<string>,
+  now: number = Date.now()
+): boolean => {
+  if (!id) return false;
+  if (unsynced.has(id)) return true;
+  const writtenAt = writes.get(id);
+  return !!writtenAt && now - writtenAt < RECENT_WRITE_GUARD_MS;
+};
+
+ // 🔹 Слияние живёт в src/utils.ts — там его можно проверить тестами, а здесь
+// остаётся только подстановка текущего состояния: очередь, отметки локальных
+// записей и роль. Правила и причины расписаны у самой mergeServerLists.
 const mergeServerData = <T extends { id: string }>(
     current: T[],
     fresh: T[],
     collectionName: string = 'unknown'
 ): T[] => {
-    // 🔒 Записи, которые ещё не уехали на сервер, слияние не трогает НИКОГДА.
-    // Сервер о них не знает по определению, поэтому любое правило вида «сервер
-    // не вернул — значит нет» стёрло бы работу человека без следа: в очереди она
-    // осталась бы, а с экрана исчезла.
-    const keepUnsynced = (list: T[]) => list.filter(item => getUnsyncedIds().has(item.id));
-
-    // 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ДЛЯ СОТРУДНИКОВ:
-    // Если вошел сотрудник, и сервер вернул пустой массив (нет доступа), мы ОБЯЗАНЫ очистить кэш.
-    if (user?.role === 'employee' && fresh.length === 0 && current.length > 0) {
-        return keepUnsynced(current);
-    }
-
-    // 🔹 ЗАЩИТА 1: Если сервер вернул пустой массив — НЕ перезаписываем (ТОЛЬКО для менеджеров/админов)
-    if (fresh.length === 0 && current.length > 0 && user?.role !== 'employee') {
+    if (fresh.length === 0 && current.length > 0) {
         console.warn(`⚠️ Server returned empty array for "${collectionName}", keeping local data.`);
-        return current;
     }
-
-    const freshMap = new Map<string, T>(fresh.map(item => [item.id, item]));
-    const now = Date.now();
-    const updated = current.map(item => {
-        if (!freshMap.has(item.id)) return item;
-        // 🔒 Запись всё ещё в очереди — сервер о нашей правке не знает по определению,
-        // и то, что он вернул, заведомо старее. Тридцатисекундного гарда ниже тут мало:
-        // запись, отвергнутая сервером (истёк тариф, лимит, дубликат), лежит в очереди
-        // часами, и после гарда правка откатывалась бы на экране к старой версии.
-        // Человек продолжил бы работать от неё — и вот тогда его работа терялась бы
-        // по-настоящему. Про сам факт «не отправлено» он видит и точку в списке,
-        // и запись в списке неотправленных.
-        if (getUnsyncedIds().has(item.id)) return item;
-        // 🔒 Эту запись только что записали локально (см. updateList) — сервер мог ответить
-        // данными, полученными ДО этой записи (гонка с фоновым handleSync, см. комментарий
-        // у recentLocalWritesRef выше). Доверяем локальной версии ещё RECENT_WRITE_GUARD_MS,
-        // а не слепо перезаписываем тем, что вернул fetchAllData.
-        const writtenAt = recentLocalWritesRef.current.get(item.id);
-        if (writtenAt && now - writtenAt < RECENT_WRITE_GUARD_MS) return item;
-        return freshMap.get(item.id)!;
+    return mergeServerLists(current, fresh, {
+        unsyncedIds: getUnsyncedIds(),
+        recentWrites: recentLocalWritesRef.current,
+        guardMs: RECENT_WRITE_GUARD_MS,
+        isEmployee: user?.role === 'employee',
     });
-    updated.forEach(item => freshMap.delete(item.id));
-    // 🔒 То же самое для настоящих удалений (removeFromList) — если запись только что удалили
-    // локально, но сервер в этом ответе (запрошенном ДО удаления) её ещё вернул, не добавляем
-    // её обратно как "новую".
-    const newItems = Array.from(freshMap.values()).filter(item => {
-        // Удаление, ещё не уехавшее на сервер, — по той же причине: пока оно в
-        // очереди, сервер продолжает отдавать запись, и она воскресала бы на
-        // экране после каждого обновления.
-        if (getUnsyncedIds().has(item.id)) return false;
-        const writtenAt = recentLocalWritesRef.current.get(item.id);
-        return !(writtenAt && now - writtenAt < RECENT_WRITE_GUARD_MS);
-    });
-
-    return [...updated, ...newItems];
 };
 
 // 🔒 Единая функция приведения графика платежей (paymentPlan) и remainingAmount к согласованному
@@ -728,7 +706,12 @@ const handleSync = async () => {
         if (freshData.retailSales) setRetailSales(prev => mergeServerData(prev, freshData.retailSales, 'retailSales'));
         if (freshData.warehouses) setWarehouses(prev => mergeServerData(prev, freshData.warehouses, 'warehouses'));
 
-        if (freshData.settings) {
+        // Настройки — единственный объект, идущий мимо слияния списков, поэтому
+        // защита от гонки проверяется здесь вручную.
+        if (freshData.settings && !isLocallyFresher(
+              user ? `settings_${user.id}` : '',
+              recentLocalWritesRef.current,
+              getUnsyncedIds())) {
           setAppSettings(freshData.settings);
           saveAppSettings(freshData.settings);
         }
@@ -1007,7 +990,12 @@ useEffect(() => {
               if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers'));
               if (freshData.tasks) setTasks(prev => mergeServerData(prev, freshData.tasks, 'tasks'));
 
-              if (freshData.settings) {
+              // То же, что и в handleSync: за секунды между входом и ответом
+              // человек мог успеть что-то переключить.
+              if (freshData.settings && !isLocallyFresher(
+                    `settings_${localUser.id}`,
+                    recentLocalWritesRef.current,
+                    getUnsyncedIds())) {
                 setAppSettings(freshData.settings);
                 saveAppSettings(freshData.settings);
               }
@@ -1765,7 +1753,7 @@ const dashboardStats = useMemo(() => {
 
     try {
       await api.deleteItem('accounts', id);
-      setAccounts(prev => prev.filter(a => a.id !== id));
+      removeFromList(setAccounts, id);
     } catch (e: any) {
       showNotificationModal('Не удалось удалить счёт', e?.message || 'Попробуйте ещё раз.', 'error');
     }
@@ -2015,7 +2003,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
         if (buyAction === 'delete') {
           // Появился поставщик (это долг, а не трата) или закуп обнулили.
           await api.deleteItem('expenses', buyPriceExpenseId);
-          setExpenses(prev => prev.filter(e => e.id !== buyPriceExpenseId));
+          removeFromList(setExpenses, buyPriceExpenseId);
         } else if (buyAction === 'save') {
           const buyPriceExpense: Expense = {
             ...linkedExpense,
@@ -2813,7 +2801,7 @@ const handleDeletePoolLoss = async (poolAccount: Account, lossId: string) => {
   if (event.expenseId) {
     try {
       await api.deleteItem('expenses', event.expenseId);
-      setExpenses(prev => prev.filter(e => e.id !== event.expenseId));
+      removeFromList(setExpenses, event.expenseId);
     } catch (e) {
       console.error('❌ Не удалось удалить списание убытка:', e);
     }
@@ -2936,7 +2924,12 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
         console.warn('⚠️ Не удалось удалить старого инвестора:', delErr);
       }
 
-      // 🔹 4. Обновляем локальный стейт: ЗАМЕНЯЕМ старого на нового
+      // 🔹 4. Обновляем локальный стейт: ЗАМЕНЯЕМ старого на нового.
+      // Отмечаем обе записи — и удаляемую, и новую: у замены своя логика с
+      // проверкой дубля по почте, поэтому через updateList её не провести, а
+      // без отметки фоновое обновление вернуло бы старого инвестора обратно.
+      recentLocalWritesRef.current.set(oldInvestorId, Date.now());
+      recentLocalWritesRef.current.set(savedInvestor.id, Date.now());
       setInvestors(prev => {
         const withoutOld = prev.filter(i => i.id !== oldInvestorId);
         // Проверка на дубликат по email
@@ -2984,6 +2977,9 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
               name: `Счет: ${updated.name}`
             };
         const savedAccount = await api.saveItem('accounts', updatedAccount);
+        // Та же замена по id, что и у инвестора выше, — отмечаем обе стороны.
+        recentLocalWritesRef.current.set(oldAccount.id, Date.now());
+        recentLocalWritesRef.current.set(savedAccount.id, Date.now());
         setAccounts(prev => {
           const withoutOld = prev.filter(a => a.id !== oldAccount.id);
           return [savedAccount, ...withoutOld];
@@ -3050,7 +3046,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
     await api.deleteUser(id);
 
     // 2. ✅ Обновляем UI напрямую (без хелпера)
-    setInvestors(prev => prev.filter(inv => inv.id !== id));
+    removeFromList(setInvestors, id);
 
     // 3. Счёт: если это общий пул — убираем инвестора из участников, счёт не трогаем
     // (другие инвесторы пула им пользуются); если это его отдельный счёт — удаляем как раньше.
@@ -3061,7 +3057,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
       updateList(setAccounts, savedPool);
     } else if (acc) {
       await api.deleteItem('accounts', acc.id);
-      setAccounts(prev => prev.filter(a => a.id !== acc.id));
+      removeFromList(setAccounts, acc.id);
     }
 
     // 4. ✅ Перезагружаем данные для синхронизации
@@ -3145,7 +3141,7 @@ const confirmDeleteCustomer = async () => {
   const handleDeleteProductFull = async (id: string) => {
     if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
     await api.deleteItem('products', id);
-    setProducts(prev => prev.filter(p => p.id !== id));
+    removeFromList(setProducts, id);
   };
 
   /**
@@ -3496,7 +3492,7 @@ const confirmDeleteCustomer = async () => {
   const handleDeleteWarehouse = async (id: string) => {
     if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
     await api.deleteItem('warehouses', id);
-    setWarehouses(prev => prev.filter(w => w.id !== id));
+    removeFromList(setWarehouses, id);
   };
 
   const handleAddStockMovement = async (movement: StockMovement) => {
@@ -3633,6 +3629,9 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
       // и исторический type: 'MAIN' — иначе счёт остаётся «основным» на сервере.
       return { ...acc, type: kind === 'MAIN' ? 'CUSTOM' as const : kind, isMain: false };
     });
+    // Здесь переписываются ВСЕ счета разом, поэтому отмечаем каждый: иначе
+    // фоновое обновление, начатое до нажатия, вернуло бы прежние виды и флаги.
+    updatedAccounts.forEach(acc => recentLocalWritesRef.current.set(acc.id, Date.now()));
     setAccounts(updatedAccounts);
     for (const acc of updatedAccounts) await api.saveItem('accounts', acc);
   };
@@ -3706,9 +3705,9 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
   // а сохранение уходит следом — иначе галочка «выполнено» ставилась бы с задержкой сети.
   const handleSaveTask = async (task: Task) => {
     if (!user) return;
-    setTasks(prev => prev.some(t => t.id === task.id)
-      ? prev.map(t => (t.id === task.id ? task : t))
-      : [task, ...prev]);
+    // Через updateList: он же отмечает запись как «только что изменена», и
+    // фоновое обновление, начатое до правки, не откатит её на экране.
+    updateList(setTasks, task);
     try {
       await api.saveItem('tasks', task);
     } catch (e) {
@@ -3725,7 +3724,7 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
 
   const handleDeleteTask = async (taskId: string) => {
     if (!user) return;
-    setTasks(prev => prev.filter(t => t.id !== taskId));
+    removeFromList(setTasks, taskId);
     try {
       await api.deleteItem('tasks', taskId);
     } catch (e) {
@@ -4047,7 +4046,7 @@ const contractCounts = useMemo(() => {
                removeFromList(setSales, sale.id);
                // Also delete associated expense if any
                await api.deleteItem('expenses', `exp_sale_${sale.id}`);
-               setExpenses(prev => prev.filter(e => e.id !== `exp_sale_${sale.id}`));
+               removeFromList(setExpenses, `exp_sale_${sale.id}`);
                // Restore stock
                if (sale.productId) {
                    const prod = products.find(p => p.id === sale.productId);
@@ -4116,6 +4115,9 @@ const handleUpdateSettings = async (newSettings: AppSettings) => {
     saveAppSettings(newSettings);
 
     if (user) {
+        // Отмечаем до отправки: ответ, собранный сервером до неё, не должен
+        // вернуть переключатель в прежнее положение.
+        recentLocalWritesRef.current.set(`settings_${user.id}`, Date.now());
         try {
             // 🔹 3. Сохраняем общие настройки в БД
             const settingsId = `settings_${user.id}`;

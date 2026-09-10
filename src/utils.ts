@@ -832,3 +832,71 @@ export const timeAgoRu = (timestamp: number | null | undefined, now: number = Da
   if (days === 1) return 'вчера';
   return `${days} ${pluralRu(days, 'день', 'дня', 'дней')} назад`;
 };
+
+/**
+ * Слияние того, что пришло с сервера, с тем, что уже на экране.
+ *
+ * Самое опасное место приложения: здесь чужой ответ встречается с работой
+ * человека, и ошибка стоит потерянной записи. Поэтому логика вынесена из
+ * App.tsx сюда — чтобы её можно было проверить тестами, а не только вычитать
+ * глазами.
+ *
+ * Три правила, и каждое написано кровью:
+ *
+ * 1. Запись, лежащая в очереди на отправку, не трогается никогда. Сервер о ней
+ *    не знает по определению, поэтому всё, что он про неё говорит, — старее.
+ * 2. Запись, только что записанную локально, ещё какое-то время считаем вернее
+ *    серверной: ответ мог быть собран ДО этой записи.
+ * 3. Пустой ответ сервера не стирает локальные данные — у менеджера это почти
+ *    всегда сбой связи, а не «всё удалили».
+ */
+export interface MergeContext {
+  /** Идентификаторы записей, ещё не уехавших на сервер */
+  unsyncedIds: ReadonlySet<string>;
+  /** id → когда его записали локально (мс) */
+  recentWrites: ReadonlyMap<string, number>;
+  /** Сколько доверять локальной версии после записи */
+  guardMs: number;
+  /** Сотруднику пустой ответ означает «доступ закрыли», а не сбой */
+  isEmployee: boolean;
+  now?: number;
+}
+
+export const mergeServerLists = <T extends { id: string }>(
+  current: T[],
+  fresh: T[],
+  ctx: MergeContext
+): T[] => {
+  const { unsyncedIds, recentWrites, guardMs, isEmployee } = ctx;
+  const now = ctx.now ?? Date.now();
+
+  const isProtected = (id: string): boolean => {
+    if (unsyncedIds.has(id)) return true;
+    const writtenAt = recentWrites.get(id);
+    return !!writtenAt && now - writtenAt < guardMs;
+  };
+
+  // Сотруднику могли закрыть доступ — чужие записи с экрана убираем, свои
+  // неотправленные оставляем: они существуют только здесь.
+  if (isEmployee && fresh.length === 0 && current.length > 0) {
+    return current.filter(item => unsyncedIds.has(item.id));
+  }
+
+  // У менеджера пустой ответ — почти всегда обрыв, а не опустевшая база.
+  if (fresh.length === 0 && current.length > 0 && !isEmployee) return current;
+
+  const freshMap = new Map<string, T>(fresh.map(item => [item.id, item]));
+
+  const updated = current.map(item => {
+    if (!freshMap.has(item.id)) return item;
+    if (isProtected(item.id)) return item;
+    return freshMap.get(item.id)!;
+  });
+  updated.forEach(item => freshMap.delete(item.id));
+
+  // Оставшиеся — те, кого на экране нет. Среди них может быть только что
+  // удалённая запись: ответ собирали до удаления. Возвращать её нельзя.
+  const added = Array.from(freshMap.values()).filter(item => !isProtected(item.id));
+
+  return [...updated, ...added];
+};
