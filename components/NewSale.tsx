@@ -1425,10 +1425,13 @@ if (mode === 'CASH') {
                 {/* Срок */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Срок (мес.)</label>
+                  {/* Потолок срока — атрибутом max: браузер сам не даёт отправить
+                      форму со значением больше него, и на 24 месяцах оформление
+                      молча упиралось в это ограничение, без единого объяснения. */}
                   <input
                       type="number"
                       min="1"
-                      max="24"
+                      max="72"
                       className={`w-full p-3 border rounded-lg outline-none text-slate-900 dark:text-white bg-white dark:bg-slate-900 ${isFinancialLocked ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
                       value={formData.installments === 0 ? '' : formData.installments}
                       onChange={e => !isFinancialLocked && setFormData(prev => ({ ...prev, installments: e.target.value }))}
