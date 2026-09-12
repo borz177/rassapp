@@ -25,6 +25,34 @@ const getAuthHeader = () => {
     return token ? { 'x-auth-token': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
 };
 
+/**
+ * Связь только что оборвалась — не ждём таймаут на каждой следующей записи.
+ *
+ * Одна операция в интерфейсе почти никогда не одна запись: чек магазина — это
+ * сам чек плюс движение и остаток на каждую позицию, договор — договор, расход
+ * закупа и отгрузка. На зависшей связи каждая из них честно выжидала свои
+ * восемь секунд, и корзина из пяти позиций держала кассира полторы минуты с
+ * заблокированной кнопкой. Поведение при этом было верным — всё уходило в
+ * очередь, — но выглядело намертво зависшим.
+ *
+ * Поэтому после первого сетевого отказа несколько секунд считаем связь мёртвой
+ * и кладём записи в очередь сразу. Окно короткое: оно должно покрывать одну
+ * пачку записей, а не запоминать обрыв надолго — сеть могла вернуться.
+ */
+/** Сколько ждём ответ, прежде чем считать запрос провалившимся. */
+const DEFAULT_TIMEOUT_MS = 8000;
+
+// Окно обязано быть длиннее таймаута запроса: отметка ставится в catch, то есть
+// уже после ожидания, и если окно окажется короче, оно закроется раньше, чем
+// придёт отказ по следующей записи — та снова уйдёт ждать свои восемь секунд.
+// Поэтому считаем от таймаута, а не подбираем отдельное число.
+const NETWORK_DOWN_WINDOW_MS = DEFAULT_TIMEOUT_MS + 4000;
+let networkDownUntil = 0;
+const markNetworkDown = () => { networkDownUntil = Date.now() + NETWORK_DOWN_WINDOW_MS; };
+const markNetworkUp = () => { networkDownUntil = 0; };
+/** Нет смысла пытаться: браузер знает, что сети нет, либо предыдущая запись только что не дошла. */
+const skipNetworkAttempt = () => !navigator.onLine || Date.now() < networkDownUntil;
+
 let isSyncing = false;
 
 let lastSyncAttempt = 0;
@@ -64,7 +92,6 @@ const addPendingNotifRead = (id: string) => {
     localStorage.setItem(PENDING_NOTIF_READS_KEY, JSON.stringify([...set]));
 };
 
-const DEFAULT_TIMEOUT_MS = 8000;
 const fetchWithAuth = async (
   url: string,
   options: RequestInit & { timeout?: number } = {}
@@ -664,6 +691,19 @@ export const api = {
     saveItem: async (type: string, item: any, options?: { skipLimitCheck?: boolean; sales?: Sale[]; intent?: { kind: string; label?: string } }): Promise<any> => {
       console.log(`💾 Saving ${type}:`, { id: item.id });
 
+      // Связи нет — сразу в очередь, без восьмисекундного ожидания. Результат
+      // тот же, что и после таймаута, только мгновенно.
+      if (skipNetworkAttempt()) {
+        console.log('📦 Queuing without attempt (network down)');
+        await offlineStorage.addToQueue({
+          type: 'saveItem',
+          collection: type,
+          payload: item,
+          intent: options?.intent,
+        } as any);
+        return { ...item, _isOffline: true };
+      }
+
       try {
         // 🔥 fetchWithAuth сам добавит заголовки
         const res = await fetchWithAuth(`${API_URL}/data/${type}`, {
@@ -688,6 +728,8 @@ export const api = {
 
         const savedItem = await res.json();
         console.log(`✅ Saved ${type}: ${item.id}`);
+        // Запись дошла — значит связь жива, и следующие можно пробовать сразу.
+        markNetworkUp();
         return savedItem;
 
         } catch (error: any) {
@@ -749,6 +791,8 @@ export const api = {
   }
 
   if (isNetworkError && !isLimitError) {
+    // Следующие записи этой же пачки ждать таймаут уже не будут.
+    markNetworkDown();
     console.log("📦 Queuing for offline sync (network/timeout)");
     await offlineStorage.addToQueue({
       type: 'saveItem',
@@ -862,10 +906,18 @@ export const api = {
     },
 
     deleteItem: async (type: string, id: string): Promise<{ success: boolean; isOffline?: boolean }> => {
+  // Удаление обычно идёт пачкой вместе с записями — по тем же причинам не ждём
+  // таймаут на каждом, если связь только что оборвалась.
+  if (skipNetworkAttempt()) {
+    await offlineStorage.addToQueue({ type: 'deleteItem', collection: type, itemId: id });
+    return { success: true, isOffline: true };
+  }
+
   try {
     await fetchWithAuth(`${API_URL}/data/${type}/${id}`, {
       method: 'DELETE'
     });
+    markNetworkUp();
     return { success: true };
   } catch (error: any) {
     if (error.message === 'TOKEN_EXPIRED') {
@@ -890,6 +942,7 @@ export const api = {
       throw error;
     }
 
+    markNetworkDown();
     console.warn("Offline mode: queuing delete", error);
     await offlineStorage.addToQueue({
       type: 'deleteItem',
