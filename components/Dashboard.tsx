@@ -1531,7 +1531,10 @@ useEffect(() => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-900 dark:to-indigo-950/20 pb-24 w-full">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
+      {/* Сверху на телефоне отступ задавался дважды: p-4 у main плюс py-4
+          здесь. Под плавающей шапкой это давало две трети лишнего воздуха.
+          На широком экране оставляем как было — там есть куда дышать. */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-4 -mt-2 sm:mt-0 sm:pt-6 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
 
         {/* Подписка заканчивается в ближайшие сутки либо уже закончилась.
             Компонент сам решает, показываться ли — здесь условия не дублируем. */}

@@ -1107,8 +1107,12 @@ const investorProfitPayouts = useMemo(() => {
   return (
     <div className="space-y-8 animate-fade-in pb-20 w-full max-w-7xl mx-auto px-4">
       {/* Шапка. Градиенты (заливка значка, текст заголовка, кнопка) убраны: их было
-          три подряд, а градиентный текст на мелком кегле ещё и теряет контраст. */}
-      <div className="pt-6 space-y-5">
+          три подряд, а градиентный текст на мелком кегле ещё и теряет контраст.
+
+          На телефоне сверху почти не отступаем: у main уже есть свой padding, и
+          вместе с этими 1.5rem под плавающей шапкой набиралась заметная пустота.
+          На широком экране отступ прежний — там места хватает. */}
+      <div className="pt-1 sm:pt-6 space-y-5">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-sm">
