@@ -109,9 +109,6 @@ const PartnerPayoutRequestBlock: React.FC<Props> = ({ pending, minPayout, reques
               <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
                 {shortDate(active.created_at)} · {[active.method, active.details].filter(Boolean).join(' · ')}
               </p>
-              <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-1">
-                Деньги переводит человек, поэтому ответ приходит не мгновенно.
-              </p>
             </div>
           </div>
           <button
