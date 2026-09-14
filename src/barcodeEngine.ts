@@ -90,7 +90,11 @@ const createZxingEngine = async (): Promise<BarcodeEngine> => {
     // «Честный знак». QR не включаем — см. NATIVE_FORMATS.
     Z.BarcodeFormat.DATA_MATRIX,
   ]);
-  hints.set(Z.DecodeHintType.TRY_HARDER, true);
+  // TRY_HARDER намеренно не включаем. С ним пустой кадр с веб-камеры разбирался
+  // около 480 мс, без него — 30–40: распознавание идёт в основном потоке, и на
+  // десктопе страница переставала откликаться — сканер «зависал» и не закрывался.
+  // Код в рамке по центру читается и без него, а лишние кадры в секунду дают больше,
+  // чем тщательный разбор одного.
   const reader = new Z.MultiFormatReader();
   reader.setHints(hints);
 

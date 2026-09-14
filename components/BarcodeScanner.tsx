@@ -163,15 +163,23 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     const loop = async () => {
       if (!aliveRef.current) return;
       const video = videoRef.current;
+      let spent = 0;
       if (engine && video && video.readyState >= 2 && !handlingRef.current && document.visibilityState === 'visible') {
+        const started = performance.now();
         try {
           const raw = await engine.detect(video);
           if (raw && aliveRef.current) acceptRef.current(raw);
         } catch {
           // Кадр не прочитался — берём следующий.
         }
+        spent = performance.now() - started;
       }
-      if (aliveRef.current) timerRef.current = window.setTimeout(loop, engine?.kind === 'native' ? 80 : 120);
+      // Пауза не короче тройного времени разбора кадра: ZXing работает в основном
+      // потоке, и на медленном компьютере кадры шли бы сплошной очередью — кнопки,
+      // включая «Закрыть», переставали бы нажиматься. Так разбор занимает не больше
+      // четверти времени, а интерфейс остаётся живым.
+      const base = engine?.kind === 'native' ? 80 : 120;
+      if (aliveRef.current) timerRef.current = window.setTimeout(loop, Math.max(base, spent * 3));
     };
 
     (async () => {
@@ -228,6 +236,14 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
       stopCamera();
     };
   }, [attempt]);
+
+  // Esc закрывает сканер — на десктопе это первое, что нажимают, и без него
+  // казалось, что окно не закрывается.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCloseRef.current(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Подпись результата гаснет сама: следующий скан не должен читаться под старой.
   useEffect(() => {
