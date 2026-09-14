@@ -139,6 +139,9 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   );
 
   const card = 'bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700';
+  // Две колонки на десктопе — только когда есть фото. Без него левая колонка
+  // стояла бы пустой, и сведения уехали бы вправо.
+  const hasPhoto = !!product.images?.[0];
 
   return (
     <>
@@ -163,38 +166,49 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
           )}
         </div>
 
-        {/* Снимок в карточке обрезан по полосе — разглядеть на нём состояние
-            товара нельзя, а возвращаются к фотографии именно за этим. Нажатие
-            раскрывает её целиком. */}
-        {/* На телефоне снимок во всю ширину, а на широком экране — не шире
-            карточки: растянутый на всю страницу, он занимал экран целиком и
-            выталкивал цены и остатки за нижний край. Целиком фото и так
-            открывается нажатием. */}
-        {product.images?.[0] && (
-          <div className="space-y-2 sm:max-w-md">
-            <button type="button" onClick={() => setViewerAt(0)}
-                    className="block w-full rounded-3xl overflow-hidden bg-slate-100 dark:bg-slate-800 aspect-[16/10] active:scale-[0.99] transition-transform">
-              <img src={product.images[0]} alt="" decoding="sync" className="w-full h-full object-contain" />
-            </button>
-            {/* Остальные снимки строкой: иначе о них не узнать — в карточке
-                всегда была видна только первая фотография. */}
-            {product.images.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {product.images.map((src, i) => (
-                  <button key={`${src}_${i}`} type="button" onClick={() => setViewerAt(i)}
-                          className="shrink-0 w-16 h-16 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:scale-95 transition-transform">
-                    <img src={src} alt="" decoding="sync" className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
         {viewerAt !== null && product.images && (
           <ImageViewer images={product.images} startIndex={viewerAt} onClose={() => setViewerAt(null)} />
         )}
 
+        {/* На десктопе — две колонки, как карточка товара в магазине: слева фото
+            и штрихкод, справа сведения. Одиночный снимок над вкладками оставлял
+            справа пустое поле во всю ширину. На телефоне всё идёт столбиком. */}
+        <div className={hasPhoto
+          ? 'space-y-4 lg:space-y-0 lg:grid lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:gap-6 lg:items-start'
+          : 'space-y-4'}>
+        {hasPhoto && (
+        <aside className="space-y-3 lg:sticky lg:top-4">
+          {/* Нажатие раскрывает снимок целиком. Фон белый, как у самих
+              фотографий товара: на сером по бокам проступали полосы. */}
+          <button type="button" onClick={() => setViewerAt(0)}
+                  className="block w-full sm:max-w-md lg:max-w-none rounded-3xl overflow-hidden bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 aspect-[4/3] lg:aspect-square active:scale-[0.99] transition-transform">
+            <img src={product.images![0]} alt="" decoding="sync" className="w-full h-full object-contain p-3" />
+          </button>
+          {/* Остальные снимки строкой: иначе о них не узнать — в карточке
+              всегда была видна только первая фотография. */}
+          {product.images!.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {product.images!.map((src, i) => (
+                <button key={`${src}_${i}`} type="button" onClick={() => setViewerAt(i)}
+                        className="shrink-0 w-16 h-16 rounded-xl overflow-hidden bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:scale-95 transition-transform">
+                  <img src={src} alt="" decoding="sync" className="w-full h-full object-contain p-1" />
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Штрихкод под фото — на десктопе он виден на обеих вкладках.
+              На телефоне он внутри «Информации», чтобы не толкать вкладки вниз. */}
+          {product.barcodes?.[0] && barcodeSvg(product.barcodes[0]) && (
+            <div className="hidden lg:flex rounded-2xl border border-slate-100 dark:border-slate-700 bg-white px-4 py-3 flex-col items-center">
+              <div className="w-full max-w-[280px] h-16 [&>svg]:w-full [&>svg]:h-full"
+                   dangerouslySetInnerHTML={{ __html: barcodeSvg(product.barcodes[0]) || '' }} />
+              <p className="mt-1 text-sm font-bold tracking-[0.2em] text-slate-800 tabular-nums">{product.barcodes[0]}</p>
+            </div>
+          )}
+        </aside>
+        )}
+
+        <div className="space-y-4 min-w-0">
         <div className="relative flex p-1 rounded-[24px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
           <TabPill index={tab === 'INFO' ? 0 : 1} count={2} pad={4} />
           {([['INFO', 'Информация'], ['HISTORY', 'История']] as const).map(([id, label]) => (
@@ -211,7 +225,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                 надо пробить — код сканируют прямо с экрана. Фон белый и в
                 тёмной теме: светлые штрихи на тёмном сканер не читает. */}
             {product.barcodes?.[0] && barcodeSvg(product.barcodes[0]) && (
-              <div className="rounded-2xl border border-slate-100 dark:border-slate-700 bg-white px-4 py-3 flex flex-col items-center">
+              <div className={`${hasPhoto ? 'lg:hidden ' : ''}rounded-2xl border border-slate-100 dark:border-slate-700 bg-white px-4 py-3 flex flex-col items-center`}>
                 <div className="w-full max-w-[280px] h-16 [&>svg]:w-full [&>svg]:h-full"
                      dangerouslySetInnerHTML={{ __html: barcodeSvg(product.barcodes[0]) || '' }} />
                 <p className="mt-1 text-sm font-bold tracking-[0.2em] text-slate-800 tabular-nums">{product.barcodes[0]}</p>
@@ -331,6 +345,8 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
             </div>
           )
         )}
+        </div>
+        </div>
       </div>
 
       {/* Документ поверх карточки товара — тем же выездом, что и везде. Шаг
