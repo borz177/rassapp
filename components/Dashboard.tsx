@@ -1935,10 +1935,14 @@ useEffect(() => {
     </div>
   </div>
 
-  {/* 7. Ожидаемые платежи */}
-  <div className="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-default">
-    <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 dark:bg-amber-900/20 rounded-full opacity-50 pointer-events-none"></div>
-    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center text-amber-600 dark:text-amber-400 mb-4 z-10 relative shadow-sm">
+  {/* 7. Ожидаемые платежи. Открывает тот же список, что и «Получено», — из
+      карточки видно сумму, а из списка — от кого именно её ждать. Подпись
+      «нажмите для деталей» здесь не нужна: место занято тем, что важнее, —
+      за какой период это число. */}
+  <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-amber-200 flex flex-col relative overflow-hidden cursor-pointer active:scale-[0.98]"
+       onClick={() => setSelectedPaymentType('expected')}>
+    <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-50 dark:bg-amber-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center text-amber-600 dark:text-amber-400 mb-4 z-10 relative group-hover:bg-amber-500 group-hover:text-white transition-colors duration-300 shadow-sm">
       <CalendarIcon size={20}/>
     </div>
     <div className="z-10 relative mt-auto">
@@ -1949,10 +1953,15 @@ useEffect(() => {
       </p>
       <p className="text-[10px] sm:text-xs text-slate-400 mt-1">От клиентов в этом месяце</p>
     </div>
+    <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+      <svg className="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </div>
   </div>
 
   {/* 8. Получено в этом месяце */}
-  <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-default"
+  <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-pointer active:scale-[0.98]"
        onClick={() => setSelectedPaymentType('received')}>
     <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 dark:bg-emerald-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
     <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 z-10 relative group-hover:bg-emerald-500 group-hover:text-white transition-colors duration-300 shadow-sm">
