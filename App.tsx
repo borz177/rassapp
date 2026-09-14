@@ -3951,6 +3951,13 @@ const handleQuickAddCustomer = async (data: {
     });
     setCurrentView('CREATE_EXPENSE');
   };
+  // Отдать долг поставщику со страницы партнёров: форма расхода сразу с этим
+  // поставщиком. Без привязки к договору — долг бывает и за поставки на склад.
+  const handlePaySupplierDebt = (supplier: Supplier, debt: number) => {
+    setDraftExpenseData({ category: 'Оплата партнёру', supplierId: supplier.id, supplierDebt: debt });
+    rememberFormReturn();
+    setCurrentView('CREATE_EXPENSE');
+  };
 const handleUpdateProfile = async (data: any) => {
     if (!user) return;
 
@@ -4467,6 +4474,7 @@ if (!user && !showSplash) {
                       onUpdateSupplier={handleUpdateSupplier}
                       onDeleteSupplier={handleDeleteSupplier}
                       onViewDetails={handleSelectSupplier}
+                      onPayDebt={handlePaySupplierDebt}
                    movements={stockMovements} products={products} expenses={expenses}
                              />
                   </PagePush>

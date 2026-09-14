@@ -23,6 +23,8 @@ interface NewExpenseProps {
     title?: string;
     amount?: number;
     maxAmount?: number;
+    /** Общий долг поставщику (договоры и поставки на склад) — подсказка при оплате из списка партнёров */
+    supplierDebt?: number;
   } | null;
   onClose: () => void;
   onSubmit: (data: any) => void;
@@ -88,7 +90,11 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [pendingExpenseData, setPendingExpenseData] = useState<any>(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
-  const [selectedSupplierId, setSelectedSupplierId] = useState('');
+  // Со страницы партнёров приходят уже с поставщиком — выбирать его второй раз незачем.
+  // У оплаты по конкретному договору (saleId) поставщик задан своим экраном.
+  const [selectedSupplierId, setSelectedSupplierId] = useState(
+    initialData?.supplierId && !initialData?.saleId ? initialData.supplierId : ''
+  );
   const [selectedDebtSaleId, setSelectedDebtSaleId] = useState('');
 
   const selectedInvestor = investors.find(i => i.id === selectedInvestorId);
@@ -182,6 +188,10 @@ const NewExpense: React.FC<NewExpenseProps> = ({
       if (category !== 'Оплата партнёру') {
           setSelectedSupplierId('');
           setSelectedDebtSaleId('');
+      } else {
+          // Долг поставщику — возврат закупа, а не расход из прибыли. Галочка, поставленная
+          // до смены категории, иначе молча уехала бы в сохранённый расход.
+          setFromProfit(false);
       }
   }, [category]);
 
@@ -334,8 +344,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                         : title,
             category: category,
             // Списание из прибыли делится между менеджером и инвесторами по долям счёта
-            fromProfit: fromProfit || undefined,
-            profitSource: fromProfit ? profitSource : undefined,
+            fromProfit: (fromProfit && category !== 'Оплата партнёру') || undefined,
+            profitSource: fromProfit && category !== 'Оплата партнёру' ? profitSource : undefined,
         };
 
         // 🔥 Сохраняем ID сотрудника в расходе
@@ -556,6 +566,12 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                                      ))}
                                  </select>
 
+                                 {selectedSupplierId && initialData?.supplierId === selectedSupplierId && !!initialData?.supplierDebt && (
+                                     <p className="text-sm text-amber-800 dark:text-amber-300">
+                                         Долг поставщику: <b>{formatCurrency(initialData.supplierDebt)} ₽</b>
+                                     </p>
+                                 )}
+
                                  {selectedSupplierId && supplierOpenDebts.length > 0 && (
                                      <div>
                                          <label className="block text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">Погасить долг по договору (опционально)</label>
@@ -623,7 +639,9 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                      прибыли. Тогда сумма делится между менеджером и инвесторами по их долям
                      в счёте — так же, как по этому счёту начисляется прибыль.
                      У «Моей выплаты» для этого есть свой выбор источника ниже. */}
-                 {category !== 'Моя выплата' && (
+                 {/* У оплаты поставщику блока прибыли нет: долг за товар гасится из
+                     оборотных денег — это возврат закупа, а не расход из заработанного. */}
+                 {category !== 'Моя выплата' && category !== 'Оплата партнёру' && (
                      <div className="pt-2">
                          <label className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-colors ${
                              fromProfit

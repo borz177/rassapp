@@ -16,10 +16,12 @@ interface SuppliersProps {
   onUpdateSupplier: (supplier: Supplier) => void;
   onDeleteSupplier: (id: string) => void;
   onViewDetails: (supplier: Supplier) => void;
+  /** Отдать долг: форма расхода с уже выбранным поставщиком */
+  onPayDebt?: (supplier: Supplier, debt: number) => void;
 }
 
 const Suppliers: React.FC<SuppliersProps> = ({
-  suppliers, sales, movements = [], products = [], expenses = [], showCents, onAddSupplier, onUpdateSupplier, onDeleteSupplier, onViewDetails
+  suppliers, sales, movements = [], products = [], expenses = [], showCents, onAddSupplier, onUpdateSupplier, onDeleteSupplier, onViewDetails, onPayDebt
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -218,9 +220,27 @@ const Suppliers: React.FC<SuppliersProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-slate-50 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400">
-                <span>Договоров: <span className="font-semibold text-slate-700 dark:text-slate-300">{stat.count}</span></span>
-                {stat.lastDate && <span>Посл. договор: <span className="font-semibold text-slate-700 dark:text-slate-300">{new Date(stat.lastDate).toLocaleDateString('ru-RU')}</span></span>}
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mt-3 pt-3 border-t border-slate-50 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <span>Договоров: <span className="font-semibold text-slate-700 dark:text-slate-300">{stat.count}</span></span>
+                  {stat.lastDate && <span>Посл. договор: <span className="font-semibold text-slate-700 dark:text-slate-300">{new Date(stat.lastDate).toLocaleDateString('ru-RU')}</span></span>}
+                  {/* На телефоне долг справа от имени скрыт — показываем его здесь,
+                      рядом с кнопкой, которой его отдают. */}
+                  {debt > 0 && (
+                    <span className="sm:hidden">Долг: <span className="font-bold text-red-600 dark:text-red-400">{formatCurrency(debt, showCents)} ₽</span></span>
+                  )}
+                </div>
+                {/* Отдать долг прямо из списка: раньше для этого нужно было уйти в
+                    расходы и там заново искать поставщика в выпадающем списке. */}
+                {debt > 0 && onPayDebt && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onPayDebt(s, debt); }}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold active:scale-95 transition-transform"
+                  >
+                    Отдать долг
+                  </button>
+                )}
               </div>
 
               {activeMenuId === s.id && (
