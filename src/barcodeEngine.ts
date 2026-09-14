@@ -42,8 +42,18 @@ const loadZxing = (): Promise<any> => {
   return zxingLoading;
 };
 
-/** Форматы, которые встречаются на товарах и накладных. Остальные только замедляют поиск в кадре. */
-const NATIVE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'code_93', 'itf', 'codabar', 'qr_code', 'data_matrix'];
+/**
+ * Форматы, которые встречаются на товарах, — по убыванию важности. QR сюда
+ * намеренно не входит: на этикетках в нём ссылка на сайт производителя, и
+ * камера хватала её вместо штрихкода. DataMatrix — последним: это «Честный
+ * знак», из него берётся штрихкод товара, если обычного в кадре нет.
+ */
+const NATIVE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'code_93', 'itf', 'codabar', 'data_matrix'];
+
+const formatRank = (format?: string) => {
+  const i = format ? NATIVE_FORMATS.indexOf(format) : -1;
+  return i < 0 ? NATIVE_FORMATS.length : i;
+};
 
 const createNativeEngine = async (): Promise<BarcodeEngine | null> => {
   const Detector = (window as any).BarcodeDetector;
@@ -57,8 +67,13 @@ const createNativeEngine = async (): Promise<BarcodeEngine | null> => {
     return {
       kind: 'native',
       detect: async video => {
-        const found = await detector.detect(video);
-        return found?.[0]?.rawValue || null;
+        const found: { rawValue?: string; format?: string }[] = await detector.detect(video);
+        // В кадре бывает несколько кодов сразу — на бутылке рядом со штрихкодом
+        // стоит DataMatrix. Берём самый важный формат, а не первый попавшийся.
+        const best = (found || [])
+          .filter(f => f.rawValue)
+          .sort((a, b) => formatRank(a.format) - formatRank(b.format))[0];
+        return best?.rawValue || null;
       },
     };
   } catch {
@@ -72,7 +87,8 @@ const createZxingEngine = async (): Promise<BarcodeEngine> => {
   hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [
     Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E,
     Z.BarcodeFormat.CODE_128, Z.BarcodeFormat.CODE_39, Z.BarcodeFormat.ITF, Z.BarcodeFormat.CODABAR,
-    Z.BarcodeFormat.QR_CODE,
+    // «Честный знак». QR не включаем — см. NATIVE_FORMATS.
+    Z.BarcodeFormat.DATA_MATRIX,
   ]);
   hints.set(Z.DecodeHintType.TRY_HARDER, true);
   const reader = new Z.MultiFormatReader();

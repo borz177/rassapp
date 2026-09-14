@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { extractProductCode } from './barcode';
+import { scanBeep } from './scanFeedback';
 
 /**
  * Ручной сканер штрихкодов (USB или Bluetooth).
@@ -107,7 +109,11 @@ const install = () => {
       event.stopPropagation();
       if (field?.isConnected) setFieldValue(field, before);
       field = null;
-      handlers[handlers.length - 1]?.current(step.code);
+      // Ручной сканер тоже читает QR со ссылкой и «Честный знак» — в экран
+      // уходит только код товара, ссылка отбивается сигналом ошибки.
+      const extracted = extractProductCode(step.code);
+      if ('error' in extracted) { scanBeep('error'); return; }
+      handlers[handlers.length - 1]?.current(extracted.code);
     }
   }, true);
 };

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Flashlight, FlashlightOff, Keyboard, ScanBarcode, X } from 'lucide-react';
 import ModalPortal from './ModalPortal';
-import { normalizeBarcode } from '../src/barcode';
+import { extractProductCode, normalizeBarcode } from '../src/barcode';
 import { createBarcodeEngine, type BarcodeEngine } from '../src/barcodeEngine';
 import { primeScanSound, scanBeep, type ScanTone } from '../src/scanFeedback';
 
@@ -95,8 +95,17 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     if (videoRef.current) videoRef.current.srcObject = null;
   };
 
-  const deliver = async (code: string) => {
+  const deliver = async (raw: string) => {
     if (handlingRef.current) return;
+    // Ссылку из QR и прочее, что не является кодом товара, дальше не пускаем;
+    // из DataMatrix «Честного знака» достаём штрихкод товара.
+    const extracted = extractProductCode(raw);
+    if ('error' in extracted) {
+      scanBeep('error');
+      setOutcome({ tone: 'error', title: extracted.error, at: Date.now() });
+      return;
+    }
+    const { code } = extracted;
     handlingRef.current = true;
     try {
       const result = (await onCodeRef.current(code)) || { tone: 'ok' as const, title: code };

@@ -12,7 +12,7 @@ import ProductDetails from './ProductDetails';
 import SubPage from './transitions/SubPage';
 import BarcodeScanner, { ScanButton, type ScanOutcome } from './BarcodeScanner';
 import LabelPrintSheet from './LabelPrintSheet';
-import { barcodeOwner, findProductByCode, generateInternalBarcodes, normalizeBarcode, productMatchesQuery } from '../src/barcode';
+import { barcodeOwner, extractProductCode, findProductByCode, generateInternalBarcodes, normalizeBarcode, productMatchesQuery } from '../src/barcode';
 import { useBarcodeScanInput } from '../src/barcodeWedge';
 import { scanBeep } from '../src/scanFeedback';
 
@@ -340,8 +340,11 @@ const Warehouse: React.FC<WarehouseProps> = ({
    * @returns текст ошибки или null
    */
   const addFormBarcode = (raw: string): string | null => {
-    const code = normalizeBarcode(raw);
-    if (!code) return null;
+    if (!normalizeBarcode(raw)) return null;
+    // Ссылку в поле штрихкода не пускаем и при ручном вводе — это не код товара.
+    const extracted = extractProductCode(raw);
+    if ('error' in extracted) return extracted.error;
+    const { code } = extracted;
     const owner = barcodeOwner(products, code, editing?.id);
     if (owner) return `Штрихкод ${code} уже у товара «${owner.name}»`;
     setForm(f => ({ ...f, barcodeDraft: '', barcodes: f.barcodes.includes(code) ? f.barcodes : [...f.barcodes, code] }));
@@ -397,7 +400,17 @@ const Warehouse: React.FC<WarehouseProps> = ({
     if (!form.name.trim()) { setError('Название обязательно'); return; }
     // Код, набранный в поле, но не добавленный, — тоже код: человек нажал
     // «Сохранить» и не должен потерять то, что только что ввёл.
-    const codes = Array.from(new Set([...form.barcodes, normalizeBarcode(form.barcodeDraft)].filter(Boolean)));
+    let draftCode = '';
+    if (normalizeBarcode(form.barcodeDraft)) {
+      const extracted = extractProductCode(form.barcodeDraft);
+      if ('error' in extracted) { setError(extracted.error); return; }
+      draftCode = extracted.code;
+    }
+    // Ссылка, сохранённая раньше, пока камера принимала QR, тоже не проходит:
+    // человек увидит ошибку и уберёт её из списка кодов.
+    const badSaved = form.barcodes.find(c => 'error' in extractProductCode(c));
+    if (badSaved) { setError(`«${badSaved}» — ссылка, а не штрихкод. Уберите её из списка кодов.`); return; }
+    const codes = Array.from(new Set([...form.barcodes, draftCode].filter(Boolean)));
     for (const code of codes) {
       const owner = barcodeOwner(products, code, editing?.id);
       if (owner) { setError(`Штрихкод ${code} уже у товара «${owner.name}»`); return; }
