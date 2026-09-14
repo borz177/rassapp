@@ -900,3 +900,54 @@ export const mergeServerLists = <T extends { id: string }>(
 
   return [...updated, ...added];
 };
+
+/**
+ * Сколько по договору ещё должны занести в указанный период.
+ *
+ * Карточка «Ожидаемые платежи» и список под ней считали это по-разному, и суммы
+ * не сходились. Карточка брала все плановые слоты месяца, не глядя на isPaid, —
+ * слот, уже закрытый оплатой, оставался «ожидаемым». Список показывал только
+ * клиентов с просрочкой — кто платит по графику, в нём не было вовсе.
+ *
+ * Правило здесь то же, что в reconcileSalePaymentPlan: внесённые деньги (и скидка
+ * при досрочном погашении) закрывают плановые слоты от раннего к позднему. Разница
+ * одна, и она в пользу точности: частично оплаченный слот ждёт не всю сумму, а
+ * остаток. Иначе клиент, внёсший 4 000 из 10 000, числился бы должным все 10 000,
+ * и сумма ожидаемого разошлась бы с остатком долга по договору.
+ *
+ * Возвращает непокрытые части слотов с датой внутри периода.
+ */
+export const expectedPaymentsInPeriod = (
+  sale: Pick<Sale, 'paymentPlan'>,
+  from: Date,
+  to: Date,
+): { id: string; date: string; amount: number }[] => {
+  const plan = sale.paymentPlan || [];
+
+  // Те же деньги, что считает reconcileSalePaymentPlan: реальные платежи плюс скидки.
+  let money = plan
+    .filter(p => p.isPaid && p.isRealPayment !== false)
+    .reduce((sum, p) => sum + (Number(p.amount) || 0) + (Number((p as any).discountAmount) || 0), 0);
+
+  const slots = plan
+    .filter(p => p.isRealPayment !== true)
+    .slice()
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  const result: { id: string; date: string; amount: number }[] = [];
+  for (const slot of slots) {
+    const amount = Number(slot.amount) || 0;
+    // Копеечный допуск тот же, что в reconcileSalePaymentPlan: суммы слотов — доли
+    // вроде 48 100 / 6, и оплата «ровно по графику» расходится с ними на копейку.
+    // Без допуска такой слот висел бы ожидаемым на 0,01 ₽.
+    const covered = money >= amount - 0.01 ? amount : Math.min(amount, money);
+    money = Math.max(0, money - covered);
+    const left = Math.round((amount - covered) * 100) / 100;
+
+    const when = new Date(slot.date);
+    if (left >= 0.01 && when >= from && when <= to) {
+      result.push({ id: slot.id, date: slot.date, amount: left });
+    }
+  }
+  return result;
+};

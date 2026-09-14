@@ -7,7 +7,7 @@ import ModeSwitch from './ModeSwitch';
 import { ICONS } from '../constants';
 import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
 import MyBonusCard from './MyBonusCard';
-import { formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
+import { expectedPaymentsInPeriod, formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import {createPortal} from "react-dom";
 
@@ -376,27 +376,19 @@ const PaymentDetailsModal = ({
       const customer = customers.find(c => c.id === sale.customerId);
 
             if (type === 'expected') {
-        // 🔹 Проверяем общую просрочку перед добавлением платежей клиента
-        const clientOverdue = calculateSaleOverdue(sale, today);
+        // 🔒 Тот же расчёт, что у карточки. Раньше сюда попадали только клиенты с
+        // просрочкой: кто платит по графику и ещё не внёс платёж этого месяца, в
+        // списке не показывался вовсе, и сумма списка расходилась с карточкой.
+        if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
 
-        // ⛔ Если клиент в графике (просрочки нет) — не показываем его здесь
-        if (clientOverdue <= 0) return;
-
-        // 🔹 Ожидаемые: плановые, неоплаченные, дата в этом месяце
-        sale.paymentPlan.forEach(p => {
-          if ((p.isRealPayment === false || p.isRealPayment === undefined) && !p.isPaid) {
-            const paymentDate = new Date(p.date);
-            if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-              const isOverdue = paymentDate < today;
-              result.push({
-                sale,
-                customerName: customer?.name || 'Неизвестно',
-                amount: p.amount,
-                date: p.date,
-                isOverdue
-              });
-            }
-          }
+        expectedPaymentsInPeriod(sale, monthStart, monthEnd).forEach(p => {
+          result.push({
+            sale,
+            customerName: customer?.name || 'Неизвестно',
+            amount: p.amount,
+            date: p.date,
+            isOverdue: new Date(p.date) < today
+          });
         });
       } else {
 
@@ -1328,19 +1320,13 @@ const expectedPaymentsThisMonth = useMemo(() => {
     filteredSales.forEach(sale => {
         if (sale.customerId.startsWith('system_')) return;
         if (investors.some(i => i.id === sale.customerId)) return;
-        // 🔹 Если нужно — верни фильтр по статусу:
         if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return;
 
-        sale.paymentPlan.forEach(payment => {
-            // 🔹 Надёжная проверка: только плановые платежи
-            if (payment.isRealPayment !== true) {
-                const paymentDate = new Date(payment.date);
-                paymentDate.setHours(0, 0, 0, 0); // 🔹 Нормализуем дату!
-
-                if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-                    expected += payment.amount;
-                }
-            }
+        // 🔒 Одна функция на карточку и список под ней. Раньше карточка брала все
+        // плановые слоты месяца, не глядя на то, закрыты ли они оплатой, — и сумма
+        // не сходилась со списком, который человек открывал для проверки.
+        expectedPaymentsInPeriod(sale, monthStart, monthEnd).forEach(p => {
+            expected += p.amount;
         });
     });
 
