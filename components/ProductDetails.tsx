@@ -166,8 +166,12 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
         {/* Снимок в карточке обрезан по полосе — разглядеть на нём состояние
             товара нельзя, а возвращаются к фотографии именно за этим. Нажатие
             раскрывает её целиком. */}
+        {/* На телефоне снимок во всю ширину, а на широком экране — не шире
+            карточки: растянутый на всю страницу, он занимал экран целиком и
+            выталкивал цены и остатки за нижний край. Целиком фото и так
+            открывается нажатием. */}
         {product.images?.[0] && (
-          <div className="space-y-2">
+          <div className="space-y-2 sm:max-w-md">
             <button type="button" onClick={() => setViewerAt(0)}
                     className="block w-full rounded-3xl overflow-hidden bg-slate-100 dark:bg-slate-800 aspect-[16/10] active:scale-[0.99] transition-transform">
               <img src={product.images[0]} alt="" decoding="sync" className="w-full h-full object-contain" />
