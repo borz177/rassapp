@@ -1,6 +1,7 @@
 import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary, AdminPayment, PLAN_CONTRACT_LIMITS} from "../types";
 import { offlineStorage } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
+import { postJson, mayBeLostRegistration } from '../src/authRequest';
 // Helper to determine the API URL dynamically
 const getBaseUrl = () => {
     const { hostname, protocol } = window.location;
@@ -344,72 +345,73 @@ export const api = {
 },
 
     // Auth (ПУБЛИЧНЫЕ — обычный fetch)
+    // Отправку кода не повторяем при обрыве: если первый запрос всё же дошёл,
+    // пришло бы второе письмо с другим кодом, и человек ввёл бы не тот.
     sendCode: async (email: string, type: 'REGISTER' | 'RESET'): Promise<void> => {
-        const res = await fetch(`${API_URL}/auth/send-code`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, type })
+        await postJson(`${API_URL}/auth/send-code`, { email, type }, {
+            fallbackMsg: 'Ошибка отправки кода',
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.msg || 'Ошибка отправки кода');
     },
 
     register: async (userData: any): Promise<any> => {
+        // Регистрацию повторяем один раз. Это последний шаг после кода из письма,
+        // пара минут простоя — и соединение успевает закрыться; Safari тогда
+        // выдаёт «Load failed», не отправив запрос вовсе.
+        let retried = false;
+        let data: any;
         try {
-            const res = await fetch(`${API_URL}/auth/register`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(userData)
+            data = await postJson(`${API_URL}/auth/register`, userData, {
+                fallbackMsg: 'Ошибка регистрации',
+                retries: 1,
+                onRetry: () => { retried = true; },
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.msg || 'Ошибка регистрации');
-
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data.user));
-            await offlineStorage.setCache('user_me', data.user);
-
-            return data.user;
         } catch (error: any) {
-            console.error("API Register Error:", error);
-            if (error.message === 'Failed to fetch') {
-                throw new Error('Нет соединения с сервером. Убедитесь, что бэкенд запущен.');
+            // Первый запрос мог дойти и создать аккаунт — потерялся только ответ.
+            // Тогда повтор получит отказ, и человек застрял бы перед экраном
+            // «уже существует» с аккаунтом, которым не может воспользоваться.
+            // Входим теми же email и паролем, что он только что ввёл.
+            if (mayBeLostRegistration(error, retried) && userData?.email && userData?.password) {
+                try {
+                    return await api.login({ email: userData.email, password: userData.password });
+                } catch {
+                    // Войти не вышло — значит, аккаунта всё-таки нет; показываем исходный отказ.
+                }
             }
+            console.error('API Register Error:', error);
             throw error;
         }
+
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        await offlineStorage.setCache('user_me', data.user);
+        return data.user;
     },
 
+    // Смену пароля не повторяем: код удаляется сразу после успеха, и повтор
+    // уже прошедшей смены упёрся бы в «Сначала запросите код».
     resetPassword: async (resetData: any): Promise<void> => {
-        const res = await fetch(`${API_URL}/auth/reset-password`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(resetData)
+        await postJson(`${API_URL}/auth/reset-password`, resetData, {
+            fallbackMsg: 'Ошибка смены пароля',
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.msg || 'Ошибка смены пароля');
     },
 
     login: async (creds: any): Promise<any> => {
+        // Вход безопасно повторять: он ничего не создаёт и не меняет.
+        let data: any;
         try {
-            const res = await fetch(`${API_URL}/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(creds)
+            data = await postJson(`${API_URL}/auth/login`, creds, {
+                fallbackMsg: 'Ошибка входа',
+                retries: 1,
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.msg || 'Ошибка входа');
-
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data.user));
-            await offlineStorage.setCache('user_me', data.user);
-
-            return data.user;
         } catch (error: any) {
-            console.error("API Login Error:", error);
-            if (error.message === 'Failed to fetch') {
-                throw new Error('Нет соединения с сервером. Убедитесь, что бэкенд запущен.');
-            }
+            console.error('API Login Error:', error);
             throw error;
         }
+
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        await offlineStorage.setCache('user_me', data.user);
+        return data.user;
     },
 
     // 🔥 ЗАЩИЩЁННЫЕ МЕТОДЫ (используют fetchWithAuth)
