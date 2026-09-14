@@ -5,6 +5,7 @@ import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer
 import { buildContractHtml, resolveContractTemplate } from '../src/contractTemplates';
 import { contractNumbers, formatCurrency, formatDate, escapeHtml, calculateSaleOverdue, normalizePhoneForWhatsApp, pluralRu } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
+import { openPrintPreview } from './PrintPreview';
 import UnsyncedMark from './UnsyncedMark';
 import { createPortal } from 'react-dom';
 import { api } from '../services/api';
@@ -594,9 +595,6 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
     const companyName = appSettings?.companyName || "Компания";
     const sellerPhone = user?.phone || "";
     const hasGuarantor = !!sale.guarantorName;
-    const printWindow = window.open('', '_blank');
-
-    if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }
 
     // 🔒 Одна таблица "График платежей": плановая дата месяца показывается ТОЛЬКО пока по этому
     // месяцу не прошло ни одной реальной оплаты. Как только на месяц пришли деньги — даже
@@ -682,12 +680,14 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
         monthlyPayment: sale.paymentPlan?.[0]?.amount || 0,
         startDate: sale.startDate,
         rows: scheduleRows,
-      },
-      { withPrintButton: true }
+      }
     );
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    // Просмотром поверх приложения, а не новым окном: в приложении с экрана «Домой»
+    // и в APK у окна нет кнопки «назад», и выйти можно было только перезапуском.
+    // withPrintButton больше не нужен: кнопку «Закрыть» и печать даёт просмотр,
+    // а своя автопечать документа открыла бы диалог второй раз.
+    openPrintPreview(htmlContent, { title: `Договор · ${customer?.name || sale.productName}` });
   };
 
   const ActionMenu = () => {

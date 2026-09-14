@@ -3,6 +3,7 @@ import TabPill from './TabPill';
 import ShopReportBody from './ShopReportBody';
 import { Investor, AppSettings, Sale, Expense, Account, Customer, RetailSale as RetailSaleType, Product, StockMovement} from '../types';
 import { formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor, calculateSaleOverdue, addMonthsClamped, shareDateForSale } from '../src/utils';
+import { openPrintPreview } from './PrintPreview';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -650,8 +651,8 @@ const Reports: React.FC<ReportsProps> = ({
                 <tr><th>Клиент</th><th>Товар</th><th>Пропущено</th><th>С даты</th><th>Сумма долга</th></tr>
                 ${overduePayments.map((p: { customerName: string; productName: string; missedCount: number; earliestMissedDate: string; overdueAmount: number }) => `
                 <tr>
-                    <td><strong>${p.customerName}</strong></td>
-                    <td>${p.productName}</td>
+                    <td><strong>${escapeHtml(p.customerName)}</strong></td>
+                    <td>${escapeHtml(p.productName)}</td>
                     <td class="red">${p.missedCount} пл.</td>
                     <td>${p.earliestMissedDate}</td>
                     <td class="red">${fmt(p.overdueAmount)}</td>
@@ -665,7 +666,7 @@ const Reports: React.FC<ReportsProps> = ({
                 <tr><th>Клиент</th><th>Платежей</th><th>Сумма</th></tr>
                 ${customerBreakdown.map((c: { customerName: string; count: number; total: number }) => `
                 <tr>
-                    <td><strong>${c.customerName}</strong></td>
+                    <td><strong>${escapeHtml(c.customerName)}</strong></td>
                     <td>${c.count}</td>
                     <td class="green">${fmt(c.total)}</td>
                 </tr>`).join('')}
@@ -701,11 +702,6 @@ const Reports: React.FC<ReportsProps> = ({
             .btn-close:hover { background: #e2e8f0; }
             @media print { .toolbar { display: none !important; } @page { margin: 1.5cm; size: A4; } body { padding: 0; } }
         </style></head><body>
-        <div class="toolbar">
-            <span class="toolbar-title">Финансовый отчёт · ${filters.period.start} — ${filters.period.end}</span>
-            <button class="btn btn-print" onclick="window.print()">🖨️ Сохранить PDF</button>
-            <button class="btn btn-close" onclick="window.close()">✕ Закрыть</button>
-        </div>
         ${companyName ? `<div class="company">${escapeHtml(companyName)}</div>` : ''}
         <h1>Финансовый отчёт</h1>
         <div class="subtitle">Период: <strong>${filters.period.start} — ${filters.period.end}</strong> · Счёт: <strong>${escapeHtml(selectedAccountName)}</strong></div>
@@ -725,12 +721,11 @@ const Reports: React.FC<ReportsProps> = ({
         ${customerBreakdownHTML}
         </body></html>`;
 
-        const win = window.open('', '_blank', 'width=900,height=700');
-        if (win) {
-            win.document.write(html);
-            win.document.close();
-            setTimeout(() => win.print(), 300);
-        }
+        // Просмотром поверх приложения, а не новым окном: в приложении с экрана «Домой»
+        // и в APK у окна нет кнопки «назад», и выйти можно было только перезапуском.
+        // Свои кнопки «Сохранить PDF» и «Закрыть» из отчёта убраны — у просмотра они есть,
+        // а window.close() во фрейме не работает.
+        openPrintPreview(html, { title: `Финансовый отчёт · ${filters.period.start} — ${filters.period.end}` });
     };
 
     // Вкладка «Наличные» живёт своей шапкой: у неё другой источник данных и свои итоги.

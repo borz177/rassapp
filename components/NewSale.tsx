@@ -13,6 +13,7 @@ import { getSellerPhone, escapeHtml, formatDate, addMonthsClamped, stockAtWareho
 import { buildContractHtml, buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } from './feedback';
+import { openPrintPreview } from './PrintPreview';
 
 interface NewSaleProps {
   initialData: any;
@@ -1068,8 +1069,6 @@ if (mode === 'CASH') {
     const companyName = appSettings?.companyName || "Компания";
     const sellerPhone = getSellerPhone(user, appSettings);
     const hasGuarantor = !!sale.guarantorName;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) { alert("Разрешите всплывающие окна для печати"); return; }
 
     const printScheduleRows = contractScheduleRows(sale);
 
@@ -1095,12 +1094,11 @@ if (mode === 'CASH') {
         monthlyPayment: sale.paymentPlan[0]?.amount || 0,
         startDate: sale.startDate,
         rows: printScheduleRows,
-      },
-      { withPrintButton: true }
+      }
     );
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    // Просмотром поверх приложения, а не новым окном — см. printContract в Contracts.tsx.
+    openPrintPreview(htmlContent, { title: `Договор · ${customer?.name || sale.productName}` });
   };
 
   return (

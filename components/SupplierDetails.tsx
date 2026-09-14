@@ -4,6 +4,7 @@ import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
 import { formatCurrency, escapeHtml } from '../src/utils';
 import { supplierSupplies, supplierSupplyDebt } from '../src/supplierLedger';
+import { openPrintPreview } from './PrintPreview';
 
 interface SupplierDetailsProps {
   supplier: Supplier;
@@ -87,7 +88,7 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
         <tr>
           <td style="text-align:center;">${idx + 1}</td>
           <td style="text-align:center;">${new Date(r.date).toLocaleDateString('ru-RU')}</td>
-          <td>${r.type}: ${r.title}</td>
+          <td>${r.type}: ${escapeHtml(r.title)}</td>
           <td style="text-align:right;">${r.debit ? formatCurrency(r.debit, showCents) + ' ₽' : ''}</td>
           <td style="text-align:right;">${r.credit ? formatCurrency(r.credit, showCents) + ' ₽' : ''}</td>
           <td style="text-align:right; font-weight:bold;">${formatCurrency(running, showCents)} ₽</td>
@@ -97,9 +98,6 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
 
     const periodStart = rows.length > 0 ? new Date(rows[0].date).toLocaleDateString('ru-RU') : '-';
     const periodEnd = new Date().toLocaleDateString('ru-RU');
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) { alert('Разрешите всплывающие окна для печати'); return; }
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -122,7 +120,6 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
         </style>
       </head>
       <body>
-        <button class="no-print" onclick="window.close()">✕ Закрыть</button>
         <h1>Акт сверки взаимных расчётов</h1>
         <div class="subtitle">${escapeHtml(companyName)} — ${escapeHtml(supplier.name)}</div>
         <div class="header-info">
@@ -136,12 +133,13 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
           <tbody>${rowsHtml}</tbody>
         </table>
         <div class="totals">Текущий долг: ${formatCurrency(running, showCents)} ₽</div>
-        <script>window.onload = function() { setTimeout(() => { window.print(); }, 300); }</script>
       </body>
       </html>
     `;
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    // Просмотром поверх приложения, а не новым окном: у окна в приложении нет кнопки
+    // «назад». Кнопку «Закрыть» и автопечать из документа убрали — их даёт просмотр,
+    // а своя автопечать открыла бы диалог дважды.
+    openPrintPreview(htmlContent, { title: `Акт сверки — ${supplier.name}` });
   };
 
   return (

@@ -29,15 +29,24 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({ html, title, autoPrint, onC
   // Шаг «назад» закрывает просмотр, а не страницу под ним.
   useEffect(() => registerBackInterceptor(() => { onClose(); return true; }), [onClose]);
 
+  // Esc слушаем и в приложении, и в самом документе: после печати фокус остаётся
+  // во фрейме, и нажатие уходит туда — без второго слушателя Esc переставал
+  // закрывать просмотр, как только открывался диалог печати.
+  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+  const onKeyRef = useRef(onKey);
+  onKeyRef.current = onKey;
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    const listener = (e: KeyboardEvent) => onKeyRef.current(e);
+    window.addEventListener('keydown', listener);
+    return () => window.removeEventListener('keydown', listener);
+  }, []);
 
   const print = () => {
-    const win = frameRef.current?.contentWindow;
+    const win = frameRef.current?.contentWindow as (Window & { __fitContractForPrint?: () => void }) | null;
     if (!win) return;
+    // Договор подгоняет себя под лист перед печатью. На телефоне событие
+    // beforeprint приходит не всегда — зовём подгонку сами (см. contractTemplates).
+    win.__fitContractForPrint?.();
     win.focus();
     win.print();
   };
@@ -64,6 +73,7 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({ html, title, autoPrint, onC
         className="flex-1 w-full border-0 bg-white"
         onLoad={() => {
           setReady(true);
+          frameRef.current?.contentWindow?.addEventListener('keydown', e => onKeyRef.current(e));
           if (autoPrint && !printedRef.current) {
             printedRef.current = true;
             window.setTimeout(print, 250);
