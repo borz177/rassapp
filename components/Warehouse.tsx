@@ -1005,8 +1005,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <input value={form.sku} onChange={e => setForm(prev => ({ ...prev, sku: e.target.value }))} placeholder="Артикул" className={inputCls} />
                 <input value={form.category} onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))} placeholder="Категория" className={inputCls} list="warehouse-categories" />
-                <input value={form.price} onChange={e => setForm(prev => ({ ...prev, price: e.target.value }))} placeholder="Цена продажи" inputMode="decimal" className={inputCls} />
+                {/* Закуп первым: товар заводят с накладной поставщика, и цену продажи
+                    считают от закупа, а не наоборот. */}
                 <input value={form.buyPrice} onChange={e => setForm(prev => ({ ...prev, buyPrice: e.target.value }))} placeholder="Цена закупа" inputMode="decimal" className={inputCls} />
+                <input value={form.price} onChange={e => setForm(prev => ({ ...prev, price: e.target.value }))} placeholder="Цена продажи" inputMode="decimal" className={inputCls} />
                 <input value={form.unit} onChange={e => setForm(prev => ({ ...prev, unit: e.target.value }))} placeholder="Ед. изм." className={inputCls} />
                 <input value={form.minStock} onChange={e => setForm(prev => ({ ...prev, minStock: e.target.value }))} placeholder="Мин. остаток" inputMode="decimal" className={inputCls} />
               </div>

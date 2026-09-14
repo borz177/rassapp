@@ -2,7 +2,8 @@ import type {
   Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier,
 } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { contractNumbers, retailRemaining } from './utils';
+import { contractNumbers, escapeHtml, retailRemaining } from './utils';
+import { openPrintPreview } from '../components/PrintPreview';
 
 export type DocKind = 'SALE' | 'CONTRACT' | 'IN' | 'TRANSFER' | 'WRITE_OFF' | 'INVENTORY';
 
@@ -197,19 +198,23 @@ export const buildJournalDocs = ({
  * спорить с тёмной темой приложения.
  */
 export const printJournalDoc = (d: JournalDoc): void => {
+  // Всё, что ввёл человек, — через escapeHtml. Документ открывается во фрейме
+  // того же сайта, и название товара вида «<img onerror=…>» иначе выполнилось
+  // бы как код внутри приложения.
   const rows = d.lines.map((l, i) => `
     <tr>
       <td>${i + 1}</td>
-      <td>${l.name}</td>
-      <td class="r">${l.quantity} ${l.unit || 'шт'}</td>
+      <td>${escapeHtml(l.name)}</td>
+      <td class="r">${l.quantity} ${escapeHtml(l.unit || 'шт')}</td>
       <td class="r">${l.price.toLocaleString('ru-RU')}</td>
       <td class="r">${(l.quantity * l.price).toLocaleString('ru-RU')}</td>
     </tr>`).join('');
 
-  const win = window.open('', '_blank', 'width=760,height=900');
-  if (!win) return;
-  win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8">
-    <title>${KIND_LABEL[d.kind]} №${d.number}</title>
+  const title = `${KIND_LABEL[d.kind]} №${escapeHtml(d.number)}`;
+  // Просмотром поверх приложения, а не новым окном: в приложении с экрана
+  // «Домой» и в APK у окна нет кнопки «назад», и выйти можно было только перезапуском.
+  openPrintPreview(`<!doctype html><html lang="ru"><head><meta charset="utf-8">
+    <title>${title}</title>
     <style>
       body { font: 14px/1.5 -apple-system, Segoe UI, Roboto, sans-serif; color: #111; padding: 32px; }
       h1 { font-size: 20px; margin: 0 0 4px; }
@@ -221,9 +226,9 @@ export const printJournalDoc = (d: JournalDoc): void => {
       .total { margin-top: 16px; text-align: right; font-size: 18px; font-weight: 700; }
       .debt { text-align: right; color: #b45309; font-weight: 700; }
     </style></head><body>
-    <h1>${KIND_LABEL[d.kind]} №${d.number}</h1>
+    <h1>${title}</h1>
     <p class="muted">${new Date(d.date).toLocaleString('ru-RU')}</p>
-    <p class="muted">${d.from} → ${d.to}</p>
+    <p class="muted">${escapeHtml(d.from)} → ${escapeHtml(d.to)}</p>
     <table>
       <thead><tr><th>№</th><th>Наименование</th><th class="r">Кол-во</th><th class="r">Цена</th><th class="r">Сумма</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -231,9 +236,6 @@ export const printJournalDoc = (d: JournalDoc): void => {
     ${d.discount > 0 ? `<p class="muted r">Скидка −${d.discount.toLocaleString('ru-RU')} ₽</p>` : ''}
     <p class="total">Итого: ${d.total.toLocaleString('ru-RU')} ₽</p>
     ${d.debt > 0 ? `<p class="debt">Долг: ${d.debt.toLocaleString('ru-RU')} ₽</p>` : ''}
-    ${d.note ? `<p class="muted">${d.note}</p>` : ''}
-  </body></html>`);
-  win.document.close();
-  win.focus();
-  win.print();
+    ${d.note ? `<p class="muted">${escapeHtml(d.note)}</p>` : ''}
+  </body></html>`, { title: `${KIND_LABEL[d.kind]} №${d.number}` });
 };

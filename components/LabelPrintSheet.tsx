@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Product } from '../types';
 import Sheet from './Sheet';
+import { openPrintPreview } from './PrintPreview';
 import { barcodeSvg, escapeHtml, generateInternalBarcodes, labelCode } from '../src/barcode';
 import { formatCurrency } from '../src/utils';
 
@@ -145,14 +146,12 @@ const LabelPrintSheet: React.FC<LabelPrintSheetProps> = ({
       return Array.from({ length: counts[p.id] || 0 }, () => html);
     }).join('');
 
-    const win = window.open('', '_blank', 'width=720,height=900');
-    if (!win) { setError('Окно печати заблокировано — разрешите всплывающие окна для сайта.'); return; }
-    win.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8">
+    // Просмотром поверх приложения, а не новым окном: в приложении с экрана
+    // «Домой» и в APK у окна нет кнопки «назад», и выйти можно было только перезапуском.
+    openPrintPreview(`<!doctype html><html lang="ru"><head><meta charset="utf-8">
       <title>Этикетки</title><style>${labelCss(size)}</style></head>
-      <body>${size === 'A4' ? `<div class="sheet">${labels}</div>` : labels}</body></html>`);
-    win.document.close();
-    win.focus();
-    window.setTimeout(() => win.print(), 300);
+      <body>${size === 'A4' ? `<div class="sheet">${labels}</div>` : labels}</body></html>`,
+      { title: `Этикетки · ${totalLabels} шт` });
   };
 
   const step = (id: string, delta: number) =>
