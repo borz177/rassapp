@@ -48,8 +48,9 @@ interface WarehouseProps {
 const emptyForm = {
   name: '', sku: '', price: '', buyPrice: '', category: '', unit: 'шт',
   minStock: '', description: '', images: [] as string[],
+  /** Дополнительные штрихкоды — второй и дальше. Основной стоит в поле barcodeDraft */
   barcodes: [] as string[],
-  /** Код, набранный в поле, но ещё не добавленный в список */
+  /** Основной штрихкод — то, что видно в поле «Штрихкод» */
   barcodeDraft: '',
 };
 
@@ -317,7 +318,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
 
   const openNew = (barcode?: string) => {
     setEditing(null);
-    setForm({ ...emptyForm, barcodes: barcode ? [barcode] : [] });
+    setForm({ ...emptyForm, barcodeDraft: barcode || '' });
     setError(null);
     setShowForm(true);
   };
@@ -328,7 +329,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
       buyPrice: String(p.buyPrice ?? ''), category: p.category || '',
       unit: p.unit || 'шт', minStock: p.minStock === undefined ? '' : String(p.minStock),
       description: p.description || '', images: p.images || [],
-      barcodes: p.barcodes || [], barcodeDraft: '',
+      barcodes: (p.barcodes || []).slice(1), barcodeDraft: p.barcodes?.[0] || '',
     });
     setError(null);
     setShowForm(true);
@@ -347,15 +348,18 @@ const Warehouse: React.FC<WarehouseProps> = ({
     const { code } = extracted;
     const owner = barcodeOwner(products, code, editing?.id);
     if (owner) return `Штрихкод ${code} уже у товара «${owner.name}»`;
-    setForm(f => ({ ...f, barcodeDraft: '', barcodes: f.barcodes.includes(code) ? f.barcodes : [...f.barcodes, code] }));
+    // Код встаёт прямо в поле «Штрихкод» — туда, куда человек смотрит после скана.
+    // Раньше он уходил строкой под поле, а само поле оставалось пустым, и казалось,
+    // что скан не сработал.
+    setForm(f => ({ ...f, barcodeDraft: code, barcodes: f.barcodes.filter(c => c !== code) }));
     return null;
   };
 
   // Внутренний код для товара без заводского штрихкода: развес, своё производство.
   const generateFormBarcode = () => {
     const [code] = generateInternalBarcodes(
-      [...products, { ...(editing || {}), id: '__form__', barcodes: form.barcodes } as Product], 1);
-    setForm(f => ({ ...f, barcodes: [...f.barcodes, code] }));
+      [...products, { ...(editing || {}), id: '__form__', barcodes: [form.barcodeDraft, ...form.barcodes].filter(Boolean) } as Product], 1);
+    setForm(f => ({ ...f, barcodeDraft: code }));
   };
 
   /** Код из каталога: известный товар открываем, неизвестный предлагаем завести. */
@@ -398,8 +402,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
 
   const save = async () => {
     if (!form.name.trim()) { setError('Название обязательно'); return; }
-    // Код, набранный в поле, но не добавленный, — тоже код: человек нажал
-    // «Сохранить» и не должен потерять то, что только что ввёл.
+    // Основной код — из поля «Штрихкод», дополнительные — из списка под ним.
     let draftCode = '';
     if (normalizeBarcode(form.barcodeDraft)) {
       const extracted = extractProductCode(form.barcodeDraft);
@@ -410,7 +413,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
     // человек увидит ошибку и уберёт её из списка кодов.
     const badSaved = form.barcodes.find(c => 'error' in extractProductCode(c));
     if (badSaved) { setError(`«${badSaved}» — ссылка, а не штрихкод. Уберите её из списка кодов.`); return; }
-    const codes = Array.from(new Set([...form.barcodes, draftCode].filter(Boolean)));
+    const codes = Array.from(new Set([draftCode, ...form.barcodes].filter(Boolean)));
     for (const code of codes) {
       const owner = barcodeOwner(products, code, editing?.id);
       if (owner) { setError(`Штрихкод ${code} уже у товара «${owner.name}»`); return; }
@@ -1017,15 +1020,17 @@ const Warehouse: React.FC<WarehouseProps> = ({
                          onChange={e => setForm(prev => ({ ...prev, barcodeDraft: e.target.value }))}
                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); setError(addFormBarcode(form.barcodeDraft)); } }}
                          onBlur={() => { if (form.barcodeDraft.trim()) setError(addFormBarcode(form.barcodeDraft)); }}
-                         placeholder="Штрихкод" enterKeyHint="done" className={inputCls} />
+                         placeholder="Штрихкод" enterKeyHint="done" className={`${inputCls} tabular-nums`} />
                   <ScanButton onClick={() => setScanFor('form')} />
                   <button type="button" onClick={generateFormBarcode} title="Создать внутренний штрихкод"
                           className="shrink-0 px-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-xs font-bold text-slate-600 dark:text-slate-300 active:scale-95 transition-transform">
                     Создать
                   </button>
                 </div>
+                {/* Второй и следующие коды — у разных поставщиков или на групповой упаковке */}
                 {form.barcodes.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="w-full text-[11px] text-slate-400 dark:text-slate-500">Дополнительные коды</span>
                     {form.barcodes.map(code => (
                       <span key={code}
                             className="inline-flex items-center gap-1 pl-3 pr-1 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 tabular-nums">
