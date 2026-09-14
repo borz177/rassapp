@@ -283,6 +283,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                className="absolute inset-0 w-full h-full object-cover" />
 
         {/* Рамка и затемнение вокруг: огромная тень заливает всё, кроме самой рамки */}
+        {status !== 'error' && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className={`relative w-[84%] max-w-md aspect-[16/10] rounded-3xl border-[3px] transition-colors duration-150 ${
                  tone ? TONE_STYLES[tone].frame : 'border-white/80'
@@ -294,9 +295,13 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
             )}
           </div>
         </div>
+        )}
 
-        {/* Верхняя полоса */}
-        <div className="absolute top-0 left-0 right-0 flex items-center gap-3 px-4 pb-3"
+        {/* Верхняя полоса — выше всех слоёв. Экран ошибки камеры растянут на весь
+            экран и шёл в разметке позже, поэтому накрывал крестик: кнопка была
+            видна, но нажатие забирал прозрачный слой, и закрыть сканер без камеры
+            (на компьютере — обычное дело) было нельзя. */}
+        <div className="absolute top-0 left-0 right-0 z-10 flex items-center gap-3 px-4 pb-3"
              style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
           <button type="button" onClick={onClose} aria-label="Закрыть"
                   className="w-11 h-11 rounded-full bg-black/50 backdrop-blur flex items-center justify-center active:scale-90 transition-transform">
@@ -320,8 +325,10 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
           </div>
         )}
         {status === 'error' && (
-          <div className="absolute inset-0 flex items-center justify-center p-6">
-            <div className="max-w-sm w-full rounded-3xl bg-slate-900/95 p-5 text-center space-y-4">
+          // Слой во весь экран только центрирует карточку — нажатия он пропускает
+          // насквозь, ловит их лишь сама карточка.
+          <div className="absolute inset-0 flex items-center justify-center p-6 pointer-events-none">
+            <div className="pointer-events-auto max-w-sm w-full rounded-3xl bg-slate-900/95 p-5 text-center space-y-4">
               <ScanBarcode size={40} className="mx-auto text-slate-400" />
               <p className="text-sm text-slate-200">{errorText}</p>
               <div className="flex gap-2">
@@ -339,7 +346,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
         )}
 
         {/* Нижняя часть: результат, итог, ручной ввод */}
-        <div className="absolute left-0 right-0 bottom-0 px-4 space-y-3"
+        <div className="absolute left-0 right-0 bottom-0 z-10 px-4 space-y-3"
              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
           {outcome && (
             <div key={outcome.at}
