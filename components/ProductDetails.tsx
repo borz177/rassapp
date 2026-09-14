@@ -10,6 +10,8 @@ import ImageViewer from './ImageViewer';
 import TabPill from './TabPill';
 import SubPage from './transitions/SubPage';
 import DocumentCard from './DocumentCard';
+import { Printer } from 'lucide-react';
+import { barcodeSvg } from '../src/barcode';
 
 interface ProductDetailsProps {
   product: Product;
@@ -27,6 +29,8 @@ interface ProductDetailsProps {
   user?: User | null;
   onBack: () => void;
   onEdit?: (p: Product) => void;
+  /** Печать этикеток со штрихкодом — лист открывает склад */
+  onPrintLabels?: (p: Product) => void;
   onSelectCustomer?: (id: string) => void;
   onAcceptPayment?: (sale: RetailSale) => void;
   onUpdateSale?: (sale: RetailSale) => Promise<void> | void;
@@ -60,7 +64,7 @@ const dayTitle = (iso: string) => {
  */
 const ProductDetails: React.FC<ProductDetailsProps> = ({
   product, movements, retailSales, products, customers, warehouses, suppliers, accounts,
-  employees = [], contracts = [], appSettings, user, onBack, onEdit, onSelectCustomer, onAcceptPayment,
+  employees = [], contracts = [], appSettings, user, onBack, onEdit, onPrintLabels, onSelectCustomer, onAcceptPayment,
   onUpdateSale, onUpdateStockDoc, onAddDocLines,
 }) => {
   const [tab, setTab] = useState<'INFO' | 'HISTORY'>('INFO');
@@ -145,6 +149,12 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
             <h2 className="text-xl font-bold text-slate-800 dark:text-white truncate">{product.name}</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">Товар</p>
           </div>
+          {onPrintLabels && (
+            <button onClick={() => onPrintLabels(product)} aria-label="Печать этикеток" title="Печать этикеток"
+                    className="shrink-0 w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center active:scale-95 transition-transform">
+              <Printer size={18} />
+            </button>
+          )}
           {onEdit && (
             <button onClick={() => onEdit(product)}
                     className="shrink-0 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold">
@@ -193,11 +203,22 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
 
         {tab === 'INFO' && (
           <div className="space-y-4">
+            {/* Сам штрихкод, а не только цифры: этикетка потерялась, а товар
+                надо пробить — код сканируют прямо с экрана. Фон белый и в
+                тёмной теме: светлые штрихи на тёмном сканер не читает. */}
+            {product.barcodes?.[0] && barcodeSvg(product.barcodes[0]) && (
+              <div className="rounded-2xl border border-slate-100 dark:border-slate-700 bg-white px-4 py-3 flex flex-col items-center">
+                <div className="w-full max-w-[280px] h-16 [&>svg]:w-full [&>svg]:h-full"
+                     dangerouslySetInnerHTML={{ __html: barcodeSvg(product.barcodes[0]) || '' }} />
+                <p className="mt-1 text-sm font-bold tracking-[0.2em] text-slate-800 tabular-nums">{product.barcodes[0]}</p>
+              </div>
+            )}
             <div className={card}>
               {product.updatedAt && infoRow('Изменён', new Date(product.updatedAt).toLocaleString('ru-RU', {
                 day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
               }))}
               {infoRow('Артикул', product.sku || '—')}
+              {infoRow('Штрихкод', product.barcodes?.length ? product.barcodes.join(', ') : '—')}
               {infoRow('Категория', product.category || 'Общее')}
               {infoRow('Единица', product.unit || 'шт')}
             </div>

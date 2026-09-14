@@ -7,6 +7,10 @@ import Sheet from './Sheet';
 import { SuccessCheck, hapticSuccess } from './feedback';
 import SubPage from './transitions/SubPage';
 import SelectionList from './SelectionList';
+import BarcodeScanner, { ScanButton, type ScanOutcome } from './BarcodeScanner';
+import { findProductByCode, productMatchesQuery } from '../src/barcode';
+import { useBarcodeScanInput } from '../src/barcodeWedge';
+import { scanBeep } from '../src/scanFeedback';
 
 interface RetailSaleProps {
   products: Product[];
@@ -86,6 +90,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<RetailSaleType | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
 
   // Номер и дата. По умолчанию следующий по порядку и сегодня, но кассир может
   // задать своё — продажу нередко проводят задним числом или по своей нумерации.
@@ -109,11 +114,10 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   );
 
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
     return products
       .filter(p => !p.isArchived)
       .filter(p => category === 'ALL' || p.category === category)
-      .filter(p => !q || p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+      .filter(p => productMatchesQuery(p, search))
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [products, category, search]);
 
@@ -188,6 +192,49 @@ const RetailSale: React.FC<RetailSaleProps> = ({
     setError(null);
     return true;
   };
+
+  /**
+   * Скан на кассе — плюс одна штука в корзину, без окна количества: так
+   * пробивают чек в любом магазине, и окно на каждый товар задержало бы очередь.
+   * Цена — из карточки, как при нажатии на плитку; поправить её можно в корзине.
+   * Остаток проверяем тем же правилом, что и ручной выбор.
+   */
+  const addScanned = (code: string): ScanOutcome => {
+    const match = findProductByCode(products, code);
+    if (!match) return { tone: 'error', title: 'Товар не найден', subtitle: code };
+    const p = match.product;
+    if (p.isArchived) return { tone: 'error', title: `«${p.name}» в архиве`, subtitle: 'Верните его из архива на складе' };
+
+    const unit = p.unit || 'шт';
+    const nextQty = (items.find(i => i.productId === p.id)?.quantity || 0) + 1;
+    const left = stockAtWarehouse(p, warehouseId);
+    if (nextQty > maxPickableQty(left, allowNegativeStock)) {
+      return {
+        tone: 'error',
+        title: left > 0 ? `На складе только ${money(left)} ${unit}` : `«${p.name}» нет на складе`,
+        subtitle: 'Продажа в минус выключена в настройках магазина',
+      };
+    }
+
+    setItems(prev => prev.some(i => i.productId === p.id)
+      ? prev.map(i => i.productId === p.id ? { ...i, quantity: i.quantity + 1 } : i)
+      : [...prev, { productId: p.id, name: p.name, quantity: 1, price: p.price || 0, buyPrice: p.buyPrice, unit }]);
+    setError(null);
+    const intoMinus = nextQty > left;
+    return {
+      tone: intoMinus ? 'warn' : 'ok',
+      title: `+1 ${p.name}`,
+      subtitle: `${money(p.price || 0, showCents)} ₽ · в корзине ${money(nextQty)} ${unit}${intoMinus ? ' · уйдёт в минус' : ''}`,
+    };
+  };
+
+  // Ручной сканер работает, пока открыта сама касса. Поверх открытого окна
+  // количества или выбора клиента код пробился бы незаметно для кассира.
+  useBarcodeScanInput(code => {
+    const result = addScanned(code);
+    scanBeep(result.tone);
+    setError(result.tone === 'error' ? `${result.title}${result.subtitle ? `. ${result.subtitle}` : ''}` : null);
+  }, !scanOpen && !editing && !done && !pickCustomer);
 
   const submit = async () => {
     if (items.length === 0) { setError('Корзина пуста'); return; }
@@ -403,8 +450,11 @@ const RetailSale: React.FC<RetailSaleProps> = ({
             </div>
           )}
 
-          <input value={search} onChange={e => setSearch(e.target.value)}
-                 placeholder="Поиск по названию или артикулу" className={input} />
+          <div className="flex gap-2">
+            <input value={search} onChange={e => setSearch(e.target.value)}
+                   placeholder="Название, артикул или штрихкод" className={input} />
+            <ScanButton onClick={() => setScanOpen(true)} />
+          </div>
 
           {visible.length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-slate-400 py-10 text-center">
@@ -578,6 +628,18 @@ const RetailSale: React.FC<RetailSaleProps> = ({
             />
           )}
         </SubPage>
+      )}
+
+      {scanOpen && (
+        <BarcodeScanner
+          continuous
+          title="Касса: сканирование"
+          onClose={() => setScanOpen(false)}
+          onCode={addScanned}
+          footer={items.length > 0
+            ? `Корзина: ${money(totalQty)} ед. · ${money(total, showCents)} ₽`
+            : 'Наведите камеру на штрихкод товара'}
+        />
       )}
 
       {/* Продажа проведена */}

@@ -2,6 +2,10 @@ import React, { useMemo, useState } from 'react';
 import type { Product, SaleStockItem } from '../types';
 import { formatCurrency, maxPickableQty, stockAtWarehouse } from '../src/utils';
 import TopBarBack from './TopBarBack';
+import BarcodeScanner, { ScanButton, type ScanOutcome } from './BarcodeScanner';
+import { findProductByCode, productMatchesQuery } from '../src/barcode';
+import { useBarcodeScanInput } from '../src/barcodeWedge';
+import { scanBeep } from '../src/scanFeedback';
 
 interface ProductPickerPageProps {
   products: Product[];
@@ -65,6 +69,7 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
   // Почему нажатие не сработало — говорим вслух. Раньше плитка товара с нулевым
   // остатком просто не отзывалась, и это выглядело поломкой, а не запретом.
   const [blocked, setBlocked] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
   const [picked, setPicked] = useState<Record<string, number>>(() => {
     const map: Record<string, number> = {};
     initial.forEach(i => { map[i.productId] = i.quantity; });
@@ -81,10 +86,9 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
   );
 
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
     return live
       .filter(p => category === 'ALL' || p.category === category)
-      .filter(p => !q || p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+      .filter(p => productMatchesQuery(p, search))
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [live, category, search]);
 
@@ -131,6 +135,38 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
     change(p, 1);
   };
 
+  /**
+   * Скан — то же, что нажатие на плитку: в одиночном выборе отдаёт товар, в
+   * множественном прибавляет штуку с тем же потолком по остатку.
+   */
+  const pickScanned = (code: string): ScanOutcome => {
+    const match = findProductByCode(live, code);
+    if (!match) return { tone: 'error', title: 'Товар не найден', subtitle: code };
+    const p = match.product;
+    if (!multi) {
+      onPick?.(p);
+      return { tone: 'ok', title: p.name, close: true };
+    }
+    const cap = capFor(p);
+    const current = picked[p.id] || 0;
+    if (current >= cap) {
+      return {
+        tone: 'error',
+        title: cap <= 0 ? `«${p.name}» нет на складе` : `На складе ${cap} ${p.unit || 'шт'}`,
+        subtitle: 'Больше не взять без продажи в минус',
+      };
+    }
+    setBlocked(null);
+    change(p, 1);
+    return { tone: 'ok', title: `+1 ${p.name}`, subtitle: `Выбрано ${current + 1} ${p.unit || 'шт'}` };
+  };
+
+  useBarcodeScanInput(code => {
+    const result = pickScanned(code);
+    scanBeep(result.tone);
+    if (result.tone === 'error') setBlocked(`${result.title}${result.subtitle ? `. ${result.subtitle}` : ''}`);
+  }, !scanOpen);
+
   return (
     <div className={multi ? 'pb-28' : 'pb-6'}>
       <div className="flex items-center gap-3 mb-3">
@@ -159,9 +195,12 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
           </div>
         )}
 
-        <input value={search} onChange={e => setSearch(e.target.value)}
-               placeholder="Поиск по названию или артикулу"
-               className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 outline-none" />
+        <div className="flex gap-2">
+          <input value={search} onChange={e => setSearch(e.target.value)}
+                 placeholder="Название, артикул или штрихкод"
+                 className="w-full min-w-0 p-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 outline-none" />
+          <ScanButton onClick={() => setScanOpen(true)} />
+        </div>
 
         {blocked && (
           <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-2.5 text-sm text-amber-700 dark:text-amber-300 flex items-start justify-between gap-3">
@@ -227,6 +266,20 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
           </div>
         )}
       </div>
+
+      {scanOpen && (
+        <BarcodeScanner
+          continuous={multi}
+          title={title}
+          onClose={() => setScanOpen(false)}
+          onCode={pickScanned}
+          footer={multi
+            ? (items.length > 0
+                ? `Выбрано ${items.length} поз. · ${formatCurrency(total, showCents)} ₽`
+                : 'Наведите камеру на штрихкод товара')
+            : undefined}
+        />
+      )}
 
       {/* Итог выбора внизу — как корзина в кассе: видно, что набрал, не
           прокручивая обратно наверх.

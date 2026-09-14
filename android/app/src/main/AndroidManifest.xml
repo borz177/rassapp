@@ -32,4 +32,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Камера: сканирование штрихкодов на складе и в кассе. required="false" —
+         без камеры приложение всё равно ставится: остаются ручной ввод кода и
+         внешний сканер. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>

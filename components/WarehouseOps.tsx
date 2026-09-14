@@ -1,8 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { Product, StockLocation, StockMovement, Supplier } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { stockAtWarehouse as stockAt, applyStockDelta as withDelta } from '../src/utils';
 import ModalPortal from './ModalPortal';
+import BarcodeScanner, { ScanButton, type ScanOutcome } from './BarcodeScanner';
+import { findProductByCode, productMatchesQuery } from '../src/barcode';
+import { useBarcodeScanInput } from '../src/barcodeWedge';
+import { scanBeep } from '../src/scanFeedback';
 
 type OpTab = 'IN' | 'TRANSFER' | 'WRITE_OFF' | 'INVENTORY';
 
@@ -15,6 +19,12 @@ interface WarehouseOpsProps {
   /** Проводит документ целиком: движения и обновлённые остатки одной операцией */
   onPost: (movements: StockMovement[], products: Product[]) => Promise<void> | void;
   showCents?: boolean;
+  /** Отсканированного товара нет в каталоге — завести его, не бросая документ */
+  onCreateProduct?: (barcode: string) => void;
+  /** Товар, только что заведённый по скану: встаёт в документ сам */
+  addedProduct?: { productId: string; at: number } | null;
+  /** Поверх открыта карточка товара — коды ручного сканера принадлежат ей */
+  paused?: boolean;
 }
 
 const money = (v: number, cents = false) =>
@@ -51,6 +61,7 @@ const WRITE_OFF_REASONS = ['Порча', 'Брак', 'Потеря', 'Недос
  */
 const WarehouseOps: React.FC<WarehouseOpsProps> = ({
   products, movements, warehouses, suppliers, onPost, showCents = false,
+  onCreateProduct, addedProduct, paused = false,
 }) => {
   const liveWarehouses = useMemo(() => {
     const live = warehouses.filter(w => !w.isArchived);
@@ -74,6 +85,8 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMessage, setOkMessage] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [unknownCode, setUnknownCode] = useState<string | null>(null);
 
   const [picking, setPicking] = useState<Product | null>(null);
   const [pickQty, setPickQty] = useState('1');
@@ -102,11 +115,10 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
   );
 
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
     return products
       .filter(p => !p.isArchived)
       .filter(p => category === 'ALL' || p.category === category)
-      .filter(p => !q || p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+      .filter(p => productMatchesQuery(p, search))
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [products, category, search]);
 
@@ -149,6 +161,74 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
     setPicking(null);
     setError(null);
   };
+
+  /**
+   * Скан в документ — плюс одна штука, без окна количества: поставку принимают
+   * потоком, коробка за коробкой, и окно на каждый код остановило бы работу.
+   * Количество и цену можно поправить в документе перед проведением.
+   *
+   * В инвентаризации счёт начинается с нуля, а не с учётного остатка: считают
+   * то, что держат в руках, и первый скан поверх подставленного остатка дал бы
+   * «остаток плюс один».
+   */
+  const addScanned = (code: string): ScanOutcome => {
+    const match = findProductByCode(products, code);
+    if (!match) {
+      setUnknownCode(code);
+      return tab === 'IN' && onCreateProduct
+        ? { tone: 'warn', title: 'Такого товара ещё нет', subtitle: `${code} — заведите его, и он встанет в приход`, close: true }
+        : { tone: 'error', title: 'Товар не найден', subtitle: code };
+    }
+    const p = match.product;
+    if (p.isArchived) {
+      return { tone: 'error', title: `«${p.name}» в архиве`, subtitle: 'Верните товар из архива на вкладке «Товары»' };
+    }
+    const qty = (batch[p.id]?.qty || 0) + 1;
+    setBatch(prev => ({
+      ...prev,
+      [p.id]: { qty: (prev[p.id]?.qty || 0) + 1, cost: prev[p.id] ? prev[p.id].cost : (p.buyPrice || 0) },
+    }));
+    setUnknownCode(null);
+    setError(null);
+    const unit = p.unit || 'шт';
+    return {
+      tone: 'ok',
+      title: `+1 ${p.name}`,
+      subtitle: tab === 'INVENTORY'
+        ? `Насчитано ${money(qty)} ${unit} · по учёту ${money(stockAt(p, fromWh))}`
+        : `В документе ${money(qty)} ${unit}`,
+    };
+  };
+
+  useBarcodeScanInput(code => {
+    const result = addScanned(code);
+    scanBeep(result.tone);
+    if (result.tone === 'ok') {
+      setOkMessage(`${result.title} · ${result.subtitle}`);
+      window.setTimeout(() => setOkMessage(null), 2500);
+    } else if (result.tone === 'error') {
+      setError(`${result.title}${result.subtitle ? `. ${result.subtitle}` : ''}`);
+    }
+  }, !paused && !picking && !docOpen && !scanOpen);
+
+  // Товар, заведённый по отсканированному коду, сразу встаёт в документ: ради
+  // этого его и заводили, и искать его в списке второй раз незачем.
+  useEffect(() => {
+    if (!addedProduct) return;
+    const { productId } = addedProduct;
+    setBatch(prev => ({
+      ...prev,
+      [productId]: {
+        qty: (prev[productId]?.qty || 0) + 1,
+        cost: prev[productId]?.cost ?? (products.find(p => p.id === productId)?.buyPrice || 0),
+      },
+    }));
+    setUnknownCode(null);
+    setOkMessage('Товар заведён и добавлен в документ');
+    const t = window.setTimeout(() => setOkMessage(null), 3000);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addedProduct?.at]);
 
   const post = async () => {
     if (batchIds.length === 0) { setError('Очередь пуста'); return; }
@@ -304,8 +384,27 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
         </div>
       )}
 
-      <input value={search} onChange={e => setSearch(e.target.value)}
-             placeholder="Поиск по названию или артикулу" className={input} />
+      <div className="flex gap-2">
+        <input value={search} onChange={e => setSearch(e.target.value)}
+               placeholder="Название, артикул или штрихкод" className={input} />
+        <ScanButton onClick={() => setScanOpen(true)} />
+      </div>
+
+      {unknownCode && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 flex items-center gap-3">
+          <p className="flex-1 min-w-0 text-sm text-amber-800 dark:text-amber-300">
+            Штрихкода <span className="font-bold break-all">{unknownCode}</span> нет в каталоге
+          </p>
+          {tab === 'IN' && onCreateProduct && (
+            <button onClick={() => { const code = unknownCode; setUnknownCode(null); onCreateProduct(code); }}
+                    className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold">
+              Завести товар
+            </button>
+          )}
+          <button onClick={() => setUnknownCode(null)} aria-label="Скрыть"
+                  className="shrink-0 font-bold text-amber-700 dark:text-amber-300 opacity-60">✕</button>
+        </div>
+      )}
 
       {visible.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center">
@@ -550,6 +649,18 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
             </div>
           </div>
         </ModalPortal>
+      )}
+      {/* Камера в непрерывном режиме: коробка за коробкой, без закрытия */}
+      {scanOpen && (
+        <BarcodeScanner
+          continuous
+          title={`${docTitle}: сканирование`}
+          onClose={() => setScanOpen(false)}
+          onCode={addScanned}
+          footer={batchIds.length > 0
+            ? `${batchIds.length} поз. в документе${tab === 'IN' ? ` · ${money(batchTotal, showCents)} ₽` : ''}`
+            : 'Наведите камеру на штрихкод товара'}
+        />
       )}
     </div>
   );

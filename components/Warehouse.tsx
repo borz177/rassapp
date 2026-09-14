@@ -10,6 +10,11 @@ import TabPill from './TabPill';
 import WarehouseOps from './WarehouseOps';
 import ProductDetails from './ProductDetails';
 import SubPage from './transitions/SubPage';
+import BarcodeScanner, { ScanButton, type ScanOutcome } from './BarcodeScanner';
+import LabelPrintSheet from './LabelPrintSheet';
+import { barcodeOwner, findProductByCode, generateInternalBarcodes, normalizeBarcode, productMatchesQuery } from '../src/barcode';
+import { useBarcodeScanInput } from '../src/barcodeWedge';
+import { scanBeep } from '../src/scanFeedback';
 
 interface WarehouseProps {
   products: Product[];
@@ -43,6 +48,9 @@ interface WarehouseProps {
 const emptyForm = {
   name: '', sku: '', price: '', buyPrice: '', category: '', unit: 'шт',
   minStock: '', description: '', images: [] as string[],
+  barcodes: [] as string[],
+  /** Код, набранный в поле, но ещё не добавленный в список */
+  barcodeDraft: '',
 };
 
 const num = (v: string) => {
@@ -123,6 +131,16 @@ const Warehouse: React.FC<WarehouseProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Камера открыта ради одного из двух: найти товар в каталоге или вписать код в карточку.
+  const [scanFor, setScanFor] = useState<'catalog' | 'form' | null>(null);
+  // Отсканировали код, которого в каталоге нет, — предлагаем завести товар с ним.
+  const [unknownCode, setUnknownCode] = useState<string | null>(null);
+  const [labelIds, setLabelIds] = useState<string[] | null>(null);
+  // Товар заводят прямо из прихода по отсканированному коду: после сохранения
+  // он должен сам встать в документ, ради которого его и заводили.
+  const [opsPending, setOpsPending] = useState<string | null>(null);
+  const [opsAdded, setOpsAdded] = useState<{ productId: string; at: number } | null>(null);
+
   const [movementFor, setMovementFor] = useState<Product | null>(null);
   const [movementType, setMovementType] = useState<StockMovement['type']>('IN');
   const [movementQty, setMovementQty] = useState('');
@@ -139,12 +157,11 @@ const Warehouse: React.FC<WarehouseProps> = ({
     p.minStock !== undefined && p.minStock !== null && (p.stock ?? 0) <= p.minStock;
 
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
     return products
       .filter(p => (showArchived ? p.isArchived : !p.isArchived))
       .filter(p => category === 'ALL' || p.category === category)
       .filter(p => !onlyLow || isLow(p))
-      .filter(p => !q || p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+      .filter(p => productMatchesQuery(p, search))
       // Расставленные вручную идут первыми и в своём порядке, остальные —
       // по алфавиту следом. Так один переставленный товар не выбрасывает
       // остальные в случайный порядок.
@@ -298,7 +315,12 @@ const Warehouse: React.FC<WarehouseProps> = ({
     setOrder(next);
   };
 
-  const openNew = () => { setEditing(null); setForm(emptyForm); setError(null); setShowForm(true); };
+  const openNew = (barcode?: string) => {
+    setEditing(null);
+    setForm({ ...emptyForm, barcodes: barcode ? [barcode] : [] });
+    setError(null);
+    setShowForm(true);
+  };
   const openEdit = (p: Product) => {
     setEditing(p);
     setForm({
@@ -306,10 +328,52 @@ const Warehouse: React.FC<WarehouseProps> = ({
       buyPrice: String(p.buyPrice ?? ''), category: p.category || '',
       unit: p.unit || 'шт', minStock: p.minStock === undefined ? '' : String(p.minStock),
       description: p.description || '', images: p.images || [],
+      barcodes: p.barcodes || [], barcodeDraft: '',
     });
     setError(null);
     setShowForm(true);
   };
+
+  /**
+   * Код в карточку товара. Код другого товара не принимаем и называем, чей он:
+   * один код на два товара — и касса пробьёт не тот.
+   * @returns текст ошибки или null
+   */
+  const addFormBarcode = (raw: string): string | null => {
+    const code = normalizeBarcode(raw);
+    if (!code) return null;
+    const owner = barcodeOwner(products, code, editing?.id);
+    if (owner) return `Штрихкод ${code} уже у товара «${owner.name}»`;
+    setForm(f => ({ ...f, barcodeDraft: '', barcodes: f.barcodes.includes(code) ? f.barcodes : [...f.barcodes, code] }));
+    return null;
+  };
+
+  // Внутренний код для товара без заводского штрихкода: развес, своё производство.
+  const generateFormBarcode = () => {
+    const [code] = generateInternalBarcodes(
+      [...products, { ...(editing || {}), id: '__form__', barcodes: form.barcodes } as Product], 1);
+    setForm(f => ({ ...f, barcodes: [...f.barcodes, code] }));
+  };
+
+  /** Код из каталога: известный товар открываем, неизвестный предлагаем завести. */
+  const handleCatalogCode = (code: string): ScanOutcome => {
+    const match = findProductByCode(products, code);
+    if (match) {
+      setUnknownCode(null);
+      if (match.product.isArchived) setShowArchived(true);
+      setOpenProductId(match.product.id);
+      return { tone: 'ok', title: match.product.name };
+    }
+    setUnknownCode(code);
+    return { tone: 'warn', title: 'Товара с таким кодом нет', subtitle: code, close: true };
+  };
+
+  // Ручной сканер. В открытую карточку он вписывает код, в каталоге ищет товар.
+  // На вкладке операций коды принимает сама операция — у неё свой обработчик.
+  useBarcodeScanInput(code => {
+    if (showForm) { setError(addFormBarcode(code)); return; }
+    scanBeep(handleCatalogCode(code).tone);
+  }, (section === 'catalog' || showForm) && !labelIds && !scanFor);
 
   const addImages = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -331,6 +395,13 @@ const Warehouse: React.FC<WarehouseProps> = ({
 
   const save = async () => {
     if (!form.name.trim()) { setError('Название обязательно'); return; }
+    // Код, набранный в поле, но не добавленный, — тоже код: человек нажал
+    // «Сохранить» и не должен потерять то, что только что ввёл.
+    const codes = Array.from(new Set([...form.barcodes, normalizeBarcode(form.barcodeDraft)].filter(Boolean)));
+    for (const code of codes) {
+      const owner = barcodeOwner(products, code, editing?.id);
+      if (owner) { setError(`Штрихкод ${code} уже у товара «${owner.name}»`); return; }
+    }
     setSaving(true);
     try {
       const product: Product = {
@@ -343,6 +414,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
         // редактирование карточки не превращалось в тихую корректировку склада.
         stock: editing?.stock ?? 0,
         sku: form.sku.trim() || undefined,
+        barcodes: codes.length ? codes : undefined,
         buyPrice: form.buyPrice === '' ? undefined : num(form.buyPrice),
         unit: form.unit.trim() || 'шт',
         images: form.images.length ? form.images : undefined,
@@ -352,6 +424,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
         updatedAt: new Date().toISOString(),
       };
       await onSaveProduct(product);
+      if (opsPending && codes.includes(opsPending)) setOpsAdded({ productId: product.id, at: Date.now() });
+      setOpsPending(null);
       setShowForm(false);
       setEditing(null);
       setForm(emptyForm);
@@ -418,7 +492,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
             «+ Склад» на своей вкладке живёт там же, где «+ Товар» на своей —
             рука ищет кнопку в одном месте. */}
         {section === 'catalog' && (
-          <button onClick={openNew}
+          <button onClick={() => openNew()}
                   className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-sm active:scale-95 transition-transform shrink-0">
             + Товар
           </button>
@@ -454,6 +528,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
           warehouses={warehouses}
           suppliers={suppliers}
           onPost={onPostBatch}
+          showCents={appSettings?.showCents}
+          onCreateProduct={code => { setOpsPending(code); openNew(code); }}
+          addedProduct={opsAdded}
+          paused={showForm || !!scanFor}
         />
       )}
 
@@ -533,7 +611,11 @@ const Warehouse: React.FC<WarehouseProps> = ({
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <button disabled={bulkBusy} onClick={() => setLabelIds(selectedIds)}
+                    className="py-2 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 text-xs font-bold disabled:opacity-50">
+              Этикетки
+            </button>
             <button disabled={bulkBusy} onClick={() => setBulkCategory('')}
                     className="py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold disabled:opacity-50">
               Категория
@@ -568,12 +650,27 @@ const Warehouse: React.FC<WarehouseProps> = ({
       {!selection && !reorder && (
       <div className="flex gap-2">
         <input value={search} onChange={e => setSearch(e.target.value)}
-               placeholder="Поиск по названию или артикулу" className={inputCls} />
+               placeholder="Название, артикул или штрихкод" className={inputCls} />
+        <ScanButton onClick={() => setScanFor('catalog')} />
         <button onClick={enterReorder} aria-label="Порядок"
                 className="shrink-0 px-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-300 text-lg">
           ⇅
         </button>
       </div>
+      )}
+
+      {unknownCode && !selection && !reorder && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 flex items-center gap-3">
+          <p className="flex-1 min-w-0 text-sm text-amber-800 dark:text-amber-300">
+            Товара со штрихкодом <span className="font-bold break-all">{unknownCode}</span> нет в каталоге
+          </p>
+          <button onClick={() => { const code = unknownCode; setUnknownCode(null); openNew(code); }}
+                  className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold">
+            Создать
+          </button>
+          <button onClick={() => setUnknownCode(null)} aria-label="Скрыть"
+                  className="shrink-0 font-bold text-amber-700 dark:text-amber-300 opacity-60">✕</button>
+        </div>
       )}
 
       {!selection && !reorder && (
@@ -715,6 +812,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
               <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setMovementFor(p2); setMovementType('IN'); setError(null); }}
                       className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
                 Добавить в документ
+              </button>
+              <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setLabelIds([p2.id]); }}
+                      className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
+                Печать этикетки
               </button>
               <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setOpenProductId(p2.id); }}
                       className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
@@ -894,6 +995,37 @@ const Warehouse: React.FC<WarehouseProps> = ({
                 <input value={form.minStock} onChange={e => setForm(prev => ({ ...prev, minStock: e.target.value }))} placeholder="Мин. остаток" inputMode="decimal" className={inputCls} />
               </div>
 
+              {/* Штрихкоды отдельно от артикула: артикул — внутреннее имя товара,
+                  а штрихкодов у него бывает несколько, и по ним товар находят
+                  касса и приход. */}
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <input value={form.barcodeDraft}
+                         onChange={e => setForm(prev => ({ ...prev, barcodeDraft: e.target.value }))}
+                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); setError(addFormBarcode(form.barcodeDraft)); } }}
+                         onBlur={() => { if (form.barcodeDraft.trim()) setError(addFormBarcode(form.barcodeDraft)); }}
+                         placeholder="Штрихкод" enterKeyHint="done" className={inputCls} />
+                  <ScanButton onClick={() => setScanFor('form')} />
+                  <button type="button" onClick={generateFormBarcode} title="Создать внутренний штрихкод"
+                          className="shrink-0 px-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-xs font-bold text-slate-600 dark:text-slate-300 active:scale-95 transition-transform">
+                    Создать
+                  </button>
+                </div>
+                {form.barcodes.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {form.barcodes.map(code => (
+                      <span key={code}
+                            className="inline-flex items-center gap-1 pl-3 pr-1 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 tabular-nums">
+                        {code}
+                        <button type="button" aria-label={`Убрать ${code}`}
+                                onClick={() => setForm(f => ({ ...f, barcodes: f.barcodes.filter(c => c !== code) }))}
+                                className="w-5 h-5 rounded-full text-slate-400 hover:text-rose-500 leading-none">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Уже заведённые категории — нажатием. Набирать их заново значит
                   рано или поздно завести «Телефоны» и «телефоны» двумя разными
                   разделами каталога; новую по-прежнему можно просто напечатать. */}
@@ -917,6 +1049,12 @@ const Warehouse: React.FC<WarehouseProps> = ({
               )}
               <textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
                         placeholder="Описание" rows={2} className={inputCls} />
+
+              {/* Ошибка — прямо в карточке: строка ошибки экрана склада лежит под
+                  окном, и человек не видел бы, почему «Сохранить» не сработало. */}
+              {error && (
+                <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
+              )}
 
               {editing && (
                 <p className="text-[11px] text-slate-400 dark:text-slate-500">
@@ -1017,9 +1155,34 @@ const Warehouse: React.FC<WarehouseProps> = ({
             onUpdateSale={onUpdateSale}
             onUpdateStockDoc={onUpdateStockDoc}
             onAddDocLines={onAddDocLines}
+            onPrintLabels={p2 => setLabelIds([p2.id])}
           />
         )}
       </SubPage>
+    )}
+
+    {scanFor && (
+      <BarcodeScanner
+        title={scanFor === 'form' ? 'Штрихкод товара' : 'Найти товар'}
+        onClose={() => setScanFor(null)}
+        onCode={code => {
+          if (scanFor !== 'form') return handleCatalogCode(code);
+          const problem = addFormBarcode(code);
+          return problem
+            ? { tone: 'error', title: problem }
+            : { tone: 'ok', title: `Штрихкод ${normalizeBarcode(code)} добавлен` };
+        }}
+      />
+    )}
+
+    {labelIds && (
+      <LabelPrintSheet
+        products={products.filter(p => labelIds.includes(p.id))}
+        allProducts={products}
+        onSaveProduct={onSaveProduct}
+        showCents={appSettings?.showCents}
+        onClose={() => { setLabelIds(null); setSelectedIds([]); }}
+      />
     )}
     </>
   );
