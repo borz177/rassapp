@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Sale, Expense, Account, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getAccountShares, addMonthsClamped, shareDateForSale } from '../src/utils';
+import { formatCurrency, formatDate, getAccountShares, addMonthsClamped, shareDateForSale, investorProfitOutflows } from '../src/utils';
 import Contracts from './Contracts';
 
 interface InvestorDashboardProps {
@@ -116,6 +116,14 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
 
     return { totalCollected, totalOutstanding, totalSalesAmount, totalBuyCost, workingCapital };
   }, [investorSales, balance]);
+  // 🔹 Что уменьшает прибыль к выводу — та же функция, что в карточке инвестора у
+  // менеджера: выплаты этому инвестору и его доля в общих расходах «из прибыли».
+  // В общем пуле expenses содержат выводы ВСЕХ участников — функция берёт только его.
+  const profitOutflows = useMemo(
+    () => investorProfitOutflows(investorExpenses, accounts, investors, investor.id),
+    [investorExpenses, accounts, investors, investor.id]
+  );
+
   // 🔹 ПРИБЫЛЬ: Как в InvestorDetails
 const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
     if (investorAccountIds.length === 0) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, profitAccruals: [] };
@@ -152,26 +160,18 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
       });
     });
 
-    // 🔒 В общем пуле expenses содержат выводы ВСЕХ участников — считаем только выводы этого инвестора,
-    // иначе вывод одного участника ошибочно уменьшал бы "доступно к выводу" у другого.
-    const withdrawnSum = investorExpenses
-      .filter(e => e.payoutType === 'PROFIT' && (!e.investorId || e.investorId === investor.id))
-      .reduce((sum, e) => sum + e.amount, 0);
-
     return {
       totalProfitEarned: profitSum,
-      totalProfitWithdrawn: withdrawnSum,
+      // Выплаты плюс доля в общих расходах «из прибыли». Раньше здесь были только
+      // выплаты, и «доступно к выводу» у инвестора выходило больше, чем у менеджера.
+      totalProfitWithdrawn: profitOutflows.total,
       profitAccruals: accruals.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     };
-  }, [investorSales, investorExpenses, investorAccountIds, accounts, investors, investor.id]);
+  }, [investorSales, profitOutflows, investorAccountIds, accounts, investors, investor.id]);
 
   // 🔹 История выплат этому инвестору — тот же фильтр, что и для withdrawnSum выше,
   // но со списком отдельных операций (для модалки "Мои выплаты"), а не только суммой.
-  const myPayouts = useMemo(() => {
-    return investorExpenses
-      .filter(e => e.payoutType === 'PROFIT' && (!e.investorId || e.investorId === investor.id))
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [investorExpenses, investor.id]);
+  const myPayouts = profitOutflows.payouts;
 
   // 🔹 Выбранный период для графика/деталей прибыли
   const periodRange = useMemo(() => getPeriodDates(periodPreset), [periodPreset]);
@@ -447,7 +447,7 @@ const expectedTotalProfit = useMemo(() => {
                 className="text-left bg-gradient-to-br from-violet-500 to-purple-600 p-6 rounded-2xl text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
               >
                 <p className="text-violet-100 text-sm mb-1">Мои выплаты</p>
-                <p className="text-3xl font-bold">{formatCurrency(totalProfitWithdrawn, appSettings.showCents)} ₽</p>
+                <p className="text-3xl font-bold">{formatCurrency(profitOutflows.payoutsSum, appSettings.showCents)} ₽</p>
                 <p className="text-xs text-violet-200 mt-2 flex items-center gap-1">
                   {myPayouts.length > 0 ? `${myPayouts.length} ${myPayouts.length === 1 ? 'выплата' : 'выплат'} · история` : 'Выплат пока не было'}
                   <span aria-hidden>→</span>
@@ -618,7 +618,7 @@ const expectedTotalProfit = useMemo(() => {
             <div className="px-5 py-4 bg-gradient-to-r from-violet-600 to-purple-600 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-base font-bold text-white">Мои выплаты</h3>
-                <p className="text-xs text-violet-100 mt-0.5">Всего получено: {formatCurrency(totalProfitWithdrawn, appSettings.showCents)} ₽</p>
+                <p className="text-xs text-violet-100 mt-0.5">Всего получено: {formatCurrency(profitOutflows.payoutsSum, appSettings.showCents)} ₽</p>
               </div>
               <button
                 onClick={() => setShowPayoutsModal(false)}
@@ -648,6 +648,33 @@ const expectedTotalProfit = useMemo(() => {
                       </span>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Доля в общих расходах «из прибыли» — не выплата, но к выводу её уже нет.
+                  Без этого списка «доступно к выводу» не сходилось бы с тем, что видно
+                  выше, и было бы непонятно, куда делась разница. */}
+              {profitOutflows.deductions.length > 0 && (
+                <div className="mt-5">
+                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Удержано из прибыли</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mb-2">
+                    Ваша доля в общих расходах счёта, оплаченных из прибыли: {formatCurrency(profitOutflows.deductionsSum, appSettings.showCents)} ₽
+                  </p>
+                  <div className="space-y-2">
+                    {profitOutflows.deductions.map(({ expense, amount }) => (
+                      <div key={expense.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-xl">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm text-slate-800 dark:text-white truncate">{expense.title || expense.category || 'Расход'}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            {formatDate(expense.date)} · расход {formatCurrency(expense.amount, appSettings.showCents)} ₽
+                          </p>
+                        </div>
+                        <span className="text-sm font-bold text-amber-600 dark:text-amber-400 shrink-0 ml-3">
+                          −{formatCurrency(amount, appSettings.showCents)} ₽
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

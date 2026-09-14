@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Investor, Sale, Expense, Account, Payment, AppSettings, Customer, InvestmentPeriod, LossEvent } from '../types';
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, shareDateForSale, participationDates, participationDatesError, withParticipationDates } from '../src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, shareDateForSale, participationDates, participationDatesError, withParticipationDates, investorProfitOutflows } from '../src/utils';
 
 // Модальное окно формы. Через портал в body: страница открыта внутри .page-push-layer,
 // а он position: fixed с z-index 30 — окно внутри него оказалось бы под нижней навигацией.
@@ -396,15 +396,12 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
       });
     });
 
-    // Адресные выплаты прибыли этому инвестору
-    const withdrawnSum = expenses
-      .filter(e => e.accountId === account.id && e.payoutType === 'PROFIT' && (!e.investorId || e.investorId === investor.id))
-      .reduce((sum, e) => sum + e.amount, 0)
-      // + его доля в общих расходах, списанных из прибыли: такой расход делится
-      // между менеджером и инвесторами счёта по тем же долям, по которым начисляется прибыль
-      + expenses
-        .filter(e => e.accountId === account.id && e.fromProfit)
-        .reduce((sum, e) => sum + getInvestorProfitDeduction(e, account, investors, investor.id), 0);
+    // Адресные выплаты прибыли этому инвестору + его доля в общих расходах, списанных из
+    // прибыли. Та же функция считает и кабинет самого инвестора — иначе «доступно к
+    // выводу» у него и у менеджера расходилось.
+    const withdrawnSum = investorProfitOutflows(
+      expenses.filter(e => e.accountId === account.id), [account], investors, investor.id
+    ).total;
 
     return {
       totalProfitEarned: profitSum,

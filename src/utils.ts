@@ -375,6 +375,44 @@ export const getInvestorProfitDeduction = (
   return share ? expense.amount * share.percentage / 100 : 0;
 };
 
+const byDateDesc = (a: { date: string }, b: { date: string }) =>
+  new Date(b.date).getTime() - new Date(a.date).getTime();
+
+/**
+ * Что уменьшает прибыль инвестора к выводу: адресные выплаты прибыли и его доля
+ * в общих расходах «из прибыли».
+ *
+ * Одна функция на карточку инвестора у менеджера и на кабинет самого инвестора.
+ * Раньше кабинет считал только выплаты и забывал про расходы — инвестор видел
+ * «доступно к выводу» больше, чем менеджер в его карточке (на проде у одного
+ * инвестора разница была 32 952 ₽).
+ *
+ * @param expenses расходы счетов, где участвует инвестор
+ */
+export const investorProfitOutflows = (
+  expenses: Expense[],
+  accounts: Account[],
+  investors: Investor[],
+  investorId: string
+) => {
+  const payouts = expenses
+    .filter(e => e.payoutType === 'PROFIT' && (!e.investorId || e.investorId === investorId))
+    .sort(byDateDesc);
+  const deductions = expenses
+    // Выплата прибыли уже учтена выше — второй раз как расход её не вычитаем.
+    .filter(e => e.fromProfit && e.payoutType !== 'PROFIT')
+    .map(expense => ({
+      expense,
+      amount: getInvestorProfitDeduction(expense, accounts.find(a => a.id === expense.accountId), investors, investorId),
+    }))
+    .filter(d => d.amount > 0)
+    .sort((a, b) => byDateDesc(a.expense, b.expense));
+
+  const payoutsSum = payouts.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const deductionsSum = deductions.reduce((sum, d) => sum + d.amount, 0);
+  return { payouts, payoutsSum, deductions, deductionsSum, total: payoutsSum + deductionsSum };
+};
+
 /**
  * Начисленная сотруднику доля прибыли за период.
  *
