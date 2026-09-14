@@ -66,6 +66,86 @@ export const getActivePeriodAt = (investor: Investor, cutoff: number): Investmen
   return isPoolMemberActiveAt(investor, cutoff) ? legacy : null;
 };
 
+const sortedPeriods = (investor: Investor): InvestmentPeriod[] | null =>
+  investor.investmentPeriods && investor.investmentPeriods.length > 0
+    ? [...investor.investmentPeriods]
+        .sort((a, b) => new Date(a.joinedDate).getTime() - new Date(b.joinedDate).getTime())
+        .map(p => ({ ...p }))
+    : null;
+
+/**
+ * Действующие даты участия: вход — из первого периода, выход — из последнего.
+ * Именно их читает расчёт долей (isPoolMemberActiveAt), и форма должна
+ * показывать их же, а не верхние поля, которые при периодах не используются.
+ */
+export const participationDates = (investor: Investor): { joinedDate: string; leftPoolDate?: string } => {
+  const periods = sortedPeriods(investor);
+  if (!periods) return { joinedDate: investor.joinedDate, leftPoolDate: investor.leftPoolDate };
+  return { joinedDate: periods[0].joinedDate, leftPoolDate: periods[periods.length - 1].leftPoolDate };
+};
+
+/**
+ * Новые даты участия — сразу и в карточке инвестора, и в его периодах.
+ *
+ * Расчёт долей берёт даты из investmentPeriods, если они есть, а верхние
+ * joinedDate/leftPoolDate тогда не читает вовсе. Форма же правила только
+ * верхние поля — и у инвестора с периодами (после повторного входа или
+ * изменения суммы вложения) новая дата молча ни на что не влияла: прибыль
+ * по договорам до «старой» даты входа так и не начислялась.
+ *
+ * Дата входа пишется в первый период, дата выхода — в последний. Периоды
+ * повторных входов между ними не трогаем: это отдельные события со своими суммами.
+ *
+ * @param changes только изменённые поля; leftPoolDate: null — снять дату выхода
+ */
+export const withParticipationDates = (
+  investor: Investor,
+  changes: { joinedDate?: string; leftPoolDate?: string | null }
+): Investor => {
+  const next: Investor = { ...investor };
+  const periods = sortedPeriods(investor);
+
+  if (changes.joinedDate !== undefined) {
+    next.joinedDate = changes.joinedDate;
+    if (periods) periods[0].joinedDate = changes.joinedDate;
+  }
+  if (changes.leftPoolDate !== undefined) {
+    const left = changes.leftPoolDate || undefined;
+    next.leftPoolDate = left;
+    if (periods) {
+      const last = periods[periods.length - 1];
+      if (left) last.leftPoolDate = left;
+      else delete last.leftPoolDate;
+    }
+  }
+  if (periods) next.investmentPeriods = periods;
+  return next;
+};
+
+/** Почему такие даты участия сохранить нельзя; null — можно. */
+export const participationDatesError = (
+  investor: Investor,
+  joinedDate: string,
+  leftPoolDate?: string | null
+): string | null => {
+  const joined = dayMs(joinedDate);
+  if (Number.isNaN(joined)) return 'Укажите дату входа';
+  const periods = sortedPeriods(investor);
+
+  // Первый период не должен налезть на повторный вход: иначе два периода
+  // перекрылись бы, и капитал инвестора в эти дни посчитался бы неоднозначно.
+  if (periods && periods.length > 1 && periods[0].leftPoolDate && joined >= dayMs(periods[0].leftPoolDate)) {
+    return `Дата входа должна быть раньше первого выхода — ${new Date(periods[0].leftPoolDate).toLocaleDateString('ru-RU')}`;
+  }
+
+  if (leftPoolDate) {
+    // Выход закрывает последний период — сравниваем с его входом.
+    const lastJoined = periods && periods.length > 1 ? dayMs(periods[periods.length - 1].joinedDate) : joined;
+    if (dayMs(leftPoolDate) <= lastJoined) return 'Дата выхода должна быть позже даты входа';
+  }
+  return null;
+};
+
 // 🔒 Единая точка расчёта долей прибыли по счёту.
 // Обычный счёт инвестора (ownerId) — доля равна его фиксированному profitPercentage, как и раньше.
 // Общий пул (type === 'POOL', BUSINESS_PRO) — двухэтапно: (1) прибыль сначала делится между

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Investor, Sale, Expense, Account, Payment, AppSettings, Customer, InvestmentPeriod, LossEvent } from '../types';
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, shareDateForSale } from '../src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, shareDateForSale, participationDates, participationDatesError, withParticipationDates } from '../src/utils';
 
 // Модальное окно формы. Через портал в body: страница открыта внутри .page-push-layer,
 // а он position: fixed с z-index 30 — окно внутри него оказалось бы под нижней навигацией.
@@ -166,6 +166,8 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
   const [editPassword, setEditPassword] = useState('');
   const [editProfit, setEditProfit] = useState('');
   const [editLeftDate, setEditLeftDate] = useState('');
+  const [editJoinedDate, setEditJoinedDate] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
 
   // Investment periods state
   const [showNewPeriod, setShowNewPeriod] = useState(false);
@@ -215,7 +217,11 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
     setEditEmail(investor.email || '');
     setEditPassword('');
     setEditProfit(investor.profitPercentage.toString());
-    setEditLeftDate((investor.leftPoolDate || '').split('T')[0]);
+    // Действующие даты — из периодов участия, если они есть: их читает расчёт долей.
+    const dates = participationDates(investor);
+    setEditJoinedDate((dates.joinedDate || '').split('T')[0]);
+    setEditLeftDate((dates.leftPoolDate || '').split('T')[0]);
+    setEditError(null);
     setShowEdit(true);
   };
 
@@ -223,21 +229,35 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
     e.preventDefault();
     if (!editName.trim() || !onUpdateInvestor) return;
 
-    const originalLeftStr = (investor.leftPoolDate || '').split('T')[0];
+    // Даты пишем, только если их реально поменяли. Сегодняшняя дата входа — это
+    // «сейчас», а не полночь: иначе инвестор задним числом получил бы долю от
+    // платежей, пришедших раньше в этот же день (так же и в форме списка инвесторов).
+    const current = participationDates(investor);
+    const todayIso = new Date().toISOString().split('T')[0];
+    const joinedChanged = !!editJoinedDate && editJoinedDate !== (current.joinedDate || '').split('T')[0];
+    const joinedDate = joinedChanged
+      ? (editJoinedDate === todayIso ? new Date().toISOString() : new Date(editJoinedDate).toISOString())
+      : current.joinedDate;
+    const leftChanged = editLeftDate !== (current.leftPoolDate || '').split('T')[0];
     const leftPoolDate = !editLeftDate
-      ? undefined
-      : editLeftDate !== originalLeftStr
-        ? new Date(editLeftDate).toISOString()
-        : investor.leftPoolDate;
+      ? null
+      : leftChanged ? new Date(editLeftDate).toISOString() : current.leftPoolDate;
 
-    onUpdateInvestor({
+    const problem = participationDatesError(investor, joinedDate, leftPoolDate);
+    if (problem) { setEditError(problem); return; }
+
+    // Даты уходят и в карточку, и в периоды участия — иначе у инвестора с
+    // периодами правка не влияла бы на расчёт прибыли.
+    onUpdateInvestor(withParticipationDates({
       ...investor,
       name: editName.trim(),
       phone: editPhone,
       email: editEmail,
       profitPercentage: Number(editProfit),
-      leftPoolDate,
-    }, editPassword || undefined);
+    }, {
+      ...(joinedChanged ? { joinedDate } : {}),
+      ...(leftChanged ? { leftPoolDate } : {}),
+    }), editPassword || undefined);
     setShowEdit(false);
   };
 
@@ -1227,12 +1247,24 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
               <span className="absolute right-4 top-3.5 text-slate-400">%</span>
               <input required type="number" placeholder="Процент прибыли" className="w-full p-3 pr-8 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none font-bold" value={editProfit} onChange={e => setEditProfit(e.target.value)} />
             </div>
+            <div>
+              <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
+                {allPeriods.length > 1 ? 'Дата первого входа' : 'Дата начала участия'}
+              </label>
+              <input type="date" required className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={editJoinedDate} onChange={e => { setEditJoinedDate(e.target.value); setEditError(null); }} />
+              {isPoolMember && (
+                <p className="text-xs text-slate-400 mt-1">Доля прибыли начисляется по договорам, оформленным с этой даты. После сохранения прибыль пересчитается.</p>
+              )}
+            </div>
             {isPoolMember && (
               <div>
                 <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Дата выхода из пула (необязательно)</label>
-                <input type="date" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={editLeftDate} onChange={e => setEditLeftDate(e.target.value)} />
+                <input type="date" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={editLeftDate} onChange={e => { setEditLeftDate(e.target.value); setEditError(null); }} />
                 <p className="text-xs text-slate-400 mt-1">Оставьте пустым, если инвестор ещё активен.</p>
               </div>
+            )}
+            {editError && (
+              <p className="text-sm text-rose-600 dark:text-rose-400">{editError}</p>
             )}
             <div className="flex gap-2 pt-1">
               <button type="button" onClick={() => setShowEdit(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-medium text-slate-600 dark:text-slate-300">Отмена</button>

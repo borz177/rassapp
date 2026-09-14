@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Account, Investor, InvestorPermissions } from '../types';
 import { ICONS } from '../constants';
-import { getInvestorAccount, formatDate } from '../src/utils';
+import { getInvestorAccount, formatDate, participationDates, participationDatesError, withParticipationDates } from '../src/utils';
 import { SuccessCheck, hapticSuccess, haptic } from './feedback';
 
 export type InvestorPoolChoice =
@@ -98,8 +98,11 @@ const Investors: React.FC<InvestorsProps> = ({
       setFormProfitPercentage(inv.profitPercentage.toString());
       setFormPermissions(inv.permissions || { canViewContracts: false, canViewHistory: false });
       setFormPassword(''); // Password not typically editable directly or shown
-      setFormJoinedDate((inv.joinedDate || new Date().toISOString()).split('T')[0]);
-      setFormLeftPoolDate((inv.leftPoolDate || '').split('T')[0]);
+      // Даты — действующие, из периодов участия, если они есть: именно их читает
+      // расчёт долей, а верхние поля у такого инвестора устаревают.
+      const dates = participationDates(inv);
+      setFormJoinedDate((dates.joinedDate || new Date().toISOString()).split('T')[0]);
+      setFormLeftPoolDate((dates.leftPoolDate || '').split('T')[0]);
       setEditingId(inv.id);
       setIsAdding(true);
   };
@@ -126,31 +129,36 @@ const Investors: React.FC<InvestorsProps> = ({
                 // сохранении формы, и если исходная дата вступления была "сегодня", он превращался
                 // в "прямо сейчас" — задним числом исключая инвестора из платежей, полученных
                 // раньше в этот же день (см. getAccountShares), и обнуляя ему "полученную прибыль".
-                const originalDateStr = (inv.joinedDate || '').split('T')[0];
-                const joinedDate = formJoinedDate && formJoinedDate !== originalDateStr
-                    ? toJoinedDateIso(formJoinedDate)
-                    : inv.joinedDate;
+                // Сравниваем с действующими датами — у инвестора с периодами это даты
+                // периодов, а не верхние поля.
+                const current = participationDates(inv);
+                const joinedChanged = !!formJoinedDate && formJoinedDate !== (current.joinedDate || '').split('T')[0];
+                const joinedDate = joinedChanged ? toJoinedDateIso(formJoinedDate) : current.joinedDate;
 
                 // 🔒 Та же защита, что и для joinedDate выше — пересчитываем ТОЛЬКО при реальном
                 // изменении поля. Пустое значение = инвестор активен/выход отменён (leftPoolDate снят).
-                const originalLeftDateStr = (inv.leftPoolDate || '').split('T')[0];
+                const leftChanged = formLeftPoolDate !== (current.leftPoolDate || '').split('T')[0];
                 const leftPoolDate = !formLeftPoolDate
-                    ? undefined
-                    : formLeftPoolDate !== originalLeftDateStr
-                        ? toJoinedDateIso(formLeftPoolDate)
-                        : inv.leftPoolDate;
+                    ? null
+                    : leftChanged ? toJoinedDateIso(formLeftPoolDate) : current.leftPoolDate;
 
-                onUpdateInvestor({
+                const problem = participationDatesError(inv, joinedDate, leftPoolDate);
+                if (problem) { alert(problem); return; }
+
+                // Даты пишем и в карточку, и в периоды участия: раньше менялись только верхние
+                // поля, и у инвестора с периодами новая дата входа молча не влияла на прибыль.
+                onUpdateInvestor(withParticipationDates({
                     ...inv,
                     name: formName,
                     phone: formPhone,
                     email: formEmail,
                     initialAmount: Number(formAmount) || inv.initialAmount, // 🔹 Фоллбэк на старое значение
                     profitPercentage: Number(formProfitPercentage),
-                    joinedDate,
-                    leftPoolDate,
                     permissions: formPermissions
-                }, formPassword);
+                }, {
+                    ...(joinedChanged ? { joinedDate } : {}),
+                    ...(leftChanged ? { leftPoolDate } : {}),
+                }), formPassword);
 
                 // Рутинная правка — подсвечиваем строку и идём дальше
                 setSavedId(inv.id);
@@ -323,6 +331,11 @@ const Investors: React.FC<InvestorsProps> = ({
                           onChange={e => setFormJoinedDate(e.target.value)}
                           required
                       />
+                      {editingId && isEditingPoolMember && (
+                          <p className="text-xs text-slate-400 mt-1">
+                              Доля прибыли начисляется по договорам, оформленным с этой даты. После сохранения прибыль пересчитается.
+                          </p>
+                      )}
                   </div>
                   {!editingId && poolMode !== 'OWN' && (
                       <div>
