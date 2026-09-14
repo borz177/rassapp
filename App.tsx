@@ -61,6 +61,7 @@ import { useSwipeable } from "react-swipeable"
 import Landing from './components/Landing.tsx';
 import { NotificationModal } from './components/NotificationModal';
 import { withTimeout } from './src/timeout';
+import { isNetworkError } from './src/authRequest';
 import { offlineStorage } from "./services/offlineStorage";
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
@@ -1321,15 +1322,26 @@ const subStatus = useMemo(() => {
 useEffect(() => {
   if (!user) return;
 
-  // Загружаем сразу
-  loadSupportUnreadCount(user);
-
-  // Проверяем каждые 30 секунд
-  const interval = setInterval(() => {
+  // Без сети и в свёрнутом приложении не опрашиваем. Каждый провал давал в консоли
+  // две красные строки — сетевую ошибку браузера и нашу, — и за время без интернета
+  // их набегали сотни: настоящие ошибки среди них было не найти, а телефон зря
+  // просыпался каждые 30 секунд.
+  const tick = () => {
+    if (!navigator.onLine || document.visibilityState !== 'visible') return;
     loadSupportUnreadCount(user);
-  }, 30000);
+  };
 
-  return () => clearInterval(interval);
+  tick();
+  const interval = setInterval(tick, 30000);
+  // Сеть вернулась или приложение снова открыли — обновляем сразу, не дожидаясь круга.
+  window.addEventListener('online', tick);
+  document.addEventListener('visibilitychange', tick);
+
+  return () => {
+    clearInterval(interval);
+    window.removeEventListener('online', tick);
+    document.removeEventListener('visibilitychange', tick);
+  };
 }, [user]);
 
 const loadData = async (currentUser?: User, skipLoadingState = true) => {
@@ -1381,6 +1393,11 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
   const activeInvestor = isInvestor && user ? investors.find(i => i.id === user.id) : null;
 
 
+  // Сбой связи — не ошибка приложения: без сети запрос и не должен пройти.
+  // Такие случаи в консоль не пишем, настоящие ответы сервера с ошибкой — пишем.
+  const isConnectionProblem = (error: any): boolean =>
+    !navigator.onLine || isNetworkError(error) || /TIMEOUT/i.test(String(error?.message || ''));
+
   const loadSupportUnreadCount = async (currentUser: User) => {
   if (!currentUser) return;
 
@@ -1403,7 +1420,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 
     setSupportUnreadCount(response.totalUnread || 0);
   } catch (error) {
-    console.error('Failed to load support unread count:', error);
+    if (!isConnectionProblem(error)) console.error('Failed to load support unread count:', error);
   }
 };
 
@@ -1475,12 +1492,14 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 
     let cancelled = false;
     const loadUnread = async () => {
+      // Без сети и в свёрнутом приложении запрос заведомо лишний — см. опрос поддержки выше.
+      if (!navigator.onLine || document.visibilityState !== 'visible') return;
       try {
         await api.flushPendingNotificationReads();
         const count = await api.getUnreadNotificationCount();
         if (!cancelled) setUnreadNotifCount(count);
       } catch (error) {
-        console.error('Failed to load unread notifications count:', error);
+        if (!isConnectionProblem(error)) console.error('Failed to load unread notifications count:', error);
       }
     };
 
@@ -1490,12 +1509,14 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
     const onVisible = () => { if (document.visibilityState === 'visible') loadUnread(); };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', loadUnread);
+    window.addEventListener('online', loadUnread);
 
     return () => {
       cancelled = true;
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', loadUnread);
+      window.removeEventListener('online', loadUnread);
     };
   }, [user, user?.subscription?.plan]);
 
