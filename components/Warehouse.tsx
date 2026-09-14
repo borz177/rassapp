@@ -488,6 +488,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
   };
 
   const inputCls = 'w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-400';
+  // Подпись над полем карточки товара. Название внутри поля пропадало, как только
+  // в нём появлялось значение, — и в заполненной карточке было не понять, где
+  // цена закупа, а где продажи.
+  const labelCls = 'block text-[11px] font-bold text-slate-500 dark:text-slate-400 px-0.5';
 
   const openProduct = products.find(p => p.id === openProductId) || null;
 
@@ -1001,28 +1005,51 @@ const Warehouse: React.FC<WarehouseProps> = ({
                 )}
               </div>
 
-              <input value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Название" className={inputCls} />
-              <div className="grid grid-cols-2 gap-2">
-                <input value={form.sku} onChange={e => setForm(prev => ({ ...prev, sku: e.target.value }))} placeholder="Артикул" className={inputCls} />
-                <input value={form.category} onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))} placeholder="Категория" className={inputCls} list="warehouse-categories" />
+              <label className="block">
+                <span className={`${labelCls} mb-1`}>Название</span>
+                <input value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Например, вода 0,5 л" className={inputCls} />
+              </label>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-3">
+                <label className="block min-w-0">
+                  <span className={`${labelCls} mb-1`}>Артикул</span>
+                  <input value={form.sku} onChange={e => setForm(prev => ({ ...prev, sku: e.target.value }))} placeholder="Необязательно" className={inputCls} />
+                </label>
+                <label className="block min-w-0">
+                  <span className={`${labelCls} mb-1`}>Категория</span>
+                  <input value={form.category} onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))} placeholder="Общее" className={inputCls} list="warehouse-categories" />
+                </label>
                 {/* Закуп первым: товар заводят с накладной поставщика, и цену продажи
                     считают от закупа, а не наоборот. */}
-                <input value={form.buyPrice} onChange={e => setForm(prev => ({ ...prev, buyPrice: e.target.value }))} placeholder="Цена закупа" inputMode="decimal" className={inputCls} />
-                <input value={form.price} onChange={e => setForm(prev => ({ ...prev, price: e.target.value }))} placeholder="Цена продажи" inputMode="decimal" className={inputCls} />
-                <input value={form.unit} onChange={e => setForm(prev => ({ ...prev, unit: e.target.value }))} placeholder="Ед. изм." className={inputCls} />
-                <input value={form.minStock} onChange={e => setForm(prev => ({ ...prev, minStock: e.target.value }))} placeholder="Мин. остаток" inputMode="decimal" className={inputCls} />
+                <label className="block min-w-0">
+                  <span className={`${labelCls} mb-1`}>Цена закупа</span>
+                  <input value={form.buyPrice} onChange={e => setForm(prev => ({ ...prev, buyPrice: e.target.value }))} placeholder="0" inputMode="decimal" className={inputCls} />
+                </label>
+                <label className="block min-w-0">
+                  <span className={`${labelCls} mb-1`}>Цена продажи</span>
+                  <input value={form.price} onChange={e => setForm(prev => ({ ...prev, price: e.target.value }))} placeholder="0" inputMode="decimal" className={inputCls} />
+                </label>
+                <label className="block min-w-0">
+                  <span className={`${labelCls} mb-1`}>Ед. изм.</span>
+                  <input value={form.unit} onChange={e => setForm(prev => ({ ...prev, unit: e.target.value }))} placeholder="шт" className={inputCls} />
+                </label>
+                <label className="block min-w-0">
+                  <span className={`${labelCls} mb-1`}>Мин. остаток</span>
+                  <input value={form.minStock} onChange={e => setForm(prev => ({ ...prev, minStock: e.target.value }))} placeholder="Не следить" inputMode="decimal" className={inputCls} />
+                </label>
               </div>
 
               {/* Штрихкоды отдельно от артикула: артикул — внутреннее имя товара,
                   а штрихкодов у него бывает несколько, и по ним товар находят
                   касса и приход. */}
               <div className="space-y-2">
+                {/* Не <label>: в строке ещё две кнопки, и нажатие на подпись не должно их задевать */}
+                <span className={`${labelCls} -mb-1`}>Штрихкод</span>
                 <div className="flex gap-2">
                   <input value={form.barcodeDraft}
                          onChange={e => setForm(prev => ({ ...prev, barcodeDraft: e.target.value }))}
                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); setError(addFormBarcode(form.barcodeDraft)); } }}
                          onBlur={() => { if (form.barcodeDraft.trim()) setError(addFormBarcode(form.barcodeDraft)); }}
-                         placeholder="Штрихкод" enterKeyHint="done" className={`${inputCls} tabular-nums`} />
+                         placeholder="Отсканируйте или введите" enterKeyHint="done" className={`${inputCls} tabular-nums`} />
                   <ScanButton onClick={() => setScanFor('form')} />
                   <button type="button" onClick={generateFormBarcode} title="Создать внутренний штрихкод"
                           className="shrink-0 px-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-xs font-bold text-slate-600 dark:text-slate-300 active:scale-95 transition-transform">
@@ -1067,8 +1094,11 @@ const Warehouse: React.FC<WarehouseProps> = ({
                   ))}
                 </div>
               )}
-              <textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
-                        placeholder="Описание" rows={2} className={inputCls} />
+              <label className="block">
+                <span className={`${labelCls} mb-1`}>Описание</span>
+                <textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
+                          placeholder="Необязательно" rows={2} className={inputCls} />
+              </label>
 
               {/* Ошибка — прямо в карточке: строка ошибки экрана склада лежит под
                   окном, и человек не видел бы, почему «Сохранить» не сработало. */}
