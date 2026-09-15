@@ -6,6 +6,7 @@ import { api } from '../services/api';
 import { compressImageFile } from '../src/imageCompress';
 import TopBarBack from './TopBarBack';
 import ModalPortal from './ModalPortal';
+import Sheet from './Sheet';
 import TabPill from './TabPill';
 import WarehouseOps from './WarehouseOps';
 import ProductDetails from './ProductDetails';
@@ -155,6 +156,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
   const [opsPending, setOpsPending] = useState<string | null>(null);
   const [opsAdded, setOpsAdded] = useState<{ productId: string; at: number } | null>(null);
 
+  // Лист выбора склада: складов бывает много, и в строку чипсами они не влезали.
+  const [whPickerOpen, setWhPickerOpen] = useState(false);
   const [movementFor, setMovementFor] = useState<Product | null>(null);
   const [movementWh, setMovementWh] = useState<string>(DEFAULT_WAREHOUSE_ID);
   const [movementType, setMovementType] = useState<StockMovement['type']>('IN');
@@ -207,6 +210,11 @@ const Warehouse: React.FC<WarehouseProps> = ({
   // Товары, заведённые до складов, лежат в ячейке «main»: если основным назначен
   // свой склад, это его остатки — иначе товар пропал бы из разрезов по складам.
   const stockAt = (p: Product, warehouseId: string) => stockOnWarehouse(p, warehouseId, shownWarehouses);
+
+  // Пометку «основной» не вешаем на склад, который так и называется: «Основной
+  // склад · основной» — подпись ни о чём.
+  const whLabel = (w: StockLocation) =>
+    w.isMain && !/основн/i.test(w.name) ? `${w.name} · основной` : w.name;
 
   // Остаток в пределах складов сотрудника: продавцу одной точки общий остаток по
   // всем складам ничего не говорит — продать он может только то, что у него.
@@ -695,6 +703,35 @@ const Warehouse: React.FC<WarehouseProps> = ({
       )}
 
       {section === 'catalog' && (<>
+      {/* Склад — первым делом: он задаёт, про какие остатки вообще весь экран.
+          Отдельной карточкой, а не рядом чипсов: складов бывает десяток, и
+          строка чипсов превращалась в ленту, где текущий склад ещё поискать. */}
+      {!selection && !reorder && shownWarehouses.length > 1 && (
+        <button type="button" onClick={() => setWhPickerOpen(true)}
+                className="w-full flex items-center gap-3 p-3 pr-5 rounded-[28px] border border-indigo-100 dark:border-indigo-900/40 bg-white/70 dark:bg-slate-800/60 text-left active:scale-[0.99] transition-transform">
+          <span className="shrink-0 w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-slate-900 flex items-center justify-center text-indigo-500 dark:text-indigo-300">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" />
+              <path d="M7 12h10M7 15.5h10M7 19h10" />
+            </svg>
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[11px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-300">
+              Текущий склад
+            </span>
+            <span className="block text-lg font-bold text-slate-800 dark:text-white truncate">
+              {warehouseFilter === 'ALL'
+                ? 'Все склады'
+                : shownWarehouses.find(w => w.id === warehouseFilter)?.name || 'Все склады'}
+            </span>
+          </span>
+          <svg className="shrink-0 text-slate-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="8 9 12 5 16 9" />
+            <polyline points="16 15 12 19 8 15" />
+          </svg>
+        </button>
+      )}
+
       {/* Панель выбора заменяет фильтры целиком: пока идёт выбор, человек
           занят другим делом, и поиск с категориями ему только мешают. */}
       {selection ? (
@@ -772,24 +809,6 @@ const Warehouse: React.FC<WarehouseProps> = ({
           <button onClick={() => setUnknownCode(null)} aria-label="Скрыть"
                   className="shrink-0 font-bold text-amber-700 dark:text-amber-300 opacity-60">✕</button>
         </div>
-      )}
-
-      {/* Склады отдельной строкой над категориями: это разрез «где лежит»,
-          а не «что это за товар», и мешать их в один ряд значит заставлять
-          искать нужную кнопку среди чужих. */}
-      {!selection && !reorder && shownWarehouses.length > 1 && (
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => setWarehouseFilter('ALL')}
-                className={`px-3.5 py-2 rounded-full text-xs font-bold ${warehouseFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
-          Все склады
-        </button>
-        {shownWarehouses.map(w => (
-          <button key={w.id} onClick={() => setWarehouseFilter(w.id)}
-                  className={`px-3.5 py-2 rounded-full text-xs font-bold ${warehouseFilter === w.id ? 'bg-indigo-600 text-white' : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
-            {w.name}
-          </button>
-        ))}
-      </div>
       )}
 
       {!selection && !reorder && (
@@ -1152,7 +1171,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
                             onChange={e => setForm(prev => ({ ...prev, warehouseId: e.target.value }))}
                             className={inputCls}>
                       {shownWarehouses.map(w => (
-                        <option key={w.id} value={w.id}>{w.name}{w.isMain ? ' · основной' : ''}</option>
+                        <option key={w.id} value={w.id}>{whLabel(w)}</option>
                       ))}
                     </select>
                   </label>
@@ -1257,6 +1276,39 @@ const Warehouse: React.FC<WarehouseProps> = ({
       )}
 
       {/* Движение по складу */}
+      {/* Выбор склада листом: имя склада целиком, с остатком — по нему и узнают
+          нужный, а не по обрезанному чипу. */}
+      {whPickerOpen && (
+        <Sheet onClose={() => setWhPickerOpen(false)} className="w-full sm:max-w-md p-2">
+          {(requestClose: () => void) => (
+            <>
+              <p className="px-4 pt-3 pb-2 text-sm font-bold text-slate-500 dark:text-slate-400">Склад</p>
+              {[{ id: 'ALL', name: 'Все склады' } as StockLocation, ...shownWarehouses].map(w => {
+                const active = warehouseFilter === w.id;
+                const stat = w.id === 'ALL' ? null : warehouseStats(w.id);
+                return (
+                  <button key={w.id} type="button"
+                          onClick={() => { setWarehouseFilter(w.id); requestClose(); }}
+                          className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 ${
+                            active ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'active:bg-slate-50 dark:active:bg-slate-700'
+                          }`}>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block font-semibold truncate ${active ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                        {whLabel(w)}
+                      </span>
+                      <span className="block text-xs text-slate-400">
+                        {stat ? `${stat.items} поз. · ${money(stat.units)} ед.` : 'Остатки всех складов вместе'}
+                      </span>
+                    </span>
+                    {active && <span className="shrink-0 text-indigo-600 dark:text-indigo-300 font-bold">✓</span>}
+                  </button>
+                );
+              })}
+            </>
+          )}
+        </Sheet>
+      )}
+
       {movementFor && (
         <ModalPortal>
           <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
@@ -1275,7 +1327,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
                   <span className={`${labelCls} mb-1`}>Склад</span>
                   <select value={movementWh || defaultWarehouseId} onChange={e => setMovementWh(e.target.value)} className={inputCls}>
                     {shownWarehouses.map(w => (
-                      <option key={w.id} value={w.id}>{w.name}{w.isMain ? ' · основной' : ''}</option>
+                      <option key={w.id} value={w.id}>{whLabel(w)}</option>
                     ))}
                   </select>
                 </label>

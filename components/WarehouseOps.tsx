@@ -90,9 +90,10 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
   const [toWh, setToWh] = useState('');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('ALL');
-  // Товары склада, а не всего каталога. Списывают, перемещают и пересчитывают
-  // то, что на складе лежит, — остальное в списке только мешает искать. Приход
-  // наоборот: туда привозят и то, чего на складе ещё не было.
+  // Товары склада, а не всего каталога: список без этого показывал чужие товары
+  // нулём, и нужный приходилось искать среди них. Для прихода фильтр снимают
+  // одной кнопкой — привозят и то, чего на складе ещё не было; отсканированный
+  // товар встаёт в документ в любом случае, фильтр ему не мешает.
   const [onlyHere, setOnlyHere] = useState(true);
 
   // Очередь документа: id товара → количество и цена
@@ -140,7 +141,7 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
       .filter(p => category === 'ALL' || p.category === category)
       // Уже набранное в документ остаётся на виду при любом фильтре: иначе
       // строка исчезала бы из списка ровно в тот момент, когда её добавили.
-      .filter(p => !onlyHere || tab === 'IN' || batch[p.id] || stockAt(p, fromWh) !== 0)
+      .filter(p => !onlyHere || batch[p.id] || stockAt(p, fromWh) !== 0)
       .filter(p => productMatchesQuery(p, search))
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -394,15 +395,13 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-        {tab !== 'IN' && (
-          <button onClick={() => setOnlyHere(v => !v)}
-                  className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold ${
-                    onlyHere ? 'bg-indigo-600 text-white'
-                             : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-500'
-                  }`}>
-            {onlyHere ? 'Только на складе' : 'Весь каталог'}
-          </button>
-        )}
+        <button onClick={() => setOnlyHere(v => !v)}
+                className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold ${
+                  onlyHere ? 'bg-indigo-600 text-white'
+                           : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-500'
+                }`}>
+          {onlyHere ? 'Только на складе' : 'Весь каталог'}
+        </button>
       </div>
 
       {categories.length > 0 && (
@@ -448,8 +447,10 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
         <p className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center">
           {products.length === 0
             ? 'Сначала добавьте товары на вкладке «Товары».'
-            : onlyHere && tab !== 'IN' && !search && category === 'ALL'
+            : onlyHere && !search && category === 'ALL'
             ? `На складе «${liveWarehouses.find(w => w.id === fromWh)?.name || ''}» ничего не числится. Нажмите «Только на складе», чтобы увидеть весь каталог.`
+            : onlyHere
+            ? 'На этом складе не найдено. Нажмите «Только на складе», чтобы искать по всему каталогу.'
             : 'Ничего не найдено.'}
         </p>
       ) : (
