@@ -177,6 +177,26 @@ const Warehouse: React.FC<WarehouseProps> = ({
     [warehouses, warehouseScope]
   );
 
+  // Основной склад заводим по-настоящему, как любой другой: подставная карточка
+  // существовала только на экране и не давала ни переименовать его, ни привязать
+  // счёт, ни выбрать в чужих списках. Пишем один раз, с постоянным id, — повтор
+  // с другого устройства перезапишет ту же запись, а не создаст вторую.
+  // Сотрудник склады не заводит: запись ему всё равно запретит сервер.
+  const canManageWarehouses = !warehouseScope && user?.role !== 'employee' && user?.role !== 'investor';
+  useEffect(() => {
+    if (!canManageWarehouses) return;
+    // Архивный основной не воскрешаем: его убрали намеренно.
+    if (warehouses.some(w => w.id === DEFAULT_WAREHOUSE_ID)) return;
+    if (warehouses.some(w => w.isMain && !w.isArchived)) return;
+    void onSaveWarehouse({
+      id: DEFAULT_WAREHOUSE_ID,
+      userId: '',
+      name: 'Основной склад',
+      isMain: true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warehouses, canManageWarehouses]);
+
   // Куда по умолчанию кладут товар: основной склад, а если его нет — первый
   // доступный. Сотруднику подставляем его склад, чужой ему всё равно закрыт.
   const defaultWarehouseId = useMemo(
