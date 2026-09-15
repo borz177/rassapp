@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import type {
-  Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User,
+  Account, AppSettings, Customer, Expense, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User,
 } from '../types';
-import { formatCurrency, retailPaidAmount } from '../src/utils';
+import { DEFAULT_WAREHOUSE_ID } from '../types';
+import { DELETABLE_STOCK_DOC_KINDS, formatCurrency, retailPaidAmount, stockDocReversal } from '../src/utils';
 import { buildJournalDocs, KIND_LABEL, printJournalDoc, type DocKind, type JournalDoc } from '../src/journalDocs';
 import DocumentCard from './DocumentCard';
 import TopBarBack from './TopBarBack';
@@ -32,6 +33,12 @@ interface JournalProps {
   onAddDocLines?: (docId: string, lines: { productId: string; quantity: number; price: number }[]) => Promise<void> | void;
   /** Удаление розничной продажи: товар вернётся на склад, платежи уйдут вместе с чеком */
   onDeleteSale?: (sale: RetailSale) => Promise<void> | void;
+  /** Удаление прихода, списания или инвентаризации: остатки откатываются. true — удалён полностью */
+  onDeleteStockDoc?: (movements: StockMovement[]) => Promise<boolean> | boolean;
+  /** Оплаты поставщикам — показать, что было привязано к удаляемому приходу */
+  expenses?: Expense[];
+  /** Продажа в минус разрешена: тогда удаление, уводящее остаток в минус, не запрещаем */
+  allowNegativeStock?: boolean;
   /**
    * Открыть документ сразу — переход из другого раздела (поставка в карточке
    * партнёра). Закрытие такого документа возвращает туда, откуда пришли,
@@ -41,6 +48,12 @@ interface JournalProps {
 }
 
 type PayFilter = 'ALL' | 'DEBT' | 'PAID';
+
+const DELETE_LABEL: Partial<Record<DocKind, string>> = {
+  IN: 'Удалить приход',
+  WRITE_OFF: 'Удалить списание',
+  INVENTORY: 'Удалить инвентаризацию',
+};
 
 const KIND_FILTERS: { id: 'ALL' | DocKind; label: string }[] = [
   { id: 'ALL', label: 'Все' },
@@ -84,6 +97,7 @@ const Journal: React.FC<JournalProps> = ({
   retailSales, movements, products, customers, warehouses, suppliers, accounts,
   employees = [], contracts = [], appSettings, user, onBack, onSelectCustomer, onAcceptPayment,
   onUpdateSale, onUpdateStockDoc, onAddDocLines, onDeleteSale, initialDocId = null,
+  onDeleteStockDoc, expenses = [], allowNegativeStock = false,
 }) => {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'ALL' | DocKind>('ALL');
@@ -96,6 +110,11 @@ const Journal: React.FC<JournalProps> = ({
   // возвращает товар и снимает принятые деньги — это не то, что делают «на всякий».
   const [deleting, setDeleting] = useState<JournalDoc | null>(null);
   const [removing, setRemoving] = useState(false);
+  // Складской документ к удалению — своё окно: последствия у него другие,
+  // чем у чека, — деньги не трогаются, зато двигаются остатки и долг поставщику.
+  const [deletingDoc, setDeletingDoc] = useState<JournalDoc | null>(null);
+  // Сотрудник удаляет только с правом на удаление — как и везде в приложении.
+  const canDelete = user?.role !== 'employee' || !!user?.permissions?.canDelete;
 
   const cents = appSettings.showCents;
   const company = appSettings.companyName || 'Магазин';
@@ -133,6 +152,21 @@ const Journal: React.FC<JournalProps> = ({
   }), [visible]);
 
   const opened = docs.find(d => d.id === openId) || null;
+
+  const docReversal = useMemo(
+    () => (deletingDoc ? stockDocReversal(deletingDoc.movements || [], products) : null),
+    [deletingDoc, products]
+  );
+  // Оплаты, привязанные к приходу. id прихода у поставщика — ключ пачки движений,
+  // у документа журнала к нему приставлено «doc_».
+  const linkedPayments = useMemo(
+    () => (deletingDoc?.kind === 'IN'
+      ? expenses.filter(e => e.supplyDocId && `doc_${e.supplyDocId}` === deletingDoc.id && e.isRefund !== true)
+      : []),
+    [deletingDoc, expenses]
+  );
+  const warehouseLabel = (id: string) =>
+    warehouses.find(w => w.id === id)?.name || (id === DEFAULT_WAREHOUSE_ID ? 'Основной склад' : 'Склад удалён');
 
   const filtersActive = kind !== 'ALL' || pay !== 'ALL';
 
@@ -356,6 +390,109 @@ const Journal: React.FC<JournalProps> = ({
         </ModalPortal>
       )}
 
+      {deletingDoc && docReversal && (() => {
+        const kind = deletingDoc.kind;
+        const units = deletingDoc.lines.reduce((n, l) => n + l.quantity, 0);
+        const blocked = docReversal.shortages.length > 0 && !allowNegativeStock;
+        const paidLinked = linkedPayments.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+        return (
+        <ModalPortal onClose={() => !removing && setDeletingDoc(null)}>
+          <div className="fixed inset-0 z-modal-top flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+               onClick={() => !removing && setDeletingDoc(null)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl animate-slide-up-sheet max-h-[88vh] overflow-y-auto"
+                 onClick={e => e.stopPropagation()}>
+              <div className="px-5 pt-5 pb-3">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white">
+                  {DELETE_LABEL[kind]} №{deletingDoc.number}?
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  {deletingDoc.from} → {deletingDoc.to} · {new Date(deletingDoc.date).toLocaleDateString('ru-RU')}
+                </p>
+              </div>
+
+              {/* Что именно сдвинется — перечисляем до нажатия. */}
+              <div className="px-5 pb-4 space-y-2 text-sm">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-emerald-500 shrink-0">↩</span>
+                  <span className="text-slate-600 dark:text-slate-300">
+                    {kind === 'IN'
+                      ? <>Товар спишется со склада «{deletingDoc.to}»: {deletingDoc.lines.length}&nbsp;поз. ({units}&nbsp;ед.)</>
+                      : kind === 'WRITE_OFF'
+                      ? <>Товар вернётся на склад «{deletingDoc.from}»: {deletingDoc.lines.length}&nbsp;поз. ({units}&nbsp;ед.)</>
+                      : <>Остатки вернутся к значениям до пересчёта: недостача вернётся на склад, излишек снимется — {deletingDoc.lines.length}&nbsp;поз.</>}
+                  </span>
+                </div>
+                {kind === 'IN' && deletingDoc.supplierId && deletingDoc.total > 0 && (
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-rose-500 shrink-0">−</span>
+                    <span className="text-slate-600 dark:text-slate-300">
+                      Долг перед «{deletingDoc.from}» уменьшится на {formatCurrency(deletingDoc.total, cents)}&nbsp;₽
+                    </span>
+                  </div>
+                )}
+                {linkedPayments.length > 0 && (
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-amber-500 shrink-0">≡</span>
+                    <span className="text-slate-600 dark:text-slate-300">
+                      К приходу привязаны оплаты поставщику ({linkedPayments.length} на{' '}
+                      {formatCurrency(paidLinked, cents)}&nbsp;₽). Они останутся и зачтутся в общий долг поставщика
+                    </span>
+                  </div>
+                )}
+
+                {docReversal.shortages.length > 0 && (
+                  <div className="rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 px-3 py-2.5 space-y-1">
+                    <p className="text-xs font-bold text-rose-700 dark:text-rose-300">Остаток уйдёт в минус</p>
+                    {docReversal.shortages.map(sh => (
+                      <p key={`${sh.productId}_${sh.warehouseId}`} className="text-xs text-rose-700 dark:text-rose-300">
+                        {sh.name}: {sh.before} → <b>{sh.after}</b> на «{warehouseLabel(sh.warehouseId)}»
+                      </p>
+                    ))}
+                    <p className="text-[11px] text-rose-600/80 dark:text-rose-300/80 pt-0.5">
+                      {blocked
+                        ? 'Товар из документа уже продан или списан, а продажа в минус в настройках магазина запрещена. Поправьте остаток инвентаризацией.'
+                        : 'Товар из документа уже продан или списан. Минус будет виден в каталоге, пока остаток не поправят.'}
+                    </p>
+                  </div>
+                )}
+
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 pt-1">
+                  Отменить удаление нельзя.
+                </p>
+              </div>
+
+              <div className="p-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+                <button type="button" disabled={removing} onClick={() => setDeletingDoc(null)}
+                        className="flex-1 py-3 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 font-bold text-sm disabled:opacity-50">
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={removing || blocked}
+                  onClick={async () => {
+                    const doc = deletingDoc;
+                    setRemoving(true);
+                    try {
+                      const done = await onDeleteStockDoc?.(doc.movements || []);
+                      if (done) {
+                        setDeletingDoc(null);
+                        setOpenId(prev => (prev === doc.id ? null : prev));
+                      }
+                    } finally {
+                      setRemoving(false);
+                    }
+                  }}
+                  className="flex-[1.4] py-3 rounded-2xl bg-rose-600 text-white font-bold text-sm disabled:opacity-50 active:scale-95 transition-transform"
+                >
+                  {removing ? 'Удаляем…' : 'Удалить'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+        );
+      })()}
+
       {menuFor && (
         <ModalPortal>
           <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
@@ -385,9 +522,15 @@ const Journal: React.FC<JournalProps> = ({
                   Открыть клиента
                 </button>
               )}
-              {/* Удалять умеем только розничный чек: складские накладные
-                  исправляют списанием и инвентаризацией — так остаток остаётся
-                  объяснимым, — а отгрузка по договору живёт вместе с договором. */}
+              {/* Отгрузка по договору живёт вместе с договором, а перемещение
+                  двигает два склада сразу — их из журнала не удаляем. */}
+              {(DELETABLE_STOCK_DOC_KINDS as readonly string[]).includes(menuFor.kind)
+                && onDeleteStockDoc && canDelete && (menuFor.movements || []).length > 0 && (
+                <button onClick={() => { const d = menuFor; setMenuFor(null); setDeletingDoc(d); }}
+                        className="w-full text-left px-4 py-3 rounded-xl font-semibold text-rose-600 dark:text-rose-400 active:bg-rose-50 dark:active:bg-rose-950/40">
+                  {DELETE_LABEL[menuFor.kind]}
+                </button>
+              )}
               {menuFor.kind === 'SALE' && menuFor.sale && onDeleteSale && (
                 <button onClick={() => { const d = menuFor; setMenuFor(null); setDeleting(d); }}
                         className="w-full text-left px-4 py-3 rounded-xl font-semibold text-rose-600 dark:text-rose-400 active:bg-rose-50 dark:active:bg-rose-950/40">

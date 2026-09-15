@@ -1,5 +1,5 @@
 import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js';
-import { Account, Investor, InvestmentPeriod, Sale, SaleStockItem, Expense, DEFAULT_WAREHOUSE_ID, Product, RetailSale, StockLocation} from '../types';
+import { Account, Investor, InvestmentPeriod, Sale, SaleStockItem, Expense, DEFAULT_WAREHOUSE_ID, Product, RetailSale, StockLocation, StockMovement} from '../types';
 
 export const escapeHtml = (str: unknown): string =>
   String(str ?? '')
@@ -703,6 +703,71 @@ export const applyStockDelta = (p: Product, warehouseId: string, delta: number):
     stock: Object.values(stocks).reduce((sum, v) => sum + v, 0),
     updatedAt: new Date().toISOString(),
   };
+};
+
+
+/** Складские документы, которые можно удалить из журнала. */
+export const DELETABLE_STOCK_DOC_KINDS = ['IN', 'WRITE_OFF', 'INVENTORY'] as const;
+
+export interface StockShortage {
+  productId: string;
+  name: string;
+  warehouseId: string;
+  /** Остаток на складе сейчас */
+  before: number;
+  /** Остаток после удаления документа */
+  after: number;
+}
+
+export interface StockDocReversal {
+  /** Карточки товаров с откатанными остатками — по одной на товар */
+  products: Product[];
+  /** Позиции, у которых остаток после удаления уйдёт в минус */
+  shortages: StockShortage[];
+}
+
+/**
+ * Что станет с остатками, если удалить складской документ.
+ *
+ * Остаток — снимок, а документ — движения, которые его сдвинули. Удалить
+ * документ значит сдвинуть остаток ровно обратно: у движения количество уже со
+ * знаком склада, поэтому правило одно для всех видов — приход (+) снимается,
+ * списание (−) возвращается, корректировка пересчёта откатывается на свою разницу.
+ * Строки одного товара складываются: у инвентаризации и прихода их может быть
+ * несколько, и сохранять товар по строке значило бы потерять все сдвиги, кроме
+ * последнего.
+ *
+ * Минус показываем, но не запрещаем здесь: удалённый приход, товар из которого
+ * уже продан, честно даёт отрицательный остаток. Разрешать ли это — решает
+ * настройка магазина.
+ */
+export const stockDocReversal = (movements: StockMovement[], products: Product[]): StockDocReversal => {
+  const touched = new Map<string, Product>();
+  const warehousesOf = new Map<string, Set<string>>();
+
+  for (const m of movements) {
+    const current = touched.get(m.productId) || products.find(p => p.id === m.productId);
+    // Товар удалён из каталога — возвращать остаток некуда, движение просто уйдёт.
+    if (!current) continue;
+    const warehouseId = m.warehouseId || DEFAULT_WAREHOUSE_ID;
+    touched.set(m.productId, applyStockDelta(current, warehouseId, -(Number(m.quantity) || 0)));
+    warehousesOf.set(m.productId, (warehousesOf.get(m.productId) || new Set()).add(warehouseId));
+  }
+
+  const shortages: StockShortage[] = [];
+  touched.forEach((next, productId) => {
+    const original = products.find(p => p.id === productId)!;
+    warehousesOf.get(productId)!.forEach(warehouseId => {
+      const before = stockAtWarehouse(original, warehouseId);
+      const after = stockAtWarehouse(next, warehouseId);
+      // Уже бывший минус, который удаление не углубляет, — не новость.
+      if (after < 0 && after < before) {
+        shortages.push({ productId, name: original.name, warehouseId, before, after });
+      }
+    });
+  });
+
+  return { products: Array.from(touched.values()), shortages };
 };
 
 

@@ -54,7 +54,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales} from './src/utils';
+import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -3311,6 +3311,54 @@ const confirmDeleteCustomer = async () => {
     }
   };
 
+  /**
+   * Удаление складского документа — прихода, списания или инвентаризации.
+   *
+   * Остаток сдвигается ровно обратно тому, как его сдвинул документ
+   * (stockDocReversal), и только после этого документ перестаёт существовать.
+   * Работаем по товару: сперва его движения, затем карточка с откатанным
+   * остатком. Если запрос сорвётся посередине, расходится один товар, а не весь
+   * документ, — и остаток этого товара всё ещё объясняется оставшимися строками.
+   *
+   * @returns true, если документ удалён полностью
+   */
+  const handleDeleteStockDoc = async (movements: StockMovement[]): Promise<boolean> => {
+    if (!user || movements.length === 0) return false;
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return false; }
+    if (isEmployee && !user.permissions?.canDelete) return false;
+
+    const { products: reverted, shortages } = stockDocReversal(movements, products);
+    // Окно подтверждения это уже не пускает, но проверяем и здесь: запрет
+    // продажи в минус — правило учёта, а не подсказка интерфейса.
+    if (shortages.length > 0 && !appSettings.shopAllowNegativeStock) {
+      alert('Товар из документа уже продан или списан — остаток уйдёт в минус. Поправьте остаток инвентаризацией.');
+      return false;
+    }
+
+    const byProduct = new Map<string, StockMovement[]>();
+    movements.forEach(m => byProduct.set(m.productId, [...(byProduct.get(m.productId) || []), m]));
+
+    try {
+      for (const [productId, rows] of byProduct) {
+        for (const m of rows) {
+          await api.deleteItem('stockMovements', m.id);
+          removeFromList(setStockMovements, m.id);
+        }
+        const next = reverted.find(p => p.id === productId);
+        if (next) {
+          const saved = await api.saveItem('products', next);
+          updateList(setProducts, saved);
+        }
+      }
+      return true;
+    } catch (e: any) {
+      if (e?.message === 'TOKEN_EXPIRED') return false;
+      alert(`❌ Документ удалён не полностью.
+${e?.message || ''}`);
+      return false;
+    }
+  };
+
   const handleUpdateRetailSale = async (sale: RetailSaleType) => {
     if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
     const previous = retailSales.find(r => r.id === sale.id);
@@ -4708,6 +4756,9 @@ if (!user && !showSplash) {
                       onUpdateStockDoc={handleUpdateStockDoc}
                       onAddDocLines={handleAddDocLines}
                       onDeleteSale={handleDeleteRetailSale}
+                      onDeleteStockDoc={handleDeleteStockDoc}
+                      expenses={expenses}
+                      allowNegativeStock={!!appSettings.shopAllowNegativeStock}
                     />
                   )}
                 </PagePush>
