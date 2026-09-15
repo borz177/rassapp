@@ -230,6 +230,17 @@ const filterDataForEmployee = (dataByType, allowedInvestorIds, fullAccessInvesto
  *
  * @returns {Promise<{ok: true} | {ok: false, status: number, body: object}>}
  */
+// У части записей логический id одинаков во всех аккаунтах: основной склад у
+// всех «main» — на этот id завязаны остатки товаров, движения без склада и права
+// сотрудников. А id строки в data_items — общий первичный ключ на всю базу.
+// Первый же аккаунт, сохранивший склад «main», занимал ключ за всех: у остальных
+// сохранение молча не проходило, а в ответ приходил чужой склад. Поэтому такие
+// записи храним под id с владельцем; в самих данных id остаётся «main», и клиент
+// разницы не видит.
+const OWNER_SCOPED_IDS = { warehouses: new Set(['main']) };
+const storageIdFor = (type, id, ownerId) =>
+  OWNER_SCOPED_IDS[type] && OWNER_SCOPED_IDS[type].has(id) ? `${id}:${ownerId}` : id;
+
 const checkEmployeeWriteAccess = async ({ user, type, itemId, accountId, isDelete, item }) => {
   if (user.role !== 'employee') return { ok: true };
   // Настройки сотрудник правит свои собственные — сюда не относится.
@@ -250,7 +261,13 @@ const checkEmployeeWriteAccess = async ({ user, type, itemId, accountId, isDelet
       return { ok: false, status: 403, body: { msg: 'Нет прав на удаление' } };
     }
   } else {
-    const existing = await pool.query('SELECT 1 FROM data_items WHERE id = $1', [itemId]);
+    // Существование ищем в своём аккаунте: чужая строка с тем же id не делает
+    // нашу запись «правкой».
+    const ownerId = getTargetUserId(user);
+    const existing = await pool.query(
+      'SELECT 1 FROM data_items WHERE id = $1 AND user_id = $2',
+      [storageIdFor(type, itemId, ownerId), ownerId]
+    );
     const isNew = existing.rowCount === 0;
     if (isNew && !perms.canCreate) {
       return { ok: false, status: 403, body: { msg: 'Нет прав на создание записей' } };
@@ -3133,7 +3150,19 @@ app.post('/api/data/:type', auth, async (req, res) => {
       }
     }
 
-    const id = itemData.id;
+    const id = storageIdFor(type, itemData.id, targetUserId);
+
+    // Основной склад, сохранённый до этой правки, лежит под голым «main». Переносим
+    // его под id с владельцем при первом сохранении — иначе у аккаунта появились бы
+    // две строки одного склада. Чужую строку «main» не трогаем: условие user_id.
+    if (id !== itemData.id) {
+      await pool.query(
+        `UPDATE data_items SET id = $1
+         WHERE id = $2 AND user_id = $3 AND type = $4
+           AND NOT EXISTS (SELECT 1 FROM data_items WHERE id = $1)`,
+        [id, itemData.id, targetUserId, type]
+      );
+    }
 
     // 🔹 ИСПРАВЛЕННЫЙ ON CONFLICT — НЕ перезаписываем type и user_id!
     await pool.query(`
@@ -3145,11 +3174,19 @@ app.post('/api/data/:type', auth, async (req, res) => {
       WHERE data_items.user_id = $2  -- 🔒 Защита: обновляем только свои данные
     `, [id, targetUserId, type, JSON.stringify(itemData)]);
 
-    // 🔹 Возвращаем сохранённые данные (с серверными полями)
+    // 🔹 Возвращаем сохранённые данные (с серверными полями).
+    // Только строку своего аккаунта: при совпадении id с чужой записью upsert
+    // ничего не меняет, и чтение по одному id отдавало бы чужие данные.
     const savedResult = await pool.query(
-      'SELECT data, updated_at FROM data_items WHERE id = $1',
-      [id]
+      'SELECT data, updated_at FROM data_items WHERE id = $1 AND user_id = $2',
+      [id, targetUserId]
     );
+    if (savedResult.rows.length === 0) {
+      return res.status(409).json({
+        code: 'ID_TAKEN',
+        msg: 'Запись не сохранена: такой идентификатор уже занят. Обновите приложение и повторите.'
+      });
+    }
 
     // 🔔 Уведомления о событиях (ошибки внутри createNotification не пробрасываются наружу)
     if (type === 'sales' && saleNotifyContext) {
@@ -3268,8 +3305,14 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
 
-    // 🔒 Права сотрудника: удаление требует canDelete и доступа к счёту записи
-    const existingRow = await pool.query('SELECT data FROM data_items WHERE id = $1', [id]);
+    const storageId = storageIdFor(type, id, targetUserId);
+
+    // 🔒 Права сотрудника: удаление требует canDelete и доступа к счёту записи.
+    // Запись ищем в своём аккаунте — по голому id нашлась бы и чужая.
+    const existingRow = await pool.query(
+      'SELECT data FROM data_items WHERE id = ANY($1) AND user_id = $2',
+      [[storageId, id], targetUserId]
+    );
     const delCheck = await checkEmployeeWriteAccess({
       user: req.user, type, itemId: id,
       accountId: existingRow.rows[0]?.data?.accountId, isDelete: true, item: existingRow.rows[0]?.data
@@ -3292,7 +3335,9 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
       }
     }
 
-    await pool.query('DELETE FROM data_items WHERE id = $1 AND user_id = $2', [id, targetUserId]);
+    // Вместе со строкой под id с владельцем уходит и старая строка «main» этого
+    // аккаунта, если перенести её ещё не успели.
+    await pool.query('DELETE FROM data_items WHERE id = ANY($1) AND user_id = $2', [[storageId, id], targetUserId]);
     res.json({ success: true, id });
   } catch (err) {
     console.error(err);
