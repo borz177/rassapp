@@ -54,7 +54,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances} from './src/utils';
+import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, scopeStockMovements, scopeRetailSales} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -3174,11 +3174,28 @@ const confirmDeleteCustomer = async () => {
    * числом, и жёсткий запрет заставил бы людей обходить систему. Предупреждение
    * человек уже увидел в форме.
    */
+  // Склады сотрудника: если менеджер открыл ему только часть складов, экраны
+  // магазина показывают только их. Номера документов при этом считаются по
+  // всем складам (полные списки остаются там, где выдаётся номер), иначе чеки
+  // и накладные разных складов получали бы одинаковые номера. Запись по чужим
+  // складам запрещает и сервер — см. checkEmployeeWriteAccess.
+  const warehouseScope = useMemo(() => employeeWarehouseScope(user, warehouses), [user, warehouses]);
+  const scopedWarehouses = useMemo(
+    () => (warehouseScope ? warehouses.filter(w => warehouseScope.includes(w.id)) : warehouses),
+    [warehouses, warehouseScope]
+  );
+  const scopedMovements = useMemo(() => scopeStockMovements(stockMovements, warehouseScope), [stockMovements, warehouseScope]);
+  const scopedRetailSales = useMemo(
+    () => scopeRetailSales(retailSales, stockMovements, warehouseScope),
+    [retailSales, stockMovements, warehouseScope]
+  );
+
   // Склад, с которого торгует магазин. Выбор склада в чеке — лишний вопрос
   // кассиру: точка продажи почти всегда одна, а её счёт задан в карточке склада.
+  // У сотрудника со своими складами — основной из них или первый.
   const saleWarehouse = useMemo(
-    () => warehouses.find(w => w.isMain && !w.isArchived) || warehouses.find(w => !w.isArchived),
-    [warehouses]
+    () => scopedWarehouses.find(w => w.isMain && !w.isArchived) || scopedWarehouses.find(w => !w.isArchived),
+    [scopedWarehouses]
   );
 
   /**
@@ -4288,9 +4305,9 @@ if (!user && !showSplash) {
                   <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital}
                              accountBalances={accountBalances} onAction={handleAction}
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
-                             accounts={accounts} appSettings={appSettings} investors={investors} user={user} retailSales={retailSales} products={products} suppliers={suppliers}
+                             accounts={accounts} appSettings={appSettings} investors={investors} user={user} retailSales={scopedRetailSales} products={products} suppliers={suppliers}
                   showShopTab={shopAvailable && !!appSettings.shopDashboardTab}
-                   stockMovements={stockMovements} expenses={expenses}
+                   stockMovements={scopedMovements} expenses={expenses}
                              />}
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
 {/* 🔹 Дашборд инвестора — с проверкой на загрузку данных */}
@@ -4544,7 +4561,7 @@ if (!user && !showSplash) {
                   <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                     <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters}
                            data={reportData} appSettings={appSettings} sales={sales} expenses={expenses} accounts={accounts} customers={customers}
-                           retailSales={retailSales} products={products} stockMovements={stockMovements} showShop={shopAvailable}/>
+                           retailSales={scopedRetailSales} products={products} stockMovements={scopedMovements} showShop={shopAvailable}/>
                   </PagePush>
               )}
 
@@ -4593,6 +4610,7 @@ if (!user && !showSplash) {
                              onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee}
                              onSelectActivity={handleSelectEmployeeActivity}
                              showShop={checkAccess('SHOP') && !!appSettings.shopEnabled}
+                             warehouses={warehouses}
                              appSettings={appSettings}/>
                   </PagePush>
               )}
@@ -4652,11 +4670,11 @@ if (!user && !showSplash) {
                 <PagePush onClose={() => setCurrentView(previousView)} scrollKey="JOURNAL">
                   {(requestClose: () => void) => (
                     <Journal
-                      retailSales={retailSales}
-                      movements={stockMovements}
+                      retailSales={scopedRetailSales}
+                      movements={scopedMovements}
                       products={products}
                       customers={customers}
-                      warehouses={warehouses}
+                      warehouses={scopedWarehouses}
                       suppliers={suppliers}
                       accounts={accounts}
                       employees={employees}
@@ -4680,11 +4698,14 @@ if (!user && !showSplash) {
                   {(requestClose: () => void) => (
                     <Warehouse
                       products={products}
+                      // Движения полные: по ним выдаются номера накладных. Для показа
+                      // склад сам отбирает их по warehouseScope.
                       movements={stockMovements}
-                      warehouses={warehouses}
+                      warehouses={scopedWarehouses}
+                      warehouseScope={warehouseScope}
                       suppliers={suppliers}
                       accounts={accounts}
-                      retailSales={retailSales}
+                      retailSales={scopedRetailSales}
                       customers={customers}
                       employees={employees}
                       contracts={sales}

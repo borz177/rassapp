@@ -230,7 +230,7 @@ const filterDataForEmployee = (dataByType, allowedInvestorIds, fullAccessInvesto
  *
  * @returns {Promise<{ok: true} | {ok: false, status: number, body: object}>}
  */
-const checkEmployeeWriteAccess = async ({ user, type, itemId, accountId, isDelete }) => {
+const checkEmployeeWriteAccess = async ({ user, type, itemId, accountId, isDelete, item }) => {
   if (user.role !== 'employee') return { ok: true };
   // Настройки сотрудник правит свои собственные — сюда не относится.
   if (type === 'settings') return { ok: true };
@@ -264,6 +264,30 @@ const checkEmployeeWriteAccess = async ({ user, type, itemId, accountId, isDelet
   //     а не только в интерфейсе — иначе запрет обходится прямым запросом к API.
   if (SHOP_DATA_TYPES.includes(type) && !perms.canUseShop) {
     return { ok: false, status: 403, body: { msg: 'Нет доступа к магазину и складу' } };
+  }
+
+  // 1.6 Склады: если сотруднику открыты только некоторые склады, движения по
+  //     другим складам и сами карточки чужих складов ему писать нельзя. Пустой
+  //     список — все склады. Как и в интерфейсе (employeeWarehouseScope в
+  //     src/utils.ts), ограничение действует лишь при нескольких живых складах:
+  //     иначе после архивации склада сотрудник остался бы без работы вовсе.
+  const warehouseScope = Array.isArray(perms.allowedWarehouseIds) && perms.allowedWarehouseIds.length > 0
+    ? perms.allowedWarehouseIds : null;
+  if (warehouseScope && item && (type === 'stockMovements' || type === 'warehouses')) {
+    const whRes = await pool.query(
+      `SELECT data FROM data_items WHERE type = 'warehouses' AND user_id = $1`,
+      [getTargetUserId(user)]
+    );
+    const liveCount = whRes.rows.filter(r => !r.data?.isArchived).length;
+    if (liveCount > 1) {
+      const outside = (warehouseId) => !warehouseScope.includes(warehouseId || 'main');
+      const denied = type === 'warehouses'
+        ? outside(item.id)
+        : outside(item.warehouseId) || (!!item.toWarehouseId && outside(item.toWarehouseId));
+      if (denied) {
+        return { ok: false, status: 403, body: { msg: 'Нет доступа к этому складу' } };
+      }
+    }
   }
 
   // 2. Область счетов: писать можно только по счетам, к которым выдан доступ.
@@ -2899,7 +2923,7 @@ app.post('/api/data/:type', auth, async (req, res) => {
 
     // 🔒 Права сотрудника и его область счетов — проверяются здесь, а не только в интерфейсе
     const empCheck = await checkEmployeeWriteAccess({
-      user: req.user, type, itemId: itemData.id, accountId: itemData.accountId, isDelete: false
+      user: req.user, type, itemId: itemData.id, accountId: itemData.accountId, isDelete: false, item: itemData
     });
     if (!empCheck.ok) return res.status(empCheck.status).json(empCheck.body);
 
@@ -3243,7 +3267,7 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
     const existingRow = await pool.query('SELECT data FROM data_items WHERE id = $1', [id]);
     const delCheck = await checkEmployeeWriteAccess({
       user: req.user, type, itemId: id,
-      accountId: existingRow.rows[0]?.data?.accountId, isDelete: true
+      accountId: existingRow.rows[0]?.data?.accountId, isDelete: true, item: existingRow.rows[0]?.data
     });
     if (!delCheck.ok) return res.status(delCheck.status).json(delCheck.body);
 

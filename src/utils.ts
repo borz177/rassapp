@@ -413,6 +413,59 @@ export const investorProfitOutflows = (
   return { payouts, payoutsSum, deductions, deductionsSum, total: payoutsSum + deductionsSum };
 };
 
+// ───────────────────────── Склады сотрудника ─────────────────────────
+
+/**
+ * Склады, с которыми работает сотрудник. null — ограничений нет.
+ *
+ * Ограничение действует, только когда живых складов больше одного: иначе
+ * после архивации склада сотрудник остался бы привязан к несуществующему и
+ * не мог бы работать вовсе. Сервер проверяет запись по тому же правилу.
+ */
+export const employeeWarehouseScope = (
+  user: { role?: string; permissions?: { allowedWarehouseIds?: string[] } } | null | undefined,
+  warehouses: { id: string; isArchived?: boolean }[]
+): string[] | null => {
+  if (!user || user.role !== 'employee') return null;
+  const ids = user.permissions?.allowedWarehouseIds;
+  if (!Array.isArray(ids) || ids.length === 0) return null;
+  if (warehouses.filter(w => !w.isArchived).length <= 1) return null;
+  return ids;
+};
+
+export const inWarehouseScope = (warehouseId: string | undefined, scope: string[] | null | undefined): boolean =>
+  !scope || scope.includes(warehouseId || DEFAULT_WAREHOUSE_ID);
+
+/** Остаток товара на складах сотрудника; без ограничений — общий остаток. */
+export const stockInScope = (product: Product, scope: string[] | null | undefined): number =>
+  scope ? scope.reduce((sum, id) => sum + stockAtWarehouse(product, id), 0) : (product.stock || 0);
+
+export const scopeStockMovements = <T extends { warehouseId?: string }>(movements: T[], scope: string[] | null | undefined): T[] =>
+  scope ? movements.filter(m => inWarehouseScope(m.warehouseId, scope)) : movements;
+
+/**
+ * Чеки магазина со складов сотрудника. У чека своего склада нет — он записан
+ * в движениях продажи, поэтому склад берём оттуда. Отгрузки по договорам
+ * рассрочки (contractId) к чекам не относятся.
+ */
+export const scopeRetailSales = (
+  sales: RetailSale[],
+  movements: { saleId?: string; type: string; warehouseId?: string; contractId?: string }[],
+  scope: string[] | null | undefined
+): RetailSale[] => {
+  if (!scope) return sales;
+  const warehouseBySale = new Map<string, string>();
+  movements.forEach(m => {
+    if (m.saleId && m.type === 'SALE' && !m.contractId && !warehouseBySale.has(m.saleId)) {
+      warehouseBySale.set(m.saleId, m.warehouseId || DEFAULT_WAREHOUSE_ID);
+    }
+  });
+  return sales.filter(s => {
+    const warehouseId = warehouseBySale.get(s.id);
+    return !!warehouseId && scope.includes(warehouseId);
+  });
+};
+
 /**
  * Начисленная сотруднику доля прибыли за период.
  *

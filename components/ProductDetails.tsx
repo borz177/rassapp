@@ -3,7 +3,7 @@ import type {
   Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User,
 } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { formatCurrency, stockAtWarehouse } from '../src/utils';
+import { formatCurrency, stockAtWarehouse, stockInScope } from '../src/utils';
 import { buildJournalDocs, KIND_LABEL, type JournalDoc } from '../src/journalDocs';
 import TopBarBack from './TopBarBack';
 import ImageViewer from './ImageViewer';
@@ -31,6 +31,8 @@ interface ProductDetailsProps {
   onEdit?: (p: Product) => void;
   /** Печать этикеток со штрихкодом — лист открывает склад */
   onPrintLabels?: (p: Product) => void;
+  /** Склады сотрудника: «всего» и история — только по ним. null — все склады */
+  warehouseScope?: string[] | null;
   onSelectCustomer?: (id: string) => void;
   onAcceptPayment?: (sale: RetailSale) => void;
   onUpdateSale?: (sale: RetailSale) => Promise<void> | void;
@@ -64,7 +66,7 @@ const dayTitle = (iso: string) => {
  */
 const ProductDetails: React.FC<ProductDetailsProps> = ({
   product, movements, retailSales, products, customers, warehouses, suppliers, accounts,
-  employees = [], contracts = [], appSettings, user, onBack, onEdit, onPrintLabels, onSelectCustomer, onAcceptPayment,
+  employees = [], contracts = [], appSettings, user, onBack, onEdit, onPrintLabels, warehouseScope = null, onSelectCustomer, onAcceptPayment,
   onUpdateSale, onUpdateStockDoc, onAddDocLines,
 }) => {
   const [tab, setTab] = useState<'INFO' | 'HISTORY'>('INFO');
@@ -98,13 +100,13 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
 
     // Идём от свежих к старым и «отматываем» остаток назад — так после каждой
     // строки видно, сколько оставалось на тот момент.
-    let running = product.stock || 0;
+    let running = stockInScope(product, warehouseScope);
     return rows.map(m => {
       const after = running;
       running -= m.quantity;
       return { movement: m, stockAfter: after };
     });
-  }, [movements, product.id, product.stock]);
+  }, [movements, product, warehouseScope]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, typeof history>();
@@ -255,11 +257,11 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
             <div>
               <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-2 px-1">Остатки</p>
               <div className={card}>
-                {infoRow('Всего', `${product.stock || 0} ${product.unit || 'шт'}`)}
+                {infoRow('Всего', `${stockInScope(product, warehouseScope)} ${product.unit || 'шт'}`)}
                 {perWarehouse.map(w => infoRow(w.name, `${w.qty} ${product.unit || 'шт'}`))}
                 {product.minStock !== undefined && product.minStock !== null &&
                   infoRow('Минимальный остаток', `${product.minStock} ${product.unit || 'шт'}`)}
-                {product.buyPrice ? infoRow('В закупе', `${formatCurrency((product.stock || 0) * product.buyPrice, cents)} ₽`) : null}
+                {product.buyPrice ? infoRow('В закупе', `${formatCurrency(stockInScope(product, warehouseScope) * product.buyPrice, cents)} ₽`) : null}
               </div>
             </div>
 

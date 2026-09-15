@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { User, Investor, AppSettings } from '../types';
+import { User, Investor, AppSettings, StockLocation } from '../types';
 import { ICONS } from '../constants';
 
 interface EmployeesProps {
@@ -13,11 +13,13 @@ interface EmployeesProps {
   appSettings?: AppSettings;
   /** Магазин включён у менеджера — иначе право выдавать не за что */
   showShop?: boolean;
+  /** Склады магазина — чтобы открыть сотруднику только часть из них */
+  warehouses?: StockLocation[];
 }
 
 const Employees: React.FC<EmployeesProps> = ({
     employees, investors, onAddEmployee, onUpdateEmployee, onDeleteEmployee, onSelectActivity,
-    showShop = false
+    showShop = false, warehouses = []
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -44,6 +46,11 @@ const [fullAccessMainAccount, setFullAccessMainAccount] = useState(false);
   const [profitSource, setProfitSource] = useState<'MANAGER' | 'SHARED'>('MANAGER');
   const [profitSince, setProfitSince] = useState<string>('');
   const [fullAccessInvestorIds, setFullAccessInvestorIds] = useState<string[]>([]);
+  // Склады магазина: 'ALL' — все, в том числе заведённые позже; 'SELECTED' — только
+  // отмеченные. Выбор показываем, только когда складов больше одного.
+  const [warehouseMode, setWarehouseMode] = useState<'ALL' | 'SELECTED'>('ALL');
+  const [allowedWarehouseIds, setAllowedWarehouseIds] = useState<string[]>([]);
+  const liveWarehouses = warehouses.filter(w => !w.isArchived);
 
   const resetForm = () => {
     setName('');
@@ -52,6 +59,8 @@ const [fullAccessMainAccount, setFullAccessMainAccount] = useState(false);
     setPermissions({ canCreate: true, canEdit: false, canDelete: false, canUseShop: false });
     setAllowedInvestorIds([]);
     setFullAccessInvestorIds([]);
+    setWarehouseMode('ALL');
+    setAllowedWarehouseIds([]);
     setAllowMainAccount(false); // <-- СБРОС
     setFullAccessMainAccount(false);
     setProfitPercentage('');
@@ -68,6 +77,9 @@ const [fullAccessMainAccount, setFullAccessMainAccount] = useState(false);
     setEmail(emp.email);
     setPassword('');
     setPermissions({ canCreate: false, canEdit: false, canDelete: false, canUseShop: false, ...(emp.permissions || {}) });
+    const warehouseIds = emp.permissions?.allowedWarehouseIds || [];
+    setWarehouseMode(warehouseIds.length > 0 ? 'SELECTED' : 'ALL');
+    setAllowedWarehouseIds(warehouseIds);
 
     const ids = emp.allowedInvestorIds || [];
     setAllowedInvestorIds(ids.filter((id: string) => id !== 'MAIN_ACCOUNT'));
@@ -118,10 +130,24 @@ const handleSubmit = (e: React.FormEvent) => {
     const finalFullAccessIds = (fullAccessMainAccount ? [...new Set([...fullAccessInvestorIds, 'MAIN_ACCOUNT'])] : fullAccessInvestorIds)
         .filter((id: string) => finalAllowedIds.includes(id));
 
+    // Склады — только при доступе к магазину и нескольких складах. Пустой список
+    // означает «все склады»: новый склад тогда не остаётся без продавцов.
+    const restrictWarehouses = !!permissions.canUseShop && liveWarehouses.length > 1 && warehouseMode === 'SELECTED';
+    const finalWarehouseIds = allowedWarehouseIds.filter(id => liveWarehouses.some(w => w.id === id));
+    if (restrictWarehouses && finalWarehouseIds.length === 0) {
+        alert('Отметьте хотя бы один склад или выберите «Все склады»');
+        return;
+    }
+    const { allowedWarehouseIds: _previousWarehouses, ...basePermissions } =
+        permissions as typeof permissions & { allowedWarehouseIds?: string[] };
+    const finalPermissions = restrictWarehouses
+        ? { ...basePermissions, allowedWarehouseIds: finalWarehouseIds }
+        : basePermissions;
+
     const employeeData = {
         name,
         email,
-        permissions,
+        permissions: finalPermissions,
         allowedInvestorIds: finalAllowedIds, // <-- ИСПОЛЬЗУЕМ ИТОГОВЫЙ МАССИВ
         fullAccessInvestorIds: finalFullAccessIds,
         // Пустое поле = процент не задан, а не ноль: сервер отличает null от 0
@@ -328,34 +354,29 @@ const handleSubmit = (e: React.FormEvent) => {
               {/* Permissions */}
               <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-3">
                   <h4 className="text-sm font-bold text-slate-600 dark:text-slate-300">Права доступа (CRUD)</h4>
-                  <div className="flex gap-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
-                            checked={permissions.canCreate}
-                            onChange={e => setPermissions({...permissions, canCreate: e.target.checked})}
-                          />
-                          <span className="text-sm text-slate-700 dark:text-slate-300">Создание</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
-                            checked={permissions.canEdit}
-                            onChange={e => setPermissions({...permissions, canEdit: e.target.checked})}
-                          />
-                          <span className="text-sm text-slate-700 dark:text-slate-300">Редактирование</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
-                            checked={permissions.canDelete}
-                            onChange={e => setPermissions({...permissions, canDelete: e.target.checked})}
-                          />
-                          <span className="text-sm text-slate-700 dark:text-slate-300">Удаление</span>
-                      </label>
+                  {/* Три права плитками в сетку: строкой они не помещались в ширину
+                      телефона, и «Удаление» уезжало за край карточки. */}
+                  <div className="grid grid-cols-3 gap-2">
+                      {([
+                        ['canCreate', 'Создание'],
+                        ['canEdit', 'Редактирование'],
+                        ['canDelete', 'Удаление'],
+                      ] as const).map(([key, label]) => (
+                        <label key={key}
+                               className={`min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1.5 px-1.5 py-2.5 rounded-xl border-2 cursor-pointer text-center transition-colors ${
+                                 permissions[key]
+                                   ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30'
+                                   : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800'
+                               }`}>
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
+                              checked={permissions[key]}
+                              onChange={e => setPermissions({...permissions, [key]: e.target.checked})}
+                            />
+                            <span className="text-[10px] tracking-tight sm:text-sm sm:tracking-normal leading-tight text-slate-700 dark:text-slate-300 break-words">{label}</span>
+                        </label>
+                      ))}
                   </div>
 
                   {/* Доступ к разделу, а не к действию, — поэтому отдельной
@@ -376,6 +397,55 @@ const handleSubmit = (e: React.FormEvent) => {
                             </span>
                         </span>
                     </label>
+                  )}
+
+                  {/* Какие склады открыть. Только при доступе к магазину и если складов
+                      несколько: с одним складом выбирать нечего. */}
+                  {showShop && permissions.canUseShop && liveWarehouses.length > 1 && (
+                    <div className="pl-8 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                            {([['ALL', 'Все склады'], ['SELECTED', 'Выбранные']] as const).map(([mode, label]) => (
+                              <button key={mode} type="button" onClick={() => setWarehouseMode(mode)}
+                                      className={`py-2 rounded-xl border-2 text-xs font-bold transition-colors ${
+                                        warehouseMode === mode
+                                          ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
+                                          : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                                      }`}>
+                                  {label}
+                              </button>
+                            ))}
+                        </div>
+                        {warehouseMode === 'ALL' ? (
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                              Доступны все склады, в том числе новые.
+                          </p>
+                        ) : (
+                          <>
+                            <div className="rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-100 dark:divide-slate-700">
+                                {liveWarehouses.map(w => (
+                                  <label key={w.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
+                                        checked={allowedWarehouseIds.includes(w.id)}
+                                        onChange={() => setAllowedWarehouseIds(prev =>
+                                          prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id])}
+                                      />
+                                      <span className="min-w-0 flex-1 text-sm text-slate-700 dark:text-slate-200 truncate">{w.name}</span>
+                                      {w.isMain && (
+                                        <span className="shrink-0 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase">
+                                            Основной
+                                        </span>
+                                      )}
+                                  </label>
+                                ))}
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                                Касса, остатки, приход и журнал — только по отмеченным складам.
+                            </p>
+                          </>
+                        )}
+                    </div>
                   )}
               </div>
 
@@ -466,19 +536,33 @@ const handleSubmit = (e: React.FormEvent) => {
               <div className="text-center py-10 text-slate-400 dark:text-slate-500">Нет сотрудников</div>
           )}
           {employees.map(emp => (
-              <div key={emp.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center font-bold text-lg">
+              // Кнопки справа от имени, метки строкой под ним: колонкой справа они
+              // вместе с длинным email не помещались в ширину телефона.
+              // min-w-0 обязателен: элемент сетки не сжимается уже своего содержимого,
+              // и длинный email растягивал карточку за край экрана — обрезка не срабатывала.
+              <div key={emp.id} className="min-w-0 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 shrink-0 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center font-bold text-lg">
                           {emp.name.charAt(0)}
                       </div>
-                      <div>
-                          <h3 className="font-bold text-slate-800 dark:text-white">{emp.name}</h3>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">{emp.email}</p>
-
+                      <div className="min-w-0 flex-1">
+                          <h3 className="font-bold text-slate-800 dark:text-white truncate">{emp.name}</h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{emp.email}</p>
+                      </div>
+                      <div className="flex shrink-0 -mr-1.5 -mt-1">
+                          <button onClick={() => onSelectActivity(emp.id)} title="Активность" aria-label="Активность" className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg">
+                              {ICONS.Stats}
+                          </button>
+                          <button onClick={() => handleStartEdit(emp)} title="Изменить" aria-label="Изменить" className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg">
+                              {ICONS.Edit}
+                          </button>
+                          <button onClick={() => handleDelete(emp.id)} title="Удалить" aria-label="Удалить" className="p-2 text-slate-400 hover:text-red-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg">
+                              {ICONS.Delete}
+                          </button>
                       </div>
                   </div>
 
-                  <div className="text-right flex flex-col items-end gap-2">
+                  <div className="flex flex-wrap gap-1.5 mt-3 pl-[3.75rem]">
                       <span className="text-xs bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-2 py-1 rounded-full font-medium">
                           Инвесторов: {emp.allowedInvestorIds?.length || 0}
                       </span>
@@ -487,17 +571,13 @@ const handleSubmit = (e: React.FormEvent) => {
                               Полный доступ: {emp.fullAccessInvestorIds.length}
                           </span>
                       )}
-                      <div className="flex gap-2">
-                          <button onClick={() => onSelectActivity(emp.id)} title="Активность" className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded">
-                              {ICONS.Stats}
-                          </button>
-                          <button onClick={() => handleStartEdit(emp)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded">
-                              {ICONS.Edit}
-                          </button>
-                          <button onClick={() => handleDelete(emp.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded">
-                              {ICONS.Delete}
-                          </button>
-                      </div>
+                      {showShop && emp.permissions?.canUseShop && (
+                          <span className="text-xs bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-full font-medium">
+                              {emp.permissions.allowedWarehouseIds?.length && liveWarehouses.length > 1
+                                ? `Склады: ${emp.permissions.allowedWarehouseIds.filter(id => liveWarehouses.some(w => w.id === id)).length} из ${liveWarehouses.length}`
+                                : 'Магазин'}
+                          </span>
+                      )}
                   </div>
               </div>
           ))}

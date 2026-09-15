@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { stockAtWarehouse } from '../src/utils';
+import { stockAtWarehouse, stockInScope, scopeStockMovements } from '../src/utils';
 import { api } from '../services/api';
 import { compressImageFile } from '../src/imageCompress';
 import TopBarBack from './TopBarBack';
@@ -43,6 +43,11 @@ interface WarehouseProps {
   onAddMovement: (movement: StockMovement) => Promise<void> | void;
   onBack: () => void;
   currency?: string;
+  /**
+   * Склады сотрудника. null — без ограничений. Остатки и история показываются
+   * только по ним; список warehouses приходит уже отобранным.
+   */
+  warehouseScope?: string[] | null;
 }
 
 const emptyForm = {
@@ -84,7 +89,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
   retailSales = [], customers = [], employees = [], contracts = [], appSettings, user,
   onSelectCustomer, onAcceptPayment, onUpdateSale, onUpdateStockDoc, onAddDocLines,
   onSaveProduct, onDeleteProduct, onAddMovement, onPostBatch,
-  onSaveWarehouse, onDeleteWarehouse, onBack,
+  onSaveWarehouse, onDeleteWarehouse, onBack, warehouseScope = null,
 }) => {
   // Три разных занятия под одной крышей: каталог (что у нас за товар),
   // операции (движение) и сами склады (где лежит). Их разделение — не
@@ -154,8 +159,12 @@ const Warehouse: React.FC<WarehouseProps> = ({
     [products]
   );
 
+  // Остаток в пределах складов сотрудника: продавцу одной точки общий остаток по
+  // всем складам ничего не говорит — продать он может только то, что у него.
+  const stockOf = (p: Product) => stockInScope(p, warehouseScope);
+
   const isLow = (p: Product) =>
-    p.minStock !== undefined && p.minStock !== null && (p.stock ?? 0) <= p.minStock;
+    p.minStock !== undefined && p.minStock !== null && stockOf(p) <= p.minStock;
 
   const visible = useMemo(() => {
     return products
@@ -189,18 +198,21 @@ const Warehouse: React.FC<WarehouseProps> = ({
     const live = products.filter(p => !p.isArchived);
     return {
       items: live.length,
-      units: live.reduce((s, p) => s + (p.stock || 0), 0),
-      cost: live.reduce((s, p) => s + (p.stock || 0) * (p.buyPrice || 0), 0),
+      units: live.reduce((s, p) => s + stockOf(p), 0),
+      cost: live.reduce((s, p) => s + stockOf(p) * (p.buyPrice || 0), 0),
       low: live.filter(isLow).length,
     };
-  }, [products]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, warehouseScope]);
 
   // Основной склад показываем карточкой всегда, даже если ничего не заводили:
   // товары до появления складов лежат именно на нём, и без карточки к нему
   // нельзя было бы привязать счёт.
   const shownWarehouses = useMemo(() => {
     const live = warehouses.filter(w => !w.isArchived);
-    if (live.some(w => w.isMain)) return live;
+    // У сотрудника со своими складами подставной «Основной склад» не рисуем:
+    // основной может быть ему не открыт.
+    if (warehouseScope || live.some(w => w.isMain)) return live;
     const fallback: StockLocation = { id: DEFAULT_WAREHOUSE_ID, userId: '', name: 'Основной склад', isMain: true };
     return [fallback, ...live];
   }, [warehouses]);
@@ -790,7 +802,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
                   {p.sku ? `${p.sku} · ` : ''}{money(p.price)} ₽
                 </p>
                 <p className={`text-xs font-bold mt-0.5 ${isLow(p) ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
-                  {money(p.stock || 0)} {p.unit || 'шт'}
+                  {money(stockOf(p))} {p.unit || 'шт'}
                   {isLow(p) ? ' · мало' : ''}
                 </p>
               </div>
@@ -1183,7 +1195,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
         {(close: () => void) => (
           <ProductDetails
             product={openProduct}
-            movements={movements}
+            movements={scopeStockMovements(movements, warehouseScope)}
+            warehouseScope={warehouseScope}
             retailSales={retailSales}
             products={products}
             customers={customers}
