@@ -131,8 +131,10 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
     ? ((product.price - product.buyPrice) / product.buyPrice) * 100
     : null;
 
+  // key по подписи: строки остатков по складам рисуются списком, и без ключа
+  // React ругался в консоли на каждой открытой карточке товара.
   const infoRow = (label: string, value: React.ReactNode, accent = false) => (
-    <div className="px-4 py-3 flex items-center justify-between gap-3">
+    <div key={label} className="px-4 py-3 flex items-center justify-between gap-3">
       <span className="text-sm text-slate-500 dark:text-slate-400 shrink-0">{label}</span>
       <span className={`text-sm font-semibold text-right truncate ${
         accent ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-800 dark:text-white'

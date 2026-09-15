@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { stockAtWarehouse, stockInScope, scopeStockMovements } from '../src/utils';
+import { applyStockDelta, stockAtWarehouse, stockInScope, scopeStockMovements } from '../src/utils';
 import { api } from '../services/api';
 import { compressImageFile } from '../src/imageCompress';
 import TopBarBack from './TopBarBack';
@@ -53,6 +53,10 @@ interface WarehouseProps {
 const emptyForm = {
   name: '', sku: '', price: '', buyPrice: '', category: '', unit: 'шт',
   minStock: '', description: '', images: [] as string[],
+  /** Куда положить товар: склад начального остатка */
+  warehouseId: '',
+  /** Начальный остаток — только у нового товара, дальше остаток правят движения */
+  stock: '',
   /** Дополнительные штрихкоды — второй и дальше. Основной стоит в поле barcodeDraft */
   barcodes: [] as string[],
   /** Основной штрихкод — то, что видно в поле «Штрихкод» */
@@ -124,6 +128,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
   }, [section]);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string>('ALL');
+  // Склад, на который смотрим. 'ALL' — весь магазин: остатки складываются,
+  // как и раньше. Выбранный склад меняет и цифры, и состав списка — иначе
+  // «на складе 12» значило бы одно в каталоге и другое на самом складе.
+  const [warehouseFilter, setWarehouseFilter] = useState<string>('ALL');
   const [showArchived, setShowArchived] = useState(false);
   const [onlyLow, setOnlyLow] = useState(false);
 
@@ -148,6 +156,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
   const [opsAdded, setOpsAdded] = useState<{ productId: string; at: number } | null>(null);
 
   const [movementFor, setMovementFor] = useState<Product | null>(null);
+  const [movementWh, setMovementWh] = useState<string>(DEFAULT_WAREHOUSE_ID);
   const [movementType, setMovementType] = useState<StockMovement['type']>('IN');
   const [movementQty, setMovementQty] = useState('');
   const [movementPrice, setMovementPrice] = useState('');
@@ -159,9 +168,44 @@ const Warehouse: React.FC<WarehouseProps> = ({
     [products]
   );
 
+  // Основной склад показываем карточкой всегда, даже если ничего не заводили:
+  // товары до появления складов лежат именно на нём, и без карточки к нему
+  // нельзя было бы привязать счёт.
+  const shownWarehouses = useMemo(() => {
+    const live = warehouses.filter(w => !w.isArchived);
+    // У сотрудника со своими складами подставной «Основной склад» не рисуем:
+    // основной может быть ему не открыт.
+    if (warehouseScope || live.some(w => w.isMain)) return live;
+    const fallback: StockLocation = { id: DEFAULT_WAREHOUSE_ID, userId: '', name: 'Основной склад', isMain: true };
+    return [fallback, ...live];
+  }, [warehouses]);
+
+  // Куда по умолчанию кладут товар: основной склад, а если его нет — первый
+  // доступный. Сотруднику подставляем его склад, чужой ему всё равно закрыт.
+  const defaultWarehouseId = useMemo(
+    () => shownWarehouses.find(w => w.isMain)?.id || shownWarehouses[0]?.id || DEFAULT_WAREHOUSE_ID,
+    [shownWarehouses]
+  );
+
+  // Товары, заведённые до складов, лежат в ячейке «main». Если основной склад
+  // потом завели заново, со своим id, эта ячейка осталась бы ничьей — и товар
+  // пропал бы из любого разреза по складам. Приписываем её основному, пока
+  // отдельного склада с таким id нет.
+  const legacyMainId = useMemo(() => (
+    shownWarehouses.some(w => w.id === DEFAULT_WAREHOUSE_ID)
+      ? null
+      : shownWarehouses.find(w => w.isMain)?.id || null
+  ), [shownWarehouses]);
+
+  const stockAt = (p: Product, warehouseId: string) =>
+    stockAtWarehouse(p, warehouseId)
+    + (warehouseId && warehouseId === legacyMainId ? stockAtWarehouse(p, DEFAULT_WAREHOUSE_ID) : 0);
+
   // Остаток в пределах складов сотрудника: продавцу одной точки общий остаток по
   // всем складам ничего не говорит — продать он может только то, что у него.
-  const stockOf = (p: Product) => stockInScope(p, warehouseScope);
+  // Выбран конкретный склад — считаем по нему одному.
+  const stockOf = (p: Product) =>
+    warehouseFilter === 'ALL' ? stockInScope(p, warehouseScope) : stockAt(p, warehouseFilter);
 
   const isLow = (p: Product) =>
     p.minStock !== undefined && p.minStock !== null && stockOf(p) <= p.minStock;
@@ -171,6 +215,9 @@ const Warehouse: React.FC<WarehouseProps> = ({
       .filter(p => (showArchived ? p.isArchived : !p.isArchived))
       .filter(p => category === 'ALL' || p.category === category)
       .filter(p => !onlyLow || isLow(p))
+      // На складе показываем то, что на нём лежит: товар с нулём остатка здесь
+      // только удлинил бы список, за ним не стоит ни одной штуки.
+      .filter(p => warehouseFilter === 'ALL' || stockAt(p, warehouseFilter) !== 0)
       .filter(p => productMatchesQuery(p, search))
       // Расставленные вручную идут первыми и в своём порядке, остальные —
       // по алфавиту следом. Так один переставленный товар не выбрасывает
@@ -182,7 +229,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
         if (bo !== undefined) return 1;
         return a.name.localeCompare(b.name, 'ru');
       });
-  }, [products, search, category, showArchived, onlyLow]);
+  }, [products, search, category, showArchived, onlyLow, warehouseFilter, warehouseScope]);
 
   // В режиме перетаскивания порядок держим локально: строки должны следовать за
   // пальцем сразу, не дожидаясь ответа сервера на каждое движение.
@@ -203,27 +250,15 @@ const Warehouse: React.FC<WarehouseProps> = ({
       low: live.filter(isLow).length,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, warehouseScope]);
-
-  // Основной склад показываем карточкой всегда, даже если ничего не заводили:
-  // товары до появления складов лежат именно на нём, и без карточки к нему
-  // нельзя было бы привязать счёт.
-  const shownWarehouses = useMemo(() => {
-    const live = warehouses.filter(w => !w.isArchived);
-    // У сотрудника со своими складами подставной «Основной склад» не рисуем:
-    // основной может быть ему не открыт.
-    if (warehouseScope || live.some(w => w.isMain)) return live;
-    const fallback: StockLocation = { id: DEFAULT_WAREHOUSE_ID, userId: '', name: 'Основной склад', isMain: true };
-    return [fallback, ...live];
-  }, [warehouses]);
+  }, [products, warehouseScope, warehouseFilter]);
 
   const warehouseStats = (warehouseId: string) => {
     const live = products.filter(p => !p.isArchived);
-    const onIt = live.filter(p => stockAtWarehouse(p, warehouseId) !== 0);
+    const onIt = live.filter(p => stockAt(p, warehouseId) !== 0);
     return {
       items: onIt.length,
-      units: onIt.reduce((s, p) => s + stockAtWarehouse(p, warehouseId), 0),
-      cost: onIt.reduce((s, p) => s + stockAtWarehouse(p, warehouseId) * (p.buyPrice || 0), 0),
+      units: onIt.reduce((s, p) => s + stockAt(p, warehouseId), 0),
+      cost: onIt.reduce((s, p) => s + stockAt(p, warehouseId) * (p.buyPrice || 0), 0),
     };
   };
 
@@ -330,7 +365,13 @@ const Warehouse: React.FC<WarehouseProps> = ({
 
   const openNew = (barcode?: string) => {
     setEditing(null);
-    setForm({ ...emptyForm, barcodeDraft: barcode || '' });
+    // Склад берём тот, на который сейчас смотрят, иначе основной: товар заводят
+    // там, где он лежит перед глазами.
+    setForm({
+      ...emptyForm,
+      barcodeDraft: barcode || '',
+      warehouseId: warehouseFilter === 'ALL' ? defaultWarehouseId : warehouseFilter,
+    });
     setError(null);
     setShowForm(true);
   };
@@ -342,6 +383,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
       unit: p.unit || 'шт', minStock: p.minStock === undefined ? '' : String(p.minStock),
       description: p.description || '', images: p.images || [],
       barcodes: (p.barcodes || []).slice(1), barcodeDraft: p.barcodes?.[0] || '',
+      warehouseId: warehouseFilter === 'ALL' ? defaultWarehouseId : warehouseFilter,
+      stock: '',
     });
     setError(null);
     setShowForm(true);
@@ -451,7 +494,24 @@ const Warehouse: React.FC<WarehouseProps> = ({
         isArchived: editing?.isArchived,
         updatedAt: new Date().toISOString(),
       };
-      await onSaveProduct(product);
+      // Начальный остаток нового товара — это приход, а не тихая правка числа:
+      // без движения остаток нечем объяснить, и склад перестаёт сходиться.
+      const startQty = editing ? 0 : num(form.stock);
+      const warehouseId = form.warehouseId || defaultWarehouseId;
+      await onSaveProduct(startQty > 0 ? applyStockDelta(product, warehouseId, startQty) : product);
+      if (startQty > 0) {
+        await onAddMovement({
+          id: crypto.randomUUID(),
+          userId: product.userId,
+          productId: product.id,
+          type: 'IN',
+          quantity: startQty,
+          unitPrice: product.buyPrice,
+          warehouseId,
+          note: 'Начальный остаток',
+          date: new Date().toISOString(),
+        });
+      }
       if (opsPending && codes.includes(opsPending)) setOpsAdded({ productId: product.id, at: Date.now() });
       setOpsPending(null);
       setShowForm(false);
@@ -471,7 +531,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
     if (qty <= 0) { setError('Количество должно быть больше нуля'); return; }
     // Приход и возврат увеличивают остаток, списание и продажа уменьшают.
     const sign = movementType === 'IN' || movementType === 'RETURN' ? 1 : -1;
-    const delta = movementType === 'CORRECTION' ? qty - (movementFor.stock || 0) : sign * qty;
+    // Корректировку считаем от остатка выбранного склада, а не от общего по
+    // магазину: иначе пересчёт одной точки увёл бы в минус остальные.
+    const warehouseId = movementWh || defaultWarehouseId;
+    const delta = movementType === 'CORRECTION' ? qty - stockAt(movementFor, warehouseId) : sign * qty;
 
     setSaving(true);
     try {
@@ -483,13 +546,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
         quantity: delta,
         unitPrice: movementPrice === '' ? undefined : num(movementPrice),
         note: movementNote.trim() || undefined,
+        warehouseId,
         date: new Date().toISOString(),
       });
-      await onSaveProduct({
-        ...movementFor,
-        stock: (movementFor.stock || 0) + delta,
-        updatedAt: new Date().toISOString(),
-      });
+      await onSaveProduct(applyStockDelta(movementFor, warehouseId, delta));
       setMovementFor(null); setMovementQty(''); setMovementPrice(''); setMovementNote('');
       setError(null);
     } catch (e: any) {
@@ -558,6 +618,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
           products={products}
           movements={movements}
           warehouses={warehouses}
+          warehouseId={warehouseFilter === 'ALL' ? undefined : warehouseFilter}
+          onWarehouseChange={setWarehouseFilter}
           suppliers={suppliers}
           onPost={onPostBatch}
           showCents={appSettings?.showCents}
@@ -705,6 +767,24 @@ const Warehouse: React.FC<WarehouseProps> = ({
         </div>
       )}
 
+      {/* Склады отдельной строкой над категориями: это разрез «где лежит»,
+          а не «что это за товар», и мешать их в один ряд значит заставлять
+          искать нужную кнопку среди чужих. */}
+      {!selection && !reorder && shownWarehouses.length > 1 && (
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => setWarehouseFilter('ALL')}
+                className={`px-3.5 py-2 rounded-full text-xs font-bold ${warehouseFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
+          Все склады
+        </button>
+        {shownWarehouses.map(w => (
+          <button key={w.id} onClick={() => setWarehouseFilter(w.id)}
+                  className={`px-3.5 py-2 rounded-full text-xs font-bold ${warehouseFilter === w.id ? 'bg-indigo-600 text-white' : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
+            {w.name}
+          </button>
+        ))}
+      </div>
+      )}
+
       {!selection && !reorder && (
       <div className="flex flex-wrap gap-2">
         <button onClick={() => setCategory('ALL')}
@@ -732,7 +812,11 @@ const Warehouse: React.FC<WarehouseProps> = ({
 
       {listed.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400 py-8 text-center">
-          {products.length === 0 ? 'Товаров пока нет. Добавьте первый.' : 'Ничего не найдено.'}
+          {products.length === 0
+            ? 'Товаров пока нет. Добавьте первый.'
+            : warehouseFilter !== 'ALL' && !search && category === 'ALL' && !onlyLow
+            ? `На складе «${shownWarehouses.find(w => w.id === warehouseFilter)?.name || ''}» пока пусто — оприходуйте товар в операциях.`
+            : 'Ничего не найдено.'}
         </p>
       ) : (
         <div className="grid gap-3"
@@ -841,7 +925,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
                       className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
                 Редактировать
               </button>
-              <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setMovementFor(p2); setMovementType('IN'); setError(null); }}
+              <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setMovementFor(p2); setMovementType('IN');
+                setMovementWh(warehouseFilter === 'ALL' ? defaultWarehouseId : warehouseFilter); setError(null); }}
                       className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
                 Добавить в документ
               </button>
@@ -1048,6 +1133,30 @@ const Warehouse: React.FC<WarehouseProps> = ({
                   <span className={`${labelCls} mb-1`}>Мин. остаток</span>
                   <input value={form.minStock} onChange={e => setForm(prev => ({ ...prev, minStock: e.target.value }))} placeholder="Не следить" inputMode="decimal" className={inputCls} />
                 </label>
+                {/* Новый товар сразу кладут на склад: указывать его отдельным
+                    приходом после каждой карточки — лишний шаг, который все
+                    забывают, и товар остаётся числиться нулём. */}
+                {/* Склад спрашиваем, только когда их несколько: с одним складом
+                    выбор из одного пункта — лишний вопрос. */}
+                {!editing && shownWarehouses.length > 1 && (
+                  <label className="block min-w-0">
+                    <span className={`${labelCls} mb-1`}>Склад</span>
+                    <select value={form.warehouseId || defaultWarehouseId}
+                            onChange={e => setForm(prev => ({ ...prev, warehouseId: e.target.value }))}
+                            className={inputCls}>
+                      {shownWarehouses.map(w => (
+                        <option key={w.id} value={w.id}>{w.name}{w.isMain ? ' · основной' : ''}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {!editing && (
+                  <label className="block min-w-0">
+                    <span className={`${labelCls} mb-1`}>Остаток</span>
+                    <input value={form.stock} onChange={e => setForm(prev => ({ ...prev, stock: e.target.value }))}
+                           placeholder="0" inputMode="decimal" className={inputCls} />
+                  </label>
+                )}
               </div>
 
               {/* Штрихкоды отдельно от артикула: артикул — внутреннее имя товара,
@@ -1149,8 +1258,21 @@ const Warehouse: React.FC<WarehouseProps> = ({
                  onClick={e => e.stopPropagation()}>
               <h3 className="font-bold text-slate-800 dark:text-white">{movementFor.name}</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Сейчас на складе: {money(movementFor.stock || 0)} {movementFor.unit || 'шт'}
+                Сейчас на складе: {money(stockAt(movementFor, movementWh || defaultWarehouseId))} {movementFor.unit || 'шт'}
               </p>
+
+              {/* Склад движения выбирают до количества: одно и то же число
+                  означает разное на разных точках. */}
+              {shownWarehouses.length > 1 && (
+                <label className="block">
+                  <span className={`${labelCls} mb-1`}>Склад</span>
+                  <select value={movementWh || defaultWarehouseId} onChange={e => setMovementWh(e.target.value)} className={inputCls}>
+                    {shownWarehouses.map(w => (
+                      <option key={w.id} value={w.id}>{w.name}{w.isMain ? ' · основной' : ''}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 {(['IN', 'WRITE_OFF', 'RETURN', 'CORRECTION'] as const).map(t => (

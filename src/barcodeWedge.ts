@@ -23,6 +23,12 @@ export interface WedgeParserOptions {
   maxAvgGap?: number;
   /** Короче не бывает штрихкодов, а случайно столько быстрых нажатий не набрать */
   minLength?: number;
+  /** Через столько тишины считаем, что сканер без Enter уже всё «напечатал», мс */
+  idleGap?: number;
+  /** Средняя пауза для скана без Enter — строже: подтверждения нет, ошибиться нельзя */
+  idleAvgGap?: number;
+  /** Средняя пауза для длинного цифрового кода с Enter — медленные Bluetooth-сканеры */
+  slowAvgGap?: number;
 }
 
 export interface WedgeStep {
@@ -32,14 +38,27 @@ export interface WedgeStep {
   code?: string;
 }
 
-export const createWedgeParser = ({ maxGap = 50, maxAvgGap = 30, minLength = 5 }: WedgeParserOptions = {}) => {
+export const createWedgeParser = ({
+  // Пороги рассчитаны на медленный конец линейки: дешёвый USB-сканер в «тихом»
+  // режиме и Bluetooth с низкой скоростью передачи выдают до 60-80 мс на символ,
+  // а человек и на пике держит 100+ мс и не удерживает темп всю строку.
+  maxGap = 90, maxAvgGap = 45, minLength = 5, idleGap = 120, idleAvgGap = 30, slowAvgGap = 75,
+}: WedgeParserOptions = {}) => {
   let buffer = '';
   let first = 0;
   let last = 0;
   const reset = () => { buffer = ''; };
 
+  const avgGap = (code: string) => (last - first) / Math.max(1, code.length - 1);
+
+  /** Похоже ли набранное на скан: длина и темп. */
+  const looksScanned = (code: string, avgLimit: number) =>
+    code.length >= minLength && avgGap(code) <= avgLimit;
+
   return {
     reset,
+    /** Сколько ждать тишины, чтобы закрыть скан без Enter */
+    idleGap,
     push(key: string, time: number): WedgeStep | null {
       if (key.length === 1) {
         const started = !buffer || time - last > maxGap;
@@ -53,15 +72,31 @@ export const createWedgeParser = ({ maxGap = 50, maxAvgGap = 30, minLength = 5 }
         reset();
         // Enter часть сканеров отправляет с задержкой — ей даём запас побольше,
         // чем паузам между цифрами.
+        // Медленный Bluetooth-сканер выдаёт до 70 мс на символ. Такому темпу
+        // верим только на длинном цифровом коде: короткое число человек за это
+        // время наберёт сам, а тринадцать цифр подряд и с Enter — уже сканер.
+        const slowButLong = avgGap(code) <= slowAvgGap && code.length >= 8 && /^\d+$/.test(code);
         const fast = code.length >= minLength
           && time - last <= maxGap * 4
-          && (last - first) / Math.max(1, code.length - 1) <= maxAvgGap;
+          && (avgGap(code) <= maxAvgGap || slowButLong);
         return fast ? { code } : null;
       }
       // Заглавные буквы сканер набирает через Shift — это не конец скана.
       if (key === 'Shift' || key === 'CapsLock') return null;
       reset();
       return null;
+    },
+    /**
+     * Скан без завершающего Enter. Половина сканеров приезжает с завода без
+     * суффикса, и такой код иначе просто оставался бы в буфере: символы пришли,
+     * а закрыть их нечем. Закрываем тишиной — но темп требуем строже, чем с
+     * Enter: подтверждения от сканера здесь нет.
+     */
+    flush(time: number): WedgeStep | null {
+      const code = buffer;
+      if (!code || time - last < idleGap) return null;
+      reset();
+      return looksScanned(code, idleAvgGap) ? { code } : null;
     },
   };
 };
@@ -93,11 +128,31 @@ const install = () => {
   const parser = createWedgeParser();
   let field: HTMLInputElement | HTMLTextAreaElement | null = null;
   let before = '';
+  let idleTimer = 0;
+
+  const stopIdle = () => { if (idleTimer) { window.clearTimeout(idleTimer); idleTimer = 0; } };
+
+  /** Вернуть поле в то состояние, в котором его застал сканер. */
+  const restoreField = () => {
+    if (field?.isConnected) setFieldValue(field, before);
+    field = null;
+  };
+
+  // Ручной сканер тоже читает QR со ссылкой и «Честный знак» — в экран уходит
+  // только код товара, ссылка отбивается сигналом ошибки.
+  const productCode = (code: string): string | null => {
+    const extracted = extractProductCode(code);
+    return 'error' in extracted ? null : extracted.code;
+  };
 
   window.addEventListener('keydown', event => {
     if (handlers.length === 0 || event.isComposing) return;
-    if (event.ctrlKey || event.metaKey || event.altKey) { parser.reset(); return; }
+    if (event.ctrlKey || event.metaKey || event.altKey) { stopIdle(); parser.reset(); return; }
+    // Зажатая клавиша выдаёт такой же ровный поток символов, что и сканер.
+    // Автоповтор сканом не считаем — иначе удержанная «1» открывала бы товар.
+    if (event.repeat) { stopIdle(); parser.reset(); return; }
 
+    stopIdle();
     const step = parser.push(event.key, event.timeStamp);
     if (step?.started) {
       // Запоминаем поле до первого символа: если это скан, вернём его как было.
@@ -107,13 +162,25 @@ const install = () => {
     if (step?.code) {
       event.preventDefault();
       event.stopPropagation();
-      if (field?.isConnected) setFieldValue(field, before);
-      field = null;
-      // Ручной сканер тоже читает QR со ссылкой и «Честный знак» — в экран
-      // уходит только код товара, ссылка отбивается сигналом ошибки.
-      const extracted = extractProductCode(step.code);
-      if ('error' in extracted) { scanBeep('error'); return; }
-      handlers[handlers.length - 1]?.current(extracted.code);
+      restoreField();
+      const code = productCode(step.code);
+      if (!code) { scanBeep('error'); return; }
+      handlers[handlers.length - 1]?.current(code);
+      return;
+    }
+    // Сканер без суффикса ничего больше не пришлёт — закрываем скан тишиной.
+    if (parser.idleGap > 0) {
+      idleTimer = window.setTimeout(() => {
+        idleTimer = 0;
+        const done = parser.flush(performance.now());
+        if (!done?.code) return;
+        // Здесь Enter не подтверждал скан, поэтому чужой текст не трогаем:
+        // поле чистим и код отдаём экрану только если это действительно код.
+        const code = productCode(done.code);
+        if (!code) { field = null; return; }
+        restoreField();
+        handlers[handlers.length - 1]?.current(code);
+      }, parser.idleGap + 10);
     }
   }, true);
 };

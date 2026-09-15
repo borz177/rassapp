@@ -752,6 +752,10 @@ interface BuySide {
   accountId?: string;
   productName?: string;
   supplierId?: string;
+  /** Состав, взятый со склада: такой товар уже оплачен приходом */
+  stockItems?: { productId?: string }[] | null;
+  /** Одиночный товар каталога — старый способ взять товар со склада */
+  productId?: string;
 }
 
 export const buyPriceExpenseAction = (
@@ -763,6 +767,11 @@ export const buyPriceExpenseAction = (
 
   // Взяли у поставщика — это долг перед ним, а не трата со счёта.
   if (next.supplierId) return linked ? 'delete' : 'none';
+
+  // Товар со склада уже оплачен при оприходовании — второй раз деньги со счёта
+  // не уходят: договор только списывает его с остатка. Закуп списывается
+  // только когда товар вписали руками — его купили под этот договор.
+  if ((next.stockItems || []).length > 0 || next.productId) return linked ? 'delete' : 'none';
   if (buyPrice <= 0) return linked ? 'delete' : 'none';
 
   const purchaseUntouched = !!prevSale

@@ -15,6 +15,10 @@ interface WarehouseOpsProps {
   /** Нужны, чтобы продолжить нумерацию документов, а не начать её заново */
   movements: StockMovement[];
   warehouses: StockLocation[];
+  /** Склад, выбранный на складе-экране: операции открываются сразу на нём */
+  warehouseId?: string;
+  /** Склад сменили здесь — каталог смотрит туда же */
+  onWarehouseChange?: (id: string) => void;
   suppliers: Supplier[];
   /** Проводит документ целиком: движения и обновлённые остатки одной операцией */
   onPost: (movements: StockMovement[], products: Product[]) => Promise<void> | void;
@@ -60,7 +64,7 @@ const WRITE_OFF_REASONS = ['Порча', 'Брак', 'Потеря', 'Недос
  * недостачу — верный способ получить ошибку в самом важном месте.
  */
 const WarehouseOps: React.FC<WarehouseOpsProps> = ({
-  products, movements, warehouses, suppliers, onPost, showCents = false,
+  products, movements, warehouses, warehouseId, onWarehouseChange, suppliers, onPost, showCents = false,
   onCreateProduct, addedProduct, paused = false,
 }) => {
   const liveWarehouses = useMemo(() => {
@@ -70,7 +74,15 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
 
   const [tab, setTab] = useState<OpTab>('IN');
   const [docNumber, setDocNumber] = useState('');
-  const [fromWh, setFromWh] = useState(liveWarehouses.find(w => w.isMain)?.id || liveWarehouses[0].id);
+  const [fromWh, setFromWh] = useState(
+    warehouseId || liveWarehouses.find(w => w.isMain)?.id || liveWarehouses[0].id
+  );
+  // Склад выбрали в каталоге — документ открывается на нём же. Очередь при этом
+  // сбрасываем: набранные строки относились к другому складу.
+  useEffect(() => {
+    if (warehouseId && warehouseId !== fromWh) { setFromWh(warehouseId); setBatch({}); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warehouseId]);
   const [toWh, setToWh] = useState('');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('ALL');
@@ -352,7 +364,9 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
             {tab === 'TRANSFER' ? 'Откуда' : 'Склад'}
           </p>
-          <select value={fromWh} onChange={e => { setFromWh(e.target.value); setBatch({}); }} className={input}>
+          <select value={fromWh}
+                  onChange={e => { setFromWh(e.target.value); setBatch({}); onWarehouseChange?.(e.target.value); }}
+                  className={input}>
             {liveWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
         </div>
