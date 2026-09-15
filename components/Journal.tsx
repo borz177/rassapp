@@ -32,6 +32,12 @@ interface JournalProps {
   onAddDocLines?: (docId: string, lines: { productId: string; quantity: number; price: number }[]) => Promise<void> | void;
   /** Удаление розничной продажи: товар вернётся на склад, платежи уйдут вместе с чеком */
   onDeleteSale?: (sale: RetailSale) => Promise<void> | void;
+  /**
+   * Открыть документ сразу — переход из другого раздела (поставка в карточке
+   * партнёра). Закрытие такого документа возвращает туда, откуда пришли,
+   * а не в ленту журнала, которую человек и не открывал.
+   */
+  initialDocId?: string | null;
 }
 
 type PayFilter = 'ALL' | 'DEBT' | 'PAID';
@@ -77,13 +83,13 @@ const timeOf = (d: string) =>
 const Journal: React.FC<JournalProps> = ({
   retailSales, movements, products, customers, warehouses, suppliers, accounts,
   employees = [], contracts = [], appSettings, user, onBack, onSelectCustomer, onAcceptPayment,
-  onUpdateSale, onUpdateStockDoc, onAddDocLines, onDeleteSale,
+  onUpdateSale, onUpdateStockDoc, onAddDocLines, onDeleteSale, initialDocId = null,
 }) => {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'ALL' | DocKind>('ALL');
   const [pay, setPay] = useState<PayFilter>('ALL');
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(initialDocId);
   const [detailTab, setDetailTab] = useState<'INFO' | 'PAY'>('INFO');
   const [menuFor, setMenuFor] = useState<JournalDoc | null>(null);
   // Чек, который собираются удалить. Спрашиваем отдельным окном: удаление
@@ -402,7 +408,11 @@ const Journal: React.FC<JournalProps> = ({
         остальные страницы приложения. Держится до конца анимации ухода:
         состояние снимается в onClose, когда играть уже нечего. */}
     {opened && (
-      <SubPage onClose={() => setOpenId(null)}>
+      <SubPage onClose={() => {
+        // Документ открыли переходом извне — назад значит туда, откуда пришли
+        if (initialDocId && openId === initialDocId) onBack();
+        else setOpenId(null);
+      }}>
         {(close: () => void) => (
           <DocumentCard
             doc={opened}

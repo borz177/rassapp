@@ -172,6 +172,8 @@ const isLanding = path === "/"
   const [selectedInvestorId, setSelectedInvestorId] = useState<string | null>(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
+  // Документ журнала, который нужно открыть сразу — переход из карточки поставщика
+  const [journalDocId, setJournalDocId] = useState<string | null>(null);
   const [draftExpenseData, setDraftExpenseData] = useState<any>(null);
   const [operationsAccountId, setOperationsAccountId] = useState<string | null>(null);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
@@ -1795,7 +1797,7 @@ const dashboardStats = useMemo(() => {
           // Разделы магазина закрыты и по переходу, а не только прятанием пунктов
           // меню: право могли снять, пока экран уже открыт.
           case 'WAREHOUSE': if (!shopAvailable) break; setPreviousView(currentView); setCurrentView('WAREHOUSE'); break;
-          case 'JOURNAL': if (!shopAvailable) break; setPreviousView(currentView); setCurrentView('JOURNAL'); break;
+          case 'JOURNAL': if (!shopAvailable) break; setJournalDocId(null); setPreviousView(currentView); setCurrentView('JOURNAL'); break;
           case 'SUPPLIERS': setPreviousView(currentView); setCurrentView('SUPPLIERS'); break;
           case 'RETAIL_SALE': if (!shopAvailable) break; setPreviousView(currentView); setCurrentView('RETAIL_SALE'); break;
           case 'MANAGE_PRODUCTS': setCurrentView('MANAGE_PRODUCTS'); break;
@@ -3970,6 +3972,14 @@ const handleQuickAddCustomer = async (data: {
   };
   // Отдать долг поставщику со страницы партнёров: форма расхода сразу с этим
   // поставщиком. Без привязки к договору — долг бывает и за поставки на склад.
+  // Поставка в карточке партнёра открывает свой приход в журнале. Журнал — раздел
+  // магазина, поэтому без доступа к нему переход не предлагается вовсе.
+  const handleOpenSupplyDoc = (supplyDocId: string) => {
+    if (!shopAvailable) return;
+    setJournalDocId(`doc_${supplyDocId}`);
+    setPreviousView('SUPPLIER_DETAILS');
+    setCurrentView('JOURNAL');
+  };
   const handlePaySupplierDebt = (supplier: Supplier, debt: number) => {
     setDraftExpenseData({ category: 'Оплата партнёру', supplierId: supplier.id, supplierDebt: debt });
     rememberFormReturn();
@@ -4509,6 +4519,7 @@ if (!user && !showSplash) {
                       onBack={requestClose}
                       onPaySupplier={handlePaySupplier}
                       onViewContract={handleViewSupplierContract}
+                      onOpenSupplyDoc={shopAvailable ? handleOpenSupplyDoc : undefined}
                        movements={stockMovements} products={products}
                              />
                     )}
@@ -4580,6 +4591,7 @@ if (!user && !showSplash) {
                   <PagePush onClose={() => { setCurrentView(formReturnView); setDraftExpenseData(null); }}>
                     {(requestClose: () => void) => (
                       <NewExpense investors={investors} accounts={accounts} expenses={expenses} suppliers={suppliers} sales={sales}
+                              movements={stockMovements} products={products}
                               showSupplierCategory={checkAccess('SUPPLIERS')} initialData={draftExpenseData} onClose={requestClose}
                               onSubmit={handleExpenseSubmit} appSettings={appSettings} employees={employees} />
                     )}
@@ -4667,9 +4679,10 @@ if (!user && !showSplash) {
               )}
 
               {currentView === 'JOURNAL' && (
-                <PagePush onClose={() => setCurrentView(previousView)} scrollKey="JOURNAL">
+                <PagePush onClose={() => { setCurrentView(previousView); setJournalDocId(null); }} scrollKey="JOURNAL">
                   {(requestClose: () => void) => (
                     <Journal
+                      initialDocId={journalDocId}
                       retailSales={scopedRetailSales}
                       movements={scopedMovements}
                       products={products}

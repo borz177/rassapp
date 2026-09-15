@@ -78,6 +78,67 @@ export const supplierGeneralPayments = (expenses: Expense[], supplierId: string)
     && e.isRefund !== true
   );
 
+export interface SupplyBalance extends SupplyDoc {
+  paid: number;
+  remaining: number;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Оплачено и остаток по каждому приходу.
+ *
+ * Сначала гасятся приходы, к которым оплату привязали явно. Всё, что к приходу
+ * не привязано, — и переплата сверх суммы привязанного прихода — гасит поставки
+ * по очереди, от старых к новым: так долг обычно и отдают. Сумма остатков всегда
+ * равна supplierSupplyDebt, поэтому общая цифра долга от привязки не меняется —
+ * меняется только то, какой приход считается закрытым.
+ *
+ * Порядок результата — как у supplierSupplies: свежие сверху.
+ */
+export const supplierSupplyBalances = (
+  movements: StockMovement[],
+  products: Product[],
+  expenses: Expense[],
+  supplierId: string
+): SupplyBalance[] => {
+  const docs = supplierSupplies(movements, products, supplierId);
+  const docIds = new Set(docs.map(d => d.id));
+
+  const linked = new Map<string, number>();
+  let pool = 0;
+  supplierGeneralPayments(expenses, supplierId).forEach(e => {
+    const amount = Number(e.amount) || 0;
+    if (e.supplyDocId && docIds.has(e.supplyDocId)) {
+      linked.set(e.supplyDocId, (linked.get(e.supplyDocId) || 0) + amount);
+    } else {
+      // Привязка к удалённому приходу теряет смысл — такая оплата гасит по очереди
+      pool += amount;
+    }
+  });
+
+  const oldestFirst = [...docs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const paid = new Map<string, number>();
+  oldestFirst.forEach(d => {
+    const own = linked.get(d.id) || 0;
+    const applied = Math.min(d.total, own);
+    paid.set(d.id, applied);
+    pool += own - applied;
+  });
+  oldestFirst.forEach(d => {
+    const room = d.total - (paid.get(d.id) || 0);
+    const take = Math.max(0, Math.min(room, pool));
+    pool -= take;
+    paid.set(d.id, (paid.get(d.id) || 0) + take);
+  });
+
+  return docs.map(d => ({
+    ...d,
+    paid: round2(paid.get(d.id) || 0),
+    remaining: round2(Math.max(0, d.total - (paid.get(d.id) || 0))),
+  }));
+};
+
 /** Сколько осталось должны за принятый товар. */
 export const supplierSupplyDebt = (
   movements: StockMovement[],

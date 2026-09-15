@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import TabPill from './TabPill';
 import TopBarBack from './TopBarBack';
-import { Account, Investor, Expense, User, Supplier, Sale } from '../types';
+import { Account, Investor, Expense, User, Supplier, Sale, StockMovement, Product } from '../types';
+import { supplierSupplyBalances } from '../src/supplierLedger';
 import { ICONS } from '../constants';
 import { getInvestorAccount, getAccountShares, getManagerSharePercent, formatCurrency, getAccountProfitBalance, accountInvestment } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
@@ -13,6 +14,9 @@ interface NewExpenseProps {
   employees?: User[];
   suppliers?: Supplier[];
   sales?: Sale[];
+  /** Приходы на склад и товары — чтобы оплату партнёру можно было привязать к приходу */
+  movements?: StockMovement[];
+  products?: Product[];
   showSupplierCategory?: boolean;
   appSettings?: any;
   initialData?: {
@@ -58,7 +62,7 @@ const checkDuplicateExpense = (
 };
 
 const NewExpense: React.FC<NewExpenseProps> = ({
-  investors, accounts, expenses, employees, suppliers, sales, showSupplierCategory, initialData, onClose, onSubmit
+  investors, accounts, expenses, employees, suppliers, sales, movements = [], products = [], showSupplierCategory, initialData, onClose, onSubmit
 }) => {
   const employeeList: User[] = employees || [];
   const supplierList: Supplier[] = suppliers || [];
@@ -96,6 +100,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
     initialData?.supplierId && !initialData?.saleId ? initialData.supplierId : ''
   );
   const [selectedDebtSaleId, setSelectedDebtSaleId] = useState('');
+  const [selectedSupplyDocId, setSelectedSupplyDocId] = useState('');
 
   const selectedInvestor = investors.find(i => i.id === selectedInvestorId);
   const selectedAccount = accounts.find(a => a.id === sourceAccountId);
@@ -140,6 +145,12 @@ const NewExpense: React.FC<NewExpenseProps> = ({
     : [];
   const selectedDebtSale = supplierOpenDebts.find(s => s.id === selectedDebtSaleId);
   const selectedDebtRemaining = selectedDebtSale ? selectedDebtSale.buyPrice - (selectedDebtSale.partnerDebtPaidAmount || 0) : null;
+
+  // Приходы на склад с остатком долга — оплату можно привязать и к ним
+  const supplierOpenSupplies = selectedSupplierId
+    ? supplierSupplyBalances(movements, products, expenses || [], selectedSupplierId).filter(d => d.remaining > 0.01)
+    : [];
+  const selectedSupply = supplierOpenSupplies.find(d => d.id === selectedSupplyDocId);
 
   // Auto-fill Account logic when Investor changes
   useEffect(() => {
@@ -188,6 +199,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
       if (category !== 'Оплата партнёру') {
           setSelectedSupplierId('');
           setSelectedDebtSaleId('');
+          setSelectedSupplyDocId('');
       } else {
           // Долг поставщику — возврат закупа, а не расход из прибыли. Галочка, поставленная
           // до смены категории, иначе молча уехала бы в сохранённый расход.
@@ -198,7 +210,14 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   // Сбрасываем выбранный договор при смене поставщика
   useEffect(() => {
       setSelectedDebtSaleId('');
+      setSelectedSupplyDocId('');
   }, [selectedSupplierId]);
+
+  // Автоподстановка суммы остатком долга при выборе прихода
+  useEffect(() => {
+      if (selectedSupply) setAmount(String(selectedSupply.remaining));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSupplyDocId]);
 
   // Автоподстановка суммы остатком долга при выборе конкретного договора
   useEffect(() => {
@@ -326,6 +345,10 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                 alert(`Сумма не может превышать остаток долга: ${selectedDebtRemaining} ₽`);
                 return;
             }
+            if (selectedSupply && numAmount > selectedSupply.remaining + 0.01) {
+                alert(`Сумма не может превышать остаток по приходу №${selectedSupply.number}: ${selectedSupply.remaining} ₽`);
+                return;
+            }
         }
 
         const selectedEmployee = employeeList.find(e => e.id === selectedEmployeeId);
@@ -358,6 +381,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
             expenseData.supplierId = selectedSupplierId;
             if (selectedDebtSaleId) {
                 expenseData.saleId = selectedDebtSaleId;
+            } else if (selectedSupplyDocId) {
+                expenseData.supplyDocId = selectedSupplyDocId;
             }
         }
 
@@ -572,24 +597,45 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                                      </p>
                                  )}
 
-                                 {selectedSupplierId && supplierOpenDebts.length > 0 && (
+                                 {/* Одно поле на оба вида долга: договор рассрочки или приход на
+                                     склад. Двумя полями можно было бы выбрать и то, и другое —
+                                     а одна оплата гасит один документ. */}
+                                 {selectedSupplierId && (supplierOpenDebts.length > 0 || supplierOpenSupplies.length > 0) && (
                                      <div>
-                                         <label className="block text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">Погасить долг по договору (опционально)</label>
+                                         <label className="block text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">Привязать к документу (необязательно)</label>
                                          <select
                                             className="w-full p-3 border border-amber-200 dark:border-amber-800 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-300"
-                                            value={selectedDebtSaleId}
-                                            onChange={e => setSelectedDebtSaleId(e.target.value)}
+                                            value={selectedDebtSaleId ? `sale:${selectedDebtSaleId}` : selectedSupplyDocId ? `supply:${selectedSupplyDocId}` : ''}
+                                            onChange={e => {
+                                                const [kind, ...rest] = e.target.value.split(':');
+                                                const id = rest.join(':');
+                                                setSelectedDebtSaleId(kind === 'sale' ? id : '');
+                                                setSelectedSupplyDocId(kind === 'supply' ? id : '');
+                                            }}
                                          >
-                                             <option value="">Без привязки к договору</option>
-                                             {supplierOpenDebts.map(s => (
-                                                 <option key={s.id} value={s.id}>
-                                                     {s.productName} — остаток {(s.buyPrice - (s.partnerDebtPaidAmount || 0)).toLocaleString('ru-RU')} ₽
-                                                 </option>
-                                             ))}
+                                             <option value="">Без привязки — гасит долг по очереди</option>
+                                             {supplierOpenDebts.length > 0 && (
+                                                 <optgroup label="Договоры рассрочки">
+                                                     {supplierOpenDebts.map(s => (
+                                                         <option key={s.id} value={`sale:${s.id}`}>
+                                                             {s.productName} — остаток {(s.buyPrice - (s.partnerDebtPaidAmount || 0)).toLocaleString('ru-RU')} ₽
+                                                         </option>
+                                                     ))}
+                                                 </optgroup>
+                                             )}
+                                             {supplierOpenSupplies.length > 0 && (
+                                                 <optgroup label="Приходы на склад">
+                                                     {supplierOpenSupplies.map(d => (
+                                                         <option key={d.id} value={`supply:${d.id}`}>
+                                                             Приход №{d.number} от {new Date(d.date).toLocaleDateString('ru-RU')} — остаток {d.remaining.toLocaleString('ru-RU')} ₽
+                                                         </option>
+                                                     ))}
+                                                 </optgroup>
+                                             )}
                                          </select>
-                                         {selectedDebtSale && (
+                                         {(selectedDebtSale || selectedSupply) && (
                                              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                                                 Сумма ограничена остатком долга: {selectedDebtRemaining?.toLocaleString('ru-RU')} ₽ (можно оплатить частично).
+                                                 Сумма ограничена остатком долга: {(selectedDebtSale ? selectedDebtRemaining : selectedSupply!.remaining)?.toLocaleString('ru-RU')} ₽ (можно оплатить частично).
                                              </p>
                                          )}
                                      </div>

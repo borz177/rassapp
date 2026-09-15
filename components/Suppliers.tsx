@@ -230,17 +230,6 @@ const Suppliers: React.FC<SuppliersProps> = ({
                     <span className="sm:hidden">Долг: <span className="font-bold text-red-600 dark:text-red-400">{formatCurrency(debt, showCents)} ₽</span></span>
                   )}
                 </div>
-                {/* Отдать долг прямо из списка: раньше для этого нужно было уйти в
-                    расходы и там заново искать поставщика в выпадающем списке. */}
-                {debt > 0 && onPayDebt && (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); onPayDebt(s, debt); }}
-                    className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold active:scale-95 transition-transform"
-                  >
-                    Отдать долг
-                  </button>
-                )}
               </div>
 
               {activeMenuId === s.id && (
@@ -251,6 +240,16 @@ const Suppliers: React.FC<SuppliersProps> = ({
                   >
                     <span className="text-indigo-500">{ICONS.File}</span> Инфо
                   </button>
+                  {/* Отдать долг — в меню действий карточки: форма расхода откроется
+                      сразу с этим поставщиком, искать его в списке не нужно. */}
+                  {debt > 0 && onPayDebt && (
+                    <button
+                      onClick={() => { setActiveMenuId(null); onPayDebt(s, debt); }}
+                      className="w-full text-left px-4 py-3 text-sm font-semibold text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 flex items-center gap-2"
+                    >
+                      <span className="w-5 text-center font-bold">₽</span> Отдать долг
+                    </button>
+                  )}
                   <button
                     onClick={() => handleStartEdit(s)}
                     className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2"

@@ -3,7 +3,7 @@ import { Customer, Expense, Product, Sale, StockMovement, Supplier } from '../ty
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
 import { formatCurrency, escapeHtml } from '../src/utils';
-import { supplierSupplies, supplierSupplyDebt } from '../src/supplierLedger';
+import { supplierSupplies, supplierSupplyBalances, supplierSupplyDebt } from '../src/supplierLedger';
 import { openPrintPreview } from './PrintPreview';
 
 interface SupplierDetailsProps {
@@ -19,9 +19,11 @@ interface SupplierDetailsProps {
   onBack: () => void;
   onPaySupplier: (sale: Sale) => void;
   onViewContract: (sale: Sale) => void;
+  /** Открыть приход в журнале. Нет — журнал недоступен, поставки не нажимаются */
+  onOpenSupplyDoc?: (supplyDocId: string) => void;
 }
 
-const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expenses, customers, movements = [], products = [], showCents, appSettings, onBack, onPaySupplier, onViewContract }) => {
+const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expenses, customers, movements = [], products = [], showCents, appSettings, onBack, onPaySupplier, onViewContract, onOpenSupplyDoc }) => {
   const [contractFilter, setContractFilter] = useState<'ALL' | 'DEBT' | 'PAID'>('ALL');
   const supplierSales = useMemo(
     () => sales.filter(s => s.supplierId === supplier.id).sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()),
@@ -50,6 +52,11 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
     [movements, products, supplier.id]
   );
   const suppliesTotal = useMemo(() => supplies.reduce((sum, d) => sum + d.total, 0), [supplies]);
+  // Оплачено и остаток по каждому приходу — с учётом оплат, привязанных к нему
+  const supplyBalances = useMemo(
+    () => supplierSupplyBalances(movements, products, expenses, supplier.id),
+    [movements, products, expenses, supplier.id]
+  );
   const supplyDebt = useMemo(
     () => supplierSupplyDebt(movements, products, expenses, supplier.id),
     [movements, products, expenses, supplier.id]
@@ -201,8 +208,13 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
               {formatCurrency(suppliesTotal, showCents)} ₽
             </span>
           </div>
-          {supplies.map(doc => (
-            <div key={doc.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4">
+          {/* Поставка открывает свой приход в журнале — там состав, печать и история.
+              Кнопкой, а не div: её видно как нажимаемую и до неё можно дойти с клавиатуры. */}
+          {supplyBalances.map(doc => (
+            <button key={doc.id} type="button"
+                    disabled={!onOpenSupplyDoc}
+                    onClick={() => onOpenSupplyDoc?.(doc.id)}
+                    className="block w-full text-left bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 enabled:cursor-pointer enabled:hover:border-indigo-300 dark:enabled:hover:border-indigo-700 enabled:active:scale-[0.99] transition">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-bold text-slate-800 dark:text-white truncate">Приход №{doc.number}</p>
@@ -210,9 +222,14 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
                     {new Date(doc.date).toLocaleDateString('ru-RU')} · {doc.lines.length} поз.
                   </p>
                 </div>
-                <p className="font-bold text-slate-800 dark:text-white shrink-0">
-                  {formatCurrency(doc.total, showCents)} ₽
-                </p>
+                <div className="text-right shrink-0">
+                  <p className="font-bold text-slate-800 dark:text-white">
+                    {formatCurrency(doc.total, showCents)} ₽
+                  </p>
+                  <p className={`text-[11px] font-semibold ${doc.remaining > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                    {doc.remaining > 0 ? `остаток ${formatCurrency(doc.remaining, showCents)} ₽` : 'оплачено'}
+                  </p>
+                </div>
               </div>
               <div className="mt-2 space-y-0.5">
                 {doc.lines.slice(0, 4).map((l, i) => (
@@ -224,11 +241,14 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
                   <p className="text-[11px] text-slate-400">и ещё {doc.lines.length - 4} поз.</p>
                 )}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
 
+      {/* Договоры рассрочки — только если они есть: у партнёра, который возит товар
+          на склад, пустой блок с фильтрами «Все (0) / С долгом (0)» лишь мешал. */}
+      {supplierSales.length > 0 && (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-slate-800 dark:text-white">Договоры</h3>
@@ -289,6 +309,7 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
           );
         })}
       </div>
+      )}
 
       <div className="space-y-3">
         <h3 className="font-bold text-slate-800 dark:text-white">История оплат</h3>
@@ -297,7 +318,12 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
           <div key={p.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 flex justify-between items-center">
             <div>
               <p className="font-bold text-slate-800 dark:text-white text-sm">{p.title}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{new Date(p.date).toLocaleDateString()}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {new Date(p.date).toLocaleDateString()}
+                {/* К какому документу привязана оплата — иначе не понять, почему закрылся именно этот приход */}
+                {p.supplyDocId && supplies.some(d => d.id === p.supplyDocId) && ` · приход №${supplies.find(d => d.id === p.supplyDocId)!.number}`}
+                {p.saleId && supplierSales.some(s => s.id === p.saleId) && ` · договор «${supplierSales.find(s => s.id === p.saleId)!.productName}»`}
+              </p>
             </div>
             <span className="font-bold text-red-600 dark:text-red-400">-{formatCurrency(p.amount, showCents)} ₽</span>
           </div>
