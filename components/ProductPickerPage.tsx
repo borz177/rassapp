@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import type { Product, SaleStockItem } from '../types';
-import { formatCurrency, maxPickableQty, stockAtWarehouse } from '../src/utils';
+import type { Product, SaleStockItem, StockLocation } from '../types';
+import { formatCurrency, maxPickableQty, stockOnWarehouse } from '../src/utils';
 import TopBarBack from './TopBarBack';
 import BarcodeScanner, { ScanButton, type ScanOutcome } from './BarcodeScanner';
 import { findProductByCode, productMatchesQuery } from '../src/barcode';
@@ -11,6 +11,8 @@ interface ProductPickerPageProps {
   products: Product[];
   /** Склад, по которому показываем остаток. Пусто — берём суммарный. */
   warehouseId?: string;
+  /** Склады магазина — чтобы остаток основного включал товар, заведённый до складов */
+  warehouses?: StockLocation[];
   title?: string;
   subtitle?: string;
   showCents?: boolean;
@@ -50,6 +52,7 @@ interface ProductPickerPageProps {
 const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
   products,
   warehouseId,
+  warehouses = [],
   title = 'Товар со склада',
   subtitle,
   showCents = false,
@@ -76,7 +79,7 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
     return map;
   });
 
-  const stockOf = (p: Product) => (warehouseId ? stockAtWarehouse(p, warehouseId) : (p.stock || 0));
+  const stockOf = (p: Product) => (warehouseId ? stockOnWarehouse(p, warehouseId, warehouses) : (p.stock || 0));
 
   const live = useMemo(() => products.filter(p => !p.isArchived), [products]);
 

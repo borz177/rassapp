@@ -1,5 +1,5 @@
 import React, {useState, useMemo, useEffect, useRef} from 'react';
-import { Customer, Product, Account, AppSettings, Sale, SaleStockItem, Payment, Supplier } from '../types';
+import { Customer, Product, Account, AppSettings, Sale, SaleStockItem, Payment, Supplier, StockLocation } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { ICONS } from '../constants';
 import TabPill from './TabPill';
@@ -9,7 +9,7 @@ import TopBarBack from './TopBarBack';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
 import { api } from '../services/api';
-import { getSellerPhone, escapeHtml, formatDate, addMonthsClamped, stockAtWarehouse, formatCurrency } from '../src/utils';
+import { getSellerPhone, escapeHtml, formatDate, addMonthsClamped, stockOnWarehouse, formatCurrency } from '../src/utils';
 import { buildContractHtml, buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } from './feedback';
@@ -48,6 +48,8 @@ interface NewSaleProps {
   showShop?: boolean;
   /** Склад, с которого отгружают. Тот же, с которого торгует касса. */
   warehouseId?: string;
+  /** Склады магазина: остаток основного включает товар, заведённый до складов */
+  warehouses?: StockLocation[];
 }
 
 // Форматирует любой российский номер в вид +7 (XXX) XXX-XX-XX
@@ -140,6 +142,7 @@ const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales, suppliers, showSupplierField,
   onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user, propAppSettings,
   onOpenRetail, contractTemplatesAllowed = true, showShop = false, warehouseId = DEFAULT_WAREHOUSE_ID,
+  warehouses = [],
 }) => {
   const supplierList: Supplier[] = suppliers || [];
   const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(initialData.type || 'INSTALLMENT');
@@ -1257,6 +1260,7 @@ if (mode === 'CASH') {
                 <ProductPickerPage
                   products={products}
                   warehouseId={warehouseId}
+                  warehouses={warehouses}
                   title="Товар со склада"
                   subtitle="Сумма выбранного встанет в «Закуп», товар спишется при оформлении"
                   showCents={appSettings.showCents}
@@ -1282,7 +1286,7 @@ if (mode === 'CASH') {
                         {/* Остаток по складу отгрузки: выбирая товар из подсказки,
                             человек списывает его со склада, и знать, сколько там
                             лежит, нужно до нажатия, а не после. */}
-                        {showShop && ` · остаток ${stockAtWarehouse(s, warehouseId)} ${s.unit || 'шт'}`}
+                        {showShop && ` · остаток ${stockOnWarehouse(s, warehouseId, warehouses)} ${s.unit || 'шт'}`}
                       </p>
                     </div>
                 ))}

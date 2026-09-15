@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { Product, StockLocation, StockMovement, Supplier } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { stockAtWarehouse as stockAt, applyStockDelta as withDelta } from '../src/utils';
+import { listedWarehouses, stockOnWarehouse, applyStockDelta as withDelta } from '../src/utils';
 import ModalPortal from './ModalPortal';
 import BarcodeScanner, { ScanButton, type ScanOutcome } from './BarcodeScanner';
 import { findProductByCode, productMatchesQuery } from '../src/barcode';
@@ -68,9 +68,13 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
   onCreateProduct, addedProduct, paused = false,
 }) => {
   const liveWarehouses = useMemo(() => {
-    const live = warehouses.filter(w => !w.isArchived);
+    const live = listedWarehouses(warehouses);
     return live.length ? live : [{ id: DEFAULT_WAREHOUSE_ID, userId: '', name: 'Основной склад', isMain: true }];
   }, [warehouses]);
+
+  // Остаток на складе считаем так же, как каталог: товар, заведённый до
+  // складов, принадлежит основному.
+  const stockAt = (p: Product, warehouseId: string) => stockOnWarehouse(p, warehouseId, liveWarehouses);
 
   const [tab, setTab] = useState<OpTab>('IN');
   const [docNumber, setDocNumber] = useState('');

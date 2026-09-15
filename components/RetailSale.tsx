@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import type { Account, Customer, Product, RetailSale as RetailSaleType, RetailSaleItem } from '../types';
+import type { Account, Customer, Product, RetailSale as RetailSaleType, RetailSaleItem, StockLocation } from '../types';
 import TopBarBack from './TopBarBack';
-import { maxPickableQty, stockAtWarehouse } from '../src/utils';
+import { maxPickableQty, stockOnWarehouse } from '../src/utils';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import Sheet from './Sheet';
 import { SuccessCheck, hapticSuccess } from './feedback';
@@ -20,6 +20,8 @@ interface RetailSaleProps {
   defaultAccountId?: string;
   /** Склад, с которого продаём: с него же и списывается товар */
   warehouseId?: string;
+  /** Склады магазина: по ним остаток основного учитывает товар, заведённый до складов */
+  warehouses?: StockLocation[];
   /** Прошлые чеки — нужны только для следующего номера документа */
   existingSales?: RetailSaleType[];
   onSubmit: (sale: RetailSaleType) => Promise<void> | void;
@@ -61,7 +63,7 @@ const input = 'w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate
  * никому не понадобятся.
  */
 const RetailSale: React.FC<RetailSaleProps> = ({
-  products, customers, accounts, defaultAccountId, warehouseId = DEFAULT_WAREHOUSE_ID, onQuickAddCustomer,
+  products, customers, accounts, defaultAccountId, warehouseId = DEFAULT_WAREHOUSE_ID, warehouses = [], onQuickAddCustomer,
   allowNegativeStock = false, canScanPassport = false,
   existingSales = [], onSubmit, onBack, showCents = false,
 }) => {
@@ -133,7 +135,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   // подсобке: чек прошёл бы, а остаток зала ушёл в минус.
   const stockOf = (id: string) => {
     const p = products.find(x => x.id === id);
-    return p ? stockAtWarehouse(p, warehouseId) : 0;
+    return p ? stockOnWarehouse(p, warehouseId, warehouses) : 0;
   };
   const overdrawn = items.filter(i => i.quantity > stockOf(i.productId));
 
@@ -171,7 +173,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
     const id = editing.product.id;
     // Продажа в минус выключена — дальше остатка не пускаем и говорим почему.
     // Молча урезать количество нельзя: кассир увидел бы в чеке не то, что набрал.
-    const left = stockAtWarehouse(editing.product, warehouseId);
+    const left = stockOnWarehouse(editing.product, warehouseId, warehouses);
     if (num(qty) > maxPickableQty(left, allowNegativeStock)) {
       setError(left > 0
         ? `На складе ${money(left)} ${editing.product.unit || 'шт'} — продажа в минус выключена в настройках магазина.`
@@ -207,7 +209,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
 
     const unit = p.unit || 'шт';
     const nextQty = (items.find(i => i.productId === p.id)?.quantity || 0) + 1;
-    const left = stockAtWarehouse(p, warehouseId);
+    const left = stockOnWarehouse(p, warehouseId, warehouses);
     if (nextQty > maxPickableQty(left, allowNegativeStock)) {
       return {
         tone: 'error',
@@ -467,7 +469,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5">
               {visible.map(p => {
                 const inCart = items.find(i => i.productId === p.id);
-                const stock = stockAtWarehouse(p, warehouseId);
+                const stock = stockOnWarehouse(p, warehouseId, warehouses);
                 return (
                   <button key={p.id} onClick={() => openProduct(p)}
                           className={`relative bg-white dark:bg-slate-800 rounded-2xl border p-2 text-left active:scale-95 transition-transform overflow-hidden ${
@@ -557,7 +559,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
                 <div className="min-w-0">
                   <h3 className="font-bold text-slate-800 dark:text-white truncate">{editing.product.name}</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    На складе {money(stockAtWarehouse(editing.product, warehouseId))} {editing.product.unit || 'шт'}
+                    На складе {money(stockOnWarehouse(editing.product, warehouseId, warehouses))} {editing.product.unit || 'шт'}
                     {editing.product.buyPrice ? ` · закуп ${money(editing.product.buyPrice, showCents)} ₽` : ''}
                   </p>
                 </div>

@@ -3,7 +3,7 @@ import type {
   Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User,
 } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { formatCurrency, stockAtWarehouse, stockInScope } from '../src/utils';
+import { formatCurrency, listedWarehouses, stockOnWarehouse, stockInScope } from '../src/utils';
 import { buildJournalDocs, KIND_LABEL, type JournalDoc } from '../src/journalDocs';
 import TopBarBack from './TopBarBack';
 import ImageViewer from './ImageViewer';
@@ -119,9 +119,11 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
 
   const openedDoc = docs.find(d => d.id === openDocId) || null;
 
-  const stocks = warehouses.filter(w => !w.isArchived);
+  const stocks = listedWarehouses(warehouses, warehouseScope);
   const perWarehouse = (stocks.length ? stocks : [{ id: DEFAULT_WAREHOUSE_ID, name: 'Основной склад' } as StockLocation])
-    .map(w => ({ name: w.name, qty: stockAtWarehouse(product, w.id) }))
+    // Остатки, заведённые до складов, считаются остатками основного — так же,
+    // как их считает список товаров; иначе карточка и список расходились бы.
+    .map(w => ({ name: w.name, qty: stockOnWarehouse(product, w.id, stocks) }))
     .filter(x => x.qty !== 0);
 
   // Наценка — процент К ЗАКУПУ, как её понимают в договоре: цена = закуп плюс

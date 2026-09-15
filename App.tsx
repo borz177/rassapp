@@ -54,7 +54,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, scopeStockMovements, scopeRetailSales} from './src/utils';
+import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -3181,10 +3181,15 @@ const confirmDeleteCustomer = async () => {
   // всем складам (полные списки остаются там, где выдаётся номер), иначе чеки
   // и накладные разных складов получали бы одинаковые номера. Запись по чужим
   // складам запрещает и сервер — см. checkEmployeeWriteAccess.
-  const warehouseScope = useMemo(() => employeeWarehouseScope(user, warehouses), [user, warehouses]);
+  // Склады так, как их видит человек: пока свой основной не заведён, в списке
+  // стоит подставной «Основной склад» — на нём лежит весь товар, заведённый до
+  // складов. Без него первый же новый склад прятал старый из операций и из
+  // прав сотрудника.
+  const shopWarehouses = useMemo(() => listedWarehouses(warehouses), [warehouses]);
+  const warehouseScope = useMemo(() => employeeWarehouseScope(user, shopWarehouses), [user, shopWarehouses]);
   const scopedWarehouses = useMemo(
-    () => (warehouseScope ? warehouses.filter(w => warehouseScope.includes(w.id)) : warehouses),
-    [warehouses, warehouseScope]
+    () => (warehouseScope ? shopWarehouses.filter(w => warehouseScope.includes(w.id)) : shopWarehouses),
+    [shopWarehouses, warehouseScope]
   );
   const scopedMovements = useMemo(() => scopeStockMovements(stockMovements, warehouseScope), [stockMovements, warehouseScope]);
   const scopedRetailSales = useMemo(
@@ -4605,6 +4610,7 @@ if (!user && !showSplash) {
                            onSelectCustomer={(data: any) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} onShowNotification={showNotificationModal}
                            onOpenRetail={shopAvailable ? () => { setPreviousView('DASHBOARD'); setCurrentView('RETAIL_SALE'); } : undefined}
                            showShop={shopAvailable} warehouseId={saleWarehouse?.id || DEFAULT_WAREHOUSE_ID}
+                           warehouses={scopedWarehouses}
                            appSettings={appSettings} />
                     )}
                   </PagePush>
@@ -4622,7 +4628,7 @@ if (!user && !showSplash) {
                              onUpdateEmployee={handleUpdateEmployee} onDeleteEmployee={handleDeleteEmployee}
                              onSelectActivity={handleSelectEmployeeActivity}
                              showShop={checkAccess('SHOP') && !!appSettings.shopEnabled}
-                             warehouses={warehouses}
+                             warehouses={shopWarehouses}
                              appSettings={appSettings}/>
                   </PagePush>
               )}
@@ -4666,6 +4672,7 @@ if (!user && !showSplash) {
                       accounts={accounts}
                       defaultAccountId={saleWarehouse?.accountId}
                       warehouseId={saleWarehouse?.id || DEFAULT_WAREHOUSE_ID}
+                      warehouses={scopedWarehouses}
                       existingSales={retailSales}
                       showCents={appSettings.showCents}
                       onSubmit={handleRetailSale}

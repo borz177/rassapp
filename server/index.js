@@ -278,7 +278,12 @@ const checkEmployeeWriteAccess = async ({ user, type, itemId, accountId, isDelet
       `SELECT data FROM data_items WHERE type = 'warehouses' AND user_id = $1`,
       [getTargetUserId(user)]
     );
-    const liveCount = whRes.rows.filter(r => !r.data?.isArchived).length;
+    const live = whRes.rows.filter(r => !r.data?.isArchived).map(r => r.data);
+    // Пока основным не назначен свой склад, в списке есть ещё один — подставной
+    // «Основной», на котором лежит товар, заведённый до складов (listedWarehouses
+    // в src/utils.ts). Он такой же склад, как остальные: без него первый же
+    // новый склад отключал бы проверку прав.
+    const liveCount = live.length + (live.some(w => w?.isMain || w?.id === 'main') ? 0 : 1);
     if (liveCount > 1) {
       const outside = (warehouseId) => !warehouseScope.includes(warehouseId || 'main');
       const denied = type === 'warehouses'

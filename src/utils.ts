@@ -1,5 +1,5 @@
 import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js';
-import { Account, Investor, InvestmentPeriod, Sale, SaleStockItem, Expense, DEFAULT_WAREHOUSE_ID, Product, RetailSale} from '../types';
+import { Account, Investor, InvestmentPeriod, Sale, SaleStockItem, Expense, DEFAULT_WAREHOUSE_ID, Product, RetailSale, StockLocation} from '../types';
 
 export const escapeHtml = (str: unknown): string =>
   String(str ?? '')
@@ -422,6 +422,42 @@ export const investorProfitOutflows = (
  * после архивации склада сотрудник остался бы привязан к несуществующему и
  * не мог бы работать вовсе. Сервер проверяет запись по тому же правилу.
  */
+/**
+ * Склады магазина так, как их видит человек.
+ *
+ * Пока своих складов не завели, товар лежит на подставном «Основном» — карточки
+ * у него нет, но остатки и операции настоящие. Стоит завести первый свой склад,
+ * и без этой подстановки старый пропадал бы из списков вместе со всем, что на
+ * нём лежит: так он исчезал из операций и из прав сотрудника. Как только
+ * основным назначен свой склад, подставной не нужен — старые остатки считаются
+ * его остатками (см. экран склада).
+ *
+ * @param scope склады сотрудника: ему подставной основной не показываем — он
+ *              может быть ему не открыт, а список уже отобран по правам.
+ */
+export const listedWarehouses = (
+  warehouses: StockLocation[],
+  scope?: string[] | null
+): StockLocation[] => {
+  const live = warehouses.filter(w => !w.isArchived);
+  if (scope || live.some(w => w.isMain) || live.some(w => w.id === DEFAULT_WAREHOUSE_ID)) return live;
+  const fallback: StockLocation = { id: DEFAULT_WAREHOUSE_ID, userId: '', name: 'Основной склад', isMain: true };
+  return [fallback, ...live];
+};
+
+/**
+ * Куда записаны остатки, заведённые до складов. Ячейка «main» остаётся у товара
+ * навсегда; если основным потом назначили свой склад, эти остатки — его, иначе
+ * они принадлежат подставному основному и видны как есть.
+ */
+export const legacyMainWarehouse = (listed: StockLocation[]): string | null =>
+  listed.some(w => w.id === DEFAULT_WAREHOUSE_ID) ? null : (listed.find(w => w.isMain)?.id || null);
+
+/** Остаток товара на складе с учётом старой ячейки «main». */
+export const stockOnWarehouse = (p: Product, warehouseId: string, listed: StockLocation[]): number =>
+  stockAtWarehouse(p, warehouseId)
+  + (warehouseId && warehouseId === legacyMainWarehouse(listed) ? stockAtWarehouse(p, DEFAULT_WAREHOUSE_ID) : 0);
+
 export const employeeWarehouseScope = (
   user: { role?: string; permissions?: { allowedWarehouseIds?: string[] } } | null | undefined,
   warehouses: { id: string; isArchived?: boolean }[]

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { applyStockDelta, stockAtWarehouse, stockInScope, scopeStockMovements } from '../src/utils';
+import { applyStockDelta, listedWarehouses, stockOnWarehouse, stockInScope, scopeStockMovements } from '../src/utils';
 import { api } from '../services/api';
 import { compressImageFile } from '../src/imageCompress';
 import TopBarBack from './TopBarBack';
@@ -170,15 +170,12 @@ const Warehouse: React.FC<WarehouseProps> = ({
 
   // Основной склад показываем карточкой всегда, даже если ничего не заводили:
   // товары до появления складов лежат именно на нём, и без карточки к нему
-  // нельзя было бы привязать счёт.
-  const shownWarehouses = useMemo(() => {
-    const live = warehouses.filter(w => !w.isArchived);
-    // У сотрудника со своими складами подставной «Основной склад» не рисуем:
-    // основной может быть ему не открыт.
-    if (warehouseScope || live.some(w => w.isMain)) return live;
-    const fallback: StockLocation = { id: DEFAULT_WAREHOUSE_ID, userId: '', name: 'Основной склад', isMain: true };
-    return [fallback, ...live];
-  }, [warehouses]);
+  // нельзя было бы привязать счёт. Список общий для всего приложения —
+  // операции, права сотрудника и журнал должны видеть ровно эти склады.
+  const shownWarehouses = useMemo(
+    () => listedWarehouses(warehouses, warehouseScope),
+    [warehouses, warehouseScope]
+  );
 
   // Куда по умолчанию кладут товар: основной склад, а если его нет — первый
   // доступный. Сотруднику подставляем его склад, чужой ему всё равно закрыт.
@@ -187,19 +184,9 @@ const Warehouse: React.FC<WarehouseProps> = ({
     [shownWarehouses]
   );
 
-  // Товары, заведённые до складов, лежат в ячейке «main». Если основной склад
-  // потом завели заново, со своим id, эта ячейка осталась бы ничьей — и товар
-  // пропал бы из любого разреза по складам. Приписываем её основному, пока
-  // отдельного склада с таким id нет.
-  const legacyMainId = useMemo(() => (
-    shownWarehouses.some(w => w.id === DEFAULT_WAREHOUSE_ID)
-      ? null
-      : shownWarehouses.find(w => w.isMain)?.id || null
-  ), [shownWarehouses]);
-
-  const stockAt = (p: Product, warehouseId: string) =>
-    stockAtWarehouse(p, warehouseId)
-    + (warehouseId && warehouseId === legacyMainId ? stockAtWarehouse(p, DEFAULT_WAREHOUSE_ID) : 0);
+  // Товары, заведённые до складов, лежат в ячейке «main»: если основным назначен
+  // свой склад, это его остатки — иначе товар пропал бы из разрезов по складам.
+  const stockAt = (p: Product, warehouseId: string) => stockOnWarehouse(p, warehouseId, shownWarehouses);
 
   // Остаток в пределах складов сотрудника: продавцу одной точки общий остаток по
   // всем складам ничего не говорит — продать он может только то, что у него.
@@ -617,7 +604,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
         <WarehouseOps
           products={products}
           movements={movements}
-          warehouses={warehouses}
+          warehouses={shownWarehouses}
           warehouseId={warehouseFilter === 'ALL' ? undefined : warehouseFilter}
           onWarehouseChange={setWarehouseFilter}
           suppliers={suppliers}
@@ -1322,7 +1309,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
             retailSales={retailSales}
             products={products}
             customers={customers}
-            warehouses={warehouses}
+            warehouses={shownWarehouses}
             suppliers={suppliers}
             accounts={accounts}
             employees={employees}
