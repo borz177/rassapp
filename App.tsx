@@ -2501,6 +2501,7 @@ const handleIncomeSubmit = async (data: any) => {
             type: 'CASH',
             customerId: data.investorId || 'system_income',
             productName: data.note || 'Приход',
+            category: data.category || undefined,
             buyPrice: 0,
             accountId: data.accountId,
             totalAmount: data.amount,
@@ -4205,6 +4206,16 @@ const contractCounts = useMemo(() => {
 
 
 
+// Своя категория операции. Живёт в настройках, а не в записи: её выбирают
+// и в приходе, и в расходе, и список должен быть один.
+const handleAddCategory = async (name: string) => {
+    const clean = name.trim();
+    if (!clean) return;
+    const existing = appSettings.customCategories || [];
+    if (existing.some(c => c.toLowerCase() === clean.toLowerCase())) return;
+    await handleUpdateSettings({ ...appSettings, customCategories: [...existing, clean] });
+};
+
 const handleUpdateSettings = async (newSettings: AppSettings) => {
 
 
@@ -4648,7 +4659,7 @@ if (!user && !showSplash) {
                   <PagePush onClose={() => setCurrentView(formReturnView)}>
                     {(requestClose: () => void) => (
                       <NewIncome initialData={draftSaleData} customers={customers} investors={investors} accounts={accounts}
-                             sales={sales} retailSales={retailSales} onClose={requestClose} onSubmit={handleIncomeSubmit}
+                             sales={sales} retailSales={retailSales} onClose={requestClose} onSubmit={handleIncomeSubmit} categories={appSettings.customCategories || []} onAddCategory={handleAddCategory}
                              onSelectCustomer={() => openSelection('SELECT_CUSTOMER', draftSaleData)}
                              appSettings={appSettings} user={user} contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')}
                              />
@@ -4660,7 +4671,7 @@ if (!user && !showSplash) {
                     {(requestClose: () => void) => (
                       <NewExpense investors={investors} accounts={accounts} expenses={expenses} suppliers={suppliers} sales={sales}
                               movements={stockMovements} products={products}
-                              showSupplierCategory={checkAccess('SUPPLIERS')} initialData={draftExpenseData} onClose={requestClose}
+                              showSupplierCategory={checkAccess('SUPPLIERS')} categories={appSettings.customCategories || []} initialData={draftExpenseData} onClose={requestClose}
                               onSubmit={handleExpenseSubmit} appSettings={appSettings} employees={employees} />
                     )}
                   </PagePush>

@@ -25,6 +25,10 @@ interface NewIncomeProps {
   appSettings?: AppSettings; 
   /** Вторая печатная форма доступна со «Стандарта» и выше */
   contractTemplatesAllowed?: boolean;
+  /** Свои категории операций — общие с расходом */
+  categories?: string[];
+  /** Завести новую категорию: сохраняется в настройках и доступна везде */
+  onAddCategory?: (name: string) => void | Promise<void>;
 }
 
 // Форматирует любой российский номер в вид +7 (XXX) XXX-XX-XX
@@ -39,9 +43,17 @@ const formatPhone = (raw: string | undefined): string => {
 };
 
 const NewIncome: React.FC<NewIncomeProps> = ({
-  initialData, customers, investors, accounts, sales, retailSales = [], onClose, onSubmit, onSelectCustomer, user, appSettings, contractTemplatesAllowed = true
+  initialData, customers, investors, accounts, sales, retailSales = [], onClose, onSubmit, onSelectCustomer, user, appSettings, contractTemplatesAllowed = true,
+  categories = [], onAddCategory,
 }) => {
   const [sourceType, setSourceType] = useState<'CUSTOMER' | 'INVESTOR' | 'OTHER'>('CUSTOMER');
+  // Категория прочего прихода: по ней операция потом находится в фильтрах.
+  // Пусто — «без категории»: заставлять выбирать ради разовой записи незачем.
+  const [category, setCategory] = useState('');
+  // Ввод новой категории открывается по «+», а не полем всегда: обычно выбирают
+  // из уже заведённых, и лишнее поле только удлиняло бы форму.
+  const [newCategory, setNewCategory] = useState<string | null>(null);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId || '');
   const [selectedSaleId, setSelectedSaleId] = useState('');
   const [selectedInvestorId, setSelectedInvestorId] = useState('');
@@ -295,6 +307,20 @@ const isConfirmingRef = useRef(false);
     }
   };
 
+  const addCategory = async () => {
+    const clean = (newCategory || '').trim();
+    if (!clean) { setCategoryError('Название категории обязательно'); return; }
+    if (categories.some(c => c.toLowerCase() === clean.toLowerCase())) {
+      setCategoryError('Такая категория уже есть');
+      setCategory(categories.find(c => c.toLowerCase() === clean.toLowerCase()) || clean);
+      setNewCategory(null);
+      return;
+    }
+    await onAddCategory?.(clean);
+    setCategory(clean);
+    setNewCategory(null);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -430,7 +456,7 @@ const commonData = {
       } else if (sourceType === 'INVESTOR') {
         await finishWithSuccess({ ...commonData, type: 'INVESTOR_DEPOSIT', investorId: selectedInvestorId, accountId: targetAccountId, note: "Пополнение от инвестора" });
       } else {
-        await finishWithSuccess({ ...commonData, type: 'OTHER_INCOME', accountId: targetAccountId, note: note || "Прочий приход" });
+        await finishWithSuccess({ ...commonData, type: 'OTHER_INCOME', accountId: targetAccountId, note: note || "Прочий приход", category: category || undefined });
       }
     } finally {
       setShowConfirmModal(false);
@@ -637,6 +663,44 @@ const commonData = {
               <input placeholder="Например: Внесение личных средств"
                      className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                      value={note} onChange={e => setNote(e.target.value)}/>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Категория</label>
+              {newCategory === null ? (
+                <div className="flex gap-2">
+                  <select
+                    className="flex-1 min-w-0 p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
+                    value={category} onChange={e => setCategory(e.target.value)}>
+                    <option value="">Без категории</option>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  {onAddCategory && (
+                    <button type="button" onClick={() => { setNewCategory(''); setCategoryError(null); }}
+                            className="shrink-0 px-4 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-sm font-bold text-slate-600 dark:text-slate-300 active:scale-95 transition-transform">
+                      + Новая
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input autoFocus value={newCategory} onChange={e => { setNewCategory(e.target.value); setCategoryError(null); }}
+                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCategory(); } }}
+                         placeholder="Например: Аренда помещения"
+                         className="flex-1 min-w-0 p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white" />
+                  <button type="button" onClick={addCategory}
+                          className="shrink-0 px-4 rounded-xl bg-emerald-600 text-white text-sm font-bold active:scale-95 transition-transform">
+                    Готово
+                  </button>
+                  <button type="button" onClick={() => { setNewCategory(null); setCategoryError(null); }}
+                          className="shrink-0 px-3 rounded-xl border border-slate-200 dark:border-slate-600 text-sm font-bold text-slate-500">
+                    ✕
+                  </button>
+                </div>
+              )}
+              {categoryError && <p className="text-xs text-rose-600 dark:text-rose-400 mt-1">{categoryError}</p>}
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                Заведённая категория появится и в расходе, и в фильтрах операций.
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Счет зачисления</label>

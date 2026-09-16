@@ -511,6 +511,8 @@ export interface Expense {
 }
 
 export interface Sale {
+  /** Категория прочего прихода: по ней операция находится в фильтрах */
+  category?: string;
   id: string;
   userId: string; // Owner
   createdByUserId?: string; // Actual creator (manager or employee id) — for audit/visibility
@@ -618,6 +620,12 @@ export interface AppSettings {
    * менять вид бумаги у тех, кто ничего не выбирал, нельзя.
    */
   contractTemplate?: 'MODERN' | 'CLASSIC';
+  /**
+   * Свои категории операций. Заводятся при оприходовании прочего прихода и
+   * доступны и в расходе — категория одна и та же, в какую бы сторону ни шли
+   * деньги.
+   */
+  customCategories?: string[];
   shopEnabled?: boolean;
   /**
    * Вкладка «Наличные» на главном экране. Отдельно от shopEnabled: магазин

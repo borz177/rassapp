@@ -32,6 +32,8 @@ interface NewExpenseProps {
   } | null;
   onClose: () => void;
   onSubmit: (data: any) => void;
+  /** Свои категории из настроек — те же, что заводят в приходе */
+  categories?: string[];
 }
 
 // 🔍 Проверка: есть ли уже похожий расход?
@@ -63,7 +65,7 @@ const checkDuplicateExpense = (
 
 const NewExpense: React.FC<NewExpenseProps> = ({
   investors, accounts, expenses, employees, suppliers, sales, movements = [], products = [], showSupplierCategory, initialData, onClose, onSubmit
-}) => {
+, categories = []}) => {
   const employeeList: User[] = employees || [];
   const supplierList: Supplier[] = suppliers || [];
   const saleList: Sale[] = sales || [];
@@ -566,6 +568,9 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                          <option value="Taxes">Налоги</option>
                          <option value="Equipment">Оборудование</option>
                          {showSupplierCategory && <option value="Оплата партнёру">Партнер</option>}
+                        {/* Свои категории — следом за базовыми: их завели в приходе,
+                            и здесь они нужны ровно так же. */}
+                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
                      </select>
                  </div>
 
