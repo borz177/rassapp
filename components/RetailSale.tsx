@@ -140,6 +140,8 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   const overdrawn = items.filter(i => i.quantity > stockOf(i.productId));
 
   const openProduct = (p: Product) => {
+    // Сообщение от прошлого товара в новой панели только путало бы.
+    setError(null);
     const inCart = items.find(i => i.productId === p.id);
     setEditing({ product: p, existing: !!inCart });
     setQty(inCart ? String(inCart.quantity) : '1');
@@ -280,6 +282,12 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   const liveAccounts = accounts.filter(a => !a.isArchived || a.id === accountId);
 
   /** Содержимое корзины. Одно на оба режима — лист на телефоне и колонка на десктопе. */
+  const errorBanner = (
+    <div className="rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
+      {error}
+    </div>
+  );
+
   const cartBody = (
     <>
       {/* Номер документа и дата — шапкой, как в накладной */}
@@ -426,11 +434,9 @@ const RetailSale: React.FC<RetailSaleProps> = ({
         </div>
       </div>
 
-      {error && (
-        <div className="mb-3 rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
-          {error}
-        </div>
-      )}
+      {/* На экране кассы сообщение стоит над витриной; внутри листов — своё,
+          иначе оно печатается под оверлеем и человек его не видит. */}
+      {error && <div className="mb-3">{errorBanner}</div>}
 
       <div className="lg:flex lg:items-start lg:gap-5">
         {/* Витрина */}
@@ -543,6 +549,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
                         className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold active:scale-90 transition-transform">×</button>
               </div>
               <div className="overflow-y-auto p-4 space-y-3">
+                {error && errorBanner}
                 {cartBody}
               </div>
             </>
@@ -584,6 +591,8 @@ const RetailSale: React.FC<RetailSaleProps> = ({
                   </span>
                 </button>
               ))}
+
+              {error && errorBanner}
 
               <div className="grid grid-cols-4 gap-2">
                 {['1','2','3','DEL','4','5','6','*','7','8','9','=',',','0','C'].map(k => (
