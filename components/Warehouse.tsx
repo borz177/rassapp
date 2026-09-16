@@ -479,6 +479,12 @@ const Warehouse: React.FC<WarehouseProps> = ({
 
   const save = async () => {
     if (!form.name.trim()) { setError('Название обязательно'); return; }
+    // Минус в начальном остатке взялся бы из ниоткуда: движения под него нет,
+    // и объяснить такой остаток потом нечем. Недостачу оформляют инвентаризацией.
+    if (!editing && num(form.stock) < 0) {
+      setError('Остаток не может быть отрицательным. Недостачу проводят инвентаризацией.');
+      return;
+    }
     // Основной код — из поля «Штрихкод», дополнительные — из списка под ним.
     let draftCode = '';
     if (normalizeBarcode(form.barcodeDraft)) {
@@ -1370,6 +1376,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
               )}
               <input value={movementNote} onChange={e => setMovementNote(e.target.value)}
                      placeholder="Комментарий" className={inputCls} />
+
+              {/* Сообщение — внутри окна: строка ошибки экрана лежит под ним,
+                  и отказ записать движение оставался невидимым. */}
+              {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
 
               <div className="flex gap-2 pt-1">
                 <button onClick={() => setMovementFor(null)}
