@@ -5,6 +5,7 @@ import {
   type ContractTemplateId,
 } from '../src/contractTemplates';
 import { openPrintPreview } from './PrintPreview';
+import { contractPdfBlob, saveContractPdf } from '../src/contractPdf';
 
 interface ContractTemplatePickerProps {
   value: ContractTemplateId;
@@ -27,30 +28,31 @@ const ContractTemplatePicker: React.FC<ContractTemplatePickerProps> = ({
   value, companyName, sellerPhone, onChange, allowPaid = true,
 }) => {
   const [preview, setPreview] = useState<ContractTemplateId | null>(null);
+  const [blankBusy, setBlankBusy] = useState(false);
+  const [blankError, setBlankError] = useState<string | null>(null);
 
   /**
-   * Пустой бланк выбранной формы. Собираем тем же кодом, что и настоящий
+   * Пустой бланк выбранной формы в PDF. Собираем тем же кодом, что и настоящий
    * договор: бланк, свёрстанный отдельно, разошёлся бы с ним на первой правке.
    *
-   * В приложении из маркета скачивание из веб-слоя до файлов не доходит —
-   * там открываем просмотр, откуда бланк уходит на печать или в PDF.
+   * Если PDF собрать не вышло (старый кеш приложения после обновления — браузер
+   * отдаёт HTML вместо куска кода), бланк всё равно попадает к человеку: открываем
+   * окно печати, откуда он уходит на бумагу или в «Сохранить как PDF».
    */
-  const downloadBlank = () => {
-    const html = buildContractHtml(value, blankContractData(companyName, sellerPhone));
-    const native = !!(window as any).Capacitor?.isNativePlatform?.();
-    if (native) { openPrintPreview(html, { title: 'Бланк договора' }); return; }
+  const downloadBlank = async () => {
+    if (blankBusy) return;
+    setBlankBusy(true);
+    setBlankError(null);
+    const data = blankContractData(companyName, sellerPhone);
     try {
-      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Бланк договора${companyName ? ` — ${companyName}` : ''}.html`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-    } catch {
-      openPrintPreview(html, { title: 'Бланк договора' });
+      const blob = await contractPdfBlob(value, data);
+      await saveContractPdf(blob, `Бланк договора${companyName ? ` — ${companyName}` : ''}.pdf`);
+    } catch (err) {
+      console.error('Бланк договора:', err);
+      setBlankError('PDF собрать не удалось — открыли бланк для печати');
+      openPrintPreview(buildContractHtml(value, data), { title: 'Бланк договора' });
+    } finally {
+      setBlankBusy(false);
     }
   };
 
@@ -113,17 +115,24 @@ const ContractTemplatePicker: React.FC<ContractTemplatePickerProps> = ({
 
       {/* Пустой бланк — для тех, кто оформляет на руках: распечатал пачку и
           заполняешь ручкой. Подставлены только продавец и телефон. */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-3 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Пустой бланк</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Выбранная форма с вашим названием и телефоном — остальное заполняется от руки.
-          </p>
+      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Пустой бланк (PDF)</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Выбранная форма с вашим названием и телефоном — остальное заполняется от руки.
+            </p>
+          </div>
+          {/* Пока собирается снимок листа, кнопка занята: второе нажатие запустило бы
+              вторую сборку и на телефоне отдало бы два одинаковых файла. */}
+          <button type="button" onClick={downloadBlank} disabled={blankBusy} data-testid="download-blank"
+                  className="shrink-0 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold active:scale-95 transition-transform disabled:opacity-60 disabled:active:scale-100">
+            {blankBusy ? 'Готовим…' : 'Скачать'}
+          </button>
         </div>
-        <button type="button" onClick={downloadBlank} data-testid="download-blank"
-                className="shrink-0 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold active:scale-95 transition-transform">
-          Скачать
-        </button>
+        {blankError && (
+          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">{blankError}</p>
+        )}
       </div>
 
       {preview && (

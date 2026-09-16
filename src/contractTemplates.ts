@@ -139,8 +139,11 @@ const modernBody = (d: ContractData): string => {
           <td class="c">${p.paid > 0.01 ? money(p.paid) : ''}</td>
           <td class="c">${p.paid > 0.01 ? money(p.remaining) : ''}</td>
         </tr>`).join('')
+    // В бланке строки выше: его заполняют ручкой, а не печатью, и заодно график
+    // добирает лист до низа — иначе под таблицей оставалась пустая четверть
+    // страницы. В договоре с данными высота прежняя: там строк бывает и пятнадцать.
     : Array.from({ length: d.isBlank ? 8 : Math.max(1, d.installments) }).map((_, i) => `
-        <tr><td class="c">${i + 1}</td><td class="c" style="height:30px"></td><td></td><td></td></tr>`).join('');
+        <tr><td class="c">${i + 1}</td><td class="c" style="height:${d.isBlank ? 52 : 30}px"></td><td></td><td></td></tr>`).join('');
 
   return `
     <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
