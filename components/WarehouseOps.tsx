@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { Product, StockLocation, StockMovement, Supplier } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { listedWarehouses, stockOnWarehouse, applyStockDelta as withDelta } from '../src/utils';
+import { stockOnWarehouse, applyStockDelta as withDelta } from '../src/utils';
 import ModalPortal from './ModalPortal';
 import BarcodeScanner, { ScanButton, type ScanOutcome } from './BarcodeScanner';
 import { findProductByCode, productMatchesQuery } from '../src/barcode';
@@ -67,8 +67,11 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
   products, movements, warehouses, warehouseId, onWarehouseChange, suppliers, onPost, showCents = false,
   onCreateProduct, addedProduct, paused = false,
 }) => {
+  // Список приходит готовым из экрана склада: он уже учитывает и подставной
+  // основной, и склады сотрудника. Достраивать его заново здесь нельзя —
+  // сотруднику с одним открытым складом подставлялся чужой «Основной».
   const liveWarehouses = useMemo(() => {
-    const live = listedWarehouses(warehouses);
+    const live = warehouses.filter(w => !w.isArchived);
     return live.length ? live : [{ id: DEFAULT_WAREHOUSE_ID, userId: '', name: 'Основной склад', isMain: true }];
   }, [warehouses]);
 
