@@ -3,7 +3,7 @@ import { Sale, Expense, Account, Customer, User, Investor, RetailSale} from '../
 import { formatCurrency, getManagerSharePercent, getAccountShares } from '../src/utils';
 import { ICONS } from '../constants';
 import ModalPortal from './ModalPortal';
-import Sheet from './Sheet';
+import SelectSheet from './SelectSheet';
 import UnsyncedMark from './UnsyncedMark';
 
 interface OperationsProps {
@@ -34,8 +34,7 @@ const Operations: React.FC<OperationsProps> = ({
   const [selectedOp, setSelectedOp] = useState<any | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [filterEmployeeId, setFilterEmployeeId] = useState<string>('');
-  // Лист фильтров на телефоне
-  const [filtersOpen, setFiltersOpen] = useState(false);
+
 
   useEffect(() => {
       if (initialAccountId) setFilterAccountId(initialAccountId);
@@ -284,85 +283,78 @@ const Operations: React.FC<OperationsProps> = ({
   };
 
   // Одни и те же поля: на десктопе стоят панелью, на телефоне открываются листом.
+  // Каждое поле открывает список окном (SelectSheet), а не системным
+  // выпадающим списком: на телефоне тот открывается колесом поверх экрана и
+  // живёт по своим правилам оформления, а здесь список выглядит как остальные
+  // окна приложения и показывает подписи целиком.
   const filterControls = (
     <>
-          <div>
-              <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Счет</label>
-              <select className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg outline-none text-sm text-slate-700 dark:text-slate-300" value={filterAccountId} onChange={e => setFilterAccountId(e.target.value)}>
-                  <option value="">Все счета</option>
-                  {accounts.filter(acc => !acc.isArchived || acc.id === filterAccountId)
-                           .map(acc => (<option key={acc.id} value={acc.id}>{acc.name}</option>))}
-              </select>
-          </div>
+      <SelectSheet
+        label="Счёт"
+        title="Счёт"
+        value={filterAccountId}
+        onChange={setFilterAccountId}
+        options={[
+          { id: '', name: 'Все счета' },
+          ...accounts.filter(acc => !acc.isArchived || acc.id === filterAccountId)
+                     .map(acc => ({ id: acc.id, name: acc.name })),
+        ]}
+      />
 
-          <div>
-              <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Категория</label>
-              <select
-                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg outline-none text-sm text-slate-700 dark:text-slate-300"
-                  value={filterCategory}
-                  onChange={e => setFilterCategory(e.target.value)}
-              >
-                  <option value="ALL">Все категории</option>
-                  {availableCategories.map(cat => (
-                      <option key={cat} value={cat}>{getCategoryLabel(cat)}</option>
-                  ))}
-              </select>
-          </div>
+      <SelectSheet
+        label="Категория"
+        title="Категория"
+        value={filterCategory}
+        onChange={setFilterCategory}
+        options={[
+          { id: 'ALL', name: 'Все категории' },
+          ...availableCategories.map(cat => ({ id: cat, name: getCategoryLabel(cat) })),
+        ]}
+      />
 
-          {/* Фильтр по сотруднику — инструмент менеджера: сам сотрудник и инвестор его не видят */}
-          {employees.length > 0 && canFilterByEmployee && (
-              <div>
-                  <label className="text-xs font-bold text-slate-400 uppercase mb-1 block">Сотрудник</label>
-                  <select
-                      className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg outline-none text-sm text-slate-700 dark:text-slate-300"
-                      value={filterEmployeeId}
-                      onChange={e => setFilterEmployeeId(e.target.value)}
-                  >
-                      <option value="">Все сотрудники</option>
-                      {employees.map(emp => (
-                          <option key={emp.id} value={emp.id}>{emp.name}</option>
-                      ))}
-                  </select>
-              </div>
-          )}
+      {/* Фильтр по сотруднику — инструмент менеджера: сам сотрудник и инвестор его не видят */}
+      {employees.length > 0 && canFilterByEmployee && (
+        <SelectSheet
+          label="Сотрудник"
+          title="Сотрудник"
+          value={filterEmployeeId}
+          onChange={setFilterEmployeeId}
+          options={[
+            { id: '', name: 'Все сотрудники' },
+            ...employees.map(emp => ({ id: emp.id, name: emp.name })),
+          ]}
+        />
+      )}
 
-          <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
-              <button onClick={() => setFilterType('ALL')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'ALL' ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Все</button>
-              <button onClick={() => setFilterType('INCOME')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'INCOME' ? 'bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Приход</button>
-              <button onClick={() => setFilterType('EXPENSE')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'EXPENSE' ? 'bg-white dark:bg-slate-600 text-red-600 dark:text-red-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Расход</button>
-          </div>
+      <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
+          <button onClick={() => setFilterType('ALL')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'ALL' ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Все</button>
+          <button onClick={() => setFilterType('INCOME')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'INCOME' ? 'bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Приход</button>
+          <button onClick={() => setFilterType('EXPENSE')} className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${filterType === 'EXPENSE' ? 'bg-white dark:bg-slate-600 text-red-600 dark:text-red-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Расход</button>
+      </div>
 
-          {(filterAccountId || filterCategory !== 'ALL' || filterType !== 'ALL' || filterEmployeeId) && (
-              <button
-                  onClick={() => {
-                      setFilterAccountId('');
-                      setFilterCategory('ALL');
-                      setFilterType('ALL');
-                      setFilterEmployeeId('');
-                  }}
-                  className="w-full py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors flex items-center justify-center gap-1"
-              >
-                  ✕ Сбросить фильтры
-              </button>
-          )}
+      {(filterAccountId || filterCategory !== 'ALL' || filterType !== 'ALL' || filterEmployeeId) && (
+          <button
+              onClick={() => {
+                  setFilterAccountId('');
+                  setFilterCategory('ALL');
+                  setFilterType('ALL');
+                  setFilterEmployeeId('');
+              }}
+              className="w-full py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors flex items-center justify-center gap-1"
+          >
+              ✕ Сбросить фильтры
+          </button>
+      )}
     </>
   );
 
-  const activeFilters = [
-    filterAccountId,
-    filterCategory !== 'ALL' ? filterCategory : '',
-    filterType !== 'ALL' ? filterType : '',
-    filterEmployeeId,
-  ].filter(Boolean).length;
+  // Суммы по тому, что сейчас отобрано: фильтр сменили — числа поехали за ним.
+  const totals = useMemo(() => operations.reduce((acc, op) => {
+    if (op.type === 'INCOME') { acc.income += op.amount; acc.incomeCount += 1; }
+    else { acc.expense += op.amount; acc.expenseCount += 1; }
+    return acc;
+  }, { income: 0, expense: 0, incomeCount: 0, expenseCount: 0 }), [operations]);
 
-  // В свёрнутой строке видно, что именно отобрано: разворачивать ради
-  // «что там стоит» не нужно.
-  const filterSummary = activeFilters === 0 ? undefined : [
-    filterType === 'INCOME' ? 'Приход' : filterType === 'EXPENSE' ? 'Расход' : '',
-    filterAccountId ? (accounts.find(a => a.id === filterAccountId)?.name || 'Счёт') : '',
-    filterCategory !== 'ALL' ? getCategoryLabel(filterCategory) : '',
-    filterEmployeeId ? (getEmployeeName(filterEmployeeId) || 'Сотрудник') : '',
-  ].filter(Boolean).join(' · ');
   return (
     <div className="space-y-4 animate-fade-in pb-20 w-full">
       <header>
@@ -370,55 +362,41 @@ const Operations: React.FC<OperationsProps> = ({
           <p className="text-slate-500 dark:text-slate-400 text-sm">Финансовый поток</p>
       </header>
 
-      {/* Фильтры. На телефоне — листом снизу, как в нативных приложениях:
-          четыре поля занимали пол-экрана над лентой, а меняют их редко. */}
-      <div className="hidden lg:block bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-3">
+      {/* Фильтры панелью, а списки — окнами: выбор открывается поверх экрана,
+          как в нативных приложениях, и не растягивает страницу над лентой. */}
+      <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-3">
           {filterControls}
       </div>
 
-      <button
-        type="button"
-        onClick={() => setFiltersOpen(true)}
-        className="lg:hidden w-full flex items-center justify-between gap-3 bg-white dark:bg-slate-800 px-4 py-3 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 active:scale-[0.99] transition-transform"
-      >
-        <span className="min-w-0 truncate text-sm font-semibold text-slate-700 dark:text-slate-200">
-          {filterSummary || 'Фильтры'}
-        </span>
-        <span className="shrink-0 flex items-center gap-2 text-slate-400">
-          {activeFilters > 0 && (
-            <span className="min-w-[22px] h-5 px-1.5 rounded-full bg-indigo-600 text-white text-[11px] font-bold flex items-center justify-center">
-              {activeFilters}
-            </span>
-          )}
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <line x1="4" y1="7" x2="20" y2="7" /><line x1="7" y1="12" x2="17" y2="12" /><line x1="10" y1="17" x2="14" y2="17" />
-          </svg>
-        </span>
-      </button>
+      {/* Две карточки в строку: сколько пришло и сколько ушло по текущему отбору.
+          Ради этих двух чисел раньше приходилось складывать ленту глазами. */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-3 sm:p-4 border border-emerald-100 dark:border-emerald-900/40 shadow-sm min-w-0">
+          <p className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Приход</p>
+          <p data-testid="total-income" className="text-lg sm:text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 leading-tight truncate">
+            {totals.income > 0 ? '+' : ''}{formatCurrency(totals.income, false)} ₽
+          </p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">{totals.incomeCount} оп.</p>
+        </div>
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-3 sm:p-4 border border-red-100 dark:border-red-900/40 shadow-sm min-w-0">
+          <p className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Расход</p>
+          <p data-testid="total-expense" className="text-lg sm:text-2xl font-extrabold text-red-600 dark:text-red-400 leading-tight truncate">
+            {totals.expense > 0 ? '−' : ''}{formatCurrency(totals.expense, false)} ₽
+          </p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500">{totals.expenseCount} оп.</p>
+        </div>
+      </div>
 
-      {filtersOpen && (
-        <Sheet onClose={() => setFiltersOpen(false)} className="lg:hidden max-h-[88vh] flex flex-col">
-          {(close: () => void) => (
-            <>
-              <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between shrink-0">
-                <h3 className="font-bold text-slate-800 dark:text-white">Фильтры</h3>
-                <button type="button" onClick={close}
-                        className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-bold active:scale-90 transition-transform">×</button>
-              </div>
-              <div className="overflow-y-auto p-4 space-y-3">
-                {filterControls}
-              </div>
-              <div className="p-4 border-t border-slate-100 dark:border-slate-700 shrink-0">
-                <button type="button" onClick={close}
-                        className="w-full py-3 rounded-2xl bg-indigo-600 text-white font-bold active:scale-[0.99] transition-transform">
-                  Показать {operations.length}
-                </button>
-              </div>
-            </>
-          )}
-        </Sheet>
+      {/* Разницу показываем, только когда есть обе стороны: иначе это та же
+          цифра, что в карточке, и строка ничего не добавляет. */}
+      {totals.incomeCount > 0 && totals.expenseCount > 0 && (
+        <p data-testid="total-net" className="text-center text-xs text-slate-500 dark:text-slate-400">
+          Разница:{' '}
+          <span className={`font-bold ${totals.income - totals.expense >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+            {totals.income - totals.expense >= 0 ? '+' : '−'}{formatCurrency(Math.abs(totals.income - totals.expense), false)} ₽
+          </span>
+        </p>
       )}
-
       <div className="space-y-6">
           {groupedOperations.length === 0 && (<div className="text-center py-10 text-slate-400 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">Операций не найдено</div>)}
 
