@@ -606,6 +606,22 @@ const Warehouse: React.FC<WarehouseProps> = ({
   // цена закупа, а где продажи.
   const labelCls = 'block text-[11px] font-bold text-slate-500 dark:text-slate-400 px-0.5';
 
+  // Каким станет остаток, если записать движение. По нему предупреждаем о минусе:
+  // склад в минусе — это недостача, и человек должен увидеть её до записи, а не
+  // обнаружить в каталоге.
+  const movementOutcome = (() => {
+    if (!movementFor || !movementQty.trim()) return null;
+    const warehouseId = movementWh || defaultWarehouseId;
+    const qty = num(movementQty);
+    if (qty <= 0) return null;
+    const before = stockAt(movementFor, warehouseId);
+    const after = movementType === 'CORRECTION'
+      ? qty
+      : before + (movementType === 'IN' || movementType === 'RETURN' ? qty : -qty);
+    return { before, after };
+  })();
+  const movementIntoMinus = !!movementOutcome && movementOutcome.after < 0;
+
   const openProduct = products.find(p => p.id === openProductId) || null;
 
   return (
@@ -1377,6 +1393,19 @@ const Warehouse: React.FC<WarehouseProps> = ({
               <input value={movementNote} onChange={e => setMovementNote(e.target.value)}
                      placeholder="Комментарий" className={inputCls} />
 
+              {movementIntoMinus && movementOutcome && (
+                <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5">
+                  <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Остаток уйдёт в минус</p>
+                  <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                    {movementFor.name}: {money(movementOutcome.before)} → <b>{money(movementOutcome.after)}</b>
+                    {' '}{movementFor.unit || 'шт'} на «{shownWarehouses.find(w => w.id === (movementWh || defaultWarehouseId))?.name || 'складе'}»
+                  </p>
+                  <p className="text-[11px] text-amber-600/80 dark:text-amber-300/80 mt-1">
+                    Так бывает при недостаче. Если товар просто не оприходован, сначала проведите приход.
+                  </p>
+                </div>
+              )}
+
               {/* Сообщение — внутри окна: строка ошибки экрана лежит под ним,
                   и отказ записать движение оставался невидимым. */}
               {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
@@ -1387,8 +1416,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
                   Отмена
                 </button>
                 <button disabled={saving} onClick={submitMovement}
-                        className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-sm disabled:opacity-50">
-                  Записать
+                        className={`flex-1 py-2.5 rounded-xl text-white font-bold text-sm disabled:opacity-50 ${
+                          movementIntoMinus ? 'bg-amber-600' : 'bg-emerald-600'
+                        }`}>
+                  {movementIntoMinus ? 'Записать в минус' : 'Записать'}
                 </button>
               </div>
             </div>

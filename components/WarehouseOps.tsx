@@ -150,6 +150,21 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, category, search, onlyHere, tab, fromWh, batch, liveWarehouses]);
 
+  // Позиции, по которым остаток уйдёт в минус. Приход в минус не уводит,
+  // у инвентаризации в минус можно уйти только вписав отрицательный факт.
+  const negativeRows = useMemo(() => {
+    if (tab === 'IN') return [];
+    const rows = Object.entries(batch) as [string, { qty: number; cost: number }][];
+    return rows.map(([id, row]) => {
+      const p = products.find(x => x.id === id);
+      if (!p) return null;
+      const before = stockAt(p, fromWh);
+      const after = tab === 'INVENTORY' ? row.qty : before - row.qty;
+      return after < 0 ? { id, name: p.name, before, after, unit: p.unit || 'шт' } : null;
+    }).filter(Boolean) as { id: string; name: string; before: number; after: number; unit: string }[];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batch, products, fromWh, tab, liveWarehouses]);
+
   const batchIds = Object.keys(batch);
   const batchTotal = batchIds.reduce((s, id) => s + batch[id].qty * batch[id].cost, 0);
 
@@ -687,9 +702,24 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
                     </span>
                   </div>
                 )}
+                {negativeRows.length > 0 && (
+                  <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5">
+                    <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Остаток уйдёт в минус</p>
+                    {negativeRows.map(r => (
+                      <p key={r.id} className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                        {r.name}: {money(r.before)} → <b>{money(r.after)}</b> {r.unit}
+                      </p>
+                    ))}
+                    <p className="text-[11px] text-amber-600/80 dark:text-amber-300/80 mt-1">
+                      Так бывает при недостаче. Если товар не оприходован, сначала проведите приход.
+                    </p>
+                  </div>
+                )}
                 <button disabled={saving} onClick={post}
-                        className="w-full py-3.5 rounded-2xl bg-indigo-600 text-white font-bold disabled:opacity-50 active:scale-[0.99] transition-transform">
-                  Провести
+                        className={`w-full py-3.5 rounded-2xl text-white font-bold disabled:opacity-50 active:scale-[0.99] transition-transform ${
+                          negativeRows.length > 0 ? 'bg-amber-600' : 'bg-indigo-600'
+                        }`}>
+                  {negativeRows.length > 0 ? 'Провести в минус' : 'Провести'}
                 </button>
               </div>
             </div>
