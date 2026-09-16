@@ -1272,7 +1272,7 @@ useEffect(() => {
 
   if (!lastShown || now - Number(lastShown) >= REPEAT_AFTER) {
     // Чтобы перестать показывать анонс, не удаляя его, — поставьте здесь false.
-    setShowTemplateUpdateModal(true);
+    setShowTemplateUpdateModal(false);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
