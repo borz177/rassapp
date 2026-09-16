@@ -453,6 +453,16 @@ export const listedWarehouses = (
 export const legacyMainWarehouse = (listed: StockLocation[]): string | null =>
   listed.some(w => w.id === DEFAULT_WAREHOUSE_ID) ? null : (listed.find(w => w.isMain)?.id || null);
 
+/**
+ * Товар относится к складу, если на нём есть остаток или заведена его ячейка.
+ * Ноль после продажи — тоже принадлежность: товар кончился, но он здешний.
+ * Правило общее для каталога и операций, иначе в одном списке товар склада есть,
+ * а в другом его нет.
+ */
+export const productOnWarehouse = (p: Product, warehouseId: string, listed: StockLocation[]): boolean =>
+  stockOnWarehouse(p, warehouseId, listed) !== 0
+  || !!(p.warehouseStocks && Object.prototype.hasOwnProperty.call(p.warehouseStocks, warehouseId));
+
 /** Остаток товара на складе с учётом старой ячейки «main». */
 export const stockOnWarehouse = (p: Product, warehouseId: string, listed: StockLocation[]): number =>
   stockAtWarehouse(p, warehouseId)

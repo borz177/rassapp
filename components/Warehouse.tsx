@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { applyStockDelta, listedWarehouses, stockOnWarehouse, stockInScope, scopeStockMovements } from '../src/utils';
+import { applyStockDelta, listedWarehouses, productOnWarehouse, stockOnWarehouse, stockInScope, scopeStockMovements } from '../src/utils';
 import { api } from '../services/api';
 import { compressImageFile } from '../src/imageCompress';
 import TopBarBack from './TopBarBack';
@@ -211,12 +211,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
   // свой склад, это его остатки — иначе товар пропал бы из разрезов по складам.
   const stockAt = (p: Product, warehouseId: string) => stockOnWarehouse(p, warehouseId, shownWarehouses);
 
-  // Товар относится к складу, если на нём есть остаток или заведена ячейка этого
-  // склада. Ноль после продажи — тоже принадлежность: товар кончился, но он
-  // здешний, и пропадать из списка ему незачем.
   const onWarehouse = (p: Product, warehouseId: string) =>
-    stockAt(p, warehouseId) !== 0
-    || !!(p.warehouseStocks && Object.prototype.hasOwnProperty.call(p.warehouseStocks, warehouseId));
+    productOnWarehouse(p, warehouseId, shownWarehouses);
 
   // Пометку «основной» не вешаем на склад, который так и называется: «Основной
   // склад · основной» — подпись ни о чём.

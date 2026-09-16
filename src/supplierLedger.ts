@@ -140,7 +140,13 @@ export const supplierSupplyBalances = (
 };
 
 /** Сколько осталось должны за принятый товар. */
-export const supplierSupplyDebt = (
+/**
+ * Сальдо по поставкам со знаком: плюс — мы должны, минус — отдали больше.
+ * Переплата не выдумка: партнёру часто отдают округлённой суммой или вперёд,
+ * и эти деньги зачтутся в следующую поставку — прятать их в ноль значит терять
+ * след живых денег.
+ */
+export const supplierSupplyNet = (
   movements: StockMovement[],
   products: Product[],
   expenses: Expense[],
@@ -150,7 +156,41 @@ export const supplierSupplyDebt = (
     .reduce((sum, d) => sum + d.total, 0);
   const paid = supplierGeneralPayments(expenses, supplierId)
     .reduce((sum, e) => sum + e.amount, 0);
-  // Переплату в минус не уводим: отрицательный долг читался бы как «поставщик
-  // должен нам», а это другая история, и в этой карточке её не ведут.
-  return Math.max(0, received - paid);
+  return round2(received - paid);
+};
+
+/**
+ * Сколько мы должны партнёру всего: по договорам рассрочки и по складским
+ * поставкам. Минус — переплата.
+ *
+ * Долг по договору считаем, пока он не закрыт; переплату по нему — всегда:
+ * закрытый договор с суммой сверх закупа означает, что деньги ушли, и они
+ * такие же настоящие, как долг.
+ */
+export const supplierBalance = (
+  sales: { supplierId?: string; buyPrice?: number; partnerDebtPaidAmount?: number; isPartnerDebtPaid?: boolean }[],
+  movements: StockMovement[],
+  products: Product[],
+  expenses: Expense[],
+  supplierId: string
+): number => {
+  const contract = sales
+    .filter(s => s.supplierId === supplierId)
+    .reduce((sum, s) => {
+      const buy = Number(s.buyPrice) || 0;
+      const paid = Number(s.partnerDebtPaidAmount) || 0;
+      if (paid > buy) return sum - (paid - buy);
+      return sum + (s.isPartnerDebtPaid ? 0 : Math.max(0, buy - paid));
+    }, 0);
+  return round2(contract + supplierSupplyNet(movements, products, expenses, supplierId));
+};
+
+export const supplierSupplyDebt = (
+  movements: StockMovement[],
+  products: Product[],
+  expenses: Expense[],
+  supplierId: string
+): number => {
+  // Долг — неотрицательная часть сальдо; переплату показывает supplierSupplyNet.
+  return Math.max(0, supplierSupplyNet(movements, products, expenses, supplierId));
 };

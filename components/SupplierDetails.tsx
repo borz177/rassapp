@@ -3,7 +3,7 @@ import { Customer, Expense, Product, Sale, StockMovement, Supplier } from '../ty
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
 import { formatCurrency, escapeHtml } from '../src/utils';
-import { supplierSupplies, supplierSupplyBalances, supplierSupplyDebt } from '../src/supplierLedger';
+import { supplierSupplies, supplierSupplyBalances, supplierSupplyDebt, supplierSupplyNet } from '../src/supplierLedger';
 import { openPrintPreview } from './PrintPreview';
 
 interface SupplierDetailsProps {
@@ -66,7 +66,19 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
     () => supplierSales.reduce((sum, s) => sum + (s.buyPrice || 0), 0) + suppliesTotal,
     [supplierSales, suppliesTotal]
   );
-  const totalDebt = contractDebt + supplyDebt;
+  // Сальдо со знаком: переплату по договорам и по поставкам показываем как «+»,
+  // а не прячем в ноль — эти деньги уже ушли и зачтутся в следующую поставку.
+  const supplyNet = useMemo(
+    () => supplierSupplyNet(movements, products, expenses, supplier.id),
+    [movements, products, expenses, supplier.id]
+  );
+  const contractOverpaid = useMemo(
+    () => supplierSales.reduce((sum, s) => sum + Math.max(0, (s.partnerDebtPaidAmount || 0) - (s.buyPrice || 0)), 0),
+    [supplierSales]
+  );
+  const balance = contractDebt + supplyNet - contractOverpaid;
+  const totalDebt = Math.max(0, balance);
+  const overpaid = Math.max(0, -balance);
   const totalPaid = useMemo(() => payments.reduce((sum, p) => sum + p.amount, 0), [payments]);
   const openContractsCount = useMemo(() => supplierSales.filter(s => !s.isPartnerDebtPaid && (s.buyPrice - (s.partnerDebtPaidAmount || 0)) > 0).length, [supplierSales]);
   const paidContractsCount = supplierSales.length - openContractsCount;
@@ -173,10 +185,15 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
           <div><label className="text-xs text-slate-400 uppercase">Заметки</label><p className="text-sm text-slate-600 dark:text-slate-300">{supplier.notes}</p></div>
         )}
         <div className="pt-2">
-          <label className="text-xs text-slate-400 uppercase">Текущий долг</label>
+          <label className="text-xs text-slate-400 uppercase">{overpaid > 0 ? 'Переплата' : 'Текущий долг'}</label>
           <p className={`text-3xl font-bold mt-1 ${totalDebt > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-            {formatCurrency(totalDebt, showCents)} ₽
+            {overpaid > 0 ? `+${formatCurrency(overpaid, showCents)}` : formatCurrency(totalDebt, showCents)} ₽
           </p>
+          {overpaid > 0 && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+              Отдали больше долга — сумма зачтётся в следующие поставки
+            </p>
+          )}
           {/* Из чего сложился долг — иначе непонятно, почему число выросло после
               приёмки товара, к которой не было ни одного договора. */}
           {supplyDebt > 0 && contractDebt > 0 && (

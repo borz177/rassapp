@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { Product, StockLocation, StockMovement, Supplier } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { stockOnWarehouse, applyStockDelta as withDelta } from '../src/utils';
+import { productOnWarehouse, stockOnWarehouse, applyStockDelta as withDelta } from '../src/utils';
 import ModalPortal from './ModalPortal';
 import BarcodeScanner, { ScanButton, type ScanOutcome } from './BarcodeScanner';
 import { findProductByCode, productMatchesQuery } from '../src/barcode';
@@ -144,7 +144,9 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
       .filter(p => category === 'ALL' || p.category === category)
       // Уже набранное в документ остаётся на виду при любом фильтре: иначе
       // строка исчезала бы из списка ровно в тот момент, когда её добавили.
-      .filter(p => !onlyHere || batch[p.id] || stockAt(p, fromWh) !== 0)
+      // Признак тот же, что в каталоге: товар склада не должен пропадать здесь
+      // только потому, что его остаток сейчас нулевой.
+      .filter(p => !onlyHere || batch[p.id] || productOnWarehouse(p, fromWh, liveWarehouses))
       .filter(p => productMatchesQuery(p, search))
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
     // eslint-disable-next-line react-hooks/exhaustive-deps

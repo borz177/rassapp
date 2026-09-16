@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Expense, Product, Sale, StockMovement, Supplier } from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency } from '../src/utils';
-import { supplierSupplies, supplierSupplyDebt } from '../src/supplierLedger';
+import { supplierBalance, supplierSupplies } from '../src/supplierLedger';
 
 interface SuppliersProps {
   suppliers: Supplier[];
@@ -32,24 +32,14 @@ const Suppliers: React.FC<SuppliersProps> = ({
   const [formEmail, setFormEmail] = useState('');
   const [formNotes, setFormNotes] = useState('');
 
-  const debtBySupplier = useMemo(() => {
+  // Сальдо по партнёру со знаком: плюс — мы должны, минус — переплатили.
+  const balanceBySupplier = useMemo(() => {
     const map: Record<string, number> = {};
-    sales.forEach(s => {
-      if (!s.supplierId || !s.buyPrice) return;
-      if (s.isPartnerDebtPaid) return;
-      const remaining = s.buyPrice - (s.partnerDebtPaidAmount || 0);
-      if (remaining <= 0) return;
-      map[s.supplierId] = (map[s.supplierId] || 0) + remaining;
-    });
-    // Товар, принятый на склад накладной, — такой же долг, как взятый под
-    // договор. Без этого партнёр с одними складскими поставками показывался
-    // без долга вовсе.
     suppliers.forEach(sup => {
-      const supplyDebt = supplierSupplyDebt(movements, products, expenses, sup.id);
-      if (supplyDebt > 0) map[sup.id] = (map[sup.id] || 0) + supplyDebt;
+      map[sup.id] = supplierBalance(sales, movements, products, expenses, sup.id);
     });
     return map;
-  }, [sales, suppliers, movements, products, expenses]);
+  }, [suppliers, sales, movements, products, expenses]);
 
   const statsBySupplier = useMemo(() => {
     const map: Record<string, { count: number; volume: number; lastDate: string | null }> = {};
@@ -112,9 +102,13 @@ const Suppliers: React.FC<SuppliersProps> = ({
   };
 
   const handleDelete = (s: Supplier) => {
-    const debt = debtBySupplier[s.id] || 0;
-    if (debt > 0) {
-      alert(`Нельзя удалить поставщика с непогашенным долгом (${formatCurrency(debt, showCents)} ₽).`);
+    // Незакрытый расчёт — это и долг, и переплата: в обе стороны за партнёром
+    // числятся деньги, и удалять его, теряя след, нельзя.
+    const balance = balanceBySupplier[s.id] || 0;
+    if (Math.abs(balance) > 0.005) {
+      alert(balance > 0
+        ? `Нельзя удалить поставщика с непогашенным долгом (${formatCurrency(balance, showCents)} ₽).`
+        : `Нельзя удалить поставщика с переплатой (${formatCurrency(-balance, showCents)} ₽). Зачтите её поставкой или верните деньги.`);
       setActiveMenuId(null);
       return;
     }
@@ -189,7 +183,11 @@ const Suppliers: React.FC<SuppliersProps> = ({
           <div className="text-center py-8 text-slate-400">Нет поставщиков</div>
         )}
         {suppliers.map(s => {
-          const debt = debtBySupplier[s.id] || 0;
+          const balance = balanceBySupplier[s.id] || 0;
+          const debt = Math.max(0, balance);
+          // Отдали больше, чем были должны: показываем это плюсом и зелёным —
+          // деньги наши и зачтутся в следующую поставку.
+          const overpaid = Math.max(0, -balance);
           const stat = statsBySupplier[s.id] || { count: 0, volume: 0, lastDate: null };
           return (
             <div key={s.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative cursor-pointer" onClick={() => onViewDetails(s)}>
@@ -206,9 +204,9 @@ const Suppliers: React.FC<SuppliersProps> = ({
 
                 <div className="flex items-center gap-3">
                   <div className="text-right mr-2 hidden sm:block">
-                    <p className="text-xs text-slate-400">Долг</p>
+                    <p className="text-xs text-slate-400">{overpaid > 0 ? 'Переплата' : 'Долг'}</p>
                     <p className={`text-sm font-bold ${debt > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      {formatCurrency(debt, showCents)} ₽
+                      {overpaid > 0 ? `+${formatCurrency(overpaid, showCents)}` : formatCurrency(debt, showCents)} ₽
                     </p>
                   </div>
                   <button
@@ -228,6 +226,9 @@ const Suppliers: React.FC<SuppliersProps> = ({
                       рядом с кнопкой, которой его отдают. */}
                   {debt > 0 && (
                     <span className="sm:hidden">Долг: <span className="font-bold text-red-600 dark:text-red-400">{formatCurrency(debt, showCents)} ₽</span></span>
+                  )}
+                  {overpaid > 0 && (
+                    <span className="sm:hidden">Переплата: <span className="font-bold text-emerald-600 dark:text-emerald-400">+{formatCurrency(overpaid, showCents)} ₽</span></span>
                   )}
                 </div>
               </div>
