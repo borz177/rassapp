@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import ModalPortal from './ModalPortal';
 import {
-  CONTRACT_TEMPLATES, PAID_CONTRACT_TEMPLATES, buildContractHtml, sampleContractData,
+  CONTRACT_TEMPLATES, PAID_CONTRACT_TEMPLATES, blankContractData, buildContractHtml, sampleContractData,
   type ContractTemplateId,
 } from '../src/contractTemplates';
+import { openPrintPreview } from './PrintPreview';
 
 interface ContractTemplatePickerProps {
   value: ContractTemplateId;
@@ -26,6 +27,32 @@ const ContractTemplatePicker: React.FC<ContractTemplatePickerProps> = ({
   value, companyName, sellerPhone, onChange, allowPaid = true,
 }) => {
   const [preview, setPreview] = useState<ContractTemplateId | null>(null);
+
+  /**
+   * Пустой бланк выбранной формы. Собираем тем же кодом, что и настоящий
+   * договор: бланк, свёрстанный отдельно, разошёлся бы с ним на первой правке.
+   *
+   * В приложении из маркета скачивание из веб-слоя до файлов не доходит —
+   * там открываем просмотр, откуда бланк уходит на печать или в PDF.
+   */
+  const downloadBlank = () => {
+    const html = buildContractHtml(value, blankContractData(companyName, sellerPhone));
+    const native = !!(window as any).Capacitor?.isNativePlatform?.();
+    if (native) { openPrintPreview(html, { title: 'Бланк договора' }); return; }
+    try {
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Бланк договора${companyName ? ` — ${companyName}` : ''}.html`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch {
+      openPrintPreview(html, { title: 'Бланк договора' });
+    }
+  };
 
   const html = preview
     ? buildContractHtml(preview, sampleContractData(companyName, sellerPhone))
@@ -83,6 +110,21 @@ const ContractTemplatePicker: React.FC<ContractTemplatePickerProps> = ({
           </div>
         );
       })}
+
+      {/* Пустой бланк — для тех, кто оформляет на руках: распечатал пачку и
+          заполняешь ручкой. Подставлены только продавец и телефон. */}
+      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Пустой бланк</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Выбранная форма с вашим названием и телефоном — остальное заполняется от руки.
+          </p>
+        </div>
+        <button type="button" onClick={downloadBlank} data-testid="download-blank"
+                className="shrink-0 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold active:scale-95 transition-transform">
+          Скачать
+        </button>
+      </div>
 
       {preview && (
         <ModalPortal onClose={() => setPreview(null)}>

@@ -84,6 +84,12 @@ export interface ContractData {
   monthlyPayment: number;
   startDate: string;
   rows: ContractScheduleRow[];
+  /**
+   * Пустой бланк под заполнение от руки: подставлены только продавец и телефон.
+   * Признак нужен разметке — по нему числа и даты уступают место линиям, а в
+   * графике печатается запас пустых строк вместо одной.
+   */
+  isBlank?: boolean;
 }
 
 const escapeHtml = (value: unknown): string =>
@@ -104,6 +110,16 @@ const day = (d: string) => new Date(d).toLocaleDateString('ru-RU');
  * значением она превращает документ в бланк, который будто не заполнили: глаз
  * читает подчёркнутое как место для записи, а не как ответ.
  */
+/** Сумма или пусто: ноль в бланке — это не сумма, а место под неё. */
+const moneyOrNothing = (n: number | undefined) => (n && Math.abs(n) > 0.005 ? money(n) : undefined);
+
+/** Дата или пусто: пустую строку new Date превратил бы в «Invalid Date». */
+const dayOrNothing = (value: string | undefined) => {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : day(value);
+};
+
 const orBlank = (value: string | number | undefined, width = '100%') => {
   const text = value === undefined || value === null ? '' : String(value).trim();
   return text
@@ -123,12 +139,12 @@ const modernBody = (d: ContractData): string => {
           <td class="c">${p.paid > 0.01 ? money(p.paid) : ''}</td>
           <td class="c">${p.paid > 0.01 ? money(p.remaining) : ''}</td>
         </tr>`).join('')
-    : Array.from({ length: Math.max(1, d.installments) }).map((_, i) => `
+    : Array.from({ length: d.isBlank ? 8 : Math.max(1, d.installments) }).map((_, i) => `
         <tr><td class="c">${i + 1}</td><td class="c" style="height:30px"></td><td></td><td></td></tr>`).join('');
 
   return `
     <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
-    <div class="header-info">Дата: ${day(d.startDate)}${d.contractNumber ? ` · № ${escapeHtml(d.contractNumber)}` : ''}</div>
+    <div class="header-info">Дата: ${orBlank(dayOrNothing(d.startDate), '120px')} · № ${orBlank(d.contractNumber, '90px')}</div>
     <div class="content-wrapper">
       <div class="section">
         <div class="field-row">
@@ -142,14 +158,14 @@ const modernBody = (d: ContractData): string => {
         ${hasGuarantor ? `<div class="field-row"><span><span class="field-label">Поручитель:</span> ${escapeHtml(d.guarantorName)}</span><span>Тел: ${escapeHtml(d.guarantorPhone || '')}</span></div>` : ''}
       </div>
       <div class="section">
-        <div><span class="field-label">Товар:</span> ${escapeHtml(d.productName)}</div>
+        <div><span class="field-label">Товар:</span> ${orBlank(d.productName, '320px')}</div>
         <div class="two-col">
-          <span><span class="field-label">Срок рассрочки:</span> ${d.installments} мес.</span>
-          <span><span class="field-label">Стоимость:</span> ${money(d.totalAmount)}</span>
+          <span><span class="field-label">Срок рассрочки:</span> ${orBlank(d.installments || undefined, '60px')} мес.</span>
+          <span><span class="field-label">Стоимость:</span> ${orBlank(moneyOrNothing(d.totalAmount), '140px')}</span>
         </div>
         <div class="two-col">
-          <span><span class="field-label">Ежемесячный платеж:</span> ${money(d.monthlyPayment)}</span>
-          <span><span class="field-label">Первый взнос:</span> ${money(d.downPayment)}</span>
+          <span><span class="field-label">Ежемесячный платеж:</span> ${orBlank(moneyOrNothing(d.monthlyPayment), '140px')}</span>
+          <span><span class="field-label">Первый взнос:</span> ${orBlank(moneyOrNothing(d.downPayment), '140px')}</span>
         </div>
       </div>
       <table>
@@ -212,6 +228,10 @@ const MODERN_STYLES = `
     .contract-sheet h1 { font-size: 14pt; }
     .contract-sheet table { font-size: 10pt; }
   }
+  /* Линия под рукописное заполнение: в пустом бланке поля должны читаться как
+     место для записи, а не как пропуск в вёрстке. */
+  .contract-sheet .blank { display: inline-block; border-bottom: 1px solid #000; height: 14px; }
+  .contract-sheet .filled { padding: 0 2px; }
 `;
 
 // ─── Классический ───────────────────────────────────────────────────────────
@@ -222,7 +242,7 @@ const classicBody = (d: ContractData): string => {
   // поэтому частичные оплаты добавляют строки сверх срока рассрочки, а не
   // сжимаются в один месяц. Пока графика нет (договор ещё не проведён) — рисуем
   // пустой бланк на срок рассрочки.
-  const count = d.rows.length > 0 ? d.rows.length : Math.max(1, d.installments);
+  const count = d.rows.length > 0 ? d.rows.length : (d.isBlank ? 8 : Math.max(1, d.installments));
   const rows = Array.from({ length: count }).map((_, i) => {
     const p = d.rows[i];
     return `
@@ -266,9 +286,9 @@ const classicBody = (d: ContractData): string => {
     <div class="clause"><b>4. Наименование, стоимость товаров и порядок расчетов:</b></div>
     <div class="label-line indent">4.1.1. Наименование Товара ${orBlank(d.productName, '430px')}</div>
     <div class="label-line indent">4.1.2. Общая стоимость товаров составляет
-      ${orBlank(money(d.totalAmount), '200px')}) руб., с учетом НДС</div>
+      ${orBlank(moneyOrNothing(d.totalAmount), '200px')}) руб., с учетом НДС</div>
     <div class="label-line">Предоплата составляет
-      ${orBlank(money(d.downPayment), '200px')}) руб., с учетом НДС</div>
+      ${orBlank(moneyOrNothing(d.downPayment), '200px')}) руб., с учетом НДС</div>
     <div class="clause indent">4.2. Расчеты производятся в кассу Продавца.</div>
 
     <table class="schedule">
@@ -494,6 +514,34 @@ export const buildContractHtml = (
 </body>
 </html>`;
 };
+
+/**
+ * Пустой бланк для печати: заполнены только продавец и его телефон — остальное
+ * вписывают от руки. Печатается тем же кодом, что и настоящий договор, поэтому
+ * бланк не разойдётся с тем, что уйдёт клиенту после оформления.
+ */
+export const blankContractData = (companyName: string, sellerPhone: string): ContractData => ({
+  companyName: companyName || '',
+  sellerPhone: sellerPhone || '',
+  customerName: '',
+  customerPhone: '',
+  passportSeries: '',
+  passportNumber: '',
+  passportIssuedBy: '',
+  customerAddress: '',
+  deliveryAddress: '',
+  guarantorName: '',
+  guarantorPhone: '',
+  contractNumber: '',
+  productName: '',
+  totalAmount: 0,
+  downPayment: 0,
+  installments: 0,
+  monthlyPayment: 0,
+  startDate: '',
+  rows: [],
+  isBlank: true,
+});
 
 /** Образец для предпросмотра в настройках — с правдоподобными числами. */
 export const sampleContractData = (companyName: string, sellerPhone: string): ContractData => {

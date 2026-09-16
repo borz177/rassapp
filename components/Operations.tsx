@@ -350,10 +350,10 @@ const Operations: React.FC<OperationsProps> = ({
 
   // Суммы по тому, что сейчас отобрано: фильтр сменили — числа поехали за ним.
   const totals = useMemo(() => operations.reduce((acc, op) => {
-    if (op.type === 'INCOME') { acc.income += op.amount; acc.incomeCount += 1; }
-    else { acc.expense += op.amount; acc.expenseCount += 1; }
+    if (op.type === 'INCOME') acc.income += op.amount;
+    else acc.expense += op.amount;
     return acc;
-  }, { income: 0, expense: 0, incomeCount: 0, expenseCount: 0 }), [operations]);
+  }, { income: 0, expense: 0 }), [operations]);
 
   return (
     <div className="space-y-4 animate-fade-in pb-20 w-full">
@@ -376,27 +376,15 @@ const Operations: React.FC<OperationsProps> = ({
           <p data-testid="total-income" className="text-lg sm:text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 leading-tight truncate">
             {totals.income > 0 ? '+' : ''}{formatCurrency(totals.income, false)} ₽
           </p>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">{totals.incomeCount} оп.</p>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-xl p-3 sm:p-4 border border-red-100 dark:border-red-900/40 shadow-sm min-w-0">
           <p className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">Расход</p>
           <p data-testid="total-expense" className="text-lg sm:text-2xl font-extrabold text-red-600 dark:text-red-400 leading-tight truncate">
             {totals.expense > 0 ? '−' : ''}{formatCurrency(totals.expense, false)} ₽
           </p>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">{totals.expenseCount} оп.</p>
         </div>
       </div>
 
-      {/* Разницу показываем, только когда есть обе стороны: иначе это та же
-          цифра, что в карточке, и строка ничего не добавляет. */}
-      {totals.incomeCount > 0 && totals.expenseCount > 0 && (
-        <p data-testid="total-net" className="text-center text-xs text-slate-500 dark:text-slate-400">
-          Разница:{' '}
-          <span className={`font-bold ${totals.income - totals.expense >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-            {totals.income - totals.expense >= 0 ? '+' : '−'}{formatCurrency(Math.abs(totals.income - totals.expense), false)} ₽
-          </span>
-        </p>
-      )}
       <div className="space-y-6">
           {groupedOperations.length === 0 && (<div className="text-center py-10 text-slate-400 border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">Операций не найдено</div>)}
 
