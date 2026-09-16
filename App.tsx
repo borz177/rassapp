@@ -4033,6 +4033,13 @@ const handleQuickAddCustomer = async (data: {
     setPreviousView('SUPPLIER_DETAILS');
     setCurrentView('JOURNAL');
   };
+  // Чек со страницы счёта открывается в журнале; «назад» возвращает на тот же счёт.
+  const handleOpenJournalDoc = (docId: string) => {
+    if (!shopAvailable) return;
+    setJournalDocId(docId);
+    setPreviousView(currentView);
+    setCurrentView('JOURNAL');
+  };
   const handlePaySupplierDebt = (supplier: Supplier, debt: number) => {
     setDraftExpenseData({ category: 'Оплата партнёру', supplierId: supplier.id, supplierDebt: debt });
     rememberFormReturn();
@@ -4417,7 +4424,9 @@ if (!user && !showSplash) {
     );
   })()
 )}
-              {currentView === 'CASH_REGISTER' && (
+              {/* Под журналом, открытым со страницы счёта, касса остаётся смонтированной:
+                  иначе «назад» из чека вернул бы к списку счетов, а не на сам счёт. */}
+              {(currentView === 'CASH_REGISTER' || (currentView === 'JOURNAL' && previousView === 'CASH_REGISTER')) && (
   <CashRegister
     accountUsage={accountUsage}
     onDeleteAccount={handleDeleteAccount}
@@ -4457,6 +4466,12 @@ if (!user && !showSplash) {
     myProfitPeriod={myProfitPeriod}
     setMyProfitPeriod={setMyProfitPeriod}
     appSettings={appSettings}
+    // Вкладка «Наличные» у счёта со складом — только когда магазин доступен
+    warehouses={shopAvailable && !isInvestor ? scopedWarehouses : []}
+    stockMovements={stockMovements}
+    products={products}
+    suppliers={suppliers}
+    onOpenJournalDoc={handleOpenJournalDoc}
   />
 )}
               {currentView === 'CONTRACTS' && (

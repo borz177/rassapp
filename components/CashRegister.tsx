@@ -3,7 +3,10 @@ import PagePush, { useBackInterceptor } from './transitions/PagePush';
 import TabPill from './TabPill';
 import SelectSheet from './SelectSheet';
 import ModalPortal from './ModalPortal';
-import { Sale, Account, Expense, Investor, AppSettings, Customer, RetailSale } from '../types';
+import ModeSwitch from './ModeSwitch';
+import AccountCashTab from './AccountCashTab';
+import { accountCashSummary, accountWarehouses, cashPeriodFor } from '../src/accountCash';
+import { Sale, Account, Expense, Investor, AppSettings, Customer, RetailSale, Product, StockLocation, StockMovement, Supplier } from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, shareDateForSale, computeAccountBalances } from '../src/utils';
 
@@ -60,7 +63,13 @@ interface CashRegisterProps {
   appSettings: AppSettings;
   isInvestor?: boolean;
   currentInvestorId?: string;
-
+  /** Склады магазина: у счёта, к которому привязан склад, появляется вкладка «Наличные» */
+  warehouses?: StockLocation[];
+  stockMovements?: StockMovement[];
+  products?: Product[];
+  suppliers?: Supplier[];
+  /** Открыть чек в журнале */
+  onOpenJournalDoc?: (docId: string) => void;
 }
 
 const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubmit: (name: string, type: Account['type']) => void }) => {
@@ -495,7 +504,9 @@ const AccountActionModal = ({
 const CashRegister: React.FC<CashRegisterProps> = ({
     accounts, sales, expenses, investors, customers, retailSales = [], onAddAccount, onAction, onSelectAccount, onSetMainAccount, onUpdateAccount,
     onSelectCustomer, isManager, myProfitPeriod, setMyProfitPeriod, appSettings,
-    lockedAccountIds = [], accountUsage = {}, onDeleteAccount
+    lockedAccountIds = [], accountUsage = {}, onDeleteAccount,
+    isInvestor: viewerIsInvestor = false,
+    warehouses = [], stockMovements = [], products = [], suppliers = [], onOpenJournalDoc,
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -550,6 +561,9 @@ const CashRegister: React.FC<CashRegisterProps> = ({
     // его вместо второго механизма «текущий счёт».
     setProfitFilterAccountId(acc.id);
     setProfitFilterInvestorId('ALL');
+    // Каждый счёт открывается с «Рассрочки»: вкладка, оставшаяся от прошлого
+    // счёта, путала бы — у другого счёта «Наличных» может не быть вовсе.
+    setAccountTab('installments');
     setDetailsAccount(acc);
   };
   const closeAccountDetails = () => {
@@ -582,6 +596,28 @@ const CashRegister: React.FC<CashRegisterProps> = ({
       setMyProfitPeriod({ start: monthStartStr(), end: todayStr() });
     }
   };
+
+  // Вкладки страницы счёта. «Наличные» есть только у счёта, к которому привязан
+  // склад: у остальных показывать там нечего. Инвестору магазин не показываем.
+  const [accountTab, setAccountTab] = useState<'installments' | 'cash'>('installments');
+  const cashWarehouses = useMemo(
+    () => (detailsAccount && !viewerIsInvestor ? accountWarehouses(detailsAccount.id, warehouses) : []),
+    [detailsAccount, warehouses, viewerIsInvestor]
+  );
+  const showCashTab = cashWarehouses.length > 0;
+  // Период магазина — по местному календарю (см. cashPeriodFor): даты кнопок периода
+  // записаны по UTC, и ночью «Сегодня» показывало бы вчерашний день. Считаем на
+  // каждой отрисовке, а не в useMemo: страница может простоять открытой за полночь.
+  const cashPeriod = cashPeriodFor(periodMode, myProfitPeriod);
+  // Считаем, только пока вкладка открыта: на странице рассрочки эти цифры не нужны.
+  const cashSummary = useMemo(() => {
+    if (!detailsAccount || !showCashTab || accountTab !== 'cash') return null;
+    return accountCashSummary({
+      accountId: detailsAccount.id, warehouses, retailSales, movements: stockMovements, products,
+      expenses, customers, suppliers, period: { start: cashPeriod.start, end: cashPeriod.end },
+    });
+  }, [detailsAccount, showCashTab, accountTab, cashPeriod.start, cashPeriod.end, warehouses, retailSales,
+      stockMovements, products, expenses, customers, suppliers]);
 
   const visibleAccounts = useMemo(() => accounts.filter(a => !a.isArchived), [accounts]);
   const hiddenAccounts = useMemo(() => accounts.filter(a => a.isArchived), [accounts]);
@@ -1471,6 +1507,37 @@ const investorProfitPayouts = useMemo(() => {
             </div>
           </div>
 
+          {/* Рассрочка и магазин — разные деньги и разные вопросы, поэтому у счёта
+              со складом они разведены по вкладкам, как на главном экране. */}
+          {showCashTab && (
+            <ModeSwitch
+              className="w-fit mx-auto"
+              value={accountTab}
+              onChange={setAccountTab}
+              options={[
+                { id: 'installments' as const, label: 'Рассрочка', icon: ICONS.File },
+                { id: 'cash' as const, label: 'Наличные', icon: ICONS.Wallet },
+              ]}
+            />
+          )}
+
+          {showCashTab && accountTab === 'cash' && cashSummary && (
+            <AccountCashTab
+              summary={cashSummary}
+              showCents={appSettings.showCents}
+              periodOptions={PERIOD_CONFIG}
+              periodMode={periodMode}
+              onPeriodMode={applyPeriodMode}
+              customKey="CUSTOM"
+              allKey="ALL"
+              period={periodMode === 'CUSTOM' ? myProfitPeriod : cashPeriod}
+              onPeriodChange={setMyProfitPeriod}
+              onOpenDoc={onOpenJournalDoc}
+              onSelectCustomer={onSelectCustomer}
+            />
+          )}
+
+          {(!showCashTab || accountTab === 'installments') && (<>
           {/* Инвестировано — свои деньги в этом счёте. Стоит рядом с балансом:
               баланс отвечает «сколько лежит», а эта карточка — «сколько из этого
               моё вложенное, которое я ещё не вернул». Появляется, только когда
@@ -1897,6 +1964,7 @@ const investorProfitPayouts = useMemo(() => {
         </div>
     </div>
 )}
+          </>)}
         </div>
       </PagePush>
       )}
