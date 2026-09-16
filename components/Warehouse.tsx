@@ -211,6 +211,13 @@ const Warehouse: React.FC<WarehouseProps> = ({
   // свой склад, это его остатки — иначе товар пропал бы из разрезов по складам.
   const stockAt = (p: Product, warehouseId: string) => stockOnWarehouse(p, warehouseId, shownWarehouses);
 
+  // Товар относится к складу, если на нём есть остаток или заведена ячейка этого
+  // склада. Ноль после продажи — тоже принадлежность: товар кончился, но он
+  // здешний, и пропадать из списка ему незачем.
+  const onWarehouse = (p: Product, warehouseId: string) =>
+    stockAt(p, warehouseId) !== 0
+    || !!(p.warehouseStocks && Object.prototype.hasOwnProperty.call(p.warehouseStocks, warehouseId));
+
   // Пометку «основной» не вешаем на склад, который так и называется: «Основной
   // склад · основной» — подпись ни о чём.
   const whLabel = (w: StockLocation) =>
@@ -230,9 +237,9 @@ const Warehouse: React.FC<WarehouseProps> = ({
       .filter(p => (showArchived ? p.isArchived : !p.isArchived))
       .filter(p => category === 'ALL' || p.category === category)
       .filter(p => !onlyLow || isLow(p))
-      // На складе показываем то, что на нём лежит: товар с нулём остатка здесь
-      // только удлинил бы список, за ним не стоит ни одной штуки.
-      .filter(p => warehouseFilter === 'ALL' || stockAt(p, warehouseFilter) !== 0)
+      // На складе показываем то, что на нём числится: чужой товар в списке только
+      // мешает искать, а свой с нулём остатка — по-прежнему свой.
+      .filter(p => warehouseFilter === 'ALL' || onWarehouse(p, warehouseFilter))
       .filter(p => productMatchesQuery(p, search))
       // Расставленные вручную идут первыми и в своём порядке, остальные —
       // по алфавиту следом. Так один переставленный товар не выбрасывает
@@ -526,6 +533,12 @@ const Warehouse: React.FC<WarehouseProps> = ({
           note: 'Начальный остаток',
           date: new Date().toISOString(),
         });
+      }
+      // Только что заведённый товар должен быть виден. Если он лёг не на тот склад,
+      // на который сейчас смотрят, — переводим взгляд туда; если остатка нет вовсе,
+      // показываем весь каталог. Иначе сохранение выглядит как «товар не сохранился».
+      if (!editing) {
+        setWarehouseFilter(prev => (prev === 'ALL' ? prev : startQty > 0 ? warehouseId : 'ALL'));
       }
       if (opsPending && codes.includes(opsPending)) setOpsAdded({ productId: product.id, at: Date.now() });
       setOpsPending(null);
