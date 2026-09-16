@@ -506,6 +506,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
         // Остаток правится только движениями — здесь берём текущий, чтобы
         // редактирование карточки не превращалось в тихую корректировку склада.
         stock: editing?.stock ?? 0,
+        // Раскладку по складам переносим как есть: карточку пересобирают заново,
+        // и без этой строки правка названия стирала принадлежность складам —
+        // остаток схлопывался в общий и «переезжал» на основной склад.
+        warehouseStocks: editing?.warehouseStocks,
         sku: form.sku.trim() || undefined,
         barcodes: codes.length ? codes : undefined,
         buyPrice: form.buyPrice === '' ? undefined : num(form.buyPrice),
@@ -520,7 +524,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
       // без движения остаток нечем объяснить, и склад перестаёт сходиться.
       const startQty = editing ? 0 : num(form.stock);
       const warehouseId = form.warehouseId || defaultWarehouseId;
-      await onSaveProduct(startQty > 0 ? applyStockDelta(product, warehouseId, startQty) : product);
+      // Ячейку выбранного склада заводим всегда, даже с нулём: выбранный склад —
+      // это «где товар живёт», а не только «сколько привезли». Без ячейки товар
+      // не принадлежал никакому складу и был виден лишь при «Всех складах».
+      await onSaveProduct(editing ? product : applyStockDelta(product, warehouseId, startQty));
       if (startQty > 0) {
         await onAddMovement({
           id: crypto.randomUUID(),
@@ -534,11 +541,11 @@ const Warehouse: React.FC<WarehouseProps> = ({
           date: new Date().toISOString(),
         });
       }
-      // Только что заведённый товар должен быть виден. Если он лёг не на тот склад,
-      // на который сейчас смотрят, — переводим взгляд туда; если остатка нет вовсе,
-      // показываем весь каталог. Иначе сохранение выглядит как «товар не сохранился».
+      // Только что заведённый товар должен быть виден: если смотрят на другой склад,
+      // переводим взгляд на тот, куда его положили. Иначе сохранение выглядит как
+      // «товар не сохранился».
       if (!editing) {
-        setWarehouseFilter(prev => (prev === 'ALL' ? prev : startQty > 0 ? warehouseId : 'ALL'));
+        setWarehouseFilter(prev => (prev === 'ALL' ? prev : warehouseId));
       }
       if (opsPending && codes.includes(opsPending)) setOpsAdded({ productId: product.id, at: Date.now() });
       setOpsPending(null);
