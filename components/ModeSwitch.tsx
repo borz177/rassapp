@@ -153,8 +153,11 @@ function ModeSwitch<T extends string>({
     if (raf.current) return;
     let last = performance.now();
     const tick = (now: number) => {
-      // До 0.1 с за кадр: дольше — вкладка была скрыта, догонять незачем
-      const dt = Math.min(0.1, Math.max(0.001, (now - last) / 1000));
+      // Не больше двух кадров времени за шаг. Смена режима перерисовывает
+      // тяжёлый экран, и первый кадр после нажатия бывает долгим — догоняя его,
+      // пружина проскакивала почти весь путь разом, и капсула не ехала, а
+      // перескакивала. Так после подвисания движение просто продолжается.
+      const dt = Math.min(1 / 30, Math.max(0.001, (now - last) / 1000));
       last = now;
       const settled = step(dt);
       raf.current = settled && now > aliveUntil.current && dragXRef.current === null
