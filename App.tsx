@@ -4685,6 +4685,7 @@ if (!user && !showSplash) {
                            onOpenRetail={shopAvailable ? () => { setPreviousView('DASHBOARD'); setCurrentView('RETAIL_SALE'); } : undefined}
                            showShop={shopAvailable} warehouseId={saleWarehouse?.id || DEFAULT_WAREHOUSE_ID}
                            warehouses={scopedWarehouses}
+                           sales={sales} user={user} contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')}
                            appSettings={appSettings} />
                     )}
                   </PagePush>

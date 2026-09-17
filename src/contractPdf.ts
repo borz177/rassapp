@@ -106,7 +106,8 @@ ${styles}</style>${html}`;
  */
 export const contractPdfBlob = async (
   template: ContractTemplateId,
-  data: ContractData
+  data: ContractData,
+  title = 'Договор'
 ): Promise<Blob> => {
   const [{ default: jsPDF }, canvas] = await Promise.all([
     import('jspdf'),
@@ -126,12 +127,64 @@ export const contractPdfBlob = async (
   // PNG, а не JPEG: документ — тонкие чёрные линии на белом, и JPEG разводит
   // вокруг них серую кайму. Заодно такая картинка и весит меньше.
   pdf.addImage(canvas.toDataURL('image/png'), 'PNG', (PAGE_W_MM - width) / 2, 0, width, height);
+  setContractPdfProperties(pdf, title, data.companyName);
   return pdf.output('blob');
 };
 
 /** Имя файла без символов, которых не терпят файловые системы. */
 export const safeFileName = (name: string): string =>
   name.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
+
+/** Дата из поля ввода (ГГГГ-ММ-ДД) или ISO — в виде ДД.ММ.ГГГГ, без сдвига на сутки. */
+const ruDay = (value: string): string => {
+  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (plain) return `${plain[3]}.${plain[2]}.${plain[1]}`;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleDateString('ru-RU');
+};
+
+/**
+ * Название договора — и для имени файла, и для заголовка внутри PDF.
+ *
+ * Клиент видит его в WhatsApp раньше, чем откроет сам документ. Раньше там было
+ * «Payment_20260917.pdf» или «________20260917.pdf» (кириллица из названия
+ * товара вычищалась целиком), и по имени нельзя было понять ни что это, ни чей
+ * это договор. Теперь: «Договор №0042 — Иванов Иван», а у договора, отправленного
+ * с платежом, ещё и дата оплаты — таких файлов у клиента за год набирается
+ * несколько, и различать их надо, не открывая.
+ */
+export const contractDocumentTitle = (opts: {
+  number?: string;
+  customerName?: string;
+  paymentDate?: string;
+}): string => {
+  const parts = [opts.number ? `Договор №${opts.number}` : 'Договор'];
+  const name = (opts.customerName || '').replace(/\s+/g, ' ').trim();
+  // Длинное ФИО с отчеством и уточнениями обрезаем: телефон показывает имя файла
+  // одной строкой, и хвост с датой оплаты иначе уходил бы за край.
+  if (name) parts.push(name.length > 40 ? `${name.slice(0, 40).trim()}…` : name);
+  const paid = opts.paymentDate ? ruDay(opts.paymentDate) : '';
+  if (paid) parts.push(`оплата ${paid}`);
+  return parts.join(' — ');
+};
+
+/** Имя PDF-файла договора: название без запрещённых символов и с расширением. */
+export const contractFileName = (opts: Parameters<typeof contractDocumentTitle>[0]): string =>
+  `${safeFileName(contractDocumentTitle(opts))}.pdf`;
+
+/**
+ * Свойства документа. Без них просмотрщики на телефоне и компьютере показывают
+ * в заголовке имя, которое jsPDF ставит сам, а не название договора. Кириллицу
+ * jsPDF пишет в UTF-16 — проверено: заголовок читается целиком, со скобками.
+ */
+export const setContractPdfProperties = (pdf: any, title: string, companyName?: string): void => {
+  pdf.setProperties({
+    title,
+    subject: 'Договор купли-продажи товара в рассрочку',
+    author: companyName || '',
+    creator: companyName || '',
+  });
+};
 
 /**
  * Отдать готовый PDF человеку.

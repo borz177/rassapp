@@ -5,9 +5,9 @@ import { Customer, Account, Investor, Sale, User, RetailSale } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
-import { getInvestorAccount, retailRemaining } from '../src/utils';
+import { getInvestorAccount, retailRemaining, getSellerPhone, formatRuPhone, contractNumberFor } from '../src/utils';
 import { buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
-import { withHtml2canvasTextFix } from '../src/contractPdf';
+import { withHtml2canvasTextFix, contractDocumentTitle, contractFileName, setContractPdfProperties } from '../src/contractPdf';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, type SendStage } from './feedback';
 
@@ -31,17 +31,6 @@ interface NewIncomeProps {
   /** Завести новую категорию: сохраняется в настройках и доступна везде */
   onAddCategory?: (name: string) => void | Promise<void>;
 }
-
-// Форматирует любой российский номер в вид +7 (XXX) XXX-XX-XX
-const formatPhone = (raw: string | undefined): string => {
-  if (!raw) return '+7 (___) ___-__-__';
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length === 11 && (digits[0] === '8' || digits[0] === '7')) {
-    const clean = digits[0] === '8' ? '7' + digits.slice(1) : digits;
-    return `+${clean[0]} (${clean.slice(1, 4)}) ${clean.slice(4, 7)}-${clean.slice(7, 9)}-${clean.slice(9)}`;
-  }
-  return raw;
-};
 
 const NewIncome: React.FC<NewIncomeProps> = ({
   initialData, customers, investors, accounts, sales, retailSales = [], onClose, onSubmit, onSelectCustomer, user, appSettings, contractTemplatesAllowed = true,
@@ -303,6 +292,11 @@ const isConfirmingRef = useRef(false);
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+      setContractPdfProperties(pdf, contractDocumentTitle({
+        number: contractNumberFor(sales, sale),
+        customerName: customer.name,
+        paymentDate,
+      }), appSettings?.companyName);
       return pdf.output('blob');
     } finally {
       document.body.removeChild(clonedElement);
@@ -411,8 +405,14 @@ const commonData = {
             setSendStage('pdf');
             const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
             setSendStage('upload');
-            const dateStr = date.replace(/-/g, '');
-            const fileName = `Payment_${dateStr}.pdf`;
+            // «Договор №0042 — Иванов Иван — оплата 17.09.2026.pdf»: у клиента
+            // таких файлов за срок рассрочки набирается несколько, и различать
+            // их нужно по имени, не открывая.
+            const fileName = contractFileName({
+              number: contractNumberFor(sales, selectedSale),
+              customerName: selectedCustomer.name,
+              paymentDate: date,
+            });
             const success = await sendWhatsAppFile(
               appSettings.whatsapp.idInstance,
               appSettings.whatsapp.apiTokenInstance,
@@ -523,15 +523,17 @@ const commonData = {
       resolveContractTemplate(appSettings?.contractTemplate, contractTemplatesAllowed),
       {
         companyName: appSettings?.companyName || 'Компания',
-        sellerPhone: formatPhone(user?.phone || appSettings?.sellerPhone),
+        sellerPhone: formatRuPhone(getSellerPhone(user, appSettings)),
+        // Номер тот же, что у договора в списке договоров
+        contractNumber: contractNumberFor(sales, selectedSale),
         customerName: selectedCustomer.name,
-        customerPhone: formatPhone(selectedCustomer.phone),
+        customerPhone: formatRuPhone(selectedCustomer.phone),
         passportSeries: selectedCustomer.passportSeries,
         passportNumber: selectedCustomer.passportNumber,
         passportIssuedBy: selectedCustomer.passportIssuedBy,
         customerAddress: selectedCustomer.address,
         guarantorName: selectedSale.guarantorName,
-        guarantorPhone: selectedSale.guarantorPhone,
+        guarantorPhone: formatRuPhone(selectedSale.guarantorPhone),
         productName: selectedSale.productName,
         totalAmount: selectedSale.totalAmount,
         downPayment: selectedSale.downPayment,

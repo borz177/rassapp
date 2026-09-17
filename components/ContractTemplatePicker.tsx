@@ -45,8 +45,9 @@ const ContractTemplatePicker: React.FC<ContractTemplatePickerProps> = ({
     setBlankError(null);
     const data = blankContractData(companyName, sellerPhone);
     try {
-      const blob = await contractPdfBlob(value, data);
-      await saveContractPdf(blob, `Бланк договора${companyName ? ` — ${companyName}` : ''}.pdf`);
+      const title = `Бланк договора${companyName ? ` — ${companyName}` : ''}`;
+      const blob = await contractPdfBlob(value, data, title);
+      await saveContractPdf(blob, `${title}.pdf`);
     } catch (err) {
       console.error('Бланк договора:', err);
       setBlankError('PDF собрать не удалось — открыли бланк для печати');

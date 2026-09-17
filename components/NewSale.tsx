@@ -9,9 +9,9 @@ import TopBarBack from './TopBarBack';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
 import { api } from '../services/api';
-import { getSellerPhone, escapeHtml, formatDate, addMonthsClamped, stockOnWarehouse, formatCurrency } from '../src/utils';
-import { buildContractHtml, buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
-import { withHtml2canvasTextFix } from '../src/contractPdf';
+import { getSellerPhone, formatRuPhone, contractNumberFor, escapeHtml, formatDate, addMonthsClamped, stockOnWarehouse, formatCurrency } from '../src/utils';
+import { buildContractHtml, buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX, type ContractData } from '../src/contractTemplates';
+import { withHtml2canvasTextFix, contractDocumentTitle, contractFileName, setContractPdfProperties } from '../src/contractPdf';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } from './feedback';
 import { openPrintPreview } from './PrintPreview';
@@ -141,7 +141,7 @@ const contractScheduleRows = (sale: Sale) => {
 
 const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales, suppliers, showSupplierField,
-  onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user, propAppSettings,
+  onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user, appSettings: propAppSettings,
   onOpenRetail, contractTemplatesAllowed = true, showShop = false, warehouseId = DEFAULT_WAREHOUSE_ID,
   warehouses = [],
 }) => {
@@ -808,9 +808,12 @@ if (mode === 'CASH') {
       };
 
       // 🔥 ОТПРАВКА НА СЕРВЕР
-      await onSubmit(fullSaleObject);
+      const savedSale = await onSubmit(fullSaleObject);
 
-      setCreatedSale(fullSaleObject);
+      // Документ собираем по тому, что записано, а не по черновику формы: у нового
+      // договора id появляется только при сохранении, а без id не найти его номер
+      // в списке договоров. Заодно в PDF уходит уже выверенный график платежей.
+      setCreatedSale(savedSale && savedSale.id ? savedSale : fullSaleObject);
       setShowConfirmModal(false);
       setShowSuccessModal(true);
       hapticSuccess(); // короткий двойной отклик — операция завершена
@@ -854,30 +857,46 @@ if (mode === 'CASH') {
    * Ширина — ровно лист A4 в точках экрана: html2canvas снимает пиксели, и без
    * фиксированной ширины пропорции PDF зависели бы от размера окна.
    */
+  /**
+   * Данные договора — одни для PDF в WhatsApp и для печати.
+   *
+   * Раньше их собирали в двух местах, и копии успели разойтись. Номер — тот же,
+   * что у договора в списке: иначе на бумаге пустая графа, а клиент и менеджер
+   * называют договор разными номерами. Телефоны — в едином виде, пустой
+   * печатается линией под запись, а не маской.
+   */
+  const contractDataFor = (sale: any): ContractData => ({
+    companyName: appSettings?.companyName || 'Компания',
+    sellerPhone: formatRuPhone(getSellerPhone(user, appSettings)),
+    contractNumber: contractNumberFor(sales, sale),
+    customerName: selectedCustomer?.name,
+    customerPhone: formatRuPhone(selectedCustomer?.phone),
+    passportSeries: selectedCustomer?.passportSeries,
+    passportNumber: selectedCustomer?.passportNumber,
+    passportIssuedBy: selectedCustomer?.passportIssuedBy,
+    customerAddress: selectedCustomer?.address,
+    guarantorName: sale.guarantorName,
+    guarantorPhone: formatRuPhone(sale.guarantorPhone),
+    productName: sale.productName,
+    totalAmount: sale.totalAmount,
+    downPayment: sale.downPayment,
+    installments: sale.installments,
+    monthlyPayment: sale.paymentPlan?.[0]?.amount || 0,
+    startDate: sale.startDate,
+    rows: contractScheduleRows(sale),
+  });
+
+  /** Название документа: «Договор №0042 — Иванов Иван». */
+  const contractTitleFor = (sale: any) => contractDocumentTitle({
+    number: contractNumberFor(sales, sale),
+    customerName: selectedCustomer?.name,
+  });
+
   const renderContractContent = () => {
     if (!createdSale || !selectedCustomer) return null;
-    const sale = createdSale;
     const { html, styles } = buildContractFragment(
       resolveContractTemplate(appSettings?.contractTemplate, contractTemplatesAllowed),
-      {
-        companyName: appSettings?.companyName || 'Компания',
-        sellerPhone: formatPhone(getSellerPhone(user, appSettings)),
-        customerName: selectedCustomer.name,
-        customerPhone: selectedCustomer.phone,
-        passportSeries: selectedCustomer.passportSeries,
-        passportNumber: selectedCustomer.passportNumber,
-        passportIssuedBy: selectedCustomer.passportIssuedBy,
-        customerAddress: selectedCustomer.address,
-        guarantorName: sale.guarantorName,
-        guarantorPhone: sale.guarantorPhone,
-        productName: sale.productName,
-        totalAmount: sale.totalAmount,
-        downPayment: sale.downPayment,
-        installments: sale.installments,
-        monthlyPayment: sale.paymentPlan?.[0]?.amount || 0,
-        startDate: sale.startDate,
-        rows: contractScheduleRows(sale),
-      }
+      contractDataFor(createdSale)
     );
 
     return (
@@ -956,6 +975,7 @@ if (mode === 'CASH') {
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+      if (createdSale) setContractPdfProperties(pdf, contractTitleFor(createdSale), appSettings?.companyName);
       return pdf.output('blob');
     } finally {
       element.style.display = originalStyle.display;
@@ -986,11 +1006,11 @@ if (mode === 'CASH') {
     try {
       const blob = await generatePDFBlob();
       setSendStage('upload');
-      const dateStr = new Date(createdSale.startDate || Date.now()).toISOString().split('T')[0].replace(/-/g, '');
-      const safeProductName = (createdSale.productName || 'Contract')
-        .replace(/[^a-zA-Z0-9]/g, '_')
-        .substring(0, 20);
-      const fileName = `${safeProductName}_${dateStr}.pdf`;
+      // Имя файла клиент видит в WhatsApp раньше самого документа
+      const fileName = contractFileName({
+        number: contractNumberFor(sales, createdSale),
+        customerName: selectedCustomer.name,
+      });
 
       const cleanPhone = selectedCustomer.phone?.replace(/\D/g, '') || '';
       const whatsappPhone = cleanPhone.startsWith('8')
@@ -1069,41 +1089,15 @@ if (mode === 'CASH') {
 
   const handlePrintContract = () => {
     if (!createdSale) return;
-    const sale = createdSale;
-    const customer = selectedCustomer;
-    const companyName = appSettings?.companyName || "Компания";
-    const sellerPhone = getSellerPhone(user, appSettings);
-    const hasGuarantor = !!sale.guarantorName;
-
-    const printScheduleRows = contractScheduleRows(sale);
-
     // Разметка обеих форм живёт в src/contractTemplates.ts: договор печатают из
     // нескольких мест, и копии вёрстки разошлись бы на первой же правке.
     const htmlContent = buildContractHtml(
       resolveContractTemplate(appSettings?.contractTemplate, contractTemplatesAllowed),
-      {
-        companyName,
-        sellerPhone: formatPhone(sellerPhone),
-        customerName: customer?.name,
-        customerPhone: customer?.phone,
-        passportSeries: customer?.passportSeries,
-        passportNumber: customer?.passportNumber,
-        passportIssuedBy: customer?.passportIssuedBy,
-        customerAddress: customer?.address,
-        guarantorName: sale.guarantorName,
-        guarantorPhone: sale.guarantorPhone,
-        productName: sale.productName,
-        totalAmount: sale.totalAmount,
-        downPayment: sale.downPayment,
-        installments: sale.installments,
-        monthlyPayment: sale.paymentPlan[0]?.amount || 0,
-        startDate: sale.startDate,
-        rows: printScheduleRows,
-      }
+      contractDataFor(createdSale)
     );
 
     // Просмотром поверх приложения, а не новым окном — см. printContract в Contracts.tsx.
-    openPrintPreview(htmlContent, { title: `Договор · ${customer?.name || sale.productName}` });
+    openPrintPreview(htmlContent, { title: contractTitleFor(createdSale) });
   };
 
   return (

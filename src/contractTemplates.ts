@@ -171,7 +171,7 @@ const modernBody = (d: ContractData): string => {
       <div class="section">
         <div class="field-row">
           <span><span class="field-label">Продавец:</span> ${escapeHtml(d.companyName)}</span>
-          <span>Тел: ${escapeHtml(d.sellerPhone)}</span>
+          <span>Тел: ${orBlank(d.sellerPhone, PHONE_LINE)}</span>
         </div>
         <div class="field-row">
           <span><span class="field-label">Покупатель:</span> ${orBlank(d.customerName, PERSON_LINE)}</span>
@@ -350,7 +350,7 @@ const classicBody = (d: ContractData): string => {
     <div class="clause"><b>6. Адреса и реквизиты сторон</b></div>
 
     <p class="para">
-      Продавец: ${escapeHtml(d.companyName)} — Тел.: ${escapeHtml(d.sellerPhone)}${
+      Продавец: ${escapeHtml(d.companyName)} — Тел.: ${orBlank(d.sellerPhone, PHONE_LINE)}${
         d.sellerExtraPhone ? ` — Тел.: ${escapeHtml(d.sellerExtraPhone)} (WhatsApp)` : ''
       }
     </p>

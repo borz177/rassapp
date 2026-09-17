@@ -286,15 +286,54 @@ export const formatDate = (dateString: string | undefined | null): string => {
   return date.toLocaleDateString('ru-RU');
 };
 
-export const getSellerPhone = (user: any): string => {
-  // 🔥 Читаем ПРЯМО СЕЙЧАС из localStorage
-  const appSettings = JSON.parse(localStorage.getItem('appSettings') || '{}');
-  
-  // Приоритет: user.phone → appSettings.sellerPhone → appSettings.companyPhone → заглушка
-  return user?.phone || 
-         appSettings?.sellerPhone || 
-         appSettings?.companyPhone || 
-         "+7 (___) ___-__-__";
+/**
+ * Телефон продавца для договора — одно правило на все места, откуда договор
+ * уходит: оформление, приход, печать из списка и бланк в настройках.
+ *
+ * Правил было четыре. Экран оформления читал сохранённую в браузере копию
+ * настроек, а профиль туда пишет номер, только если его меняли на этом же
+ * устройстве, — и в договор попадала пустая маска вместо номера, хотя при
+ * оприходовании тот же договор уходил с номером.
+ *
+ * Порядок: номер из профиля → номер продавца из настроек → старая копия в
+ * браузере (на случай, если профиль ещё не догрузился). Нет номера — пустая
+ * строка, а не маска «+7 (___)»: договор сам нарисует линию под запись.
+ */
+export const getSellerPhone = (user: any, appSettings?: { sellerPhone?: string } | null): string => {
+  let stored: any = {};
+  try {
+    stored = JSON.parse(localStorage.getItem('appSettings') || '{}') || {};
+  } catch {
+    stored = {};
+  }
+  return String(
+    user?.phone
+    || appSettings?.sellerPhone
+    || stored.sellerPhone
+    || stored.companyPhone
+    || ''
+  ).trim();
+};
+
+/**
+ * Российский номер в привычном виде: +7 (965) 777-70-27.
+ *
+ * Номер в базе хранится как ввели — «89657777027», «79657777027», «9657777027».
+ * В документе он должен выглядеть одинаково, чей бы он ни был. Непохожий на
+ * российский номер (иностранный, с добавочным) показываем как есть. Пустой —
+ * пустая строка: маска в договоре стояла бы на месте, где пишут от руки.
+ */
+export const formatRuPhone = (raw: string | undefined | null): string => {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  const digits = value.replace(/\D/g, '');
+  const national = digits.length === 11 && (digits[0] === '7' || digits[0] === '8')
+    ? digits.slice(1)
+    : digits.length === 10 && digits[0] === '9'
+      ? digits
+      : null;
+  if (!national) return value;
+  return `+7 (${national.slice(0, 3)}) ${national.slice(3, 6)}-${national.slice(6, 8)}-${national.slice(8)}`;
 };
 
 // Распределение УБЫТКА пула по принципу аль-гунм биль-гурм (الغنم بالغرم).
@@ -968,6 +1007,24 @@ export const contractNumbers = (
     })
     .forEach((sale, idx) => { map[sale.id] = String(idx + 1).padStart(4, '0'); });
   return map;
+};
+
+/**
+ * Номер одного договора — тот же, что в списке договоров.
+ *
+ * Только что оформленный договор может ещё не дойти до общего списка: экран
+ * собирает PDF сразу после сохранения, а список обновляется следом. Тогда
+ * договор добавляется к списку на своё место по дате — номер выходит тем же,
+ * каким он станет в списке через мгновение.
+ */
+export const contractNumberFor = (
+  sales: { id: string; startDate: string }[] | undefined,
+  sale: { id?: string; startDate: string } | null | undefined
+): string | undefined => {
+  if (!sale?.id) return undefined;
+  const list = sales || [];
+  const withSale = list.some(s => s.id === sale.id) ? list : [...list, sale as { id: string; startDate: string }];
+  return contractNumbers(withSale)[sale.id];
 };
 
 /**

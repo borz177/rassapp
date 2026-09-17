@@ -3,7 +3,8 @@ import { Sale, Customer, Account, User, AppSettings, Task, Payment } from '../ty
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
 import { buildContractHtml, resolveContractTemplate } from '../src/contractTemplates';
-import { contractNumbers, formatCurrency, formatDate, escapeHtml, calculateSaleOverdue, normalizePhoneForWhatsApp, pluralRu } from '../src/utils';
+import { contractNumbers, formatCurrency, formatDate, escapeHtml, calculateSaleOverdue, normalizePhoneForWhatsApp, pluralRu, getSellerPhone, formatRuPhone } from '../src/utils';
+import { contractDocumentTitle } from '../src/contractPdf';
 import { SuccessCheck, hapticSuccess } from './feedback';
 import { openPrintPreview } from './PrintPreview';
 import UnsyncedMark from './UnsyncedMark';
@@ -593,7 +594,8 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
   const printContract = (sale: Sale) => {
     const customer = customers.find(c => c.id === sale.customerId);
     const companyName = appSettings?.companyName || "Компания";
-    const sellerPhone = user?.phone || "";
+    // То же правило, что при оформлении и приходе: один договор — один телефон продавца
+    const sellerPhone = formatRuPhone(getSellerPhone(user, appSettings));
     const hasGuarantor = !!sale.guarantorName;
 
     // 🔒 Одна таблица "График платежей": плановая дата месяца показывается ТОЛЬКО пока по этому
@@ -665,14 +667,15 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
       {
         companyName,
         sellerPhone,
+        contractNumber: contractNo[sale.id],
         customerName: customer?.name,
-        customerPhone: customer?.phone,
+        customerPhone: formatRuPhone(customer?.phone),
         passportSeries: customer?.passportSeries,
         passportNumber: customer?.passportNumber,
         passportIssuedBy: customer?.passportIssuedBy,
         customerAddress: customer?.address,
         guarantorName: sale.guarantorName,
-        guarantorPhone: sale.guarantorPhone,
+        guarantorPhone: formatRuPhone(sale.guarantorPhone),
         productName: sale.productName,
         totalAmount: sale.totalAmount,
         downPayment: sale.downPayment,
@@ -687,7 +690,9 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
     // и в APK у окна нет кнопки «назад», и выйти можно было только перезапуском.
     // withPrintButton больше не нужен: кнопку «Закрыть» и печать даёт просмотр,
     // а своя автопечать документа открыла бы диалог второй раз.
-    openPrintPreview(htmlContent, { title: `Договор · ${customer?.name || sale.productName}` });
+    openPrintPreview(htmlContent, {
+      title: contractDocumentTitle({ number: contractNo[sale.id], customerName: customer?.name || sale.productName }),
+    });
   };
 
   const ActionMenu = () => {

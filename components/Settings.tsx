@@ -3,7 +3,7 @@ import { Sun, Moon, Monitor } from 'lucide-react';
 import { AppSettings, ViewState, User, NotificationSettings, NotificationEventToggles } from '../types';
 import { ICONS, APP_VERSION, THEMES } from '../constants';
 import ContractTemplatePicker from './ContractTemplatePicker';
-import { getSellerPhone } from '../src/utils';
+import { getSellerPhone, formatRuPhone } from '../src/utils';
 import { PrivacyPolicy, DataProcessingAgreement, ClientDataTerms, PublicOffer } from './LegalDocs';
 import { api } from '../services/api';
 import { offlineStorage } from '../services/offlineStorage';
@@ -684,7 +684,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
             allowPaid={contractTemplatesAllowed}
             value={appSettings.contractTemplate || 'MODERN'}
             companyName={appSettings.companyName || ''}
-            sellerPhone={getSellerPhone(user)}
+            sellerPhone={formatRuPhone(getSellerPhone(user, appSettings))}
             onChange={id => onUpdateSettings({ ...appSettings, contractTemplate: id })}
           />
       </SettingsAccordion>
