@@ -167,7 +167,15 @@ function ModeSwitch<T extends string>({
     raf.current = requestAnimationFrame(tick);
   }, [step]);
 
-  useEffect(() => () => { if (raf.current) cancelAnimationFrame(raf.current); }, []);
+  // Ссылку на цикл обнуляем, а не только отменяем кадр. React в режиме
+  // разработки (StrictMode) снимает компонент и тут же монтирует снова, а ref при
+  // этом сохраняется: с отменённым, но не обнулённым номером kick() считал, что
+  // цикл уже идёт, и больше его не запускал — капсула застывала под первым
+  // режимом и не ехала за выбором.
+  useEffect(() => () => {
+    if (raf.current) cancelAnimationFrame(raf.current);
+    raf.current = 0;
+  }, []);
 
   // Первая расстановка — до отрисовки и без анимации, чтобы капсула не выезжала
   // из угла. Дальше — толчок на каждую смену режима и изменение размеров.
