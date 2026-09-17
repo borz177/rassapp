@@ -1512,6 +1512,7 @@ const investorProfitPayouts = useMemo(() => {
           {showCashTab && (
             <ModeSwitch
               className="w-fit mx-auto"
+              ariaLabel="Раздел счёта"
               value={accountTab}
               onChange={setAccountTab}
               options={[
