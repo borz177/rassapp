@@ -110,6 +110,9 @@ const day = (d: string) => new Date(d).toLocaleDateString('ru-RU');
  * значением она превращает документ в бланк, который будто не заполнили: глаз
  * читает подчёркнутое как место для записи, а не как ответ.
  */
+/** Строк в графике пустого бланка: год рассрочки — самый частый срок. */
+const BLANK_SCHEDULE_ROWS = 12;
+
 /** Сумма или пусто: ноль в бланке — это не сумма, а место под неё. */
 const moneyOrNothing = (n: number | undefined) => (n && Math.abs(n) > 0.005 ? money(n) : undefined);
 
@@ -124,7 +127,12 @@ const orBlank = (value: string | number | undefined, width = '100%') => {
   const text = value === undefined || value === null ? '' : String(value).trim();
   return text
     ? `<span class="filled">${escapeHtml(text)}</span>`
-    : `<span class="blank" style="min-width:${width}"></span>`;
+    // Внутри неразрывный пробел, и он тут не для вида. У пустого inline-block
+    // базовая линия проходит по нижнему краю, поэтому линейка вставала выше
+    // строки, а соседние прочерки из подчёркиваний («Тел: +7 (___)») — ниже: в
+    // одном ряду две линии на разной высоте. С содержимым базовая линия у обоих
+    // общая, и все прочерки в документе идут по одной высоте.
+    : `<span class="blank" style="min-width:${width}">&nbsp;</span>`;
 };
 
 // ─── Современный ────────────────────────────────────────────────────────────
@@ -139,11 +147,11 @@ const modernBody = (d: ContractData): string => {
           <td class="c">${p.paid > 0.01 ? money(p.paid) : ''}</td>
           <td class="c">${p.paid > 0.01 ? money(p.remaining) : ''}</td>
         </tr>`).join('')
-    // В бланке строки выше: его заполняют ручкой, а не печатью, и заодно график
-    // добирает лист до низа — иначе под таблицей оставалась пустая четверть
-    // страницы. В договоре с данными высота прежняя: там строк бывает и пятнадцать.
-    : Array.from({ length: d.isBlank ? 8 : Math.max(1, d.installments) }).map((_, i) => `
-        <tr><td class="c">${i + 1}</td><td class="c" style="height:${d.isBlank ? 52 : 30}px"></td><td></td><td></td></tr>`).join('');
+    // В бланке двенадцать строк — рассрочку чаще всего берут на год, и график
+    // не приходится дочерчивать от руки. Высоту им задаёт .blank-row: клетки
+    // выше обычных, потому что заполняют их ручкой.
+    : Array.from({ length: d.isBlank ? BLANK_SCHEDULE_ROWS : Math.max(1, d.installments) }).map((_, i) => `
+        <tr${d.isBlank ? ' class="blank-row"' : ''}><td class="c">${i + 1}</td><td class="c"${d.isBlank ? '' : ' style="height:30px"'}></td><td></td><td></td></tr>`).join('');
 
   return `
     <h1>ДОГОВОР КУПЛИ-ПРОДАЖИ ТОВАРА В РАССРОЧКУ</h1>
@@ -233,8 +241,13 @@ const MODERN_STYLES = `
   }
   /* Линия под рукописное заполнение: в пустом бланке поля должны читаться как
      место для записи, а не как пропуск в вёрстке. */
-  .contract-sheet .blank { display: inline-block; border-bottom: 1px solid #000; height: 14px; }
+  .contract-sheet .blank { display: inline-block; border-bottom: 1px solid #000; line-height: 1; }
   .contract-sheet .filled { padding: 0 2px; }
+  /* Строки бланка выше обычных: их заполняют ручкой. Высоту задают равные поля,
+     а не height у соседней клетки: на height html2canvas, которым снимается PDF,
+     кладёт номер на базовую линию и прижимает к нижней линейке — на печати ровно,
+     а в файле номер сидит на черте. С полями строка центрируется самой раскладкой. */
+  .contract-sheet tr.blank-row td { padding-top: 10px; padding-bottom: 10px; }
 `;
 
 // ─── Классический ───────────────────────────────────────────────────────────
@@ -245,7 +258,7 @@ const classicBody = (d: ContractData): string => {
   // поэтому частичные оплаты добавляют строки сверх срока рассрочки, а не
   // сжимаются в один месяц. Пока графика нет (договор ещё не проведён) — рисуем
   // пустой бланк на срок рассрочки.
-  const count = d.rows.length > 0 ? d.rows.length : (d.isBlank ? 8 : Math.max(1, d.installments));
+  const count = d.rows.length > 0 ? d.rows.length : (d.isBlank ? BLANK_SCHEDULE_ROWS : Math.max(1, d.installments));
   const rows = Array.from({ length: count }).map((_, i) => {
     const p = d.rows[i];
     return `
@@ -352,7 +365,7 @@ const CLASSIC_STYLES = `
   .contract-sheet .label-line.fill .blank,
   .contract-sheet .label-line.fill .filled { flex: 1; min-width: 0 !important; }
   /* Пустая линия под рукописное заполнение — сплошная, как в типографском бланке */
-  .contract-sheet .blank { display: inline-block; border-bottom: 1px solid #000; height: 14px; }
+  .contract-sheet .blank { display: inline-block; border-bottom: 1px solid #000; line-height: 1; }
   .contract-sheet .filled { padding: 0 4px; }
   .contract-sheet table.schedule { width: 100%; border-collapse: collapse; margin: 10px 0; }
   /* Высоту клетки задают равные поля сверху и снизу, а не height + vertical-align.

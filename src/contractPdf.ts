@@ -16,6 +16,23 @@ import {
 /** Во сколько раз снимок крупнее экранного листа: 794 px × 3 ≈ 290 dpi на A4. */
 const SNAPSHOT_SCALE = 3;
 
+/**
+ * Правка для замера шрифта внутри html2canvas.
+ *
+ * Базовую линию текста библиотека меряет так: ставит в строку текст и рядом
+ * картинку 1×1 с выравниванием по базовой линии. Но сброс стилей Tailwind делает
+ * всем картинкам display: block — картинка уезжает на следующую строку, замер
+ * получается на высоту строки больше, и весь текст в снимке рисуется ниже, чем
+ * лежит на странице (у 12pt — примерно на 10 px). Линейки и рамки рисуются по
+ * настоящим координатам, поэтому прочерки выглядели поднятыми над подписями, а
+ * цифры в таблице — прижатыми к нижней черте.
+ *
+ * Правило задевает только служебную картинку html2canvas (её узнаём по data-адресу)
+ * и живёт ровно на время снимка.
+ */
+const METRICS_FIX_CSS =
+  'img[src^="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP"] { display: inline !important; }';
+
 /** A4 в миллиметрах — в них же считает jsPDF. */
 const PAGE_W_MM = 210;
 const PAGE_H_MM = 297;
@@ -46,6 +63,9 @@ export const contractSheetCanvas = async (
   host.innerHTML = `<style>.contract-sheet, .contract-sheet * { box-sizing: border-box; }
 ${styles}</style>${html}`;
   document.body.appendChild(host);
+  const metricsFix = document.createElement('style');
+  metricsFix.textContent = METRICS_FIX_CSS;
+  document.head.appendChild(metricsFix);
 
   try {
     // Кадр на раскладку и подгрузку шрифтов: без паузы снимок иногда выходит
@@ -62,6 +82,7 @@ ${styles}</style>${html}`;
     });
   } finally {
     host.remove();
+    metricsFix.remove();
   }
 };
 
