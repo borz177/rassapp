@@ -4,8 +4,8 @@ import { api } from '../services/api';
 import ModalPortal from './ModalPortal';
 import { SubscriptionPlan, User, PlanLimits } from '../types';
 
-// ← Добавьте этот маппинг, если его нет в файле
-const PLAN_NAMES: { START: string; BUSINESS: string; STANDARD: string; BUSINESS_PRO: string } = {
+const PLAN_NAMES: Record<string, string> = {
+  TRIAL: 'Пробный',
   START: 'Старт',
   STANDARD: 'Стандарт',
   BUSINESS: 'Бизнес',
@@ -184,250 +184,310 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
     }
   };
 
-  const plans = [
+  /**
+   * Витрина тарифов.
+   *
+   * Одна спокойная палитра — белый и графит — вместо своего цвета у каждой
+   * карточки: четыре разных фона спорили друг с другом, и глаз не понимал, что
+   * здесь главное. Выделен один тариф — инвертированной карточкой. Цвет остался
+   * только там, где он несёт смысл: точка статуса подписки.
+   *
+   * Кнопка стоит сразу под ценой, а не под списком возможностей: списки разной
+   * длины, и кнопки внизу оказывались на разной высоте. Так все четыре кнопки на
+   * одной линии, а сравнивать тарифы по цене удобнее.
+   */
+  const plans: {
+    name: string;
+    key: SubscriptionPlan;
+    basePrice: number;
+    tagline: string;
+    /** Тариф, возможности которого входят целиком */
+    includes?: string;
+    features: string[];
+    featured?: boolean;
+    badge?: string;
+  }[] = [
     {
-      name: "Старт",
-      key: "START",
+      name: 'Старт',
+      key: 'START',
       basePrice: 990,
+      tagline: 'Чтобы начать вести учёт',
       features: [
-        "Базовый учет продаж",
-        "1 инвестор",
-        "База клиентов (до 100)",
-        "Учет расходов",
+        'Базовый учет продаж',
+        '1 инвестор',
+        'База клиентов (до 100)',
+        'Учет расходов',
       ],
-      color: "bg-slate-100 dark:bg-slate-700",
-      textColor: "text-slate-800 dark:text-white",
-      btnColor: "bg-slate-800",
-      highlight: false
     },
     {
-      name: "Стандарт",
-      key: "STANDARD",
+      name: 'Стандарт',
+      key: 'STANDARD',
       basePrice: 1490,
+      tagline: 'Для растущего дела',
+      includes: 'Старт',
       features: [
-        "Все функции Старт",
-        "5 инвесторов",
-        "Печать договоров (PDF)",
-        "База клиентов (до 1000)"
+        '5 инвесторов',
+        'Печать договоров (PDF)',
+        'База клиентов (до 1000)',
       ],
-      color: "bg-indigo-50 dark:bg-indigo-950/40 border-2 border-indigo-500",
-      textColor: "text-indigo-900 dark:text-indigo-300",
-      btnColor: "bg-indigo-600",
-      highlight: true,
-      badge: "Популярный"
+      featured: true,
+      badge: 'Популярный',
     },
     {
-      name: "Бизнес",
-      key: "BUSINESS",
+      name: 'Бизнес',
+      key: 'BUSINESS',
       basePrice: 1990,
+      tagline: 'Для команды с сотрудниками',
+      includes: 'Стандарт',
       features: [
-        "Все функции Стандарт",
-        "Безлимит инвесторов",
-        "Авто-напоминания WhatsApp",
-        "Сотрудники и права доступа",
-        "Приоритетная поддержка"
+        'Безлимит инвесторов',
+        'Авто-напоминания WhatsApp',
+        'Сотрудники и права доступа',
+        'Приоритетная поддержка',
       ],
-      color: "bg-gradient-to-br from-slate-900 to-slate-800 text-white",
-      textColor: "text-white",
-      btnColor: "bg-white text-slate-900",
-      highlight: false
     },
     {
-      name: "Бизнес Pro",
-      key: "BUSINESS_PRO",
+      name: 'Бизнес Pro',
+      key: 'BUSINESS_PRO',
       basePrice: 2990,
+      tagline: 'Магазин, склад и общая касса',
+      includes: 'Бизнес',
       features: [
-        "Все функции Бизнес",
         // Магазин — самое крупное из того, что добавляет тариф, поэтому
         // стоит первым: человек читает список сверху и редко дочитывает до конца.
-        "Магазин: продажи за наличные и в долг, касса с корзиной и чеком",
-        "Склад: товары с фото, остатки по нескольким складам",
-        "Приход от поставщиков, перемещение, списание, инвентаризация",
-        "Журнал документов и история по каждому товару",
-        "Отчёт по рознице: выручка, маржа, залежавшийся товар",
-        "Модуль «Партнеры» (поставщики)",
-        "Учёт долгов по закупу",
-        "Общая касса — несколько инвесторов на одном счёте",
-        "Автоматическое распределение прибыли по вложению и % каждого инвестора"
+        'Магазин: продажи за наличные и в долг, касса с корзиной и чеком',
+        'Склад: товары с фото, остатки по нескольким складам',
+        'Приход от поставщиков, перемещение, списание, инвентаризация',
+        'Журнал документов и история по каждому товару',
+        'Отчёт по рознице: выручка, маржа, залежавшийся товар',
+        'Модуль «Партнеры» (поставщики)',
+        'Учёт долгов по закупу',
+        'Общая касса — несколько инвесторов на одном счёте',
+        'Автоматическое распределение прибыли по вложению и % каждого инвестора',
       ],
-      color: "bg-gradient-to-br from-amber-600 to-amber-500 text-white",
-      textColor: "text-white",
-      btnColor: "bg-white text-amber-700",
-      highlight: false
-    }
+    },
   ];
 
+  const rub = (n: number) => n.toLocaleString('ru-RU');
+
+  // 1 день, 2 дня, 5 дней, 21 день, 41 день, 111 дней
+  const daysWord = (n: number) => {
+    const m10 = Math.abs(n) % 10;
+    const m100 = Math.abs(n) % 100;
+    if (m10 === 1 && m100 !== 11) return 'день';
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'дня';
+    return 'дней';
+  };
+
+  const scrollToPlans = () =>
+    document.getElementById('tariff-plans')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const Tick = ({ className }: { className: string }) => (
+    <svg className={`shrink-0 mt-[3px] ${className}`} width="14" height="14" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+
+  const statusDot = subStatus.expired ? 'bg-rose-500' : subStatus.isWarning ? 'bg-amber-500' : 'bg-emerald-500';
+
   return (
-    <div className="space-y-6 animate-fade-in pb-20 relative">
-      <header className="text-center">
-        <h2 className="text-3xl font-bold text-slate-800 dark:text-white">Тарифы</h2>
-        <p className="text-slate-500 dark:text-slate-400 mt-2">Выберите подходящий план для вашего бизнеса</p>
+    <div className="space-y-8 sm:space-y-10 animate-fade-in pb-20 relative">
+      <header className="text-center max-w-2xl mx-auto pt-2 px-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+          Тарифы
+        </p>
+        <h2 className="mt-3 text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
+          Выберите план для вашего бизнеса
+        </h2>
+        <p className="mt-3 text-sm sm:text-base text-slate-500 dark:text-slate-400">
+          Чем дольше срок — тем ниже цена за месяц.
+        </p>
       </header>
 
-      {/* 🔹 Блок статуса текущей подписки */}
+      {/* Статус подписки — одной строкой, цвет только у точки */}
       {user?.subscription && (
-        <div className={`max-w-2xl mx-auto px-2 p-4 rounded-2xl border-2 flex items-center gap-3 ${
-          subStatus.expired
-            ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-900/50 text-red-800 dark:text-red-400'
-            : subStatus.isWarning
-              ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-900/50 text-amber-800 dark:text-amber-400'
-              : 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-400'
-        }`}>
-          <div className={`p-2 rounded-full ${
-            subStatus.expired ? 'bg-red-100 dark:bg-red-900/50' : subStatus.isWarning ? 'bg-amber-100 dark:bg-amber-900/50' : 'bg-emerald-100 dark:bg-emerald-900/50'
-          }`}>
-            {subStatus.expired ? ICONS.Alert : subStatus.isWarning ? ICONS.Clock : ICONS.CheckCircle}
-          </div>
-          <div className="flex-1">
-            <p className="font-bold text-sm">
-              {subStatus.expired
-                ? 'Подписка истекла'
-                : subStatus.isWarning
-                  ? `Внимание: осталось ${subStatus.daysLeft} дн.`
-                  : `Активен тариф "${subStatus.planName}"`}
+        <div className="flex justify-center px-2">
+          <div
+            data-testid="subscription-status"
+            className="inline-flex max-w-full items-center gap-3 rounded-full border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800/60 py-2 pl-4 pr-2 shadow-sm"
+          >
+            <span className={`h-2 w-2 shrink-0 rounded-full ${statusDot}`} />
+            <p className="min-w-0 text-sm text-slate-600 dark:text-slate-300">
+              {subStatus.expired ? (
+                <>
+                  Тариф <span className="font-semibold text-slate-900 dark:text-white">«{subStatus.planName}»</span> истёк
+                </>
+              ) : (
+                <>
+                  Тариф <span className="font-semibold text-slate-900 dark:text-white">«{subStatus.planName}»</span>
+                  <span className="text-slate-400 dark:text-slate-500"> · </span>
+                  осталось {subStatus.daysLeft} {daysWord(subStatus.daysLeft)}
+                </>
+              )}
             </p>
-            {!subStatus.expired && (
-              <p className="text-xs opacity-80">
-                До окончания: {subStatus.daysLeft} {subStatus.daysLeft === 1 ? 'день' : subStatus.daysLeft >= 2 && subStatus.daysLeft <= 4 ? 'дня' : 'дней'}
-              </p>
+            {subStatus.expired || subStatus.isWarning ? (
+              <button
+                onClick={scrollToPlans}
+                className="shrink-0 rounded-full bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+              >
+                Продлить
+              </button>
+            ) : (
+              <span className="w-2" />
             )}
           </div>
-          {subStatus.expired && (
-            <button
-              onClick={() => document.querySelector('.grid')?.scrollIntoView({ behavior: 'smooth' })}
-              className="px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 transition"
-            >
-              Продлить
-            </button>
-          )}
         </div>
       )}
 
-      {/* Duration Switcher */}
-      <div className="flex justify-center">
-        <div className="bg-white dark:bg-slate-800 p-1 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 inline-flex">
-          {[1, 3, 6, 12].map((m) => (
-            <button
-              key={m}
-              onClick={() => setDuration(m as any)}
-              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                duration === m
-                  ? 'bg-slate-800 text-white shadow-md'
-                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+      {/* Срок оплаты */}
+      <div className="flex justify-center px-2">
+        <div
+          role="tablist"
+          aria-label="Срок оплаты"
+          className="grid w-full max-w-md grid-cols-4 gap-1 rounded-2xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800/60 p-1 shadow-sm"
+        >
+          {([1, 3, 6, 12] as const).map((m) => {
+            const active = duration === m;
+            const pct = Math.round(getDiscount(m) * 100);
+            return (
+              <button
+                key={m}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setDuration(m)}
+                className={`flex min-h-[46px] flex-col items-center justify-center rounded-xl px-1 text-sm font-semibold transition-colors ${
+                  active
+                    ? 'bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-900'
+                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                <span>{m} мес.</span>
+                {pct > 0 && (
+                  <span className={`text-[10px] font-medium leading-tight ${active ? 'opacity-60' : 'text-slate-400 dark:text-slate-500'}`}>
+                    −{pct}%
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Тарифы */}
+      <div id="tariff-plans" className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-2 md:grid-cols-2 xl:grid-cols-4 lg:gap-5 scroll-mt-6">
+        {plans.map((plan) => {
+          // Базовую цену берём с сервера, встроенная в массив — только запасной вариант.
+          const basePrice = getBasePrice(plan.key, plan.basePrice);
+          const monthlyPrice = calculatePrice(basePrice);
+          const totalPrice = monthlyPrice * duration;
+
+          // План совпадает с текущим и подписка активна / истекла
+          const isCurrentPlan = !subStatus.expired && user?.subscription?.plan === plan.key;
+          const isExpiredPlan = subStatus.expired && user?.subscription?.plan === plan.key;
+
+          const inverted = !!plan.featured;
+          const muted = inverted ? 'text-slate-400' : 'text-slate-500 dark:text-slate-400';
+
+          const badge = isCurrentPlan
+            ? { label: 'Ваш тариф', dot: 'bg-emerald-400' }
+            : isExpiredPlan
+              ? { label: 'Истёк', dot: 'bg-amber-400' }
+              : plan.badge
+                ? { label: plan.badge, dot: '' }
+                : null;
+
+          const button = inverted
+            ? 'bg-white text-slate-900 hover:bg-slate-100'
+            : isCurrentPlan || isExpiredPlan
+              ? 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200'
+              : 'text-slate-900 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-700/50';
+
+          return (
+            <article
+              key={plan.key}
+              data-testid={`plan-${plan.key}`}
+              className={`relative flex flex-col rounded-3xl p-6 sm:p-7 transition-shadow ${
+                inverted
+                  ? 'bg-slate-900 text-white shadow-xl shadow-slate-900/10 ring-1 ring-slate-900 dark:bg-slate-800 dark:ring-slate-500/60'
+                  : 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 hover:shadow-md dark:bg-slate-800/40 dark:text-white dark:ring-slate-700/70'
               }`}
             >
-              {m} мес. {m > 1 && <span className="text-[10px] opacity-70">-{getDiscount(m)*100}%</span>}
-            </button>
-          ))}
-        </div>
+              <div className="flex min-h-[28px] items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold tracking-tight">{plan.name}</h3>
+                {badge && (
+                  <span
+                    className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                      inverted
+                        ? 'bg-white/10 text-white ring-1 ring-inset ring-white/15'
+                        : 'bg-slate-100 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200'
+                    }`}
+                  >
+                    {badge.dot && <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />}
+                    {badge.label}
+                  </span>
+                )}
+              </div>
+              <p className={`mt-1 text-sm ${muted}`}>{plan.tagline}</p>
+
+              <div className="mt-6">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-4xl font-bold tracking-tight tabular-nums">{rub(monthlyPrice)}</span>
+                  <span className={`text-sm font-medium ${muted}`}>₽ / мес</span>
+                </div>
+                <p className={`mt-1.5 min-h-[16px] text-xs tabular-nums ${muted}`}>
+                  {duration > 1 ? (
+                    <>
+                      {basePrice > monthlyPrice && <span className="mr-1.5 line-through opacity-70">{rub(basePrice)} ₽</span>}
+                      {rub(totalPrice)} ₽ за {duration} мес.
+                    </>
+                  ) : (
+                    'Оплата за месяц'
+                  )}
+                </p>
+              </div>
+
+              {/* Продлевать активный тариф можно — кнопка доступна всегда */}
+              <button
+                onClick={() => handleSelectPlan(plan.name, plan.key, monthlyPrice, basePrice)}
+                className={`mt-6 w-full rounded-xl py-3 text-sm font-semibold transition-colors ${button}`}
+              >
+                {isCurrentPlan || isExpiredPlan ? 'Продлить' : 'Выбрать'}
+              </button>
+
+              <div className={`my-6 h-px ${inverted ? 'bg-white/10' : 'bg-slate-100 dark:bg-slate-700/60'}`} />
+
+              {/* Подпись есть у всех карточек — списки начинаются на одной высоте */}
+              <p className={`mb-3 text-xs font-medium ${muted}`}>
+                {plan.includes ? `Всё из «${plan.includes}», а также:` : 'Что входит:'}
+              </p>
+              <ul className="space-y-3">
+                {plan.features.map((feature) => (
+                  <li key={feature} className="flex gap-3 text-sm leading-snug">
+                    <Tick className={inverted ? 'text-white/50' : 'text-slate-400 dark:text-slate-500'} />
+                    <span className={inverted ? 'text-slate-200' : 'text-slate-600 dark:text-slate-300'}>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          );
+        })}
       </div>
 
-      {/* Plans Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto px-2">
-        {plans.map((plan) => {
-  // Базовую цену берём с сервера, встроенная в массив — только запасной вариант.
-  const basePrice = getBasePrice(plan.key, plan.basePrice);
-  const monthlyPrice = calculatePrice(basePrice);
-  const totalPrice = monthlyPrice * duration;
-
-  // 🔥 План совпадает с текущим И подписка активна
-  const isCurrentPlan = !subStatus.expired && user?.subscription?.plan === plan.key;
-  // 🔥 План совпадает, но подписка истекла
-  const isExpiredPlan = subStatus.expired && user?.subscription?.plan === plan.key;
-  // 🔥 План отличается от текущего (апгрейд/даунгрейд)
-  const isDifferentPlan = user?.subscription?.plan !== plan.key;
-
-  return (
-    <div
-      key={plan.name}
-      className={`relative rounded-2xl p-6 shadow-xl transition-transform hover:scale-[1.02] flex flex-col ${plan.color} ${
-        isCurrentPlan ? 'ring-4 ring-emerald-400 ring-offset-2' : 
-        isExpiredPlan ? 'ring-2 ring-amber-400 ring-offset-1' : ''
-      }`}
-    >
-      {plan.badge && !isCurrentPlan && !isExpiredPlan && (
-        <div className="absolute top-0 right-0 bg-indigo-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl">
-          {plan.badge}
-        </div>
-      )}
-
-      {isCurrentPlan && (
-        <div className="absolute top-0 right-0 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl flex items-center gap-1">
-          {ICONS.Check} Активен
-        </div>
-      )}
-
-      {isExpiredPlan && (
-        <div className="absolute top-0 right-0 bg-amber-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl flex items-center gap-1">
-          ⏳ Истёк
-        </div>
-      )}
-
-      <h3 className={`text-xl font-bold mb-2 ${plan.highlight ? 'text-indigo-900' : plan.textColor}`}>
-        {plan.name}
-      </h3>
-
-      <div className="mb-6">
-        <span className={`text-4xl font-bold ${plan.highlight ? 'text-indigo-900' : plan.textColor}`}>
-          {monthlyPrice} ₽
-        </span>
-        <span className={`text-sm opacity-70 ${plan.textColor}`}>/мес</span>
-        {duration > 1 && (
-           <p className={`text-xs mt-1 opacity-60 ${plan.textColor}`}>
-             Оплата сразу: {totalPrice} ₽
-           </p>
-        )}
-      </div>
-
-      <ul className="space-y-3 mb-8 flex-1">
-        {plan.features.map((feature, idx) => (
-          <li key={idx} className="flex items-start gap-2 text-sm">
-            <span className={plan.name === 'Бизнес' || plan.name === 'Бизнес Pro' ? 'text-white' : 'text-emerald-600'}>
-              {ICONS.Check}
-            </span>
-            <span className={`${plan.name === 'Бизнес' ? 'text-slate-300' : plan.name === 'Бизнес Pro' ? 'text-amber-50' : 'text-slate-600 dark:text-slate-300'}`}>
-              {feature}
-            </span>
-          </li>
-        ))}
-      </ul>
-
-      {/* 🔥 Кнопка: доступна всегда, кроме случая, когда это другой план и он активен (опционально) */}
-      <button
-        onClick={() => handleSelectPlan(plan.name, plan.key, monthlyPrice, basePrice)}
-        // ❌ Убрали disabled={isCurrentPlan} — теперь можно продлевать активный тариф
-        className={`w-full py-4 rounded-xl font-bold transition-opacity ${
-          isCurrentPlan 
-            ? 'bg-emerald-600 text-white hover:bg-emerald-700' // активный план — зелёная кнопка
-            : isExpiredPlan
-              ? `${plan.btnColor} hover:opacity-90 ring-2 ring-amber-400`
-              : `${plan.btnColor} hover:opacity-90`
-        }`}
-      >
-        {isCurrentPlan 
-          ? '🔄 Продлить' 
-          : isExpiredPlan 
-            ? '🔄 Продлить' 
-            : 'Выбрать'
-        }
-      </button>
-    </div>
-  );
-})}
-      </div>
-
-      <div className="text-center text-xs text-slate-400 dark:text-slate-500 mt-8">
-        Оплата производится через безопасный шлюз ЮKassa. Активация происходит автоматически после подтверждения платежа.
-      </div>
+      <p className="flex items-center justify-center gap-2 px-4 text-center text-xs text-slate-400 dark:text-slate-500">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+             strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+          <rect x="4" y="11" width="16" height="10" rx="2" />
+          <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+        </svg>
+        Оплата через защищённый шлюз ЮKassa. Тариф включается автоматически после оплаты.
+      </p>
 
       {/* Confirmation Modal */}
       {confirmData && (
         <ModalPortal>
           <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !loading && setConfirmData(null)}>
-              <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 relative overflow-hidden" onClick={e => e.stopPropagation()}>
-
-                  {/* Decorative Background Element */}
-                  <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-50 dark:bg-indigo-950/40 rounded-full opacity-50 pointer-events-none"></div>
+              <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-3xl shadow-2xl ring-1 ring-slate-200 dark:ring-slate-700 p-6 relative overflow-hidden" onClick={e => e.stopPropagation()}>
 
                   <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1">Подтверждение заказа</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Проверьте детали перед оплатой</p>
@@ -486,7 +546,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                           type="checkbox"
                           checked={downgradeAccepted}
                           onChange={(e) => setDowngradeAccepted(e.target.checked)}
-                          className="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
+                          className="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-slate-900 focus:ring-slate-500"
                         />
                         <span className={`text-xs font-medium ${downgrade.hasCritical ? 'text-rose-900 dark:text-rose-300' : 'text-amber-900 dark:text-amber-300'}`}>
                           Я понимаю, что перечисленное отключится, и хочу перейти на этот тариф
@@ -495,7 +555,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                     </div>
                   )}
 
-                  <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-3 border border-slate-100 dark:border-slate-700 mb-6">
+                  <div className="bg-slate-50 dark:bg-slate-900/40 p-4 rounded-2xl space-y-3 border border-slate-100 dark:border-slate-700 mb-6">
                       <div className="flex justify-between items-center">
                           <span className="text-slate-500 dark:text-slate-400 text-sm">Тариф</span>
                           <span className="font-bold text-slate-800 dark:text-white">{confirmData.name}</span>
@@ -507,20 +567,20 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                       <div className="border-t border-slate-200 dark:border-slate-700 my-2"></div>
                       <div className="flex justify-between items-center text-xs text-slate-400 dark:text-slate-500">
                           <span>Цена за месяц</span>
-                          <span>{confirmData.monthlyPrice} ₽</span>
+                          <span className="tabular-nums">{confirmData.monthlyPrice.toLocaleString('ru-RU')} ₽</span>
                       </div>
                       {confirmData.basePrice > confirmData.monthlyPrice && (
-                          <div className="flex justify-between items-center text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                          <div className="flex justify-between items-center text-xs text-slate-500 dark:text-slate-400 font-medium">
                               {/* Процент берём из тарифной сетки, а не пересчитываем обратно из цены:
                                   месячная цена округляется вверх (Math.ceil), и обратный расчёт давал
                                   дробь вида «4.94949494949495%» прямо в окне оплаты. */}
                               <span>Скидка ({getDiscount(duration) * 100}%)</span>
-                              <span>-{(confirmData.basePrice * duration - confirmData.monthlyPrice * duration).toLocaleString()} ₽</span>
+                              <span className="tabular-nums">−{(confirmData.basePrice * duration - confirmData.monthlyPrice * duration).toLocaleString('ru-RU')} ₽</span>
                           </div>
                       )}
                       <div className="flex justify-between items-end pt-2">
                           <span className="text-slate-800 dark:text-white font-bold">Итого к оплате:</span>
-                          <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{(confirmData.monthlyPrice * duration).toLocaleString()} ₽</span>
+                          <span className="text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-white">{(confirmData.monthlyPrice * duration).toLocaleString('ru-RU')} ₽</span>
                       </div>
                   </div>
 
@@ -529,11 +589,11 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                           onClick={proceedToPayment}
                           // Кнопка неактивна, пока человек не подтвердил, что видел список потерь.
                           disabled={!!loading || (!!downgrade && !downgradeAccepted)}
-                          className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                          className="w-full py-3.5 bg-slate-900 text-white dark:bg-white dark:text-slate-900 rounded-xl font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors flex justify-center items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                           {loading ? (
                               <>
-                                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <svg className="animate-spin h-5 w-5 text-current" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                   </svg>
@@ -554,7 +614,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                   </div>
 
                   <div className="mt-4 flex justify-center opacity-50">
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500">Безопасный платеж • SSL Encrypted</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">Защищённый платёж · ЮKassa</span>
                   </div>
               </div>
           </div>
