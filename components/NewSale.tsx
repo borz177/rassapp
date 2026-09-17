@@ -11,6 +11,7 @@ import { sendWhatsAppFile } from '../services/whatsapp';
 import { api } from '../services/api';
 import { getSellerPhone, escapeHtml, formatDate, addMonthsClamped, stockOnWarehouse, formatCurrency } from '../src/utils';
 import { buildContractHtml, buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
+import { withHtml2canvasTextFix } from '../src/contractPdf';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } from './feedback';
 import { openPrintPreview } from './PrintPreview';
@@ -943,12 +944,13 @@ if (mode === 'CASH') {
 
     try {
       await new Promise(resolve => setTimeout(resolve, 300));
-      const canvas = await html2canvas(element, {
+      // Через правку замера шрифта: без неё текст в PDF съезжает вниз со строк
+      const canvas = await withHtml2canvasTextFix<HTMLCanvasElement>(() => html2canvas(element, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff'
-      });
+      }));
       const imgData = canvas.toDataURL('image/jpeg', 0.8);
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();

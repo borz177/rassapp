@@ -7,6 +7,7 @@ import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
 import { getInvestorAccount, retailRemaining } from '../src/utils';
 import { buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
+import { withHtml2canvasTextFix } from '../src/contractPdf';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, type SendStage } from './feedback';
 
@@ -288,14 +289,15 @@ const isConfirmingRef = useRef(false);
     document.body.appendChild(clonedElement);
     try {
       await new Promise(resolve => setTimeout(resolve, 300));
-      const canvas = await html2canvas(clonedElement, {
+      // Через правку замера шрифта: без неё текст в PDF съезжает вниз со строк
+      const canvas = await withHtml2canvasTextFix<HTMLCanvasElement>(() => html2canvas(clonedElement, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
         scrollX: 0,
         scrollY: 0
-      });
+      }));
       const imgData = canvas.toDataURL('image/jpeg', 0.9);
       const pdf = new jsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();

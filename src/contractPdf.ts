@@ -33,6 +33,21 @@ const SNAPSHOT_SCALE = 3;
 const METRICS_FIX_CSS =
   'img[src^="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP"] { display: inline !important; }';
 
+/**
+ * Снимок html2canvas с правильно посаженным текстом. Через него должен идти
+ * каждый снимок договора в приложении — иначе в PDF текст съезжает вниз.
+ */
+export const withHtml2canvasTextFix = async <T>(run: () => Promise<T>): Promise<T> => {
+  const style = document.createElement('style');
+  style.textContent = METRICS_FIX_CSS;
+  document.head.appendChild(style);
+  try {
+    return await run();
+  } finally {
+    style.remove();
+  }
+};
+
 /** A4 в миллиметрах — в них же считает jsPDF. */
 const PAGE_W_MM = 210;
 const PAGE_H_MM = 297;
@@ -63,26 +78,22 @@ export const contractSheetCanvas = async (
   host.innerHTML = `<style>.contract-sheet, .contract-sheet * { box-sizing: border-box; }
 ${styles}</style>${html}`;
   document.body.appendChild(host);
-  const metricsFix = document.createElement('style');
-  metricsFix.textContent = METRICS_FIX_CSS;
-  document.head.appendChild(metricsFix);
 
   try {
     // Кадр на раскладку и подгрузку шрифтов: без паузы снимок иногда выходит
     // с ненабранным текстом.
     await new Promise(resolve => setTimeout(resolve, 150));
     if ((document as any).fonts?.ready) await (document as any).fonts.ready.catch(() => {});
-    return await html2canvas(host, {
+    return await withHtml2canvasTextFix(() => html2canvas(host, {
       scale: SNAPSHOT_SCALE,
       backgroundColor: '#ffffff',
       useCORS: true,
       logging: false,
       scrollX: 0,
       scrollY: 0,
-    });
+    }));
   } finally {
     host.remove();
-    metricsFix.remove();
   }
 };
 
