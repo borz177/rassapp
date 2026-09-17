@@ -189,8 +189,9 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
    *
    * Одна спокойная палитра — белый и графит — вместо своего цвета у каждой
    * карточки: четыре разных фона спорили друг с другом, и глаз не понимал, что
-   * здесь главное. Выделен один тариф — инвертированной карточкой. Цвет остался
-   * только там, где он несёт смысл: точка статуса подписки.
+   * здесь главное. «Популярный» выделен графитовой карточкой, старший тариф
+   * «Бизнес Pro» — золотой: его узнают по цвету. Остальной цвет — только точка
+   * статуса подписки.
    *
    * Кнопка стоит сразу под ценой, а не под списком возможностей: списки разной
    * длины, и кнопки внизу оказывались на разной высоте. Так все четыре кнопки на
@@ -205,6 +206,8 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
     includes?: string;
     features: string[];
     featured?: boolean;
+    /** Старший тариф — золотая карточка */
+    gold?: boolean;
     badge?: string;
   }[] = [
     {
@@ -251,6 +254,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
       key: 'BUSINESS_PRO',
       basePrice: 2990,
       tagline: 'Магазин, склад и общая касса',
+      gold: true,
       includes: 'Бизнес',
       features: [
         // Магазин — самое крупное из того, что добавляет тариф, поэтому
@@ -386,42 +390,65 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
           const isCurrentPlan = !subStatus.expired && user?.subscription?.plan === plan.key;
           const isExpiredPlan = subStatus.expired && user?.subscription?.plan === plan.key;
 
-          const inverted = !!plan.featured;
-          const muted = inverted ? 'text-slate-400' : 'text-slate-500 dark:text-slate-400';
+          // Три вида карточки: обычная, графитовая («Популярный») и золотая
+          // («Бизнес Pro» — старший тариф узнаётся по цвету, как и раньше).
+          const look = plan.gold ? 'gold' : plan.featured ? 'dark' : 'plain';
+          const tone = {
+            plain: {
+              card: 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 hover:shadow-md dark:bg-slate-800/40 dark:text-white dark:ring-slate-700/70',
+              muted: 'text-slate-500 dark:text-slate-400',
+              pill: 'bg-slate-100 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200',
+              divider: 'bg-slate-100 dark:bg-slate-700/60',
+              tick: 'text-slate-400 dark:text-slate-500',
+              feature: 'text-slate-600 dark:text-slate-300',
+            },
+            dark: {
+              card: 'bg-slate-900 text-white shadow-xl shadow-slate-900/10 ring-1 ring-slate-900 dark:bg-slate-800 dark:ring-slate-500/60',
+              muted: 'text-slate-400',
+              pill: 'bg-white/10 text-white ring-1 ring-inset ring-white/15',
+              divider: 'bg-white/10',
+              tick: 'text-white/50',
+              feature: 'text-slate-200',
+            },
+            gold: {
+              // Те же оттенки, что были у карточки раньше: светлее amber-500 белый текст хуже читается
+              card: 'bg-gradient-to-br from-amber-600 to-amber-500 text-white shadow-xl shadow-amber-600/20 ring-1 ring-amber-500/60 dark:shadow-amber-900/30',
+              muted: 'text-amber-50/85',
+              pill: 'bg-white/20 text-white ring-1 ring-inset ring-white/30',
+              divider: 'bg-white/25',
+              tick: 'text-white/80',
+              feature: 'text-white',
+            },
+          }[look];
+          const muted = tone.muted;
 
           const badge = isCurrentPlan
-            ? { label: 'Ваш тариф', dot: 'bg-emerald-400' }
+            ? { label: 'Ваш тариф', dot: look === 'gold' ? 'bg-white' : 'bg-emerald-400' }
             : isExpiredPlan
-              ? { label: 'Истёк', dot: 'bg-amber-400' }
+              ? { label: 'Истёк', dot: look === 'gold' ? 'bg-white' : 'bg-amber-400' }
               : plan.badge
                 ? { label: plan.badge, dot: '' }
                 : null;
 
-          const button = inverted
-            ? 'bg-white text-slate-900 hover:bg-slate-100'
-            : isCurrentPlan || isExpiredPlan
-              ? 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200'
-              : 'text-slate-900 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-700/50';
+          const button = look === 'gold'
+            ? 'bg-white text-amber-700 hover:bg-amber-50'
+            : look === 'dark'
+              ? 'bg-white text-slate-900 hover:bg-slate-100'
+              : isCurrentPlan || isExpiredPlan
+                ? 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200'
+                : 'text-slate-900 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 dark:text-white dark:ring-slate-600 dark:hover:bg-slate-700/50';
 
           return (
             <article
               key={plan.key}
               data-testid={`plan-${plan.key}`}
-              className={`relative flex flex-col rounded-3xl p-6 sm:p-7 transition-shadow ${
-                inverted
-                  ? 'bg-slate-900 text-white shadow-xl shadow-slate-900/10 ring-1 ring-slate-900 dark:bg-slate-800 dark:ring-slate-500/60'
-                  : 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200 hover:shadow-md dark:bg-slate-800/40 dark:text-white dark:ring-slate-700/70'
-              }`}
+              className={`relative flex flex-col rounded-3xl p-6 sm:p-7 transition-shadow ${tone.card}`}
             >
               <div className="flex min-h-[28px] items-center justify-between gap-3">
                 <h3 className="text-lg font-semibold tracking-tight">{plan.name}</h3>
                 {badge && (
                   <span
-                    className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                      inverted
-                        ? 'bg-white/10 text-white ring-1 ring-inset ring-white/15'
-                        : 'bg-slate-100 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200'
-                    }`}
+                    className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone.pill}`}
                   >
                     {badge.dot && <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />}
                     {badge.label}
@@ -455,7 +482,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                 {isCurrentPlan || isExpiredPlan ? 'Продлить' : 'Выбрать'}
               </button>
 
-              <div className={`my-6 h-px ${inverted ? 'bg-white/10' : 'bg-slate-100 dark:bg-slate-700/60'}`} />
+              <div className={`my-6 h-px ${tone.divider}`} />
 
               {/* Подпись есть у всех карточек — списки начинаются на одной высоте */}
               <p className={`mb-3 text-xs font-medium ${muted}`}>
@@ -464,8 +491,8 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
               <ul className="space-y-3">
                 {plan.features.map((feature) => (
                   <li key={feature} className="flex gap-3 text-sm leading-snug">
-                    <Tick className={inverted ? 'text-white/50' : 'text-slate-400 dark:text-slate-500'} />
-                    <span className={inverted ? 'text-slate-200' : 'text-slate-600 dark:text-slate-300'}>{feature}</span>
+                    <Tick className={tone.tick} />
+                    <span className={tone.feature}>{feature}</span>
                   </li>
                 ))}
               </ul>
