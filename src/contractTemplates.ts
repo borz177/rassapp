@@ -103,13 +103,6 @@ const escapeHtml = (value: unknown): string =>
 const money = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₽`;
 const day = (d: string) => new Date(d).toLocaleDateString('ru-RU');
 
-/**
- * Значение — или пустая линия под рукописное заполнение.
- *
- * Черта нужна ровно там, где писать будут от руки. Под уже подставленным
- * значением она превращает документ в бланк, который будто не заполнили: глаз
- * читает подчёркнутое как место для записи, а не как ответ.
- */
 /** Строк в графике пустого бланка: год рассрочки — самый частый срок. */
 const BLANK_SCHEDULE_ROWS = 12;
 
@@ -123,13 +116,29 @@ const dayOrNothing = (value: string | undefined) => {
   return Number.isNaN(parsed.getTime()) ? undefined : day(value);
 };
 
+/**
+ * Длина линий под ФИО и телефон. Одинаковые у покупателя и поручителя, чтобы
+ * строки стояли одна под другой ровным столбцом. Раньше пустой телефон печатался
+ * маской «+7 (___) ___-__-__»: она диктовала формат и стояла на другой высоте,
+ * чем линии остальных полей.
+ */
+const PERSON_LINE = '300px';
+const PHONE_LINE = '170px';
+
+/**
+ * Значение — или пустая линия под рукописное заполнение.
+ *
+ * Черта нужна ровно там, где писать будут от руки. Под уже подставленным
+ * значением она превращает документ в бланк, который будто не заполнили: глаз
+ * читает подчёркнутое как место для записи, а не как ответ.
+ */
 const orBlank = (value: string | number | undefined, width = '100%') => {
   const text = value === undefined || value === null ? '' : String(value).trim();
   return text
     ? `<span class="filled">${escapeHtml(text)}</span>`
     // Внутри неразрывный пробел, и он тут не для вида. У пустого inline-block
     // базовая линия проходит по нижнему краю, поэтому линейка вставала выше
-    // строки, а соседние прочерки из подчёркиваний («Тел: +7 (___)») — ниже: в
+    // строки, а соседние прочерки из подчёркиваний («20___ г.») — ниже: в
     // одном ряду две линии на разной высоте. С содержимым базовая линия у обоих
     // общая, и все прочерки в документе идут по одной высоте.
     : `<span class="blank" style="min-width:${width}">&nbsp;</span>`;
@@ -138,7 +147,9 @@ const orBlank = (value: string | number | undefined, width = '100%') => {
 // ─── Современный ────────────────────────────────────────────────────────────
 
 const modernBody = (d: ContractData): string => {
-  const hasGuarantor = !!d.guarantorName;
+  // В пустом бланке место под поручителя есть всегда: заранее не знаешь, кому
+  // из покупателей он понадобится, а дописывать строку от руки — не по-деловому.
+  const hasGuarantor = !!d.guarantorName || !!d.isBlank;
   const rows = d.rows.length > 0
     ? d.rows.map((p, i) => `
         <tr>
@@ -163,10 +174,13 @@ const modernBody = (d: ContractData): string => {
           <span>Тел: ${escapeHtml(d.sellerPhone)}</span>
         </div>
         <div class="field-row">
-          <span><span class="field-label">Покупатель:</span> ${d.customerName ? escapeHtml(d.customerName) : '__________________'}</span>
-          <span>Тел: ${d.customerPhone ? escapeHtml(d.customerPhone) : '+7 (___) ___-__-__'}</span>
+          <span><span class="field-label">Покупатель:</span> ${orBlank(d.customerName, PERSON_LINE)}</span>
+          <span>Тел: ${orBlank(d.customerPhone, PHONE_LINE)}</span>
         </div>
-        ${hasGuarantor ? `<div class="field-row"><span><span class="field-label">Поручитель:</span> ${escapeHtml(d.guarantorName)}</span><span>Тел: ${escapeHtml(d.guarantorPhone || '')}</span></div>` : ''}
+        ${hasGuarantor ? `<div class="field-row">
+          <span><span class="field-label">Поручитель:</span> ${orBlank(d.guarantorName, PERSON_LINE)}</span>
+          <span>Тел: ${orBlank(d.guarantorPhone, PHONE_LINE)}</span>
+        </div>` : ''}
       </div>
       <div class="section">
         <div><span class="field-label">Товар:</span> ${orBlank(d.productName, '320px')}</div>
@@ -247,7 +261,7 @@ const MODERN_STYLES = `
      а не height у соседней клетки: на height html2canvas, которым снимается PDF,
      кладёт номер на базовую линию и прижимает к нижней линейке — на печати ровно,
      а в файле номер сидит на черте. С полями строка центрируется самой раскладкой. */
-  .contract-sheet tr.blank-row td { padding-top: 10px; padding-bottom: 10px; }
+  .contract-sheet tr.blank-row td { padding-top: 9px; padding-bottom: 9px; }
 `;
 
 // ─── Классический ───────────────────────────────────────────────────────────
