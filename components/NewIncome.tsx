@@ -7,7 +7,7 @@ import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
 import { getInvestorAccount, retailRemaining, getSellerPhone, formatRuPhone, contractNumberFor } from '../src/utils';
 import { buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
-import { withHtml2canvasTextFix, contractDocumentTitle, contractFileName, setContractPdfProperties } from '../src/contractPdf';
+import { withHtml2canvasTextFix, paymentDocumentTitle, pdfFileName, setContractPdfProperties } from '../src/contractPdf';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, type SendStage } from './feedback';
 
@@ -292,11 +292,7 @@ const isConfirmingRef = useRef(false);
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-      setContractPdfProperties(pdf, contractDocumentTitle({
-        number: contractNumberFor(sales, sale),
-        customerName: customer.name,
-        paymentDate,
-      }), appSettings?.companyName);
+      setContractPdfProperties(pdf, paymentDocumentTitle(customer.name), appSettings?.companyName);
       return pdf.output('blob');
     } finally {
       document.body.removeChild(clonedElement);
@@ -405,14 +401,8 @@ const commonData = {
             setSendStage('pdf');
             const pdfBlob = await generateContractPDF(selectedSale, selectedCustomer, numAmount, finalDate);
             setSendStage('upload');
-            // «Договор №0042 — Иванов Иван — оплата 17.09.2026.pdf»: у клиента
-            // таких файлов за срок рассрочки набирается несколько, и различать
-            // их нужно по имени, не открывая.
-            const fileName = contractFileName({
-              number: contractNumberFor(sales, selectedSale),
-              customerName: selectedCustomer.name,
-              paymentDate: date,
-            });
+            // «Оплата — Иванов Иван.pdf»: короткое имя целиком помещается в строку чата
+            const fileName = pdfFileName(paymentDocumentTitle(selectedCustomer.name));
             const success = await sendWhatsAppFile(
               appSettings.whatsapp.idInstance,
               appSettings.whatsapp.apiTokenInstance,

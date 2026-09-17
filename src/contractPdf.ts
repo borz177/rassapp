@@ -135,42 +135,45 @@ export const contractPdfBlob = async (
 export const safeFileName = (name: string): string =>
   name.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
 
-/** Дата из поля ввода (ГГГГ-ММ-ДД) или ISO — в виде ДД.ММ.ГГГГ, без сдвига на сутки. */
-const ruDay = (value: string): string => {
-  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (plain) return `${plain[3]}.${plain[2]}.${plain[1]}`;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleDateString('ru-RU');
+/**
+ * ФИО для названия: без лишних пробелов, длинное — обрезанное. Телефон показывает
+ * имя файла одной-двумя строками, и хвост иначе уходит за край.
+ */
+const titleName = (customerName?: string): string => {
+  const name = (customerName || '').replace(/\s+/g, ' ').trim();
+  return name.length > 40 ? `${name.slice(0, 40).trim()}…` : name;
 };
 
 /**
  * Название договора — и для имени файла, и для заголовка внутри PDF.
  *
  * Клиент видит его в WhatsApp раньше, чем откроет сам документ. Раньше там было
- * «Payment_20260917.pdf» или «________20260917.pdf» (кириллица из названия
- * товара вычищалась целиком), и по имени нельзя было понять ни что это, ни чей
- * это договор. Теперь: «Договор №0042 — Иванов Иван», а у договора, отправленного
- * с платежом, ещё и дата оплаты — таких файлов у клиента за год набирается
- * несколько, и различать их надо, не открывая.
+ * «________20260917.pdf» (кириллица из названия товара вычищалась целиком), и по
+ * имени нельзя было понять ни что это, ни чей это договор. Теперь:
+ * «Договор №0042 — Иванов Иван».
  */
-export const contractDocumentTitle = (opts: {
-  number?: string;
-  customerName?: string;
-  paymentDate?: string;
-}): string => {
-  const parts = [opts.number ? `Договор №${opts.number}` : 'Договор'];
-  const name = (opts.customerName || '').replace(/\s+/g, ' ').trim();
-  // Длинное ФИО с отчеством и уточнениями обрезаем: телефон показывает имя файла
-  // одной строкой, и хвост с датой оплаты иначе уходил бы за край.
-  if (name) parts.push(name.length > 40 ? `${name.slice(0, 40).trim()}…` : name);
-  const paid = opts.paymentDate ? ruDay(opts.paymentDate) : '';
-  if (paid) parts.push(`оплата ${paid}`);
-  return parts.join(' — ');
-};
+export const contractDocumentTitle = (opts: { number?: string; customerName?: string }): string =>
+  [opts.number ? `Договор №${opts.number}` : 'Договор', titleName(opts.customerName)]
+    .filter(Boolean)
+    .join(' — ');
 
-/** Имя PDF-файла договора: название без запрещённых символов и с расширением. */
+/**
+ * Название документа, который уходит клиенту вместе с принятым платежом:
+ * «Оплата — Иванов Иван».
+ *
+ * Номер договора и дату в имя не ставим: с ними имя не помещалось в строку
+ * чата и обрезалось на середине. Что это за договор и когда внесены деньги,
+ * клиент видит в самом документе, а дата — у сообщения в WhatsApp.
+ */
+export const paymentDocumentTitle = (customerName?: string): string =>
+  ['Оплата', titleName(customerName)].filter(Boolean).join(' — ');
+
+/** Имя PDF-файла: название без запрещённых символов и с расширением. */
+export const pdfFileName = (title: string): string => `${safeFileName(title)}.pdf`;
+
+/** Имя PDF-файла договора. */
 export const contractFileName = (opts: Parameters<typeof contractDocumentTitle>[0]): string =>
-  `${safeFileName(contractDocumentTitle(opts))}.pdf`;
+  pdfFileName(contractDocumentTitle(opts));
 
 /**
  * Свойства документа. Без них просмотрщики на телефоне и компьютере показывают
