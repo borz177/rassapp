@@ -46,6 +46,7 @@ const LazyFallback: React.FC = () => (
 );
 import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, SaleStockItem, RetailSale as RetailSaleType, StockLocation, DEFAULT_WAREHOUSE_ID} from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
+import { warmProductImages } from './src/productImageCache';
 import { api } from './services/api';
 import { ICONS } from './constants';
 import SplashScreen from "./components/SplashScreen"
@@ -1345,6 +1346,27 @@ useEffect(() => {
     document.removeEventListener('visibilitychange', tick);
   };
 }, [user]);
+
+// 🖼 Фото товаров — в кеш заранее, пока есть сеть: без неё каталог и касса
+// показывают фото всех товаров, а не только тех, что успели открыть.
+// Отложено на пару секунд и до простоя, чтобы не спорить с загрузкой данных.
+useEffect(() => {
+  if (!user || products.length === 0) return;
+  let idle = 0;
+  const run = () => {
+    const w = window as any;
+    if (w.requestIdleCallback) idle = w.requestIdleCallback(() => { void warmProductImages(products); }, { timeout: 5000 });
+    else void warmProductImages(products);
+  };
+  const timer = window.setTimeout(run, 2000);
+  window.addEventListener('online', run);
+  return () => {
+    window.clearTimeout(timer);
+    window.removeEventListener('online', run);
+    const w = window as any;
+    if (idle && w.cancelIdleCallback) w.cancelIdleCallback(idle);
+  };
+}, [user, products]);
 
 const loadData = async (currentUser?: User, skipLoadingState = true) => {
   // 🔥 Мы больше НЕ трогаем setIsLoading здесь, чтобы не мерцал экран

@@ -16,6 +16,7 @@ import LabelPrintSheet from './LabelPrintSheet';
 import { barcodeOwner, extractProductCode, findProductByCode, generateInternalBarcodes, normalizeBarcode, productMatchesQuery } from '../src/barcode';
 import { useBarcodeScanInput } from '../src/barcodeWedge';
 import { scanBeep } from '../src/scanFeedback';
+import ProductImage from './ProductImage';
 
 interface WarehouseProps {
   products: Product[];
@@ -934,11 +935,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
               )}
 
               <div className="w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
-                {p.images?.[0] ? (
-                  <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" decoding="sync" draggable={false} />
-                ) : (
-                  <span className="text-slate-400 text-xl">📦</span>
-                )}
+                <ProductImage src={p.images?.[0]} className="w-full h-full object-cover" loading="lazy" draggable={false}
+                              fallback={<span className="text-slate-400 text-xl">📦</span>} />
               </div>
 
               <div className="min-w-0 flex-1">
@@ -1151,7 +1149,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
               <div className="flex gap-2 flex-wrap">
                 {form.images.map((src, i) => (
                   <div key={src} className="relative w-20 h-20 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600">
-                    <img src={src} alt="" className="w-full h-full object-cover" />
+                    <ProductImage src={src} className="w-full h-full object-cover"
+                                  fallback={<span className="flex h-full w-full items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-400">📦</span>} />
                     <button
                       onClick={() => setForm(f => ({ ...f, images: f.images.filter((_, n) => n !== i) }))}
                       className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-slate-900/70 text-white text-xs leading-none">×</button>

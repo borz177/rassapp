@@ -6,6 +6,7 @@ import BarcodeScanner, { ScanButton, type ScanOutcome } from './BarcodeScanner';
 import { findProductByCode, productMatchesQuery } from '../src/barcode';
 import { useBarcodeScanInput } from '../src/barcodeWedge';
 import { scanBeep } from '../src/scanFeedback';
+import ProductImage from './ProductImage';
 
 interface ProductPickerPageProps {
   products: Product[];
@@ -253,9 +254,8 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
                   )}
 
                   <div className="w-full aspect-[4/3] rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden mb-1.5 mt-3 flex items-center justify-center">
-                    {p.images?.[0]
-                      ? <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" decoding="sync" />
-                      : <span className="text-2xl text-slate-300">📦</span>}
+                    <ProductImage src={p.images?.[0]} className="w-full h-full object-cover" loading="lazy"
+                                  fallback={<span className="text-2xl text-slate-300">📦</span>} />
                   </div>
 
                   <p className="font-bold text-slate-800 dark:text-white text-xs leading-tight line-clamp-2">{p.name}</p>

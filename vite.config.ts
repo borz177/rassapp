@@ -117,7 +117,29 @@ export default defineConfig(({ mode }) => {
           // Офлайн от этого не зависит: и данные, и пользователь, и очередь несинхронизированных
           // изменений живут в IndexedDB (services/offlineStorage.ts) и читаются оттуда при любой
           // ошибке сети. Кэш приложения (HTML/JS/CSS) обеспечивается precache выше и не меняется.
-          runtimeCaching: []
+          //
+          // 🖼 Фото товаров — другое дело: у каждого файла своё неизменное имя
+          // (новая картинка получает новое), поэтому сохранённая копия верна навсегда
+          // и её можно отдавать без сети. CacheFirst: сначала кеш, в сеть — только за
+          // тем, чего там нет. Имя кеша совпадает с PRODUCT_IMAGE_CACHE в
+          // src/productImageCache.ts — оттуда каталог докачивается заранее.
+          runtimeCaching: [
+            {
+              urlPattern: /\/uploads\/products\//,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'product-images-v1',
+                expiration: {
+                  maxEntries: 3000,
+                  maxAgeSeconds: 60 * 60 * 24 * 365,
+                  // Место на устройстве кончилось — браузер вправе очистить этот кеш
+                  // первым, а не отказать приложению в работе
+                  purgeOnQuotaError: true,
+                },
+                cacheableResponse: { statuses: [200] },
+              },
+            },
+          ]
         }
       })
     ],

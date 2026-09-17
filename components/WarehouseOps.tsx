@@ -7,6 +7,7 @@ import BarcodeScanner, { ScanButton, type ScanOutcome } from './BarcodeScanner';
 import { findProductByCode, productMatchesQuery } from '../src/barcode';
 import { useBarcodeScanInput } from '../src/barcodeWedge';
 import { scanBeep } from '../src/scanFeedback';
+import ProductImage from './ProductImage';
 
 type OpTab = 'IN' | 'TRANSFER' | 'WRITE_OFF' | 'INVENTORY';
 
@@ -492,9 +493,8 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
                 )}
                 <div className="flex items-center gap-3">
                   <div className="w-14 h-14 rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
-                    {p.images?.[0]
-                      ? <img src={p.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" decoding="sync" />
-                      : <span className="text-slate-400 text-lg">📦</span>}
+                    <ProductImage src={p.images?.[0]} className="w-full h-full object-cover" loading="lazy"
+                                  fallback={<span className="text-slate-400 text-lg">📦</span>} />
                   </div>
                   <div className="min-w-0">
                     <p className="font-bold text-slate-800 dark:text-white text-sm leading-tight line-clamp-2">{p.name}</p>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ModalPortal from './ModalPortal';
+import ProductImage from './ProductImage';
 
 interface ImageViewerProps {
   images: string[];
@@ -64,12 +65,16 @@ const ImageViewer: React.FC<ImageViewerProps> = ({ images, startIndex = 0, onClo
 
         <div className="flex-1 min-h-0 flex items-center justify-center px-4 pb-4"
              onClick={e => e.stopPropagation()}>
-          <img
+          <ProductImage
             src={images[index]}
-            alt=""
-            decoding="sync"
             className="max-w-full max-h-full object-contain rounded-2xl select-none"
             draggable={false}
+            fallback={
+              <div className="flex flex-col items-center gap-2 text-white/60">
+                <span className="text-5xl">📦</span>
+                <span className="text-sm">Фото появится, когда будет интернет</span>
+              </div>
+            }
           />
         </div>
 
@@ -98,7 +103,8 @@ const ImageViewer: React.FC<ImageViewerProps> = ({ images, startIndex = 0, onClo
                         className={`shrink-0 w-14 h-14 rounded-xl overflow-hidden border-2 transition-colors ${
                           i === index ? 'border-white' : 'border-transparent opacity-60'
                         }`}>
-                  <img src={src} alt="" decoding="sync" className="w-full h-full object-cover" draggable={false} />
+                  <ProductImage src={src} className="w-full h-full object-cover" draggable={false}
+                                fallback={<span className="flex h-full w-full items-center justify-center bg-white/10 text-white/50">📦</span>} />
                 </button>
               ))}
             </div>

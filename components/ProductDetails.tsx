@@ -12,6 +12,7 @@ import SubPage from './transitions/SubPage';
 import DocumentCard from './DocumentCard';
 import { Printer } from 'lucide-react';
 import { barcodeSvg } from '../src/barcode';
+import ProductImage from './ProductImage';
 
 interface ProductDetailsProps {
   product: Product;
@@ -188,7 +189,8 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
               фотографий товара: на сером по бокам проступали полосы. */}
           <button type="button" onClick={() => setViewerAt(0)}
                   className="block w-full sm:max-w-md lg:max-w-none rounded-3xl overflow-hidden bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 aspect-[4/3] lg:aspect-square active:scale-[0.99] transition-transform">
-            <img src={product.images![0]} alt="" decoding="sync" className="w-full h-full object-contain p-3" />
+            <ProductImage src={product.images![0]} className="w-full h-full object-contain p-3"
+                          fallback={<span className="flex h-full w-full items-center justify-center text-5xl text-slate-300">📦</span>} />
           </button>
           {/* Остальные снимки строкой: иначе о них не узнать — в карточке
               всегда была видна только первая фотография. */}
@@ -197,7 +199,8 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
               {product.images!.map((src, i) => (
                 <button key={`${src}_${i}`} type="button" onClick={() => setViewerAt(i)}
                         className="shrink-0 w-16 h-16 rounded-xl overflow-hidden bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:scale-95 transition-transform">
-                  <img src={src} alt="" decoding="sync" className="w-full h-full object-contain p-1" />
+                  <ProductImage src={src} className="w-full h-full object-contain p-1"
+                                fallback={<span className="flex h-full w-full items-center justify-center text-slate-300">📦</span>} />
                 </button>
               ))}
             </div>
