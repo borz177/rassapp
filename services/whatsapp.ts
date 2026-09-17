@@ -92,9 +92,18 @@ export const sendWhatsAppFile = async (
 
         const chatId = `${formattedPhone}@c.us`;
         
+        // Имя файла — отдельным полем fileName, как велит документация Green API
+        // («Requires UTF-8 encoding»). Имя внутри файловой части шлюз читает как
+        // Latin-1: «Договор №0174.pdf» приходил клиенту как «ÐÐ¾Ð³Ð¾Ð²Ð¾Ñ».
+        // Самому файлу даём латинское имя — если шлюз всё же возьмёт его, клиент
+        // увидит «document.pdf», а не набор знаков.
+        const extension = /\.[A-Za-z0-9]{1,5}$/.exec(fileName)?.[0] || '';
+        const asciiName = /^[\x20-\x7E]+$/.test(fileName) ? fileName : `document${extension}`;
+
         const formData = new FormData();
         formData.append('chatId', chatId);
-        formData.append('file', fileBlob, fileName);
+        formData.append('fileName', fileName);
+        formData.append('file', fileBlob, asciiName);
 
         const response = await fetch(`${GREEN_API_BASE_URL}/waInstance${idInstance}/sendFileByUpload/${apiTokenInstance}`, {
             method: 'POST',
