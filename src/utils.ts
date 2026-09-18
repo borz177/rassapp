@@ -28,6 +28,22 @@ const dayMs = (d: string | number | Date): number => {
  */
 const at = (d: string | number | Date): number => new Date(d).getTime();
 
+/**
+ * Момент операции — договора, платежа, расхода. Дата без времени («2026-08-19»,
+ * так хранится дата договора) означает весь день, а не полночь: вход инвестора
+ * 19.08 в 21:07 и договор от 19.08 — один день, и договор считается оформленным
+ * при нём, как было всегда. Иначе все договоры дня входа доставались бы
+ * менеджеру. День — местный, как его видит пользователь.
+ */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const txAt = (d: string | number | Date): number => {
+  if (typeof d === 'string' && DATE_ONLY.test(d)) {
+    const [y, m, day] = d.split('-').map(Number);
+    return new Date(y, m - 1, day, 23, 59, 59, 999).getTime();
+  }
+  return new Date(d).getTime();
+};
+
 // Период участия действует в момент t: вошёл не позже t и ещё не вышел
 const periodActiveAt = (p: { joinedDate: string; leftPoolDate?: string }, t: number): boolean =>
   at(p.joinedDate) <= t && (!p.leftPoolDate || t < at(p.leftPoolDate));
@@ -256,7 +272,7 @@ export const getAccountShares = (
 ): { investor: Investor; percentage: number }[] => {
   if (!account) return [];
   if (account.type === 'POOL') {
-    const cutoff = asOfDate ? new Date(asOfDate).getTime() : Date.now();
+    const cutoff = asOfDate ? txAt(asOfDate) : Date.now();
     const members = (account.poolMemberIds || [])
       .map(id => investors.find(i => i.id === id))
       .filter((i): i is Investor => !!i && isPoolMemberActiveAt(i, cutoff));
@@ -306,6 +322,11 @@ export const getAccountShares = (
  * старых договорах, хотя его деньги работали на всех), потом — на дату поступления
  * денег (новичок получал прибыль, заработанную до его входа, если клиент опоздал).
  *
+ * Договор, оформленный, когда в кассе не было ни одного инвестора (до первого
+ * входа или пока все выходили), куплен на деньги менеджера — вся его прибыль
+ * менеджера. Инвесторы, вошедшие позже, в нём не участвуют: их деньги в него не
+ * вкладывались. Так бывает, когда в кассу заносят договоры задним числом.
+ *
  * Личный счёт инвестора — фиксированный процент, время на него не влияет.
  */
 type EarningWindow = { from: number; to: number; weight: number };
@@ -321,10 +342,10 @@ const saleEarningWindows = (sale: SaleSchedule) => {
   if (hit) return hit;
 
   const plan = sale.paymentPlan || [];
-  const start = at(sale.startDate);
+  const start = txAt(sale.startDate);
   const due = plan
     .filter(p => p.isRealPayment !== true)
-    .map(p => ({ due: at(p.date), left: Number(p.amount) || 0 }))
+    .map(p => ({ due: txAt(p.date), left: Number(p.amount) || 0 }))
     .filter(s => s.left > 0 && !Number.isNaN(s.due))
     .sort((a, b) => a.due - b.due);
   const slots = due.map((s, i) => {
@@ -336,7 +357,7 @@ const saleEarningWindows = (sale: SaleSchedule) => {
   const payments = plan
     .map((p, i) => ({ p, i }))
     .filter(({ p }) => p.isPaid && p.isRealPayment !== false)
-    .sort((a, b) => at(a.p.date) - at(b.p.date) || a.i - b.i);
+    .sort((a, b) => txAt(a.p.date) - txAt(b.p.date) || a.i - b.i);
   let k = 0;
   for (const { p } of payments) {
     let money = (Number(p.amount) || 0) + (Number((p as any).discountAmount) || 0);
@@ -350,7 +371,7 @@ const saleEarningWindows = (sale: SaleSchedule) => {
       // Копеечный допуск — как в expectedPaymentsInPeriod
       if (slot.left <= 0.01) k++;
     }
-    if (money > 0.005) { const t = at(p.date); windows.push({ from: t, to: t, weight: money }); }
+    if (money > 0.005) { const t = txAt(p.date); windows.push({ from: t, to: t, weight: money }); }
     paid.set(p.id, windows);
   }
   const open = slots.slice(k)
@@ -422,6 +443,10 @@ const sharesOverWindows = (
   return [...sums.values()].map(e => ({ investor: e.investor, percentage: e.sum / total }));
 };
 
+// Договор оформлен, когда в кассе не было ни одного инвестора, — он менеджера
+const isManagerContract = (account: Account, investors: Investor[], sale: SaleSchedule): boolean =>
+  getAccountShares(account, investors, sale.startDate).length === 0;
+
 const sharesToManager = (shares: { percentage: number }[]) =>
   Math.max(0, 100 - shares.reduce((sum, s) => sum + s.percentage, 0));
 
@@ -432,8 +457,10 @@ export const paymentProfitShares = (
   sale: SaleSchedule | undefined,
   payment: MoneyIn
 ): { investor: Investor; percentage: number }[] => {
-  const t = at(payment.date);
-  if (!account || account.type !== 'POOL' || !sale || !payment.id) return getAccountShares(account, investors, t);
+  const t = txAt(payment.date);
+  if (!account || account.type !== 'POOL' || !sale) return getAccountShares(account, investors, t);
+  if (isManagerContract(account, investors, sale)) return [];
+  if (!payment.id) return getAccountShares(account, investors, t);
   const windows = saleEarningWindows(sale).paid.get(payment.id);
   return windows ? sharesOverWindows(account, investors, windows, t) : getAccountShares(account, investors, t);
 };
@@ -458,6 +485,7 @@ export const expectedProfitShares = (
 ): { investor: Investor; percentage: number }[] => {
   const now = Date.now();
   if (!account || account.type !== 'POOL' || !sale) return getAccountShares(account, investors, now);
+  if (isManagerContract(account, investors, sale)) return [];
   return sharesOverWindows(account, investors, saleEarningWindows(sale).open, now);
 };
 
@@ -496,7 +524,7 @@ export const getInvestorCapitalShare = (
 ): number => {
   if (!account) return 0;
   if (account.type === 'POOL') {
-    const cutoff = asOfDate ? new Date(asOfDate).getTime() : Date.now();
+    const cutoff = asOfDate ? txAt(asOfDate) : Date.now();
     const members = (account.poolMemberIds || [])
       .map(id => investors.find(i => i.id === id))
       .filter((i): i is Investor => !!i && isPoolMemberActiveAt(i, cutoff));
@@ -625,7 +653,7 @@ export const getCapitalShares = (
     }
     return [];
   }
-  const cutoff = asOfDate ? new Date(asOfDate).getTime() : Date.now();
+  const cutoff = asOfDate ? txAt(asOfDate) : Date.now();
   const members = (account.poolMemberIds || [])
     .map(id => investors.find(i => i.id === id))
     .filter((i): i is Investor => !!i && isPoolMemberActiveAt(i, cutoff));
