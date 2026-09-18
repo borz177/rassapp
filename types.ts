@@ -130,12 +130,26 @@ export interface InvestorPermissions {
 
 // Один период участия инвестора в пуле (поддержка повторного входа).
 // Если поле investmentPeriods задано — используется вместо устаревших joinedDate/leftPoolDate/initialAmount.
+/**
+ * Изменение капитала инвестора внутри периода: пополнение (+), возврат
+ * вложений или убыток (−). initialAmount периода — сумма ПОСЛЕ всех изменений;
+ * по журналу восстанавливается, сколько было вложено на любую прошлую дату.
+ */
+export interface CapitalChange {
+  id: string;
+  date: string;
+  delta: number;
+  /** Операция, которая вызвала изменение (приход, расход, убыток) — по ней изменение отменяется */
+  sourceId?: string;
+}
+
 export interface InvestmentPeriod {
   id: string;
   joinedDate: string;
   leftPoolDate?: string;
   initialAmount: number;
   note?: string;
+  capitalChanges?: CapitalChange[];
 }
 
 export interface Investor {

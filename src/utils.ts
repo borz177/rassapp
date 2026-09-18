@@ -1,5 +1,5 @@
 import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js';
-import { Account, Investor, InvestmentPeriod, Sale, SaleStockItem, Expense, DEFAULT_WAREHOUSE_ID, Product, RetailSale, StockLocation, StockMovement} from '../types';
+import { Account, Investor, InvestmentPeriod, CapitalChange, Sale, SaleStockItem, Expense, DEFAULT_WAREHOUSE_ID, Product, RetailSale, StockLocation, StockMovement} from '../types';
 
 export const escapeHtml = (str: unknown): string =>
   String(str ?? '')
@@ -34,6 +34,23 @@ const isPoolMemberActiveAt = (investor: Investor, cutoff: number): boolean => {
   return true;
 };
 
+/**
+ * Сколько было вложено в периоде на дату cutoff.
+ *
+ * initialAmount периода — сумма сейчас, после всех пополнений, возвратов и
+ * убытков. Изменения, случившиеся ПОЗЖЕ cutoff, из неё вычитаются: пополнение
+ * 18 сентября не должно задним числом менять долю в договоре, оформленном в
+ * феврале, — иначе у остальных участников кассы пересчиталась бы прибыль по
+ * давно закрытым сделкам. Изменение в день договора учитывается, как и вход в
+ * кассу в тот же день.
+ */
+const periodAmountAt = (period: InvestmentPeriod, cutoff: number): number => {
+  const later = (period.capitalChanges || [])
+    .filter(c => dayMs(c.date) > cutoff)
+    .reduce((sum, c) => sum + (Number(c.delta) || 0), 0);
+  return Math.max(0, (Number(period.initialAmount) || 0) - later);
+};
+
 // Сумма вложения инвестора на момент cutoff — из активного периода.
 // Нужна при поддержке нескольких периодов (разные суммы в разные периоды).
 const getInvestorAmountAt = (investor: Investor, cutoff: number): number => {
@@ -43,9 +60,80 @@ const getInvestorAmountAt = (investor: Investor, cutoff: number): number => {
       const left = p.leftPoolDate ? dayMs(p.leftPoolDate) : Infinity;
       return joined <= cutoff && cutoff < left;
     });
-    return active ? active.initialAmount : 0;
+    return active ? periodAmountAt(active, cutoff) : 0;
   }
   return investor.initialAmount;
+};
+
+/**
+ * Изменить капитал инвестора на delta с даты atDate: пополнение (+), возврат
+ * вложений или убыток (−).
+ *
+ * Меняется и активный на эту дату период, и верхнее поле initialAmount (его
+ * показывают карточки как «вложено сейчас»). В период записывается изменение с
+ * датой — по нему доля на прошлые даты остаётся прежней (см. periodAmountAt).
+ *
+ * Раньше пополнение из «Прихода» меняло только верхнее поле, и у инвестора с
+ * периодами деньги попадали в кассу, а доля не росла. А сама правка периода была
+ * без даты — и меняла долю задним числом во всех договорах периода.
+ *
+ * sourceId — операция, которая вызвала изменение: по нему revertCapitalChange
+ * отменит ровно это изменение, когда операцию удалят.
+ */
+export const applyCapitalChange = (
+  investor: Investor,
+  delta: number,
+  atDate: string | number | Date,
+  sourceId?: string
+): Investor => {
+  const periods: InvestmentPeriod[] = investor.investmentPeriods && investor.investmentPeriods.length > 0
+    ? investor.investmentPeriods
+    : [{ id: 'legacy', joinedDate: investor.joinedDate, leftPoolDate: investor.leftPoolDate, initialAmount: investor.initialAmount }];
+  const active = getActivePeriodAt(investor, new Date(atDate).getTime());
+
+  let applied = delta;
+  const updatedPeriods = active
+    ? periods.map(p => {
+        if (p.id !== active.id) return p;
+        const next = Math.max(0, (Number(p.initialAmount) || 0) + delta);
+        // В минус капитал не уходит — записываем то, что реально изменилось
+        applied = next - (Number(p.initialAmount) || 0);
+        const change: CapitalChange = {
+          id: `cap_${sourceId || Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          date: new Date(atDate).toISOString(),
+          delta: applied,
+          ...(sourceId ? { sourceId } : {}),
+        };
+        return { ...p, initialAmount: next, capitalChanges: [...(p.capitalChanges || []), change] };
+      })
+    : periods;
+
+  return {
+    ...investor,
+    investmentPeriods: updatedPeriods,
+    initialAmount: Math.max(0, (Number(investor.initialAmount) || 0) + applied),
+  };
+};
+
+/**
+ * Отменить изменение капитала, вызванное операцией sourceId (её удалили).
+ * null — такого изменения в журнале нет (запись сделана до появления журнала);
+ * тогда вызывающий откатывает суммой, как раньше.
+ */
+export const revertCapitalChange = (investor: Investor, sourceId: string): Investor | null => {
+  const periods = investor.investmentPeriods || [];
+  const holder = periods.find(p => (p.capitalChanges || []).some(c => c.sourceId === sourceId));
+  if (!holder) return null;
+  const change = (holder.capitalChanges || []).find(c => c.sourceId === sourceId)!;
+  return {
+    ...investor,
+    investmentPeriods: periods.map(p => p.id !== holder.id ? p : {
+      ...p,
+      initialAmount: Math.max(0, (Number(p.initialAmount) || 0) - change.delta),
+      capitalChanges: (p.capitalChanges || []).filter(c => c.sourceId !== sourceId),
+    }),
+    initialAmount: Math.max(0, (Number(investor.initialAmount) || 0) - change.delta),
+  };
 };
 
 // Возвращает активный период инвестора на момент cutoff (или undefined).

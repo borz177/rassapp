@@ -56,7 +56,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
+import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -2546,7 +2546,9 @@ const handleIncomeSubmit = async (data: any) => {
         if (data.type === 'INVESTOR_DEPOSIT') {
             const inv = investors.find(i => i.id === data.investorId);
             if (inv) {
-                const updatedInv = { ...inv, initialAmount: (inv.initialAmount || 0) + Number(data.amount) };
+                // И верхнее поле, и активный период, с датой пополнения: иначе у
+                // инвестора с периодами деньги попадали в кассу, а доля не росла.
+                const updatedInv = applyInvestmentDelta(inv, Number(data.amount), data.date, newTransaction.id);
                 updateList(setInvestors, updatedInv);
                 api.saveItem('investors', updatedInv).catch(err => {
                     console.error('❌ Ошибка обновления инвестора:', err);
@@ -2554,7 +2556,7 @@ const handleIncomeSubmit = async (data: any) => {
             }
         }
     }
-};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: crypto.randomUUID(), userId: ownerId, createdByUserId: user.id, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, fromProfit: data.fromProfit, investorId: data.investorId, supplierId: data.supplierId, saleId: data.saleId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = applyInvestmentDelta(inv, -Number(data.amount), data.date); const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } if (data.category === 'Оплата партнёру' && data.saleId) { const sale = sales.find(s => s.id === data.saleId); if (sale) { const newPaid = (sale.partnerDebtPaidAmount || 0) + Number(data.amount); const updatedSale = { ...sale, partnerDebtPaidAmount: newPaid, isPartnerDebtPaid: newPaid >= sale.buyPrice }; const savedSale = await api.saveItem('sales', updatedSale); updateList(setSales, savedSale); } } setDraftExpenseData(null); setCurrentView('OPERATIONS'); };
+};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: crypto.randomUUID(), userId: ownerId, createdByUserId: user.id, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, fromProfit: data.fromProfit, investorId: data.investorId, supplierId: data.supplierId, saleId: data.saleId }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = applyInvestmentDelta(inv, -Number(data.amount), data.date, newExpense.id); const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } if (data.category === 'Оплата партнёру' && data.saleId) { const sale = sales.find(s => s.id === data.saleId); if (sale) { const newPaid = (sale.partnerDebtPaidAmount || 0) + Number(data.amount); const updatedSale = { ...sale, partnerDebtPaidAmount: newPaid, isPartnerDebtPaid: newPaid >= sale.buyPrice }; const savedSale = await api.saveItem('sales', updatedSale); updateList(setSales, savedSale); } } setDraftExpenseData(null); setCurrentView('OPERATIONS'); };
  const handleAddEmployee = async (data: any) => {
   if (!user || !isManager) return;
 
@@ -2737,28 +2739,31 @@ const handleAddInvestor = async (
 // Раньше добавлялся только период — сумма числилась за инвестором, но на баланс счёта
 // не попадала, и касса расходилась с долями участников.
 /**
- * Меняет вложенную сумму инвестора на delta (отрицательная — возврат инвестиций).
- *
- * Обновляет И активный период (investmentPeriods), И поле initialAmount.
- * Это принципиально: у участника общего пула сумма вложения читается из активного
- * периода (getInvestorAmountAt в src/utils.ts), а верхнее поле игнорируется.
- * Возврат инвестиций уменьшал только initialAmount — поэтому у инвестора в пуле
- * «вложено» не менялось вовсе, а его доля в прибыли продолжала считаться
- * от прежней суммы. Тот же приём уже используется в applyLossToCapital ниже.
+ * Меняет вложенную сумму инвестора на delta с даты atDate (отрицательная —
+ * возврат инвестиций). Изменение пишется в журнал активного периода, поэтому доли
+ * в договорах, оформленных раньше, не меняются задним числом — см.
+ * applyCapitalChange в src/utils.ts.
  */
-const applyInvestmentDelta = (investor: Investor, delta: number, atDate: string | number | Date): Investor => {
-  const periods = investor.investmentPeriods && investor.investmentPeriods.length > 0
-    ? investor.investmentPeriods
-    : [{ id: 'legacy', joinedDate: investor.joinedDate, leftPoolDate: investor.leftPoolDate, initialAmount: investor.initialAmount }];
+const applyInvestmentDelta = (
+  investor: Investor,
+  delta: number,
+  atDate: string | number | Date,
+  sourceId?: string
+): Investor => applyCapitalChange(investor, delta, atDate, sourceId);
 
+/**
+ * Откат изменения капитала, сделанного ДО появления журнала: тогда сумма периода
+ * менялась без даты. Отменяем так же — без записи в журнал, — иначе отмена старой
+ * операции исказила бы долю на прошлые даты.
+ */
+const legacyShiftCapital = (investor: Investor, delta: number, atDate: string | number | Date): Investor => {
   const active = getActivePeriodAt(investor, new Date(atDate).getTime());
-  const updatedPeriods = active
-    ? periods.map(p => (p.id === active.id ? { ...p, initialAmount: Math.max(0, p.initialAmount + delta) } : p))
-    : periods;
-
+  const periods = investor.investmentPeriods || [];
   return {
     ...investor,
-    investmentPeriods: updatedPeriods,
+    investmentPeriods: active && periods.length
+      ? periods.map(p => (p.id === active.id ? { ...p, initialAmount: Math.max(0, p.initialAmount + delta) } : p))
+      : investor.investmentPeriods,
     initialAmount: Math.max(0, (investor.initialAmount || 0) + delta),
   };
 };
@@ -2771,24 +2776,13 @@ const applyInvestmentDelta = (investor: Investor, delta: number, atDate: string 
 const applyLossToCapital = (event: LossEvent, poolAccount: Account, sign: 1 | -1) => {
   // sign = 1 — уменьшить капитал (новый убыток), -1 — вернуть (убыток удалён)
   const shares = getCapitalShares(poolAccount, investors, event.date);
+  const sourceId = `loss_${event.id}`;
   return shares.map(({ investor, percentage }) => {
-    const delta = event.amount * percentage / 100 * sign;
-    const periods = investor.investmentPeriods && investor.investmentPeriods.length > 0
-      ? investor.investmentPeriods
-      : [{ id: 'legacy', joinedDate: investor.joinedDate, leftPoolDate: investor.leftPoolDate, initialAmount: investor.initialAmount }];
-
-    const active = getActivePeriodAt(investor, new Date(event.date).getTime());
-    if (!active) return null;
-
-    const updatedPeriods = periods.map(p =>
-      p.id === active.id ? { ...p, initialAmount: Math.max(0, p.initialAmount - delta) } : p
-    );
-    const updatedInvestor: Investor = {
-      ...investor,
-      investmentPeriods: updatedPeriods,
-      initialAmount: Math.max(0, (investor.initialAmount || 0) - delta),
-    };
-    return updatedInvestor;
+    const amount = event.amount * percentage / 100;
+    if (!getActivePeriodAt(investor, new Date(event.date).getTime())) return null;
+    // Убыток уменьшает капитал с даты убытка — договоры до неё сохраняют прежние доли
+    if (sign === 1) return applyCapitalChange(investor, -amount, event.date, sourceId);
+    return revertCapitalChange(investor, sourceId) ?? legacyShiftCapital(investor, amount, event.date);
   }).filter((i): i is Investor => !!i);
 };
 
@@ -4141,8 +4135,10 @@ const contractCounts = useMemo(() => {
             if (expense?.payoutType === 'INVESTMENT' && expense.investorId) {
                 const inv = investors.find(i => i.id === expense.investorId);
                 if (inv) {
-                    // Возвращаем и в активный период, и в initialAmount — симметрично списанию
-                    const restored = applyInvestmentDelta(inv, Number(expense.amount), expense.date);
+                    // Отменяем ровно то изменение, что сделал этот расход; у старых
+                    // записей (до журнала) — так же, как они списывались
+                    const restored = revertCapitalChange(inv, expense.id)
+                      ?? legacyShiftCapital(inv, Number(expense.amount), expense.date);
                     const savedInv = await api.saveItem('investors', restored);
                     updateList(setInvestors, savedInv);
                 }
@@ -4170,6 +4166,16 @@ const contractCounts = useMemo(() => {
                // CASH Sale
                await api.deleteItem('sales', sale.id);
                removeFromList(setSales, sale.id);
+               // Пополнение от инвестора: деньги ушли из кассы — уходят и из его доли.
+               // Раньше приход удалялся, а капитал инвестора оставался увеличенным.
+               const depositor = investors.find(i => i.id === sale.customerId);
+               if (depositor) {
+                   // Старое пополнение (до журнала) меняло только верхнее поле — так и откатываем
+                   const restored = revertCapitalChange(depositor, sale.id)
+                     ?? { ...depositor, initialAmount: Math.max(0, (depositor.initialAmount || 0) - Number(sale.downPayment || 0)) };
+                   const savedInv = await api.saveItem('investors', restored);
+                   updateList(setInvestors, savedInv || restored);
+               }
                // Also delete associated expense if any
                await api.deleteItem('expenses', `exp_sale_${sale.id}`);
                removeFromList(setExpenses, `exp_sale_${sale.id}`);
