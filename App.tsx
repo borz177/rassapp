@@ -47,6 +47,7 @@ const LazyFallback: React.FC = () => (
 import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, SaleStockItem, RetailSale as RetailSaleType, StockLocation, DEFAULT_WAREHOUSE_ID} from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
 import { warmProductImages } from './src/productImageCache';
+import { investorRelinkPlan } from './src/investorRelink';
 import { api } from './services/api';
 import { ICONS } from './constants';
 import SplashScreen from "./components/SplashScreen"
@@ -2918,10 +2919,6 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
 
     if (needsActivation && !updated.id.startsWith('u_inv_') && !updated.id.startsWith('u_emp_')) {
       const oldInvestorId = updated.id;
-      // 🔒 getInvestorAccount учитывает и обычный счёт (ownerId), и общий пул (poolMemberIds) —
-      // раньше здесь был accounts.find(a => a.ownerId === ...), из-за чего активация логина
-      // инвестору из общего пула не находила счёт (депозит не писался) и не обновляла poolMemberIds.
-      const oldAccount = getInvestorAccount(oldInvestorId, accounts);
 
       // 🔹 🔥 ОДНО ОБЪЯВЛЕНИЕ tempPassword
       const tempPassword = hasPassword ? password : `auto_${Math.random().toString(36).substr(2, 8)}`;
@@ -2962,15 +2959,53 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
 
       const savedInvestor = await api.saveItem('investors', linkedInvestor);
 
-      // 🔹 3. 🗑️ УДАЛЯЕМ СТАРОГО ИНВЕСТОРА С СЕРВЕРА (КРИТИЧНО!)
+      // 🔹 3. Переносим на новый id всё, что было записано на старый: депозит и
+      // пополнения, выплаты, счёт или место в общей кассе, совместные счета,
+      // партнёрства, доступ сотрудников.
+      //
+      // Новый «Начальный депозит» здесь больше НЕ создаётся. Раньше он заводился,
+      // чтобы вложение не пропало из карточки инвестора после смены id, — но
+      // старый депозит оставался на счёте, и деньги в кассе удваивались. Теперь
+      // старый депозит просто переписывается на новый id: сумма в кассе прежняя.
+      const plan = investorRelinkPlan(oldInvestorId, newUser.id, { sales, expenses, accounts, partnerships, employees });
+
+      for (const sale of plan.sales) {
+        const saved = await api.saveItem('sales', sale);
+        updateList(setSales, saved || sale, undefined, 'sales');
+      }
+      for (const expense of plan.expenses) {
+        const saved = await api.saveItem('expenses', expense);
+        updateList(setExpenses, saved || expense, undefined, 'expenses');
+      }
+      for (const account of plan.accounts) {
+        // Личный счёт инвестора носит его имя; общий счёт — нет, его не переименовываем
+        const next = account.ownerId === newUser.id ? { ...account, name: `Счет: ${updated.name}` } : account;
+        const saved = await api.saveItem('accounts', next);
+        updateList(setAccounts, saved || next, undefined, 'accounts');
+      }
+      for (const partnership of plan.partnerships) {
+        const saved = await api.saveItem('partnerships', partnership);
+        updateList(setPartnerships, saved || partnership, undefined, 'partnerships');
+      }
+      for (const employee of plan.employees) {
+        try {
+          await api.updateUser(employee);
+          updateList(setEmployees, employee);
+        } catch (empErr) {
+          console.warn('⚠️ Не удалось перенести доступ сотрудника к инвестору:', empErr);
+        }
+      }
+
+      // 🔹 4. Старого инвестора удаляем только теперь, когда на него больше
+      // ничего не ссылается. Раньше он удалялся первым, и сбой посередине
+      // оставлял депозиты и выплаты у несуществующего инвестора.
       try {
         await api.deleteItem('investors', oldInvestorId);
-       
       } catch (delErr) {
         console.warn('⚠️ Не удалось удалить старого инвестора:', delErr);
       }
 
-      // 🔹 4. Обновляем локальный стейт: ЗАМЕНЯЕМ старого на нового.
+      // 🔹 5. Обновляем локальный стейт: ЗАМЕНЯЕМ старого на нового.
       // Отмечаем обе записи — и удаляемую, и новую: у замены своя логика с
       // проверкой дубля по почте, поэтому через updateList её не провести, а
       // без отметки фоновое обновление вернуло бы старого инвестора обратно.
@@ -2985,56 +3020,9 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
         return isDuplicate ? withoutOld : [savedInvestor, ...withoutOld];
       });
 
-      // 🔹 5. Транзакции депозита (если есть сумма и счёт)
-      if (updated.initialAmount > 0 && oldAccount) {
-        const depositTransaction: Sale = {
-          id: `dep_activate_${newUser.id}_${Date.now()}`,
-          userId: user!.id,
-          type: 'CASH',
-          customerId: `system_deposit_${newUser.id}`,
-          productName: 'Начальный депозит (активация)',
-          buyPrice: 0,
-          accountId: oldAccount.id,
-          totalAmount: updated.initialAmount,
-          downPayment: updated.initialAmount,
-          remainingAmount: 0,
-          interestRate: 0,
-          installments: 0,
-          startDate: new Date().toISOString(),
-          status: 'COMPLETED',
-          paymentPlan: []
-        };
-        await api.saveItem('sales', depositTransaction);
-        updateList(setSales, depositTransaction, undefined, 'sales');
-      }
-
-      // 🔹 6. Обновляем счёт: у обычного счёта меняем ownerId; у общего пула — заменяем СТАРЫЙ id
-      // инвестора на НОВЫЙ внутри poolMemberIds (сам счёт общий на нескольких инвесторов,
-      // поэтому его ownerId/name не трогаем — иначе счёт "уехал" бы от остальных участников пула).
-      if (oldAccount) {
-        const updatedAccount = oldAccount.type === 'POOL'
-          ? {
-              ...oldAccount,
-              poolMemberIds: (oldAccount.poolMemberIds || []).map(id => id === oldInvestorId ? newUser.id : id)
-            }
-          : {
-              ...oldAccount,
-              ownerId: newUser.id,
-              name: `Счет: ${updated.name}`
-            };
-        const savedAccount = await api.saveItem('accounts', updatedAccount);
-        // Та же замена по id, что и у инвестора выше, — отмечаем обе стороны.
-        recentLocalWritesRef.current.set(oldAccount.id, Date.now());
-        recentLocalWritesRef.current.set(savedAccount.id, Date.now());
-        setAccounts(prev => {
-          const withoutOld = prev.filter(a => a.id !== oldAccount.id);
-          return [savedAccount, ...withoutOld];
-        });
-      }
-
       alert(`✅ Инвестор активирован!\nЛогин: ${updated.email}\nПароль: ${tempPassword}`);
 
-      // 🔹 7. Перезагружаем данные с задержкой
+      // 🔹 6. Перезагружаем данные с задержкой
       setTimeout(() => loadData(), 1000);
       return; // 🔥 ВАЖНО: выходим!
     }
