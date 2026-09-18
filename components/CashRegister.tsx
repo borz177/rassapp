@@ -8,7 +8,7 @@ import AccountCashTab from './AccountCashTab';
 import { accountCashSummary, accountWarehouses, cashPeriodFor } from '../src/accountCash';
 import { Sale, Account, Expense, Investor, AppSettings, Customer, RetailSale, Product, StockLocation, StockMovement, Supplier } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, shareDateForSale, computeAccountBalances } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, computeAccountBalances } from '../src/utils';
 
 // Цвета участников пула — те же роли, что у палитры инвесторов в отчётах:
 // человека узнают по кружку, а не вычитывают имя в таблице.
@@ -682,7 +682,8 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
             const profitMargin = sale.totalAmount > 0 ? totalSaleProfit / sale.totalAmount : 0;
 
             const account = accounts.find(a => a.id === sale.accountId);
-            const managerProfitShare = getManagerSharePercent(account, investors, shareDateForSale(sale)) / 100;
+            // Будущие платежи — прогноз по текущему составу кассы
+            const managerProfitShare = expectedManagerPercent(account, investors) / 100;
 
             // 🔧 Только от остатка долга, как у инвестора!
             totalProfit += sale.remainingAmount * profitMargin * managerProfitShare;
@@ -717,7 +718,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                 if (pDate >= startDate && pDate <= endDate) {
                     // 🔒 Доля — на дату этого платежа, чтобы новый участник пула не получил
                     // задним числом долю от прибыли, полученной до его вступления.
-                    const managerProfitSharePercent = getManagerSharePercent(account, investors, shareDateForSale(sale)) / 100;
+                    const managerProfitSharePercent = paymentManagerPercent(account, investors, p.date) / 100;
                     const profitFromPayment = p.amount * profitMargin;
                     const managerShare = profitFromPayment * managerProfitSharePercent;
                     if(managerShare > 0) {
@@ -823,7 +824,7 @@ const investorProfitAccruals = useMemo(() => {
 
                 if (pDate >= startDate && pDate <= endDate) {
                     const profitFromPayment = p.amount * profitMargin;
-                    const shares = getAccountShares(account, investors, shareDateForSale(sale));
+                    const shares = paymentProfitShares(account, investors, p.date);
                     shares.forEach(({ investor, percentage }) => {
                         const investorAmount = profitFromPayment * (percentage / 100);
                         if (investorAmount > 0) {
@@ -940,9 +941,9 @@ const investorProfitPayouts = useMemo(() => {
         const totalSaleProfit = sale.totalAmount - sale.buyPrice;
         const profitMargin = sale.totalAmount > 0 ? totalSaleProfit / sale.totalAmount : 0;
 
-        // Ожидаемая прибыль: от остатка (ACTIVE/DRAFT), доли на дату оформления договора
+        // Ожидаемая прибыль: от остатка (ACTIVE/DRAFT) — прогноз по текущему составу кассы
         if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
-            getAccountShares(account, investors, shareDateForSale(sale)).forEach(({ investor, percentage }) => {
+            expectedProfitShares(account, investors).forEach(({ investor, percentage }) => {
                 ensure(investor).expectedProfit += sale.remainingAmount * profitMargin * (percentage / 100);
             });
         }
@@ -957,7 +958,7 @@ const investorProfitPayouts = useMemo(() => {
             const pDate = new Date(p.date);
             if (pDate < startDate || pDate > endDate) return;
             const profitFromPayment = p.amount * profitMargin;
-            getAccountShares(account, investors, shareDateForSale(sale)).forEach(({ investor, percentage }) => {
+            paymentProfitShares(account, investors, p.date).forEach(({ investor, percentage }) => {
                 ensure(investor).receivedProfit += profitFromPayment * (percentage / 100);
             });
         });

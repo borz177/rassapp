@@ -18,20 +18,28 @@ const dayMs = (d: string | number | Date): number => {
   return Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
 };
 
+/**
+ * Момент времени в миллисекундах.
+ *
+ * Участие в общей кассе считается по ТОЧНОМУ времени, а не по дню: инвестор,
+ * вошедший 18.09 в 14:00, не участвует в платеже, пришедшем 18.09 в 9:00, — эти
+ * деньги заработаны до его входа. Даты «задним числом» из формы приходят полуночью,
+ * поэтому вход и платёж одного прошедшего дня по-прежнему совпадают.
+ */
+const at = (d: string | number | Date): number => new Date(d).getTime();
+
+// Период участия действует в момент t: вошёл не позже t и ещё не вышел
+const periodActiveAt = (p: { joinedDate: string; leftPoolDate?: string }, t: number): boolean =>
+  at(p.joinedDate) <= t && (!p.leftPoolDate || t < at(p.leftPoolDate));
+
 // Участвовал ли инвестор в пуле на момент cutoff.
 // Если задан investmentPeriods — проверяем по списку периодов (поддержка повторного входа).
 // Иначе — legacy-поведение: один joinedDate / leftPoolDate.
 const isPoolMemberActiveAt = (investor: Investor, cutoff: number): boolean => {
   if (investor.investmentPeriods && investor.investmentPeriods.length > 0) {
-    return investor.investmentPeriods.some(p => {
-      const joined = dayMs(p.joinedDate);
-      const left = p.leftPoolDate ? dayMs(p.leftPoolDate) : Infinity;
-      return joined <= cutoff && cutoff < left;
-    });
+    return investor.investmentPeriods.some(p => periodActiveAt(p, cutoff));
   }
-  if (dayMs(investor.joinedDate) > cutoff) return false;
-  if (investor.leftPoolDate && dayMs(investor.leftPoolDate) <= cutoff) return false;
-  return true;
+  return periodActiveAt({ joinedDate: investor.joinedDate, leftPoolDate: investor.leftPoolDate }, cutoff);
 };
 
 /**
@@ -41,12 +49,12 @@ const isPoolMemberActiveAt = (investor: Investor, cutoff: number): boolean => {
  * убытков. Изменения, случившиеся ПОЗЖЕ cutoff, из неё вычитаются: пополнение
  * 18 сентября не должно задним числом менять долю в договоре, оформленном в
  * феврале, — иначе у остальных участников кассы пересчиталась бы прибыль по
- * давно закрытым сделкам. Изменение в день договора учитывается, как и вход в
- * кассу в тот же день.
+ * давно закрытым сделкам. Изменение, сделанное раньше момента платежа, в нём
+ * уже учтено; сделанное позже — нет.
  */
 const periodAmountAt = (period: InvestmentPeriod, cutoff: number): number => {
   const later = (period.capitalChanges || [])
-    .filter(c => dayMs(c.date) > cutoff)
+    .filter(c => at(c.date) > cutoff)
     .reduce((sum, c) => sum + (Number(c.delta) || 0), 0);
   return Math.max(0, (Number(period.initialAmount) || 0) - later);
 };
@@ -55,11 +63,7 @@ const periodAmountAt = (period: InvestmentPeriod, cutoff: number): number => {
 // Нужна при поддержке нескольких периодов (разные суммы в разные периоды).
 const getInvestorAmountAt = (investor: Investor, cutoff: number): number => {
   if (investor.investmentPeriods && investor.investmentPeriods.length > 0) {
-    const active = investor.investmentPeriods.find(p => {
-      const joined = dayMs(p.joinedDate);
-      const left = p.leftPoolDate ? dayMs(p.leftPoolDate) : Infinity;
-      return joined <= cutoff && cutoff < left;
-    });
+    const active = investor.investmentPeriods.find(p => periodActiveAt(p, cutoff));
     return active ? periodAmountAt(active, cutoff) : 0;
   }
   return investor.initialAmount;
@@ -139,11 +143,7 @@ export const revertCapitalChange = (investor: Investor, sourceId: string): Inves
 // Возвращает активный период инвестора на момент cutoff (или undefined).
 export const getActivePeriodAt = (investor: Investor, cutoff: number): InvestmentPeriod | null => {
   if (investor.investmentPeriods && investor.investmentPeriods.length > 0) {
-    return investor.investmentPeriods.find(p => {
-      const joined = dayMs(p.joinedDate);
-      const left = p.leftPoolDate ? dayMs(p.leftPoolDate) : Infinity;
-      return joined <= cutoff && cutoff < left;
-    }) ?? null;
+    return investor.investmentPeriods.find(p => periodActiveAt(p, cutoff)) ?? null;
   }
   const legacy: InvestmentPeriod = {
     id: 'legacy',
@@ -218,6 +218,8 @@ export const participationDatesError = (
 ): string | null => {
   const joined = dayMs(joinedDate);
   if (Number.isNaN(joined)) return 'Укажите дату входа';
+  // Вход — это момент, когда деньги легли в кассу. Будущей датой их не оприходовать.
+  if (joined > dayMs(new Date())) return 'Дата входа не может быть в будущем';
   const periods = sortedPeriods(investor);
 
   // Первый период не должен налезть на повторный вход: иначе два периода
@@ -243,10 +245,10 @@ export const participationDatesError = (
 // на весь пул нет. Итоговая доля инвестора от общей прибыли = (его_капитал / общий_капитал) ×
 // его_процент. Доля менеджера — как и для обычного счёта — просто остаток до 100%.
 //
-// asOfDate — на какую дату считать состав и суммы пула. Участники, чей joinedDate позже
+// asOfDate — на какой момент считать состав и суммы пула. Участники, вошедшие позже
 // asOfDate, в расчёт не попадают вовсе (их ещё не было в пуле на тот момент).
-// Для прибыли по договору сюда передаётся ДАТА ОФОРМЛЕНИЯ ДОГОВОРА — см. shareDateForSale
-// ниже. Для операций, не привязанных к договору (расход из прибыли), — дата операции.
+// Для прибыли по платежу клиента сюда передаётся МОМЕНТ ПОСТУПЛЕНИЯ ДЕНЕГ — см.
+// paymentProfitShares ниже; для расхода из прибыли и убытка — дата операции.
 export const getAccountShares = (
   account: Account | undefined,
   investors: Investor[],
@@ -276,20 +278,58 @@ export const getAccountShares = (
 };
 
 /**
- * 📅 На какую дату определяются доли прибыли по КОНКРЕТНОМУ договору — на дату его оформления.
+ * 📅 Доли прибыли по ПЛАТЕЖУ клиента — единое правило для всех экранов: касса,
+ * карточка и кабинет инвестора, отчёты, прибыль менеджера, премия сотрудников.
  *
- * Прибыль по рассрочке (мурабаха) фиксируется в момент заключения договора: товар куплен
- * и продан, наценка известна, дальше идёт лишь погашение возникшего долга. Поэтому право
- * на эту прибыль принадлежит тем, чей капитал нёс риск при её создании, — участникам пула
- * НА МОМЕНТ ОФОРМЛЕНИЯ, а не тем, кто вошёл позже и застал только платежи.
+ * Общая касса (POOL) — настоящий общий пул: прибыль платежа делится между теми,
+ * кто в кассе В МОМЕНТ ПОСТУПЛЕНИЯ ДЕНЕГ, пропорционально их капиталу в этот
+ * момент (с учётом пополнений, возвратов, убытков, выхода и повторного входа).
+ *   • Прибыль, полученная до входа инвестора, ему не начисляется.
+ *   • После входа он участвует во всей последующей прибыли кассы — и по новым
+ *     договорам, и по платежам старых.
+ *   • Расчёт идёт по периодам между событиями: пока состав и капитал не
+ *     менялись, доли одинаковы; вошёл, довложил, вывел — с этого момента новые.
+ *   • За месяц это и есть «капитал × время»: каждый получает долю прибыли,
+ *     пришедшей ровно тогда, когда его деньги были в кассе.
  *
- * Раньше доли брались на дату каждого платежа: инвестор, вошедший в пул после оформления
- * договора, получал долю прибыли по сделке, которую профинансировали до него.
+ * Раньше доли брались на дату оформления договора. Получалось несимметрично:
+ * новичок не получал ничего с платежей по старым договорам, а старые участники
+ * получали долю в договорах, купленных на деньги новичка.
  *
- * Для обычного счёта инвестора (ownerId) дата ни на что не влияет — там фиксированный
- * процент. Правило работает только для общего пула, где состав и капитал меняются во времени.
+ * Личный счёт инвестора — фиксированный процент, дата на него не влияет.
  */
-export const shareDateForSale = (sale: Pick<Sale, 'startDate'>): string => sale.startDate;
+export const paymentProfitShares = (
+  account: Account | undefined,
+  investors: Investor[],
+  paymentDate: string | number | Date
+) => getAccountShares(account, investors, paymentDate);
+
+/** Доля менеджера по платежу клиента — остаток после долей инвесторов (см. paymentProfitShares). */
+export const paymentManagerPercent = (
+  account: Account | undefined,
+  investors: Investor[],
+  paymentDate: string | number | Date
+): number => getManagerSharePercent(account, investors, paymentDate);
+
+/**
+ * Доли ОЖИДАЕМОЙ прибыли — с платежей, которых ещё не было. Кто будет в кассе,
+ * когда они придут, заранее неизвестно, поэтому это прогноз по текущему составу.
+ * Фактически каждый платёж разделится по составу на момент поступления.
+ */
+export const expectedProfitShares = (account: Account | undefined, investors: Investor[]) =>
+  getAccountShares(account, investors);
+
+/** Доля менеджера в ожидаемой прибыли — по текущему составу кассы. */
+export const expectedManagerPercent = (account: Account | undefined, investors: Investor[]): number =>
+  getManagerSharePercent(account, investors);
+
+/** Реальные поступления по договору: первый взнос и оплаченные платежи (без плановых строк). */
+export const saleMoneyIn = (sale: Pick<Sale, 'id' | 'startDate' | 'downPayment' | 'paymentPlan'>) => [
+  { id: `${sale.id}_dp`, date: sale.startDate, amount: Number(sale.downPayment) || 0 },
+  ...(sale.paymentPlan || [])
+    .filter(p => p.isPaid && p.isRealPayment !== false)
+    .map(p => ({ id: p.id, date: p.date, amount: Number(p.amount) || 0 })),
+];
 
 // Остаток % после долей всех инвесторов счёта (на дату asOfDate) — достаётся менеджеру.
 // Единая формула для всех типов счёта, включая POOL: доля каждого инвестора там уже учитывает
@@ -695,13 +735,13 @@ export const getEmployeeProfitAccrued = (
       if (base === 'PAYMENTS' && (p as any).recordedByUserId !== employee.id) continue;
 
       const profitFromPayment = p.amount * profitMargin;
-      // По умолчанию премия берётся из доли МЕНЕДЖЕРА (на дату оформления договора).
+      // По умолчанию премия берётся из доли МЕНЕДЖЕРА — на момент этого платежа.
       // Вариант SHARED — расход общего дела: считается от всей прибыли до распределения
       // и ложится на всех участников. Нужен, когда доля менеджера равна нулю
       // и премию платить попросту не из чего.
       const bonusBase = employee.profitSource === 'SHARED'
         ? profitFromPayment
-        : profitFromPayment * getManagerSharePercent(account, investors, shareDateForSale(sale)) / 100;
+        : profitFromPayment * paymentManagerPercent(account, investors, p.date) / 100;
       accrued += bonusBase * percent / 100;
     }
   }

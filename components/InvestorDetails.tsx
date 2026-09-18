@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Investor, Sale, Expense, Account, Payment, AppSettings, Customer, InvestmentPeriod, LossEvent } from '../types';
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, shareDateForSale, participationDates, participationDatesError, withParticipationDates, investorProfitOutflows } from '../src/utils';
+import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, paymentProfitShares, expectedProfitShares, participationDates, participationDatesError, withParticipationDates, investorProfitOutflows } from '../src/utils';
 
 // Модальное окно формы. Через портал в body: страница открыта внутри .page-push-layer,
 // а он position: fixed с z-index 30 — окно внутри него оказалось бы под нижней навигацией.
@@ -347,10 +347,10 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
     return sales
       .filter(s => s.accountId === account.id && (s.status === 'ACTIVE' || s.status === 'DRAFT') && s.buyPrice > 0 && s.totalAmount > 0)
       .reduce((sum, sale) => {
-        // Доля — на дату ОФОРМЛЕНИЯ каждого договора, а не текущая доля инвестора.
-        // Раньше здесь стоял currentSharePercent (доля на сегодня), из-за чего инвестор,
-        // вошедший в пул позже, видел ожидаемую прибыль по договорам, заключённым до него.
-        const myShare = getAccountShares(account, investors, shareDateForSale(sale))
+        // Будущие платежи — прогноз по текущему составу кассы: вошедший в кассу
+        // участвует во всей последующей прибыли, в том числе по старым договорам
+        // (см. paymentProfitShares в src/utils.ts).
+        const myShare = expectedProfitShares(account, investors)
           .find(m => m.investor.id === investor.id)?.percentage ?? 0;
         if (myShare <= 0) return sum;
         const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
@@ -380,7 +380,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
 
       allPayments.forEach(p => {
         if (p.amount > 0) {
-          const share = getAccountShares(account, investors, shareDateForSale(sale)).find(m => m.investor.id === investor.id);
+          const share = paymentProfitShares(account, investors, p.date).find(m => m.investor.id === investor.id);
           const myPercent = share ? share.percentage : 0;
           if (myPercent <= 0) return;
           const profitFromPayment = p.amount * profitMargin * myPercent / 100;
@@ -444,10 +444,17 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
   // Loss events with this investor's share (capital-based, Islamic principle)
   const lossData = useMemo(() => {
     if (!account || !isPoolMember) return { events: [], totalMyLoss: 0 };
+    const journal = (investor.investmentPeriods || []).flatMap(p => p.capitalChanges || []);
     const events = (account.lossEvents || []).map(ev => {
-      const shares = getCapitalShares(account, investors, ev.date);
-      const myShare = shares.find(s => s.investor.id === investor.id);
-      return { ...ev, myLoss: myShare ? ev.amount * myShare.percentage / 100 : 0, myPercent: myShare?.percentage ?? 0 };
+      // Убыток по вине управляющего капитал инвесторов не уменьшает — он на управляющем
+      if (ev.blamedOnManager) return { ...ev, myLoss: 0, myPercent: 0, onManager: true };
+      // Сколько реально списано с капитала этого инвестора — из журнала. У записей,
+      // сделанных до журнала, — по доле капитала на дату убытка, как их и списывали.
+      const entry = journal.find(c => c.sourceId === `loss_${ev.id}`);
+      const myLoss = entry
+        ? Math.abs(entry.delta)
+        : ev.amount * (getCapitalShares(account, investors, ev.date).find(s => s.investor.id === investor.id)?.percentage ?? 0) / 100;
+      return { ...ev, myLoss, myPercent: ev.amount > 0 ? myLoss / ev.amount * 100 : 0, onManager: false };
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     return { events, totalMyLoss: events.reduce((s, e) => s + e.myLoss, 0) };
   }, [account, investors, investor.id, isPoolMember]);
@@ -460,7 +467,9 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
     const capital = activePeriod?.initialAmount || 0;
     const unpaidProfit = totalProfitEarned - totalProfitWithdrawn;
     const pending = includePendingProfit ? expectedTotalProfit : 0;
-    const total = capital + unpaidProfit + pending - lossData.totalMyLoss;
+    // Убытки уже уменьшили капитал в периоде (см. applyLossToCapital) — второй раз не
+    // вычитаем. Раньше вычитали, и при выходе инвестор недополучал сумму убытков.
+    const total = capital + unpaidProfit + pending;
     return {
       capital,
       unpaidProfit,
@@ -743,8 +752,8 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
 
                 {exitSettlement.losses > 0 && (
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600 dark:text-slate-300">Убытки</span>
-                    <span className="font-bold text-rose-600 dark:text-rose-400">−{formatCurrency(exitSettlement.losses, appSettings.showCents)} ₽</span>
+                    <span className="text-slate-400 dark:text-slate-500">Убытки — уже вычтены из капитала</span>
+                    <span className="font-medium text-slate-400 dark:text-slate-500">{formatCurrency(exitSettlement.losses, appSettings.showCents)} ₽</span>
                   </div>
                 )}
 
@@ -904,7 +913,9 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
                       <p className="text-xs text-slate-400">{new Date(ev.date).toLocaleDateString()} · {Math.round(ev.myPercent * 10) / 10}% кап.</p>
                     </div>
                     <div className="text-right shrink-0 ml-3">
-                      <p className="text-sm font-bold text-red-600 dark:text-red-400">−{formatCurrency(ev.myLoss, appSettings.showCents)} ₽</p>
+                      {ev.onManager
+                        ? <p className="text-sm font-bold text-slate-500 dark:text-slate-400">на управляющем</p>
+                        : <p className="text-sm font-bold text-red-600 dark:text-red-400">−{formatCurrency(ev.myLoss, appSettings.showCents)} ₽</p>}
                       <p className="text-xs text-slate-400">из {formatCurrency(ev.amount, false)} ₽</p>
                     </div>
                   </div>

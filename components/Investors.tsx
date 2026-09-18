@@ -152,7 +152,9 @@ const Investors: React.FC<InvestorsProps> = ({
                     name: formName,
                     phone: formPhone,
                     email: formEmail,
-                    initialAmount: Number(formAmount) || inv.initialAmount, // 🔹 Фоллбэк на старое значение
+                    // Сумму здесь не меняем: поле при редактировании скрыто. Пополнение — через
+                    // «Приход», возврат — расходом «Из инвестиций»: у них есть дата и деньги.
+                    initialAmount: inv.initialAmount,
                     profitPercentage: Number(formProfitPercentage),
                     permissions: formPermissions
                 }, {
@@ -330,10 +332,17 @@ const Investors: React.FC<InvestorsProps> = ({
                           value={formJoinedDate}
                           onChange={e => setFormJoinedDate(e.target.value)}
                           required
+                          // Вход — момент, когда деньги легли в кассу: будущей датой нельзя
+                          max={new Date().toISOString().split('T')[0]}
                       />
                       {editingId && isEditingPoolMember && (
                           <p className="text-xs text-slate-400 mt-1">
-                              Доля прибыли начисляется по договорам, оформленным с этой даты. После сохранения прибыль пересчитается.
+                              С этой даты инвестор участвует в прибыли кассы. Начальный депозит переедет на эту же дату.
+                          </p>
+                      )}
+                      {!editingId && formJoinedDate < new Date().toISOString().split('T')[0] && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                              Дата в прошлом: вложение будет записано в кассу этой же датой, и с неё инвестор участвует в прибыли.
                           </p>
                       )}
                   </div>

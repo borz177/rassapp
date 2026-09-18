@@ -56,7 +56,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, shareDateForSale, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
+import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -1582,9 +1582,13 @@ const dashboardStats = useMemo(() => {
         if (saleProfit <= 0) return;
 
         const account = accounts.find(a => a.id === sale.accountId);
-        const managerProfitShare = getManagerSharePercent(account, investors, shareDateForSale(sale)) / 100;
-
-        totalProfit += saleProfit * managerProfitShare;
+        const margin = saleProfit / sale.totalAmount;
+        // Полученное — по составу кассы на момент каждого платежа, остаток — прогноз
+        // по текущему составу (см. paymentProfitShares в src/utils.ts)
+        saleMoneyIn(sale).forEach(p => {
+          if (p.amount > 0) totalProfit += p.amount * margin * paymentManagerPercent(account, investors, p.date) / 100;
+        });
+        totalProfit += (sale.remainingAmount || 0) * margin * expectedManagerPercent(account, investors) / 100;
     });
 
     return totalProfit;
@@ -1614,10 +1618,8 @@ const dashboardStats = useMemo(() => {
         allPayments.forEach(p => {
             const paymentDate = new Date(p.date);
             if (paymentDate >= startDate && paymentDate <= endDate && p.amount > 0) {
-                // 🔒 Доля считается на дату ОФОРМЛЕНИЯ договора: прибыль по мурабахе
-                // фиксируется при заключении сделки, поэтому принадлежит тем, чей капитал
-                // её профинансировал (см. shareDateForSale в src/utils.ts).
-                const managerProfitShare = getManagerSharePercent(account, investors, shareDateForSale(sale)) / 100;
+                // Доля — на момент поступления платежа (см. paymentProfitShares в src/utils.ts)
+                const managerProfitShare = paymentManagerPercent(account, investors, p.date) / 100;
                 const profitFromPayment = p.amount * profitMargin;
                 periodProfit += profitFromPayment * managerProfitShare;
             }
@@ -1658,10 +1660,16 @@ const dashboardStats = useMemo(() => {
             const saleProfit = sale.totalAmount - sale.buyPrice;
             if (saleProfit <= 0) return;
             const account = accounts.find(a => a.id === sale.accountId);
-            const shares = getAccountShares(account, investors, shareDateForSale(sale));
-            const totalInvestorShare = shares.reduce((sum, m) => sum + saleProfit * (m.percentage / 100), 0);
-            expectedInvestorProfit += totalInvestorShare;
-            expectedManagerProfit += saleProfit - totalInvestorShare;
+            const margin = saleProfit / sale.totalAmount;
+            // Полученное — по составу на момент платежа, остаток — по текущему составу
+            const split = (profit: number, managerPct: number) => {
+              expectedManagerProfit += profit * managerPct / 100;
+              expectedInvestorProfit += profit * (100 - managerPct) / 100;
+            };
+            saleMoneyIn(sale).forEach(p => {
+              if (p.amount > 0) split(p.amount * margin, paymentManagerPercent(account, investors, p.date));
+            });
+            split((sale.remainingAmount || 0) * margin, expectedManagerPercent(account, investors));
         });
 
     let realizedManagerProfit = 0;
@@ -1677,7 +1685,7 @@ const dashboardStats = useMemo(() => {
 
         paymentsInPeriod.forEach(p => {
             const profitFromPayment = p.amount * profitMargin;
-            const managerPct = getManagerSharePercent(account, investors, shareDateForSale(sale)) / 100;
+            const managerPct = paymentManagerPercent(account, investors, p.date) / 100;
             realizedManagerProfit += profitFromPayment * managerPct;
             realizedInvestorProfit += profitFromPayment * (1 - managerPct);
         });
@@ -2709,7 +2717,11 @@ const handleAddInvestor = async (
         remainingAmount: 0,
         interestRate: 0,
         installments: 0,
-        startDate: new Date().toISOString(),
+        // Деньги поступают в кассу в ту же минуту, с которой капитал участвует в
+        // прибыли. Раньше депозит всегда датировался днём создания, а дата входа
+        // могла стоять раньше — и инвестор получал долю прибыли за время, когда
+        // его денег в кассе ещё не было.
+        startDate: newInvestor.joinedDate,
         status: 'COMPLETED',
         paymentPlan: []
       };
@@ -3026,6 +3038,25 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
     // ========================================
     const saved = await api.saveItem('investors', updated);
     updateList(setInvestors, saved, undefined, 'investors');
+
+    // Дату входа перенесли — начальный депозит переезжает вместе с ней: дата денег в
+    // кассе и дата начала участия капитала должны совпадать.
+    const before = investors.find(i => i.id === updated.id);
+    const oldJoined = before ? participationDates(before).joinedDate : undefined;
+    const newJoined = participationDates(updated).joinedDate;
+    if (oldJoined && newJoined && oldJoined !== newJoined) {
+      const initialDeposits = sales.filter(s =>
+        s.customerId === `system_deposit_${updated.id}` && String(s.productName || '').startsWith('Начальный депозит'));
+      for (const dep of initialDeposits) {
+        const moved = { ...dep, startDate: newJoined };
+        try {
+          const savedDep = await api.saveItem('sales', moved);
+          updateList(setSales, savedDep || moved, undefined, 'sales');
+        } catch (depErr) {
+          console.warn('⚠️ Не удалось перенести дату начального депозита:', depErr);
+        }
+      }
+    }
 
     // Обновляем пользователя ТОЛЬКО если это уже активированный инвестор
     if (updated.id.startsWith('u_inv_') || updated.id.startsWith('u_emp_')) {

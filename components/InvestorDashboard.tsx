@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Sale, Expense, Account, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getAccountShares, addMonthsClamped, shareDateForSale, investorProfitOutflows } from '../src/utils';
+import { formatCurrency, formatDate, getAccountShares, addMonthsClamped, paymentProfitShares, expectedProfitShares, investorProfitOutflows } from '../src/utils';
 import Contracts from './Contracts';
 
 interface InvestorDashboardProps {
@@ -145,7 +145,7 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
       allPayments.forEach(p => {
         if (p.amount > 0) {
           const account = accounts.find(a => a.id === sale.accountId);
-          const share = getAccountShares(account, investors, shareDateForSale(sale)).find(m => m.investor.id === investor.id);
+          const share = paymentProfitShares(account, investors, p.date).find(m => m.investor.id === investor.id);
           const myPercent = share ? share.percentage : 0;
           if (myPercent <= 0) return;
           const profitFromPayment = p.amount * profitMargin * myPercent / 100;
@@ -236,9 +236,8 @@ const expectedTotalProfit = useMemo(() => {
     const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
     const grossProfitFromRemaining = sale.remainingAmount * profitMargin;
     const account = accounts.find(a => a.id === sale.accountId);
-    // Доля — на дату оформления договора (см. shareDateForSale): инвестор, вошедший позже,
-    // не участвует в прибыли по сделкам, профинансированным до него.
-    const share = getAccountShares(account, investors, shareDateForSale(sale)).find(m => m.investor.id === investor.id);
+    // Будущие платежи — прогноз по текущему составу кассы (см. expectedProfitShares)
+    const share = expectedProfitShares(account, investors).find(m => m.investor.id === investor.id);
     const myPercent = share ? share.percentage : 0;
     return sum + grossProfitFromRemaining * myPercent / 100;
   }, 0);
