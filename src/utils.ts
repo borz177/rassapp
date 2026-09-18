@@ -278,8 +278,11 @@ export const getAccountShares = (
       .filter((i): i is Investor => !!i && isPoolMemberActiveAt(i, cutoff));
     const totalCapital = members.reduce((sum, inv) => sum + getInvestorAmountAt(inv, cutoff), 0);
     if (totalCapital <= 0) {
-      // Суммы не заданы — используем profitPercentage как фиксированный процент напрямую
-      return members.map(investor => ({ investor, percentage: investor.profitPercentage || 0 }));
+      // Суммы не заданы — используем profitPercentage как фиксированный процент напрямую.
+      // Вместе больше 100% прибыли отдать нельзя: 60% + 60% делят её пропорционально.
+      const totalPercent = members.reduce((sum, inv) => sum + (inv.profitPercentage || 0), 0);
+      const scale = totalPercent > 100 ? 100 / totalPercent : 1;
+      return members.map(investor => ({ investor, percentage: (investor.profitPercentage || 0) * scale }));
     }
     return members.map(investor => {
       const capitalShare = getInvestorAmountAt(investor, cutoff) / totalCapital; // 0..1
