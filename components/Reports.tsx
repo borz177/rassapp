@@ -253,9 +253,9 @@ const Reports: React.FC<ReportsProps> = ({
                     shares.find(m => m.investor.id === inv.id)?.percentage ?? 0;
                 // Полученное — по составу на момент платежа, остаток — по текущему составу
                 saleMoneyIn(sale).forEach(p => {
-                    if (p.amount > 0) expectedProfit += p.amount * margin * mine(paymentProfitShares(acc, investors, p.date)) / 100;
+                    if (p.amount > 0) expectedProfit += p.amount * margin * mine(paymentProfitShares(acc, investors, sale, p)) / 100;
                 });
-                expectedProfit += (sale.remainingAmount || 0) * margin * mine(expectedProfitShares(acc, investors)) / 100;
+                expectedProfit += (sale.remainingAmount || 0) * margin * mine(expectedProfitShares(acc, investors, sale)) / 100;
             });
 
             let realizedProfit = 0;
@@ -268,7 +268,7 @@ const Reports: React.FC<ReportsProps> = ({
                     ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
                 ].filter(p => { const d = new Date(p.date); return d >= startDate && d <= endDate; });
                 paymentsInPeriod.forEach(p => {
-                    const myShare = paymentProfitShares(acc, investors, p.date).find(m => m.investor.id === inv.id);
+                    const myShare = paymentProfitShares(acc, investors, sale, p).find(m => m.investor.id === inv.id);
                     if (myShare) realizedProfit += p.amount * profitMargin * (myShare.percentage / 100);
                 });
             });
@@ -493,17 +493,17 @@ const Reports: React.FC<ReportsProps> = ({
                 const pDate = new Date(p.date);
                 if (pDate < startDate || pDate > endDate) return;
                 const profitFromPayment = p.amount * profitMargin;
-                const mgrPct = paymentManagerPercent(account, investors as Investor[], p.date) / 100;
+                const mgrPct = paymentManagerPercent(account, investors as Investor[], sale, p) / 100;
                 ensure(MGR, () => ({ label: 'Менеджер', isManager: true, sharePercent: getManagerSharePercent(account, investors as Investor[]), received: 0, expected: 0 })).received += profitFromPayment * mgrPct;
-                paymentProfitShares(account, investors as Investor[], p.date).forEach(({ investor, percentage }) => {
+                paymentProfitShares(account, investors as Investor[], sale, p).forEach(({ investor, percentage }) => {
                     ensure(investor.id, () => ({ label: investor.name, isManager: false, sharePercent: percentage, received: 0, expected: 0 })).received += profitFromPayment * (percentage / 100);
                 });
             });
             if ((sale.status === 'ACTIVE' || sale.status === 'DRAFT') && sale.remainingAmount > 0) {
                 const gross = sale.remainingAmount * profitMargin;
-                const mgrPct = expectedManagerPercent(account, investors as Investor[]) / 100;
+                const mgrPct = expectedManagerPercent(account, investors as Investor[], sale) / 100;
                 ensure(MGR, () => ({ label: 'Менеджер', isManager: true, sharePercent: getManagerSharePercent(account, investors as Investor[]), received: 0, expected: 0 })).expected += gross * mgrPct;
-                expectedProfitShares(account, investors as Investor[]).forEach(({ investor, percentage }) => {
+                expectedProfitShares(account, investors as Investor[], sale).forEach(({ investor, percentage }) => {
                     ensure(investor.id, () => ({ label: investor.name, isManager: false, sharePercent: percentage, received: 0, expected: 0 })).expected += gross * (percentage / 100);
                 });
             }

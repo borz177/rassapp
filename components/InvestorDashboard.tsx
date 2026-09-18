@@ -145,7 +145,7 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
       allPayments.forEach(p => {
         if (p.amount > 0) {
           const account = accounts.find(a => a.id === sale.accountId);
-          const share = paymentProfitShares(account, investors, p.date).find(m => m.investor.id === investor.id);
+          const share = paymentProfitShares(account, investors, sale, p).find(m => m.investor.id === investor.id);
           const myPercent = share ? share.percentage : 0;
           if (myPercent <= 0) return;
           const profitFromPayment = p.amount * profitMargin * myPercent / 100;
@@ -237,7 +237,7 @@ const expectedTotalProfit = useMemo(() => {
     const grossProfitFromRemaining = sale.remainingAmount * profitMargin;
     const account = accounts.find(a => a.id === sale.accountId);
     // Будущие платежи — прогноз по текущему составу кассы (см. expectedProfitShares)
-    const share = expectedProfitShares(account, investors).find(m => m.investor.id === investor.id);
+    const share = expectedProfitShares(account, investors, sale).find(m => m.investor.id === investor.id);
     const myPercent = share ? share.percentage : 0;
     return sum + grossProfitFromRemaining * myPercent / 100;
   }, 0);

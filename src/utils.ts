@@ -278,50 +278,195 @@ export const getAccountShares = (
 };
 
 /**
- * 📅 Доли прибыли по ПЛАТЕЖУ клиента — единое правило для всех экранов: касса,
+ * 📅 Доли прибыли общей кассы (POOL) — единое правило для всех экранов: касса,
  * карточка и кабинет инвестора, отчёты, прибыль менеджера, премия сотрудников.
  *
- * Общая касса (POOL) — настоящий общий пул: прибыль платежа делится между теми,
- * кто в кассе В МОМЕНТ ПОСТУПЛЕНИЯ ДЕНЕГ, пропорционально их капиталу в этот
- * момент (с учётом пополнений, возвратов, убытков, выхода и повторного входа).
- *   • Прибыль, полученная до входа инвестора, ему не начисляется.
- *   • После входа он участвует во всей последующей прибыли кассы — и по новым
- *     договорам, и по платежам старых.
- *   • Расчёт идёт по периодам между событиями: пока состав и капитал не
- *     менялись, доли одинаковы; вошёл, довложил, вывел — с этого момента новые.
- *   • За месяц это и есть «капитал × время»: каждый получает долю прибыли,
- *     пришедшей ровно тогда, когда его деньги были в кассе.
+ * Касса — мушарака/мудараба: прибыль принадлежит тем, чей капитал её заработал,
+ * и ровно за то время, пока он работал. Поэтому:
+ *   • Прибыль каждой строки графика зарабатывается за её период — от предыдущей
+ *     строки (у первой — от оформления договора) до её даты. Прибыль первого
+ *     взноса — в момент оформления.
+ *   • Внутри периода прибыль делится по «капитал × время»: на каждом отрезке между
+ *     событиями кассы (вход, выход, довложение, вывод, убыток) — по составу и
+ *     капиталу на этом отрезке. Каждое событие — точка расчёта, после неё новый
+ *     период с новыми долями.
+ *   • Отсюда: вошедший 18.09 не получает прибыль, заработанную до 18.09, даже если
+ *     клиент заплатил позже (просрочка). И участвует во всей прибыли, заработанной
+ *     после входа, — по новым договорам и по старым, наравне со всеми.
+ *   • Делится только реально полученная прибыль: время решает, кому она
+ *     принадлежит, а не гарантирует её. Нет оплаты — нет прибыли.
+ *   • Досрочная оплата: часть периода, которая ещё не наступила, делится по
+ *     составу на момент оплаты — будущий состав неизвестен, а задним числом доли
+ *     полученной прибыли не меняются.
+ *   • Платёж закрывает строки графика по очереди — так же, как в
+ *     reconcileSalePaymentPlan / expectedPaymentsInPeriod. Сверх графика — в
+ *     момент платежа.
  *
- * Раньше доли брались на дату оформления договора. Получалось несимметрично:
- * новичок не получал ничего с платежей по старым договорам, а старые участники
- * получали долю в договорах, купленных на деньги новичка.
+ * Прежние правила: доля на дату оформления договора (новичок не участвовал в
+ * старых договорах, хотя его деньги работали на всех), потом — на дату поступления
+ * денег (новичок получал прибыль, заработанную до его входа, если клиент опоздал).
  *
- * Личный счёт инвестора — фиксированный процент, дата на него не влияет.
+ * Личный счёт инвестора — фиксированный процент, время на него не влияет.
  */
+type EarningWindow = { from: number; to: number; weight: number };
+type MoneyIn = { id?: string; date: string | number | Date };
+type SaleSchedule = Pick<Sale, 'startDate' | 'paymentPlan'>;
+
+const earningCache = new WeakMap<object, { paid: Map<string, EarningWindow[]>; open: EarningWindow[] }>();
+
+// За какие периоды заработана прибыль каждого полученного платежа (paid) и
+// ещё не полученного остатка (open). Считается один раз на объект договора.
+const saleEarningWindows = (sale: SaleSchedule) => {
+  const hit = earningCache.get(sale);
+  if (hit) return hit;
+
+  const plan = sale.paymentPlan || [];
+  const start = at(sale.startDate);
+  const due = plan
+    .filter(p => p.isRealPayment !== true)
+    .map(p => ({ due: at(p.date), left: Number(p.amount) || 0 }))
+    .filter(s => s.left > 0 && !Number.isNaN(s.due))
+    .sort((a, b) => a.due - b.due);
+  const slots = due.map((s, i) => {
+    const prev = i === 0 ? start : due[i - 1].due;
+    return { from: Number.isNaN(prev) ? s.due : Math.min(prev, s.due), to: s.due, left: s.left };
+  });
+
+  const paid = new Map<string, EarningWindow[]>();
+  const payments = plan
+    .map((p, i) => ({ p, i }))
+    .filter(({ p }) => p.isPaid && p.isRealPayment !== false)
+    .sort((a, b) => at(a.p.date) - at(b.p.date) || a.i - b.i);
+  let k = 0;
+  for (const { p } of payments) {
+    let money = (Number(p.amount) || 0) + (Number((p as any).discountAmount) || 0);
+    const windows: EarningWindow[] = [];
+    while (money > 0.005 && k < slots.length) {
+      const slot = slots[k];
+      const take = Math.min(slot.left, money);
+      windows.push({ from: slot.from, to: slot.to, weight: take });
+      slot.left -= take;
+      money -= take;
+      // Копеечный допуск — как в expectedPaymentsInPeriod
+      if (slot.left <= 0.01) k++;
+    }
+    if (money > 0.005) { const t = at(p.date); windows.push({ from: t, to: t, weight: money }); }
+    paid.set(p.id, windows);
+  }
+  const open = slots.slice(k)
+    .filter(s => s.left > 0.01)
+    .map(s => ({ from: s.from, to: s.to, weight: s.left }));
+
+  const result = { paid, open };
+  earningCache.set(sale, result);
+  return result;
+};
+
+// Моменты событий участников кассы — границы отрезков с неизменными долями
+const eventCache = new WeakMap<Investor[], Map<string, { members: string; times: number[] }>>();
+const poolEventTimes = (account: Account, investors: Investor[]): number[] => {
+  const members = (account.poolMemberIds || []).join(',');
+  const byAccount = eventCache.get(investors) || new Map();
+  const hit = byAccount.get(account.id);
+  if (hit && hit.members === members) return hit.times;
+  const times = new Set<number>();
+  const add = (d?: string) => { if (d) { const t = at(d); if (!Number.isNaN(t)) times.add(t); } };
+  for (const id of account.poolMemberIds || []) {
+    const inv = investors.find(i => i.id === id);
+    if (!inv) continue;
+    add(inv.joinedDate);
+    add(inv.leftPoolDate);
+    for (const p of inv.investmentPeriods || []) {
+      add(p.joinedDate);
+      add(p.leftPoolDate);
+      (p.capitalChanges || []).forEach(c => add(c.date));
+    }
+  }
+  const sorted = [...times].sort((a, b) => a - b);
+  byAccount.set(account.id, { members, times: sorted });
+  eventCache.set(investors, byAccount);
+  return sorted;
+};
+
+// Доли, усреднённые по «капитал × время» внутри периодов заработка. Часть периода
+// позже момента now (ещё не наступила) — по составу на now.
+const sharesOverWindows = (
+  account: Account,
+  investors: Investor[],
+  windows: EarningWindow[],
+  now: number
+): { investor: Investor; percentage: number }[] => {
+  const sums = new Map<string, { investor: Investor; sum: number }>();
+  let total = 0;
+  const add = (time: number, weight: number) => {
+    if (!(weight > 0)) return;
+    total += weight;
+    for (const { investor, percentage } of getAccountShares(account, investors, time)) {
+      const e = sums.get(investor.id) || { investor, sum: 0 };
+      e.sum += percentage * weight;
+      sums.set(investor.id, e);
+    }
+  };
+
+  const events = poolEventTimes(account, investors);
+  for (const { from, to, weight } of windows) {
+    const length = to - from;
+    if (!(length > 0) || from >= now) { add(Math.min(to, now), weight); continue; }
+    const end = Math.min(to, now);
+    const cuts = [from, ...events.filter(t => t > from && t < end), end];
+    for (let i = 0; i < cuts.length - 1; i++) add(cuts[i], weight * (cuts[i + 1] - cuts[i]) / length);
+    if (to > end) add(now, weight * (to - end) / length);
+  }
+
+  if (total <= 0) return getAccountShares(account, investors, now);
+  return [...sums.values()].map(e => ({ investor: e.investor, percentage: e.sum / total }));
+};
+
+const sharesToManager = (shares: { percentage: number }[]) =>
+  Math.max(0, 100 - shares.reduce((sum, s) => sum + s.percentage, 0));
+
+/** Доли инвесторов в прибыли полученного платежа (первый взнос или оплата по договору). */
 export const paymentProfitShares = (
   account: Account | undefined,
   investors: Investor[],
-  paymentDate: string | number | Date
-) => getAccountShares(account, investors, paymentDate);
+  sale: SaleSchedule | undefined,
+  payment: MoneyIn
+): { investor: Investor; percentage: number }[] => {
+  const t = at(payment.date);
+  if (!account || account.type !== 'POOL' || !sale || !payment.id) return getAccountShares(account, investors, t);
+  const windows = saleEarningWindows(sale).paid.get(payment.id);
+  return windows ? sharesOverWindows(account, investors, windows, t) : getAccountShares(account, investors, t);
+};
 
-/** Доля менеджера по платежу клиента — остаток после долей инвесторов (см. paymentProfitShares). */
+/** Доля менеджера в прибыли полученного платежа — остаток после долей инвесторов. */
 export const paymentManagerPercent = (
   account: Account | undefined,
   investors: Investor[],
-  paymentDate: string | number | Date
-): number => getManagerSharePercent(account, investors, paymentDate);
+  sale: SaleSchedule | undefined,
+  payment: MoneyIn
+): number => sharesToManager(paymentProfitShares(account, investors, sale, payment));
 
 /**
- * Доли ОЖИДАЕМОЙ прибыли — с платежей, которых ещё не было. Кто будет в кассе,
- * когда они придут, заранее неизвестно, поэтому это прогноз по текущему составу.
- * Фактически каждый платёж разделится по составу на момент поступления.
+ * Доли ОЖИДАЕМОЙ прибыли — с остатка долга по договору. Просроченные строки
+ * графика уже заработаны — по составу за их период; будущие — прогноз по
+ * текущему составу (кто будет в кассе потом, заранее неизвестно).
  */
-export const expectedProfitShares = (account: Account | undefined, investors: Investor[]) =>
-  getAccountShares(account, investors);
+export const expectedProfitShares = (
+  account: Account | undefined,
+  investors: Investor[],
+  sale?: SaleSchedule
+): { investor: Investor; percentage: number }[] => {
+  const now = Date.now();
+  if (!account || account.type !== 'POOL' || !sale) return getAccountShares(account, investors, now);
+  return sharesOverWindows(account, investors, saleEarningWindows(sale).open, now);
+};
 
-/** Доля менеджера в ожидаемой прибыли — по текущему составу кассы. */
-export const expectedManagerPercent = (account: Account | undefined, investors: Investor[]): number =>
-  getManagerSharePercent(account, investors);
+/** Доля менеджера в ожидаемой прибыли с остатка долга. */
+export const expectedManagerPercent = (
+  account: Account | undefined,
+  investors: Investor[],
+  sale?: SaleSchedule
+): number => sharesToManager(expectedProfitShares(account, investors, sale));
 
 /** Реальные поступления по договору: первый взнос и оплаченные платежи (без плановых строк). */
 export const saleMoneyIn = (sale: Pick<Sale, 'id' | 'startDate' | 'downPayment' | 'paymentPlan'>) => [
@@ -741,7 +886,7 @@ export const getEmployeeProfitAccrued = (
       // и премию платить попросту не из чего.
       const bonusBase = employee.profitSource === 'SHARED'
         ? profitFromPayment
-        : profitFromPayment * paymentManagerPercent(account, investors, p.date) / 100;
+        : profitFromPayment * paymentManagerPercent(account, investors, sale, p) / 100;
       accrued += bonusBase * percent / 100;
     }
   }

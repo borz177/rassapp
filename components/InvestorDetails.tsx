@@ -350,7 +350,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
         // Будущие платежи — прогноз по текущему составу кассы: вошедший в кассу
         // участвует во всей последующей прибыли, в том числе по старым договорам
         // (см. paymentProfitShares в src/utils.ts).
-        const myShare = expectedProfitShares(account, investors)
+        const myShare = expectedProfitShares(account, investors, sale)
           .find(m => m.investor.id === investor.id)?.percentage ?? 0;
         if (myShare <= 0) return sum;
         const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
@@ -380,7 +380,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
 
       allPayments.forEach(p => {
         if (p.amount > 0) {
-          const share = paymentProfitShares(account, investors, p.date).find(m => m.investor.id === investor.id);
+          const share = paymentProfitShares(account, investors, sale, p).find(m => m.investor.id === investor.id);
           const myPercent = share ? share.percentage : 0;
           if (myPercent <= 0) return;
           const profitFromPayment = p.amount * profitMargin * myPercent / 100;

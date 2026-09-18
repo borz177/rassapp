@@ -1586,9 +1586,9 @@ const dashboardStats = useMemo(() => {
         // Полученное — по составу кассы на момент каждого платежа, остаток — прогноз
         // по текущему составу (см. paymentProfitShares в src/utils.ts)
         saleMoneyIn(sale).forEach(p => {
-          if (p.amount > 0) totalProfit += p.amount * margin * paymentManagerPercent(account, investors, p.date) / 100;
+          if (p.amount > 0) totalProfit += p.amount * margin * paymentManagerPercent(account, investors, sale, p) / 100;
         });
-        totalProfit += (sale.remainingAmount || 0) * margin * expectedManagerPercent(account, investors) / 100;
+        totalProfit += (sale.remainingAmount || 0) * margin * expectedManagerPercent(account, investors, sale) / 100;
     });
 
     return totalProfit;
@@ -1619,7 +1619,7 @@ const dashboardStats = useMemo(() => {
             const paymentDate = new Date(p.date);
             if (paymentDate >= startDate && paymentDate <= endDate && p.amount > 0) {
                 // Доля — на момент поступления платежа (см. paymentProfitShares в src/utils.ts)
-                const managerProfitShare = paymentManagerPercent(account, investors, p.date) / 100;
+                const managerProfitShare = paymentManagerPercent(account, investors, sale, p) / 100;
                 const profitFromPayment = p.amount * profitMargin;
                 periodProfit += profitFromPayment * managerProfitShare;
             }
@@ -1667,9 +1667,9 @@ const dashboardStats = useMemo(() => {
               expectedInvestorProfit += profit * (100 - managerPct) / 100;
             };
             saleMoneyIn(sale).forEach(p => {
-              if (p.amount > 0) split(p.amount * margin, paymentManagerPercent(account, investors, p.date));
+              if (p.amount > 0) split(p.amount * margin, paymentManagerPercent(account, investors, sale, p));
             });
-            split((sale.remainingAmount || 0) * margin, expectedManagerPercent(account, investors));
+            split((sale.remainingAmount || 0) * margin, expectedManagerPercent(account, investors, sale));
         });
 
     let realizedManagerProfit = 0;
@@ -1685,7 +1685,7 @@ const dashboardStats = useMemo(() => {
 
         paymentsInPeriod.forEach(p => {
             const profitFromPayment = p.amount * profitMargin;
-            const managerPct = paymentManagerPercent(account, investors, p.date) / 100;
+            const managerPct = paymentManagerPercent(account, investors, sale, p) / 100;
             realizedManagerProfit += profitFromPayment * managerPct;
             realizedInvestorProfit += profitFromPayment * (1 - managerPct);
         });

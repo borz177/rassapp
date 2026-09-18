@@ -683,7 +683,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
 
             const account = accounts.find(a => a.id === sale.accountId);
             // Будущие платежи — прогноз по текущему составу кассы
-            const managerProfitShare = expectedManagerPercent(account, investors) / 100;
+            const managerProfitShare = expectedManagerPercent(account, investors, sale) / 100;
 
             // 🔧 Только от остатка долга, как у инвестора!
             totalProfit += sale.remainingAmount * profitMargin * managerProfitShare;
@@ -718,7 +718,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                 if (pDate >= startDate && pDate <= endDate) {
                     // 🔒 Доля — на дату этого платежа, чтобы новый участник пула не получил
                     // задним числом долю от прибыли, полученной до его вступления.
-                    const managerProfitSharePercent = paymentManagerPercent(account, investors, p.date) / 100;
+                    const managerProfitSharePercent = paymentManagerPercent(account, investors, sale, p) / 100;
                     const profitFromPayment = p.amount * profitMargin;
                     const managerShare = profitFromPayment * managerProfitSharePercent;
                     if(managerShare > 0) {
@@ -824,7 +824,7 @@ const investorProfitAccruals = useMemo(() => {
 
                 if (pDate >= startDate && pDate <= endDate) {
                     const profitFromPayment = p.amount * profitMargin;
-                    const shares = paymentProfitShares(account, investors, p.date);
+                    const shares = paymentProfitShares(account, investors, sale, p);
                     shares.forEach(({ investor, percentage }) => {
                         const investorAmount = profitFromPayment * (percentage / 100);
                         if (investorAmount > 0) {
@@ -943,7 +943,7 @@ const investorProfitPayouts = useMemo(() => {
 
         // Ожидаемая прибыль: от остатка (ACTIVE/DRAFT) — прогноз по текущему составу кассы
         if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
-            expectedProfitShares(account, investors).forEach(({ investor, percentage }) => {
+            expectedProfitShares(account, investors, sale).forEach(({ investor, percentage }) => {
                 ensure(investor).expectedProfit += sale.remainingAmount * profitMargin * (percentage / 100);
             });
         }
@@ -958,7 +958,7 @@ const investorProfitPayouts = useMemo(() => {
             const pDate = new Date(p.date);
             if (pDate < startDate || pDate > endDate) return;
             const profitFromPayment = p.amount * profitMargin;
-            paymentProfitShares(account, investors, p.date).forEach(({ investor, percentage }) => {
+            paymentProfitShares(account, investors, sale, p).forEach(({ investor, percentage }) => {
                 ensure(investor).receivedProfit += profitFromPayment * (percentage / 100);
             });
         });
