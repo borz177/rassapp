@@ -2,6 +2,41 @@ import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership,
 import { offlineStorage } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
 import { postJson, mayBeLostRegistration } from '../src/authRequest';
+import { mergeInvestor } from '../src/syncMerge';
+
+// ── Отложенные сохранения инвесторов: от какой версии сделано изменение ─────────
+// Инвестор уходит на сервер целиком. Если сохранение отложено (нет связи), а
+// инвестора тем временем поменяли с другого устройства, прежняя версия затёрла бы
+// эти изменения. Поэтому в очередь кладём и исходную версию (base) — последнюю,
+// что подтвердил сервер этому устройству, а если перед ней в очереди уже есть
+// отложенное сохранение этого инвестора — его. При отправке применяется только
+// разница (см. mergeInvestor в src/syncMerge.ts).
+const MERGED_COLLECTIONS = new Set(['investors']);
+const serverKnown = new Map<string, any>();
+const knownKey = (collection: string, id: string) => `${collection}:${id}`;
+const rememberServer = (collection: string, item: any) => {
+  if (MERGED_COLLECTIONS.has(collection) && item?.id) serverKnown.set(knownKey(collection, item.id), JSON.parse(JSON.stringify(item)));
+};
+
+const queueSave = async (collection: string, item: any, intent?: { kind: string; label?: string }) => {
+  let base: any;
+  if (MERGED_COLLECTIONS.has(collection) && item?.id) {
+    const queue = await offlineStorage.getQueue().catch(() => [] as any[]);
+    const earlier = [...queue].reverse().find((q: any) => q.type === 'saveItem' && q.collection === collection && q.payload?.id === item.id);
+    base = earlier ? earlier.payload : serverKnown.get(knownKey(collection, item.id));
+    if (base === undefined) {
+      const cached = await offlineStorage.getCache('all_data').catch(() => null);
+      base = (cached?.[collection] || []).find((i: any) => i.id === item.id);
+    }
+  }
+  await offlineStorage.addToQueue({
+    type: 'saveItem',
+    collection,
+    payload: item,
+    intent,
+    ...(base !== undefined ? { base } : {}),
+  } as any);
+};
 // Helper to determine the API URL dynamically
 const getBaseUrl = () => {
     const { hostname, protocol } = window.location;
@@ -235,14 +270,40 @@ export const api = {
     const queue = await offlineStorage.getQueue();
     if (queue.length === 0) return { success: true, syncedCollections };
 
+    // Текущие серверные версии для слияния отложенных правок (см. queueSave) —
+    // один запрос на всю синхронизацию и только когда такие правки есть. Не удалось
+    // загрузить — правка остаётся в очереди до следующей попытки, вслепую не шлём.
+    let serverNow: Map<string, any> | null = null;
+    const loadServerNow = async () => {
+      if (serverNow) return serverNow;
+      const res = await fetchWithAuth(`${API_URL}/data`);
+      if (!res.ok) throw new Error(`Не удалось сверить с сервером: HTTP ${res.status}`);
+      const data = await res.json();
+      const map = new Map<string, any>();
+      MERGED_COLLECTIONS.forEach(c => (data[c] || []).forEach((i: any) => map.set(knownKey(c, i.id), i)));
+      serverNow = map;
+      return map;
+    };
+
     const processItem = async (item: any): Promise<boolean> => {
       try {
         let res: Response;
+        let sent: any = null;
         if (item.type === 'saveItem') {
+          sent = item.payload;
+          if (MERGED_COLLECTIONS.has(item.collection) && item.base !== undefined && item.payload?.id) {
+            const now = await loadServerNow();
+            sent = mergeInvestor(item.base, item.payload, now.get(knownKey(item.collection, item.payload.id)));
+          }
           res = await fetchWithAuth(`${API_URL}/data/${item.collection}`, {
             method: 'POST',
-            body: JSON.stringify(item.payload)
+            body: JSON.stringify(sent)
           });
+          if (res.ok && MERGED_COLLECTIONS.has(item.collection) && sent?.id) {
+            // Следующая отложенная правка этого же инвестора сливается уже с этой версией
+            serverNow?.set(knownKey(item.collection, sent.id), sent);
+            rememberServer(item.collection, sent);
+          }
         } else if (item.type === 'deleteItem') {
           res = await fetchWithAuth(`${API_URL}/data/${item.collection}/${item.itemId}`, {
             method: 'DELETE'
@@ -514,6 +575,8 @@ export const api = {
       }
 
       await offlineStorage.setCache('all_data', data);
+      // Серверные версии — до наложения очереди ниже: от них считается разница отложенных правок
+      MERGED_COLLECTIONS.forEach(c => (data[c] || []).forEach((i: any) => rememberServer(c, i)));
     } catch (error: any) {
       // 🔥 2. УМНАЯ ОБРАБОТКА ОШИБОК (не пугаем пользователя и консоль)
       const isNetworkError =
@@ -697,12 +760,7 @@ export const api = {
       // тот же, что и после таймаута, только мгновенно.
       if (skipNetworkAttempt()) {
         console.log('📦 Queuing without attempt (network down)');
-        await offlineStorage.addToQueue({
-          type: 'saveItem',
-          collection: type,
-          payload: item,
-          intent: options?.intent,
-        } as any);
+        await queueSave(type, item, options?.intent);
         return { ...item, _isOffline: true };
       }
 
@@ -732,6 +790,7 @@ export const api = {
         console.log(`✅ Saved ${type}: ${item.id}`);
         // Запись дошла — значит связь жива, и следующие можно пробовать сразу.
         markNetworkUp();
+        rememberServer(type, savedItem && savedItem.id ? savedItem : item);
         return savedItem;
 
         } catch (error: any) {
@@ -739,12 +798,7 @@ export const api = {
     // 🔒 Сессия истекла посреди сохранения — кладём в очередь, чтобы данные применились
     // после повторного входа, а не пропали при жёстком редиректе на /login.
     console.warn("📦 Queuing for offline sync (session expired mid-save)");
-    await offlineStorage.addToQueue({
-      type: 'saveItem',
-      collection: type,
-      payload: item,
-      intent: options?.intent,
-    } as any);
+    await queueSave(type, item, options?.intent);
     throw error;
   }
 
@@ -796,12 +850,7 @@ export const api = {
     // Следующие записи этой же пачки ждать таймаут уже не будут.
     markNetworkDown();
     console.log("📦 Queuing for offline sync (network/timeout)");
-    await offlineStorage.addToQueue({
-      type: 'saveItem',
-      collection: type,
-      payload: item,
-      intent: options?.intent,
-    } as any);
+    await queueSave(type, item, options?.intent);
     
     // 🔑 🔑 🔑 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: возвращаем с флагом _isOffline!
     return { ...item, _isOffline: true };
