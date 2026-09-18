@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Sale, Expense, Account, Customer, User, Investor, RetailSale} from '../types';
-import { formatCurrency, getManagerSharePercent, getAccountShares } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares } from '../src/utils';
+import { manualIncomeKind, incomeCancelPlan } from '../src/incomeCancel';
 import { ICONS } from '../constants';
 import ModalPortal from './ModalPortal';
 import SelectSheet from './SelectSheet';
@@ -19,16 +20,22 @@ interface OperationsProps {
   canFilterByEmployee?: boolean;
   /** Отмена операции. Возвращает деньги на счёт и откатывает связанные записи. */
   onDelete?: (op: any) => Promise<void> | void;
+  /** Можно ли отменять ручные приходы (пополнение от инвестора, прочий приход). */
+  canCancelIncome?: boolean;
+  /** Текущие остатки счетов — предупредить, если отмена прихода уведёт счёт в минус. */
+  accountBalances?: Record<string, number>;
   onClose?: () => void;
 }
 
 const Operations: React.FC<OperationsProps> = ({ 
     sales, expenses, accounts, customers, employees = [], investors = [], initialAccountId, canFilterByEmployee = false, onDelete,
-    retailSales = []
+    retailSales = [], canCancelIncome = false, accountBalances = {}
 }) => {
   // Отмена расхода: подтверждение с перечислением последствий, а не безликое «вы уверены?»
   const [cancelTarget, setCancelTarget] = useState<any | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  // У старого пополнения (до журнала капитала) человек сам решает, уменьшать ли капитал
+  const [reduceCapital, setReduceCapital] = useState(true);
   const [filterType, setFilterType] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [filterAccountId, setFilterAccountId] = useState<string>(initialAccountId || '');
   const [selectedOp, setSelectedOp] = useState<any | null>(null);
@@ -131,11 +138,16 @@ const Operations: React.FC<OperationsProps> = ({
         const customerName = getCustomerName(s.customerId);
 
         if (s.type === 'CASH') {
+            const manualIncome = manualIncomeKind(s, investors);
+            const depositor = manualIncome === 'INVESTOR_DEPOSIT' ? investors.find(i => i.id === s.customerId) : undefined;
             incomeOps.push({
                 id: s.id,
                 date: s.startDate,
-                amount: s.downPayment, 
-                title: customerName,
+                amount: s.downPayment,
+                // Пополнение от инвестора подписываем его именем: в клиентах его нет,
+                // и раньше строка называлась «Системная операция»
+                title: depositor?.name || customerName,
+                manualIncome,
                 description: s.productName,
                 accountId: s.accountId,
                 type: 'INCOME',
@@ -616,6 +628,14 @@ const Operations: React.FC<OperationsProps> = ({
                         Отменить расход
                     </button>
                 )}
+                {onDelete && canCancelIncome && selectedOp.type === 'INCOME' && selectedOp.manualIncome && (
+                    <button
+                        onClick={() => { setReduceCapital(true); setCancelTarget(selectedOp); setSelectedOp(null); }}
+                        className="w-full py-3 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-bold rounded-xl mt-4 border border-rose-200 dark:border-rose-900/50 hover:bg-rose-100 dark:hover:bg-rose-950/60"
+                    >
+                        Отменить приход
+                    </button>
+                )}
                 <button onClick={() => setSelectedOp(null)} className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl mt-2 hover:bg-slate-200 dark:hover:bg-slate-600">
                     Закрыть
                 </button>
@@ -626,7 +646,107 @@ const Operations: React.FC<OperationsProps> = ({
 {/* Подтверждение отмены расхода. Перечисляем последствия поимённо: операция
     затрагивает не только остаток счёта, но и прибыль, капитал инвестора и долг
     поставщику — безликое «вы уверены?» тут скрывало бы половину эффекта. */}
-{cancelTarget && (() => {
+{/* Подтверждение отмены прихода — так же с последствиями: касса и, у пополнения,
+    капитал инвестора и его доля в прибыли. */}
+{cancelTarget && cancelTarget.type === 'INCOME' && (() => {
+    const sale: Sale = cancelTarget.raw;
+    const plan = incomeCancelPlan(sale, investors);
+    if (!plan) return null;
+    const isDeposit = plan.kind === 'INVESTOR_DEPOSIT';
+    const balance = accountBalances[sale.accountId];
+    const balanceAfter = typeof balance === 'number' ? balance - plan.amount : null;
+    const effects: string[] = [
+        `${formatCurrency(plan.amount)} ₽ уйдут со счёта «${getAccountName(sale.accountId)}»`
+            + (balanceAfter !== null ? ` — останется ${formatCurrency(balanceAfter)} ₽` : ''),
+    ];
+    if (isDeposit && plan.investor && plan.fromJournal) {
+        effects.push(`Капитал «${plan.investor.name}»: ${formatCurrency(plan.capitalBefore)} → ${formatCurrency(plan.capitalAfter)} ₽. Доля в прибыли с ${formatDate(sale.startDate)} пересчитается так, как будто пополнения не было`);
+    }
+    if (isDeposit && !plan.investor) {
+        effects.push('Инвестор уже удалён — меняется только касса');
+    }
+
+    return (
+      <ModalPortal>
+        <div className="fixed inset-0 z-modal-top flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !isCancelling && setCancelTarget(null)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl p-6" onClick={ev => ev.stopPropagation()}>
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white">Отменить приход?</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
+                    «{sale.productName || (isDeposit ? 'Пополнение от инвестора' : 'Прочий приход')}» — {formatCurrency(plan.amount)} ₽ от {formatDate(sale.startDate)}
+                </p>
+
+                <div className="rounded-xl bg-slate-50 dark:bg-slate-900/40 p-3 space-y-2 mb-4">
+                    <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase">Что произойдёт</p>
+                    {effects.map((t, i) => (
+                        <div key={i} className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+                            <span className="shrink-0 mt-1.5 w-1.5 h-1.5 rounded-full bg-rose-500" />
+                            <span>{t}</span>
+                        </div>
+                    ))}
+                </div>
+
+                {balanceAfter !== null && balanceAfter < 0 && (
+                    <p className="text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 rounded-xl p-3 mb-4">
+                        Остаток счёта станет отрицательным. Проверьте, что эти деньги действительно не поступали.
+                    </p>
+                )}
+
+                {/* Старое пополнение (до журнала капитала) увеличило сумму «Вложено», но её
+                    могли потом исправить вручную — тогда уменьшать второй раз нельзя */}
+                {isDeposit && plan.investor && !plan.fromJournal && (
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-700 p-3 mb-4 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={reduceCapital}
+                            onChange={ev => setReduceCapital(ev.target.checked)}
+                            className="mt-0.5 w-4 h-4 shrink-0 accent-rose-600"
+                        />
+                        <span className="text-sm text-slate-700 dark:text-slate-300">
+                            Уменьшить капитал «{plan.investor.name}»: {formatCurrency(plan.capitalBefore)} → {formatCurrency(plan.capitalAfter)} ₽
+                            <span className="block text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                Снимите галочку, если сумма «Вложено» в карточке инвестора уже не включает это пополнение.
+                            </span>
+                        </span>
+                    </label>
+                )}
+
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                    Запись прихода будет удалена без возможности восстановления.
+                </p>
+
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => setCancelTarget(null)}
+                        disabled={isCancelling}
+                        className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl disabled:opacity-50"
+                    >
+                        Не отменять
+                    </button>
+                    <button
+                        onClick={async () => {
+                            if (isCancelling) return;
+                            setIsCancelling(true);
+                            try {
+                                await onDelete?.({ ...cancelTarget, reduceCapital: plan.fromJournal || reduceCapital });
+                                setCancelTarget(null);
+                            } catch (err: any) {
+                                alert(err?.message || 'Не удалось отменить приход');
+                            } finally {
+                                setIsCancelling(false);
+                            }
+                        }}
+                        disabled={isCancelling}
+                        className="flex-[1.4] py-3 bg-rose-600 text-white font-bold rounded-xl hover:bg-rose-700 disabled:opacity-60"
+                    >
+                        {isCancelling ? 'Отменяем…' : 'Отменить приход'}
+                    </button>
+                </div>
+            </div>
+        </div>
+      </ModalPortal>
+    );
+})()}
+{cancelTarget && cancelTarget.type === 'EXPENSE' && (() => {
     const e: Expense = cancelTarget.raw;
     const account = accounts.find(a => a.id === e.accountId);
     const effects: string[] = [

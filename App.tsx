@@ -48,6 +48,7 @@ import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, P
 import { getAppSettings, saveAppSettings } from './services/storage';
 import { warmProductImages } from './src/productImageCache';
 import { investorRelinkPlan } from './src/investorRelink';
+import { manualIncomeKind, investorAfterIncomeCancel } from './src/incomeCancel';
 import { api } from './services/api';
 import { ICONS } from './constants';
 import SplashScreen from "./components/SplashScreen"
@@ -4188,6 +4189,26 @@ const contractCounts = useMemo(() => {
                     updateList(setSales, savedSale);
                 }
             }
+        } else if (op.type === 'INCOME' && op.manualIncome) {
+            // Отмена ручного прихода: пополнение от инвестора или прочий приход.
+            // Подтверждение с последствиями уже показал экран операций.
+            if (isInvestor) throw new Error('Нет прав на отмену прихода');
+            const sale: Sale = sales.find(s => s.id === op.raw.id) || op.raw;
+            if (!manualIncomeKind(sale, investors)) throw new Error('Этот приход здесь не отменяется');
+            const restored = investorAfterIncomeCancel(sale, investors, op.reduceCapital !== false);
+
+            await api.deleteItem('sales', sale.id);
+            removeFromList(setSales, sale.id);
+
+            if (restored) {
+                try {
+                    const savedInv = await api.saveItem('investors', restored);
+                    updateList(setInvestors, savedInv || restored, undefined, 'investors');
+                } catch (invErr: any) {
+                    console.error('❌ Приход отменён, но капитал инвестора не обновлён:', invErr);
+                    throw new Error(`Приход отменён, но капитал инвестора не изменился: ${invErr?.message || 'ошибка сохранения'}. Проверьте сумму «Вложено» в карточке инвестора.`);
+                }
+            }
         } else if (op.type === 'INCOME') {
             if (!window.confirm("Вы уверены, что хотите удалить эту операцию?")) return;
             const sale = sales.find(s => s.id === op.raw.id);
@@ -4686,6 +4707,7 @@ if (!user && !showSplash) {
                       customers={customers}
                       initialAccountId={operationsAccountId}
                       onDelete={handleDeleteOperation}
+                      canCancelIncome={!isInvestor && (!isEmployee || !!user?.permissions?.canDelete)}
                       investors={investors}
                       employees={isInvestor ? [] : employees}
                       canFilterByEmployee={isManager && !isEmployee && !isInvestor}
