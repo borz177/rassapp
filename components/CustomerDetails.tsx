@@ -959,8 +959,14 @@ ${customer.name}!
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-slate-500 dark:text-slate-400">Долг поставщику</span>
+                                {/* Отдали больше закупа — показываем переплату, а не «Оплачено»:
+                                    это деньги вперёд, они зачтутся в следующие поставки. */}
                                 <span className={`font-medium ${selectedSale.isPartnerDebtPaid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                                    {selectedSale.isPartnerDebtPaid ? 'Оплачено' : `${formatCurrency(selectedSale.buyPrice - (selectedSale.partnerDebtPaidAmount || 0), appSettings.showCents)} ₽`}
+                                    {(selectedSale.partnerDebtPaidAmount || 0) > (selectedSale.buyPrice || 0)
+                                        ? `Переплата +${formatCurrency((selectedSale.partnerDebtPaidAmount || 0) - (selectedSale.buyPrice || 0), appSettings.showCents)} ₽`
+                                        : selectedSale.isPartnerDebtPaid
+                                            ? 'Оплачено'
+                                            : `${formatCurrency(selectedSale.buyPrice - (selectedSale.partnerDebtPaidAmount || 0), appSettings.showCents)} ₽`}
                                 </span>
                             </div>
                             {!selectedSale.isPartnerDebtPaid && onPaySupplier && (

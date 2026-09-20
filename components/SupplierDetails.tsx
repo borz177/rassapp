@@ -292,7 +292,10 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
         </div>
         {filteredSupplierSales.length === 0 && (<div className="text-center py-8 text-slate-400">Нет договоров по выбранному фильтру</div>)}
         {filteredSupplierSales.map(s => {
+          // Отдали больше закупа — это не «остаток 0», а живые деньги вперёд:
+          // показываем их отдельной строкой «Переплата +…», как в шапке карточки.
           const remaining = Math.max(0, s.buyPrice - (s.partnerDebtPaidAmount || 0));
+          const overpaidBySale = Math.max(0, (s.partnerDebtPaidAmount || 0) - (s.buyPrice || 0));
           const customerName = customers.find(c => c.id === s.customerId)?.name || 'Клиент не найден';
           return (
             <div
@@ -306,13 +309,17 @@ const SupplierDetails: React.FC<SupplierDetailsProps> = ({ supplier, sales, expe
                   <p className="text-xs text-slate-500 dark:text-slate-400">{customerName} · {new Date(s.startDate).toLocaleDateString()}</p>
                 </div>
                 <span className={`text-xs font-semibold px-2 py-1 rounded-full ${s.isPartnerDebtPaid ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>
-                  {s.isPartnerDebtPaid ? 'Оплачено' : 'Долг'}
+                  {overpaidBySale > 0 ? 'Переплата' : s.isPartnerDebtPaid ? 'Оплачено' : 'Долг'}
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-sm">
                 <div><span className="text-slate-400 text-xs block">Закуп</span><span className="font-medium text-slate-800 dark:text-white">{formatCurrency(s.buyPrice, showCents)} ₽</span></div>
                 <div><span className="text-slate-400 text-xs block">Оплачено</span><span className="font-medium text-slate-800 dark:text-white">{formatCurrency(s.partnerDebtPaidAmount || 0, showCents)} ₽</span></div>
-                <div><span className="text-slate-400 text-xs block">Остаток</span><span className="font-medium text-red-600 dark:text-red-400">{formatCurrency(remaining, showCents)} ₽</span></div>
+                {overpaidBySale > 0 ? (
+                  <div><span className="text-slate-400 text-xs block">Переплата</span><span className="font-medium text-emerald-600 dark:text-emerald-400">+{formatCurrency(overpaidBySale, showCents)} ₽</span></div>
+                ) : (
+                  <div><span className="text-slate-400 text-xs block">Остаток</span><span className={`font-medium ${remaining > 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'}`}>{formatCurrency(remaining, showCents)} ₽</span></div>
+                )}
               </div>
               {!s.isPartnerDebtPaid && remaining > 0 && (
                 <button

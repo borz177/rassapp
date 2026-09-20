@@ -250,9 +250,11 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
     // 🔒 Оплата поставщику — отдельный упрощённый флоу (частичная оплата долга по конкретному договору)
     if (isSupplierPayment) {
+        // Отдать больше остатка можно: переплата зачтётся в следующие поставки и
+        // видна в карточке партнёра как «+». Раньше такую оплату не пропускали.
         if (initialData?.maxAmount != null && numAmount > initialData.maxAmount + 0.01) {
-            alert(`Сумма не может превышать остаток долга: ${initialData.maxAmount} ₽`);
-            return;
+            const over = numAmount - initialData.maxAmount;
+            if (!window.confirm(`Сумма больше остатка долга (${initialData.maxAmount.toLocaleString('ru-RU')} ₽) на ${over.toLocaleString('ru-RU')} ₽.\n\nПереплата зачтётся в следующие поставки. Провести оплату?`)) return;
         }
         if (!sourceAccountId) {
             alert("Выберите счёт списания");
@@ -343,13 +345,18 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                 alert("Выберите поставщика");
                 return;
             }
-            if (selectedDebtRemaining != null && numAmount > selectedDebtRemaining + 0.01) {
-                alert(`Сумма не может превышать остаток долга: ${selectedDebtRemaining} ₽`);
-                return;
-            }
-            if (selectedSupply && numAmount > selectedSupply.remaining + 0.01) {
-                alert(`Сумма не может превышать остаток по приходу №${selectedSupply.number}: ${selectedSupply.remaining} ₽`);
-                return;
+            // Больше остатка платить можно: партнёру часто отдают округлённой суммой
+            // или вперёд. Раньше такую оплату просто не пропускали, и переплату
+            // некуда было записать. Спрашиваем подтверждение — чтобы лишний ноль
+            // не ушёл молча, — а дальше она видна в карточке партнёра как «+».
+            const over = selectedDebtRemaining != null
+                ? numAmount - selectedDebtRemaining
+                : selectedSupply ? numAmount - selectedSupply.remaining : 0;
+            if (over > 0.01) {
+                const what = selectedDebtRemaining != null
+                    ? `остатка долга по договору (${selectedDebtRemaining.toLocaleString('ru-RU')} ₽)`
+                    : `остатка по приходу №${selectedSupply!.number} (${selectedSupply!.remaining.toLocaleString('ru-RU')} ₽)`;
+                if (!window.confirm(`Сумма больше ${what} на ${over.toLocaleString('ru-RU')} ₽.\n\nПереплата зачтётся в следующие поставки. Провести оплату?`)) return;
             }
         }
 
@@ -454,7 +461,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
           <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 rounded-xl p-4 space-y-1">
               <p className="font-bold text-amber-800 dark:text-amber-300">{initialData?.title}</p>
               <p className="text-sm text-amber-700 dark:text-amber-400">
-                  Остаток долга: {initialData?.maxAmount?.toLocaleString('ru-RU')} ₽. Можно оплатить частично.
+                  Остаток долга: {initialData?.maxAmount?.toLocaleString('ru-RU')} ₽.
+                  Можно оплатить частично, а если отдать больше — переплата зачтётся в следующие поставки.
               </p>
           </div>
       )}
@@ -640,7 +648,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                                          </select>
                                          {(selectedDebtSale || selectedSupply) && (
                                              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                                                 Сумма ограничена остатком долга: {(selectedDebtSale ? selectedDebtRemaining : selectedSupply!.remaining)?.toLocaleString('ru-RU')} ₽ (можно оплатить частично).
+                                                 Остаток долга: {(selectedDebtSale ? selectedDebtRemaining : selectedSupply!.remaining)?.toLocaleString('ru-RU')} ₽.
+                                                 Можно оплатить частично, а если отдать больше — переплата зачтётся в следующие поставки.
                                              </p>
                                          )}
                                      </div>

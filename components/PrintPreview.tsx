@@ -29,6 +29,16 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({ html, title, autoPrint, onC
   // Шаг «назад» закрывает просмотр, а не страницу под ним.
   useEffect(() => registerBackInterceptor(() => { onClose(); return true; }), [onClose]);
 
+  // Имя документа в диалоге печати и в сохранённом PDF браузер берёт из заголовка
+  // СТРАНИЦЫ, а не из документа во фрейме: печать договора называлась «FinUchet».
+  // Пока просмотр открыт, заголовок страницы — название документа; при закрытии
+  // возвращаем прежний.
+  useEffect(() => {
+    const pageTitle = document.title;
+    document.title = title;
+    return () => { document.title = pageTitle; };
+  }, [title]);
+
   // Esc слушаем и в приложении, и в самом документе: после печати фокус остаётся
   // во фрейме, и нажатие уходит туда — без второго слушателя Esc переставал
   // закрывать просмотр, как только открывался диалог печати.
@@ -73,6 +83,8 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({ html, title, autoPrint, onC
         className="flex-1 w-full border-0 bg-white"
         onLoad={() => {
           setReady(true);
+          // Firefox и Safari берут имя из документа во фрейме — проставляем и там
+          try { if (frameRef.current?.contentDocument) frameRef.current.contentDocument.title = title; } catch { /* чужой origin — не наш случай */ }
           frameRef.current?.contentWindow?.addEventListener('keydown', e => onKeyRef.current(e));
           if (autoPrint && !printedRef.current) {
             printedRef.current = true;
