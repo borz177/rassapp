@@ -417,7 +417,6 @@ const Contracts: React.FC<ContractsProps> = ({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [selectedSaleForInfo, setSelectedSaleForInfo] = useState<Sale | null>(null);
   const [currentMenuSale, setCurrentMenuSale] = useState<Sale | null>(null);
-  const [menuPosition, setMenuPosition] = useState<{ top: number, left: number } | null>(null);
   const [showConfirmRemindAll, setShowConfirmRemindAll] = useState(false);
 const [isSendingAll, setIsSendingAll] = useState(false);
 const [sentStats, setSentStats] = useState<{ sent: number; total: number } | null>(null);
@@ -501,19 +500,47 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
 
 
 
+// Закрытие отложено на время анимации. Раньше отложенная уборка гасила и МЕНЮ,
+// ОТКРЫТОЕ ЗАНОВО за эти четверть секунды: нажал Escape (или мимо) и сразу открыл
+// другой договор — окно мигало и пропадало. Теперь у каждого открытия свой номер,
+// и уборка срабатывает, только если с тех пор ничего не открывали.
+// Второй запрос на закрытие (клик по пункту доходит и до обработчика «клик мимо»)
+// нового таймера не ставит, но его действие не теряется — очередь closeAftersRef.
+const menuSeqRef = React.useRef(0);
+const activeMenuIdRef = React.useRef<string | null>(null);
+const closeTimerRef = React.useRef<number | null>(null);
+const closeAftersRef = React.useRef<(() => void)[]>([]);
+
+const runCloseAfters = () => {
+  const queued = closeAftersRef.current;
+  closeAftersRef.current = [];
+  queued.forEach(fn => fn());
+};
+
 const closeActionMenu = (after?: () => void) => {
+  if (after) closeAftersRef.current.push(after);
+  if (!activeMenuIdRef.current) { runCloseAfters(); return; }  // закрывать нечего
+  if (closeTimerRef.current) return;                           // закрытие уже идёт
+  const seq = menuSeqRef.current;
   setIsMenuClosing(true);
-  setTimeout(() => {
-    setActiveMenuId(null);
-    setCurrentMenuSale(null);
-    setMenuPosition(null);
-    setIsMenuClosing(false);
-    after?.();
+  closeTimerRef.current = window.setTimeout(() => {
+    closeTimerRef.current = null;
+    if (menuSeqRef.current === seq) {
+      activeMenuIdRef.current = null;
+      setActiveMenuId(null);
+      setCurrentMenuSale(null);
+      setIsMenuClosing(false);
+    }
+    runCloseAfters();
   }, 250);
 };
 
+React.useEffect(() => () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current); }, []);
 
 
+
+// Меню действий: на телефоне лист снизу, на компьютере окно по центру —
+// координаты кнопки для этого не нужны.
 const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
   e.stopPropagation();
 
@@ -522,45 +549,11 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
     return;
   }
 
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-  const isMobile = window.innerWidth < 640;
-
-  if (!isMobile) {
-    const MENU_WIDTH = 256; // w-64
-    const MENU_HEIGHT = 320; // примерная высота с запасом
-    const GAP = 8; // отступ от кнопки
-
-    // 🔹 Вертикаль: проверяем место снизу/сверху ОТНОСИТЕЛЬНО VIEWPORT
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
-
-    let menuTop: number;
-    if (spaceBelow >= MENU_HEIGHT + GAP) {
-      menuTop = rect.bottom + GAP; // снизу от кнопки
-    } else if (spaceAbove >= MENU_HEIGHT + GAP) {
-      menuTop = rect.top - MENU_HEIGHT - GAP; // сверху от кнопки
-    } else {
-      // центрируем по кнопке, но в пределах экрана
-      menuTop = Math.max(GAP, Math.min(rect.top - MENU_HEIGHT / 2, window.innerHeight - MENU_HEIGHT - GAP));
-    }
-
-    // 🔹 Горизонталь: проверяем место справа/слева
-    const spaceRight = window.innerWidth - rect.right;
-    const spaceLeft = rect.left;
-
-    let menuLeft: number;
-    if (spaceRight >= MENU_WIDTH + GAP) {
-      menuLeft = rect.right - MENU_WIDTH; // выравниваем по правому краю кнопки
-    } else if (spaceLeft >= MENU_WIDTH + GAP) {
-      menuLeft = rect.left; // выравниваем по левому краю кнопки
-    } else {
-      // центрируем по горизонтали
-      menuLeft = Math.max(GAP, Math.min(rect.left - MENU_WIDTH / 2, window.innerWidth - MENU_WIDTH - GAP));
-    }
-
-    setMenuPosition({ top: menuTop, left: menuLeft });
-  }
-
+  // Открываем заново: отменяем незавершённое закрытие, чтобы оно не погасило это окно
+  if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; runCloseAfters(); }
+  menuSeqRef.current += 1;
+  activeMenuIdRef.current = sale.id;
+  setIsMenuClosing(false);
   setActiveMenuId(sale.id);
   setCurrentMenuSale(sale);
 };
@@ -695,182 +688,144 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
     });
   };
 
+  // Действия по договору — один список и для телефона, и для компьютера.
+  // На телефоне это лист снизу, на компьютере — окно по центру экрана. Раньше на
+  // компьютере меню выпадало у кнопки: на длинном списке оно оказывалось то внизу,
+  // то сбоку, и половины действий там не было — «Создать задачу» была только на телефоне.
   const ActionMenu = () => {
-  if (!currentMenuSale) return null;
+    if (!currentMenuSale) return null;
+    const sale = currentMenuSale;
+    const customer = customers.find(c => c.id === sale.customerId);
+    const isMobile = window.innerWidth < 640;
 
-  const customer = customers.find(c => c.id === currentMenuSale.customerId);
-  const isMobile = window.innerWidth < 640;
+    const items: { key: string; label: string; icon: React.ReactNode; color: string; hover: string; run: () => void }[] = [
+      {
+        key: 'info', label: 'Информация о договоре', icon: <FileText size={18} />,
+        color: 'text-blue-500 dark:text-blue-400', hover: 'hover:bg-blue-50 dark:hover:bg-blue-900/30',
+        run: () => setSelectedSaleForInfo(sale),
+      },
+      {
+        key: 'schedule', label: 'График платежей', icon: <Calendar size={18} />,
+        color: 'text-indigo-500 dark:text-indigo-400', hover: 'hover:bg-indigo-50 dark:hover:bg-indigo-900/30',
+        run: () => onViewSchedule(sale),
+      },
+      ...(!isEmployee || user?.permissions?.canEdit ? [{
+        key: 'edit', label: 'Редактировать', icon: <Edit3 size={18} />,
+        color: 'text-slate-500 dark:text-slate-400', hover: 'hover:bg-slate-50 dark:hover:bg-slate-700',
+        run: () => onEditSale(sale),
+      }] : []),
+      {
+        key: 'print', label: 'Печать договора', icon: <Printer size={18} />,
+        color: 'text-slate-500 dark:text-slate-400', hover: 'hover:bg-slate-50 dark:hover:bg-slate-700',
+        run: () => printContract(sale),
+      },
+      // Задача по договору: для просроченных подсказываем текст сразу
+      ...(onCreateTask ? [{
+        key: 'task', label: 'Создать задачу', icon: ICONS.Tasks,
+        color: 'text-emerald-500 dark:text-emerald-400', hover: 'hover:bg-slate-50 dark:hover:bg-slate-700',
+        run: () => {
+          const overdueSum = calculateSaleOverdue(sale);
+          const noteParts = [
+            customer?.phone ? `Телефон: ${customer.phone}` : null,
+            overdueSum > 0 ? `Долг: ${Math.round(overdueSum).toLocaleString('ru-RU')} ₽` : null,
+            `Товар: ${sale.productName}`,
+          ].filter(Boolean);
+          onCreateTask({
+            title: overdueSum > 0
+              ? `Связаться по просрочке — ${customer?.name || 'клиент'}`
+              : `По договору — ${customer?.name || sale.productName}`,
+            note: noteParts.join('\n'),
+            customerId: sale.customerId,
+            customerName: customer?.name,
+            saleId: sale.id,
+          });
+        },
+      }] : []),
+    ];
+    const canDelete = !isEmployee || user?.permissions?.canDelete;
 
-  return createPortal(
-    <>
-      <div
-        className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9998] ${isMenuClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
-        onClick={() => closeActionMenu()}
-      />
-
-      {isMobile ? (
-        <div className={`fixed left-0 right-0 bottom-0 z-[9999] ${isMenuClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}>
-          <div className="bg-white dark:bg-slate-800 rounded-t-3xl shadow-2xl w-full mx-auto overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700">
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Действия</span>
-              <button onClick={() => closeActionMenu()} className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300">
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
-              <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{customer?.name}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{currentMenuSale.productName}</p>
-            </div>
-
-            <div className="py-2">
-              <button
-                onClick={() => closeActionMenu(() => setSelectedSaleForInfo(currentMenuSale))}
-                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center gap-3 transition-colors"
-              >
-                <span className="text-blue-500 dark:text-blue-400"><FileText size={18} /></span>
-                <span>Информация о договоре</span>
-              </button>
-
-              <button
-                onClick={() => closeActionMenu(() => onViewSchedule(currentMenuSale))}
-                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex items-center gap-3 transition-colors"
-              >
-                <span className="text-indigo-500 dark:text-indigo-400"><Calendar size={18} /></span>
-                <span>График платежей</span>
-              </button>
-
-              {(!isEmployee || user?.permissions?.canEdit) && (
-                <button
-                  onClick={() => closeActionMenu(() => onEditSale(currentMenuSale))}
-                  className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
-                >
-                  <span className="text-slate-500 dark:text-slate-400"><Edit3 size={18} /></span>
-                  <span>Редактировать</span>
-                </button>
-              )}
-
-              <button
-                onClick={() => closeActionMenu(() => printContract(currentMenuSale))}
-                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
-              >
-                <span className="text-slate-500 dark:text-slate-400"><Printer size={18} /></span>
-                <span>Печать договора</span>
-              </button>
-
-              {/* Задача по договору: для просроченных подсказываем текст сразу */}
-              {onCreateTask && (
-                <button
-                  onClick={() => closeActionMenu(() => {
-                    const customer = customers.find(c => c.id === currentMenuSale.customerId);
-                    const overdueSum = calculateSaleOverdue(currentMenuSale);
-                    const noteParts = [
-                      customer?.phone ? `Телефон: ${customer.phone}` : null,
-                      overdueSum > 0 ? `Долг: ${Math.round(overdueSum).toLocaleString('ru-RU')} ₽` : null,
-                      `Товар: ${currentMenuSale.productName}`,
-                    ].filter(Boolean);
-                    onCreateTask({
-                      title: overdueSum > 0
-                        ? `Связаться по просрочке — ${customer?.name || 'клиент'}`
-                        : `По договору — ${customer?.name || currentMenuSale.productName}`,
-                      note: noteParts.join('\n'),
-                      customerId: currentMenuSale.customerId,
-                      customerName: customer?.name,
-                      saleId: currentMenuSale.id,
-                    });
-                  })}
-                  className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
-                >
-                  <span className="text-emerald-500 dark:text-emerald-400">{ICONS.Tasks}</span>
-                  <span>Создать задачу</span>
-                </button>
-              )}
-            </div>
-
-            <div className="border-t border-slate-100 dark:border-slate-700 py-2">
-              {(!isEmployee || user?.permissions?.canDelete) && (
-                <button
-                  onClick={() => closeActionMenu(() => setDeletingSale(currentMenuSale))}
-                  className="w-full text-left px-4 py-3.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-3 transition-colors"
-                >
-                  <span className="text-red-500 dark:text-red-400"><Trash2 size={18} /></span>
-                  <span>Удалить договор</span>
-                </button>
-              )}
-            </div>
-
-            <div className="px-4 pb-4 pt-2">
-              <button
-                onClick={() => closeActionMenu()}
-                className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-              >
-                Отмена
-              </button>
-            </div>
-          </div>
+    const content = (
+      <>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700">
+          <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Действия</span>
+          <button
+            onClick={() => closeActionMenu()}
+            className="p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+            aria-label="Закрыть"
+          >
+            <X size={20} />
+          </button>
         </div>
-      ) : (
+
+        <div className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
+          <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{customer?.name}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{sale.productName}</p>
+        </div>
+
+        <div className="py-2">
+          {items.map(item => (
+            <button
+              key={item.key}
+              onClick={() => closeActionMenu(item.run)}
+              className={`w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 flex items-center gap-3 transition-colors ${item.hover}`}
+            >
+              <span className={item.color}>{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {canDelete && (
+          <div className="border-t border-slate-100 dark:border-slate-700 py-2">
+            <button
+              onClick={() => closeActionMenu(() => setDeletingSale(sale))}
+              className="w-full text-left px-4 py-3.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-3 transition-colors"
+            >
+              <span className="text-red-500 dark:text-red-400"><Trash2 size={18} /></span>
+              <span>Удалить договор</span>
+            </button>
+          </div>
+        )}
+
+        <div className="px-4 pb-4 pt-2">
+          <button
+            onClick={() => closeActionMenu()}
+            className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+          >
+            Отмена
+          </button>
+        </div>
+      </>
+    );
+
+    return createPortal(
+      <>
         <div
-          className="fixed z-[9999] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-64 overflow-hidden animate-scale-in border border-slate-100 dark:border-slate-700 max-h-[85vh] overflow-y-auto"
-          style={{ top: `${menuPosition?.top ?? 0}px`, left: `${menuPosition?.left ?? 0}px` }}
-          onClick={e => e.stopPropagation()}
-        >
-          <div className="px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
-            <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{customer?.name}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{currentMenuSale.productName}</p>
+          className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9998] ${isMenuClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+          onClick={() => closeActionMenu()}
+        />
+
+        {isMobile ? (
+          <div className={`fixed left-0 right-0 bottom-0 z-[9999] ${isMenuClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}>
+            <div className="bg-white dark:bg-slate-800 rounded-t-3xl shadow-2xl w-full mx-auto overflow-hidden">
+              {content}
+            </div>
           </div>
-
-          <div className="py-2">
-            <button
-              onClick={() => { setSelectedSaleForInfo(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-              className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center gap-3 transition-colors"
+        ) : (
+          // Компьютер: по центру экрана, независимо от того, где в списке нажали
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+            onClick={() => closeActionMenu()}
+          >
+            <div
+              className={`w-full max-w-sm bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-700 overflow-hidden max-h-[85vh] overflow-y-auto ${isMenuClosing ? 'animate-fade-out' : 'animate-dialog-in'}`}
+              onClick={e => e.stopPropagation()}
             >
-              <span className="text-blue-500 dark:text-blue-400"><FileText size={16}/></span>
-              <span>Информация</span>
-            </button>
-
-            <button
-              onClick={() => { onViewSchedule(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-              className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex items-center gap-3 transition-colors"
-            >
-              <span className="text-indigo-500 dark:text-indigo-400"><Calendar size={16}/></span>
-              <span>График</span>
-            </button>
-
-   {(!isEmployee || user?.permissions?.canEdit) && (
-    <button
-        onClick={() => { onEditSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-        className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
-    >
-        <span className="text-slate-500 dark:text-slate-400"><Edit3 size={16}/></span>
-        <span>Редактировать</span>
-    </button>
-)}
-
-<button
-    onClick={() => { printContract(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-    className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-3 transition-colors"
->
-    <span className="text-slate-500 dark:text-slate-400"><Printer size={16}/></span>
-    <span>Печать</span>
-</button>
-</div>
-
-<div className="border-t border-slate-100 dark:border-slate-700 py-2">
-    {/* 🔥 Удалить - скрываем если нет прав canDelete */}
-    {(!isEmployee || user?.permissions?.canDelete) && (
-        <button
-            onClick={() => { setDeletingSale(currentMenuSale); setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}
-            className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-3 transition-colors"
-        >
-            <span className="text-red-500 dark:text-red-400"><Trash2 size={16}/></span>
-            <span>Удалить</span>
-        </button>
-    )}
-</div>
-        </div>
-      )}
-    </>,
+              {content}
+            </div>
+          </div>
+        )}
+      </>,
     document.body
   );
 };
@@ -902,7 +857,7 @@ useEffect(() => {
 }, [activeMenuId]);
 
   return (
-    <div className="space-y-4 pb-20 w-full max-w-5xl mx-auto px-3 sm:px-4" onClick={() => { setActiveMenuId(null); setCurrentMenuSale(null); setMenuPosition(null); }}>
+    <div className="space-y-4 pb-20 w-full max-w-5xl mx-auto px-3 sm:px-4" onClick={() => closeActionMenu()}>
 
       {/* Заголовок вкладки */}
       {activeTab !== 'OVERDUE' ? (
