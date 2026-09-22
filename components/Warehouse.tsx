@@ -5,7 +5,6 @@ import { applyStockDelta, listedWarehouses, productOnWarehouse, stockOnWarehouse
 import { api } from '../services/api';
 import { compressImageFile } from '../src/imageCompress';
 import TopBarBack from './TopBarBack';
-import ModalPortal from './ModalPortal';
 import Sheet from './Sheet';
 import TabPill from './TabPill';
 import WarehouseOps from './WarehouseOps';
@@ -974,343 +973,326 @@ const Warehouse: React.FC<WarehouseProps> = ({
 
       {/* Действия над товаром. Отдельным листом, а не рядом кнопок в строке:
           так строка остаётся про товар, а не про то, что с ним можно сделать. */}
-      {menuProduct && (
-        <ModalPortal onClose={() => setMenuProduct(null)}>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setMenuProduct(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl p-2"
-                 onClick={e => e.stopPropagation()}>
-              <p className="px-4 pt-3 pb-2 text-sm font-bold text-slate-500 dark:text-slate-400 truncate">
-                {menuProduct.name}
-              </p>
-              <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); openEdit(p2); }}
-                      className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
-                Редактировать
-              </button>
-              <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setMovementFor(p2); setMovementType('IN');
-                setMovementWh(warehouseFilter === 'ALL' ? defaultWarehouseId : warehouseFilter); setError(null); }}
-                      className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
-                Добавить в документ
-              </button>
-              <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setLabelIds([p2.id]); }}
-                      className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
-                Печать этикетки
-              </button>
-              <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setOpenProductId(p2.id); }}
-                      className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
-                История
-              </button>
-              {/* Архив и удаление — соседи по смыслу: и то и другое убирает товар
-                  из работы, разница лишь в том, можно ли вернуть. В форме правки
-                  им было не место: там правят карточку, а не судьбу товара. */}
-              <button
-                onClick={async () => {
-                  const p2 = menuProduct;
-                  setMenuProduct(null);
-                  await onSaveProduct({ ...p2, isArchived: !p2.isArchived, updatedAt: new Date().toISOString() });
-                }}
-                className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
-                {menuProduct.isArchived ? 'Вернуть из архива' : 'В архив'}
-              </button>
-              <button
-                onClick={async () => {
-                  const p2 = menuProduct;
-                  if (!window.confirm(`Удалить «${p2.name}» без возможности восстановления?`)) return;
-                  setMenuProduct(null);
-                  await onDeleteProduct(p2.id);
-                }}
-                className="w-full text-left px-4 py-3 rounded-xl font-semibold text-rose-600 dark:text-rose-400 active:bg-slate-50 dark:active:bg-slate-700">
-                Удалить
-              </button>
-              <button onClick={() => setMenuProduct(null)}
-                      className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-400 active:bg-slate-50 dark:active:bg-slate-700">
-                Отмена
-              </button>
-            </div>
-          </div>
-        </ModalPortal>
-      )}
+      <Sheet open={!!menuProduct} onClose={() => setMenuProduct(null)} className="sm:max-w-sm p-2">
+        {menuProduct && (
+          <>
+            <p className="px-4 pt-3 pb-2 text-sm font-bold text-slate-500 dark:text-slate-400 truncate">
+              {menuProduct.name}
+            </p>
+            <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); openEdit(p2); }}
+                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
+              Редактировать
+            </button>
+            <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setMovementFor(p2); setMovementType('IN');
+              setMovementWh(warehouseFilter === 'ALL' ? defaultWarehouseId : warehouseFilter); setError(null); }}
+                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
+              Добавить в документ
+            </button>
+            <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setLabelIds([p2.id]); }}
+                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
+              Печать этикетки
+            </button>
+            <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setOpenProductId(p2.id); }}
+                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
+              История
+            </button>
+            {/* Архив и удаление — соседи по смыслу: и то и другое убирает товар
+                из работы, разница лишь в том, можно ли вернуть. В форме правки
+                им было не место: там правят карточку, а не судьбу товара. */}
+            <button
+              onClick={async () => {
+                const p2 = menuProduct;
+                setMenuProduct(null);
+                await onSaveProduct({ ...p2, isArchived: !p2.isArchived, updatedAt: new Date().toISOString() });
+              }}
+              className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
+              {menuProduct.isArchived ? 'Вернуть из архива' : 'В архив'}
+            </button>
+            <button
+              onClick={async () => {
+                const p2 = menuProduct;
+                if (!window.confirm(`Удалить «${p2.name}» без возможности восстановления?`)) return;
+                setMenuProduct(null);
+                await onDeleteProduct(p2.id);
+              }}
+              className="w-full text-left px-4 py-3 rounded-xl font-semibold text-rose-600 dark:text-rose-400 active:bg-slate-50 dark:active:bg-slate-700">
+              Удалить
+            </button>
+            <button onClick={() => setMenuProduct(null)}
+                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-400 active:bg-slate-50 dark:active:bg-slate-700">
+              Отмена
+            </button>
+          </>
+        )}
+      </Sheet>
 
       {/* Категория для выбранных. Существующие списком, плюс поле для новой:
           заводить категорию отдельным экраном ради одного слова — лишний шаг. */}
-      {bulkCategory !== null && (
-        <ModalPortal onClose={() => setBulkCategory(null)}>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setBulkCategory(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[75vh] flex flex-col"
-                 onClick={e => e.stopPropagation()}>
-              <div className="p-4 border-b border-slate-100 dark:border-slate-700 shrink-0">
-                <h3 className="font-bold text-slate-800 dark:text-white mb-2">
-                  Категория для {selectedIds.length} товар(ов)
-                </h3>
-                <input value={bulkCategory} onChange={e => setBulkCategory(e.target.value)}
-                       placeholder="Новая категория" className={inputCls} />
+      <Sheet open={bulkCategory !== null} onClose={() => setBulkCategory(null)} className="sm:max-w-sm max-h-[75vh] flex flex-col">
+        {bulkCategory !== null && (
+          <>
+            <div className="p-4 border-b border-slate-100 dark:border-slate-700 shrink-0">
+              <h3 className="font-bold text-slate-800 dark:text-white mb-2">
+                Категория для {selectedIds.length} товар(ов)
+              </h3>
+              <input value={bulkCategory} onChange={e => setBulkCategory(e.target.value)}
+                     placeholder="Новая категория" className={inputCls} />
+            </div>
+            <div className="overflow-y-auto p-2">
+              {categories.map(c => (
+                <button key={c} onClick={() => setBulkCategory(c)}
+                        className={`w-full text-left px-4 py-3 rounded-xl font-semibold active:bg-slate-50 dark:active:bg-slate-700 ${
+                          bulkCategory === c ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-200'
+                        }`}>
+                  {c}
+                </button>
+              ))}
+            </div>
+            <div className="p-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+              <button onClick={() => setBulkCategory(null)}
+                      className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
+                Отмена
+              </button>
+              <button
+                disabled={bulkBusy || !bulkCategory.trim()}
+                onClick={async () => {
+                  const value = bulkCategory.trim();
+                  setBulkCategory(null);
+                  await runBulk(p => onSaveProduct({ ...p, category: value, updatedAt: new Date().toISOString() }));
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm disabled:opacity-50">
+                Перенести
+              </button>
+            </div>
+          </>
+        )}
+      </Sheet>
+
+      {/* Форма склада */}
+      <Sheet open={!!whForm} onClose={() => setWhForm(null)} className="sm:max-w-sm p-5 space-y-3">
+        {whForm && (
+          <>
+            <h3 className="font-bold text-slate-800 dark:text-white">
+              {whForm.id ? 'Склад' : 'Новый склад'}
+            </h3>
+            <input value={whForm.name || ''} onChange={e => setWhForm(prev => ({ ...prev, name: e.target.value }))}
+                   placeholder="Название" className={inputCls} />
+            <input value={whForm.address || ''} onChange={e => setWhForm(prev => ({ ...prev, address: e.target.value }))}
+                   placeholder="Адрес" className={inputCls} />
+            <div>
+              <select value={whForm.accountId || ''} onChange={e => setWhForm(prev => ({ ...prev, accountId: e.target.value }))}
+                      className={inputCls}>
+                <option value="">Счёт выручки не выбран</option>
+                {accounts.filter(a => !a.isArchived).map(a => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                Продажи с этого склада будут по умолчанию попадать на выбранный счёт.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+              <input type="checkbox" checked={!!whForm.isMain}
+                     onChange={e => setWhForm(prev => ({ ...prev, isMain: e.target.checked }))} />
+              Основной склад
+            </label>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setWhForm(null)}
+                      className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
+                Отмена
+              </button>
+              <button
+                onClick={async () => {
+                  if (!whForm.name?.trim()) { setError('Название склада обязательно'); return; }
+                  await onSaveWarehouse({
+                    id: whForm.id || crypto.randomUUID(),
+                    userId: whForm.userId || '',
+                    name: whForm.name.trim(),
+                    address: whForm.address?.trim() || undefined,
+                    accountId: whForm.accountId || undefined,
+                    isMain: !!whForm.isMain,
+                  });
+                  setWhForm(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm">
+                Сохранить
+              </button>
+            </div>
+          </>
+        )}
+      </Sheet>
+
+      {/* Модальное окно карточки */}
+      <Sheet open={showForm} onClose={() => { setShowForm(false); setEditing(null); setForm(emptyForm); }} className="sm:max-w-lg max-h-[88vh] overflow-y-auto p-5 space-y-3">
+        {showForm && (
+          <>
+            <h3 className="font-bold text-slate-800 dark:text-white">
+              {editing ? 'Товар' : 'Новый товар'}
+            </h3>
+
+            <div className="flex gap-2 flex-wrap">
+              {form.images.map((src, i) => (
+                <div key={src} className="relative w-20 h-20 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600">
+                  <ProductImage src={src} className="w-full h-full object-cover"
+                                fallback={<span className="flex h-full w-full items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-400">📦</span>} />
+                  <button
+                    onClick={() => setForm(f => ({ ...f, images: f.images.filter((_, n) => n !== i) }))}
+                    className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-slate-900/70 text-white text-xs leading-none">×</button>
+                </div>
+              ))}
+              {form.images.length < 5 && (
+                <label className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-400 cursor-pointer">
+                  {uploading ? '…' : '+'}
+                  <input type="file" accept="image/*" multiple className="hidden"
+                         onChange={e => addImages(e.target.files)} />
+                </label>
+              )}
+            </div>
+
+            <label className="block">
+              <span className={`${labelCls} mb-1`}>Название</span>
+              <input value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Например, вода 0,5 л" className={inputCls} />
+            </label>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-3">
+              <label className="block min-w-0">
+                <span className={`${labelCls} mb-1`}>Артикул</span>
+                <input value={form.sku} onChange={e => setForm(prev => ({ ...prev, sku: e.target.value }))} placeholder="Необязательно" className={inputCls} />
+              </label>
+              <label className="block min-w-0">
+                <span className={`${labelCls} mb-1`}>Категория</span>
+                <input value={form.category} onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))} placeholder="Общее" className={inputCls} list="warehouse-categories" />
+              </label>
+              {/* Закуп первым: товар заводят с накладной поставщика, и цену продажи
+                  считают от закупа, а не наоборот. */}
+              <label className="block min-w-0">
+                <span className={`${labelCls} mb-1`}>Цена закупа</span>
+                <input value={form.buyPrice} onChange={e => setForm(prev => ({ ...prev, buyPrice: e.target.value }))} placeholder="0" inputMode="decimal" className={inputCls} />
+              </label>
+              <label className="block min-w-0">
+                <span className={`${labelCls} mb-1`}>Цена продажи</span>
+                <input value={form.price} onChange={e => setForm(prev => ({ ...prev, price: e.target.value }))} placeholder="0" inputMode="decimal" className={inputCls} />
+              </label>
+              <label className="block min-w-0">
+                <span className={`${labelCls} mb-1`}>Ед. изм.</span>
+                <input value={form.unit} onChange={e => setForm(prev => ({ ...prev, unit: e.target.value }))} placeholder="шт" className={inputCls} />
+              </label>
+              <label className="block min-w-0">
+                <span className={`${labelCls} mb-1`}>Мин. остаток</span>
+                <input value={form.minStock} onChange={e => setForm(prev => ({ ...prev, minStock: e.target.value }))} placeholder="Не следить" inputMode="decimal" className={inputCls} />
+              </label>
+              {/* Новый товар сразу кладут на склад: указывать его отдельным
+                  приходом после каждой карточки — лишний шаг, который все
+                  забывают, и товар остаётся числиться нулём. */}
+              {/* Склад спрашиваем, только когда их несколько: с одним складом
+                  выбор из одного пункта — лишний вопрос. */}
+              {!editing && shownWarehouses.length > 1 && (
+                <label className="block min-w-0">
+                  <span className={`${labelCls} mb-1`}>Склад</span>
+                  <select value={form.warehouseId || defaultWarehouseId}
+                          onChange={e => setForm(prev => ({ ...prev, warehouseId: e.target.value }))}
+                          className={inputCls}>
+                    {shownWarehouses.map(w => (
+                      <option key={w.id} value={w.id}>{whLabel(w)}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {!editing && (
+                <label className="block min-w-0">
+                  <span className={`${labelCls} mb-1`}>Остаток</span>
+                  <input value={form.stock} onChange={e => setForm(prev => ({ ...prev, stock: e.target.value }))}
+                         placeholder="0" inputMode="decimal" className={inputCls} />
+                </label>
+              )}
+            </div>
+
+            {/* Штрихкоды отдельно от артикула: артикул — внутреннее имя товара,
+                а штрихкодов у него бывает несколько, и по ним товар находят
+                касса и приход. */}
+            <div className="space-y-2">
+              {/* Не <label>: в строке ещё две кнопки, и нажатие на подпись не должно их задевать */}
+              <span className={`${labelCls} mb-1`}>Штрихкод</span>
+              <div className="flex gap-2">
+                <input value={form.barcodeDraft}
+                       onChange={e => setForm(prev => ({ ...prev, barcodeDraft: e.target.value }))}
+                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); setError(addFormBarcode(form.barcodeDraft)); } }}
+                       onBlur={() => { if (form.barcodeDraft.trim()) setError(addFormBarcode(form.barcodeDraft)); }}
+                       placeholder="Отсканируйте или введите" enterKeyHint="done" className={`${inputCls} tabular-nums`} />
+                <ScanButton onClick={() => setScanFor('form')} />
+                <button type="button" onClick={generateFormBarcode} title="Создать внутренний штрихкод"
+                        className="shrink-0 px-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-xs font-bold text-slate-600 dark:text-slate-300 active:scale-95 transition-transform">
+                  Создать
+                </button>
               </div>
-              <div className="overflow-y-auto p-2">
+              {/* Второй и следующие коды — у разных поставщиков или на групповой упаковке */}
+              {form.barcodes.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="w-full text-[11px] text-slate-400 dark:text-slate-500">Дополнительные коды</span>
+                  {form.barcodes.map(code => (
+                    <span key={code}
+                          className="inline-flex items-center gap-1 pl-3 pr-1 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 tabular-nums">
+                      {code}
+                      <button type="button" aria-label={`Убрать ${code}`}
+                              onClick={() => setForm(f => ({ ...f, barcodes: f.barcodes.filter(c => c !== code) }))}
+                              className="w-5 h-5 rounded-full text-slate-400 hover:text-rose-500 leading-none">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Уже заведённые категории — нажатием. Набирать их заново значит
+                рано или поздно завести «Телефоны» и «телефоны» двумя разными
+                разделами каталога; новую по-прежнему можно просто напечатать. */}
+            {categories.length > 0 && (
+              <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-0.5 px-0.5">
+                <datalist id="warehouse-categories">
+                  {categories.map(c => <option key={c} value={c} />)}
+                </datalist>
                 {categories.map(c => (
-                  <button key={c} onClick={() => setBulkCategory(c)}
-                          className={`w-full text-left px-4 py-3 rounded-xl font-semibold active:bg-slate-50 dark:active:bg-slate-700 ${
-                            bulkCategory === c ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-200'
+                  <button key={c} type="button"
+                          onClick={() => setForm(prev => ({ ...prev, category: prev.category === c ? '' : c }))}
+                          className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${
+                            form.category === c
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                           }`}>
                     {c}
                   </button>
                 ))}
               </div>
-              <div className="p-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
-                <button onClick={() => setBulkCategory(null)}
-                        className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
-                  Отмена
-                </button>
-                <button
-                  disabled={bulkBusy || !bulkCategory.trim()}
-                  onClick={async () => {
-                    const value = bulkCategory.trim();
-                    setBulkCategory(null);
-                    await runBulk(p => onSaveProduct({ ...p, category: value, updatedAt: new Date().toISOString() }));
-                  }}
-                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm disabled:opacity-50">
-                  Перенести
-                </button>
-              </div>
+            )}
+            <label className="block">
+              <span className={`${labelCls} mb-1`}>Описание</span>
+              <textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
+                        placeholder="Необязательно" rows={2} className={inputCls} />
+            </label>
+
+            {/* Ошибка — прямо в карточке: строка ошибки экрана склада лежит под
+                окном, и человек не видел бы, почему «Сохранить» не сработало. */}
+            {error && (
+              <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
+            )}
+
+            {editing && (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Остаток здесь не меняется — только через движения, иначе история склада не сойдётся.
+              </p>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => { setShowForm(false); setEditing(null); setForm(emptyForm); }}
+                      className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
+                Отмена
+              </button>
+              <button disabled={saving} onClick={save}
+                      className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm disabled:opacity-50">
+                Сохранить
+              </button>
             </div>
-          </div>
-        </ModalPortal>
-      )}
-
-      {/* Форма склада */}
-      {whForm && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setWhForm(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-3"
-                 onClick={e => e.stopPropagation()}>
-              <h3 className="font-bold text-slate-800 dark:text-white">
-                {whForm.id ? 'Склад' : 'Новый склад'}
-              </h3>
-              <input value={whForm.name || ''} onChange={e => setWhForm(prev => ({ ...prev, name: e.target.value }))}
-                     placeholder="Название" className={inputCls} />
-              <input value={whForm.address || ''} onChange={e => setWhForm(prev => ({ ...prev, address: e.target.value }))}
-                     placeholder="Адрес" className={inputCls} />
-              <div>
-                <select value={whForm.accountId || ''} onChange={e => setWhForm(prev => ({ ...prev, accountId: e.target.value }))}
-                        className={inputCls}>
-                  <option value="">Счёт выручки не выбран</option>
-                  {accounts.filter(a => !a.isArchived).map(a => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                  Продажи с этого склада будут по умолчанию попадать на выбранный счёт.
-                </p>
-              </div>
-              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-                <input type="checkbox" checked={!!whForm.isMain}
-                       onChange={e => setWhForm(prev => ({ ...prev, isMain: e.target.checked }))} />
-                Основной склад
-              </label>
-              <div className="flex gap-2 pt-1">
-                <button onClick={() => setWhForm(null)}
-                        className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
-                  Отмена
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!whForm.name?.trim()) { setError('Название склада обязательно'); return; }
-                    await onSaveWarehouse({
-                      id: whForm.id || crypto.randomUUID(),
-                      userId: whForm.userId || '',
-                      name: whForm.name.trim(),
-                      address: whForm.address?.trim() || undefined,
-                      accountId: whForm.accountId || undefined,
-                      isMain: !!whForm.isMain,
-                    });
-                    setWhForm(null);
-                  }}
-                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm">
-                  Сохранить
-                </button>
-              </div>
-            </div>
-          </div>
-        </ModalPortal>
-      )}
-
-      {/* Модальное окно карточки */}
-      {showForm && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => { setShowForm(false); setEditing(null); setForm(emptyForm); }}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[88vh] overflow-y-auto p-5 space-y-3"
-                 onClick={e => e.stopPropagation()}>
-              <h3 className="font-bold text-slate-800 dark:text-white">
-                {editing ? 'Товар' : 'Новый товар'}
-              </h3>
-
-              <div className="flex gap-2 flex-wrap">
-                {form.images.map((src, i) => (
-                  <div key={src} className="relative w-20 h-20 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-600">
-                    <ProductImage src={src} className="w-full h-full object-cover"
-                                  fallback={<span className="flex h-full w-full items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-400">📦</span>} />
-                    <button
-                      onClick={() => setForm(f => ({ ...f, images: f.images.filter((_, n) => n !== i) }))}
-                      className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-slate-900/70 text-white text-xs leading-none">×</button>
-                  </div>
-                ))}
-                {form.images.length < 5 && (
-                  <label className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-400 cursor-pointer">
-                    {uploading ? '…' : '+'}
-                    <input type="file" accept="image/*" multiple className="hidden"
-                           onChange={e => addImages(e.target.files)} />
-                  </label>
-                )}
-              </div>
-
-              <label className="block">
-                <span className={`${labelCls} mb-1`}>Название</span>
-                <input value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Например, вода 0,5 л" className={inputCls} />
-              </label>
-              <div className="grid grid-cols-2 gap-x-2 gap-y-3">
-                <label className="block min-w-0">
-                  <span className={`${labelCls} mb-1`}>Артикул</span>
-                  <input value={form.sku} onChange={e => setForm(prev => ({ ...prev, sku: e.target.value }))} placeholder="Необязательно" className={inputCls} />
-                </label>
-                <label className="block min-w-0">
-                  <span className={`${labelCls} mb-1`}>Категория</span>
-                  <input value={form.category} onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))} placeholder="Общее" className={inputCls} list="warehouse-categories" />
-                </label>
-                {/* Закуп первым: товар заводят с накладной поставщика, и цену продажи
-                    считают от закупа, а не наоборот. */}
-                <label className="block min-w-0">
-                  <span className={`${labelCls} mb-1`}>Цена закупа</span>
-                  <input value={form.buyPrice} onChange={e => setForm(prev => ({ ...prev, buyPrice: e.target.value }))} placeholder="0" inputMode="decimal" className={inputCls} />
-                </label>
-                <label className="block min-w-0">
-                  <span className={`${labelCls} mb-1`}>Цена продажи</span>
-                  <input value={form.price} onChange={e => setForm(prev => ({ ...prev, price: e.target.value }))} placeholder="0" inputMode="decimal" className={inputCls} />
-                </label>
-                <label className="block min-w-0">
-                  <span className={`${labelCls} mb-1`}>Ед. изм.</span>
-                  <input value={form.unit} onChange={e => setForm(prev => ({ ...prev, unit: e.target.value }))} placeholder="шт" className={inputCls} />
-                </label>
-                <label className="block min-w-0">
-                  <span className={`${labelCls} mb-1`}>Мин. остаток</span>
-                  <input value={form.minStock} onChange={e => setForm(prev => ({ ...prev, minStock: e.target.value }))} placeholder="Не следить" inputMode="decimal" className={inputCls} />
-                </label>
-                {/* Новый товар сразу кладут на склад: указывать его отдельным
-                    приходом после каждой карточки — лишний шаг, который все
-                    забывают, и товар остаётся числиться нулём. */}
-                {/* Склад спрашиваем, только когда их несколько: с одним складом
-                    выбор из одного пункта — лишний вопрос. */}
-                {!editing && shownWarehouses.length > 1 && (
-                  <label className="block min-w-0">
-                    <span className={`${labelCls} mb-1`}>Склад</span>
-                    <select value={form.warehouseId || defaultWarehouseId}
-                            onChange={e => setForm(prev => ({ ...prev, warehouseId: e.target.value }))}
-                            className={inputCls}>
-                      {shownWarehouses.map(w => (
-                        <option key={w.id} value={w.id}>{whLabel(w)}</option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                {!editing && (
-                  <label className="block min-w-0">
-                    <span className={`${labelCls} mb-1`}>Остаток</span>
-                    <input value={form.stock} onChange={e => setForm(prev => ({ ...prev, stock: e.target.value }))}
-                           placeholder="0" inputMode="decimal" className={inputCls} />
-                  </label>
-                )}
-              </div>
-
-              {/* Штрихкоды отдельно от артикула: артикул — внутреннее имя товара,
-                  а штрихкодов у него бывает несколько, и по ним товар находят
-                  касса и приход. */}
-              <div className="space-y-2">
-                {/* Не <label>: в строке ещё две кнопки, и нажатие на подпись не должно их задевать */}
-                <span className={`${labelCls} mb-1`}>Штрихкод</span>
-                <div className="flex gap-2">
-                  <input value={form.barcodeDraft}
-                         onChange={e => setForm(prev => ({ ...prev, barcodeDraft: e.target.value }))}
-                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); setError(addFormBarcode(form.barcodeDraft)); } }}
-                         onBlur={() => { if (form.barcodeDraft.trim()) setError(addFormBarcode(form.barcodeDraft)); }}
-                         placeholder="Отсканируйте или введите" enterKeyHint="done" className={`${inputCls} tabular-nums`} />
-                  <ScanButton onClick={() => setScanFor('form')} />
-                  <button type="button" onClick={generateFormBarcode} title="Создать внутренний штрихкод"
-                          className="shrink-0 px-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-xs font-bold text-slate-600 dark:text-slate-300 active:scale-95 transition-transform">
-                    Создать
-                  </button>
-                </div>
-                {/* Второй и следующие коды — у разных поставщиков или на групповой упаковке */}
-                {form.barcodes.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="w-full text-[11px] text-slate-400 dark:text-slate-500">Дополнительные коды</span>
-                    {form.barcodes.map(code => (
-                      <span key={code}
-                            className="inline-flex items-center gap-1 pl-3 pr-1 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 tabular-nums">
-                        {code}
-                        <button type="button" aria-label={`Убрать ${code}`}
-                                onClick={() => setForm(f => ({ ...f, barcodes: f.barcodes.filter(c => c !== code) }))}
-                                className="w-5 h-5 rounded-full text-slate-400 hover:text-rose-500 leading-none">×</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Уже заведённые категории — нажатием. Набирать их заново значит
-                  рано или поздно завести «Телефоны» и «телефоны» двумя разными
-                  разделами каталога; новую по-прежнему можно просто напечатать. */}
-              {categories.length > 0 && (
-                <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-0.5 px-0.5">
-                  <datalist id="warehouse-categories">
-                    {categories.map(c => <option key={c} value={c} />)}
-                  </datalist>
-                  {categories.map(c => (
-                    <button key={c} type="button"
-                            onClick={() => setForm(prev => ({ ...prev, category: prev.category === c ? '' : c }))}
-                            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${
-                              form.category === c
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                            }`}>
-                      {c}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <label className="block">
-                <span className={`${labelCls} mb-1`}>Описание</span>
-                <textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
-                          placeholder="Необязательно" rows={2} className={inputCls} />
-              </label>
-
-              {/* Ошибка — прямо в карточке: строка ошибки экрана склада лежит под
-                  окном, и человек не видел бы, почему «Сохранить» не сработало. */}
-              {error && (
-                <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
-              )}
-
-              {editing && (
-                <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                  Остаток здесь не меняется — только через движения, иначе история склада не сойдётся.
-                </p>
-              )}
-
-              <div className="flex gap-2 pt-1">
-                <button onClick={() => { setShowForm(false); setEditing(null); setForm(emptyForm); }}
-                        className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
-                  Отмена
-                </button>
-                <button disabled={saving} onClick={save}
-                        className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm disabled:opacity-50">
-                  Сохранить
-                </button>
-              </div>
-
-            </div>
-          </div>
-        </ModalPortal>
-      )}
+          </>
+        )}
+      </Sheet>
 
       {/* Движение по складу */}
       {/* Выбор склада листом: имя склада целиком, с остатком — по нему и узнают
@@ -1346,81 +1328,77 @@ const Warehouse: React.FC<WarehouseProps> = ({
         </Sheet>
       )}
 
-      {movementFor && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setMovementFor(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-3"
-                 onClick={e => e.stopPropagation()}>
-              <h3 className="font-bold text-slate-800 dark:text-white">{movementFor.name}</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Сейчас на складе: {money(stockAt(movementFor, movementWh || defaultWarehouseId))} {movementFor.unit || 'шт'}
-              </p>
+      <Sheet open={!!movementFor} onClose={() => setMovementFor(null)} className="sm:max-w-md p-5 space-y-3">
+        {movementFor && (
+          <>
+            <h3 className="font-bold text-slate-800 dark:text-white">{movementFor.name}</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Сейчас на складе: {money(stockAt(movementFor, movementWh || defaultWarehouseId))} {movementFor.unit || 'шт'}
+            </p>
 
-              {/* Склад движения выбирают до количества: одно и то же число
-                  означает разное на разных точках. */}
-              {shownWarehouses.length > 1 && (
-                <label className="block">
-                  <span className={`${labelCls} mb-1`}>Склад</span>
-                  <select value={movementWh || defaultWarehouseId} onChange={e => setMovementWh(e.target.value)} className={inputCls}>
-                    {shownWarehouses.map(w => (
-                      <option key={w.id} value={w.id}>{whLabel(w)}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
+            {/* Склад движения выбирают до количества: одно и то же число
+                означает разное на разных точках. */}
+            {shownWarehouses.length > 1 && (
+              <label className="block">
+                <span className={`${labelCls} mb-1`}>Склад</span>
+                <select value={movementWh || defaultWarehouseId} onChange={e => setMovementWh(e.target.value)} className={inputCls}>
+                  {shownWarehouses.map(w => (
+                    <option key={w.id} value={w.id}>{whLabel(w)}</option>
+                  ))}
+                </select>
+              </label>
+            )}
 
-              <div className="grid grid-cols-2 gap-2">
-                {(['IN', 'WRITE_OFF', 'RETURN', 'CORRECTION'] as const).map(t => (
-                  <button key={t} onClick={() => setMovementType(t)}
-                          className={`py-2 rounded-xl text-xs font-bold ${movementType === t ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                    {MOVEMENT_LABELS[t]}
-                  </button>
-                ))}
-              </div>
-
-              <input value={movementQty} onChange={e => setMovementQty(e.target.value)} inputMode="decimal"
-                     placeholder={movementType === 'CORRECTION' ? 'Фактический остаток' : 'Количество'} className={inputCls} />
-              {movementType === 'IN' && (
-                <input value={movementPrice} onChange={e => setMovementPrice(e.target.value)} inputMode="decimal"
-                       placeholder="Цена закупа за единицу" className={inputCls} />
-              )}
-              <input value={movementNote} onChange={e => setMovementNote(e.target.value)}
-                     placeholder="Комментарий" className={inputCls} />
-
-              {movementIntoMinus && movementOutcome && (
-                <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5">
-                  <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Остаток уйдёт в минус</p>
-                  <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
-                    {movementFor.name}: {money(movementOutcome.before)} → <b>{money(movementOutcome.after)}</b>
-                    {' '}{movementFor.unit || 'шт'} на «{shownWarehouses.find(w => w.id === (movementWh || defaultWarehouseId))?.name || 'складе'}»
-                  </p>
-                  <p className="text-[11px] text-amber-600/80 dark:text-amber-300/80 mt-1">
-                    Так бывает при недостаче. Если товар просто не оприходован, сначала проведите приход.
-                  </p>
-                </div>
-              )}
-
-              {/* Сообщение — внутри окна: строка ошибки экрана лежит под ним,
-                  и отказ записать движение оставался невидимым. */}
-              {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
-
-              <div className="flex gap-2 pt-1">
-                <button onClick={() => setMovementFor(null)}
-                        className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
-                  Отмена
+            <div className="grid grid-cols-2 gap-2">
+              {(['IN', 'WRITE_OFF', 'RETURN', 'CORRECTION'] as const).map(t => (
+                <button key={t} onClick={() => setMovementType(t)}
+                        className={`py-2 rounded-xl text-xs font-bold ${movementType === t ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                  {MOVEMENT_LABELS[t]}
                 </button>
-                <button disabled={saving} onClick={submitMovement}
-                        className={`flex-1 py-2.5 rounded-xl text-white font-bold text-sm disabled:opacity-50 ${
-                          movementIntoMinus ? 'bg-amber-600' : 'bg-emerald-600'
-                        }`}>
-                  {movementIntoMinus ? 'Записать в минус' : 'Записать'}
-                </button>
-              </div>
+              ))}
             </div>
-          </div>
-        </ModalPortal>
-      )}
+
+            <input value={movementQty} onChange={e => setMovementQty(e.target.value)} inputMode="decimal"
+                   placeholder={movementType === 'CORRECTION' ? 'Фактический остаток' : 'Количество'} className={inputCls} />
+            {movementType === 'IN' && (
+              <input value={movementPrice} onChange={e => setMovementPrice(e.target.value)} inputMode="decimal"
+                     placeholder="Цена закупа за единицу" className={inputCls} />
+            )}
+            <input value={movementNote} onChange={e => setMovementNote(e.target.value)}
+                   placeholder="Комментарий" className={inputCls} />
+
+            {movementIntoMinus && movementOutcome && (
+              <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5">
+                <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Остаток уйдёт в минус</p>
+                <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                  {movementFor.name}: {money(movementOutcome.before)} → <b>{money(movementOutcome.after)}</b>
+                  {' '}{movementFor.unit || 'шт'} на «{shownWarehouses.find(w => w.id === (movementWh || defaultWarehouseId))?.name || 'складе'}»
+                </p>
+                <p className="text-[11px] text-amber-600/80 dark:text-amber-300/80 mt-1">
+                  Так бывает при недостаче. Если товар просто не оприходован, сначала проведите приход.
+                </p>
+              </div>
+            )}
+
+            {/* Сообщение — внутри окна: строка ошибки экрана лежит под ним,
+                и отказ записать движение оставался невидимым. */}
+            {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setMovementFor(null)}
+                      className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
+                Отмена
+              </button>
+              <button disabled={saving} onClick={submitMovement}
+                      className={`flex-1 py-2.5 rounded-xl text-white font-bold text-sm disabled:opacity-50 ${
+                        movementIntoMinus ? 'bg-amber-600' : 'bg-emerald-600'
+                      }`}>
+                {movementIntoMinus ? 'Записать в минус' : 'Записать'}
+              </button>
+            </div>
+          </>
+        )}
+      </Sheet>
 
     </div>
 
