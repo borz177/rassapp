@@ -47,6 +47,7 @@ const LazyFallback: React.FC = () => (
 import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, SaleStockItem, RetailSale as RetailSaleType, StockLocation, DEFAULT_WAREHOUSE_ID} from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
 import { warmProductImages } from './src/productImageCache';
+import { watchWindowFocus } from './src/windowFocus';
 import { investorRelinkPlan } from './src/investorRelink';
 import { manualIncomeKind, investorAfterIncomeCancel } from './src/incomeCancel';
 import { api } from './services/api';
@@ -590,6 +591,12 @@ useEffect(() => {
 //
 // Момент возврата вдобавок самый безопасный для обновления: пользователь только что
 // пришёл и заведомо ничего не редактировал последние секунды.
+// Клавиатура «пропадает», когда фокус уходит из документа: во фрейм печати,
+// который потом удалили, или в открытую ссылкой вкладку WhatsApp. Нажатие мышью
+// возвращает его приложению — раньше помогало только свернуть окно и открыть
+// снова (см. src/windowFocus.ts).
+useEffect(() => watchWindowFocus(), []);
+
 const lastFocusSyncRef = React.useRef(0);
 useEffect(() => {
   if (!user) return;

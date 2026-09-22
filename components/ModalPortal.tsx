@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { useBackInterceptor } from './transitions/PagePush';
+import { restoreWindowFocus } from '../src/windowFocus';
 
 /**
  * Выносит модальное окно из текущего поддерева прямо в document.body.
@@ -34,6 +35,10 @@ interface ModalPortalProps {
 }
 
 const ModalPortal: React.FC<ModalPortalProps> = ({ children, onClose }) => {
+  // Открытие окна — тот момент, когда человек собирается печатать: если фокус
+  // ушёл из документа (см. restoreWindowFocus), возвращаем его приложению. Само
+  // поле не трогаем — на телефоне это подняло бы клавиатуру там, где её не ждут.
+  React.useEffect(() => { restoreWindowFocus(); }, []);
   // Открытое окно — верхний шаг в стеке, и «назад» принадлежит ему: иначе
   // жест закрывал бы страницу под окном и окно оставалось бы над чужим экраном.
   useBackInterceptor(!!onClose, () => onClose?.());
