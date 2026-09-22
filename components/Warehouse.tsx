@@ -1227,7 +1227,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
                   касса и приход. */}
               <div className="space-y-2">
                 {/* Не <label>: в строке ещё две кнопки, и нажатие на подпись не должно их задевать */}
-                <span className={`${labelCls} -mb-1`}>Штрихкод</span>
+                <span className={`${labelCls} mb-1`}>Штрихкод</span>
                 <div className="flex gap-2">
                   <input value={form.barcodeDraft}
                          onChange={e => setForm(prev => ({ ...prev, barcodeDraft: e.target.value }))}
