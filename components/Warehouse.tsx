@@ -135,6 +135,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
   const [warehouseFilter, setWarehouseFilter] = useState<string>('ALL');
   const [showArchived, setShowArchived] = useState(false);
   const [onlyLow, setOnlyLow] = useState(false);
+  /** Порядок каталога: по названию, по остатку (сначала пустые) или по стоимости запаса */
+  const [sort, setSort] = useState<'NAME' | 'STOCK' | 'VALUE'>('NAME');
 
   const [editing, setEditing] = useState<Product | null>(null);
   // Видимость карточки держим отдельным флагом: сравнивать состояние формы
@@ -252,19 +254,35 @@ const Warehouse: React.FC<WarehouseProps> = ({
   // В режиме перетаскивания порядок держим локально: строки должны следовать за
   // пальцем сразу, не дожидаясь ответа сервера на каждое движение.
   const listed = useMemo(() => {
-    if (!reorder || order.length === 0) return visible;
+    if (!reorder || order.length === 0) {
+      // Свой порядок — только когда его задали перетаскиванием; в остальном
+      // каталог сортируется так, как удобно смотреть прямо сейчас: по алфавиту —
+      // чтобы найти, по остатку — чтобы увидеть, чего мало, по стоимости — чтобы
+      // понять, где лежат деньги.
+      const rows = [...visible];
+      if (sort === 'STOCK') rows.sort((a, b) => stockOf(a) - stockOf(b));
+      if (sort === 'VALUE') rows.sort((a, b) => stockOf(b) * (b.buyPrice || 0) - stockOf(a) * (a.buyPrice || 0));
+      return rows;
+    }
     const byId = new Map(visible.map(p => [p.id, p]));
     const ordered = order.map(id => byId.get(id)).filter(Boolean) as Product[];
     const rest = visible.filter(p => !order.includes(p.id));
     return [...ordered, ...rest];
-  }, [visible, reorder, order]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, reorder, order, sort, warehouseFilter]);
 
   const totals = useMemo(() => {
     const live = products.filter(p => !p.isArchived);
+    const cost = live.reduce((s, p) => s + stockOf(p) * (p.buyPrice || 0), 0);
+    // Во что склад обойдётся и во что он превратится: по закупу видно, сколько
+    // денег заморожено, по цене продажи — сколько он принесёт, если продать всё.
+    const retail = live.reduce((s, p) => s + stockOf(p) * (p.price || 0), 0);
     return {
       items: live.length,
       units: live.reduce((s, p) => s + stockOf(p), 0),
-      cost: live.reduce((s, p) => s + stockOf(p) * (p.buyPrice || 0), 0),
+      cost,
+      retail,
+      margin: retail - cost,
       low: live.filter(isLow).length,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -630,7 +648,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
         <div className="min-w-0 flex-1">
           <h2 className="text-xl font-bold text-slate-800 dark:text-white">Склад</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {totals.items} позиций · {money(totals.units)} ед. · закуп {money(totals.cost)} ₽
+            {totals.items} позиций · {money(totals.units)} ед.
           </p>
         </div>
         {/* Действие принадлежит вкладке: на операциях добавлять нечего, а
@@ -849,6 +867,25 @@ const Warehouse: React.FC<WarehouseProps> = ({
         </div>
       )}
 
+      {/* Сколько денег лежит на складе. Раньше в шапке была одна цифра закупа —
+          по ней не понять ни сколько склад принесёт, ни сколько в нём наценки. */}
+      {!selection && !reorder && totals.items > 0 && (
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          {[
+            { label: 'Остаток', value: `${money(totals.units)} ед.`, hint: `${totals.items} позиций` },
+            { label: 'Закуп', value: `${money(totals.cost)} ₽`, hint: 'вложено в товар' },
+            { label: 'Продажа', value: `${money(totals.retail)} ₽`, hint: `наценка ${money(totals.margin)} ₽`,
+              tone: 'text-emerald-600 dark:text-emerald-400' },
+          ].map(s => (
+            <div key={s.label} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide leading-tight">{s.label}</p>
+              <p className={`text-base sm:text-lg font-bold truncate ${s.tone || 'text-slate-800 dark:text-white'}`}>{s.value}</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{s.hint}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       {!selection && !reorder && (
       <div className="flex flex-wrap gap-2">
         <button onClick={() => setCategory('ALL')}
@@ -871,6 +908,27 @@ const Warehouse: React.FC<WarehouseProps> = ({
                 className={`px-3.5 py-2 rounded-full text-xs font-bold ${showArchived ? 'bg-slate-700 text-white' : 'bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}>
           Архив
         </button>
+
+        {/* Порядок каталога. Пока список короткий, сортировка не нужна — она
+            появляется там, где глазами уже не пересчитать. */}
+        {!reorder && totals.items > 5 && (
+          <div className="flex items-center rounded-full bg-slate-100 dark:bg-slate-800 p-0.5 ml-auto">
+            {([
+              { id: 'NAME', label: 'А–Я' },
+              { id: 'STOCK', label: 'По остатку' },
+              { id: 'VALUE', label: 'По стоимости' },
+            ] as const).map(s => (
+              <button key={s.id} onClick={() => setSort(s.id)}
+                      className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors ${
+                        sort === s.id
+                          ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm'
+                          : 'text-slate-500 dark:text-slate-400'
+                      }`}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       )}
 

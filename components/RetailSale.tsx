@@ -89,6 +89,9 @@ const RetailSale: React.FC<RetailSaleProps> = ({
     || ''
   );
   const [discount, setDiscount] = useState('');
+  // Скидку называют и рублями, и процентами: «минус пятьсот» и «минус десять
+  // процентов» одинаково обычны. Раньше проценты приходилось считать в уме.
+  const [discountMode, setDiscountMode] = useState<'RUB' | 'PERCENT'>('RUB');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +128,14 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   }, [products, category, search]);
 
   const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
-  const discountValue = Math.min(num(discount), subtotal);
+  // В чек уходит сумма: проценты — способ её назвать, а не отдельная скидка.
+  // Копейки округляем сразу, иначе итог разойдётся с суммой в чеке.
+  const discountValue = Math.min(
+    discountMode === 'PERCENT'
+      ? Math.round(subtotal * Math.min(num(discount), 100)) / 100
+      : num(discount),
+    subtotal
+  );
   const total = subtotal - discountValue;
   const cost = items.reduce((s, i) => s + (i.buyPrice || 0) * i.quantity, 0);
   const profit = total - cost;
@@ -386,8 +396,25 @@ const RetailSale: React.FC<RetailSaleProps> = ({
       )}
 
       <div className="grid grid-cols-2 gap-2">
-        <input value={discount} onChange={e => setDiscount(e.target.value)} inputMode="decimal"
-               placeholder="Скидка, ₽" className={input} />
+        <div className="relative">
+          <input value={discount} onChange={e => setDiscount(e.target.value)} inputMode="decimal"
+                 placeholder="Скидка" className={`${input} pr-16`} />
+          {/* Переключатель внутри поля: рубли и проценты — это одно поле, а не
+              два разных, и лишняя строка в корзине ни к чему. */}
+          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center rounded-lg bg-slate-200/70 dark:bg-slate-700 p-0.5">
+            {(['RUB', 'PERCENT'] as const).map(mode => (
+              <button key={mode} type="button" onClick={() => setDiscountMode(mode)}
+                      aria-label={mode === 'RUB' ? 'Скидка в рублях' : 'Скидка в процентах'}
+                      className={`w-6 h-6 rounded-md text-xs font-bold transition-colors ${
+                        discountMode === mode
+                          ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm'
+                          : 'text-slate-500 dark:text-slate-400'
+                      }`}>
+                {mode === 'RUB' ? '₽' : '%'}
+              </button>
+            ))}
+          </div>
+        </div>
         <input value={note} onChange={e => setNote(e.target.value)} placeholder="Комментарий" className={input} />
       </div>
 
@@ -396,7 +423,9 @@ const RetailSale: React.FC<RetailSaleProps> = ({
         <div>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
             {money(totalQty)} ед. · {money(subtotal, showCents)} ₽
-            {discountValue > 0 ? ` − ${money(discountValue, showCents)} ₽` : ''}
+            {discountValue > 0
+              ? ` − ${money(discountValue, showCents)} ₽${discountMode === 'PERCENT' ? ` (${money(Math.min(num(discount), 100))}%)` : ''}`
+              : ''}
           </p>
           <p className="text-3xl font-extrabold text-slate-900 dark:text-white leading-none">
             {money(total, showCents)} <span className="text-xl text-slate-400">₽</span>
