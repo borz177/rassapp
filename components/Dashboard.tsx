@@ -630,14 +630,16 @@ const ProfitDetailsModal = ({
           if (totalPaid < sale.downPayment) {
             const saleStart = new Date(sale.startDate);
             saleStart.setHours(0, 0, 0, 0);
-            if (saleStart >= monthStart && saleStart <= monthEnd) {
+            // С настройкой «только с платежей» взнос прибыли не несёт —
+            // строка «+0 ₽» в списке ни о чём не говорит, поэтому её не показываем.
+            if (saleStart >= monthStart && saleStart <= monthEnd && !profitFromPaymentsOnly) {
               const unpaidDownPayment = sale.downPayment - totalPaid;
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
                 customerId: sale.customerId,
                 paymentAmount: unpaidDownPayment,
-                profitAmount: profitFromPaymentsOnly ? 0 : unpaidDownPayment * profitMargin,
+                profitAmount: unpaidDownPayment * profitMargin,
                 date: sale.startDate,
                 isPaid: false,
                 isDownPayment: true,
@@ -676,13 +678,13 @@ const ProfitDetailsModal = ({
           saleStart.setHours(0, 0, 0, 0);
           if (saleStart >= monthStart && saleStart <= monthEnd) {
             const totalPaid = sale.totalAmount - sale.remainingAmount;
-            if (totalPaid >= sale.downPayment) {
+            if (totalPaid >= sale.downPayment && !profitFromPaymentsOnly) {
               result.push({
                 sale,
                 customerName: customer?.name || 'Неизвестно',
                 customerId: sale.customerId,
                 paymentAmount: sale.downPayment,
-                profitAmount: profitFromPaymentsOnly ? 0 : sale.downPayment * profitMargin,
+                profitAmount: sale.downPayment * profitMargin,
                 date: sale.startDate,
                 isPaid: true,
                 isDownPayment: true,
@@ -700,7 +702,7 @@ const ProfitDetailsModal = ({
       if (!a.isPaid && b.isPaid) return 1;
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
-  }, [sales, customers, investors, type, monthStart, monthEnd, selectedAccountId]);
+  }, [sales, customers, investors, type, monthStart, monthEnd, selectedAccountId, profitFromPaymentsOnly]);
 
   const totalProfit = items.reduce((sum, item) => sum + item.profitAmount, 0);
 
@@ -1153,7 +1155,7 @@ const currentMonthName = useMemo(() => {
         receivedProfit: Math.round(receivedProfit * 100) / 100,
         expectedProfit: Math.round(expectedProfit * 100) / 100
     };
-}, [sales, selectedAccountId, accounts, investors]);
+}, [sales, selectedAccountId, accounts, investors, profitFromPaymentsOnly]);
 
   const currentWorkingCapital = useMemo(() => {
       if (selectedAccountId) {
@@ -1420,7 +1422,7 @@ const receivedProfitThisMonth = useMemo(() => {
     });
 
     return Math.round(receivedProfit * 100) / 100;
-}, [sales, investors, selectedAccountId]);
+}, [sales, investors, selectedAccountId, profitFromPaymentsOnly]);
 
 
 // 📊 Ожидаемая прибыль в этом месяце
@@ -1474,7 +1476,7 @@ const expectedProfitThisMonth = useMemo(() => {
     });
 
     return Math.round(expectedProfit * 100) / 100;
-}, [sales, investors, selectedAccountId]);
+}, [sales, investors, selectedAccountId, profitFromPaymentsOnly]);
 
 
 

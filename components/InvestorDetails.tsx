@@ -359,7 +359,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
         if (myShare <= 0) return sum;
         return sum + (sale.remainingAmount * saleProfitMargin(sale, profitFromPaymentsOnly) * myShare / 100);
       }, 0);
-  }, [sales, account, investors, investor.id]);
+  }, [sales, account, investors, investor.id, profitFromPaymentsOnly]);
 
   const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
     if (!account) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, profitAccruals: [] };
@@ -416,7 +416,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
       totalProfitWithdrawn: withdrawnSum,
       profitAccruals: accruals.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     };
-  }, [sales, expenses, account, investor.id, investors]);
+  }, [sales, expenses, account, investor.id, investors, profitFromPaymentsOnly]);
 
   const { periodProfit, periodPaidOut } = useMemo(() => {
     const startDate = new Date(period.start);

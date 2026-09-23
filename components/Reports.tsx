@@ -279,7 +279,7 @@ const Reports: React.FC<ReportsProps> = ({
                 color: INVESTOR_PALETTE[idx % INVESTOR_PALETTE.length],
             };
         });
-    }, [investors, accounts, sales, filters, totalInvestment]);
+    }, [investors, accounts, sales, filters, totalInvestment, profitFromPaymentsOnly]);
 
     // Modal state
     const [activeModal, setActiveModal] = useState<'payments' | 'investor_payouts' | 'other_expenses' | null>(null);
@@ -523,7 +523,7 @@ const Reports: React.FC<ReportsProps> = ({
         const totalReceived = list.reduce((s, r) => s + r.received, 0);
         const totalExpected = list.reduce((s, r) => s + r.expected, 0);
         return { account, rows: list, totalReceived, totalExpected };
-    }, [filters.accountId, filters.period, accounts, sales, investors]);
+    }, [filters.accountId, filters.period, accounts, sales, investors, profitFromPaymentsOnly]);
 
     // CSV Export
     const exportCSV = (opts: typeof exportOptions) => {

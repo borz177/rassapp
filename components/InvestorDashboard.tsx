@@ -168,7 +168,7 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
       totalProfitWithdrawn: profitOutflows.total,
       profitAccruals: accruals.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     };
-  }, [investorSales, profitOutflows, investorAccountIds, accounts, investors, investor.id]);
+  }, [investorSales, profitOutflows, investorAccountIds, accounts, investors, investor.id, profitFromPaymentsOnly]);
 
   // 🔹 История выплат этому инвестору — тот же фильтр, что и для withdrawnSum выше,
   // но со списком отдельных операций (для модалки "Мои выплаты"), а не только суммой.
@@ -241,7 +241,7 @@ const expectedTotalProfit = useMemo(() => {
     const myPercent = share ? share.percentage : 0;
     return sum + grossProfitFromRemaining * myPercent / 100;
   }, 0);
-}, [investorSales, investorAccountIds, investor.id, accounts, investors]);
+}, [investorSales, investorAccountIds, investor.id, accounts, investors, profitFromPaymentsOnly]);
 
   const availableToWithdraw = useMemo(() => {
     return Math.max(0, totalProfitEarned - totalProfitWithdrawn);

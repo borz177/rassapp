@@ -692,7 +692,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
     });
 
     return totalProfit;
-}, [sales, accounts, investors, profitFilterAccountId]);
+}, [sales, accounts, investors, profitFilterAccountId, profitFromPaymentsOnly]);
 
   // 🔹 Прибыль менеджера (полученная и выплаты)
   const { managerProfitAccruals, managerProfitPayouts, totalManagerProfitEarned, totalManagerProfitWithdrawn } = useMemo(() => {
@@ -784,7 +784,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
         totalManagerProfitEarned: totalEarned,
         totalManagerProfitWithdrawn: totalWithdrawn
     };
-  }, [sales, expenses, accounts, investors, customers, profitFilterAccountId, myProfitPeriod]);
+  }, [sales, expenses, accounts, investors, customers, profitFilterAccountId, myProfitPeriod, profitFromPaymentsOnly]);
 
   const managerProfitBalance = totalManagerProfitEarned - totalManagerProfitWithdrawn;
 
@@ -843,7 +843,7 @@ const investorProfitAccruals = useMemo(() => {
 
     const filtered = profitFilterInvestorId === 'ALL' ? accruals : accruals.filter(a => a.investorId === profitFilterInvestorId);
     return filtered.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-}, [sales, accounts, investors, customers, profitFilterAccountId, profitFilterInvestorId, myProfitPeriod]);
+}, [sales, accounts, investors, customers, profitFilterAccountId, profitFilterInvestorId, myProfitPeriod, profitFromPaymentsOnly]);
 
 // 🔹 Выплаты инвестора
 const investorProfitPayouts = useMemo(() => {
@@ -1001,7 +1001,7 @@ const investorProfitPayouts = useMemo(() => {
             balance: Math.round((m.receivedProfit - m.totalWithdrawn) * 100) / 100
         }))
         .sort((a, b) => b.receivedProfit - a.receivedProfit);
-}, [sales, accounts, investors, expenses, profitFilterAccountId, myProfitPeriod]);
+}, [sales, accounts, investors, expenses, profitFilterAccountId, myProfitPeriod, profitFromPaymentsOnly]);
 
   // 🔹 Состав пула — тот же разрез, что в отчётах: чей это капитал, какая у человека
   // доля и что с неё набежало за выбранный период. На странице общего счёта до сих пор

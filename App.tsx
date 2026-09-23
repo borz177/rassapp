@@ -1602,7 +1602,7 @@ const dashboardStats = useMemo(() => {
     });
 
     return totalProfit;
-  }, [sales, accounts, investors, isManager]);
+  }, [sales, accounts, investors, isManager, profitFromPaymentsOnly]);
   const realizedPeriodProfit = useMemo(() => {
     if (!isManager) return 0;
     let periodProfit = 0;
@@ -1631,7 +1631,7 @@ const dashboardStats = useMemo(() => {
         });
     });
     return periodProfit;
-  }, [sales, accounts, investors, myProfitPeriod, isManager]);
+  }, [sales, accounts, investors, myProfitPeriod, isManager, profitFromPaymentsOnly]);
   const reportData = useMemo(() => {
     if (!isManager) return null;
     const { accountId, period } = reportFilters;
@@ -1732,7 +1732,7 @@ const dashboardStats = useMemo(() => {
       });
 
     return { customerPaymentsInPeriod, expectedManagerProfit, expectedInvestorProfit, realizedManagerProfit, realizedInvestorProfit };
-  }, [reportFilters, sales, accounts, investors, expenses, employees, isManager]);
+  }, [reportFilters, sales, accounts, investors, expenses, employees, isManager, profitFromPaymentsOnly]);
 
   const handleAuthSuccess = async (loggedInUser: User) => {
       setUser(loggedInUser);
