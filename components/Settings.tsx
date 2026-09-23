@@ -66,33 +66,95 @@ const NOTIFICATION_EVENT_ROWS: { key: keyof NotificationEventToggles; label: str
 // компании остаётся открытой картой (задаётся через defaultOpen на месте использования),
 // все остальные сворачиваются, чтобы страница не выглядела "россыпью" из полутора десятков
 // одинаковых блоков.
+/**
+ * Строка настройки: слева значок, в середине название с пояснением, справа
+ * стрелка. Раскрытая настройка показывает своё содержимое под строкой.
+ *
+ * Раньше каждая настройка была карточкой в 130 пикселей с крупным заголовком:
+ * на телефоне экран превращался в россыпь одинаковых плиток на полтора экрана,
+ * а пояснения всё равно обрезались. Строка втрое ниже, значок даёт зацепку
+ * глазу, и весь список настроек виден почти целиком.
+ */
+const ROW = 'w-full flex items-center gap-3 p-3.5 text-left';
+const ROW_ICON = 'w-9 h-9 shrink-0 rounded-xl flex items-center justify-center';
+const ROW_TITLE = 'block text-[15px] font-semibold text-slate-800 dark:text-white truncate';
+const ROW_SUB = 'block text-xs text-slate-500 dark:text-slate-400 truncate';
+const CHEVRON = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
+/**
+ * Группа настроек — одна карточка, строки внутри разделены линиями.
+ *
+ * Так список читается как список, а не как россыпь одинаковых плиток: рамка
+ * одна на группу, а не на каждую строку.
+ */
+const GroupContext = React.createContext(false);
+
+const SettingsGroup: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <GroupContext.Provider value={true}>
+    <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden divide-y divide-slate-100 dark:divide-slate-700">
+      {children}
+    </div>
+  </GroupContext.Provider>
+);
+
 const SettingsAccordion: React.FC<{
   title: string;
   subtitle?: string;
   badge?: React.ReactNode;
   defaultOpen?: boolean;
+  /** Значок слева: по нему настройку находят глазами, не читая все подряд */
+  icon?: React.ReactNode;
+  /** Цвета значка — фон и цвет линии */
+  tone?: string;
   children: React.ReactNode;
-}> = ({ title, subtitle, badge, defaultOpen = false, children }) => {
+}> = ({ title, subtitle, badge, defaultOpen = false, icon, tone = 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300', children }) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const inGroup = React.useContext(GroupContext);
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
-      <button
-        onClick={() => setIsOpen(o => !o)}
-        className="w-full flex items-center justify-between gap-3 p-5 text-left"
-      >
-        <div className="min-w-0">
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-white truncate">{title}</h3>
-          {subtitle && <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5 truncate">{subtitle}</p>}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
+    <div className={inGroup ? '' : 'bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden'}>
+      <button onClick={() => setIsOpen(o => !o)} className={ROW}>
+        {icon && <span className={`${ROW_ICON} ${tone}`}>{icon}</span>}
+        <span className="min-w-0 flex-1">
+          <span className={ROW_TITLE}>{title}</span>
+          {subtitle && <span className={ROW_SUB}>{subtitle}</span>}
+        </span>
+        <span className="flex items-center gap-2 shrink-0">
           {badge}
           <span className={`text-slate-400 dark:text-slate-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            {CHEVRON}
           </span>
-        </div>
+        </span>
       </button>
-      {isOpen && <div className="px-5 pb-5 animate-fade-in">{children}</div>}
+      {isOpen && (
+        <div className="px-4 pb-4 pt-3 border-t border-slate-100 dark:border-slate-700 animate-fade-in">{children}</div>
+      )}
     </div>
+  );
+};
+
+/** Настройка, которая живёт на своём экране: та же строка, но переходом. */
+const SettingsLink: React.FC<{
+  title: string;
+  subtitle?: string;
+  icon: React.ReactNode;
+  tone: string;
+  onClick: () => void;
+}> = ({ title, subtitle, icon, tone, onClick }) => {
+  const inGroup = React.useContext(GroupContext);
+  return (
+  <button onClick={onClick}
+          className={`${ROW} ${inGroup ? 'active:bg-slate-50 dark:active:bg-slate-700/50' : 'bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 active:scale-[0.99] transition-transform'}`}>
+    <span className={`${ROW_ICON} ${tone}`}>{icon}</span>
+    <span className="min-w-0 flex-1">
+      <span className={ROW_TITLE}>{title}</span>
+      {subtitle && <span className={ROW_SUB}>{subtitle}</span>}
+    </span>
+    <span className="shrink-0 text-slate-300 dark:text-slate-600 -rotate-90">{CHEVRON}</span>
+  </button>
   );
 };
 
@@ -384,7 +446,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
   }
 
   return (
-    <div className="space-y-6 animate-fade-in pb-20">
+    <div className="space-y-2.5 animate-fade-in pb-20">
       <header className="flex justify-between items-start">
         <div>
             <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Настройки</h2>
@@ -414,8 +476,10 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
         </button>
       </header>
 
+      {/* Настройки компании и её вид */}
+      <SettingsGroup>
       {/* Company Name — единственная карточка, открытая по умолчанию */}
-      <SettingsAccordion title="Название компании" subtitle="Отображается в заголовке и в сообщениях." defaultOpen>
+      <SettingsAccordion title="Название компании" subtitle="В заголовке и в сообщениях" defaultOpen icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4" /></svg>} tone="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300">
         <div className="flex gap-2">
             <input
                 type="text"
@@ -434,7 +498,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
       </SettingsAccordion>
 
       {/* Display Settings */}
-      <SettingsAccordion title="Отображение">
+      <SettingsAccordion title="Отображение" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6h16M4 12h16M4 18h10" /><circle cx="17" cy="18" r="2" /></svg>} tone="bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">
           {/* Магазин выключен по умолчанию: большинству он не нужен, а лишние
               разделы в меню только мешают. На тарифах ниже Бизнес Про переключатель
               показывается заблокированным — так видно, что функция есть, но
@@ -547,13 +611,18 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
           </div>
       </SettingsAccordion>
 
+      </SettingsGroup>
+
+      {/* Рассылки и копии — то, что приложение делает само */}
+      <SettingsGroup>
       {/* Резервное копирование — как и уведомления, только для владельца данных:
           рассылка идёт по базе менеджера, и настраивать её сотруднику нечего.
           Состояние живёт на сервере (backup_settings), поэтому карточка грузит его сама. */}
       {(user?.role === 'manager' || user?.role === 'admin') && (
       <SettingsAccordion
           title="Резервное копирование"
-          subtitle="Excel с вашими данными на почту — ежедневно, еженедельно или ежемесячно."
+        icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12" /><path d="m8 11 4 4 4-4" /><path d="M20 16.5A3.5 3.5 0 0 0 16.5 13h-.7A5.5 5.5 0 1 0 6 17h11a3 3 0 0 0 3-.5z" /></svg>} tone="bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-300"
+          subtitle="Excel на почту по расписанию"
       >
           <Suspense fallback={<p className="text-sm text-slate-500 dark:text-slate-400">Загрузка…</p>}>
               <BackupSettingsCard onNavigate={onNavigate} />
@@ -567,7 +636,8 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
       {(user?.role === 'manager' || user?.role === 'admin') && (
       <SettingsAccordion
           title="Уведомления"
-          subtitle="Платежи, договоры, расходы, WhatsApp, администрация."
+        icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></svg>} tone="bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300"
+          subtitle="Платежи, договоры, расходы"
           badge={!hasNotificationsAccess && (
               <span className="flex items-center gap-1 text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-full">
                   {ICONS.Crown} Стандарт+
@@ -676,10 +746,14 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
       </SettingsAccordion>
       )}
 
+      </SettingsGroup>
+
+      {/* Как приложение выглядит — на экране и на бумаге */}
+      <SettingsGroup>
       {/* Appearance / Dark Mode Selection */}
       {/* Форма договора — рядом с оформлением: это тоже про то, как приложение
           выглядит снаружи, только на бумаге, а не на экране. */}
-      <SettingsAccordion title="Печатная форма договора" subtitle="Какой бланк печатается и уходит клиенту.">
+      <SettingsAccordion title="Печатная форма договора" subtitle="Бланк для печати и отправки" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>} tone="bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-300">
           <ContractTemplatePicker
             allowPaid={contractTemplatesAllowed}
             value={appSettings.contractTemplate || 'MODERN'}
@@ -692,7 +766,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
       {/* Светлый/тёмный режим и акцентный цвет — один вопрос «как приложение
           выглядит», а не два. Раздельными разделами человек выбирал цвет, не
           видя, на каком фоне он окажется. */}
-      <SettingsAccordion title="Оформление" subtitle="Светлая или тёмная тема и основной цвет приложения.">
+      <SettingsAccordion title="Оформление" subtitle="Тема и основной цвет" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 0 0 18z" /></svg>} tone="bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Тема</p>
           <div className="grid grid-cols-3 gap-3">
               {APPEARANCE_OPTIONS.map((option) => (
@@ -743,41 +817,29 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
           </div>
       </SettingsAccordion>
 
-      {/* Tools & Integrations — быстрые переходы, не карточки-аккордеоны */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      </SettingsGroup>
+
+      {/* Настройки, которые живут на своих экранах — такие же строки, но с переходом */}
+      <SettingsGroup>
           {!isEmployee && (
-              <button
-                onClick={() => onNavigate('INTEGRATIONS')}
-                className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center gap-4 hover:shadow-md transition-all group text-left"
-              >
-                  <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                  </div>
-                  <div>
-                      <h3 className="font-bold text-slate-800 dark:text-white text-lg">Интеграции</h3>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">WhatsApp, SMS и другое</p>
-                  </div>
-              </button>
+            <SettingsLink
+              title="Интеграции" subtitle="WhatsApp, SMS и другое"
+              icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" /></svg>} tone="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300"
+              onClick={() => onNavigate('INTEGRATIONS')}
+            />
           )}
-
-
-          <button
+          <SettingsLink
+            title="Калькулятор" subtitle="Расчёт рассрочки и ссылка"
+            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" /><line x1="8" y1="6" x2="16" y2="6" /><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M8 18h.01M12 18h.01" /><path d="M16 14v4" /></svg>} tone="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300"
             onClick={() => onNavigate('CALCULATOR')}
-            className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center gap-4 hover:shadow-md transition-all group text-left"
-          >
-              <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
-              </div>
-              <div>
-                  <h3 className="font-bold text-slate-800 dark:text-white text-lg">Калькулятор</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Расчет рассрочки и ссылка</p>
-              </div>
-          </button>
-      </div>
+          />
+      </SettingsGroup>
 
+      {/* Данные и документы */}
+      <SettingsGroup>
       {/* 👇 ОБЪЕДИНЁННЫЙ БЛОК: Работа с данными (Экспорт + Импорт) */}
        {!isEmployee && (
-      <SettingsAccordion title="Работа с данными" subtitle="Выгружайте данные в Excel или загружайте из файла.">
+      <SettingsAccordion title="Работа с данными" subtitle="Экспорт и импорт Excel" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /><path d="M12 15V3" /></svg>} tone="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {/* Кнопка ЭКСПОРТА */}
               <button
@@ -816,7 +878,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
        )}
 
       {/* Legal Information Section */}
-      <SettingsAccordion title="Правовая информация">
+      <SettingsAccordion title="Правовая информация" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z" /><path d="m9 12 2 2 4-4" /></svg>} tone="bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">
           <div className="space-y-2">
               <button
                   onClick={() => setLegalView('OFFER')}
@@ -864,7 +926,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
 
             {/* 🔥 СКРЫВАЕМ УПРАВЛЕНИЕ ДАННЫМИ ОТ СОТРУДНИКОВ */}
       {!isEmployee && (
-          <SettingsAccordion title="Управление данными" subtitle="Сброс всех данных приложения. Используйте с осторожностью.">
+          <SettingsAccordion title="Управление данными" subtitle="Сброс данных и удаление аккаунта" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M10 11v6M14 11v6" /></svg>} tone="bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-300">
               <button
                   onClick={() => setShowClearModal(true)}
                   className="w-full py-3 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold rounded-xl hover:bg-red-100 dark:hover:bg-red-900/50 border border-red-100 dark:border-red-900/50 flex items-center justify-center gap-2 transition-colors"
@@ -891,6 +953,8 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
               )}
           </SettingsAccordion>
       )}
+
+      </SettingsGroup>
 
       {/* Delete Account Modal */}
       {showDeleteAccountModal && (
