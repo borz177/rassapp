@@ -516,7 +516,10 @@ export const saleProfitMargin = (
 ): number => {
   const total = Number(sale.totalAmount) || 0;
   const profit = total - (Number(sale.buyPrice) || 0);
-  if (!(profit > 0)) return 0;
+  if (profit === 0) return 0;
+  // Убыточный договор (продали дешевле закупа) даёт отрицательную наценку — так было
+  // всегда, и так честнее: каждый полученный рубль уводит прибыль в минус. Экраны,
+  // которые убыток не показывают, отсеивают его сами проверкой margin <= 0.
   const base = paymentsOnly ? total - (Number(sale.downPayment) || 0) : total;
   return base > 0 ? profit / base : 0;
 };
