@@ -1019,7 +1019,9 @@ export const getAccountProfitBalance = (
   accountId: string,
   sales: Sale[],
   expenses: Expense[],
-  investors: Investor[]
+  investors: Investor[],
+  /** Прибыль только с платежей графика — см. saleProfitMargin */
+  profitFromPaymentsOnly = false
 ): { earned: number; withdrawn: number; available: number } => {
   const investorIds = new Set(investors.map(i => i.id));
 
@@ -1030,11 +1032,9 @@ export const getAccountProfitBalance = (
     if (investorIds.has(sale.customerId)) return;
     if (!sale.buyPrice || sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
 
-    const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
-    const collected = (sale.downPayment || 0) + (sale.paymentPlan || [])
-      .filter(p => p.isPaid && p.isRealPayment !== false)
-      .reduce((sum, p) => sum + (p.amount || 0), 0);
-    earned += collected * profitMargin;
+    // Считаем по каждому поступлению отдельно: с настройкой «только с платежей»
+    // первый взнос прибыли не несёт, и общая сумма поступлений тут уже не годится.
+    earned += saleMoneyIn(sale).reduce((sum, p) => sum + moneyInProfit(sale, p, profitFromPaymentsOnly), 0);
   });
 
   const withdrawn = expenses

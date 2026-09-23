@@ -65,7 +65,7 @@ const checkDuplicateExpense = (
 
 const NewExpense: React.FC<NewExpenseProps> = ({
   investors, accounts, expenses, employees, suppliers, sales, movements = [], products = [], showSupplierCategory, initialData, onClose, onSubmit
-, categories = []}) => {
+, categories = [], appSettings}) => {
   const employeeList: User[] = employees || [];
   const supplierList: Supplier[] = suppliers || [];
   const saleList: Sale[] = sales || [];
@@ -115,7 +115,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   // чем заработано. Не блокируем: в учёте бывают ситуации, когда так и надо,
   // но уходить в минус молча человек не должен.
   const profitBalance = (fromProfit && sourceAccountId)
-    ? getAccountProfitBalance(sourceAccountId, saleList, expenses || [], investors)
+    ? getAccountProfitBalance(sourceAccountId, saleList, expenses || [], investors, !!appSettings?.profitFromPaymentsOnly)
     : null;
   const profitShortfall = (() => {
     if (!profitBalance) return null;
