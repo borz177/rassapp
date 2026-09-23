@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Investor, Sale, Expense, Account, Payment, AppSettings, Customer, InvestmentPeriod, LossEvent } from '../types';
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
-import { formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, paymentProfitShares, expectedProfitShares, participationDates, participationDatesError, withParticipationDates, investorProfitOutflows } from '../src/utils';
+import { moneyInProfit, saleProfitMargin, isDownPaymentOf, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, paymentProfitShares, expectedProfitShares, participationDates, participationDatesError, withParticipationDates, investorProfitOutflows } from '../src/utils';
 
 // Модальное окно формы. Через портал в body: страница открыта внутри .page-push-layer,
 // а он position: fixed с z-index 30 — окно внутри него оказалось бы под нижней навигацией.
@@ -125,6 +125,8 @@ type HistoryOp = {
   title: string;
   productName?: string; customerId?: string; customerName?: string;
   paymentAmount?: number; payoutType?: string; expenseTitle?: string;
+  /** Начисление с первого взноса — его и называем взносом, остальное платежами */
+  isDownPayment?: boolean;
 };
 
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -134,6 +136,8 @@ const monthStartStr = () => { const d = new Date(); d.setDate(1); return d.toISO
 const InvestorDetails: React.FC<InvestorDetailsProps> = ({
   investor, investors, account, sales, expenses, customers, appSettings, onBack, onUpdateInvestor, onDeleteInvestor, onUpdateAccount, onInvestorReentry, onPoolLoss, onDeletePoolLoss
 }) => {
+  // Прибыль только с платежей графика: первый взнос её не несёт (см. saleProfitMargin)
+  const profitFromPaymentsOnly = !!appSettings?.profitFromPaymentsOnly;
   const currentSharePercent = useMemo(() => {
     const share = getAccountShares(account, investors).find(m => m.investor.id === investor.id);
     return share ? share.percentage : 0;
@@ -353,8 +357,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
         const myShare = expectedProfitShares(account, investors, sale)
           .find(m => m.investor.id === investor.id)?.percentage ?? 0;
         if (myShare <= 0) return sum;
-        const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
-        return sum + (sale.remainingAmount * profitMargin * myShare / 100);
+        return sum + (sale.remainingAmount * saleProfitMargin(sale, profitFromPaymentsOnly) * myShare / 100);
       }, 0);
   }, [sales, account, investors, investor.id]);
 
@@ -365,13 +368,12 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
     let profitSum = 0;
     const accruals: {
       id: string; date: string; amount: number; source: string;
-      productName: string; customerId: string; paymentAmount: number;
+      productName: string; customerId: string; paymentAmount: number; isDownPayment: boolean;
     }[] = [];
 
     investorSales.forEach(sale => {
       const totalSaleProfit = sale.totalAmount - sale.buyPrice;
       if (sale.totalAmount <= 0 || totalSaleProfit <= 0) return;
-      const profitMargin = totalSaleProfit / sale.totalAmount;
 
       const allPayments: (Payment | { date: string; amount: number; id: string; isRealPayment?: boolean })[] = [
         { date: sale.startDate, amount: sale.downPayment, id: `${sale.id}_dp`, isRealPayment: true },
@@ -383,7 +385,10 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
           const share = paymentProfitShares(account, investors, sale, p).find(m => m.investor.id === investor.id);
           const myPercent = share ? share.percentage : 0;
           if (myPercent <= 0) return;
-          const profitFromPayment = p.amount * profitMargin * myPercent / 100;
+          const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly) * myPercent / 100;
+          // С настройкой «только с платежей» первый взнос прибыли не приносит —
+          // строка «+0 ₽» в ленте ни о чём не говорит, поэтому её не показываем.
+          if (profitFromPayment <= 0) return;
           profitSum += profitFromPayment;
           accruals.push({
             id: p.id, date: p.date, amount: profitFromPayment,
@@ -391,6 +396,9 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
             productName: sale.productName,
             customerId: sale.customerId,
             paymentAmount: p.amount,
+            // Первый взнос называем взносом, остальное — платежами: раньше
+            // «взнос» стоял под каждым начислением и путал.
+            isDownPayment: isDownPaymentOf(sale, p.id),
           });
         }
       });
@@ -541,6 +549,8 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
         opType: 'PROFIT', title: p.productName,
         productName: p.productName, customerId: p.customerId,
         customerName, paymentAmount: p.paymentAmount,
+        // Чтобы в ленте операций взнос назывался взносом, а платёж — платежом
+        isDownPayment: p.isDownPayment,
       });
     });
 
@@ -1123,7 +1133,11 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
                       <p className={`font-bold text-sm ${isPayout ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                         {isPayout ? '−' : '+'}{formatCurrency(op.amount, appSettings.showCents)} ₽
                       </p>
-                      {isProfit && op.paymentAmount && <p className="text-xs text-slate-400">взнос {formatCurrency(op.paymentAmount, false)} ₽</p>}
+                      {isProfit && op.paymentAmount && (
+                        <p className="text-xs text-slate-400">
+                          {op.isDownPayment ? 'первый взнос' : 'платёж'} {formatCurrency(op.paymentAmount, false)} ₽
+                        </p>
+                      )}
                     </div>
                     <span className={`text-slate-300 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>

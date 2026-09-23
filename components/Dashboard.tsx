@@ -8,7 +8,7 @@ import ModeSwitch from './ModeSwitch';
 import { ICONS } from '../constants';
 import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
 import MyBonusCard from './MyBonusCard';
-import { expectedPaymentsInPeriod, formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
+import { moneyInProfit, saleProfitMargin, expectedPaymentsInPeriod, formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import {createPortal} from "react-dom";
 
@@ -558,6 +558,8 @@ const ProfitDetailsModal = ({
   selectedAccountId?: string | null; onClose: () => void;
   onSelectCustomer: (customerId: string) => void; appSettings: AppSettings;
 }) => {
+  // Прибыль только с платежей графика: первый взнос её не несёт (см. saleProfitMargin)
+  const profitFromPaymentsOnly = !!appSettings?.profitFromPaymentsOnly;
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   monthStart.setHours(0, 0, 0, 0);
@@ -594,7 +596,7 @@ const ProfitDetailsModal = ({
       if (!sale.buyPrice || sale.buyPrice <= 0) return;
       if (sale.totalAmount <= 0) return;
 
-      const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
+      const profitMargin = saleProfitMargin(sale, profitFromPaymentsOnly);
       if (profitMargin <= 0) return;
 
       const customer = customers.find(c => c.id === sale.customerId);
@@ -635,7 +637,7 @@ const ProfitDetailsModal = ({
                 customerName: customer?.name || 'Неизвестно',
                 customerId: sale.customerId,
                 paymentAmount: unpaidDownPayment,
-                profitAmount: unpaidDownPayment * profitMargin,
+                profitAmount: profitFromPaymentsOnly ? 0 : unpaidDownPayment * profitMargin,
                 date: sale.startDate,
                 isPaid: false,
                 isDownPayment: true,
@@ -680,7 +682,7 @@ const ProfitDetailsModal = ({
                 customerName: customer?.name || 'Неизвестно',
                 customerId: sale.customerId,
                 paymentAmount: sale.downPayment,
-                profitAmount: sale.downPayment * profitMargin,
+                profitAmount: profitFromPaymentsOnly ? 0 : sale.downPayment * profitMargin,
                 date: sale.startDate,
                 isPaid: true,
                 isDownPayment: true,
@@ -966,6 +968,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   // всё вместе — иначе долг за поставки просто исчез бы с глаз.
   const overviewSupplierDebt = showShopTab ? supplierDebt.contract : supplierDebt.all;
 
+  // Прибыль только с платежей графика: первый взнос её не несёт (см. saleProfitMargin)
+  const profitFromPaymentsOnly = !!appSettings?.profitFromPaymentsOnly;
+
   // Скрытие суммы переживает перезапуск: человек прячет её, чтобы не светить
   // баланс, и каждый раз заново нажимать глаз было бы бессмысленно.
   const [hideBalance, setHideBalance] = useState(() => {
@@ -1124,8 +1129,7 @@ const currentMonthName = useMemo(() => {
         if (sale.customerId.startsWith('system_')) return;
         if (!sale.buyPrice || sale.buyPrice <= 0) return;
 
-        const totalSaleProfit = sale.totalAmount - sale.buyPrice;
-        const profitMargin = totalSaleProfit / sale.totalAmount;
+        const profitMargin = saleProfitMargin(sale, profitFromPaymentsOnly);
 
         const account = accounts?.find(a => a?.id === sale.accountId);
         const managerShare = getManagerSharePercent(account, investors || []) / 100;
@@ -1135,7 +1139,8 @@ const currentMonthName = useMemo(() => {
             .filter(p => p.isPaid && p.isRealPayment !== false)
             .reduce((sum, p) => sum + p.amount, 0);
 
-        receivedProfit += collectedPayments * profitMargin;
+        // При «только с платежей» первый взнос прибыли не даёт — вычитаем его из полученного
+        receivedProfit += (collectedPayments - (profitFromPaymentsOnly ? Math.min(sale.downPayment, collectedPayments) : 0)) * profitMargin;
 
         // 🔧 Ожидаемая = ВСЁ, что ещё не оплачено (включая downPayment)
         if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
@@ -1385,7 +1390,7 @@ const receivedProfitThisMonth = useMemo(() => {
         if (!sale.buyPrice || sale.buyPrice <= 0) return;
         if (sale.totalAmount <= 0) return;
 
-        const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
+        const profitMargin = saleProfitMargin(sale, profitFromPaymentsOnly);
         if (profitMargin <= 0) return;
 
         // 1. Прибыль от оплаченных платежей из графика
@@ -1407,7 +1412,7 @@ const receivedProfitThisMonth = useMemo(() => {
             if (saleStart >= monthStart && saleStart <= monthEnd) {
                 // Проверяем, что взнос оплачен
                 const totalPaid = sale.totalAmount - sale.remainingAmount;
-                if (totalPaid >= sale.downPayment) {
+                if (totalPaid >= sale.downPayment && !profitFromPaymentsOnly) {
                     receivedProfit += sale.downPayment * profitMargin;
                 }
             }
@@ -1437,7 +1442,7 @@ const expectedProfitThisMonth = useMemo(() => {
         if (!sale.buyPrice || sale.buyPrice <= 0) return;
         if (sale.totalAmount <= 0) return;
 
-        const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
+        const profitMargin = saleProfitMargin(sale, profitFromPaymentsOnly);
         if (profitMargin <= 0) return;
 
         // 1. Прибыль от неоплаченных платежей из графика
@@ -1460,7 +1465,7 @@ const expectedProfitThisMonth = useMemo(() => {
                 saleStart.setHours(0, 0, 0, 0);
                 
                 // 🔧 Только если продажа создана в этом месяце
-                if (saleStart >= monthStart && saleStart <= monthEnd) {
+                if (saleStart >= monthStart && saleStart <= monthEnd && !profitFromPaymentsOnly) {
                     const unpaidDownPayment = sale.downPayment - totalPaid;
                     expectedProfit += unpaidDownPayment * profitMargin;
                 }

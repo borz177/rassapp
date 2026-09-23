@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Sale, Expense, Account, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getAccountShares, addMonthsClamped, paymentProfitShares, expectedProfitShares, investorProfitOutflows } from '../src/utils';
+import { moneyInProfit, saleProfitMargin, formatCurrency, formatDate, getAccountShares, addMonthsClamped, paymentProfitShares, expectedProfitShares, investorProfitOutflows } from '../src/utils';
 import Contracts from './Contracts';
 
 interface InvestorDashboardProps {
@@ -40,6 +40,8 @@ function getPeriodDates(preset: PeriodPreset): { start: string; end: string } {
 const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
   sales, expenses, accounts, customers, investor, investors, appSettings, onLogout
 }) => {
+  // Прибыль только с платежей графика: первый взнос её не несёт (см. saleProfitMargin)
+  const profitFromPaymentsOnly = !!appSettings?.profitFromPaymentsOnly;
   const [activeTab, setActiveTab] = useState<'overview' | 'contracts'>('overview');
   const [contractTab, setContractTab] = useState<'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
   const [showPayoutsModal, setShowPayoutsModal] = useState(false);
@@ -135,7 +137,6 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
     investorSalesFiltered.forEach(sale => {
       const totalSaleProfit = sale.totalAmount - sale.buyPrice;
       if (sale.totalAmount <= 0 || totalSaleProfit <= 0) return;
-      const profitMargin = totalSaleProfit / sale.totalAmount;
 
       const allPayments = [
         { date: sale.startDate, amount: sale.downPayment, id: `${sale.id}_dp`, isRealPayment: true },
@@ -148,7 +149,7 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
           const share = paymentProfitShares(account, investors, sale, p).find(m => m.investor.id === investor.id);
           const myPercent = share ? share.percentage : 0;
           if (myPercent <= 0) return;
-          const profitFromPayment = p.amount * profitMargin * myPercent / 100;
+          const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly) * myPercent / 100;
           profitSum += profitFromPayment;
           accruals.push({
             id: p.id,
@@ -233,8 +234,7 @@ const expectedTotalProfit = useMemo(() => {
   );
 
   return activeSales.reduce((sum, sale) => {
-    const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
-    const grossProfitFromRemaining = sale.remainingAmount * profitMargin;
+    const grossProfitFromRemaining = sale.remainingAmount * saleProfitMargin(sale, profitFromPaymentsOnly);
     const account = accounts.find(a => a.id === sale.accountId);
     // Будущие платежи — прогноз по текущему составу кассы (см. expectedProfitShares)
     const share = expectedProfitShares(account, investors, sale).find(m => m.investor.id === investor.id);

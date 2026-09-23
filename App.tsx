@@ -58,7 +58,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
+import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, moneyInProfit, saleProfitMargin, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -1421,6 +1421,8 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 };
 
   const isManager = user?.role === 'manager' || user?.role === 'admin';
+  // Прибыль только с платежей графика: первый взнос её не несёт (см. saleProfitMargin)
+  const profitFromPaymentsOnly = !!appSettings?.profitFromPaymentsOnly;
   const isEmployee = user?.role === 'employee';
   const isInvestor = user?.role === 'investor';
   const activeInvestor = isInvestor && user ? investors.find(i => i.id === user.id) : null;
@@ -1590,13 +1592,13 @@ const dashboardStats = useMemo(() => {
         if (saleProfit <= 0) return;
 
         const account = accounts.find(a => a.id === sale.accountId);
-        const margin = saleProfit / sale.totalAmount;
         // Полученное — по составу кассы на момент каждого платежа, остаток — прогноз
-        // по текущему составу (см. paymentProfitShares в src/utils.ts)
+        // по текущему составу (см. paymentProfitShares в src/utils.ts). Сколько
+        // прибыли несёт поступление, решает настройка (см. saleProfitMargin).
         saleMoneyIn(sale).forEach(p => {
-          if (p.amount > 0) totalProfit += p.amount * margin * paymentManagerPercent(account, investors, sale, p) / 100;
+          if (p.amount > 0) totalProfit += moneyInProfit(sale, p, profitFromPaymentsOnly) * paymentManagerPercent(account, investors, sale, p) / 100;
         });
-        totalProfit += (sale.remainingAmount || 0) * margin * expectedManagerPercent(account, investors, sale) / 100;
+        totalProfit += (sale.remainingAmount || 0) * saleProfitMargin(sale, profitFromPaymentsOnly) * expectedManagerPercent(account, investors, sale) / 100;
     });
 
     return totalProfit;
@@ -1614,22 +1616,17 @@ const dashboardStats = useMemo(() => {
         const totalSaleProfit = sale.totalAmount - sale.buyPrice;
         if (sale.totalAmount <= 0 || totalSaleProfit <= 0) return;
 
-        const profitMargin = totalSaleProfit / sale.totalAmount;
         const account = accounts.find(a => a.id === sale.accountId);
 
         // Collect all REAL money movements
-        const allPayments = [
-            { date: sale.startDate, amount: sale.downPayment, id: `${sale.id}_dp`, isRealPayment: true },
-            ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false) // Exclude plan items
-        ];
+        const allPayments = saleMoneyIn(sale);
 
         allPayments.forEach(p => {
             const paymentDate = new Date(p.date);
             if (paymentDate >= startDate && paymentDate <= endDate && p.amount > 0) {
                 // Доля — на момент поступления платежа (см. paymentProfitShares в src/utils.ts)
                 const managerProfitShare = paymentManagerPercent(account, investors, sale, p) / 100;
-                const profitFromPayment = p.amount * profitMargin;
-                periodProfit += profitFromPayment * managerProfitShare;
+                periodProfit += moneyInProfit(sale, p, profitFromPaymentsOnly) * managerProfitShare;
             }
         });
     });
@@ -1668,31 +1665,27 @@ const dashboardStats = useMemo(() => {
             const saleProfit = sale.totalAmount - sale.buyPrice;
             if (saleProfit <= 0) return;
             const account = accounts.find(a => a.id === sale.accountId);
-            const margin = saleProfit / sale.totalAmount;
             // Полученное — по составу на момент платежа, остаток — по текущему составу
             const split = (profit: number, managerPct: number) => {
               expectedManagerProfit += profit * managerPct / 100;
               expectedInvestorProfit += profit * (100 - managerPct) / 100;
             };
             saleMoneyIn(sale).forEach(p => {
-              if (p.amount > 0) split(p.amount * margin, paymentManagerPercent(account, investors, sale, p));
+              if (p.amount > 0) split(moneyInProfit(sale, p, profitFromPaymentsOnly), paymentManagerPercent(account, investors, sale, p));
             });
-            split((sale.remainingAmount || 0) * margin, expectedManagerPercent(account, investors, sale));
+            split((sale.remainingAmount || 0) * saleProfitMargin(sale, profitFromPaymentsOnly), expectedManagerPercent(account, investors, sale));
         });
 
     let realizedManagerProfit = 0;
     let realizedInvestorProfit = 0;
     filteredSales.forEach(sale => {
         if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
-        const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
         const account = accounts.find(a => a.id === sale.accountId);
-        const paymentsInPeriod = [
-            { date: sale.startDate, amount: sale.downPayment },
-            ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
-        ].filter(p => { const d = new Date(p.date); return d >= startDate && d <= endDate; });
+        const paymentsInPeriod = saleMoneyIn(sale)
+            .filter(p => { const d = new Date(p.date); return d >= startDate && d <= endDate; });
 
         paymentsInPeriod.forEach(p => {
-            const profitFromPayment = p.amount * profitMargin;
+            const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly);
             const managerPct = paymentManagerPercent(account, investors, sale, p) / 100;
             realizedManagerProfit += profitFromPayment * managerPct;
             realizedInvestorProfit += profitFromPayment * (1 - managerPct);
@@ -1724,12 +1717,12 @@ const dashboardStats = useMemo(() => {
       .forEach(emp => {
         const scopedSales = accountId === 'ALL' ? sales : sales.filter(s => s.accountId === accountId);
         const range = { start: startDate, end: endDate };
-        const total = getEmployeeProfitAccrued(emp, scopedSales, accounts, investors, range);
+        const total = getEmployeeProfitAccrued(emp, scopedSales, accounts, investors, range, profitFromPaymentsOnly);
         if (emp.profitSource === 'SHARED') {
           // Доля менеджера в этом расходе — это та же премия, посчитанная «из доли
           // менеджера»: Σ(прибыль × доля_менеджера × процент). Остальное несут инвесторы.
           const managerPart = getEmployeeProfitAccrued(
-            { ...emp, profitSource: 'MANAGER' }, scopedSales, accounts, investors, range
+            { ...emp, profitSource: 'MANAGER' }, scopedSales, accounts, investors, range, profitFromPaymentsOnly
           );
           realizedManagerProfit -= managerPart;
           realizedInvestorProfit -= (total - managerPart);

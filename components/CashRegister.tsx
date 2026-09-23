@@ -8,7 +8,7 @@ import AccountCashTab from './AccountCashTab';
 import { accountCashSummary, accountWarehouses, cashPeriodFor } from '../src/accountCash';
 import { Sale, Account, Expense, Investor, AppSettings, Customer, RetailSale, Product, StockLocation, StockMovement, Supplier } from '../types';
 import { ICONS } from '../constants';
-import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, computeAccountBalances } from '../src/utils';
+import { moneyInProfit, saleProfitMargin, formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, computeAccountBalances } from '../src/utils';
 
 // Цвета участников пула — те же роли, что у палитры инвесторов в отчётах:
 // человека узнают по кружку, а не вычитывают имя в таблице.
@@ -508,6 +508,8 @@ const CashRegister: React.FC<CashRegisterProps> = ({
     isInvestor: viewerIsInvestor = false,
     warehouses = [], stockMovements = [], products = [], suppliers = [], onOpenJournalDoc,
 }) => {
+  // Прибыль только с платежей графика: первый взнос её не несёт (см. saleProfitMargin)
+  const profitFromPaymentsOnly = !!appSettings?.profitFromPaymentsOnly;
   const [isAdding, setIsAdding] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [selectedSharedAccount, setSelectedSharedAccount] = useState<Account | null>(null);
@@ -678,8 +680,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
 
         // 🔧 ИЗМЕНЕНИЕ: считаем только ожидаемую прибыль от остатка
         if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
-            const totalSaleProfit = sale.totalAmount - sale.buyPrice;
-            const profitMargin = sale.totalAmount > 0 ? totalSaleProfit / sale.totalAmount : 0;
+            const profitMargin = saleProfitMargin(sale, profitFromPaymentsOnly);
 
             const account = accounts.find(a => a.id === sale.accountId);
             // Будущие платежи — прогноз по текущему составу кассы
@@ -699,8 +700,6 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
     sales.forEach(sale => {
         if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
         if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
-        const totalSaleProfit = Number(sale.totalAmount) - Number(sale.buyPrice);
-        const profitMargin = totalSaleProfit / Number(sale.totalAmount);
         const account = accounts.find(a => a.id === sale.accountId);
         // SHARED-счета считаются отдельно (по внесённому капиталу), а не по фиксированному %.
         if (account?.type === 'SHARED') return;
@@ -719,7 +718,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                     // 🔒 Доля — на дату этого платежа, чтобы новый участник пула не получил
                     // задним числом долю от прибыли, полученной до его вступления.
                     const managerProfitSharePercent = paymentManagerPercent(account, investors, sale, p) / 100;
-                    const profitFromPayment = p.amount * profitMargin;
+                    const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly);
                     const managerShare = profitFromPayment * managerProfitSharePercent;
                     if(managerShare > 0) {
                         accruals.push({
@@ -807,9 +806,6 @@ const investorProfitAccruals = useMemo(() => {
         if (account.type === 'SHARED') return;
 
         const customerName = customers.find(c => c.id === sale.customerId)?.name || 'Неизвестно';
-        const totalSaleProfit = Number(sale.totalAmount) - Number(sale.buyPrice);
-        const profitMargin = totalSaleProfit / Number(sale.totalAmount);
-
         const allPayments = [
             { date: sale.startDate, amount: Number(sale.downPayment), id: `${sale.id}_dp` },
             ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
@@ -823,7 +819,7 @@ const investorProfitAccruals = useMemo(() => {
                 endDate.setHours(23, 59, 59, 999);
 
                 if (pDate >= startDate && pDate <= endDate) {
-                    const profitFromPayment = p.amount * profitMargin;
+                    const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly);
                     const shares = paymentProfitShares(account, investors, sale, p);
                     shares.forEach(({ investor, percentage }) => {
                         const investorAmount = profitFromPayment * (percentage / 100);
@@ -938,8 +934,7 @@ const investorProfitPayouts = useMemo(() => {
         const account = accounts.find(a => a.id === sale.accountId);
         if (!account || account.type === 'SHARED') return;
 
-        const totalSaleProfit = sale.totalAmount - sale.buyPrice;
-        const profitMargin = sale.totalAmount > 0 ? totalSaleProfit / sale.totalAmount : 0;
+        const profitMargin = saleProfitMargin(sale, profitFromPaymentsOnly);
 
         // Ожидаемая прибыль: от остатка (ACTIVE/DRAFT) — прогноз по текущему составу кассы
         if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
@@ -950,14 +945,14 @@ const investorProfitPayouts = useMemo(() => {
 
         // 🔧 Полученная прибыль: платежи в выбранном периоде, доли — на дату каждого платежа
         const allPayments = [
-            { date: sale.startDate, amount: Number(sale.downPayment) },
+            { date: sale.startDate, amount: Number(sale.downPayment), id: `${sale.id}_dp` },
             ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
         ];
         allPayments.forEach(p => {
             if (p.amount <= 0) return;
             const pDate = new Date(p.date);
             if (pDate < startDate || pDate > endDate) return;
-            const profitFromPayment = p.amount * profitMargin;
+            const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly);
             paymentProfitShares(account, investors, sale, p).forEach(({ investor, percentage }) => {
                 ensure(investor).receivedProfit += profitFromPayment * (percentage / 100);
             });

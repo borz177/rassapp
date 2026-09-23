@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import TabPill from './TabPill';
 import ShopReportBody from './ShopReportBody';
 import { Investor, AppSettings, Sale, Expense, Account, Customer, RetailSale as RetailSaleType, Product, StockMovement} from '../types';
-import { formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor, calculateSaleOverdue, addMonthsClamped, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn } from '../src/utils';
+import { moneyInProfit, saleProfitMargin, formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor, calculateSaleOverdue, addMonthsClamped, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn } from '../src/utils';
 import { openPrintPreview } from './PrintPreview';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
@@ -131,6 +131,8 @@ const Reports: React.FC<ReportsProps> = ({
     sales = [], expenses = [], accounts = [], customers = [],
     retailSales = [], products = [], stockMovements = [], showShop = false
 }) => {
+  // Прибыль только с платежей графика: первый взнос её не несёт (см. saleProfitMargin)
+  const profitFromPaymentsOnly = !!appSettings?.profitFromPaymentsOnly;
     // Рассрочка и магазин считаются по разным данным: договоры с графиком против
     // розничных чеков. Смешивать их в одном отчёте нельзя — выручка сложилась бы,
     // а маржа и средний чек потеряли смысл. Поэтому вкладки, а не общий свод.
@@ -248,12 +250,12 @@ const Reports: React.FC<ReportsProps> = ({
                 const saleProfit = sale.totalAmount - sale.buyPrice;
                 if (saleProfit <= 0) return;
                 const acc = accounts.find(a => a.id === sale.accountId);
-                const margin = saleProfit / sale.totalAmount;
+                const margin = saleProfitMargin(sale, profitFromPaymentsOnly);
                 const mine = (shares: { investor: Investor; percentage: number }[]) =>
                     shares.find(m => m.investor.id === inv.id)?.percentage ?? 0;
                 // Полученное — по составу на момент платежа, остаток — по текущему составу
                 saleMoneyIn(sale).forEach(p => {
-                    if (p.amount > 0) expectedProfit += p.amount * margin * mine(paymentProfitShares(acc, investors, sale, p)) / 100;
+                    if (p.amount > 0) expectedProfit += moneyInProfit(sale, p, profitFromPaymentsOnly) * mine(paymentProfitShares(acc, investors, sale, p)) / 100;
                 });
                 expectedProfit += (sale.remainingAmount || 0) * margin * mine(expectedProfitShares(acc, investors, sale)) / 100;
             });
@@ -261,15 +263,12 @@ const Reports: React.FC<ReportsProps> = ({
             let realizedProfit = 0;
             investorSales.forEach(sale => {
                 if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
-                const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
                 const acc = accounts.find(a => a.id === sale.accountId);
-                const paymentsInPeriod = [
-                    { date: sale.startDate, amount: sale.downPayment },
-                    ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
-                ].filter(p => { const d = new Date(p.date); return d >= startDate && d <= endDate; });
+                const paymentsInPeriod = saleMoneyIn(sale)
+                    .filter(p => { const d = new Date(p.date); return d >= startDate && d <= endDate; });
                 paymentsInPeriod.forEach(p => {
                     const myShare = paymentProfitShares(acc, investors, sale, p).find(m => m.investor.id === inv.id);
-                    if (myShare) realizedProfit += p.amount * profitMargin * (myShare.percentage / 100);
+                    if (myShare) realizedProfit += moneyInProfit(sale, p, profitFromPaymentsOnly) * (myShare.percentage / 100);
                 });
             });
 
@@ -483,7 +482,7 @@ const Reports: React.FC<ReportsProps> = ({
         );
 
         accountSales.forEach(sale => {
-            const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
+            const profitMargin = saleProfitMargin(sale, profitFromPaymentsOnly);
             const allPayments = [
                 { date: sale.startDate, amount: sale.downPayment },
                 ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
@@ -492,7 +491,7 @@ const Reports: React.FC<ReportsProps> = ({
                 if (p.amount <= 0) return;
                 const pDate = new Date(p.date);
                 if (pDate < startDate || pDate > endDate) return;
-                const profitFromPayment = p.amount * profitMargin;
+                const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly);
                 const mgrPct = paymentManagerPercent(account, investors as Investor[], sale, p) / 100;
                 ensure(MGR, () => ({ label: 'Менеджер', isManager: true, sharePercent: getManagerSharePercent(account, investors as Investor[]), received: 0, expected: 0 })).received += profitFromPayment * mgrPct;
                 paymentProfitShares(account, investors as Investor[], sale, p).forEach(({ investor, percentage }) => {

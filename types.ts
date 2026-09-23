@@ -622,6 +622,14 @@ export interface AppSettings {
   theme?: 'PURPLE' | 'BLUE' | 'GREEN' | 'BLACK';
   showCents?: boolean;
   markupFromNetBuyPrice?: boolean;
+  /**
+   * Прибыль начисляется только с платежей графика, а первый взнос её не несёт:
+   * он считается возвратом закупа. Выключено по умолчанию — так считали всегда,
+   * и менять счёт у тех, кто ничего не выбирал, нельзя. Общая прибыль договора
+   * от настройки не меняется, меняется лишь момент её признания (см.
+   * saleProfitMargin в src/utils.ts).
+   */
+  profitFromPaymentsOnly?: boolean;
   notifications?: NotificationSettings;
   /**
    * Режим магазина: розничные продажи за наличные и склад.

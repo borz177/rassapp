@@ -499,6 +499,47 @@ export const expectedManagerPercent = (
   sale?: SaleSchedule
 ): number => sharesToManager(expectedProfitShares(account, investors, sale));
 
+/**
+ * Доля прибыли в каждом рубле, полученном по договору.
+ *
+ * По умолчанию прибыль «размазана» по всей сумме договора: первый взнос
+ * приносит её так же, как платежи. Это привычный счёт, и он остаётся включённым.
+ *
+ * С настройкой «прибыль только с платежей» первый взнос прибыли не несёт вовсе:
+ * его считают возвратом закупа, а вся наценка распределяется по платежам
+ * графика. Общая прибыль договора от этого не меняется — меняется только то,
+ * когда она признаётся: позже и равномернее.
+ */
+export const saleProfitMargin = (
+  sale: Pick<Sale, 'totalAmount' | 'buyPrice' | 'downPayment'>,
+  paymentsOnly = false
+): number => {
+  const total = Number(sale.totalAmount) || 0;
+  const profit = total - (Number(sale.buyPrice) || 0);
+  if (!(profit > 0)) return 0;
+  const base = paymentsOnly ? total - (Number(sale.downPayment) || 0) : total;
+  return base > 0 ? profit / base : 0;
+};
+
+/** Первый взнос договора — у него особый порядковый номер поступления. */
+export const isDownPaymentOf = (sale: Pick<Sale, 'id'>, moneyId?: string): boolean =>
+  !!moneyId && moneyId === `${sale.id}_dp`;
+
+/**
+ * Прибыль одного поступления: платежа или первого взноса.
+ *
+ * При «только с платежей» первый взнос даёт ноль, а каждый платёж — больше,
+ * чем раньше: та же прибыль делится на меньшую сумму.
+ */
+export const moneyInProfit = (
+  sale: Pick<Sale, 'id' | 'totalAmount' | 'buyPrice' | 'downPayment'>,
+  money: { id?: string; amount: number },
+  paymentsOnly = false
+): number => {
+  if (paymentsOnly && isDownPaymentOf(sale, money.id)) return 0;
+  return (Number(money.amount) || 0) * saleProfitMargin(sale, paymentsOnly);
+};
+
 /** Реальные поступления по договору: первый взнос и оплаченные платежи (без плановых строк). */
 export const saleMoneyIn = (sale: Pick<Sale, 'id' | 'startDate' | 'downPayment' | 'paymentPlan'>) => [
   { id: `${sale.id}_dp`, date: sale.startDate, amount: Number(sale.downPayment) || 0 },
@@ -895,7 +936,9 @@ export const getEmployeeProfitAccrued = (
   sales: Sale[],
   accounts: Account[],
   investors: Investor[],
-  range?: { start?: string | number | Date; end?: string | number | Date }
+  range?: { start?: string | number | Date; end?: string | number | Date },
+  /** Прибыль только с платежей графика — см. saleProfitMargin */
+  profitFromPaymentsOnly = false
 ): number => {
   const percent = Number(employee.profitPercentage) || 0;
   if (percent <= 0) return 0;
@@ -916,11 +959,10 @@ export const getEmployeeProfitAccrued = (
     if (!sale.buyPrice || sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) continue;
     if (base === 'CONTRACTS' && sale.createdByUserId !== employee.id) continue;
 
-    const profitMargin = (sale.totalAmount - sale.buyPrice) / sale.totalAmount;
     const account = accounts.find(a => a.id === sale.accountId);
 
     const payments = [
-      { date: sale.startDate, amount: sale.downPayment || 0, recordedByUserId: sale.createdByUserId },
+      { date: sale.startDate, amount: sale.downPayment || 0, id: `${sale.id}_dp`, recordedByUserId: sale.createdByUserId },
       ...(sale.paymentPlan || []).filter(p => p.isPaid && p.isRealPayment !== false),
     ];
 
@@ -930,7 +972,7 @@ export const getEmployeeProfitAccrued = (
       if (t < from || t > to) continue;
       if (base === 'PAYMENTS' && (p as any).recordedByUserId !== employee.id) continue;
 
-      const profitFromPayment = p.amount * profitMargin;
+      const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly);
       // По умолчанию премия берётся из доли МЕНЕДЖЕРА — на момент этого платежа.
       // Вариант SHARED — расход общего дела: считается от всей прибыли до распределения
       // и ложится на всех участников. Нужен, когда доля менеджера равна нулю
