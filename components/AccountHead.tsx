@@ -84,10 +84,10 @@ const AccountHead: React.FC<AccountHeadProps> = ({
 
   return (
     <>
-      {/* Компьютер: слева счета лентой, справа остаток и те же действия. Раньше
-          здесь была только лента: остаток и кнопки прихода-расхода жили на
-          телефоне, а за столом их приходилось искать на других экранах. */}
-      <div className="hidden md:flex items-center justify-between gap-4 flex-wrap">
+      {/* Компьютер: только лента счетов. Остаток и кнопки прихода-расхода нужны
+          на телефоне, где других путей к ним нет; за столом они дублировали меню
+          и занимали строку над карточками, поэтому здесь их нет. */}
+      <div className="hidden md:flex items-center gap-4 flex-wrap">
         <div className="flex flex-wrap items-center gap-2">
           {[{ id: null as string | null, name: 'Все счета' },
             ...liveAccounts.map(a => ({ id: a.id as string | null, name: a.name })),
@@ -109,41 +109,6 @@ const AccountHead: React.FC<AccountHeadProps> = ({
           })}
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onToggleHideBalance}
-            aria-label={hideBalance ? 'Показать сумму' : 'Скрыть сумму'}
-            className="flex items-baseline gap-1.5 text-slate-900 dark:text-white active:scale-95 transition-transform"
-          >
-            {hideBalance ? (
-              <span className="text-2xl font-extrabold tracking-tight">••••••</span>
-            ) : (
-              <span className="text-2xl font-extrabold tracking-tight">
-                {value < 0 ? '−' : ''}{grouped}
-                {showCents && <span className="text-slate-400 dark:text-slate-500">,{frac}</span>}
-                <span className="text-base text-slate-400 dark:text-slate-500 ml-1">₽</span>
-              </span>
-            )}
-          </button>
-          {canMoveMoney && (
-            <div className="flex items-center gap-2">
-              {ACTIONS.map(a => (
-                <button
-                  key={a.id}
-                  onClick={() => onAction(a.id, { accountId: current ? current.id : null })}
-                  className="glass-surface rounded-xl px-3 py-2 flex items-center gap-1.5 active:scale-95 transition-transform"
-                  title={a.label}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                       strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={a.tone}>
-                    {a.icon}
-                  </svg>
-                  <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{a.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
 
       <div className="md:hidden flex flex-col items-center pt-1 pb-2">
