@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Sale, Expense, Account, Customer, User, Investor, RetailSale} from '../types';
-import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, expenseProfitSplit } from '../src/utils';
 import { manualIncomeKind, incomeCancelPlan } from '../src/incomeCancel';
 import { ICONS } from '../constants';
 import ModalPortal from './ModalPortal';
@@ -754,12 +754,16 @@ const Operations: React.FC<OperationsProps> = ({
     ];
 
     if (e.fromProfit) {
-        const mgrPct = getManagerSharePercent(account, investors, e.date);
-        const parts = [`менеджеру ${formatCurrency(Number(e.amount) * mgrPct / 100)} ₽`];
-        getAccountShares(account, investors, e.date).forEach(({ investor, percentage }) => {
-            if (percentage > 0) parts.push(`${investor.name} ${formatCurrency(Number(e.amount) * percentage / 100)} ₽`);
-        });
-        effects.push(`Прибыль восстановится: ${parts.join(', ')}`);
+        // Кому именно вернётся прибыль, считаем тем же правилом, что и списание:
+        // расход «Из моей прибыли» инвесторов не касается, и обещать им возврат нельзя.
+        const split = expenseProfitSplit(e, account, investors);
+        const parts = [
+            ...(split.manager > 0 ? [`менеджеру ${formatCurrency(split.manager)} ₽`] : []),
+            ...split.rows.map(r => `${r.investor.name} ${formatCurrency(r.amount)} ₽`),
+        ];
+        effects.push(parts.length
+            ? `Прибыль восстановится: ${parts.join(', ')}`
+            : 'Прибыль восстановится');
     }
     if (e.category === 'Моя выплата' && e.managerPayoutSource === 'PROFIT') {
         effects.push('Прибыль менеджера восстановится на всю сумму');

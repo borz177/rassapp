@@ -718,6 +718,26 @@ export const getInvestorProfitDeduction = (
   return share ? expense.amount * share.percentage / 100 : 0;
 };
 
+/**
+ * Как расход «из прибыли» делится между менеджером и инвесторами.
+ *
+ * Одна функция на все экраны. Раньше каждый считал сам, и в отчётах доля
+ * инвесторов бралась просто как «остаток после менеджера» — из-за этого расход
+ * с пометкой «Из моей прибыли» уменьшал и прибыль инвесторов, хотя не должен
+ * касаться их вовсе.
+ */
+export const expenseProfitSplit = (
+  expense: Expense,
+  account: Account | undefined,
+  investors: Investor[]
+): { manager: number; rows: { investor: Investor; amount: number }[]; investorsTotal: number } => {
+  const manager = getManagerProfitDeduction(expense, account, investors);
+  const rows = getAccountShares(account, investors, expense.date)
+    .map(({ investor }) => ({ investor, amount: getInvestorProfitDeduction(expense, account, investors, investor.id) }))
+    .filter(r => r.amount > 0);
+  return { manager, rows, investorsTotal: rows.reduce((sum, r) => sum + r.amount, 0) };
+};
+
 const byDateDesc = (a: { date: string }, b: { date: string }) =>
   new Date(b.date).getTime() - new Date(a.date).getTime();
 

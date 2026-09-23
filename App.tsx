@@ -58,7 +58,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, getEmployeeProfitAccrued, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
+import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -1707,11 +1707,10 @@ const dashboardStats = useMemo(() => {
       .forEach(e => {
         const account = accounts.find(a => a.id === e.accountId);
         if (accountId !== 'ALL' && e.accountId !== accountId) return;
-        realizedManagerProfit -= getManagerProfitDeduction(e, account, investors);
-        if (e.fromProfit) {
-          const investorPct = 100 - getManagerSharePercent(account, investors, e.date);
-          realizedInvestorProfit -= e.amount * investorPct / 100;
-        }
+        // Единый расчёт для всех экранов: «Из моей прибыли» инвесторов не касается
+        const split = expenseProfitSplit(e, account, investors);
+        realizedManagerProfit -= split.manager;
+        realizedInvestorProfit -= split.investorsTotal;
       });
 
     // 💰 Премия сотрудников уменьшает прибыль. Кого именно — зависит от настройки:
