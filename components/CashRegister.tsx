@@ -8,7 +8,7 @@ import AccountCashTab from './AccountCashTab';
 import { accountCashSummary, accountWarehouses, cashPeriodFor } from '../src/accountCash';
 import { Sale, Account, Expense, Investor, AppSettings, Customer, RetailSale, Product, StockLocation, StockMovement, Supplier } from '../types';
 import { ICONS } from '../constants';
-import { moneyInProfit, saleProfitMargin, formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, computeAccountBalances } from '../src/utils';
+import { moneyInProfit, saleProfitMargin, isDownPaymentOf, formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, computeAccountBalances } from '../src/utils';
 
 // Цвета участников пула — те же роли, что у палитры инвесторов в отчётах:
 // человека узнают по кружку, а не вычитывают имя в таблице.
@@ -696,7 +696,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
 
   // 🔹 Прибыль менеджера (полученная и выплаты)
   const { managerProfitAccruals, managerProfitPayouts, totalManagerProfitEarned, totalManagerProfitWithdrawn } = useMemo(() => {
-    const accruals: {id: string, date: string, amount: number, customerId: string, customerName: string, productName: string}[] = [];
+    const accruals: {id: string, date: string, amount: number, customerId: string, customerName: string, productName: string, isDownPayment: boolean}[] = [];
     sales.forEach(sale => {
         if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
         if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
@@ -727,7 +727,8 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                             amount: managerShare,
                             customerId: sale.customerId,
                             customerName,
-                            productName: sale.productName
+                            productName: sale.productName,
+                            isDownPayment: isDownPaymentOf(sale, p.id)
                         });
                     }
                 }
@@ -795,7 +796,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
 // (тогда прибыль с одного платежа распределяется на несколько начислений, по одному на каждого
 // участника пула, с его долей — см. getAccountShares).
 const investorProfitAccruals = useMemo(() => {
-    const accruals: {id: string, date: string, amount: number, customerId: string, customerName: string, productName: string, investorId: string, investorName: string}[] = [];
+    const accruals: {id: string, date: string, amount: number, customerId: string, customerName: string, productName: string, investorId: string, investorName: string, isDownPayment: boolean}[] = [];
 
     sales.forEach(sale => {
         if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
@@ -832,7 +833,8 @@ const investorProfitAccruals = useMemo(() => {
                                 customerName,
                                 productName: sale.productName,
                                 investorId: investor.id,
-                                investorName: investor.name
+                                investorName: investor.name,
+                                isDownPayment: isDownPaymentOf(sale, p.id)
                             });
                         }
                     });
@@ -2049,7 +2051,14 @@ const investorProfitPayouts = useMemo(() => {
                                 <div className="flex justify-between items-start">
                                     <div className="min-w-0 flex-1">
                                         <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{p.customerName}</p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{p.productName}</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                            {p.productName}
+                                            {p.isDownPayment && (
+                                                <span className="ml-1.5 px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded text-[9px] font-bold">
+                                                    Взнос
+                                                </span>
+                                            )}
+                                        </p>
                                     </div>
                                     <div className="text-right ml-3 shrink-0">
                                         <p className="font-bold text-sm text-emerald-600 dark:text-emerald-400">+{formatCurrency(p.amount, appSettings.showCents)} ₽</p>
@@ -2190,6 +2199,11 @@ const investorProfitPayouts = useMemo(() => {
                                         <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{p.customerName}</p>
                                         <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                                             {p.productName}
+                                            {p.isDownPayment && (
+                                                <span className="ml-1.5 px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded text-[9px] font-bold">
+                                                    Взнос
+                                                </span>
+                                            )}
                                             {profitFilterInvestorId === 'ALL' && investorProfitBreakdown.length > 1 && (
                                                 <span className="ml-1.5 px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded text-[9px] font-bold">
                                                     {p.investorName}
