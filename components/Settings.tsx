@@ -479,7 +479,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
       {/* Настройки компании и её вид */}
       <SettingsGroup>
       {/* Company Name — единственная карточка, открытая по умолчанию */}
-      <SettingsAccordion title="Название компании" subtitle="В заголовке и в сообщениях" defaultOpen icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4" /></svg>} tone="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300">
+      <SettingsAccordion title="Название компании" defaultOpen icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M15 9h.01M9 13h.01M15 13h.01M10 21v-4h4v4" /></svg>} tone="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300">
         <div className="flex gap-2">
             <input
                 type="text"
@@ -614,7 +614,6 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
       {/* Когда договор приносит прибыль. Рядом с наценкой: оба про счёт, а не про вид. */}
       <SettingsAccordion
         title="Прибыль по договорам"
-        subtitle={appSettings.profitFromPaymentsOnly ? 'Только с платежей' : 'С первого взноса и платежей'}
         icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17l6-6 4 4 7-7" /><path d="M14 8h7v7" /></svg>}
         tone="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300"
       >
@@ -663,7 +662,6 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
       <SettingsAccordion
           title="Резервное копирование"
         icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12" /><path d="m8 11 4 4 4-4" /><path d="M20 16.5A3.5 3.5 0 0 0 16.5 13h-.7A5.5 5.5 0 1 0 6 17h11a3 3 0 0 0 3-.5z" /></svg>} tone="bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-300"
-          subtitle="Excel на почту по расписанию"
       >
           <Suspense fallback={<p className="text-sm text-slate-500 dark:text-slate-400">Загрузка…</p>}>
               <BackupSettingsCard onNavigate={onNavigate} />
@@ -678,7 +676,6 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
       <SettingsAccordion
           title="Уведомления"
         icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></svg>} tone="bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300"
-          subtitle="Платежи, договоры, расходы"
           badge={!hasNotificationsAccess && (
               <span className="flex items-center gap-1 text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-full">
                   {ICONS.Crown} Стандарт+
@@ -794,7 +791,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
       {/* Appearance / Dark Mode Selection */}
       {/* Форма договора — рядом с оформлением: это тоже про то, как приложение
           выглядит снаружи, только на бумаге, а не на экране. */}
-      <SettingsAccordion title="Печатная форма договора" subtitle="Бланк для печати и отправки" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>} tone="bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-300">
+      <SettingsAccordion title="Печатная форма договора" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>} tone="bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-300">
           <ContractTemplatePicker
             allowPaid={contractTemplatesAllowed}
             value={appSettings.contractTemplate || 'MODERN'}
@@ -807,7 +804,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
       {/* Светлый/тёмный режим и акцентный цвет — один вопрос «как приложение
           выглядит», а не два. Раздельными разделами человек выбирал цвет, не
           видя, на каком фоне он окажется. */}
-      <SettingsAccordion title="Оформление" subtitle="Тема и основной цвет" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 0 0 18z" /></svg>} tone="bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300">
+      <SettingsAccordion title="Оформление" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 0 0 18z" /></svg>} tone="bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Тема</p>
           <div className="grid grid-cols-3 gap-3">
               {APPEARANCE_OPTIONS.map((option) => (
@@ -864,13 +861,13 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
       <SettingsGroup>
           {!isEmployee && (
             <SettingsLink
-              title="Интеграции" subtitle="WhatsApp, SMS и другое"
+              title="Интеграции"
               icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" /></svg>} tone="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300"
               onClick={() => onNavigate('INTEGRATIONS')}
             />
           )}
           <SettingsLink
-            title="Калькулятор" subtitle="Расчёт рассрочки и ссылка"
+            title="Калькулятор"
             icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" /><line x1="8" y1="6" x2="16" y2="6" /><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M8 18h.01M12 18h.01" /><path d="M16 14v4" /></svg>} tone="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300"
             onClick={() => onNavigate('CALCULATOR')}
           />
@@ -880,7 +877,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
       <SettingsGroup>
       {/* 👇 ОБЪЕДИНЁННЫЙ БЛОК: Работа с данными (Экспорт + Импорт) */}
        {!isEmployee && (
-      <SettingsAccordion title="Работа с данными" subtitle="Экспорт и импорт Excel" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /><path d="M12 15V3" /></svg>} tone="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300">
+      <SettingsAccordion title="Работа с данными" icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /><path d="M12 15V3" /></svg>} tone="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {/* Кнопка ЭКСПОРТА */}
               <button
