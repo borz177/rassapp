@@ -255,6 +255,30 @@ const registerOAuthRoutes = (app, { pool, auth, adminAuth, getEffectivePlan, pla
     }
   });
 
+  // Адрес возврата конструктор помощника показывает только после сохранения
+  // настроек входа — то есть уже после того, как помощник зарегистрирован.
+  // Поэтому список адресов можно дополнить позже.
+  app.patch('/api/admin/oauth/clients/:id', adminAuth, async (req, res) => {
+    try {
+      const uris = (Array.isArray(req.body?.redirectUris) ? req.body.redirectUris : [])
+        .map(u => String(u).trim()).filter(Boolean);
+      if (!uris.length) return res.status(400).json({ msg: 'Нужен хотя бы один адрес возврата' });
+      if (uris.some(u => !u.startsWith('https://'))) {
+        return res.status(400).json({ msg: 'Адрес возврата должен начинаться с https://' });
+      }
+      const { rowCount } = await pool.query(
+        `UPDATE oauth_clients SET redirect_uris = $2::TEXT[] WHERE id = $1 AND disabled_at IS NULL`,
+        [req.params.id, uris]
+      );
+      if (!rowCount) return res.status(404).json({ msg: 'Помощник не найден' });
+      logAdminAction(req.user.id, 'UPDATE_OAUTH_CLIENT', null, { clientId: req.params.id, redirectUris: uris });
+      res.json({ success: true, redirectUris: uris });
+    } catch (e) {
+      console.error('oauth client update:', e);
+      res.status(500).json({ msg: 'Не удалось обновить адреса' });
+    }
+  });
+
   app.delete('/api/admin/oauth/clients/:id', adminAuth, async (req, res) => {
     try {
       await pool.query(`UPDATE oauth_clients SET disabled_at = NOW() WHERE id = $1`, [req.params.id]);

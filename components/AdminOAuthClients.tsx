@@ -17,6 +17,10 @@ const AdminOAuthClients: React.FC = () => {
   const [name, setName] = useState('');
   const [uris, setUris] = useState('');
   const [fresh, setFresh] = useState<{ clientId: string; clientSecret: string } | null>(null);
+  // Адрес возврата конструктор помощника показывает только после сохранения
+  // настроек входа, поэтому его дописывают уже к зарегистрированному помощнику.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editUris, setEditUris] = useState('');
 
   const load = async () => {
     try {
@@ -36,6 +40,21 @@ const AdminOAuthClients: React.FC = () => {
       const created = await api.adminCreateOAuthClient(name.trim() || 'Помощник', list);
       setFresh({ clientId: created.clientId, clientSecret: created.clientSecret });
       setName(''); setUris('');
+      await load();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveUris = async (client: OAuthClientInfo) => {
+    const list = editUris.split('\n').map(u => u.trim()).filter(Boolean);
+    if (!list.length) { setError('Укажите хотя бы один адрес возврата'); return; }
+    setBusy(true); setError(null);
+    try {
+      await api.adminUpdateOAuthClientUris(client.id, list);
+      setEditing(null);
       await load();
     } catch (e: any) {
       setError(e.message);
@@ -127,12 +146,35 @@ const AdminOAuthClients: React.FC = () => {
                     {c.id} · подключений: {c.connections}
                   </p>
                   <p className="text-[11px] text-slate-400 break-all">{c.redirectUris.join(', ')}</p>
+
+                  {editing === c.id && (
+                    <div className="mt-2 space-y-2">
+                      <textarea
+                        value={editUris} onChange={e => setEditUris(e.target.value)} rows={2} spellCheck={false}
+                        placeholder="https://chatgpt.com/aip/g-…/oauth/callback"
+                        className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg text-xs font-mono text-slate-700 dark:text-slate-200"
+                      />
+                      <div className="flex gap-2">
+                        <button onClick={() => saveUris(c)} disabled={busy}
+                                className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-1.5 disabled:opacity-50">
+                          Сохранить
+                        </button>
+                        <button onClick={() => setEditing(null)} className="text-xs font-bold text-slate-500">Отмена</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {!c.disabledAt && (
-                  <button onClick={() => disable(c)} disabled={busy}
-                          className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline disabled:opacity-50 shrink-0">
-                    Отключить
-                  </button>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <button onClick={() => { setEditing(c.id); setEditUris(c.redirectUris.join('\n')); }} disabled={busy}
+                            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50">
+                      Адреса
+                    </button>
+                    <button onClick={() => disable(c)} disabled={busy}
+                            className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline disabled:opacity-50">
+                      Отключить
+                    </button>
+                  </div>
                 )}
               </li>
             ))}

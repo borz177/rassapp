@@ -1354,6 +1354,17 @@ export const api = {
         return data;
     },
 
+    adminUpdateOAuthClientUris: async (id: string, redirectUris: string[]): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/oauth/clients/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ redirectUris })
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.msg || 'Не удалось обновить адреса возврата');
+        }
+    },
+
     adminDisableOAuthClient: async (id: string): Promise<void> => {
         const res = await fetchWithAuth(`${API_URL}/admin/oauth/clients/${id}`, { method: 'DELETE' });
         if (!res.ok) {
