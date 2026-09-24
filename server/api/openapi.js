@@ -1,7 +1,11 @@
-// Машиночитаемое описание публичного API (OpenAPI 3.1), отдаётся по
+// Машиночитаемое описание публичного API (OpenAPI 3.0.3), отдаётся по
 // /api/v1/openapi.json без ключа. По нему генерируют клиентов, его подсовывают
-// в Postman и Insomnia — интегратору не нужно переписывать структуры руками.
-// Человеческая документация — на странице /api.
+// в Postman, и по нему же подключается помощник вроде ChatGPT: там схему
+// импортируют как «действия» (Actions). Человеческая документация — на /api.
+//
+// Версия намеренно 3.0.3, а не 3.1: конструктор действий спотыкается о запись
+// необязательных полей через список типов ("type": ["string", "null"]), принятую
+// в 3.1. Поэтому ниже такие поля описаны парой type + nullable — см. toV30.
 
 const money = (description, example) => ({ type: 'number', format: 'double', description, example });
 const str = (description, example) => ({ type: 'string', description, example });
@@ -183,7 +187,7 @@ const jsonBody = properties => ({
 });
 
 const openApiSpec = {
-  openapi: '3.1.0',
+  openapi: '3.0.3',
   info: {
     title: 'FinUchet API',
     version: '1.0.0',
@@ -373,4 +377,71 @@ const openApiSpec = {
   },
 };
 
-module.exports = { openApiSpec };
+// Необязательные поля в 3.1 пишутся как type: ['string', 'null'], а в 3.0 —
+// как type: 'string' + nullable: true. Переписываем рекурсивно, чтобы описания
+// выше оставались читаемыми.
+const toV30 = node => {
+  if (Array.isArray(node)) return node.map(toV30);
+  if (!node || typeof node !== 'object') return node;
+  const out = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'type' && Array.isArray(value)) {
+      const types = value.filter(t => t !== 'null');
+      out.type = types[0] || 'string';
+      if (types.length !== value.length) out.nullable = true;
+    } else {
+      out[key] = toV30(value);
+    }
+  }
+  return out;
+};
+
+// Уникальное имя операции. Помощник показывает его как название инструмента
+// («listContracts»), а генераторы клиентов делают из него имя метода. Без него
+// конструктор действий ChatGPT схему не принимает.
+const OPERATION_IDS = {
+  'get /me': 'getMe',
+  'get /accounts': 'listAccounts',
+  'get /customers': 'listCustomers',
+  'post /customers': 'createCustomer',
+  'get /customers/{id}': 'getCustomer',
+  'patch /customers/{id}': 'updateCustomer',
+  'delete /customers/{id}': 'deleteCustomer',
+  'get /contracts': 'listContracts',
+  'post /contracts': 'createContract',
+  'get /contracts/{id}': 'getContract',
+  'patch /contracts/{id}': 'updateContract',
+  'delete /contracts/{id}': 'deleteContract',
+  'get /payments': 'listPayments',
+  'post /payments': 'createPayment',
+  'delete /payments/{id}': 'cancelPayment',
+  'get /expenses': 'listExpenses',
+  'post /expenses': 'createExpense',
+  'get /expenses/{id}': 'getExpense',
+  'patch /expenses/{id}': 'updateExpense',
+  'delete /expenses/{id}': 'deleteExpense',
+  'post /income': 'createIncome',
+  'get /products': 'listProducts',
+  'get /products/{id}': 'getProduct',
+  'get /warehouses': 'listWarehouses',
+  'get /retail-sales': 'listRetailSales',
+  'get /investors': 'listInvestors',
+  'get /investors/{id}': 'getInvestor',
+  'get /reports/summary': 'getSummary',
+};
+
+const fallbackId = (method, path) =>
+  method + path.replace(/[^a-zA-Z0-9]+(.)/g, (_, c) => c.toUpperCase()).replace(/[^a-zA-Z0-9]/g, '');
+
+for (const [path, item] of Object.entries(openApiSpec.paths)) {
+  for (const method of ['get', 'post', 'patch', 'delete']) {
+    if (!item[method]) continue;
+    // Новый маршрут без записи в списке получит имя автоматически: пусть будет
+    // некрасивое, но схема останется рабочей.
+    item[method].operationId = OPERATION_IDS[`${method} ${path}`] || fallbackId(method, path);
+  }
+}
+
+const specV30 = toV30(openApiSpec);
+
+module.exports = { openApiSpec: specV30 };
