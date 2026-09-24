@@ -1,11 +1,16 @@
-// Машиночитаемое описание публичного API (OpenAPI 3.0.3), отдаётся по
+// Машиночитаемое описание публичного API (OpenAPI 3.1), отдаётся по
 // /api/v1/openapi.json без ключа. По нему генерируют клиентов, его подсовывают
 // в Postman, и по нему же подключается помощник вроде ChatGPT: там схему
-// импортируют как «действия» (Actions). Человеческая документация — на /api.
+// импортируют как «действия» (Actions).
 //
-// Версия намеренно 3.0.3, а не 3.1: конструктор действий спотыкается о запись
-// необязательных полей через список типов ("type": ["string", "null"]), принятую
-// в 3.1. Поэтому ниже такие поля описаны парой type + nullable — см. toV30.
+// Требования конструктора действий, которые здесь учтены:
+//   • версия ровно 3.1.0 или 3.1.1;
+//   • у каждой операции есть operationId — по нему называется инструмент;
+//   • у схемы ответа типа object перечислены свойства: пустой object он
+//     пропускает, и помощник не знает, что ему вернули;
+//   • параметры пути объявлены внутри операции, а не у самого пути, иначе
+//     маршрут пропускается целиком.
+// Человеческая документация — на /api.
 
 const money = (description, example) => ({ type: 'number', format: 'double', description, example });
 const str = (description, example) => ({ type: 'string', description, example });
@@ -18,7 +23,18 @@ const Error = {
       properties: {
         code: str('Машинный код ошибки', 'validation_error'),
         message: str('Пояснение для человека', 'Проверьте поля запроса.'),
-        details: { type: 'array', items: { type: 'object' }, description: 'Что именно не так — по полям' },
+        details: {
+          type: 'array',
+          description: 'Что именно не так — по полям',
+          items: {
+            type: 'object',
+            properties: {
+              field: str('Поле запроса', 'amount'),
+              code: str('Короткая причина', 'min'),
+              message: str('Пояснение', 'не меньше 0.01'),
+            },
+          },
+        },
       },
       required: ['code', 'message'],
     },
@@ -153,6 +169,132 @@ const Investor = {
   },
 };
 
+
+const Me = {
+  type: 'object',
+  properties: {
+    account: {
+      type: 'object',
+      properties: {
+        id: str('Идентификатор аккаунта'), name: str('Название'),
+        email: str('Почта'), role: str('Роль', 'manager'),
+      },
+    },
+    plan: str('Действующий тариф', 'BUSINESS'),
+    subscription: {
+      type: 'object',
+      properties: {
+        plan: { type: ['string', 'null'], description: 'Оплаченный тариф' },
+        expiresAt: { type: ['string', 'null'], format: 'date-time', description: 'До какого числа оплачен' },
+      },
+    },
+    key: {
+      type: 'object',
+      properties: {
+        id: str('Идентификатор ключа или подключения'),
+        name: str('Название'), prefix: str('Начало ключа'),
+        scopes: { type: 'array', items: { type: 'string' }, description: 'Права: read, write' },
+      },
+    },
+    limits: {
+      type: 'object',
+      properties: {
+        contracts: { type: 'integer', description: 'Лимит договоров по тарифу, −1 — без ограничения' },
+        investors: { type: 'integer', description: 'Лимит инвесторов, −1 — без ограничения' },
+        requestsPerMinute: { type: 'integer' },
+        requestsPerDay: { type: 'integer' },
+      },
+    },
+  },
+};
+
+const PaymentResult = {
+  type: 'object',
+  properties: {
+    payment: { $ref: '#/components/schemas/Payment' },
+    contract: { $ref: '#/components/schemas/Contract' },
+  },
+};
+
+const Income = {
+  type: 'object',
+  properties: {
+    id: str('Идентификатор'),
+    accountId: str('Счёт'),
+    amount: money('Сумма', 5000),
+    note: { type: ['string', 'null'], description: 'Назначение' },
+    category: { type: ['string', 'null'] },
+    date: { type: 'string', format: 'date-time' },
+  },
+};
+
+const Warehouse = {
+  type: 'object',
+  properties: {
+    id: str('Идентификатор'),
+    name: str('Название склада'),
+    accountId: { type: ['string', 'null'], description: 'Счёт, к которому привязан склад' },
+    isMain: { type: 'boolean' },
+  },
+};
+
+const RetailSale = {
+  type: 'object',
+  properties: {
+    id: str('Идентификатор'),
+    accountId: { type: ['string', 'null'] },
+    warehouseId: { type: ['string', 'null'] },
+    customerId: { type: ['string', 'null'] },
+    total: money('Сумма продажи', 12000),
+    isCredit: { type: 'boolean', description: 'Долговой чек: деньги придут платежами' },
+    isCancelled: { type: 'boolean' },
+    date: { type: ['string', 'null'], format: 'date-time' },
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          productId: str('Товар'), name: str('Название'),
+          quantity: { type: 'number' }, price: money('Цена'),
+        },
+      },
+    },
+  },
+};
+
+const Summary = {
+  type: 'object',
+  properties: {
+    period: {
+      type: 'object',
+      properties: {
+        from: { type: ['string', 'null'], description: 'Начало периода' },
+        to: { type: ['string', 'null'], description: 'Конец периода' },
+      },
+    },
+    contracts: {
+      type: 'object',
+      properties: {
+        total: { type: 'integer', description: 'Всего договоров' },
+        created: { type: 'integer', description: 'Оформлено за период' },
+        active: { type: 'integer' }, completed: { type: 'integer' },
+        overdue: { type: 'integer', description: 'С просрочкой на сегодня' },
+      },
+    },
+    money: {
+      type: 'object',
+      properties: {
+        collected: money('Получено за период'),
+        profit: money('Прибыль с полученного'),
+        expenses: money('Расходы за период'),
+        outstandingDebt: money('Остаток долга по договорам'),
+        overdueDebt: money('Просроченный долг'),
+        cashOnAccounts: money('Сейчас на счетах'),
+      },
+    },
+  },
+};
+
 const listMeta = {
   type: 'object',
   properties: {
@@ -165,6 +307,11 @@ const listOf = ref => ({
   properties: { data: { type: 'array', items: { $ref: `#/components/schemas/${ref}` } }, meta: listMeta },
 });
 const itemOf = ref => ({ type: 'object', properties: { data: { $ref: `#/components/schemas/${ref}` } } });
+// Ответ без постраничной меты: такие списки короткие и отдаются целиком.
+const arrayOf = ref => ({
+  type: 'object',
+  properties: { data: { type: 'array', items: { $ref: `#/components/schemas/${ref}` } } },
+});
 
 const errorResponses = {
   400: { description: 'Некорректные параметры', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
@@ -187,7 +334,7 @@ const jsonBody = properties => ({
 });
 
 const openApiSpec = {
-  openapi: '3.0.3',
+  openapi: '3.1.0',
   info: {
     title: 'FinUchet API',
     version: '1.0.0',
@@ -209,13 +356,13 @@ const openApiSpec = {
     '/me': {
       get: {
         tags: ['Аккаунт'], summary: 'Владелец ключа, тариф и лимиты',
-        responses: { 200: { description: 'Сведения об аккаунте', content: { 'application/json': { schema: { type: 'object' } } } }, ...errorResponses },
+        responses: { 200: { description: 'Сведения об аккаунте', content: { 'application/json': { schema: itemOf('Me') } } }, ...errorResponses },
       },
     },
     '/accounts': {
       get: {
         tags: ['Деньги'], summary: 'Счета с остатками',
-        responses: { 200: { description: 'Список счетов', content: { 'application/json': { schema: itemOf('Account') } } }, ...errorResponses },
+        responses: { 200: { description: 'Список счетов', content: { 'application/json': { schema: arrayOf('Account') } } }, ...errorResponses },
       },
     },
     '/customers': {
@@ -288,7 +435,7 @@ const openApiSpec = {
         description: 'Сумма больше остатка долга отклоняется кодом 409 — переплату нужно подтвердить параметром allowOverpay=true. Повтор запроса с тем же Idempotency-Key вернёт прежний ответ и второй платёж не создаст.',
         parameters: [{ name: 'allowOverpay', in: 'query', schema: { type: 'boolean' }, description: 'Разрешить переплату' }],
         requestBody: jsonBody({ contractId: str('Договор'), amount: money('Сумма платежа', 20000), date: { type: 'string' }, note: { type: 'string' } }),
-        responses: { 201: { description: 'Платёж принят', content: { 'application/json': { schema: { type: 'object' } } } }, ...errorResponses },
+        responses: { 201: { description: 'Платёж принят', content: { 'application/json': { schema: itemOf('PaymentResult') } } }, ...errorResponses },
       },
     },
     '/payments/{id}': {
@@ -321,7 +468,7 @@ const openApiSpec = {
       post: {
         tags: ['Деньги'], summary: 'Прочий приход в кассу',
         requestBody: jsonBody({ accountId: str('Счёт'), amount: money('Сумма', 5000), note: { type: 'string' }, category: { type: 'string' }, date: { type: 'string' } }),
-        responses: { 201: { description: 'Приход записан', content: { 'application/json': { schema: { type: 'object' } } } }, ...errorResponses },
+        responses: { 201: { description: 'Приход записан', content: { 'application/json': { schema: itemOf('Income') } } }, ...errorResponses },
       },
     },
     '/products': {
@@ -338,7 +485,7 @@ const openApiSpec = {
       get: { tags: ['Склад'], summary: 'Товар по идентификатору', responses: { 200: { description: 'Товар', content: { 'application/json': { schema: itemOf('Product') } } }, ...errorResponses } },
     },
     '/warehouses': {
-      get: { tags: ['Склад'], summary: 'Склады', responses: { 200: { description: 'Склады', content: { 'application/json': { schema: { type: 'object' } } } }, ...errorResponses } },
+      get: { tags: ['Склад'], summary: 'Склады', responses: { 200: { description: 'Склады', content: { 'application/json': { schema: listOf('Warehouse') } } }, ...errorResponses } },
     },
     '/retail-sales': {
       get: {
@@ -347,11 +494,11 @@ const openApiSpec = {
           { name: 'warehouseId', in: 'query', schema: { type: 'string' } },
           { name: 'from', in: 'query', schema: { type: 'string' } },
           { name: 'to', in: 'query', schema: { type: 'string' } }],
-        responses: { 200: { description: 'Продажи', content: { 'application/json': { schema: { type: 'object' } } } }, ...errorResponses },
+        responses: { 200: { description: 'Продажи', content: { 'application/json': { schema: listOf('RetailSale') } } }, ...errorResponses },
       },
     },
     '/investors': {
-      get: { tags: ['Инвесторы'], summary: 'Инвесторы', responses: { 200: { description: 'Инвесторы', content: { 'application/json': { schema: itemOf('Investor') } } }, ...errorResponses } },
+      get: { tags: ['Инвесторы'], summary: 'Инвесторы', responses: { 200: { description: 'Инвесторы', content: { 'application/json': { schema: arrayOf('Investor') } } }, ...errorResponses } },
     },
     '/investors/{id}': {
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
@@ -365,7 +512,7 @@ const openApiSpec = {
           { name: 'to', in: 'query', schema: { type: 'string' }, description: 'Конец периода' },
           { name: 'accountId', in: 'query', schema: { type: 'string' }, description: 'Только по одному счёту' },
         ],
-        responses: { 200: { description: 'Сводка', content: { 'application/json': { schema: { type: 'object' } } } }, ...errorResponses },
+        responses: { 200: { description: 'Сводка', content: { 'application/json': { schema: itemOf('Summary') } } }, ...errorResponses },
       },
     },
   },
@@ -373,27 +520,8 @@ const openApiSpec = {
     securitySchemes: {
       bearerAuth: { type: 'http', scheme: 'bearer', description: 'API-ключ вида sk_live_…, выдаётся в настройках приложения' },
     },
-    schemas: { Error, Customer, Contract, ScheduleRow, Payment, Expense, Account, Product, Investor },
+    schemas: { Error, Customer, Contract, ScheduleRow, Payment, Expense, Account, Product, Investor, Me, PaymentResult, Income, Warehouse, RetailSale, Summary },
   },
-};
-
-// Необязательные поля в 3.1 пишутся как type: ['string', 'null'], а в 3.0 —
-// как type: 'string' + nullable: true. Переписываем рекурсивно, чтобы описания
-// выше оставались читаемыми.
-const toV30 = node => {
-  if (Array.isArray(node)) return node.map(toV30);
-  if (!node || typeof node !== 'object') return node;
-  const out = {};
-  for (const [key, value] of Object.entries(node)) {
-    if (key === 'type' && Array.isArray(value)) {
-      const types = value.filter(t => t !== 'null');
-      out.type = types[0] || 'string';
-      if (types.length !== value.length) out.nullable = true;
-    } else {
-      out[key] = toV30(value);
-    }
-  }
-  return out;
 };
 
 // Уникальное имя операции. Помощник показывает его как название инструмента
@@ -434,14 +562,18 @@ const fallbackId = (method, path) =>
   method + path.replace(/[^a-zA-Z0-9]+(.)/g, (_, c) => c.toUpperCase()).replace(/[^a-zA-Z0-9]/g, '');
 
 for (const [path, item] of Object.entries(openApiSpec.paths)) {
+  // Параметры, объявленные у самого пути, конструктор действий не понимает и
+  // пропускает такой маршрут целиком — переносим их в каждую операцию.
+  const shared = item.parameters || [];
+  delete item.parameters;
+
   for (const method of ['get', 'post', 'patch', 'delete']) {
     if (!item[method]) continue;
     // Новый маршрут без записи в списке получит имя автоматически: пусть будет
     // некрасивое, но схема останется рабочей.
     item[method].operationId = OPERATION_IDS[`${method} ${path}`] || fallbackId(method, path);
+    if (shared.length) item[method].parameters = [...shared, ...(item[method].parameters || [])];
   }
 }
 
-const specV30 = toV30(openApiSpec);
-
-module.exports = { openApiSpec: specV30 };
+module.exports = { openApiSpec };
