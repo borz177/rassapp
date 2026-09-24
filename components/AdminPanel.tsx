@@ -1,5 +1,6 @@
 // components/AdminPanel.tsx
 import React, { useState, useEffect, useMemo } from 'react';
+import AdminOAuthClients from './AdminOAuthClients';
 import AdminPartners from './AdminPartners';
 import AdminPayments from './AdminPayments';
 import { User, SubscriptionPlan, ApiKeyInfo } from '../types';
@@ -67,7 +68,7 @@ const AdminPanel: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [subscriptionFilter, setSubscriptionFilter] = useState<SubscriptionFilter>('all'); // 🔹 Новый фильтр
-    const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'referrals' | 'partners' | 'payments' | 'logs'>('users');
+    const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'referrals' | 'partners' | 'payments' | 'logs' | 'apps'>('users');
     // 🎁 Реферальная программа
     const [referrals, setReferrals] = useState<any>(null);
     const [referralsLoading, setReferralsLoading] = useState(false);
@@ -436,6 +437,7 @@ const getContractUsage = (user: User): {
                     { id: 'partners', label: '🤝 Партнёры' },
                     { id: 'payments', label: '🧾 Оплаты' },
                     { id: 'logs', label: '📜 Логи' },
+                    { id: 'apps', label: '🔌 Помощники' },
                 ] as const).map(tab => (
                     <button
                         key={tab.id}
@@ -651,6 +653,9 @@ const getContractUsage = (user: User): {
             )}
 
             {activeTab === 'partners' && <AdminPartners users={users} />}
+
+            {/* Помощники, входящие «Через FinUchet»: регистрация и отключение */}
+            {activeTab === 'apps' && <AdminOAuthClients />}
 
             {activeTab === 'payments' && <AdminPayments />}
 

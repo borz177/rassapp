@@ -867,6 +867,10 @@ app.use(express.json({
     if (req.url.startsWith('/api/upload-image')) return false;
     if (req.url.startsWith('/api/upload')) return false;
     if (req.url.startsWith('/api/integrations/whatsapp/webhook')) return false;
+    // Обмен токенов по стандарту приходит формой (application/x-www-form-urlencoded),
+    // а этот разборщик пытается читать как JSON любое тело и отвечает 400 ещё до
+    // маршрута. Тело этого адреса разбирает сам маршрут — см. api/oauthRoutes.js.
+    if (req.url.startsWith('/api/oauth/token')) return false;
     return true;
   }
 }));
@@ -1349,6 +1353,7 @@ const initSuperAdmin = async () => {
 // а на чистой установке этой таблицы ещё нет.
 initDB()
   .then(() => require('./api/keys').ensureApiTables(pool))
+  .then(() => require('./api/oauth').ensureOAuthTables(pool))
   .catch(e => console.error('❌ ensureApiTables:', e.message));
 
 // --- MIDDLEWARE ---
@@ -6212,8 +6217,17 @@ app.use(
   createApiV1Router({ pool, checkContractLimit, planLimits: PLAN_LIMITS })
 );
 
-// Ответы идемпотентности живут сутки, журнал обращений — месяц.
-setInterval(() => cleanupApiTables(pool), 6 * 60 * 60 * 1000);
+// Вход «Через FinUchet» для помощников: страница согласия и обмен токенов.
+// Подробности — в server/api/oauth.js.
+const { registerOAuthRoutes } = require('./api/oauthRoutes');
+const { cleanupOAuth } = require('./api/oauth');
+registerOAuthRoutes(app, {
+  pool, auth, adminAuth, getEffectivePlan, planLimits: PLAN_LIMITS, logAdminAction,
+});
+
+// Ответы идемпотентности живут сутки, журнал обращений — месяц,
+// просроченные коды и токены подключений — до месяца после истечения.
+setInterval(() => { cleanupApiTables(pool); cleanupOAuth(pool); }, 6 * 60 * 60 * 1000);
 
 
 // =====================================================

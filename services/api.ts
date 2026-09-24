@@ -1,4 +1,4 @@
-import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary, AdminPayment, PLAN_CONTRACT_LIMITS, ApiKeyInfo, ApiKeyCreated, ApiKeyScope} from "../types";
+import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary, AdminPayment, PLAN_CONTRACT_LIMITS, ApiKeyInfo, ApiKeyCreated, ApiKeyScope, OAuthConnection, OAuthClientInfo, OAuthClientCreated} from "../types";
 import { offlineStorage } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
 import { postJson, mayBeLostRegistration } from '../src/authRequest';
@@ -1295,6 +1295,71 @@ export const api = {
         const data = await res.json();
         if (!res.ok) throw new Error(data.msg || 'Failed to set subscription');
         return data.subscription;
+    },
+
+    // === ВХОД «ЧЕРЕЗ FINUCHET» ДЛЯ ПОМОЩНИКОВ ===
+    // Страницу согласия рисует приложение, а решение и выдачу кода делает сервер.
+    oauthAuthorizeInfo: async (request: Record<string, string>): Promise<{
+        app: { name: string };
+        scopes: { key: string; title: string }[];
+        allowed: boolean;
+        reason: string | null;
+    }> => {
+        const qs = new URLSearchParams(request).toString();
+        const res = await fetchWithAuth(`${API_URL}/oauth/authorize-info?${qs}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error_description || data.msg || 'Не удалось подготовить подключение');
+        return data;
+    },
+
+    oauthApprove: async (request: Record<string, string>): Promise<{ redirectTo: string }> => {
+        const res = await fetchWithAuth(`${API_URL}/oauth/authorize`, {
+            method: 'POST',
+            body: JSON.stringify(request)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error_description || data.msg || 'Не удалось подтвердить доступ');
+        return data;
+    },
+
+    listOAuthConnections: async (): Promise<OAuthConnection[]> => {
+        const res = await fetchWithAuth(`${API_URL}/oauth/connections`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Не удалось загрузить подключения');
+        return data.connections || [];
+    },
+
+    revokeOAuthConnection: async (id: string): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/oauth/connections/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.msg || 'Не удалось отключить');
+        }
+    },
+
+    adminListOAuthClients: async (): Promise<OAuthClientInfo[]> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/oauth/clients`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Не удалось загрузить список');
+        return data.clients || [];
+    },
+
+    adminCreateOAuthClient: async (name: string, redirectUris: string[]): Promise<OAuthClientCreated> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/oauth/clients`, {
+            method: 'POST',
+            body: JSON.stringify({ name, redirectUris })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Не удалось создать помощника');
+        return data;
+    },
+
+    adminDisableOAuthClient: async (id: string): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/oauth/clients/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.msg || 'Не удалось отключить помощника');
+        }
     },
 
     // === API-КЛЮЧИ ===

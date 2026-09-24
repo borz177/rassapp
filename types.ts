@@ -271,6 +271,35 @@ export interface ApiKeyCreated {
   scopes: ApiKeyScope[];
 }
 
+/** Подключённый помощник в списке пользователя. */
+export interface OAuthConnection {
+  id: string;
+  /** Название помощника, как его зарегистрировали */
+  app: string;
+  scopes: ApiKeyScope[];
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/** Зарегистрированный помощник (видит только администратор сервиса). */
+export interface OAuthClientInfo {
+  id: string;
+  name: string;
+  redirectUris: string[];
+  createdAt: string;
+  disabledAt: string | null;
+  /** Сколько пользователей его подключили */
+  connections: number;
+}
+
+/** Ответ на регистрацию помощника — секрет показывается один раз. */
+export interface OAuthClientCreated {
+  clientId: string;
+  clientSecret: string;
+  name: string;
+  redirectUris: string[];
+}
+
 export interface Customer {
   id: string;
   userId: string; // Owner

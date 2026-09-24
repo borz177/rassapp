@@ -64,6 +64,7 @@ import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
 const ApiDocs = lazy(() => import('./components/ApiDocs'));
+const OAuthConsent = lazy(() => import('./components/OAuthConsent'));
 import { NotificationModal } from './components/NotificationModal';
 import { withTimeout } from './src/timeout';
 import { isNetworkError } from './src/authRequest';
@@ -116,6 +117,9 @@ const isLanding = path === "/"
 // Документация API — открытая страница рядом с лендингом. Грузится отдельным
 // куском: в приложении она не нужна ни одному экрану.
 const isApiDocs = path === "/api" || path === "/api/"
+// Страница согласия для помощников: сюда приводит внешний помощник, и она
+// должна открываться до всей остальной логики приложения.
+const isOAuthConsent = path === "/oauth/authorize"
   const { resolvedTheme } = useTheme();
   // Auth State
   const [user, setUser] = useState<User | null>(null);
@@ -4404,6 +4408,10 @@ if (!user && !showSplash) {
 
   if (isApiDocs) {
     return <Suspense fallback={null}><ApiDocs /></Suspense>;
+  }
+
+  if (isOAuthConsent) {
+    return <Suspense fallback={null}><OAuthConsent /></Suspense>;
   }
 
   // На остальных страницах — Auth

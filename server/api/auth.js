@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const { ipKeyGenerator } = rateLimit;
 const { CODES, fail } = require('./http');
 const { findByRawKey, touchKey } = require('./keys');
+const { findByAccessToken, touchToken } = require('./oauth');
 
 // Ключ принимаем и как Authorization: Bearer, и как x-api-key.
 // Bearer — то, к чему привыкли интеграторы; x-api-key оставлен ради ключей,
@@ -33,9 +34,25 @@ const makeApiKeyAuth = ({ pool, getEffectivePlan, planLimits }) => async (req, r
       'Нужен API-ключ. Передайте его заголовком Authorization: Bearer <ключ>.');
   }
 
-  const keyRow = await findByRawKey(pool, raw);
-  if (!keyRow) return fail(res, 401, CODES.INVALID_KEY, 'Ключ не найден. Проверьте, что скопировали его целиком.');
-  if (keyRow.revoked_at) return fail(res, 401, CODES.KEY_REVOKED, 'Этот ключ отозван. Создайте новый в настройках.');
+  // Заголовок один на два способа: постоянный ключ владельца (sk_live_…) и
+  // временный токен помощника, полученный входом «Через FinUchet» (fu_at_…).
+  const isAccessToken = raw.startsWith('fu_at_');
+  let keyRow;
+  if (isAccessToken) {
+    const token = await findByAccessToken(pool, raw);
+    if (!token) return fail(res, 401, CODES.INVALID_KEY, 'Подключение не найдено или отключено.');
+    if (token.expired) {
+      return fail(res, 401, CODES.INVALID_KEY, 'Срок действия токена истёк — обновите его по refresh_token.');
+    }
+    keyRow = {
+      id: token.id, user_id: token.user_id, scopes: token.scopes,
+      name: 'Подключённый помощник', key_prefix: 'oauth', isConnection: true,
+    };
+  } else {
+    keyRow = await findByRawKey(pool, raw);
+    if (!keyRow) return fail(res, 401, CODES.INVALID_KEY, 'Ключ не найден. Проверьте, что скопировали его целиком.');
+    if (keyRow.revoked_at) return fail(res, 401, CODES.KEY_REVOKED, 'Этот ключ отозван. Создайте новый в настройках.');
+  }
 
   const { rows } = await pool.query(
     `SELECT id, name, email, role, manager_id, subscription, blocked FROM users WHERE id = $1`,
@@ -72,7 +89,9 @@ const makeApiKeyAuth = ({ pool, getEffectivePlan, planLimits }) => async (req, r
     scopes: keyRow.scopes || ['read'],
     plan: effectivePlan,
   };
-  touchKey(pool, keyRow, req.ip); // без await: отметка не должна задерживать ответ
+  // Отметка о последнем обращении — без await: она не должна задерживать ответ.
+  if (keyRow.isConnection) touchToken(pool, keyRow.id);
+  else touchKey(pool, keyRow, req.ip);
   next();
 };
 

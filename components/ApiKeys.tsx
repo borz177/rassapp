@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
-import { ApiKeyInfo, ApiKeyScope } from '../types';
+import { ApiKeyInfo, ApiKeyScope, OAuthConnection } from '../types';
 
 /**
  * API-ключи: выдача, права и отзыв.
@@ -29,6 +29,9 @@ const ApiKeys: React.FC<{ allowed: boolean; onUpgrade?: () => void }> = ({ allow
   const [canWrite, setCanWrite] = useState(false);
   const [fresh, setFresh] = useState<{ key: string; name: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  // Помощники, которым человек разрешил доступ входом «Через FinUchet».
+  // Живут рядом с ключами: и то и другое — доступ к своим данным снаружи.
+  const [connections, setConnections] = useState<OAuthConnection[]>([]);
 
   useEffect(() => {
     if (!allowed) { setKeys([]); return; }
@@ -36,6 +39,9 @@ const ApiKeys: React.FC<{ allowed: boolean; onUpgrade?: () => void }> = ({ allow
     api.listApiKeys()
       .then(list => { if (alive) setKeys(list); })
       .catch(e => { if (alive) { setKeys([]); setError(e.message); } });
+    api.listOAuthConnections()
+      .then(list => { if (alive) setConnections(list); })
+      .catch(() => { /* подключений может не быть вовсе — это не ошибка экрана */ });
     return () => { alive = false; };
   }, [allowed]);
 
@@ -62,6 +68,19 @@ const ApiKeys: React.FC<{ allowed: boolean; onUpgrade?: () => void }> = ({ allow
       setKeys(await api.listApiKeys());
     } catch (e: any) {
       setError(e.message || 'Не удалось отозвать ключ');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async (item: OAuthConnection) => {
+    if (!window.confirm(`Отключить «${item.app}»? Помощник сразу потеряет доступ к вашим данным.`)) return;
+    setBusy(true); setError(null);
+    try {
+      await api.revokeOAuthConnection(item.id);
+      setConnections(await api.listOAuthConnections());
+    } catch (e: any) {
+      setError(e.message || 'Не удалось отключить');
     } finally {
       setBusy(false);
     }
@@ -171,6 +190,31 @@ const ApiKeys: React.FC<{ allowed: boolean; onUpgrade?: () => void }> = ({ allow
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
               Отозвано ключей: {revoked.length}. Они больше не работают.
             </p>
+          )}
+
+          {connections.length > 0 && (
+            <div className="pt-1">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">Подключённые помощники</p>
+              <ul className="space-y-2">
+                {connections.map(c => (
+                  <li key={c.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{c.app}</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                        {c.scopes.map(sc => SCOPE_LABEL[sc] || sc).join(' и ')}
+                        {fmtDate(c.lastUsedAt) ? ` · последний запрос ${fmtDate(c.lastUsedAt)}` : ' · ещё не обращался'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => disconnect(c)} disabled={busy}
+                      className="shrink-0 text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline disabled:opacity-50"
+                    >
+                      Отключить
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {creating ? (
