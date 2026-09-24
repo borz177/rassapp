@@ -90,7 +90,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
       {!isCreating ? (
           <>
             <div className="relative">
-                <input
+                <input autoComplete="off" autoCorrect="off" spellCheck={false}
                 type="text"
                 placeholder="Поиск..."
                 className="w-full p-3 pl-10 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 dark:text-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
@@ -140,7 +140,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
               <form onSubmit={handleCreateSubmit} className="space-y-4">
                   <div>
                       <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">ФИО</label>
-                      <input
+                      <input autoComplete="off" autoCorrect="off" spellCheck={false}
                           className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500"
                           placeholder="Иванов Иван Иванович"
                           value={newName}
@@ -151,7 +151,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                   </div>
                   <div>
                       <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Телефон</label>
-                      <input
+                      <input autoComplete="off" autoCorrect="off" spellCheck={false}
                           className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500"
                           placeholder="+7"
                           value={newPhone}
@@ -194,7 +194,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Серия</label>
-                            <input
+                            <input autoComplete="off" autoCorrect="off" spellCheck={false}
                               type="text"
                               placeholder="4501"
                               className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono uppercase"
@@ -205,7 +205,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                           </div>
                           <div>
                             <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Номер</label>
-                            <input
+                            <input autoComplete="off" autoCorrect="off" spellCheck={false}
                               type="text"
                               placeholder="123456"
                               className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono"
@@ -219,7 +219,7 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
                         {/* Кем выдан */}
                         <div className="mt-3">
                           <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Кем выдан</label>
-                          <input
+                          <input autoComplete="off" autoCorrect="off" spellCheck={false}
                             type="text"
                             placeholder="УФМС России по г. Москве"
                             className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm"

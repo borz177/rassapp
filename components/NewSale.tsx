@@ -1511,12 +1511,12 @@ if (mode === 'CASH') {
           <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-300">Поручитель (необязательно)</h3>
           <div className="grid grid-cols-2 gap-4">
             <div><label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">ФИО Поручителя</label><input
-                type="text"
+                type="text" autoComplete="off" autoCorrect="off" spellCheck={false}
                 className="w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
                 value={formData.guarantorName}
                 onChange={e => setFormData(prev => ({ ...prev, guarantorName: e.target.value }))}/></div>
             <div><label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Телефон поручителя</label><input
-                type="text"
+                type="text" autoComplete="off" autoCorrect="off" spellCheck={false}
                 className="w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
                 value={formData.guarantorPhone}
                 onChange={e => setFormData(prev => ({ ...prev, guarantorPhone: e.target.value }))}/></div>

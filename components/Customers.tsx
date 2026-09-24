@@ -156,7 +156,7 @@ const handleSubmit = async (e: React.FormEvent) => {
       {/* Search Bar */}
       {!isAdding && (
           <div className="relative">
-              <input
+              <input autoComplete="off" autoCorrect="off" spellCheck={false}
                 type="text"
                 placeholder="Поиск по имени или телефону..."
                 className="w-full pl-10 p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500 text-slate-800 dark:text-white"

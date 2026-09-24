@@ -102,11 +102,11 @@ const EditCustomerModal = ({
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
             <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ФИО</label>
-                <input className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} required/>
+                <input autoComplete="off" autoCorrect="off" spellCheck={false} className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} required/>
             </div>
             <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Телефон</label>
-                <input className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={phone} onChange={e => setPhone(e.target.value)} required/>
+                <input autoComplete="off" autoCorrect="off" spellCheck={false} className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={phone} onChange={e => setPhone(e.target.value)} required/>
             </div>
             <details className="group" open>
                 <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600 dark:text-indigo-400">
@@ -115,7 +115,7 @@ const EditCustomerModal = ({
                 <div className="mt-3 space-y-4 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl">
                     <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Адрес</label>
-                        <input className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" placeholder="г. Москва, ул. Ленина, д. 1" value={address} onChange={e => setAddress(e.target.value)}/>
+                        <input autoComplete="off" autoCorrect="off" spellCheck={false} className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" placeholder="г. Москва, ул. Ленина, д. 1" value={address} onChange={e => setAddress(e.target.value)}/>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Дата рождения</label>
@@ -126,16 +126,16 @@ const EditCustomerModal = ({
                         <div className="grid grid-cols-2 gap-3">
                             <div>
                                 <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Серия</label>
-                                <input type="text" placeholder="4501" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono uppercase" value={passportSeries} onChange={e => setPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))} maxLength={4}/>
+                                <input autoComplete="off" autoCorrect="off" spellCheck={false} type="text" placeholder="4501" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono uppercase" value={passportSeries} onChange={e => setPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))} maxLength={4}/>
                             </div>
                             <div>
                                 <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Номер</label>
-                                <input type="text" placeholder="123456" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono" value={passportNumber} onChange={e => setPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} maxLength={6}/>
+                                <input autoComplete="off" autoCorrect="off" spellCheck={false} type="text" placeholder="123456" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono" value={passportNumber} onChange={e => setPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} maxLength={6}/>
                             </div>
                         </div>
                         <div className="mt-3">
                             <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Кем выдан</label>
-                            <input type="text" placeholder="УФМС России по г. Москве" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm" value={passportIssuedBy} onChange={e => setPassportIssuedBy(e.target.value)} maxLength={100}/>
+                            <input autoComplete="off" autoCorrect="off" spellCheck={false} type="text" placeholder="УФМС России по г. Москве" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm" value={passportIssuedBy} onChange={e => setPassportIssuedBy(e.target.value)} maxLength={100}/>
                         </div>
                     </div>
                 </div>

@@ -239,7 +239,7 @@ const Investors: React.FC<InvestorsProps> = ({
       {!isAdding && investors.length > 0 && (
         <div className="relative">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input
+          <input autoComplete="off" autoCorrect="off" spellCheck={false}
             type="text"
             placeholder="Поиск по имени, email, телефону…"
             className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-700 dark:text-white placeholder-slate-400 outline-none focus:border-indigo-400 dark:focus:border-indigo-500 transition-colors"
@@ -261,28 +261,28 @@ const Investors: React.FC<InvestorsProps> = ({
               </h3>
 
               <div className="space-y-3">
-                  <input
+                  <input autoComplete="off" autoCorrect="off" spellCheck={false}
                     placeholder="Имя Фамилия"
                     className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
                     value={formName}
                     onChange={e => setFormName(e.target.value)}
                     required
                   />
-                  <input
+                  <input autoComplete="off" autoCorrect="off" spellCheck={false}
                     placeholder="Телефон"
                     className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
                     value={formPhone}
                     onChange={e => setFormPhone(e.target.value)}
                   />
                   <div className="grid grid-cols-2 gap-3">
-                    <input
+                    <input autoComplete="off" autoCorrect="off" spellCheck={false}
                         type="email"
                         placeholder="Email (Логин, необязательно)"
                         className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
                         value={formEmail}
                         onChange={e => setFormEmail(e.target.value)}
                     />
-                    <input
+                    <input autoComplete="off" autoCorrect="off" spellCheck={false}
                         type="text" // Visible for creation
                         placeholder={editingId ? "Новый пароль (необязательно)" : "Пароль (если указан email)"}
                         className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
@@ -419,7 +419,7 @@ const Investors: React.FC<InvestorsProps> = ({
                           )}
 
                           {poolMode === 'NEW' && (
-                              <input
+                              <input autoComplete="off" autoCorrect="off" spellCheck={false}
                                   placeholder="Название пула (например, «Общий пул инвесторов»)"
                                   className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
                                   value={newPoolName}
