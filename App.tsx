@@ -63,8 +63,10 @@ import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
+import { PUBLIC_LEGAL_ROUTES } from './components/LegalPublic';
 const ApiDocs = lazy(() => import('./components/ApiDocs'));
 const OAuthConsent = lazy(() => import('./components/OAuthConsent'));
+const LegalPublic = lazy(() => import('./components/LegalPublic'));
 import { NotificationModal } from './components/NotificationModal';
 import { withTimeout } from './src/timeout';
 import { isNetworkError } from './src/authRequest';
@@ -120,6 +122,9 @@ const isApiDocs = path === "/api" || path === "/api/"
 // Страница согласия для помощников: сюда приводит внешний помощник, и она
 // должна открываться до всей остальной логики приложения.
 const isOAuthConsent = path === "/oauth/authorize"
+// Правовые документы по постоянным адресам (/privacy и другие): на окно внутри
+// приложения ссылку не дашь, а её спрашивают площадки помощников и магазины.
+const legalDoc = PUBLIC_LEGAL_ROUTES[path.replace(/\/+$/, '') || '/']
   const { resolvedTheme } = useTheme();
   // Auth State
   const [user, setUser] = useState<User | null>(null);
@@ -4412,6 +4417,10 @@ if (!user && !showSplash) {
 
   if (isOAuthConsent) {
     return <Suspense fallback={null}><OAuthConsent /></Suspense>;
+  }
+
+  if (legalDoc) {
+    return <Suspense fallback={null}><LegalPublic doc={legalDoc} /></Suspense>;
   }
 
   // На остальных страницах — Auth
