@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ApiKeys from './ApiKeys';
 import { AppSettings, WhatsAppSettings } from '../types';
 import { ICONS } from '../constants';
 import { checkGreenApiConnection } from '../services/whatsapp';
@@ -10,6 +11,10 @@ interface IntegrationsProps {
   onBack: () => void;
   whatsappRefreshKey?: number;
   onSettingsChanged?: () => void;
+  /** Разрешает ли тариф выдавать API-ключи (Бизнес и выше) */
+  apiAllowed?: boolean;
+  /** Открыть тарифы, если API закрыт тарифом */
+  onOpenTariffs?: () => void;
 }
 
 const DEFAULT_TEMPLATES = {
@@ -63,7 +68,9 @@ const Integrations: React.FC<IntegrationsProps> = ({
     onUpdateSettings,
     onBack,
     whatsappRefreshKey,
-    onSettingsChanged
+    onSettingsChanged,
+    apiAllowed = false,
+    onOpenTariffs
 }) => {
   // 🔹 НОВАЯ ЛОГИКА: isConnected вместо waEnabled
   const [isConnected, setIsConnected] = useState(false);
@@ -344,7 +351,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
         <button onClick={onBack} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">{ICONS.Back}</button>
         <div>
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Интеграции</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">Подключение Green API (WhatsApp)</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">WhatsApp и доступ к данным по API</p>
         </div>
       </header>
 
@@ -740,6 +747,10 @@ const Integrations: React.FC<IntegrationsProps> = ({
           </div>
         </div>
       )}
+
+      {/* API-ключи стоят рядом с WhatsApp: это тоже способ связать FinUchet
+          с чем-то снаружи, и искать его в другом разделе незачем. */}
+      <ApiKeys allowed={apiAllowed} onUpgrade={onOpenTariffs} />
     </div>
   );
 };

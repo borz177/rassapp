@@ -246,6 +246,31 @@ export interface CustomerDocument {
   mimeType?: string;
 }
 
+/** Права API-ключа: чтение или чтение и запись. */
+export type ApiKeyScope = 'read' | 'write';
+
+/** Ключ в списке: самого ключа здесь нет — он показывается один раз при создании. */
+export interface ApiKeyInfo {
+  id: string;
+  name: string;
+  /** Начало ключа, чтобы опознать его в списке: sk_live_xxxxxxxx */
+  prefix: string;
+  scopes: ApiKeyScope[];
+  createdAt: string;
+  lastUsedAt: string | null;
+  requestsTotal: number;
+  revokedAt: string | null;
+}
+
+/** Ответ на создание ключа — единственный раз, когда сервер отдаёт сам ключ. */
+export interface ApiKeyCreated {
+  id: string;
+  key: string;
+  prefix: string;
+  name: string;
+  scopes: ApiKeyScope[];
+}
+
 export interface Customer {
   id: string;
   userId: string; // Owner

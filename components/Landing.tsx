@@ -181,6 +181,12 @@ export default function Landing() {
                         <div className="h-0.5 bg-gradient-to-r from-indigo-600 to-teal-600 scale-x-0 group-hover:scale-x-100 transition-transform origin-left"></div>
                     </div>
                     <div className="flex gap-3 items-center">
+                        {/* Разработчику нужен быстрый путь к документации: он приходит
+                            за ней, а не за рассказом о возможностях. */}
+                        <a href="/api" className="hidden sm:inline relative px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all group">
+                            API
+                            <span className="absolute bottom-0 left-1/2 w-0 h-0.5 bg-indigo-600 group-hover:w-full group-hover:left-0 transition-all"></span>
+                        </a>
                         <a href={appHref()} className="relative px-5 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition-all group">
                             Войти
                             <span className="absolute bottom-0 left-1/2 w-0 h-0.5 bg-indigo-600 group-hover:w-full group-hover:left-0 transition-all"></span>
@@ -379,6 +385,17 @@ export default function Landing() {
 
                         {/* 🔹 Кнопки правовых документов */}
                         <div className="space-y-2">
+                            <a
+                                href="/api"
+                                className="w-full text-left p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium text-slate-700 dark:text-slate-300 flex justify-between items-center transition-colors"
+                            >
+                                Документация API
+                                <span className="text-slate-400">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <polyline points="9 18 15 12 9 6"/>
+                                    </svg>
+                                </span>
+                            </a>
                             {[
                                 {label: "Политика конфиденциальности", value: 'PRIVACY' as const},
                                 {label: "Согласие на обработку данных", value: 'AGREEMENT' as const}

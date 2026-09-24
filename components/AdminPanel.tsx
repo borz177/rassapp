@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import AdminPartners from './AdminPartners';
 import AdminPayments from './AdminPayments';
-import { User, SubscriptionPlan } from '../types';
+import { User, SubscriptionPlan, ApiKeyInfo } from '../types';
 import { addMonthsClamped } from '../src/utils';
 import { ICONS } from '../constants';
 import { api } from '../services/api';
@@ -86,6 +86,9 @@ const AdminPanel: React.FC = () => {
     // API Key Modal
     const [apiModalUser, setApiModalUser] = useState<User | null>(null);
     const [generatedKey, setGeneratedKey] = useState<string | null>(null);
+    // Ключи в базе хранятся хешем: показать выданный нельзя, можно лишь
+    // перечислить их по началу ключа и числу запросов.
+    const [userApiKeys, setUserApiKeys] = useState<ApiKeyInfo[]>([]);
 
     // Статистика
     const [systemStats, setSystemStats] = useState<{
@@ -217,20 +220,41 @@ const AdminPanel: React.FC = () => {
         }
     };
 
+    const loadUserApiKeys = async (userId: string) => {
+        try {
+            setUserApiKeys(await api.adminListUserApiKeys(userId));
+        } catch {
+            setUserApiKeys([]);
+        }
+    };
+
     const handleGenerateApiKey = async () => {
         if (!apiModalUser) return;
-        if (!window.confirm("Сгенерировать новый API ключ? Старый перестанет работать.")) return;
+        // Ключи больше не «перегенерируются»: их может быть несколько, и новый
+        // не отменяет прежние — ненужный отзывают отдельно.
+        if (!window.confirm("Выдать новый API-ключ? Он будет показан один раз.")) return;
 
         setActionLoading(true);
         try {
             const newKey = await api.adminGenerateUserApiKey(apiModalUser.id);
             setGeneratedKey(newKey);
-            setUsers(prev => prev.map(u => 
-                u.id === apiModalUser.id ? { ...u, apiKey: newKey } : u
-            ));
-            alert("✅ Ключ сгенерирован!");
+            await loadUserApiKeys(apiModalUser.id);
         } catch (e) {
             alert("❌ Ошибка генерации ключа");
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleRevokeApiKey = async (keyId: string, name: string) => {
+        if (!apiModalUser) return;
+        if (!window.confirm(`Отозвать ключ «${name}»? Интеграции на нём сразу перестанут работать.`)) return;
+        setActionLoading(true);
+        try {
+            await api.adminRevokeApiKey(keyId);
+            await loadUserApiKeys(apiModalUser.id);
+        } catch {
+            alert("❌ Не удалось отозвать ключ");
         } finally {
             setActionLoading(false);
         }
@@ -582,7 +606,7 @@ const getContractUsage = (user: User): {
                                         {ICONS.Crown} Тариф
                                     </button>
                                     <button
-                                        onClick={() => setApiModalUser(user)}
+                                        onClick={() => { setApiModalUser(user); setGeneratedKey(null); loadUserApiKeys(user.id); }}
                                         className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition flex items-center justify-center gap-1.5"
                                     >
                                         {ICONS.Key} API
@@ -1002,29 +1026,52 @@ const getContractUsage = (user: User): {
                         </div>
 
                         <div className="space-y-4">
-                            <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">API Ключ</label>
-                                {generatedKey || apiModalUser.apiKey ? (
+                            {generatedKey && (
+                                <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                                    <label className="block text-xs font-bold text-emerald-700 dark:text-emerald-300 uppercase mb-2">Новый ключ — показан один раз</label>
                                     <div className="flex items-center gap-2">
-                                        <code className="flex-1 bg-white dark:bg-slate-800 p-2 rounded border border-slate-200 dark:border-slate-600 text-xs font-mono break-all">
-                                            {generatedKey || apiModalUser.apiKey}
+                                        <code className="flex-1 bg-white dark:bg-slate-800 p-2 rounded border border-emerald-200 dark:border-emerald-800 text-xs font-mono break-all">
+                                            {generatedKey}
                                         </code>
-                                        <button onClick={() => { navigator.clipboard.writeText(generatedKey || apiModalUser.apiKey!); alert("📋 Скопировано!"); }}
+                                        <button onClick={() => { navigator.clipboard.writeText(generatedKey); alert("📋 Скопировано!"); }}
                                             className="p-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded">{ICONS.Copy}</button>
                                     </div>
+                                </div>
+                            )}
+
+                            <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Ключи пользователя</label>
+                                {userApiKeys.filter(k => !k.revokedAt).length === 0 ? (
+                                    <p className="text-sm text-slate-400 italic">Ключей нет</p>
                                 ) : (
-                                    <p className="text-sm text-slate-400 italic">Ключ не сгенерирован</p>
+                                    <ul className="space-y-2">
+                                        {userApiKeys.filter(k => !k.revokedAt).map(k => (
+                                            <li key={k.id} className="flex items-center justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">{k.name}</p>
+                                                    <p className="text-[11px] text-slate-400 truncate">
+                                                        {k.prefix}… · {k.scopes.join(', ')} · запросов: {k.requestsTotal}
+                                                    </p>
+                                                </div>
+                                                <button onClick={() => handleRevokeApiKey(k.id, k.name)} disabled={actionLoading}
+                                                    className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline disabled:opacity-50">
+                                                    Отозвать
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
                                 )}
                             </div>
 
                             <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1 bg-amber-50 dark:bg-amber-900/30 p-3 rounded-lg border border-amber-200 dark:border-amber-900/50">
-                                <p>🔑 Ключ даёт полный доступ к данным пользователя</p>
-                                <p>⚠️ При перегенерации старый ключ перестанет работать</p>
+                                <p>🔑 Ключ даёт доступ к данным пользователя по API</p>
+                                <p>🔒 В базе только отпечаток — показать выданный ключ повторно нельзя</p>
+                                <p>⚠️ Новый ключ не отменяет прежние: лишние отзывайте вручную</p>
                             </div>
 
                             <button onClick={handleGenerateApiKey} disabled={actionLoading}
                                 className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition">
-                                {actionLoading ? 'Генерация...' : (generatedKey || apiModalUser.apiKey ? '🔄 Перегенерировать' : '✨ Сгенерировать ключ')}
+                                {actionLoading ? 'Генерация...' : '✨ Выдать новый ключ'}
                             </button>
                         </div>
                     </div>

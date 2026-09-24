@@ -94,11 +94,11 @@ const getTargetUserId = (user) => {
 // доступный сервис (Яндекс Vision с этого сервера отвечает) — поставить здесь
 // ai: true нужным тарифам и вернуть проверку тарифа в checkAccess('AI').
 const PLAN_LIMITS = {
-  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: false,  suppliers: true, investorPools: true, notifications: true,  tasks: true , shop: true , contractTemplates: true },
-  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false , shop: false , contractTemplates: false },
-  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false , contractTemplates: true },
-  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: false, investorPools: false, notifications: true,  tasks: true  , shop: false , contractTemplates: true },
-  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: true,  investorPools: true,  notifications: true,  tasks: true  , shop: true , contractTemplates: true },
+  TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: false,  suppliers: true, investorPools: true, notifications: true,  tasks: true , shop: true , contractTemplates: true , api: true  },
+  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false , shop: false , contractTemplates: false, api: false },
+  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false , contractTemplates: true , api: false },
+  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: false, investorPools: false, notifications: true,  tasks: true  , shop: false , contractTemplates: true , api: true  },
+  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: true,  investorPools: true,  notifications: true,  tasks: true  , shop: true , contractTemplates: true , api: true  },
 };
 
 
@@ -474,6 +474,7 @@ const FEATURE_DENIED_MESSAGES = {
   tasks: { msg: 'Задачи доступны на тарифах Бизнес и Бизнес Pro.', hint: 'Оформите тариф Бизнес для работы с задачами и поручениями сотрудникам.' },
   shop: { msg: 'Магазин и склад доступны только на тарифе Бизнес Pro.', hint: 'Оформите тариф Бизнес Pro для розничных продаж и учёта остатков.' },
   contractTemplates: { msg: 'Вторая форма договора доступна начиная с тарифа Стандарт.', hint: 'Оформите тариф Стандарт, чтобы печатать полный бланк договора.' },
+  api: { msg: 'API доступно на тарифах Бизнес и Бизнес Pro.', hint: 'Оформите тариф Бизнес, чтобы подключить сайт, бота или 1С к своим данным.' },
 };
 
 // 🛒 Данные, принадлежащие модулю «Магазин и склад». Перечислены в одном месте:
@@ -1344,7 +1345,11 @@ const initSuperAdmin = async () => {
 };
 
 // Вызов функции
-initDB();
+// Таблицы публичного API создаются после основных: перенос ключей читает users,
+// а на чистой установке этой таблицы ещё нет.
+initDB()
+  .then(() => require('./api/keys').ensureApiTables(pool))
+  .catch(e => console.error('❌ ensureApiTables:', e.message));
 
 // --- MIDDLEWARE ---
 const auth = (req, res, next) => {
@@ -4170,13 +4175,19 @@ app.post('/api/admin/set-subscription', adminAuth, async (req, res) => {
   }
 });
 
+// Старый адрес выдачи ключа. Оставлен ради совместимости с уже установленными
+// версиями админки: теперь он создаёт ключ в api_keys, а не пишет открытый
+// текст в users.api_key.
 app.post('/api/admin/generate-user-api-key', adminAuth, async (req, res) => {
   const { userId } = req.body;
   try {
-    const newKey = `sk_${uuidv4().replace(/-/g, '')}`;
-    await pool.query('UPDATE users SET api_key = $1 WHERE id = $2', [newKey, userId]);
-    logAdminAction(req.user.id, 'GENERATE_API_KEY', userId, null);
-    res.json({ apiKey: newKey });
+    const store = require('./api/keys');
+    const result = await store.createKey(pool, {
+      userId, name: 'Ключ от администратора', scopes: ['read', 'write'], createdBy: req.user.id,
+    });
+    if (result.error) return res.status(409).json({ msg: result.message });
+    logAdminAction(req.user.id, 'GENERATE_API_KEY', userId, { keyId: result.id });
+    res.json({ apiKey: result.key, id: result.id, prefix: result.prefix, scopes: result.scopes });
   } catch (err) {
     console.error("Admin Generate API Key Error:", err);
     res.status(500).send('Server Error');
@@ -5391,37 +5402,108 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
 });
 
 // --- API KEY ROUTES ---
-const apiKeyAuth = async (req, res, next) => {
-  const apiKey = req.header('x-api-key');
-  if (!apiKey) return res.status(401).json({ msg: 'No API key, authorization denied' });
-  
-  try {
-    const result = await pool.query('SELECT * FROM users WHERE api_key = $1', [apiKey]);
-    if (result.rows.length === 0) {
-      return res.status(401).json({ msg: 'Invalid API key' });
-    }
-    req.user = result.rows[0];
-    next();
-  } catch (err) {
-    console.error("API Key Auth Error:", err);
-    res.status(500).json({ msg: 'Server Error' });
+// =====================================================
+// === 🔑 API-КЛЮЧИ (управление из приложения и админки) ===
+// =====================================================
+// Сам ключ виден один раз — в ответе на создание. В базе только хеш:
+// см. server/api/keys.js, там же объяснение, почему так.
+
+const apiKeysStore = require('./api/keys');
+
+const apiKeysAllowed = async (user) => {
+  if (user.role === 'admin') return { allowed: true };
+  if (user.role !== 'manager') {
+    return { allowed: false, status: 403, msg: 'API-ключи выдаются владельцу аккаунта.' };
   }
+  const access = await checkFeatureAccess(user.id, 'api');
+  return access.allowed ? { allowed: true } : { allowed: false, status: 403, ...access };
 };
 
-app.post('/api/auth/generate-api-key', auth, async (req, res) => {
+app.get('/api/api-keys', auth, async (req, res) => {
   try {
-    const newKey = `sk_${uuidv4().replace(/-/g, '')}`;
-    await pool.query('UPDATE users SET api_key = $1 WHERE id = $2', [newKey, req.user.id]);
-    res.json({ apiKey: newKey });
-  } catch (err) {
-    console.error("Generate API Key Error:", err);
-    res.status(500).send('Server Error');
+    const gate = await apiKeysAllowed(req.user);
+    if (!gate.allowed) return res.status(gate.status).json({ msg: gate.msg, hint: gate.hint });
+    res.json({ keys: await apiKeysStore.listKeys(pool, req.user.id) });
+  } catch (e) {
+    console.error('API keys list error:', e);
+    res.status(500).json({ msg: 'Не удалось загрузить ключи' });
   }
 });
 
+app.post('/api/api-keys', auth, async (req, res) => {
+  try {
+    const gate = await apiKeysAllowed(req.user);
+    if (!gate.allowed) return res.status(gate.status).json({ msg: gate.msg, hint: gate.hint });
 
+    const { name, scopes } = req.body || {};
+    const result = await apiKeysStore.createKey(pool, {
+      userId: req.user.id,
+      name: typeof name === 'string' ? name.trim() : '',
+      scopes: Array.isArray(scopes) ? scopes : ['read'],
+      createdBy: req.user.id,
+    });
+    if (result.error) return res.status(409).json({ msg: result.message });
+    res.status(201).json(result);
+  } catch (e) {
+    console.error('API key create error:', e);
+    res.status(500).json({ msg: 'Не удалось создать ключ' });
+  }
+});
 
+app.delete('/api/api-keys/:id', auth, async (req, res) => {
+  try {
+    const gate = await apiKeysAllowed(req.user);
+    if (!gate.allowed) return res.status(gate.status).json({ msg: gate.msg, hint: gate.hint });
+    const done = await apiKeysStore.revokeKey(pool, { userId: req.user.id, keyId: req.params.id });
+    if (!done) return res.status(404).json({ msg: 'Ключ не найден или уже отозван' });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('API key revoke error:', e);
+    res.status(500).json({ msg: 'Не удалось отозвать ключ' });
+  }
+});
 
+// Админ выдаёт и отзывает ключи любому пользователю — например, когда
+// интеграцию настраивают за клиента.
+app.get('/api/admin/users/:userId/api-keys', adminAuth, async (req, res) => {
+  try {
+    res.json({ keys: await apiKeysStore.listKeys(pool, req.params.userId) });
+  } catch (e) {
+    console.error('Admin API keys list error:', e);
+    res.status(500).json({ msg: 'Не удалось загрузить ключи' });
+  }
+});
+
+app.post('/api/admin/users/:userId/api-keys', adminAuth, async (req, res) => {
+  try {
+    const { name, scopes } = req.body || {};
+    const result = await apiKeysStore.createKey(pool, {
+      userId: req.params.userId,
+      name: typeof name === 'string' ? name.trim() : 'Ключ от администратора',
+      scopes: Array.isArray(scopes) ? scopes : ['read', 'write'],
+      createdBy: req.user.id,
+    });
+    if (result.error) return res.status(409).json({ msg: result.message });
+    logAdminAction(req.user.id, 'GENERATE_API_KEY', req.params.userId, { keyId: result.id, scopes: result.scopes });
+    res.status(201).json(result);
+  } catch (e) {
+    console.error('Admin API key create error:', e);
+    res.status(500).json({ msg: 'Не удалось создать ключ' });
+  }
+});
+
+app.delete('/api/admin/api-keys/:id', adminAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT user_id FROM api_keys WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ msg: 'Ключ не найден' });
+    await apiKeysStore.revokeKey(pool, { userId: rows[0].user_id, keyId: req.params.id });
+    logAdminAction(req.user.id, 'REVOKE_API_KEY', rows[0].user_id, { keyId: req.params.id });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Admin API key revoke error:', e);
+    res.status(500).json({ msg: 'Не удалось отозвать ключ' });
+  }
+});
 
 
 // =====================================================
@@ -6097,276 +6179,42 @@ app.delete('/api/admin/support/tickets/:ticketId', adminAuth, async (req, res) =
 
 
 
-// --- PUBLIC API V1 ---
-// Все API V1 роуты также используют исправленную логику getTargetUserId
+// =====================================================
+// === 🔌 ПУБЛИЧНОЕ API ПО КЛЮЧУ (v1) ===
+// =====================================================
+// Маршруты, проверки и формат ответов вынесены в server/api/ — здесь только
+// сборка цепочки. Порядок важен: сначала идентификатор запроса и журнал (чтобы
+// в журнал попали и неудачные авторизации), затем заслон от перебора ключей,
+// затем сам ключ, и только после него — лимиты по ключу.
 
-app.get('/api/v1/customers', apiKeyAuth, async (req, res) => {
-  try {
-    const targetUserId = getTargetUserId(req.user);
-    const result = await pool.query("SELECT data FROM data_items WHERE user_id = $1 AND type = 'customers'", [targetUserId]);
-    const customers = result.rows.map(r => r.data);
-    res.json(customers);
-  } catch (err) {
-    console.error("API Customers Error:", err);
-    res.status(500).json({ msg: 'Server Error' });
-  }
+const { requestId: apiRequestId } = require('./api/http');
+const { makeApiKeyAuth, perMinuteLimiter, perDayLimiter, authFailureLimiter } = require('./api/auth');
+const { makeIdempotency, makeRequestLog, cleanupApiTables } = require('./api/middleware');
+const { createApiV1Router } = require('./api/v1');
+const { openApiSpec } = require('./api/openapi');
+
+// Описание API открыто без ключа: по нему генерируют клиентов и смотрят,
+// что вообще есть, ещё до подключения.
+app.get('/api/v1/openapi.json', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.json(openApiSpec);
 });
 
-app.post('/api/v1/customers', apiKeyAuth, async (req, res) => {
-  try {
-    const targetUserId = getTargetUserId(req.user);
-    const customerData = req.body;
-    
-    if (!customerData.name || !customerData.phone) {
-      return res.status(400).json({ msg: 'Missing required fields: name, phone' });
-    }
-    
-    const customerId = customerData.id || `cust_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    
-    const newCustomer = {
-      ...customerData,
-      id: customerId,
-      userId: targetUserId,
-      trustScore: customerData.trustScore || 50,
-      notes: customerData.notes || '',
-      totalPurchases: 0
-    };
-    
-    await pool.query(`
-      INSERT INTO data_items (id, user_id, type, data, updated_at)
-      VALUES ($1, $2, 'customers', $3, NOW())
-      ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
-    `, [customerId, targetUserId, JSON.stringify(newCustomer)]);
-    
-    res.json(newCustomer);
-  } catch (err) {
-    console.error("API Create Customer Error:", err);
-    res.status(500).json({ msg: 'Server Error' });
-  }
-});
+app.use(
+  '/api/v1',
+  apiRequestId,
+  makeRequestLog(pool),
+  authFailureLimiter,
+  makeApiKeyAuth({ pool, getEffectivePlan, planLimits: PLAN_LIMITS }),
+  perMinuteLimiter,
+  perDayLimiter,
+  makeIdempotency(pool),
+  createApiV1Router({ pool, checkContractLimit, planLimits: PLAN_LIMITS })
+);
 
-app.get('/api/v1/accounts', apiKeyAuth, async (req, res) => {
-  try {
-    const targetUserId = getTargetUserId(req.user);
-    
-    const accountsResult = await pool.query("SELECT data FROM data_items WHERE user_id = $1 AND type = 'accounts'", [targetUserId]);
-    const salesResult = await pool.query("SELECT data FROM data_items WHERE user_id = $1 AND type = 'sales'", [targetUserId]);
-    const expensesResult = await pool.query("SELECT data FROM data_items WHERE user_id = $1 AND type = 'expenses'", [targetUserId]);
-    
-    const accounts = accountsResult.rows.map(r => r.data);
-    const sales = salesResult.rows.map(r => r.data);
-    const expenses = expensesResult.rows.map(r => r.data);
-    
-    const accountsWithBalance = accounts.map(acc => {
-      let total = 0;
-      const accountSales = sales.filter(s => s.accountId === acc.id);
-      accountSales.forEach(s => {
-        total += (s.downPayment || 0);
-        if (s.paymentPlan) {
-          s.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false).forEach(p => total += (p.amount || 0));
-        }
-      });
-      const accountExpenses = expenses.filter(e => e.accountId === acc.id);
-      total -= accountExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-      
-      return {
-        ...acc,
-        calculatedBalance: total
-      };
-    });
-    
-    res.json(accountsWithBalance);
-  } catch (err) {
-    console.error("API Accounts Error:", err);
-    res.status(500).json({ msg: 'Server Error' });
-  }
-});
+// Ответы идемпотентности живут сутки, журнал обращений — месяц.
+setInterval(() => cleanupApiTables(pool), 6 * 60 * 60 * 1000);
 
-app.post('/api/v1/income', apiKeyAuth, async (req, res) => {
-  try {
-    const targetUserId = getTargetUserId(req.user);
-    const { amount, accountId, note, date } = req.body;
-    
-    if (!amount || !accountId) {
-      return res.status(400).json({ msg: 'Missing required fields: amount, accountId' });
-    }
-    
-    const incomeId = `inc_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const newIncome = {
-      id: incomeId,
-      userId: targetUserId,
-      type: 'CASH',
-      customerId: 'system_income',
-      productName: note || 'Приход через API',
-      buyPrice: 0,
-      accountId: accountId,
-      totalAmount: Number(amount),
-      downPayment: Number(amount),
-      remainingAmount: 0,
-      interestRate: 0,
-      installments: 0,
-      startDate: date || new Date().toISOString(),
-      status: 'COMPLETED',
-      paymentPlan: []
-    };
-    
-    await pool.query(`
-      INSERT INTO data_items (id, user_id, type, data, updated_at)
-      VALUES ($1, $2, 'sales', $3, NOW())
-      ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
-    `, [incomeId, targetUserId, JSON.stringify(newIncome)]);
-    
-    res.json(newIncome);
-  } catch (err) {
-    console.error("API Create Income Error:", err);
-    res.status(500).json({ msg: 'Server Error' });
-  }
-});
-
-app.get('/api/v1/expenses', apiKeyAuth, async (req, res) => {
-  try {
-    const targetUserId = getTargetUserId(req.user);
-    const result = await pool.query("SELECT data FROM data_items WHERE user_id = $1 AND type = 'expenses'", [targetUserId]);
-    const expenses = result.rows.map(r => r.data);
-    res.json(expenses);
-  } catch (err) {
-    console.error("API Expenses Error:", err);
-    res.status(500).json({ msg: 'Server Error' });
-  }
-});
-
-app.post('/api/v1/expenses', apiKeyAuth, async (req, res) => {
-  try {
-    const targetUserId = getTargetUserId(req.user);
-    const { amount, accountId, title, category, date } = req.body;
-    
-    if (!amount || !accountId || !title) {
-      return res.status(400).json({ msg: 'Missing required fields: amount, accountId, title' });
-    }
-    
-    const expenseId = `exp_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const newExpense = {
-      id: expenseId,
-      userId: targetUserId,
-      accountId: accountId,
-      title: title,
-      amount: Number(amount),
-      category: category || 'Прочее',
-      date: date || new Date().toISOString()
-    };
-    
-    await pool.query(`
-      INSERT INTO data_items (id, user_id, type, data, updated_at)
-      VALUES ($1, $2, 'expenses', $3, NOW())
-      ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
-    `, [expenseId, targetUserId, JSON.stringify(newExpense)]);
-    
-    res.json(newExpense);
-  } catch (err) {
-    console.error("API Create Expense Error:", err);
-    res.status(500).json({ msg: 'Server Error' });
-  }
-});
-
-app.get('/api/v1/contracts', apiKeyAuth, async (req, res) => {
-  try {
-    const targetUserId = getTargetUserId(req.user);
-    const result = await pool.query("SELECT data FROM data_items WHERE user_id = $1 AND type = 'sales'", [targetUserId]);
-    const sales = result.rows.map(r => r.data);
-    res.json(sales);
-  } catch (err) {
-    console.error("API Contracts Error:", err);
-    res.status(500).json({ msg: 'Server Error' });
-  }
-});
-
-app.post('/api/v1/contracts', apiKeyAuth, async (req, res) => {
-  try {
-    const targetUserId = getTargetUserId(req.user);
-    const saleData = req.body;
-
-    const limitCheck = await checkContractLimit(targetUserId, 'create');
-    if (!limitCheck.allowed) {
-      return res.status(403).json({
-        msg: limitCheck.reason,
-        details: { current: limitCheck.current, limit: limitCheck.limit }
-      });
-    }
-
-    if (!saleData.customerId || !saleData.totalAmount || !saleData.productName) {
-      return res.status(400).json({ msg: 'Missing required fields: customerId, totalAmount, productName' });
-    }
-
-    const saleId = saleData.id || `sale_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-    const newSale = {
-      ...saleData,
-      id: saleId,
-      userId: targetUserId,
-      status: saleData.status || 'ACTIVE',
-      paymentPlan: saleData.paymentPlan || [],
-      startDate: saleData.startDate || new Date().toISOString()
-    };
-
-    await pool.query(`
-      INSERT INTO data_items (id, user_id, type, data, updated_at)
-      VALUES ($1, $2, 'sales', $3, NOW())
-      ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
-    `, [saleId, targetUserId, JSON.stringify(newSale)]);
-
-    res.json(newSale);
-  } catch (err) {
-    console.error("API Create Contract Error:", err);
-    res.status(500).json({ msg: 'Server Error' });
-  }
-});
-
-app.post('/api/v1/payments', apiKeyAuth, async (req, res) => {
-  try {
-    const targetUserId = getTargetUserId(req.user);
-    const { contractId, amount, date } = req.body;
-    
-    if (!contractId || !amount) {
-      return res.status(400).json({ msg: 'Missing contractId or amount' });
-    }
-    
-    const saleResult = await pool.query("SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'sales'", [contractId, targetUserId]);
-    if (saleResult.rows.length === 0) {
-      return res.status(404).json({ msg: 'Contract not found' });
-    }
-    
-    const sale = saleResult.rows[0].data;
-    
-    const payment = {
-      id: `pay_${Date.now()}_api`,
-      saleId: contractId,
-      amount: Number(amount),
-      date: date || new Date().toISOString(),
-      isPaid: true,
-      // 🔒 Без этого флага запись проходит ОБА фильтра отображения сразу — и как
-      // поступление (isRealPayment !== false), и как закрытый месяц графика
-      // (isRealPayment !== true). Тогда она сама себя взаимно погашает в расчёте
-      // излишка, платёж попадает в историю, но не закрывает месяцы в графике.
-      isRealPayment: true,
-      actualDate: new Date().toISOString()
-    };
-    
-    sale.paymentPlan.push(payment);
-    sale.remainingAmount = Math.max(0, sale.remainingAmount - Number(amount));
-    if (sale.remainingAmount === 0) {
-      sale.status = 'COMPLETED';
-    }
-    
-    await pool.query(`
-      UPDATE data_items SET data = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3
-    `, [JSON.stringify(sale), contractId, targetUserId]);
-    
-    res.json({ msg: 'Payment processed', payment, remainingAmount: sale.remainingAmount });
-  } catch (err) {
-    console.error("API Payment Error:", err);
-    res.status(500).json({ msg: 'Server Error' });
-  }
-});
 
 // =====================================================
 // === 🧮 КАЛЬКУЛЯТОР — СОХРАНЕНИЕ КОНФИГОВ ===

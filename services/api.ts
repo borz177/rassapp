@@ -1,4 +1,4 @@
-import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary, AdminPayment, PLAN_CONTRACT_LIMITS} from "../types";
+import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary, AdminPayment, PLAN_CONTRACT_LIMITS, ApiKeyInfo, ApiKeyCreated, ApiKeyScope} from "../types";
 import { offlineStorage } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
 import { postJson, mayBeLostRegistration } from '../src/authRequest';
@@ -1295,6 +1295,49 @@ export const api = {
         const data = await res.json();
         if (!res.ok) throw new Error(data.msg || 'Failed to set subscription');
         return data.subscription;
+    },
+
+    // === API-КЛЮЧИ ===
+    // Сам ключ сервер отдаёт один раз — при создании. Дальше у нас есть только
+    // начало ключа для опознания в списке.
+    listApiKeys: async (): Promise<ApiKeyInfo[]> => {
+        const res = await fetchWithAuth(`${API_URL}/api-keys`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Не удалось загрузить ключи');
+        return data.keys || [];
+    },
+
+    createApiKey: async (name: string, scopes: ApiKeyScope[]): Promise<ApiKeyCreated> => {
+        const res = await fetchWithAuth(`${API_URL}/api-keys`, {
+            method: 'POST',
+            body: JSON.stringify({ name, scopes })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Не удалось создать ключ');
+        return data;
+    },
+
+    revokeApiKey: async (id: string): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/api-keys/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.msg || 'Не удалось отозвать ключ');
+        }
+    },
+
+    adminListUserApiKeys: async (userId: string): Promise<ApiKeyInfo[]> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/users/${userId}/api-keys`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Не удалось загрузить ключи');
+        return data.keys || [];
+    },
+
+    adminRevokeApiKey: async (id: string): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/api-keys/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.msg || 'Не удалось отозвать ключ');
+        }
     },
 
     adminGenerateUserApiKey: async (userId: string): Promise<string> => {

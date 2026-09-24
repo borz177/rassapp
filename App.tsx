@@ -63,6 +63,7 @@ import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
+const ApiDocs = lazy(() => import('./components/ApiDocs'));
 import { NotificationModal } from './components/NotificationModal';
 import { withTimeout } from './src/timeout';
 import { isNetworkError } from './src/authRequest';
@@ -112,6 +113,9 @@ capturePendingReferral();
 const App: React.FC = () => {
     const path = window.location.pathname
 const isLanding = path === "/"
+// Документация API — открытая страница рядом с лендингом. Грузится отдельным
+// куском: в приложении она не нужна ни одному экрану.
+const isApiDocs = path === "/api" || path === "/api/"
   const { resolvedTheme } = useTheme();
   // Auth State
   const [user, setUser] = useState<User | null>(null);
@@ -1460,7 +1464,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 };
 
   // ... (Access checks and calculation logic remain the same)
-  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP' | 'CONTRACT_TEMPLATES'): boolean => {
+  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP' | 'CONTRACT_TEMPLATES' | 'API'): boolean => {
     if (!user) return false;
 
     // 🔒 ИИ решается до общего пропуска: строкой ниже админ, сотрудник и
@@ -1510,6 +1514,9 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         // Задачи — тарифы Бизнес и Бизнес Pro (см. PLAN_LIMITS.tasks на сервере)
         case 'TASKS': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
         case 'NOTIFICATIONS': return plan !== 'START';
+        // API — тарифы Бизнес и Бизнес Pro. На пробном открыто: пробный период
+        // показывает возможности старших тарифов (см. PLAN_LIMITS.api на сервере).
+        case 'API': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO' || plan === 'TRIAL';
         default: return true;
     }
 };
@@ -4395,6 +4402,10 @@ if (!user && !showSplash) {
     return <Landing />;
   }
 
+  if (isApiDocs) {
+    return <Suspense fallback={null}><ApiDocs /></Suspense>;
+  }
+
   // На остальных страницах — Auth
   return <Auth onLogin={handleAuthSuccess} />;
 }
@@ -4916,6 +4927,10 @@ if (!user && !showSplash) {
                     <Suspense fallback={<LazyFallback />}>
                       <Integrations appSettings={appSettings} onUpdateSettings={handleUpdateSettings}
                                     onBack={requestClose}
+                                    // Ключи выдаются владельцу аккаунта: сотруднику и инвестору
+                                    // сервер их не даст, поэтому и раздел им не показываем.
+                                    apiAllowed={checkAccess('API') && (user?.role === 'manager' || user?.role === 'admin')}
+                                    onOpenTariffs={() => setCurrentView('TARIFFS')}
                                     whatsappRefreshKey={whatsappRefreshKey}  // ← Обязательно!
                                     onSettingsChanged={() => {
 
