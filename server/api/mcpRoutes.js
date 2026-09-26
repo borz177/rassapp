@@ -1,6 +1,11 @@
 // Транспорт MCP: приём вызовов помощника и ответы по JSON-RPC.
 //
-// Адрес для помощника: https://rassrochka.pro/mcp
+// Адрес для помощника: https://rassrochka.pro/api/mcp
+//
+// Почему под /api, а не просто /mcp: на боевом сервере nginx отдаёт бэкенду
+// только пути, начинающиеся с /api/ — всё остальное уходит в раздачу
+// приложения. Короткий адрес /mcp тоже объявлен: он заработает, если в nginx
+// добавят для него проксирование, и тогда его можно будет давать как основной.
 // Авторизация — тот же Bearer, что и у API: постоянный ключ владельца или
 // токен подключения, полученный входом «Через FinUchet».
 //
@@ -29,7 +34,7 @@ const registerMcpRoutes = (app, { pool, apiKeyAuth, port, publicUrl, logAdminAct
   // По этим двум документам помощник узнаёт, где авторизоваться, и может
   // зарегистрироваться сам — без выданных вручную идентификатора и секрета.
   const protectedResource = {
-    resource: `${publicUrl}/mcp`,
+    resource: `${publicUrl}/api/mcp`,
     authorization_servers: [publicUrl],
     scopes_supported: oauth.SCOPES,
     bearer_methods_supported: ['header'],
@@ -51,9 +56,17 @@ const registerMcpRoutes = (app, { pool, apiKeyAuth, port, publicUrl, logAdminAct
     res.setHeader('Cache-Control', 'public, max-age=600');
     res.json(body);
   };
-  app.get('/.well-known/oauth-protected-resource', serveJson(protectedResource));
-  app.get('/.well-known/oauth-protected-resource/mcp', serveJson(protectedResource));
-  app.get('/.well-known/oauth-authorization-server', serveJson(authorizationServer));
+  for (const path of [
+    '/.well-known/oauth-protected-resource',
+    '/.well-known/oauth-protected-resource/mcp',
+    '/.well-known/oauth-protected-resource/api/mcp',
+    '/api/.well-known/oauth-protected-resource',
+  ]) app.get(path, serveJson(protectedResource));
+
+  for (const path of [
+    '/.well-known/oauth-authorization-server',
+    '/api/.well-known/oauth-authorization-server',
+  ]) app.get(path, serveJson(authorizationServer));
 
   // ── самостоятельная регистрация помощника (RFC 7591) ─────────────────────
   // Клиенты MCP обычно не знают заранее ни идентификатора, ни секрета: им дают
@@ -104,7 +117,7 @@ const registerMcpRoutes = (app, { pool, apiKeyAuth, port, publicUrl, logAdminAct
     res.status = code => {
       if (code === 401) {
         res.setHeader('WWW-Authenticate',
-          `Bearer resource_metadata="${publicUrl}/.well-known/oauth-protected-resource"`);
+          `Bearer resource_metadata="${publicUrl}/api/.well-known/oauth-protected-resource"`);
       }
       return status(code);
     };
@@ -113,10 +126,12 @@ const registerMcpRoutes = (app, { pool, apiKeyAuth, port, publicUrl, logAdminAct
 
   // Поток от сервера к клиенту нам не нужен: все ответы умещаются в ответ на
   // запрос. Клиентам, которые пытаются открыть поток, честно отвечаем отказом.
-  app.get('/mcp', (req, res) => {
-    res.setHeader('Allow', 'POST');
-    res.status(405).json({ error: 'method_not_allowed', error_description: 'MCP здесь работает через POST.' });
-  });
+  for (const path of ['/mcp', '/api/mcp']) {
+    app.get(path, (req, res) => {
+      res.setHeader('Allow', 'POST');
+      res.status(405).json({ error: 'method_not_allowed', error_description: 'MCP здесь работает через POST.' });
+    });
+  }
 
   const callTool = async (req, name, args) => {
     const tool = TOOLS.find(t => t.name === name);
@@ -194,7 +209,7 @@ const registerMcpRoutes = (app, { pool, apiKeyAuth, port, publicUrl, logAdminAct
     }
   };
 
-  app.post('/mcp', pointToAuth, apiKeyAuth, async (req, res) => {
+  const handleMcpPost = async (req, res) => {
     try {
       const body = req.body;
       const messages = Array.isArray(body) ? body : [body];
@@ -210,7 +225,11 @@ const registerMcpRoutes = (app, { pool, apiKeyAuth, port, publicUrl, logAdminAct
       console.error('[mcp]', e);
       res.status(500).json(rpcError(req.body?.id ?? null, -32603, 'Внутренняя ошибка сервера.'));
     }
-  });
+  };
+
+  for (const path of ['/mcp', '/api/mcp']) {
+    app.post(path, pointToAuth, apiKeyAuth, handleMcpPost);
+  }
 };
 
 module.exports = { registerMcpRoutes };

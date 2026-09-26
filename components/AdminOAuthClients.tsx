@@ -86,7 +86,7 @@ const AdminOAuthClients: React.FC = () => {
         </p>
         <dl className="mt-3 space-y-2 text-sm">
           {[
-            ['Адрес MCP', 'https://rassrochka.pro/mcp'],
+            ['Адрес MCP', 'https://rassrochka.pro/api/mcp'],
             ['Страница входа', 'https://rassrochka.pro/oauth/authorize'],
             ['Обмен токенов', 'https://rassrochka.pro/api/oauth/token'],
             ['Описание API', 'https://rassrochka.pro/api/v1/openapi.json'],

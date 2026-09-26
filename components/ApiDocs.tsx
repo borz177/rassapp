@@ -689,7 +689,7 @@ curl "${BASE}/contracts?limit=200&offset=200" -H "Authorization: Bearer sk_live_
             <P>
               Помощники, которые подключаются не схемой, а протоколом MCP, ждут один адрес:
             </P>
-            <Code>{`https://rassrochka.pro/mcp`}</Code>
+            <Code>{`https://rassrochka.pro/api/mcp`}</Code>
             <P>
               Больше от вас ничего не нужно: помощник сам найдёт, где авторизоваться, при
               необходимости зарегистрируется и отправит человека на страницу входа FinUchet.
