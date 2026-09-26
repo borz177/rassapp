@@ -63,10 +63,25 @@ const registerMcpRoutes = (app, { pool, apiKeyAuth, port, publicUrl, logAdminAct
     '/api/.well-known/oauth-protected-resource',
   ]) app.get(path, serveJson(protectedResource));
 
+  // Клиент ищет описание сервера авторизации вслепую, перебирая принятые адреса:
+  // корень, корень с добавленным путём ресурса, адрес ресурса с суффиксом, плюс
+  // то же самое под именем openid-configuration. Корневые у нас уходят мимо
+  // бэкенда (nginx отдаёт бэкенду только /api/), поэтому отвечаем на все
+  // варианты, начинающиеся с /api/ — тогда перебор заканчивается успехом.
   for (const path of [
     '/.well-known/oauth-authorization-server',
+    '/.well-known/oauth-authorization-server/api/mcp',
+    '/.well-known/openid-configuration',
+    '/.well-known/openid-configuration/api/mcp',
     '/api/.well-known/oauth-authorization-server',
+    '/api/.well-known/openid-configuration',
+    '/api/mcp/.well-known/oauth-authorization-server',
+    '/api/mcp/.well-known/openid-configuration',
   ]) app.get(path, serveJson(authorizationServer));
+
+  for (const path of [
+    '/api/mcp/.well-known/oauth-protected-resource',
+  ]) app.get(path, serveJson(protectedResource));
 
   // ── самостоятельная регистрация помощника (RFC 7591) ─────────────────────
   // Клиенты MCP обычно не знают заранее ни идентификатора, ни секрета: им дают
