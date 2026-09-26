@@ -81,10 +81,12 @@ const AdminOAuthClients: React.FC = () => {
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
         <h3 className="font-bold text-slate-800 dark:text-white">Адреса для настроек помощника</h3>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Их вписывают в конструкторе помощника при настройке входа.
+          Их вписывают в конструкторе помощника. Если он умеет MCP, хватит одного
+          адреса MCP: остальное он найдёт сам и зарегистрируется без вашего участия.
         </p>
         <dl className="mt-3 space-y-2 text-sm">
           {[
+            ['Адрес MCP', 'https://rassrochka.pro/mcp'],
             ['Страница входа', 'https://rassrochka.pro/oauth/authorize'],
             ['Обмен токенов', 'https://rassrochka.pro/api/oauth/token'],
             ['Описание API', 'https://rassrochka.pro/api/v1/openapi.json'],

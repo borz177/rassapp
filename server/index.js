@@ -6225,6 +6225,17 @@ registerOAuthRoutes(app, {
   pool, auth, adminAuth, getEffectivePlan, planLimits: PLAN_LIMITS, logAdminAction,
 });
 
+// MCP: тот же доступ, но в виде набора инструментов для помощника.
+// Проверку ключа берём ту же, что и у API, — см. server/api/mcp.js.
+const { registerMcpRoutes } = require('./api/mcpRoutes');
+registerMcpRoutes(app, {
+  pool,
+  apiKeyAuth: makeApiKeyAuth({ pool, getEffectivePlan, planLimits: PLAN_LIMITS }),
+  port: PORT,
+  publicUrl: process.env.PUBLIC_URL || 'https://rassrochka.pro',
+  logAdminAction,
+});
+
 // Ответы идемпотентности живут сутки, журнал обращений — месяц,
 // просроченные коды и токены подключений — до месяца после истечения.
 setInterval(() => { cleanupApiTables(pool); cleanupOAuth(pool); }, 6 * 60 * 60 * 1000);
