@@ -33,9 +33,20 @@ const registerMcpRoutes = (app, { pool, apiKeyAuth, port, publicUrl, logAdminAct
   // ── описание для клиентов, которые сами настраивают вход ─────────────────
   // По этим двум документам помощник узнаёт, где авторизоваться, и может
   // зарегистрироваться сам — без выданных вручную идентификатора и секрета.
+  // Кто выдаёт разрешения. Называем сам адрес MCP, а не домен: описание
+  // сервера авторизации по стандарту ищут рядом с этим именем, и только такой
+  // путь (`/api/mcp/.well-known/…`) nginx пропускает к нам — домен верхнего
+  // уровня уходит в раздачу приложения.
+  const issuerFor = req => {
+    const path = req.baseUrl + req.path;
+    if (path.startsWith('/api/mcp/')) return `${publicUrl}/api/mcp`;
+    if (path.startsWith('/api/')) return `${publicUrl}/api`;
+    return publicUrl;
+  };
+
   const protectedResource = {
     resource: `${publicUrl}/api/mcp`,
-    authorization_servers: [publicUrl],
+    authorization_servers: [`${publicUrl}/api/mcp`],
     scopes_supported: oauth.SCOPES,
     bearer_methods_supported: ['header'],
     resource_documentation: `${publicUrl}/api`,
@@ -54,7 +65,10 @@ const registerMcpRoutes = (app, { pool, apiKeyAuth, port, publicUrl, logAdminAct
 
   const serveJson = body => (req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=600');
-    res.json(body);
+    // Строгий клиент сверяет issuer с адресом, по которому забрал описание,
+    // и при несовпадении отказывается работать. Подставляем тот, что подходит
+    // этому адресу; сами точки входа одни и те же.
+    res.json(body === authorizationServer ? { ...body, issuer: issuerFor(req) } : body);
   };
   for (const path of [
     '/.well-known/oauth-protected-resource',
