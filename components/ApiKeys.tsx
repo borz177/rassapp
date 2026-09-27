@@ -20,6 +20,27 @@ const fmtDate = (iso: string | null) => {
 
 const SCOPE_LABEL: Record<string, string> = { read: 'чтение', write: 'запись' };
 
+/**
+ * Открыть документацию.
+ *
+ * В браузере — соседней вкладкой, чтобы не терять место в настройках. Но в
+ * установленном приложении вкладок нет: там `target="_blank"` не делает ничего,
+ * а window.open возвращает null — человек жмёт и не понимает, почему тишина.
+ * Поэтому если вкладка не открылась, уходим по тому же окну: вернуться можно
+ * кнопкой «Назад» на самой странице.
+ */
+const openDocs = (event: React.MouseEvent) => {
+  event.preventDefault();
+  const url = `${window.location.origin}/api`;
+  let opened: Window | null = null;
+  try {
+    opened = window.open(url, '_blank', 'noopener,noreferrer');
+  } catch {
+    opened = null;
+  }
+  if (!opened) window.location.assign(url);
+};
+
 const ApiKeys: React.FC<{ allowed: boolean; onUpgrade?: () => void }> = ({ allowed, onUpgrade }) => {
   const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +134,7 @@ const ApiKeys: React.FC<{ allowed: boolean; onUpgrade?: () => void }> = ({ allow
           </div>
         </div>
         <a
-          href="/api" target="_blank" rel="noreferrer"
+          href="/api" target="_blank" rel="noreferrer" onClick={openDocs}
           className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline shrink-0 pt-1"
         >
           Документация

@@ -508,6 +508,19 @@ const P: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <p className="text-[15px] leading-relaxed text-slate-600 dark:text-slate-300">{children}</p>
 );
 
+/**
+ * Уйти обратно.
+ *
+ * Страницу открывают и с лендинга, и из настроек приложения. Во втором случае
+ * ссылка «на сайт» уводила бы человека из приложения на витрину — возвращаем
+ * его туда, откуда пришёл, если такая страница есть.
+ */
+const goBack = (event: React.MouseEvent) => {
+  event.preventDefault();
+  if (window.history.length > 1) window.history.back();
+  else window.location.assign('/');
+};
+
 const ApiDocs: React.FC = () => {
   const nav = [
     { id: 'start', title: 'С чего начать' },
@@ -530,7 +543,7 @@ const ApiDocs: React.FC = () => {
           <a href="/" className="font-black text-slate-900 dark:text-white">FinUchet<span className="text-indigo-600"> API</span></a>
           <div className="flex items-center gap-4 text-sm">
             <a href="/api/v1/openapi.json" className="text-slate-500 dark:text-slate-400 hover:text-indigo-600 hidden sm:inline">OpenAPI</a>
-            <a href="/" className="font-bold text-indigo-600 dark:text-indigo-400">На сайт</a>
+            <a href="/" onClick={goBack} className="font-bold text-indigo-600 dark:text-indigo-400">Назад</a>
           </div>
         </div>
       </header>
