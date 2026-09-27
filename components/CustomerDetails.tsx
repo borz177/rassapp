@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import SaleActionsMenu from './SaleActionsMenu';
 import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier, Task, RetailSale} from '../types';
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
@@ -25,6 +26,10 @@ interface CustomerDetailsProps {
   suppliers?: Supplier[];
   onPaySupplier?: (sale: Sale) => void;
   onCreateTask?: (draft: Partial<Task>) => void;
+  /** Удаление договора из карточки клиента. Без него пункта в меню нет. */
+  onDeleteSale?: (saleId: string) => void | Promise<void>;
+  /** Вторая печатная форма доступна со «Стандарта» */
+  contractTemplatesAllowed?: boolean;
   /** Покупки клиента в магазине. Пусто, когда магазин выключен. */
   retailSales?: RetailSale[];
   /** Открывает «Приход» с подставленным долгом магазина */
@@ -595,6 +600,7 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
     customer, sales, accounts, investors, appSettings, onBack,
     onInitiatePayment, onUndoPayment, onEditPayment, onUpdateCustomer,
     initialSaleId, onDeleteCustomer, user, suppliers, onPaySupplier, onCreateTask,
+    onDeleteSale, contractTemplatesAllowed,
     retailSales = [], onInitiateRetailPayment
 }) => {
     const supplierList: Supplier[] = suppliers || [];
@@ -935,9 +941,26 @@ ${customer.name}!
                         <TopBarBack onClick={close} />
                         <h2 className="text-xl font-bold text-slate-800 dark:text-white truncate">{selectedSale.productName}</h2>
                     </div>
-                    <button onClick={handleSendSaleReminder} className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
-                        {ICONS.Send} WhatsApp
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        <button onClick={handleSendSaleReminder} className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2">
+                            {ICONS.Send} WhatsApp
+                        </button>
+                        {/* Из поиска договор открывается сразу этой страницей — печать и
+                            удаление должны быть здесь, а не только в списке рассрочек. */}
+                        <SaleActionsMenu
+                            sale={selectedSale}
+                            sales={sales}
+                            customer={customer}
+                            appSettings={appSettings}
+                            user={user}
+                            contractTemplatesAllowed={contractTemplatesAllowed}
+                            onDeleteSale={onDeleteSale && (async (saleId: string) => {
+                                await onDeleteSale(saleId);
+                                // Договора больше нет — страницу оставлять нельзя.
+                                setSelectedSaleId(null);
+                            })}
+                        />
+                    </div>
                 </div>
 
                 <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 space-y-3">
@@ -1430,11 +1453,24 @@ ${customer.name}!
                         const isClosed = sale.status === 'COMPLETED' || sale.remainingAmount <= 0;
                         return (
                             <div key={sale.id} onClick={() => setSelectedSaleId(sale.id)} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm active:bg-slate-50 dark:active:bg-slate-700 cursor-pointer">
-                                <div className="flex justify-between items-start mb-2">
-                                    <h3 className="font-bold text-slate-800 dark:text-white">{sale.productName}</h3>
-                                    <span className={`text-xs px-2 py-1 rounded-full ${isClosed ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'}`}>
-                                        {isClosed ? 'Закрыто' : 'Активно'}
-                                    </span>
+                                <div className="flex justify-between items-start mb-2 gap-2">
+                                    <h3 className="font-bold text-slate-800 dark:text-white min-w-0 truncate">{sale.productName}</h3>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <span className={`text-xs px-2 py-1 rounded-full ${isClosed ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'}`}>
+                                            {isClosed ? 'Закрыто' : 'Активно'}
+                                        </span>
+                                        {/* Печать и удаление — здесь же, чтобы не возвращаться
+                                            на общий экран договоров ради одного действия. */}
+                                        <SaleActionsMenu
+                                            sale={sale}
+                                            sales={sales}
+                                            customer={customer}
+                                            appSettings={appSettings}
+                                            user={user}
+                                            contractTemplatesAllowed={contractTemplatesAllowed}
+                                            onDeleteSale={onDeleteSale}
+                                        />
+                                    </div>
                                 </div>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">от {formatDate(sale.startDate)}</p>
                                 {investorName && (

@@ -4015,13 +4015,24 @@ const handleQuickAddCustomer = async (data: {
   handleSelection('customerId', saved.id);
   return saved;
 };  const handleSelectAccountForOperations = (accountId: string) => { setOperationsAccountId(accountId); setCurrentView('OPERATIONS'); };
-  const handleSelectCustomer = (id: string) => { setSelectedCustomerId(id); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
+  // Карточка клиента открывается сверху, с «Информации». Договор, открытый до
+  // этого из поиска или со списка договоров, иначе развернулся бы сам собой:
+  // просьбу «открой договор» нужно снять, как только она выполнена.
+  const handleSelectCustomer = (id: string) => { setSelectedCustomerId(id); setInitialSaleIdForDetails(null); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
 
   // Что ищем и куда переходим. Данные передаём те же, что уже на руках у этого
   // пользователя: у сотрудника они урезаны по его правам, значит и поиск урезан.
   const globalSearchProps = {
     data: { customers, sales, products, expenses },
     onOpenCustomer: handleSelectCustomer,
+    // Договор открываем сразу его карточкой у клиента — тем же путём, что и
+    // «График платежей» с экрана договоров.
+    onOpenContract: (saleId: string, customerId: string) => {
+      setSelectedCustomerId(customerId);
+      setInitialSaleIdForDetails(saleId);
+      setPreviousView(currentView);
+      setCurrentView('CUSTOMER_DETAILS');
+    },
     onOpenProducts: () => setCurrentView('MANAGE_PRODUCTS'),
     onOpenOperations: () => { setOperationsAccountId(null); setCurrentView('OPERATIONS'); },
   };
@@ -4732,6 +4743,8 @@ if (!user && !showSplash) {
                                        onDeleteCustomer={handleDeleteCustomer}
                                        suppliers={suppliers} onPaySupplier={handlePaySupplier}
                                        initialSaleId={initialSaleIdForDetails} appSettings={appSettings} user={user}
+                                       onDeleteSale={handleDeleteSale}
+                                       contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')}
                                        retailSales={retailSales} onInitiateRetailPayment={handleInitiateRetailPayment}
                                        onCreateTask={checkAccess("TASKS") ? handleCreateTaskFor : undefined}/>
                     )}

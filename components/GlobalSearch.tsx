@@ -17,6 +17,8 @@ import { search, groupHits, KIND_TITLES, SearchData, SearchHit } from '../src/se
 interface GlobalSearchProps {
   data: SearchData;
   onOpenCustomer: (customerId: string) => void;
+  /** Открыть сам договор в карточке клиента */
+  onOpenContract?: (saleId: string, customerId: string) => void;
   onOpenProducts: () => void;
   onOpenOperations: () => void;
   /** Искать ли в расходах и прочих приходах */
@@ -26,7 +28,8 @@ interface GlobalSearchProps {
 }
 
 const GlobalSearch: React.FC<GlobalSearchProps> = ({
-  data, onOpenCustomer, onOpenProducts, onOpenOperations, includeOperations = true, variant = 'topbar',
+  data, onOpenCustomer, onOpenContract, onOpenProducts, onOpenOperations,
+  includeOperations = true, variant = 'topbar',
 }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -75,9 +78,14 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
   const go = (hit: SearchHit) => {
     setOpen(false);
     if (hit.kind === 'customer' && hit.customerId) return onOpenCustomer(hit.customerId);
-    // У договора открываем карточку клиента: там и сам договор, и график, и
-    // история платежей — то, зачем его искали.
-    if (hit.kind === 'contract' && hit.customerId) return onOpenCustomer(hit.customerId);
+    // Договор открываем сразу развёрнутым — с графиком и историей платежей:
+    // именно за ними его и искали. Если открыть просто карточку клиента, нужный
+    // договор придётся искать второй раз, уже глазами.
+    if (hit.kind === 'contract' && hit.customerId) {
+      return onOpenContract
+        ? onOpenContract(hit.id, hit.customerId)
+        : onOpenCustomer(hit.customerId);
+    }
     if (hit.kind === 'product') return onOpenProducts();
     return onOpenOperations();
   };
