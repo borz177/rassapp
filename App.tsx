@@ -63,6 +63,7 @@ import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
 import Landing from './components/Landing.tsx';
+import GlobalSearch from './components/GlobalSearch';
 import { PUBLIC_LEGAL_ROUTES } from './components/LegalPublic';
 const ApiDocs = lazy(() => import('./components/ApiDocs'));
 const OAuthConsent = lazy(() => import('./components/OAuthConsent'));
@@ -4015,6 +4016,15 @@ const handleQuickAddCustomer = async (data: {
   return saved;
 };  const handleSelectAccountForOperations = (accountId: string) => { setOperationsAccountId(accountId); setCurrentView('OPERATIONS'); };
   const handleSelectCustomer = (id: string) => { setSelectedCustomerId(id); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
+
+  // Что ищем и куда переходим. Данные передаём те же, что уже на руках у этого
+  // пользователя: у сотрудника они урезаны по его правам, значит и поиск урезан.
+  const globalSearchProps = {
+    data: { customers, sales, products, expenses },
+    onOpenCustomer: handleSelectCustomer,
+    onOpenProducts: () => setCurrentView('MANAGE_PRODUCTS'),
+    onOpenOperations: () => { setOperationsAccountId(null); setCurrentView('OPERATIONS'); },
+  };
   // Resume into the customer's details if one was left open when the user tapped away to
   // another tab; tapping "Клиенты" while already in this section resets to the list.
   const handleGoToCustomersTab = () => {
@@ -4430,6 +4440,10 @@ if (!user && !showSplash) {
   return (
 
        <Layout
+    // Сквозной поиск собираем здесь: только App знает все данные и умеет
+    // переходить к найденному. Шапка получает готовый элемент.
+    search={<GlobalSearch variant="topbar" {...globalSearchProps} />}
+    searchSidebar={<GlobalSearch variant="sidebar" {...globalSearchProps} />}
     currentView={currentView}
     setView={setCurrentView}
     onAction={handleAction}

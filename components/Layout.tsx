@@ -35,6 +35,9 @@ interface LayoutProps {
   unreadNotifCount?: number;
   onOpenNotifications?: () => void;
   showNotificationsBell?: boolean;
+  /** Сквозной поиск: приходит готовым из App, чтобы шапка не знала о данных */
+  search?: React.ReactNode;
+  searchSidebar?: React.ReactNode;
   showTasks?: boolean;
   showEmployees?: boolean;
   showSuppliers?: boolean;
@@ -77,6 +80,8 @@ const Layout: React.FC<LayoutProps> = ({
   unreadNotifCount = 0,
   onOpenNotifications,
   showNotificationsBell = false,
+  search,
+  searchSidebar,
   showTasks = false,
   showEmployees = false,
   showSuppliers = false,
@@ -656,6 +661,8 @@ const counts = useMemo(() => {
             </div>
           </div>
 
+          <div className="flex items-center gap-2 shrink-0">
+          {search}
           {showNotificationsBell && (
             <button
               onClick={onOpenNotifications}
@@ -670,6 +677,7 @@ const counts = useMemo(() => {
               )}
             </button>
           )}
+          </div>
         </div>
       </header>
 
@@ -711,6 +719,10 @@ const counts = useMemo(() => {
               </button>
             )}
           </div>
+          {/* Поиск сразу под названием: за ним приходят чаще, чем за любым
+              пунктом меню, и на компьютере он всегда на виду. */}
+          {searchSidebar && <div className="mt-3">{searchSidebar}</div>}
+
           <div className="mt-2 flex gap-2 items-center flex-wrap">
               {/*{!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}*/}
               {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}
