@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
 import { ICONS } from '../constants';
 import { AppNotification, NotificationType } from '../types';
-import { TYPE_META, NOTIFICATION_TYPE_FILTERS, groupLabel, NotificationDetailModal } from './NotificationShared';
+import { TYPE_META, NOTIFICATION_TYPE_FILTERS, groupLabel, NotificationDetailModal, FeedEnd } from './NotificationShared';
+import { useNotificationFeed } from './useNotificationFeed';
 
 interface NotificationsPageProps {
   onBack: () => void;
@@ -12,14 +13,20 @@ interface NotificationsPageProps {
 type ReadFilter = 'all' | 'unread' | 'archived';
 
 const NotificationsPage: React.FC<NotificationsPageProps> = ({ onBack, onUnreadChange }) => {
-  const [items, setItems] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [readFilter, setReadFilter] = useState<ReadFilter>('all');
   const [typeFilter, setTypeFilter] = useState<NotificationType | 'all'>('all');
-  const [isLoading, setIsLoading] = useState(true);
   const [detailNotif, setDetailNotif] = useState<AppNotification | null>(null);
 
   const isArchivedView = readFilter === 'archived';
+
+  // Здесь лента без ограничения по сроку — на то она и «все»: продолжение
+  // подтягивается по мере прокрутки, пока не кончится история.
+  const { items, setItems, isLoading, isLoadingMore, hasMore, loadMore } = useNotificationFeed({
+    archived: isArchivedView,
+    unread: readFilter === 'unread',
+    limit: 50,
+  });
 
   const loadUnreadCount = async () => {
     try {
@@ -31,34 +38,16 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onBack, onUnreadC
     }
   };
 
-  const loadData = async () => {
-    setIsLoading(true);
-    try {
-      const res = await api.getNotifications({ archived: isArchivedView });
-      setItems(res.items);
-    } catch (error) {
-      console.error('Failed to load notifications:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
     loadUnreadCount();
   }, []);
 
-  // Перезапрашиваем только при переходе между архивом и обычной лентой — Все/Непрочитанные
-  // фильтруются на клиенте из уже загрученного списка.
-  useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isArchivedView]);
-
-  const visibleItems = useMemo(() => {
-    return items
-      .filter(n => (readFilter === 'unread' ? !n.isRead : true))
-      .filter(n => (typeFilter === 'all' ? true : n.type === typeFilter));
-  }, [items, readFilter, typeFilter]);
+  // Прочитанное/архив/непрочитанные просит сам сервер, тип отбираем на месте:
+  // он лишь сужает уже загруженное, доливать ленту это не мешает.
+  const visibleItems = useMemo(
+    () => items.filter(n => (typeFilter === 'all' ? true : n.type === typeFilter)),
+    [items, typeFilter]
+  );
 
   const groups = useMemo(() => {
     const map = new Map<string, AppNotification[]>();
@@ -211,6 +200,17 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ onBack, onUnreadC
               </div>
             </div>
           ))
+        )}
+
+        {/* Показываем продолжение и когда фильтр по типу опустошил экран:
+            записи нужного типа могут лежать дальше по ленте. */}
+        {!isLoading && (visibleItems.length > 0 || hasMore) && (
+          <FeedEnd
+            hasMore={hasMore}
+            isLoadingMore={isLoadingMore}
+            onMore={loadMore}
+            endLabel="Это вся история"
+          />
         )}
       </div>
 

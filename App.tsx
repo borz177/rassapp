@@ -1288,7 +1288,7 @@ useEffect(() => {
 
   // Ключ меняется вместе с содержимым окна: те, кто видел прошлое обновление,
   // должны увидеть и новое, а не считаться уже показанными.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v32';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v33';
   const REPEAT_AFTER = 10 * 60 * 60 * 1000;
 
   const lastShown = localStorage.getItem(STORAGE_KEY);
@@ -1296,7 +1296,7 @@ useEffect(() => {
 
   if (!lastShown || now - Number(lastShown) >= REPEAT_AFTER) {
     // Чтобы перестать показывать анонс, не удаляя его, — поставьте здесь false.
-    setShowTemplateUpdateModal(false);
+    setShowTemplateUpdateModal(true);
     localStorage.setItem(STORAGE_KEY, String(now));
   }
 }, [user, isPublicMode]);
@@ -5833,21 +5833,21 @@ if (!user && !showSplash) {
             словами: результат, а не устройство. */}
         <div className="divide-y divide-gray-100 dark:divide-slate-800 mb-6">
           <div className="flex items-center gap-3 py-4">
-            <div className="text-2xl">📷</div>
+            <div className="text-2xl">🔍</div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Штрихкоды на складе</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Поиск по всему сразу</p>
               <p className="text-xs text-gray-500 dark:text-slate-500">
-                Сканируйте камерой или сканером — товар сразу в кассе и приходе. Печать этикеток.
+                Одно поле на клиентов, договоры, товары и операции. Ищите по имени, телефону или номеру договора.
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3 py-4">
-            <div className="text-2xl">📅</div>
+            <div className="text-2xl">🖨️</div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Платежи этого месяца</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Договор — прямо в карточке клиента</p>
               <p className="text-xs text-gray-500 dark:text-slate-500">
-                Нажмите «Ожидаемые платежи» на Главной — откроется список.
+                Кнопка «…» у договора: распечатать или удалить, не заходя в «Договоры».
               </p>
             </div>
           </div>

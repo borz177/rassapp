@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
 import { ICONS } from '../constants';
 import { AppNotification } from '../types';
-import { TYPE_META, groupLabel, NotificationDetailModal } from './NotificationShared';
+import { TYPE_META, groupLabel, NotificationDetailModal, FeedEnd } from './NotificationShared';
+import { useNotificationFeed, weekAgoIso } from './useNotificationFeed';
 
 interface NotificationsPanelProps {
   onClose: () => void;
@@ -12,10 +13,18 @@ interface NotificationsPanelProps {
 }
 
 const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnreadChange, onOpenSettings, onOpenAll }) => {
-  const [items, setItems] = useState<AppNotification[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
-  const [isLoading, setIsLoading] = useState(true);
   const [detailNotif, setDetailNotif] = useState<AppNotification | null>(null);
+
+  // Окно — про свежее: лента за последние семь дней. Вся история осталась за
+  // кнопкой «Все уведомления» внизу. А вот непрочитанные показываем целиком,
+  // сколько бы им ни было дней: их человек ещё не видел.
+  const since = useMemo(() => weekAgoIso(), []);
+  const { items, setItems, isLoading, isLoadingMore, hasMore, loadMore } = useNotificationFeed({
+    since: filter === 'all' ? since : null,
+    unread: filter === 'unread',
+    limit: 50,
+  });
 
   // Даём закрывающей анимации доиграть (280мс = длительность animate-slide-down-sheet)
   // перед тем как реально снять панель с рендера.
@@ -25,31 +34,22 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
     setTimeout(onClose, 280);
   };
 
-  const loadData = async () => {
-    try {
-      const res = await api.getNotifications();
-      setItems(res.items);
-    } catch (error) {
-      console.error('Failed to load notifications:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // Счётчик берём с сервера, а не из загруженного куска: в окне теперь только
+  // неделя, и считать непрочитанные по ней значило бы занижать бейдж.
+  const [unreadCount, setUnreadCount] = useState(0);
   useEffect(() => {
-    loadData();
+    api.getUnreadNotificationCount()
+      .then(setUnreadCount)
+      .catch(error => console.error('Failed to load unread notifications count:', error));
   }, []);
-
-  const unreadCount = useMemo(() => items.filter(n => !n.isRead).length, [items]);
 
   useEffect(() => {
     onUnreadChange(unreadCount);
   }, [unreadCount]);
 
-  const visibleItems = useMemo(
-    () => (filter === 'unread' ? items.filter(n => !n.isRead) : items),
-    [items, filter]
-  );
+  // На вкладке непрочитанных сервер уже отдал только их. Прочитанное на месте
+  // не прячем — иначе список дёргается под пальцем при каждом открытии.
+  const visibleItems = items;
 
   const groups = useMemo(() => {
     const map = new Map<string, AppNotification[]>();
@@ -64,6 +64,7 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
   const markRead = async (notif: AppNotification) => {
     if (notif.isRead) return;
     setItems(prev => prev.map(n => (n.id === notif.id ? { ...n, isRead: true } : n)));
+    setUnreadCount(c => Math.max(0, c - 1));
     try {
       await api.markNotificationRead(notif.id);
     } catch (error) {
@@ -78,6 +79,7 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
 
   const markAllRead = async () => {
     setItems(prev => prev.map(n => ({ ...n, isRead: true })));
+    setUnreadCount(0);
     try {
       await api.markAllNotificationsRead();
     } catch (error) {
@@ -88,6 +90,7 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
   // Панель показывает только неархивную ленту — заархивированное уведомление просто исчезает из списка
   const handleArchiveToggle = async (notif: AppNotification) => {
     setItems(prev => prev.filter(n => n.id !== notif.id));
+    if (!notif.isRead) setUnreadCount(c => Math.max(0, c - 1));
     setDetailNotif(null);
     try {
       await api.archiveNotification(notif.id);
@@ -140,10 +143,15 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
                   : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
               }`}
             >
-              {tab === 'all' ? 'Все' : `Непрочитанные${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
+              {tab === 'all' ? 'За неделю' : `Непрочитанные${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
             </button>
           ))}
         </div>
+
+        {/* Человек должен понимать, что перед ним не вся история, а свежее */}
+        <p className="px-4 pt-2 text-xs text-slate-400 dark:text-slate-500">
+          {filter === 'all' ? 'Последние 7 дней' : 'Все непрочитанные, за любой срок'}
+        </p>
 
         {/* List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -152,7 +160,15 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
           ) : groups.length === 0 ? (
             <div className="text-center text-slate-400 dark:text-slate-500 py-10">
               <div className="flex justify-center mb-2 opacity-50">{ICONS.Bell}</div>
-              <p className="text-sm">{filter === 'unread' ? 'Нет непрочитанных уведомлений' : 'Пока нет уведомлений'}</p>
+              <p className="text-sm">{filter === 'unread' ? 'Нет непрочитанных уведомлений' : 'За неделю уведомлений не было'}</p>
+              {filter === 'all' && (
+                <button
+                  onClick={onOpenAll}
+                  className="mt-3 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  Посмотреть за всё время
+                </button>
+              )}
             </div>
           ) : (
             groups.map(([label, groupItems]) => (
@@ -190,6 +206,15 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
                 </div>
               </div>
             ))
+          )}
+
+          {!isLoading && groups.length > 0 && (
+            <FeedEnd
+              hasMore={hasMore}
+              isLoadingMore={isLoadingMore}
+              onMore={loadMore}
+              endLabel={filter === 'all' ? 'Это всё за неделю' : 'Больше непрочитанных нет'}
+            />
           )}
         </div>
 

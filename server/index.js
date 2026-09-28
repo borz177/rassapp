@@ -5760,20 +5760,36 @@ app.get('/api/notifications', auth, async (req, res) => {
     }
 
     const limit = Math.min(parseInt(req.query.limit) || 30, 100);
-    const cursor = req.query.cursor;
     const archived = req.query.archived === 'true';
+    const unreadOnly = req.query.unread === 'true';
+
+    // Даты передаём в запрос объектами, а не строками. created_at — timestamp
+    // без пояса, и записан он в поясе этого процесса; драйвер и прочитает, и
+    // запишет Date в том же поясе. Строка «...Z» превратилась бы в наивное
+    // время UTC, и сравнение разъехалось бы ровно на смещение сервера — в
+    // Москве на три часа, то есть страницы ленты теряли бы часть записей.
+    const asDate = value => (value && !Number.isNaN(Date.parse(value)) ? new Date(value) : null);
+    const cursor = asDate(req.query.cursor);
+    // Окно уведомлений показывает ленту за неделю: тянуть в него всю историю
+    // незачем, а у активного пользователя её за два месяца набирается под тысячу.
+    const since = asDate(req.query.since);
 
     const params = [await notificationAudience(req.user)];
-    let cursorClause = '';
+    let filters = '';
     if (cursor) {
       params.push(cursor);
-      cursorClause = `AND created_at < $${params.length}`;
+      filters += ` AND created_at < $${params.length}`;
     }
+    if (since) {
+      params.push(since);
+      filters += ` AND created_at >= $${params.length}`;
+    }
+    if (unreadOnly) filters += ' AND is_read = FALSE';
     params.push(limit);
 
     const notifResult = await pool.query(
       `SELECT id, type, title, body, data, is_read, created_at FROM notifications
-       WHERE user_id = ANY($1) AND is_archived = ${archived ? 'TRUE' : 'FALSE'} ${cursorClause}
+       WHERE user_id = ANY($1) AND is_archived = ${archived ? 'TRUE' : 'FALSE'} ${filters}
        ORDER BY created_at DESC LIMIT $${params.length}`,
       params
     );
@@ -5782,11 +5798,28 @@ app.get('/api/notifications', auth, async (req, res) => {
     // поэтому они попадают только в обычную (неархивную) ленту.
     let broadcastItems = [];
     if (!archived && req.user.role !== 'admin') {
+      // Те же рамки, что и у обычных уведомлений. Без курсора рассылки
+      // приходили бы заново с каждой подгруженной страницей.
+      const bParams = [req.user.role];
+      let bFilters = '';
+      if (cursor) {
+        bParams.push(cursor);
+        bFilters += ` AND created_at < $${bParams.length}`;
+      }
+      if (since) {
+        bParams.push(since);
+        bFilters += ` AND created_at >= $${bParams.length}`;
+      }
+      if (unreadOnly) {
+        bParams.push(JSON.stringify([req.user.id]));
+        bFilters += ` AND NOT (read_by_users @> $${bParams.length}::jsonb)`;
+      }
+      bParams.push(limit);
       const broadcastResult = await pool.query(`
         SELECT id, title, message, created_at, read_by_users FROM broadcast_messages
-        WHERE is_active = TRUE AND (target_role IS NULL OR target_role = $1)
-        ORDER BY created_at DESC LIMIT 50
-      `, [req.user.role]);
+        WHERE is_active = TRUE AND (target_role IS NULL OR target_role = $1) ${bFilters}
+        ORDER BY created_at DESC LIMIT $${bParams.length}
+      `, bParams);
       broadcastItems = broadcastResult.rows.map(b => ({
         id: `broadcast_${b.id}`,
         type: 'ADMIN_BROADCAST',

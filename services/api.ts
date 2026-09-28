@@ -1511,10 +1511,20 @@ export const api = {
         return json;
     },
 
-    getNotifications: async (opts?: { cursor?: string; archived?: boolean }): Promise<{ items: AppNotification[]; nextCursor: string | null }> => {
+    /**
+     * Лента уведомлений. `since` — ISO-дата, старше которой не показываем
+     * (окно уведомлений берёт неделю), `unread` — только непрочитанные,
+     * `cursor` — продолжение ленты с последней загруженной записи.
+     */
+    getNotifications: async (opts?: {
+        cursor?: string; archived?: boolean; since?: string; unread?: boolean; limit?: number;
+    }): Promise<{ items: AppNotification[]; nextCursor: string | null }> => {
         const params: Record<string, string> = {};
         if (opts?.cursor) params.cursor = opts.cursor;
         if (opts?.archived) params.archived = 'true';
+        if (opts?.since) params.since = opts.since;
+        if (opts?.unread) params.unread = 'true';
+        if (opts?.limit) params.limit = String(opts.limit);
         return api.get('/notifications', Object.keys(params).length ? params : undefined);
     },
 

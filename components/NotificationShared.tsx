@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ICONS } from '../constants';
 import { AppNotification, NotificationType } from '../types';
 
@@ -42,6 +42,55 @@ export const groupLabel = (dateStr: string): string => {
   if (isSameDay(date, today)) return 'Сегодня';
   if (isSameDay(date, yesterday)) return 'Вчера';
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+};
+
+/**
+ * Конец списка: подтягивает продолжение, когда до него долистали.
+ *
+ * Кнопка остаётся видимой — не во всяком окне наблюдатель успевает сработать
+ * (быстрая прокрутка, старый webview), и тогда лента продолжается по нажатию.
+ */
+export const FeedEnd: React.FC<{
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  onMore: () => void;
+  /** Что написать, когда лента кончилась. Без него просто ничего не пишем. */
+  endLabel?: React.ReactNode;
+}> = ({ hasMore, isLoadingMore, onMore, endLabel }) => {
+  const sentinel = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!hasMore || isLoadingMore) return;
+    const node = sentinel.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      entries => { if (entries.some(e => e.isIntersecting)) onMore(); },
+      { rootMargin: '120px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, onMore]);
+
+  if (!hasMore) {
+    return endLabel ? (
+      <div className="pt-2 pb-1 text-center text-xs text-slate-400 dark:text-slate-500">{endLabel}</div>
+    ) : null;
+  }
+
+  return (
+    <div ref={sentinel} className="pt-1 pb-2 flex justify-center">
+      {isLoadingMore ? (
+        <span className="text-xs text-slate-400 dark:text-slate-500 py-2">Загружаем…</span>
+      ) : (
+        <button
+          onClick={onMore}
+          className="text-sm font-medium text-indigo-600 dark:text-indigo-400 px-4 py-2 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
+        >
+          Показать ещё
+        </button>
+      )}
+    </div>
+  );
 };
 
 interface NotificationDetailModalProps {
