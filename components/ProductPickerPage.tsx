@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { formatQuantity } from '../src/units';
 import type { Product, SaleStockItem, StockLocation } from '../types';
 import { formatCurrency, maxPickableQty, stockOnWarehouse } from '../src/utils';
 import TopBarBack from './TopBarBack';
@@ -132,7 +133,7 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
     if ((picked[p.id] || 0) >= cap) {
       setBlocked(cap <= 0
         ? `«${p.name}» нет на складе. Разрешить продажу в минус можно в настройках магазина.`
-        : `«${p.name}»: на складе ${cap} ${p.unit || 'шт'} — больше не взять без продажи в минус.`);
+        : `«${p.name}»: на складе ${formatQuantity(cap, p)} — больше не взять без продажи в минус.`);
       return;
     }
     setBlocked(null);
@@ -156,13 +157,14 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
     if (current >= cap) {
       return {
         tone: 'error',
-        title: cap <= 0 ? `«${p.name}» нет на складе` : `На складе ${cap} ${p.unit || 'шт'}`,
+        title: cap <= 0 ? `«${p.name}» нет на складе` : `На складе ${formatQuantity(cap, p)}`,
         subtitle: 'Больше не взять без продажи в минус',
       };
     }
     setBlocked(null);
     change(p, 1);
-    return { tone: 'ok', title: `+1 ${p.name}`, subtitle: `Выбрано ${current + 1} ${p.unit || 'шт'}` };
+    // У упаковок сразу говорим, сколько это всего: «Выбрано 3 кор (36 шт)»
+    return { tone: 'ok', title: `+1 ${p.name}`, subtitle: `Выбрано ${formatQuantity(current + 1, p)}` };
   };
 
   useBarcodeScanInput(code => {

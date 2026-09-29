@@ -4,6 +4,7 @@ import type {
 } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { formatCurrency, listedWarehouses, stockOnWarehouse, stockInScope } from '../src/utils';
+import { formatQuantity, packLabel, unitOf } from '../src/units';
 import { buildJournalDocs, KIND_LABEL, type JournalDoc } from '../src/journalDocs';
 import TopBarBack from './TopBarBack';
 import ImageViewer from './ImageViewer';
@@ -247,7 +248,10 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
               {infoRow('Артикул', product.sku || '—')}
               {infoRow('Штрихкод', product.barcodes?.length ? product.barcodes.join(', ') : '—')}
               {infoRow('Категория', product.category || 'Общее')}
-              {infoRow('Единица', product.unit || 'шт')}
+              {infoRow('Единица', unitOf(product.unit))}
+              {/* Вложение показываем отдельной строкой: это про товар, а не про
+                  остаток, и человеку важно видеть его в карточке до продажи. */}
+              {packLabel(product) && infoRow('В упаковке', packLabel(product).replace('по ', ''))}
             </div>
 
             <div>
@@ -264,10 +268,12 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
             <div>
               <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-2 px-1">Остатки</p>
               <div className={card}>
-                {infoRow('Всего', `${stockInScope(product, warehouseScope)} ${product.unit || 'шт'}`)}
-                {perWarehouse.map(w => infoRow(w.name, `${w.qty} ${product.unit || 'шт'}`))}
+                {/* У упаковок рядом с числом коробок сразу видно, сколько это
+                    всего — «5 кор (60 шт)»: считать в уме на складе неудобно. */}
+                {infoRow('Всего', formatQuantity(stockInScope(product, warehouseScope), product))}
+                {perWarehouse.map(w => infoRow(w.name, formatQuantity(w.qty, product)))}
                 {product.minStock !== undefined && product.minStock !== null &&
-                  infoRow('Минимальный остаток', `${product.minStock} ${product.unit || 'шт'}`)}
+                  infoRow('Минимальный остаток', `${product.minStock} ${unitOf(product.unit)}`)}
                 {product.buyPrice ? infoRow('В закупе', `${formatCurrency(stockInScope(product, warehouseScope) * product.buyPrice, cents)} ₽`) : null}
               </div>
             </div>

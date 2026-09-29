@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import UnitPicker from './UnitPicker';
+import { DEFAULT_UNIT, isPackUnit, packLabel, parseLegacyUnit, unitOf } from '../src/units';
 import type { Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { applyStockDelta, listedWarehouses, productOnWarehouse, stockOnWarehouse, stockInScope, scopeStockMovements } from '../src/utils';
@@ -51,8 +53,19 @@ interface WarehouseProps {
   warehouseScope?: string[] | null;
 }
 
+/**
+ * Вложение для формы: своё, если его уже указали полем, иначе — разобранное из
+ * единицы, куда его вписывали руками («5 комплект»).
+ */
+const packSizeOf = (p: Product, legacy: { packSize?: number }): string => {
+  if (p.packSize !== undefined && p.packSize !== null) return String(p.packSize);
+  return legacy.packSize ? String(legacy.packSize) : '';
+};
+
 const emptyForm = {
-  name: '', sku: '', price: '', buyPrice: '', category: '', unit: 'шт',
+  name: '', sku: '', price: '', buyPrice: '', category: '', unit: DEFAULT_UNIT,
+  /** Сколько внутри упаковки и чего именно — пусто у штучных единиц */
+  packSize: '', packUnit: DEFAULT_UNIT,
   minStock: '', description: '', images: [] as string[],
   /** Куда положить товар: склад начального остатка */
   warehouseId: '',
@@ -413,10 +426,14 @@ const Warehouse: React.FC<WarehouseProps> = ({
   };
   const openEdit = (p: Product) => {
     setEditing(p);
+    const legacy = parseLegacyUnit(p.unit);
     setForm({
       name: p.name, sku: p.sku || '', price: String(p.price ?? ''),
       buyPrice: String(p.buyPrice ?? ''), category: p.category || '',
-      unit: p.unit || 'шт', minStock: p.minStock === undefined ? '' : String(p.minStock),
+      // «5 комплект» из старых карточек раскладываем на единицу и вложение —
+      // показываем разбор человеку, а не переписываем данные молча.
+      unit: legacy.unit, packSize: packSizeOf(p, legacy), packUnit: p.packUnit || DEFAULT_UNIT,
+      minStock: p.minStock === undefined ? '' : String(p.minStock),
       description: p.description || '', images: p.images || [],
       barcodes: (p.barcodes || []).slice(1), barcodeDraft: p.barcodes?.[0] || '',
       warehouseId: warehouseFilter === 'ALL' ? defaultWarehouseId : warehouseFilter,
@@ -533,7 +550,11 @@ const Warehouse: React.FC<WarehouseProps> = ({
         sku: form.sku.trim() || undefined,
         barcodes: codes.length ? codes : undefined,
         buyPrice: form.buyPrice === '' ? undefined : num(form.buyPrice),
-        unit: form.unit.trim() || 'шт',
+        unit: form.unit.trim() || DEFAULT_UNIT,
+        // Вложение есть только у упаковок: у килограмма его спрашивать незачем,
+        // а оставшееся от прошлой единицы число вводило бы в заблуждение.
+        packSize: isPackUnit(form.unit) && form.packSize !== '' ? num(form.packSize) : undefined,
+        packUnit: isPackUnit(form.unit) && form.packSize !== '' ? (form.packUnit || DEFAULT_UNIT) : undefined,
         images: form.images.length ? form.images : undefined,
         minStock: form.minStock === '' ? undefined : num(form.minStock),
         description: form.description.trim() || undefined,
@@ -1005,7 +1026,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
                   {p.sku ? `${p.sku} · ` : ''}{money(p.price)} ₽
                 </p>
                 <p className={`text-xs font-bold mt-0.5 ${isLow(p) ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
-                  {money(stockOf(p))} {p.unit || 'шт'}
+                  {money(stockOf(p))} {unitOf(p.unit)}
+                  {/* Вложение в списке — обычным начертанием: это про товар, а
+                      не про остаток, и спорить с числом слева оно не должно. */}
+                  {packLabel(p) && <span className="font-normal"> · {packLabel(p)}</span>}
                   {isLow(p) ? ' · мало' : ''}
                 </p>
               </div>
@@ -1230,10 +1254,14 @@ const Warehouse: React.FC<WarehouseProps> = ({
                 <span className={`${labelCls} mb-1`}>Цена продажи</span>
                 <input value={form.price} onChange={e => setForm(prev => ({ ...prev, price: e.target.value }))} placeholder="0" inputMode="decimal" className={inputCls} />
               </label>
-              <label className="block min-w-0">
-                <span className={`${labelCls} mb-1`}>Ед. изм.</span>
-                <input value={form.unit} onChange={e => setForm(prev => ({ ...prev, unit: e.target.value }))} placeholder="шт" className={inputCls} />
-              </label>
+              <UnitPicker
+                unit={form.unit}
+                packSize={form.packSize}
+                packUnit={form.packUnit}
+                onChange={next => setForm(prev => ({ ...prev, ...next }))}
+                labelClassName={labelCls}
+                inputClassName={inputCls}
+              />
               <label className="block min-w-0">
                 <span className={`${labelCls} mb-1`}>Мин. остаток</span>
                 <input value={form.minStock} onChange={e => setForm(prev => ({ ...prev, minStock: e.target.value }))} placeholder="Не следить" inputMode="decimal" className={inputCls} />

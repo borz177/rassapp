@@ -599,6 +599,15 @@
   border-top: env(safe-area-inset-top, 0px) solid transparent;
 }
 
+/* Выбор из списка, открытый ИЗ формы, которая сама лежит на .z-modal-top —
+   например единица измерения в карточке товара. Без своего слоя такой список
+   открывается под формой: нажать по нему нельзя, а выглядит это как «кнопка
+   не работает». */
+.z-sheet-select {
+  z-index: 120;
+  border-top: env(safe-area-inset-top, 0px) solid transparent;
+}
+
 /* Нижние листы (overlay с items-end) доходят до самого низа экрана — как
    нативные шторки. Под жестовую полосу отступает их содержимое: прозрачная
    нижняя рамка панели, фон рисуется под ней (background-clip: border-box), а
@@ -606,7 +615,8 @@
    Только на телефоне: с sm: эти же окна становятся центрированными. */
 @media (max-width: 639px) {
   .z-modal.items-end > *,
-  .z-modal-top.items-end > * {
+  .z-modal-top.items-end > *,
+  .z-sheet-select.items-end > * {
     border-bottom: env(safe-area-inset-bottom, 0px) solid transparent;
   }
 }
