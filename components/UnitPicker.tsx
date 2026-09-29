@@ -107,24 +107,32 @@ const UnitPicker: React.FC<UnitPickerProps> = ({
           <span className={`${labelClassName} mb-1 block`}>
             Сколько внутри <span className="normal-case font-normal text-slate-400">— необязательно</span>
           </span>
-          <div className="flex gap-2">
-            <input
-              value={packSize}
-              onChange={e => onChange({ unit, packSize: e.target.value, packUnit: packUnit || DEFAULT_UNIT })}
-              placeholder="Например, 12"
-              inputMode="decimal"
-              autoComplete="off" autoCorrect="off" spellCheck={false}
-              className={`${inputClassName} flex-1 min-w-0`}
-            />
-            <select
-              value={packUnit || DEFAULT_UNIT}
-              onChange={e => onChange({ unit, packSize, packUnit: e.target.value })}
-              className={`${inputClassName} w-24 shrink-0`}
-            >
-              {CONTENT_UNITS.map(u => (
-                <option key={u.id} value={u.id}>{u.id}</option>
-              ))}
-            </select>
+          {/* Ширину задают обёртки, а не сами поля: в классах формы есть
+              w-full, и он перебивает любую ширину, поставленную полю рядом, —
+              поле числа схлопывалось в ноль, а выбор растягивался за карточку. */}
+          <div className="flex gap-2 w-full">
+            <div className="flex-1 min-w-0">
+              <input
+                value={packSize}
+                onChange={e => onChange({ unit, packSize: e.target.value, packUnit: packUnit || DEFAULT_UNIT })}
+                placeholder="Например, 12"
+                inputMode="decimal"
+                autoComplete="off" autoCorrect="off" spellCheck={false}
+                className={inputClassName}
+              />
+            </div>
+            <div className="w-24 shrink-0">
+              <select
+                value={packUnit || DEFAULT_UNIT}
+                onChange={e => onChange({ unit, packSize, packUnit: e.target.value })}
+                className={inputClassName}
+                aria-label="Что внутри"
+              >
+                {CONTENT_UNITS.map(u => (
+                  <option key={u.id} value={u.id}>{u.id}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
             Остаток считается в «{unitOf(unit)}»: на складе лежат упаковки, а это — что в них.
