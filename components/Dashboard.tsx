@@ -1,4 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import ProfitTotalsModal from './ProfitTotalsModal';
+import { profitTotals } from '../src/profitTotals';
 import ModalPortal from './ModalPortal';
 import { Sale, Customer, Account, AppSettings, Investor, User, Product, RetailSale, Supplier, StockMovement, Expense } from '../types';
 import DashboardCash from './DashboardCash';
@@ -1044,6 +1046,8 @@ const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(nu
 const [showCalendarPicker, setShowCalendarPicker] = useState(false);
 const [calendarMonth, setCalendarMonth] = useState(new Date());
 const [selectedProfitType, setSelectedProfitType] = useState<'expected' | 'received' | null>(null);
+// Итоговая прибыль за всё время — та же пара карточек, но без привязки к месяцу
+const [selectedTotalsType, setSelectedTotalsType] = useState<'expected' | 'received' | null>(null);
 
 
 
@@ -1119,43 +1123,13 @@ const currentMonthName = useMemo(() => {
 
 
 
-  const profitStats = useMemo(() => {
-    const filteredSales = selectedAccountId
-        ? sales.filter(s => s.accountId === selectedAccountId)
-        : sales;
-
-    let receivedProfit = 0;
-    let expectedProfit = 0;
-
-    filteredSales.forEach(sale => {
-        if (sale.customerId.startsWith('system_')) return;
-        if (!sale.buyPrice || sale.buyPrice <= 0) return;
-
-        const profitMargin = saleProfitMargin(sale, profitFromPaymentsOnly);
-
-        const account = accounts?.find(a => a?.id === sale.accountId);
-        const managerShare = getManagerSharePercent(account, investors || []) / 100;
-
-        // 🔧 Считаем ФАКТИЧЕСКИ оплачено
-        const collectedPayments = sale.downPayment + sale.paymentPlan
-            .filter(p => p.isPaid && p.isRealPayment !== false)
-            .reduce((sum, p) => sum + p.amount, 0);
-
-        // При «только с платежей» первый взнос прибыли не даёт — вычитаем его из полученного
-        receivedProfit += (collectedPayments - (profitFromPaymentsOnly ? Math.min(sale.downPayment, collectedPayments) : 0)) * profitMargin;
-
-        // 🔧 Ожидаемая = ВСЁ, что ещё не оплачено (включая downPayment)
-        if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
-            const expectedRemaining = sale.totalAmount - collectedPayments;
-            expectedProfit += expectedRemaining * profitMargin;
-        }
-    });
-
-    return {
-        receivedProfit: Math.round(receivedProfit * 100) / 100,
-        expectedProfit: Math.round(expectedProfit * 100) / 100
-    };
-}, [sales, selectedAccountId, accounts, investors, profitFromPaymentsOnly]);
+  // Итог и его разбор по договорам считает один модуль: карточка показывает
+  // сумму, окно деталей — строки, из которых она сложена. Держать два счёта
+  // значило бы однажды показать в деталях не то, что на карточке.
+  const profitStats = useMemo(
+    () => profitTotals(sales, customers, { selectedAccountId, profitFromPaymentsOnly }),
+    [sales, customers, selectedAccountId, profitFromPaymentsOnly]
+  );
 
   const currentWorkingCapital = useMemo(() => {
       if (selectedAccountId) {
@@ -1887,7 +1861,8 @@ useEffect(() => {
     </div>
 </div>
         {/* Общая ожидаемая прибыль */}
-        <div className="group bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-800 dark:to-blue-950/30 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(100,116,139,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-200 dark:border-slate-700 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
+        <div onClick={() => setSelectedTotalsType('expected')}
+             className="group bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-800 dark:to-blue-950/30 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(100,116,139,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-200 dark:border-slate-700 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-pointer active:scale-[0.98]">
             <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 dark:bg-blue-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
             <div className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-600 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-slate-200 dark:shadow-slate-900/30">
                 <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1900,11 +1875,18 @@ useEffect(() => {
                     {formatCurrency(profitStats.expectedProfit, appSettings.showCents)}
                     <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
                 </p>
+                <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
+            </div>
+            <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                </svg>
             </div>
         </div>
 
         {/* Общая полученная прибыль */}
-        <div className="group bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/30 dark:to-green-950/30 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(16,185,129,0.15)] hover:shadow-xl transition-all duration-300 border border-emerald-100 dark:border-emerald-900/50 hover:border-emerald-300 flex flex-col relative overflow-hidden cursor-default">
+        <div onClick={() => setSelectedTotalsType('received')}
+             className="group bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/30 dark:to-green-950/30 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(16,185,129,0.15)] hover:shadow-xl transition-all duration-300 border border-emerald-100 dark:border-emerald-900/50 hover:border-emerald-300 flex flex-col relative overflow-hidden cursor-pointer active:scale-[0.98]">
             <div className="absolute -right-6 -top-6 w-24 h-24 bg-emerald-100 dark:bg-emerald-900/30 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
             <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-emerald-600 to-green-500 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative group-hover:scale-110 transition-transform duration-300 shadow-lg shadow-emerald-200 dark:shadow-emerald-900/30">
                 <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1917,6 +1899,12 @@ useEffect(() => {
                     {formatCurrency(profitStats.receivedProfit, appSettings.showCents)}
                     <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
                 </p>
+                <p className="text-[10px] sm:text-xs text-emerald-500 mt-1">Нажмите для деталей</p>
+            </div>
+            <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                <svg className="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                </svg>
             </div>
         </div>
     </div>
@@ -2374,6 +2362,24 @@ useEffect(() => {
   />
 )}
 
+
+{selectedTotalsType && (
+    <ProfitTotalsModal
+        type={selectedTotalsType}
+        rows={selectedTotalsType === 'expected' ? profitStats.expected : profitStats.received}
+        total={selectedTotalsType === 'expected' ? profitStats.expectedProfit : profitStats.receivedProfit}
+        appSettings={appSettings}
+        onClose={() => setSelectedTotalsType(null)}
+        onSelectCustomer={onSelectCustomer}
+        // Из строки открываем сам договор: в списке прибыли смотрят на
+        // конкретную сделку, а карточка клиента заставит искать её заново.
+        onOpenContract={(saleId: string, customerId: string) => {
+            const sale = sales.find(s => s.id === saleId);
+            if (sale) onViewSchedule(sale);
+            else onSelectCustomer(customerId);
+        }}
+    />
+)}
 
 {selectedProfitType && (
     <ProfitDetailsModal
