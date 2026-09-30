@@ -157,9 +157,7 @@ const ProfitTotalsModal: React.FC<ProfitTotalsModalProps> = ({
                     }`}>
                       {formatCurrency(row.profit, cents)} ₽
                     </p>
-                    {share > 0 && (
-                      <span className="text-[10px] text-slate-400">{share}% от суммы</span>
-                    )}
+                
                   </div>
                 </div>
 
