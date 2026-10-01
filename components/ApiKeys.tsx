@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { ApiKeyInfo, ApiKeyScope, OAuthConnection } from '../types';
 import { publicOrigin } from '../src/platform';
+import { appConfirm } from '../src/dialogs';
 
 /**
  * API-ключи: выдача, права и отзыв.
@@ -83,7 +84,7 @@ const ApiKeys: React.FC<{ allowed: boolean; onUpgrade?: () => void }> = ({ allow
   };
 
   const revoke = async (item: ApiKeyInfo) => {
-    if (!window.confirm(`Отозвать ключ «${item.name}»? Всё, что им пользуется, сразу перестанет работать.`)) return;
+    if (!await appConfirm(`Отозвать ключ «${item.name}»? Всё, что им пользуется, сразу перестанет работать.`)) return;
     setBusy(true); setError(null);
     try {
       await api.revokeApiKey(item.id);
@@ -96,7 +97,7 @@ const ApiKeys: React.FC<{ allowed: boolean; onUpgrade?: () => void }> = ({ allow
   };
 
   const disconnect = async (item: OAuthConnection) => {
-    if (!window.confirm(`Отключить «${item.app}»? Помощник сразу потеряет доступ к вашим данным.`)) return;
+    if (!await appConfirm(`Отключить «${item.app}»? Помощник сразу потеряет доступ к вашим данным.`)) return;
     setBusy(true); setError(null);
     try {
       await api.revokeOAuthConnection(item.id);

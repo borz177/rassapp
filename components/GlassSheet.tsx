@@ -34,8 +34,8 @@ interface GlassSheetProps {
   cancelLabel?: string | null;
   /** Кнопка справа: «Готово», «Сохранить» */
   action?: GlassSheetAction;
-  /** Закрытие мимо действия. Вернуть false — остаться на месте */
-  confirmClose?: () => boolean;
+  /** Закрытие мимо действия. Вернуть false — остаться на месте (можно асинхронно — окном appConfirm) */
+  confirmClose?: () => boolean | Promise<boolean>;
   /** Задан — лист становится формой (Enter на клавиатуре отправляет) */
   onSubmit?: (close: () => void) => void;
   /** Закреплено внизу, над краем экрана */
@@ -93,8 +93,16 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
   };
 
   // Закрыть мимо действия — с разрешения формы
-  const requestClose = () => {
-    if (confirmClose && !confirmClose()) { setDragY(0); return; }
+  const asking = useRef(false);
+  const requestClose = async () => {
+    if (asking.current || closingRef.current) return;
+    if (confirmClose) {
+      asking.current = true;
+      setDragY(0); // пока спрашиваем — лист на месте, а не повисшим на полпути
+      const ok = await confirmClose();
+      asking.current = false;
+      if (!ok) return;
+    }
     close();
   };
 

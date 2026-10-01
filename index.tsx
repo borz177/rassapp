@@ -6,6 +6,8 @@ import './src/index.css';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider } from './src/theme/ThemeContext';
+import AppDialogs from './components/AppDialogs';
+import { installAlertOverride } from './src/dialogs';
 import { registerSW } from 'virtual:pwa-register';
 
 // Register Service Worker for PWA offline support
@@ -43,6 +45,9 @@ if (!rootElement) {
 // Ставим до отрисовки: старая сборка может сломаться на первом же ленивом
 // экране, и перехват должен быть уже на месте.
 installStaleBundleGuard();
+// Сообщения (alert) — окном приложения, а не системной плашкой браузера.
+// Подтверждения (confirm) переписаны на appConfirm в местах вызова.
+installAlertOverride();
 
 const root = ReactDOM.createRoot(rootElement);
 root.render(
@@ -52,6 +57,7 @@ root.render(
     <ErrorBoundary>
       <ThemeProvider>
         <App />
+        <AppDialogs />
       </ThemeProvider>
     </ErrorBoundary>
   </React.StrictMode>

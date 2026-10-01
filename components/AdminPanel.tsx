@@ -7,6 +7,7 @@ import { User, SubscriptionPlan, ApiKeyInfo } from '../types';
 import { addMonthsClamped } from '../src/utils';
 import { ICONS } from '../constants';
 import { api } from '../services/api';
+import { appConfirm } from '../src/dialogs';
 
 // 🔹 Конфигурация лимитов тарифов
 const PLAN_LIMITS: Record<SubscriptionPlan, {
@@ -202,7 +203,7 @@ const AdminPanel: React.FC = () => {
         
         // Финальная валидация
         if (validationError) {
-            if (!window.confirm(`${validationError}\n\nПродолжить принудительно?`)) {
+            if (!await appConfirm(`${validationError}\n\nПродолжить принудительно?`)) {
                 return;
             }
         }
@@ -233,7 +234,7 @@ const AdminPanel: React.FC = () => {
         if (!apiModalUser) return;
         // Ключи больше не «перегенерируются»: их может быть несколько, и новый
         // не отменяет прежние — ненужный отзывают отдельно.
-        if (!window.confirm("Выдать новый API-ключ? Он будет показан один раз.")) return;
+        if (!await appConfirm("Выдать новый API-ключ? Он будет показан один раз.")) return;
 
         setActionLoading(true);
         try {
@@ -249,7 +250,7 @@ const AdminPanel: React.FC = () => {
 
     const handleRevokeApiKey = async (keyId: string, name: string) => {
         if (!apiModalUser) return;
-        if (!window.confirm(`Отозвать ключ «${name}»? Интеграции на нём сразу перестанут работать.`)) return;
+        if (!await appConfirm(`Отозвать ключ «${name}»? Интеграции на нём сразу перестанут работать.`)) return;
         setActionLoading(true);
         try {
             await api.adminRevokeApiKey(keyId);
@@ -263,7 +264,7 @@ const AdminPanel: React.FC = () => {
 
     // Для handleBlockUser (примерно строка 153):
 const handleBlockUser = async (user: User, block: boolean) => {
-    if (!window.confirm(`${block ? 'Заблокировать' : 'Разблокировать'} пользователя ${user.name}?`)) return;
+    if (!await appConfirm(`${block ? 'Заблокировать' : 'Разблокировать'} пользователя ${user.name}?`)) return;
     try {
         await api.adminSetUserStatus(user.id, { blocked: block });
         loadUsers(); // Обновить список
@@ -282,7 +283,7 @@ const handleResetUserPassword = async (user: User) => {
         alert('Пароль слишком короткий!');
         return;
     }
-    if (!window.confirm(`Сбросить пароль для ${user.name}?`)) return;
+    if (!await appConfirm(`Сбросить пароль для ${user.name}?`)) return;
 
     try {
         await api.adminResetUserPassword(user.id, newPassword);

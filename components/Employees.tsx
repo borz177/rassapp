@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { User, Investor, AppSettings, StockLocation } from '../types';
 import { ICONS } from '../constants';
+import { appConfirm } from '../src/dialogs';
 
 interface EmployeesProps {
   employees: User[];
@@ -179,8 +180,8 @@ const handleSubmit = (e: React.FormEvent) => {
     resetForm();
 };
 
-  const handleDelete = (id: string) => {
-      if (window.confirm("Удалить сотрудника?")) {
+  const handleDelete = async (id: string) => {
+      if (await appConfirm("Удалить сотрудника?")) {
           onDeleteEmployee(id);
       }
   };

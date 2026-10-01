@@ -78,6 +78,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { isIOSApp } from './src/platform';
 import { refreshNativePush, forgetNativePushOnLogout } from './src/nativePush';
 import { PushNotifications } from '@capacitor/push-notifications';
+import { appConfirm } from './src/dialogs';
 import { triggerPagePushBack } from './components/transitions/PagePush';
 import { useTheme } from './src/theme/ThemeContext';
 
@@ -1575,10 +1576,10 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         default: return true;
     }
 };
-  const showUpgradeAlert = (reason: string) => {
+  const showUpgradeAlert = async (reason: string) => {
     // iOS: звать к оплате нельзя (см. src/platform.ts) — только сообщаем.
     if (isIOSApp()) { alert(`${reason} Функция недоступна на вашем тарифе.`); return; }
-    if(window.confirm(`${reason} Оформите подписку для доступа.`)) { setCurrentView('TARIFFS'); }
+    if(await appConfirm(`${reason} Оформите подписку для доступа.`)) { setCurrentView('TARIFFS'); }
   };
 
   // 🔔 Опрос счётчика непрочитанных уведомлений (тариф Стандарт+) — раз в 45 сек +
@@ -3176,7 +3177,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
 
  const handleDeleteInvestor = async (id: string) => {
   if (!isManager) return;
-  if (!window.confirm('Удалить инвестора?')) return;
+  if (!await appConfirm('Удалить инвестора?')) return;
 
   try {
     // 1. Удаляем пользователя
@@ -4323,7 +4324,7 @@ const contractCounts = useMemo(() => {
                 }
             }
         } else if (op.type === 'INCOME') {
-            if (!window.confirm("Вы уверены, что хотите удалить эту операцию?")) return;
+            if (!await appConfirm("Вы уверены, что хотите удалить эту операцию?")) return;
             const sale = sales.find(s => s.id === op.raw.id);
             if (!sale) return;
 

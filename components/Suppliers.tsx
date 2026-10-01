@@ -3,6 +3,7 @@ import { Expense, Product, Sale, StockMovement, Supplier } from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency } from '../src/utils';
 import { supplierBalance, supplierSupplies } from '../src/supplierLedger';
+import { appConfirm } from '../src/dialogs';
 
 interface SuppliersProps {
   suppliers: Supplier[];
@@ -101,7 +102,7 @@ const Suppliers: React.FC<SuppliersProps> = ({
     resetForm();
   };
 
-  const handleDelete = (s: Supplier) => {
+  const handleDelete = async (s: Supplier) => {
     // Незакрытый расчёт — это и долг, и переплата: в обе стороны за партнёром
     // числятся деньги, и удалять его, теряя след, нельзя.
     const balance = balanceBySupplier[s.id] || 0;
@@ -112,7 +113,7 @@ const Suppliers: React.FC<SuppliersProps> = ({
       setActiveMenuId(null);
       return;
     }
-    if (window.confirm('Удалить поставщика?')) {
+    if (await appConfirm('Удалить поставщика?')) {
       onDeleteSupplier(s.id);
     }
     setActiveMenuId(null);

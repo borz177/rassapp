@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { ICONS } from '../constants';
+import { appConfirm } from '../src/dialogs';
 
 interface SupportChatProps {
   user: any;
@@ -141,7 +142,7 @@ const SupportChat: React.FC<SupportChatProps> = ({ user, onClose, onUnreadChange
   // Закрыть тикет
   const closeTicket = async () => {
     if (!selectedTicket) return;
-    if (!window.confirm('Закрыть этот тикет?')) return;
+    if (!await appConfirm('Закрыть этот тикет?')) return;
 
     try {
       await api.patch(`/support/tickets/${selectedTicket.id}/close`);

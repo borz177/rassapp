@@ -5,6 +5,7 @@ import { ICONS } from '../constants';
 import { checkGreenApiConnection } from '../services/whatsapp';
 import { api } from '../services/api';
 import { publicOrigin } from '../src/platform';
+import { appConfirm } from '../src/dialogs';
 
 interface IntegrationsProps {
   appSettings: AppSettings;
@@ -191,8 +192,8 @@ const Integrations: React.FC<IntegrationsProps> = ({
   };
 
   // 🔹 Отключить интеграцию
-  const handleDisconnect = () => {
-    if (!window.confirm("🔌 Отключить WhatsApp?\nРассылки и бот перестанут работать.")) return;
+  const handleDisconnect = async () => {
+    if (!await appConfirm("🔌 Отключить WhatsApp?\nРассылки и бот перестанут работать.")) return;
 
     onUpdateSettings({
       ...appSettings,
@@ -280,8 +281,8 @@ const Integrations: React.FC<IntegrationsProps> = ({
     setCurrentTemplates(newTemplates);
   };
 
-  const resetCurrentTemplate = () => {
-    if (!window.confirm('Вернуть шаблон к значению по умолчанию?')) return;
+  const resetCurrentTemplate = async () => {
+    if (!await appConfirm('Вернуть шаблон к значению по умолчанию?')) return;
     const newTemplates = { ...templates };
     if (activeTemplateTab === 'UPCOMING') {
       newTemplates.upcoming = DEFAULT_TEMPLATES.upcoming;
@@ -294,8 +295,8 @@ const Integrations: React.FC<IntegrationsProps> = ({
     setCurrentTemplates(newTemplates);
   };
 
-  const resetAllTemplates = () => {
-    if (!window.confirm('Вернуть ВСЕ шаблоны к значениям по умолчанию?\n\nЭто действие нельзя отменить.')) return;
+  const resetAllTemplates = async () => {
+    if (!await appConfirm('Вернуть ВСЕ шаблоны к значениям по умолчанию?\n\nЭто действие нельзя отменить.')) return;
     setTemplates(DEFAULT_TEMPLATES);
     setCurrentTemplates(DEFAULT_TEMPLATES);
   };

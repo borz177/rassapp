@@ -6,6 +6,7 @@ import { supplierSupplyBalances } from '../src/supplierLedger';
 import { ICONS } from '../constants';
 import { getInvestorAccount, getAccountShares, getManagerSharePercent, formatCurrency, getAccountProfitBalance, accountInvestment } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
+import { appConfirm } from '../src/dialogs';
 
 interface NewExpenseProps {
   investors: Investor[];
@@ -236,7 +237,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
     }
   }, [investors, sourceType]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // 🛡️ Защита от повторных отправок
@@ -254,7 +255,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
         // видна в карточке партнёра как «+». Раньше такую оплату не пропускали.
         if (initialData?.maxAmount != null && numAmount > initialData.maxAmount + 0.01) {
             const over = numAmount - initialData.maxAmount;
-            if (!window.confirm(`Сумма больше остатка долга (${initialData.maxAmount.toLocaleString('ru-RU')} ₽) на ${over.toLocaleString('ru-RU')} ₽.\n\nПереплата зачтётся в следующие поставки. Провести оплату?`)) return;
+            if (!await appConfirm(`Сумма больше остатка долга (${initialData.maxAmount.toLocaleString('ru-RU')} ₽) на ${over.toLocaleString('ru-RU')} ₽.\n\nПереплата зачтётся в следующие поставки. Провести оплату?`)) return;
         }
         if (!sourceAccountId) {
             alert("Выберите счёт списания");
@@ -356,7 +357,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                 const what = selectedDebtRemaining != null
                     ? `остатка долга по договору (${selectedDebtRemaining.toLocaleString('ru-RU')} ₽)`
                     : `остатка по приходу №${selectedSupply!.number} (${selectedSupply!.remaining.toLocaleString('ru-RU')} ₽)`;
-                if (!window.confirm(`Сумма больше ${what} на ${over.toLocaleString('ru-RU')} ₽.\n\nПереплата зачтётся в следующие поставки. Провести оплату?`)) return;
+                if (!await appConfirm(`Сумма больше ${what} на ${over.toLocaleString('ru-RU')} ₽.\n\nПереплата зачтётся в следующие поставки. Провести оплату?`)) return;
             }
         }
 

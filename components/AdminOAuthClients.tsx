@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { OAuthClientInfo } from '../types';
+import { appConfirm } from '../src/dialogs';
 
 /**
  * Регистрация помощников, которые входят «Через FinUchet».
@@ -64,7 +65,7 @@ const AdminOAuthClients: React.FC = () => {
   };
 
   const disable = async (client: OAuthClientInfo) => {
-    if (!window.confirm(`Отключить «${client.name}»? Все ${client.connections} подключений пользователей перестанут работать.`)) return;
+    if (!await appConfirm(`Отключить «${client.name}»? Все ${client.connections} подключений пользователей перестанут работать.`)) return;
     setBusy(true);
     try {
       await api.adminDisableOAuthClient(client.id);

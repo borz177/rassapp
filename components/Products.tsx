@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Product } from '../types';
 import { ICONS } from '../constants';
+import { appConfirm } from '../src/dialogs';
 
 interface ProductsProps {
   products: Product[];
@@ -59,8 +60,8 @@ const Products: React.FC<ProductsProps> = ({
     }
   };
 
-  const handleDeleteClick = (id: string) => {
-      if(window.confirm("Вы уверены, что хотите удалить этот товар?")) {
+  const handleDeleteClick = async (id: string) => {
+      if(await appConfirm("Вы уверены, что хотите удалить этот товар?")) {
           onDeleteProduct(id);
       }
   }

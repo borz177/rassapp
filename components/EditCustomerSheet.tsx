@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import GlassSheet, { SheetSection as Section } from './GlassSheet';
 import { Customer } from '../types';
+import { appConfirm } from '../src/dialogs';
 
 /**
  * Редактирование клиента — лист, как в системных формах iOS (GlassSheet).
@@ -75,7 +76,13 @@ const EditCustomerSheet: React.FC<EditCustomerSheetProps> = ({ customer, onClose
       cancelLabel="Отмена"
       action={{ label: 'Готово', submit: true, disabled: !(valid && dirty) }}
       onSubmit={save}
-      confirmClose={() => !dirty || window.confirm('Закрыть без сохранения? Изменения пропадут.')}
+      confirmClose={() => !dirty || appConfirm({
+        title: 'Закрыть без сохранения?',
+        message: 'Изменения пропадут.',
+        confirmLabel: 'Закрыть',
+        cancelLabel: 'Остаться',
+        destructive: true,
+      })}
     >
         <div className="space-y-6">
           <Section>

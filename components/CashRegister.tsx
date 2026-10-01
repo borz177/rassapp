@@ -9,6 +9,7 @@ import { accountCashSummary, accountWarehouses, cashPeriodFor } from '../src/acc
 import { Sale, Account, Expense, Investor, AppSettings, Customer, RetailSale, Product, StockLocation, StockMovement, Supplier } from '../types';
 import { ICONS } from '../constants';
 import { moneyInProfit, saleProfitMargin, isDownPaymentOf, formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, computeAccountBalances } from '../src/utils';
+import { appConfirm } from '../src/dialogs';
 
 // Цвета участников пула — те же роли, что у палитры инвесторов в отчётах:
 // человека узнают по кружку, а не вычитывают имя в таблице.
@@ -473,7 +474,7 @@ const AccountActionModal = ({
                               </p>
                             ) : (
                               <button
-                                  onClick={() => { if (window.confirm(`Удалить счёт «${account.name}»? Операций на нём нет, отменить будет нельзя.`)) { onDelete(account.id); onClose(); } }}
+                                  onClick={async () => { if (await appConfirm(`Удалить счёт «${account.name}»? Операций на нём нет, отменить будет нельзя.`)) { onDelete(account.id); onClose(); } }}
                                   className="w-full text-left px-4 py-3 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl flex items-center gap-3 transition-all group"
                               >
                                   <span className="w-8 h-8 bg-rose-50 dark:bg-rose-900/30 rounded-lg flex items-center justify-center text-rose-600 dark:text-rose-400 transition-all">

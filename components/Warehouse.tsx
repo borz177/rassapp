@@ -18,6 +18,7 @@ import { barcodeOwner, extractProductCode, findProductByCode, generateInternalBa
 import { useBarcodeScanInput } from '../src/barcodeWedge';
 import { scanBeep } from '../src/scanFeedback';
 import ProductImage from './ProductImage';
+import { appConfirm } from '../src/dialogs';
 
 interface WarehouseProps {
   products: Product[];
@@ -778,7 +779,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
                     </button>
                     {!w.isMain && (
                       <button onClick={async () => {
-                                if (!window.confirm(`Удалить склад «${w.name}»? Остатки на нём останутся в истории движений.`)) return;
+                                if (!await appConfirm(`Удалить склад «${w.name}»? Остатки на нём останутся в истории движений.`)) return;
                                 await onDeleteWarehouse(w.id);
                               }}
                               className="px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-xs font-bold">
@@ -855,8 +856,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
               {showArchived ? 'Вернуть' : 'В архив'}
             </button>
             <button disabled={bulkBusy}
-                    onClick={() => {
-                      if (!window.confirm(`Удалить ${selectedIds.length} товар(ов) без возможности восстановления?`)) return;
+                    onClick={async () => {
+                      if (!await appConfirm(`Удалить ${selectedIds.length} товар(ов) без возможности восстановления?`)) return;
                       runBulk(p => onDeleteProduct(p.id));
                     }}
                     className="py-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-xs font-bold disabled:opacity-50">
@@ -1107,7 +1108,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
             <button
               onClick={async () => {
                 const p2 = menuProduct;
-                if (!window.confirm(`Удалить «${p2.name}» без возможности восстановления?`)) return;
+                if (!await appConfirm(`Удалить «${p2.name}» без возможности восстановления?`)) return;
                 setMenuProduct(null);
                 await onDeleteProduct(p2.id);
               }}

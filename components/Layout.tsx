@@ -331,6 +331,10 @@ const Layout: React.FC<LayoutProps> = ({
     }
     velRef.current = { x: e.clientX, t: performance.now() };
     dragRef.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, baseX, active: false, pressTab };
+    // Захват пальца здесь не ставим: с ним click уходил бы панели, а не кнопке
+    // вкладки, и нажатие не переключало бы раздел. Касание пальцем браузер и
+    // так закрепляет за элементом, где оно началось; явный захват — с началом
+    // перетаскивания, ниже.
   };
 
   // Жест оказался не нашим (повели вверх — это прокрутка): капля возвращается домой
@@ -349,8 +353,10 @@ const Layout: React.FC<LayoutProps> = ({
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
     if (!d.active) {
-      if (Math.abs(dx) < 6) return;                       // ещё не тянут — это обычное нажатие
-      if (Math.abs(dy) > Math.abs(dx)) { cancelPress(); return; }  // ведут вверх/вниз — жест не наш
+      // Ещё не тянут — это обычное нажатие. Вертикаль не считаем: раньше
+      // небольшой сдвиг пальца вверх-вниз обрывал жест, и капля «слетала из рук».
+      if (Math.abs(dx) < 6) return;
+      void dy;
       d.active = true;
       setDragging(true);
       setPressed(true);
@@ -993,9 +999,11 @@ const counts = useMemo(() => {
       >
       <nav
         ref={navRef}
-        // touch-pan-y: вертикальную прокрутку страницы отдаём браузеру, горизонтальное
-        // ведение остаётся нам — иначе перетаскивание конфликтовало бы со скроллом.
-        className={`nav-glass nav-island pointer-events-auto px-2 pt-0 pb-1.5 flex justify-between items-end relative touch-pan-y select-none ${
+        // touch-none: касание панели целиком наше, как у системной панели вкладок.
+        // Раньше здесь был touch-pan-y — браузер забирал жест на прокрутку при
+        // малейшем движении пальца по вертикали, отменял касание, и капля
+        // «слетала из рук» обратно на место.
+        className={`nav-glass nav-island pointer-events-auto px-2 pt-0 pb-1.5 flex justify-between items-end relative touch-none select-none ${
           // Только пока палец на острове. Раньше сюда входил и pillMoving — остров
           // держался увеличенным все 520 мс переезда капсулы и оседал сильно
           // позже, чем отпускали палец. Само движение показывает капсула, острову
@@ -1007,6 +1015,8 @@ const counts = useMemo(() => {
         onPointerUp={handleNavPointerUp}
         onPointerCancel={handleNavPointerCancel}
         onClickCapture={handleNavClickCapture}
+        // Долгое нажатие на iPhone открывает системное меню и отменяет касание
+        onContextMenu={e => e.preventDefault()}
       >
         {/* Стеклянная капсула активного раздела. Лежит под кнопками (z-0) и
             переезжает к активной — координаты считает useLayoutEffect выше. */}

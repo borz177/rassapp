@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
 import { ICONS } from '../constants';
+import { appConfirm } from '../src/dialogs';
 
 interface AdminSupportPanelProps {
   onBack: () => void;
@@ -248,7 +249,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
   };
 
   const deleteTicket = async (ticket: Ticket) => {
-    if (!window.confirm(`Удалить тикет «${ticket.subject}» вместе со всей перепиской? Это необратимо.`)) return;
+    if (!await appConfirm(`Удалить тикет «${ticket.subject}» вместе со всей перепиской? Это необратимо.`)) return;
     try {
       await api.delete(`/admin/support/tickets/${ticket.id}`);
       if (selectedTicket?.id === ticket.id) setSelectedTicket(null);

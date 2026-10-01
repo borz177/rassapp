@@ -10,6 +10,7 @@ import { offlineStorage } from '../services/offlineStorage';
 import { useTheme, ThemeMode } from '../src/theme/ThemeContext';
 import { isIOSApp } from '../src/platform';
 import { nativePushAvailable, isNativePushSubscribed, enableNativePush, disableNativePush } from '../src/nativePush';
+import { appAlert } from '../src/dialogs';
 
 // 🔹 Тянут xlsx — грузим только когда реально открыли импорт/экспорт
 const DataImport = lazy(() => import('./DataImport'));
@@ -1211,9 +1212,10 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
           <DataImport
               onClose={() => setShowImportModal(false)}
               onImportSuccess={() => {
-                  setTimeout(() => {
+                  setTimeout(async () => {
                       setShowImportModal(false);
-                      alert("✅ Данные успешно импортированы! Страница будет перезагружена.");
+                      // Ждём закрытия окна: без await перезагрузка снесла бы его сразу
+                      await appAlert({ title: 'Данные импортированы', message: 'Страница будет перезагружена.' });
                       window.location.reload();
                   }, 5000);
               }}

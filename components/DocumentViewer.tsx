@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
 import { CustomerDocument } from '../types';
 import { docCategoryLabel, docObjectUrl, formatFileSize, isPendingDoc, shareDocument } from '../src/customerDocs';
+import { appConfirm } from '../src/dialogs';
 
 /**
  * Просмотр документов клиента на весь экран — как «Фото» в iOS.
@@ -283,7 +284,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ documents, startIndex, 
 
   const remove = async () => {
     if (!doc || !onDelete || busy) return;
-    if (!window.confirm(`Удалить «${doc.name}»?`)) return;
+    if (!await appConfirm(`Удалить «${doc.name}»?`)) return;
     setBusy(true);
     try { await onDelete(doc); } finally { setBusy(false); }
   };

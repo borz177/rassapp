@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ModalPortal from './ModalPortal';
+import { appConfirm } from '../src/dialogs';
 
 export interface SyncQueueItem {
   id: string;
@@ -174,8 +175,8 @@ const SyncStatus: React.FC<SyncStatusProps> = ({ status, isOnline, isSyncing, on
                           которая просто ждёт связи, убирать нельзя — она ещё уедет. */}
                       {item.failed && onDiscard && (
                         <button
-                          onClick={() => {
-                            if (window.confirm('Убрать эту запись из списка? Отправить её на сервер уже не получится.')) {
+                          onClick={async () => {
+                            if (await appConfirm('Убрать эту запись из списка? Отправить её на сервер уже не получится.')) {
                               onDiscard(item.id);
                             }
                           }}
