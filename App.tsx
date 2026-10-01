@@ -1336,7 +1336,7 @@ useEffect(() => {
   // должны увидеть и новое, а не считаться уже показанными.
   // Показываем один раз: раньше анонс повторялся каждые 10 часов, и
   // прочитанное окно возвращалось снова и снова.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v34';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v35';
   const SHOW_ANNOUNCEMENT = true; // false — перестать показывать, не удаляя анонс
 
   let seen = false;
@@ -1346,7 +1346,6 @@ useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, String(Date.now())); } catch { /* переживём */ }
   }
 }, [user, isPublicMode]);
-
 
 
 
@@ -5917,7 +5916,7 @@ if (!user && !showSplash) {
               tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
               icon: <><path d="M10 3.5 11.6 8l4.4 1.6-4.4 1.6L10 15.6 8.4 11.2 4 9.6 8.4 8z" /><path d="M17.5 13.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></>,
               title: 'Обновили дизайн',
-              text: 'Стеклянное меню как в нативных приложениях: капля плавно перетекает между разделами, новые чёткие иконки.',
+              
             },
             {
               tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
@@ -5929,7 +5928,7 @@ if (!user && !showSplash) {
               tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
               icon: <><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>,
               title: 'Карточка клиента',
-              text: 'Редактирование клиента — в аккуратной форме: поля по группам, а сохранить можно сразу сверху.',
+        
             },
           ].map(item => (
             <div key={item.title} className="flex gap-3.5">
