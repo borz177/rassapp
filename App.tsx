@@ -1333,16 +1333,16 @@ useEffect(() => {
 
   // Ключ меняется вместе с содержимым окна: те, кто видел прошлое обновление,
   // должны увидеть и новое, а не считаться уже показанными.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v33';
-  const REPEAT_AFTER = 10 * 60 * 60 * 1000;
+  // Показываем один раз: раньше анонс повторялся каждые 10 часов, и
+  // прочитанное окно возвращалось снова и снова.
+  const STORAGE_KEY = 'template_update_notice_last_shown_v34';
+  const SHOW_ANNOUNCEMENT = true; // false — перестать показывать, не удаляя анонс
 
-  const lastShown = localStorage.getItem(STORAGE_KEY);
-  const now = Date.now();
-
-  if (!lastShown || now - Number(lastShown) >= REPEAT_AFTER) {
-    // Чтобы перестать показывать анонс, не удаляя его, — поставьте здесь false.
-    setShowTemplateUpdateModal(false);
-    localStorage.setItem(STORAGE_KEY, String(now));
+  let seen = false;
+  try { seen = !!localStorage.getItem(STORAGE_KEY); } catch { /* без хранилища — покажем */ }
+  if (SHOW_ANNOUNCEMENT && !seen) {
+    setShowTemplateUpdateModal(true);
+    try { localStorage.setItem(STORAGE_KEY, String(Date.now())); } catch { /* переживём */ }
   }
 }, [user, isPublicMode]);
 
@@ -5888,58 +5888,63 @@ if (!user && !showSplash) {
 
 {showTemplateUpdateModal && (
   <div
-    className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
+    className="fixed inset-0 z-[99999] flex items-center justify-center p-5 bg-slate-900/50 backdrop-blur-sm animate-modal-fade-in"
     onClick={() => setShowTemplateUpdateModal(false)}
   >
     <div
-      className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-scale-in"
+      role="dialog"
+      aria-label="Что нового"
+      className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[28px] shadow-2xl ring-1 ring-slate-200/70 dark:ring-slate-800 overflow-hidden animate-dialog-in"
       onClick={e => e.stopPropagation()}
     >
-      <div className="p-6">
-        {/* Заголовок */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-2xl">
-            🚀
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-              Обновление
-            </h3>
-            <p className="text-sm text-gray-500 dark:text-slate-400">
-              Что нового
-            </p>
-          </div>
-        </div>
+      <div className="px-6 pt-7 pb-6">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Обновление</p>
+        <h3 className="mt-2 text-[24px] leading-tight font-bold tracking-tight text-slate-900 dark:text-white">
+          Новый дизайн и удобный поиск
+        </h3>
 
         {/* Список обновлений. Говорим о том, что человек заметит сам, и его
             словами: результат, а не устройство. */}
-        <div className="divide-y divide-gray-100 dark:divide-slate-800 mb-6">
-          <div className="flex items-center gap-3 py-4">
-            <div className="text-2xl">🔍</div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Поиск по всему сразу</p>
-              <p className="text-xs text-gray-500 dark:text-slate-500">
-                Одно поле на клиентов, договоры, товары и операции. Ищите по имени, телефону или номеру договора.
-              </p>
+        <div className="mt-6 space-y-5">
+          {[
+            {
+              tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
+              icon: <><path d="M10 3.5 11.6 8l4.4 1.6-4.4 1.6L10 15.6 8.4 11.2 4 9.6 8.4 8z" /><path d="M17.5 13.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></>,
+              title: 'Обновили дизайн',
+              text: 'Стеклянное меню как в нативных приложениях: капля плавно перетекает между разделами, новые чёткие иконки.',
+            },
+            {
+              tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
+              icon: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
+              title: 'Поиск стал удобнее',
+              text: 'Недавние запросы и фильтры по разделам. Найденная операция или товар открываются сразу — не нужно искать их второй раз.',
+            },
+            {
+              tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+              icon: <><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>,
+              title: 'Карточка клиента',
+              text: 'Редактирование клиента — в аккуратной форме: поля по группам, а сохранить можно сразу сверху.',
+            },
+          ].map(item => (
+            <div key={item.title} className="flex gap-3.5">
+              <span className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center ${item.tone}`}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  {item.icon}
+                </svg>
+              </span>
+              <div className="min-w-0">
+                <p className="text-[15px] font-semibold text-slate-900 dark:text-white">{item.title}</p>
+                <p className="mt-0.5 text-[13px] leading-snug text-slate-500 dark:text-slate-400">{item.text}</p>
+              </div>
             </div>
-          </div>
-
-          <div className="flex items-center gap-3 py-4">
-            <div className="text-2xl">🖨️</div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Договор — прямо в карточке клиента</p>
-              <p className="text-xs text-gray-500 dark:text-slate-500">
-                Кнопка «…» у договора: распечатать или удалить, не заходя в «Договоры».
-              </p>
-            </div>
-          </div>
+          ))}
         </div>
 
         <button
           onClick={() => setShowTemplateUpdateModal(false)}
-          className="w-full py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-semibold rounded-xl active:scale-[0.98] transition-all"
+          className="mt-7 w-full h-12 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[15px] font-semibold rounded-2xl active:scale-[0.98] transition-transform"
         >
-          Понятно
+          Отлично
         </button>
       </div>
     </div>

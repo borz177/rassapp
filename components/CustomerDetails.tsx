@@ -4,6 +4,7 @@ import SaleActionsMenu from './SaleActionsMenu';
 import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier, Task, RetailSale} from '../types';
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
+import EditCustomerSheet from './EditCustomerSheet';
 import SubPage from './transitions/SubPage';
 import { formatCurrency, formatDate, normalizePhoneForWhatsApp, retailPaidAmount, retailRemaining } from '../src/utils';
 import { offlineStorage } from '../services/offlineStorage';
@@ -60,121 +61,6 @@ const compressImage = (file: File, maxWidth = 1920): Promise<Blob> => {
     img.onerror = () => resolve(file);
     img.src = URL.createObjectURL(file);
   });
-};
-
-const EditCustomerModal = ({
-    customer,
-    onClose,
-    onUpdate,
-}: {
-    customer: Customer,
-    onClose: () => void,
-    onUpdate: (c: Customer) => void,
-}) => {
-    const [name, setName] = useState(customer.name);
-    const [phone, setPhone] = useState(customer.phone);
-    const [address, setAddress] = useState(customer.address || '');
-    const [notes, setNotes] = useState(customer.notes || '');
-    const [allowWhatsapp, setAllowWhatsapp] = useState(customer.allowWhatsappNotification !== false);
-    const [passportSeries, setPassportSeries] = useState(customer.passportSeries || '');
-    const [passportNumber, setPassportNumber] = useState(customer.passportNumber || '');
-    const [passportIssuedBy, setPassportIssuedBy] = useState(customer.passportIssuedBy || '');
-    const [birthDate, setBirthDate] = useState(customer.birthDate || '');
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onUpdate({
-            ...customer,
-            name, phone, address, notes,
-            allowWhatsappNotification: allowWhatsapp,
-            passportSeries: passportSeries.trim() || undefined,
-            passportNumber: passportNumber.trim() || undefined,
-            passportIssuedBy: passportIssuedBy.trim() || undefined,
-            birthDate: birthDate || undefined,
-        });
-        onClose();
-    };
-
-    return createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-    <div className="bg-white dark:bg-slate-800 w-full h-full sm:h-auto sm:max-w-sm sm:rounded-2xl shadow-xl flex flex-col sm:max-h-[90vh]" onClick={e => e.stopPropagation()}>
-        {/* 🔹 Заголовок — всегда виден сверху */}
-        <div className="p-5 pb-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
-            <h3 className="text-lg font-bold text-slate-800 dark:text-white">Редактировать клиента</h3>
-        </div>
-
-        {/* 🔹 Контент формы — прокручивается */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
-            <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ФИО</label>
-                <input autoComplete="off" autoCorrect="off" spellCheck={false} className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={name} onChange={e => setName(e.target.value)} required/>
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Телефон</label>
-                <input autoComplete="off" autoCorrect="off" spellCheck={false} className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={phone} onChange={e => setPhone(e.target.value)} required/>
-            </div>
-            <details className="group" open>
-                <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600 dark:text-indigo-400">
-                    <span className="transition-transform group-open:rotate-90">▶</span> 📍 Адрес и паспорт
-                </summary>
-                <div className="mt-3 space-y-4 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Адрес</label>
-                        <input autoComplete="off" autoCorrect="off" spellCheck={false} className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" placeholder="г. Москва, ул. Ленина, д. 1" value={address} onChange={e => setAddress(e.target.value)}/>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Дата рождения</label>
-                        <input type="date" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={birthDate} max={new Date().toISOString().slice(0, 10)} onChange={e => setBirthDate(e.target.value)}/>
-                    </div>
-                    <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">🪪 Паспортные данные <span className="font-normal text-slate-400 dark:text-slate-500">(необязательно)</span></p>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Серия</label>
-                                <input autoComplete="off" autoCorrect="off" spellCheck={false} type="text" placeholder="4501" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono uppercase" value={passportSeries} onChange={e => setPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))} maxLength={4}/>
-                            </div>
-                            <div>
-                                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Номер</label>
-                                <input autoComplete="off" autoCorrect="off" spellCheck={false} type="text" placeholder="123456" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono" value={passportNumber} onChange={e => setPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} maxLength={6}/>
-                            </div>
-                        </div>
-                        <div className="mt-3">
-                            <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Кем выдан</label>
-                            <input autoComplete="off" autoCorrect="off" spellCheck={false} type="text" placeholder="УФМС России по г. Москве" className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm" value={passportIssuedBy} onChange={e => setPassportIssuedBy(e.target.value)} maxLength={100}/>
-                        </div>
-                    </div>
-                </div>
-            </details>
-            <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Заметки</label>
-                <textarea className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none resize-none" rows={3} value={notes} onChange={e => setNotes(e.target.value)}/>
-            </div>
-            <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/30 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
-                <div className="flex items-center gap-2">
-                    <span className="text-emerald-600 dark:text-emerald-400">{ICONS.Send}</span>
-                    <div>
-                        <p className="text-sm font-bold text-slate-800 dark:text-white">Напоминания WhatsApp</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Авто-отправка сообщений</p>
-                    </div>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" checked={allowWhatsapp} onChange={() => setAllowWhatsapp(!allowWhatsapp)} className="sr-only peer"/>
-                    <div className="w-11 h-6 bg-slate-300 dark:bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-                </label>
-            </div>
-        </form>
-
-        {/* 🔹 Футер с кнопками — всегда виден снизу */}
-        <div className="p-5 pt-3 border-t border-slate-100 dark:border-slate-700 flex-shrink-0 bg-white dark:bg-slate-800 rounded-b-2xl">
-            <div className="flex gap-3">
-                <button type="button" onClick={onClose} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-bold">Отмена</button>
-                <button type="submit" onClick={handleSubmit} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
-            </div>
-        </div>
-    </div>
-</div>,
-        document.body
-    );
 };
 
 // 🔹 НОВОЕ: Модальное окно для управления документами
@@ -1490,7 +1376,7 @@ ${customer.name}!
                 </div>
             )}
             {showEditModal && onUpdateCustomer && (
-                <EditCustomerModal customer={customer} onClose={() => setShowEditModal(false)} onUpdate={onUpdateCustomer}/>
+                <EditCustomerSheet customer={customer} onClose={() => setShowEditModal(false)} onUpdate={onUpdateCustomer}/>
             )}
             {/* 🔹 НОВОЕ: модалка документов */}
             {showDocumentsModal && onUpdateCustomer && (
