@@ -4,6 +4,8 @@ import { Investor, Sale, Expense, Account, Payment, AppSettings, Customer, Inves
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
 import { moneyInProfit, saleProfitMargin, isDownPaymentOf, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, paymentProfitShares, expectedProfitShares, participationDates, participationDatesError, withParticipationDates, investorProfitOutflows } from '../src/utils';
+import GlassSheet, { SheetSection, SheetField, sheetInputClass } from './GlassSheet';
+import { appConfirm } from '../src/dialogs';
 
 // Модальное окно формы. Через портал в body: страница открыта внутри .page-push-layer,
 // а он position: fixed с z-index 30 — окно внутри него оказалось бы под нижней навигацией.
@@ -229,8 +231,8 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
     setShowEdit(true);
   };
 
-  const handleEditSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Сохранение из листа (GlassSheet): закрывает его сам лист — с анимацией ухода
+  const handleEditSubmit = (close: () => void) => {
     if (!editName.trim() || !onUpdateInvestor) return;
 
     // Даты пишем, только если их реально поменяли. Сегодняшняя дата входа — это
@@ -262,8 +264,16 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
       ...(joinedChanged ? { joinedDate } : {}),
       ...(leftChanged ? { leftPoolDate } : {}),
     }), editPassword || undefined);
-    setShowEdit(false);
+    close();
   };
+
+  // Переспрашиваем при закрытии, только если в форме что-то поменяли
+  const editDirty = showEdit && (() => {
+    const dates = participationDates(investor);
+    return editName !== investor.name || editPhone !== (investor.phone || '') || editEmail !== (investor.email || '')
+      || editPassword !== '' || editProfit !== investor.profitPercentage.toString()
+      || editJoinedDate !== (dates.joinedDate || '').split('T')[0] || editLeftDate !== (dates.leftPoolDate || '').split('T')[0];
+  })();
 
   const handleDelete = () => {
     onDeleteInvestor?.(investor.id);
@@ -1252,49 +1262,76 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
 
       {/* Edit modal — через портал: страница живёт внутри .page-push-layer (position: fixed,
           z-index 30), он создаёт свой контекст наложения, и окно оставалось под навигацией */}
-      {showEdit && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowEdit(false)}>
-          <form onSubmit={handleEditSubmit} className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl p-5 space-y-4 animate-fade-in" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
-              <h3 className="text-lg font-bold text-slate-800 dark:text-white">Редактировать инвестора</h3>
-              <button type="button" onClick={() => setShowEdit(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white text-xl leading-none">✕</button>
-            </div>
-            <input required placeholder="Имя Фамилия" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={editName} onChange={e => setEditName(e.target.value)} />
-            <input placeholder="Телефон" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={editPhone} onChange={e => setEditPhone(e.target.value)} />
-            <div className="grid grid-cols-2 gap-3">
-              <input type="email" placeholder="Email" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={editEmail} onChange={e => setEditEmail(e.target.value)} />
-              <input type="text" placeholder="Новый пароль" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={editPassword} onChange={e => setEditPassword(e.target.value)} />
-            </div>
-            <div className="relative">
-              <span className="absolute right-4 top-3.5 text-slate-400">%</span>
-              <input required type="number" placeholder="Процент прибыли" className="w-full p-3 pr-8 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none font-bold" value={editProfit} onChange={e => setEditProfit(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
-                {allPeriods.length > 1 ? 'Дата первого входа' : 'Дата начала участия'}
-              </label>
-              <input type="date" required className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={editJoinedDate} onChange={e => { setEditJoinedDate(e.target.value); setEditError(null); }} />
+      {showEdit && (
+        <GlassSheet
+          title="Инвестор"
+          subtitle={editName.trim() || investor.name}
+          onClose={() => setShowEdit(false)}
+          cancelLabel="Отмена"
+          action={{ label: 'Готово', submit: true, disabled: !editName.trim() || editProfit === '' || !editDirty }}
+          onSubmit={handleEditSubmit}
+          confirmClose={() => !editDirty || appConfirm({
+            title: 'Закрыть без сохранения?',
+            message: 'Изменения пропадут.',
+            confirmLabel: 'Закрыть',
+            cancelLabel: 'Остаться',
+            destructive: true,
+          })}
+        >
+          <div className="space-y-6">
+            <SheetSection>
+              <SheetField label="Имя и фамилия">
+                <input className={sheetInputClass} value={editName} onChange={e => setEditName(e.target.value)}
+                       autoComplete="off" autoCorrect="off" spellCheck={false} autoCapitalize="words" required />
+              </SheetField>
+              <SheetField label="Телефон">
+                <input className={sheetInputClass} value={editPhone} onChange={e => setEditPhone(e.target.value)}
+                       type="tel" inputMode="tel" autoComplete="off" placeholder="+7 900 000-00-00" />
+              </SheetField>
+            </SheetSection>
+
+            <SheetSection title="Условия" hint={editError
+              ? <span className="text-rose-600 dark:text-rose-400">{editError}</span>
+              : isPoolMember ? 'Доля прибыли начисляется по договорам, оформленным с даты входа. После сохранения прибыль пересчитается.' : undefined}>
+              <SheetField label="Процент прибыли">
+                <span className="flex items-baseline gap-1">
+                  <input className={`${sheetInputClass} font-semibold`} value={editProfit} onChange={e => setEditProfit(e.target.value)}
+                         type="number" inputMode="decimal" required />
+                  <span className="text-[16px] text-slate-400">%</span>
+                </span>
+              </SheetField>
+              <SheetField label={allPeriods.length > 1 ? 'Дата первого входа' : 'Дата начала участия'}>
+                <input className={`${sheetInputClass} h-7 appearance-none [&::-webkit-date-and-time-value]:text-left`}
+                       type="date" required value={editJoinedDate}
+                       onChange={e => { setEditJoinedDate(e.target.value); setEditError(null); }} />
+              </SheetField>
               {isPoolMember && (
-                <p className="text-xs text-slate-400 mt-1">Доля прибыли начисляется по договорам, оформленным с этой даты. После сохранения прибыль пересчитается.</p>
+                <SheetField label="Дата выхода из пула" hint="Пусто — инвестор ещё активен.">
+                  <span className="relative block">
+                    {!editLeftDate && (
+                      <span className="pointer-events-none absolute inset-0 flex items-center text-[16px] text-slate-300 dark:text-slate-600">Не указана</span>
+                    )}
+                    <input className={`${sheetInputClass} h-7 appearance-none [&::-webkit-date-and-time-value]:text-left ${editLeftDate ? '' : 'text-transparent'}`}
+                           type="date" value={editLeftDate}
+                           onChange={e => { setEditLeftDate(e.target.value); setEditError(null); }} />
+                  </span>
+                </SheetField>
               )}
-            </div>
-            {isPoolMember && (
-              <div>
-                <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Дата выхода из пула (необязательно)</label>
-                <input type="date" className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none" value={editLeftDate} onChange={e => { setEditLeftDate(e.target.value); setEditError(null); }} />
-                <p className="text-xs text-slate-400 mt-1">Оставьте пустым, если инвестор ещё активен.</p>
-              </div>
-            )}
-            {editError && (
-              <p className="text-sm text-rose-600 dark:text-rose-400">{editError}</p>
-            )}
-            <div className="flex gap-2 pt-1">
-              <button type="button" onClick={() => setShowEdit(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-medium text-slate-600 dark:text-slate-300">Отмена</button>
-              <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Сохранить</button>
-            </div>
-          </form>
-        </div>,
-        document.body
+            </SheetSection>
+
+            <SheetSection title="Вход в приложение" hint="Новый пароль — только если хотите сменить. Пусто — останется прежний.">
+              <SheetField label="Email — это логин">
+                <input className={sheetInputClass} value={editEmail} onChange={e => setEditEmail(e.target.value)}
+                       type="email" inputMode="email" autoComplete="off" autoCapitalize="off" spellCheck={false}
+                       placeholder="investor@example.com" />
+              </SheetField>
+              <SheetField label="Новый пароль">
+                <input className={`${sheetInputClass} ${editPassword ? 'font-mono' : ''}`} value={editPassword} onChange={e => setEditPassword(e.target.value)}
+                       type="text" autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="Не менять" />
+              </SheetField>
+            </SheetSection>
+          </div>
+        </GlassSheet>
       )}
     </div>
   );

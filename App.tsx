@@ -4024,6 +4024,8 @@ const createCustomerQuick = async (data: {
   passportSeries?: string;
   passportNumber?: string;
   passportIssuedBy?: string;
+  photo?: string;
+  birthDate?: string;
 }) => {
   if (!user) return;
   if (!checkAccess('WRITE')) {
@@ -4039,11 +4041,12 @@ const createCustomerQuick = async (data: {
     email: '',
     trustScore: 50,
     notes: '',
-    photo: '',
+    photo: data.photo || '',
     address: data.address?.trim() || undefined,
     passportSeries: data.passportSeries?.trim() || undefined,
     passportNumber: data.passportNumber?.trim() || undefined,
     passportIssuedBy: data.passportIssuedBy?.trim() || undefined,
+    birthDate: data.birthDate || undefined,
     allowWhatsappNotification: true,
     documents: [],
     createdAt: new Date().toISOString(),
@@ -4060,6 +4063,8 @@ const handleQuickAddCustomer = async (data: {
   passportSeries?: string;
   passportNumber?: string;
   passportIssuedBy?: string;
+  photo?: string;
+  birthDate?: string;
 }) => {
   // 🔹 Проверка пользователя
   if (!user) return;

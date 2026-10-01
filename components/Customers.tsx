@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react'; // Добавили useMemo
 import { Customer } from '../types';
 import { ICONS } from '../constants';
 import { useScrollRestoration } from '../src/hooks/useScrollRestoration';
-import PassportScan, { type PassportFields } from './PassportScan';
+import CustomerFormSheet from './CustomerFormSheet';
 
 interface CustomersProps {
   customers: Customer[];
@@ -24,22 +24,6 @@ interface CustomersProps {
   isActive?: boolean;
 }
 
-/**
- * Дата из паспорта в вид, понятный полю ввода.
- *
- * Распознаётся она так, как написана в документе — 07.03.1990, — а input[type=date]
- * принимает только 1990-03-07. Всё, что не разобралось, отбрасываем: пустое поле
- * честнее выдуманной даты.
- */
-const toIsoDate = (value: string | undefined): string => {
-  const m = String(value || '').match(/^(\d{2})[.\-/](\d{2})[.\-/](\d{4})$/);
-  if (!m) return '';
-  const [, dd, mm, yyyy] = m;
-  const year = Number(yyyy);
-  if (Number(mm) < 1 || Number(mm) > 12 || Number(dd) < 1 || Number(dd) > 31) return '';
-  if (year < 1900 || year > new Date().getFullYear()) return '';
-  return `${yyyy}-${mm}-${dd}`;
-};
 
 const Customers: React.FC<CustomersProps> = ({
   customers,
@@ -53,16 +37,9 @@ const Customers: React.FC<CustomersProps> = ({
   // явно при каждом возврате в фокус, а не полагаемся на то, что браузер её не тронет.
   useScrollRestoration('CUSTOMERS', undefined, isActive);
 
+  // Новый клиент — листом (CustomerFormSheet): та же форма, что и при правке
   const [isAdding, setIsAdding] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newPhone, setNewPhone] = useState('');
-  const [newAddress, setNewAddress] = useState('');
-  const [newPhoto, setNewPhoto] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [newPassportSeries, setNewPassportSeries] = useState('');
-const [newPassportNumber, setNewPassportNumber] = useState('');
-const [newPassportIssuedBy, setNewPassportIssuedBy] = useState('');
-  const [newBirthDate, setNewBirthDate] = useState('');
 
   // === ЛОГИКА ФИЛЬТРАЦИИ И СОРТИРОВКИ ОТ А ДО Я ===
   const sortedFilteredCustomers = useMemo(() => {
@@ -74,67 +51,6 @@ const [newPassportIssuedBy, setNewPassportIssuedBy] = useState('');
       .sort((a, b) => a.name.localeCompare(b.name)); // Сортировка по алфавиту
   }, [customers, searchTerm]);
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setNewPhoto(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const applyPassport = (f: PassportFields) => {
-    // Заполняем только пустые поля: набранное руками важнее — его вводили
-    // осознанно, а распознавание ошибается. Затирать чужой ввод нельзя.
-    if (f.name) setNewName(prev => prev.trim() ? prev : f.name);
-    if (f.address) setNewAddress(prev => prev.trim() ? prev : f.address);
-    if (f.series) setNewPassportSeries(prev => prev.trim() ? prev : f.series);
-    if (f.number) setNewPassportNumber(prev => prev.trim() ? prev : f.number);
-    if (f.issuedBy) setNewPassportIssuedBy(prev => prev.trim() ? prev : f.issuedBy);
-    // Дата приходит в паспортном виде ДД.ММ.ГГГГ, а полю нужен ISO.
-    const iso = toIsoDate(f.birthDate);
-    if (iso) setNewBirthDate(prev => prev ? prev : iso);
-  };
-
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (newName && newPhone) {
-    try {
-      // 🔹 Ждём завершения сохранения в базу
-      const newCustomer = await onAddCustomer({
-        name: newName.trim(),
-        phone: newPhone.trim(),
-        photo: newPhoto || undefined,
-        address: newAddress.trim() || undefined,
-        passportSeries: newPassportSeries.trim() || undefined,
-        passportNumber: newPassportNumber.trim() || undefined,
-        passportIssuedBy: newPassportIssuedBy.trim() || undefined,
-        birthDate: newBirthDate || undefined,
-      });
-
-      // Очищаем форму
-      setNewName('');
-      setNewPhone('');
-      setNewAddress('');
-      setNewPhoto('');
-      setNewPassportSeries('');
-      setNewPassportNumber('');
-      setNewPassportIssuedBy('');
-      setNewBirthDate('');
-      setIsAdding(false);
-
-      // 🚀 Переходим на страницу созданного клиента
-      if (newCustomer?.id) {
-        onSelectCustomer(newCustomer.id);
-      }
-    } catch (error) {
-      console.error('Ошибка создания клиента:', error);
-      alert('❌ Не удалось сохранить клиента. Попробуйте ещё раз.');
-    }
-  }
-};
 
   return (
     <div className="space-y-4 pb-20 animate-fade-in">
@@ -146,15 +62,15 @@ const handleSubmit = async (e: React.FormEvent) => {
           </p>
         </div>
         <button
-          onClick={() => setIsAdding(!isAdding)}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30"
+          onClick={() => setIsAdding(true)}
+          className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30 active:scale-95 transition-transform"
         >
-          {isAdding ? 'Отмена' : '+ Добавить'}
+          + Добавить
         </button>
       </header>
 
       {/* Search Bar */}
-      {!isAdding && (
+      {(
           <div className="relative">
               <input autoComplete="off" autoCorrect="off" spellCheck={false}
                 type="text"
@@ -170,133 +86,19 @@ const handleSubmit = async (e: React.FormEvent) => {
       )}
 
       {isAdding && (
-  <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-md border border-slate-100 dark:border-slate-700 space-y-4 animate-fade-in">
-
-    {/* === БЛОК 1: Фото + ФИО + Телефон === */}
-    <div className="flex items-center gap-4">
-      <label className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center cursor-pointer border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-indigo-400 overflow-hidden">
-          {newPhoto ? (
-              <img src={newPhoto} alt="Preview" className="w-full h-full object-cover" />
-          ) : (
-              <span className="text-slate-400 dark:text-slate-500 text-xs text-center">Фото</span>
-          )}
-          <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-      </label>
-      <div className="flex-1 space-y-2">
-          <input autoComplete="off" autoCorrect="off" spellCheck={false}
-              placeholder="ФИО Клиента"
-              className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              required
-          />
-      </div>
-    </div>
-
-    <input autoComplete="off" autoCorrect="off" spellCheck={false}
-      placeholder="Номер телефона"
-      className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-      value={newPhone}
-      onChange={e => setNewPhone(e.target.value)}
-      required
-    />
-
-    {/* === БЛОК 2: Адрес + Паспорт (в одном раскрывающемся) === */}
-    <details className="group" open> {/* 🔹 open — чтобы блок был раскрыт по умолчанию */}
-      <summary className="flex items-center gap-2 text-sm font-medium cursor-pointer list-none text-indigo-600">
-        <span className="transition-transform group-open:rotate-90">▶</span>
-        📍 Адрес и документы
-      </summary>
-
-      <div className="mt-3 space-y-4 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl">
-
-        {/* 🔹 Адрес (перенесён сюда) */}
-        <div>
-          <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Адрес</label>
-          <input autoComplete="off" autoCorrect="off" spellCheck={false}
-            type="text"
-            className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm"
-            value={newAddress}
-            onChange={e => setNewAddress(e.target.value)}
-          />
-        </div>
-
-        {/* Дата рождения — здесь же, у документов: её и спрашивают вместе с
-            паспортом, и читают оттуда же. */}
-        <div>
-          <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Дата рождения</label>
-          <input
-            type="date"
-            className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm"
-            value={newBirthDate}
-            max={new Date().toISOString().slice(0, 10)}
-            onChange={e => setNewBirthDate(e.target.value)}
-          />
-        </div>
-
-        {/* 🔹 Разделитель */}
-        <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">🪪 Паспортные данные <span className="font-normal text-slate-400 dark:text-slate-500">(необязательно)</span></p>
-
-          {/* Съёмка стоит перед полями: набирать серию и номер вручную нужно
-              только тогда, когда фотографии нет. */}
-          {canScanPassport && <PassportScan onApply={applyPassport} className="mb-3" />}
-
-          {/* Серия и номер */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Серия</label>
-              <input autoComplete="off" autoCorrect="off" spellCheck={false}
-                type="text"
-                placeholder="4501"
-                className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono uppercase"
-                value={newPassportSeries}
-                onChange={e => setNewPassportSeries(e.target.value.replace(/[^0-9A-ZА-Я]/gi, '').toUpperCase().slice(0, 4))}
-                maxLength={4}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Номер</label>
-              <input autoComplete="off" autoCorrect="off" spellCheck={false}
-                type="text"
-                placeholder="123456"
-                className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm font-mono"
-                value={newPassportNumber}
-                onChange={e => setNewPassportNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                maxLength={6}
-              />
-            </div>
-          </div>
-
-          {/* Кем выдан */}
-          <div className="mt-3">
-            <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">Кем выдан</label>
-            <input autoComplete="off" autoCorrect="off" spellCheck={false}
-              type="text"
-              className="w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg outline-none text-sm"
-              value={newPassportIssuedBy}
-              onChange={e => setNewPassportIssuedBy(e.target.value)}
-              maxLength={100}
-            />
-          </div>
-        </div>
-
-        {/* Подсказка о безопасности */}
-        <p className="text-[10px] text-slate-400 dark:text-slate-500 flex items-start gap-1">
-          <span>🔒</span>
-          Данные хранятся локально и не передаются третьим лицам
-        </p>
-      </div>
-    </details>
-
-    <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold">
-      Сохранить клиента
-    </button>
-  </form>
-)}
+        <CustomerFormSheet
+          canScanPassport={canScanPassport}
+          onClose={() => setIsAdding(false)}
+          onCreate={async data => {
+            const created = await onAddCustomer(data);
+            // Сразу в карточку нового клиента — за ней его и заводили
+            if (created?.id) onSelectCustomer(created.id);
+          }}
+        />
+      )}
 
       <div className="grid gap-3">
-        {sortedFilteredCustomers.length === 0 && !isAdding && (
+        {sortedFilteredCustomers.length === 0 && (
             <div className="text-center py-8 text-slate-400 dark:text-slate-500">Клиенты не найдены</div>
         )}
         {sortedFilteredCustomers.map(c => (

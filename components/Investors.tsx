@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Account, Investor, InvestorPermissions } from '../types';
 import { ICONS } from '../constants';
 import { getInvestorAccount, formatDate, participationDates, participationDatesError, withParticipationDates } from '../src/utils';
 import { SuccessCheck, hapticSuccess, haptic } from './feedback';
+import GlassSheet, { SheetSection, SheetField, SheetToggle, SheetSegmented, sheetInputClass } from './GlassSheet';
+import { appConfirm } from '../src/dialogs';
 
 export type InvestorPoolChoice =
   | { mode: 'EXISTING'; accountId: string }
@@ -116,8 +118,9 @@ const Investors: React.FC<InvestorsProps> = ({
       return !dateStr || dateStr === todayStr ? new Date().toISOString() : new Date(dateStr).toISOString();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Сохранение из листа: закрывает его сам лист (close), а форму сбрасывает
+  // resetForm на его уходе — иначе лист пропадал бы мгновенно, без анимации.
+  const handleSubmit = (close: () => void) => {
 
     if(formName.trim()) {
         if (editingId && onUpdateInvestor) {
@@ -204,9 +207,18 @@ const Investors: React.FC<InvestorsProps> = ({
     hapticSuccess();
     setTimeout(() => setCreatedInvestor(null), 1900);
 }
-        resetForm();
+        close();
     }
 };
+
+  // Что было в форме при открытии — переспрашиваем при закрытии, только если что-то поменяли
+  const formSnapshot = JSON.stringify({
+    formName, formPhone, formEmail, formPassword, formAmount, formProfitPercentage, formPermissions,
+    poolMode, selectedPoolAccountId, newPoolName, formJoinedDate, formLeftPoolDate,
+  });
+  const openedWith = useRef('');
+  useEffect(() => { if (isAdding) openedWith.current = formSnapshot; }, [isAdding, editingId]);
+  const formDirty = isAdding && formSnapshot !== openedWith.current;
 
   const handleDelete = (id: string) => {
       const inv = investors.find(i => i.id === id);
@@ -226,7 +238,7 @@ const Investors: React.FC<InvestorsProps> = ({
             <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Инвесторы</h2>
             <p className="text-slate-500 dark:text-slate-400 text-sm">Партнеры и их счета</p>
         </div>
-        {!isAdding && (
+        {(
             <button
                 onClick={(e) => { e.stopPropagation(); setIsAdding(true); }}
                 className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium"
@@ -236,7 +248,7 @@ const Investors: React.FC<InvestorsProps> = ({
         )}
       </header>
 
-      {!isAdding && investors.length > 0 && (
+      {investors.length > 0 && (
         <div className="relative">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input autoComplete="off" autoCorrect="off" spellCheck={false}
@@ -255,233 +267,141 @@ const Investors: React.FC<InvestorsProps> = ({
       )}
 
       {isAdding && (
-          <form onSubmit={handleSubmit} onClick={e => e.stopPropagation()} className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4 animate-fade-in">
-              <h3 className="font-bold text-slate-800 dark:text-white border-b border-slate-100 dark:border-slate-700 pb-2">
-                  {editingId ? 'Редактировать инвестора' : 'Новый инвестор'}
-              </h3>
+        <GlassSheet
+          title={editingId ? 'Инвестор' : 'Новый инвестор'}
+          subtitle={editingId ? (formName.trim() || 'Без имени') : 'Деньги, процент и доступ в приложение'}
+          onClose={resetForm}
+          cancelLabel="Отмена"
+          action={{
+            label: editingId ? 'Готово' : 'Добавить',
+            submit: true,
+            disabled: !formName.trim() || formProfitPercentage === '' || (!!editingId && !formDirty),
+          }}
+          onSubmit={handleSubmit}
+          confirmClose={() => !formDirty || appConfirm({
+            title: editingId ? 'Закрыть без сохранения?' : 'Не добавлять инвестора?',
+            message: 'Введённые данные пропадут.',
+            confirmLabel: 'Закрыть',
+            cancelLabel: 'Остаться',
+            destructive: true,
+          })}
+        >
+          <div className="space-y-6">
+            <SheetSection>
+              <SheetField label="Имя и фамилия">
+                <input className={sheetInputClass} value={formName} onChange={e => setFormName(e.target.value)}
+                       autoComplete="off" autoCorrect="off" spellCheck={false} autoCapitalize="words"
+                       enterKeyHint="next" placeholder="Иван Петров" required />
+              </SheetField>
+              <SheetField label="Телефон">
+                <input className={sheetInputClass} value={formPhone} onChange={e => setFormPhone(e.target.value)}
+                       type="tel" inputMode="tel" autoComplete="off" enterKeyHint="next" placeholder="+7 900 000-00-00" />
+              </SheetField>
+            </SheetSection>
 
-              <div className="space-y-3">
-                  <input autoComplete="off" autoCorrect="off" spellCheck={false}
-                    placeholder="Имя Фамилия"
-                    className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                    value={formName}
-                    onChange={e => setFormName(e.target.value)}
-                    required
-                  />
-                  <input autoComplete="off" autoCorrect="off" spellCheck={false}
-                    placeholder="Телефон"
-                    className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                    value={formPhone}
-                    onChange={e => setFormPhone(e.target.value)}
-                  />
-                  <div className="grid grid-cols-2 gap-3">
-                    <input autoComplete="off" autoCorrect="off" spellCheck={false}
-                        type="email"
-                        placeholder="Email (Логин, необязательно)"
-                        className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                        value={formEmail}
-                        onChange={e => setFormEmail(e.target.value)}
-                    />
-                    <input autoComplete="off" autoCorrect="off" spellCheck={false}
-                        type="text" // Visible for creation
-                        placeholder={editingId ? "Новый пароль (необязательно)" : "Пароль (если указан email)"}
-                        className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                        value={formPassword}
-                        onChange={e => setFormPassword(e.target.value)}
-                    />
-                  </div>
-                  {!editingId && (
-                      <p className="text-xs text-slate-400 -mt-1">
-                          Без email и пароля инвестор будет учитываться только для распределения прибыли, без доступа в приложение. Логин можно добавить позже.
-                      </p>
-                  )}
-                  <div className="grid grid-cols-2 gap-3">
-                      {!editingId && (
-                          <div className="relative">
-                              <span className="absolute right-4 top-3.5 text-slate-400">₽</span>
-                              <input
-                                  type="number"
-                                  placeholder="Сумма инвестиции"
-                                  className="w-full p-3 pr-8 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none font-bold"
-                                  value={formAmount}
-                                  onChange={e => setFormAmount(e.target.value)}
-                                  required={poolMode !== 'OWN'}
-                              />
-                          </div>
-                      )}
+            <SheetSection title="Условия"
+                          hint={!editingId && poolMode !== 'OWN'
+                            ? 'Для общего пула сумма обязательна: прибыль сначала делится между участниками по вложенным суммам, затем к части каждого применяется его процент.'
+                            : editingId ? 'Сумму здесь не меняют: пополнение — через «Приход», возврат — расходом «Из инвестиций».' : undefined}>
+              {!editingId && (
+                <SheetField label="Сумма вложения">
+                  <span className="flex items-baseline gap-1">
+                    <input className={`${sheetInputClass} font-semibold`} value={formAmount} onChange={e => setFormAmount(e.target.value)}
+                           type="number" inputMode="decimal" placeholder="0" required={poolMode !== 'OWN'} />
+                    <span className="text-[16px] text-slate-400">₽</span>
+                  </span>
+                </SheetField>
+              )}
+              <SheetField label="Процент прибыли">
+                <span className="flex items-baseline gap-1">
+                  <input className={`${sheetInputClass} font-semibold`} value={formProfitPercentage} onChange={e => setFormProfitPercentage(e.target.value)}
+                         type="number" inputMode="decimal" placeholder="0" required />
+                  <span className="text-[16px] text-slate-400">%</span>
+                </span>
+              </SheetField>
+              <SheetField label="Дата начала участия"
+                          hint={editingId && isEditingPoolMember
+                            ? 'С этой даты инвестор участвует в прибыли кассы. Начальный депозит переедет на эту же дату.'
+                            : !editingId && formJoinedDate < new Date().toISOString().split('T')[0]
+                              ? 'Дата в прошлом: вложение запишется в кассу этой датой, и с неё инвестор участвует в прибыли.'
+                              : undefined}>
+                <input className={`${sheetInputClass} h-7 appearance-none [&::-webkit-date-and-time-value]:text-left`}
+                       type="date" value={formJoinedDate} onChange={e => setFormJoinedDate(e.target.value)}
+                       max={new Date().toISOString().split('T')[0]} required />
+              </SheetField>
+              {((!editingId && poolMode !== 'OWN') || (editingId && isEditingPoolMember)) && (
+                <SheetField label="Дата выхода из пула"
+                            hint={editingId
+                              ? 'С этой даты инвестор не получает долю будущей прибыли пула; история до неё сохранится. Пусто — ещё активен.'
+                              : 'Пусто — инвестор ещё активен.'}>
+                  <span className="relative block">
+                    {!formLeftPoolDate && (
+                      <span className="pointer-events-none absolute inset-0 flex items-center text-[16px] text-slate-300 dark:text-slate-600">Не указана</span>
+                    )}
+                    <input className={`${sheetInputClass} h-7 appearance-none [&::-webkit-date-and-time-value]:text-left ${formLeftPoolDate ? '' : 'text-transparent'}`}
+                           type="date" value={formLeftPoolDate} onChange={e => setFormLeftPoolDate(e.target.value)} />
+                  </span>
+                </SheetField>
+              )}
+            </SheetSection>
 
-                      {/* 🔹 Процент прибыли — личный процент этого инвестора. Для пула он применяется
-                          не ко всей прибыли, а к части, приходящейся на его капитал (см. подсказку ниже). */}
-                      <div className={`relative ${!editingId ? '' : 'col-span-2'}`}>
-                          <span className="absolute right-4 top-3.5 text-slate-400">%</span>
-                          <input
-                              type="number"
-                              placeholder="Процент прибыли"
-                              className="w-full p-3 pr-8 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none font-bold"
-                              value={formProfitPercentage}
-                              onChange={e => setFormProfitPercentage(e.target.value)}
-                              required
-                          />
-                      </div>
-                  </div>
-                  <div>
-                      <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Дата начала участия</label>
-                      <input
-                          type="date"
-                          className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                          value={formJoinedDate}
-                          onChange={e => setFormJoinedDate(e.target.value)}
-                          required
-                          // Вход — момент, когда деньги легли в кассу: будущей датой нельзя
-                          max={new Date().toISOString().split('T')[0]}
-                      />
-                      {editingId && isEditingPoolMember && (
-                          <p className="text-xs text-slate-400 mt-1">
-                              С этой даты инвестор участвует в прибыли кассы. Начальный депозит переедет на эту же дату.
-                          </p>
-                      )}
-                      {!editingId && formJoinedDate < new Date().toISOString().split('T')[0] && (
-                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                              Дата в прошлом: вложение будет записано в кассу этой же датой, и с неё инвестор участвует в прибыли.
-                          </p>
-                      )}
-                  </div>
-                  {!editingId && poolMode !== 'OWN' && (
-                      <div>
-                          <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Дата выхода из пула (необязательно)</label>
-                          <input
-                              type="date"
-                              className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                              value={formLeftPoolDate}
-                              onChange={e => setFormLeftPoolDate(e.target.value)}
-                          />
-                          <p className="text-xs text-slate-400 mt-1">
-                              Оставьте пустым, если инвестор ещё активен.
-                          </p>
-                      </div>
-                  )}
-                  {editingId && isEditingPoolMember && (
-                      <div>
-                          <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Дата выхода из пула (необязательно)</label>
-                          <input
-                              type="date"
-                              className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                              value={formLeftPoolDate}
-                              onChange={e => setFormLeftPoolDate(e.target.value)}
-                          />
-                          <p className="text-xs text-slate-400 mt-1">
-                              Инвестор перестанет получать долю будущей прибыли пула. История начислений до этой даты сохранится. Оставьте пустым, если инвестор ещё активен.
-                          </p>
-                      </div>
-                  )}
-                  {!editingId && poolMode !== 'OWN' && (
-                      <p className="text-xs text-slate-400 -mt-1">
-                          Для общего пула сумма вложения обязательна. Прибыль сначала делится между участниками пропорционально вложенной сумме, а затем к части каждого применяется именно его процент прибыли выше.
-                      </p>
-                  )}
+            {/* Общий инвестиционный пул — только на BUSINESS_PRO и только при создании */}
+            {showPools && !editingId && (
+              <SheetSection title="Счёт инвестора"
+                            hint={poolMode !== 'OWN' ? 'Остаток прибыли после долей участников каждый раз достаётся вам как менеджеру.' : 'У инвестора будет свой отдельный счёт.'}>
+                <div className="px-4 py-3">
+                  <SheetSegmented value={poolMode} onChange={setPoolMode}
+                                  options={[{ id: 'OWN', label: 'Отдельный' }, { id: 'EXISTING', label: 'В пул' }, { id: 'NEW', label: 'Новый пул' }]} />
+                </div>
+                {poolMode === 'EXISTING' && (
+                  <SheetField label="Пул"
+                              hint={selectedPoolAccountId ? `Уже вложено другими: ${selectedPoolTotalCapital.toLocaleString('ru-RU')} ₽. Процент инвестора применяется к части прибыли на его вложение.` : undefined}>
+                    <select className={`${sheetInputClass} h-7 appearance-none`} value={selectedPoolAccountId}
+                            onChange={e => setSelectedPoolAccountId(e.target.value)} required>
+                      <option value="">Выберите пул…</option>
+                      {poolAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                    </select>
+                  </SheetField>
+                )}
+                {poolMode === 'NEW' && (
+                  <SheetField label="Название пула">
+                    <input className={sheetInputClass} value={newPoolName} onChange={e => setNewPoolName(e.target.value)}
+                           autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="Общий пул инвесторов" required />
+                  </SheetField>
+                )}
+              </SheetSection>
+            )}
 
-                  {/* 🔹 Общий инвестиционный пул — только на BUSINESS_PRO, только при создании */}
-                  {showPools && !editingId && (
-                      <div className="bg-fuchsia-50 dark:bg-fuchsia-900/20 p-4 rounded-xl space-y-3 border border-fuchsia-100 dark:border-fuchsia-900/40">
-                          <h4 className="text-sm font-bold text-fuchsia-700 dark:text-fuchsia-400">Счёт инвестора</h4>
-                          <div className="grid grid-cols-3 gap-2">
-                              {(['OWN', 'EXISTING', 'NEW'] as const).map(mode => (
-                                  <button
-                                      key={mode}
-                                      type="button"
-                                      onClick={() => setPoolMode(mode)}
-                                      className={`py-2 px-2 rounded-lg text-xs font-bold transition-colors ${poolMode === mode ? 'bg-fuchsia-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600'}`}
-                                  >
-                                      {mode === 'OWN' ? 'Отдельный счёт' : mode === 'EXISTING' ? 'В общий пул' : '+ Новый пул'}
-                                  </button>
-                              ))}
-                          </div>
+            <SheetSection title="Вход в приложение"
+                          hint={editingId
+                            ? 'Новый пароль — только если хотите сменить. Пусто — останется прежний.'
+                            : 'Необязательно. Без email и пароля инвестор учитывается только в распределении прибыли — доступ можно дать позже.'}>
+              <SheetField label="Email — это логин">
+                <input className={sheetInputClass} value={formEmail} onChange={e => setFormEmail(e.target.value)}
+                       type="email" inputMode="email" autoComplete="off" autoCapitalize="off" spellCheck={false}
+                       placeholder="investor@example.com" />
+              </SheetField>
+              <SheetField label={editingId ? 'Новый пароль' : 'Пароль'}>
+                <input className={`${sheetInputClass} ${formPassword ? 'font-mono' : ''}`} value={formPassword} onChange={e => setFormPassword(e.target.value)}
+                       type="text" autoComplete="off" autoCapitalize="off" spellCheck={false}
+                       placeholder={editingId ? 'Не менять' : 'Нужен, если указан email'} />
+              </SheetField>
+            </SheetSection>
 
-                          {poolMode === 'EXISTING' && (
-                              <div className="space-y-1">
-                                  <select
-                                      className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                                      value={selectedPoolAccountId}
-                                      onChange={e => setSelectedPoolAccountId(e.target.value)}
-                                      required
-                                  >
-                                      <option value="">Выберите пул…</option>
-                                      {poolAccounts.map(acc => (
-                                          <option key={acc.id} value={acc.id}>{acc.name}</option>
-                                      ))}
-                                  </select>
-                                  {selectedPoolAccountId && (
-                                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                                          Уже вложено другими участниками: {selectedPoolTotalCapital.toLocaleString('ru-RU')} ₽. Ваш процент прибыли выше применяется к части прибыли, приходящейся именно на вложение этого инвестора.
-                                      </p>
-                                  )}
-                              </div>
-                          )}
-
-                          {poolMode === 'NEW' && (
-                              <input autoComplete="off" autoCorrect="off" spellCheck={false}
-                                  placeholder="Название пула (например, «Общий пул инвесторов»)"
-                                  className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                                  value={newPoolName}
-                                  onChange={e => setNewPoolName(e.target.value)}
-                                  required
-                              />
-                          )}
-
-                          {poolMode !== 'OWN' && (
-                              <p className="text-xs text-slate-500 dark:text-slate-400">Прибыль сначала делится между участниками пула пропорционально вложенной сумме, а затем к части каждого применяется его личный процент прибыли — остаток каждый раз достаётся вам как менеджеру.</p>
-                          )}
-                      </div>
-                  )}
-
-                  {/* Permissions */}
-                  <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-3">
-                      <h4 className="text-sm font-bold text-slate-600 dark:text-slate-300">Права доступа</h4>
-                      <div className="space-y-2">
-                          <label
-                              className="flex items-center gap-3 cursor-pointer p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors">
-                              <input
-                                  type="checkbox"
-                                  className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
-                                  checked={formPermissions.canViewContracts}
-                                  onChange={e => setFormPermissions({
-                                      ...formPermissions,
-                                      canViewContracts: e.target.checked
-                                  })}
-                              />
-                              <div className="text-sm">
-                                  <span className="font-semibold text-slate-800 dark:text-white block">Просмотр договоров</span>
-                                  <span
-                                      className="text-xs text-slate-500 dark:text-slate-400">Доступ к странице "Договоры" (только свои)</span>
-                              </div>
-                          </label>
-                          <label className="flex items-center gap-3 cursor-pointer p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors">
-                              <input
-                                type="checkbox"
-                                className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
-                                checked={formPermissions.canViewHistory}
-                                onChange={e => setFormPermissions({...formPermissions, canViewHistory: e.target.checked})}
-                              />
-                              <div className="text-sm">
-                                  <span className="font-semibold text-slate-800 dark:text-white block">Просмотр истории</span>
-                                  <span className="text-xs text-slate-500 dark:text-slate-400">Доступ к странице "История операций" (только свои)</span>
-                              </div>
-                          </label>
-                      </div>
-                  </div>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                  <button type="button" onClick={resetForm} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-medium text-slate-600 dark:text-slate-300">Отмена</button>
-                  <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">
-                      {editingId ? 'Сохранить' : 'Создать'}
-                  </button>
-              </div>
-          </form>
+            <SheetSection title="Что видит в приложении" hint="Только свои договоры и операции — чужие данные инвестору недоступны.">
+              <SheetToggle tone="indigo" label="Договоры" description="Страница «Договоры»"
+                           checked={!!formPermissions.canViewContracts}
+                           onChange={v => setFormPermissions({ ...formPermissions, canViewContracts: v })} />
+              <SheetToggle tone="indigo" label="История операций" description="Страница «История операций»"
+                           checked={!!formPermissions.canViewHistory}
+                           onChange={v => setFormPermissions({ ...formPermissions, canViewHistory: v })} />
+            </SheetSection>
+          </div>
+        </GlassSheet>
       )}
 
       <div className="grid gap-4">
-        {investors.length === 0 && !isAdding && (
+        {investors.length === 0 && (
             <div className="text-center py-8 text-slate-400">Нет инвесторов</div>
         )}
         {investors.length > 0 && search && investors.filter(inv => {

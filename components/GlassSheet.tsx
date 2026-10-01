@@ -72,6 +72,83 @@ export const SheetSection: React.FC<{ title?: React.ReactNode; hint?: React.Reac
   </section>
 );
 
+/** Поле формы: подпись сверху, ввод во всю ширину — длинные ФИО и адреса не режутся */
+export const SheetField: React.FC<{ label: React.ReactNode; hint?: React.ReactNode; children: React.ReactNode; className?: string }> = ({ label, hint, children, className = '' }) => (
+  <label className={`block px-4 py-2.5 ${className}`}>
+    <span className="block text-[12px] font-medium text-slate-500 dark:text-slate-400">{label}</span>
+    {children}
+    {hint && <span className="block mt-1 text-[12px] leading-snug text-slate-400 dark:text-slate-500">{hint}</span>}
+  </label>
+);
+
+/** Стиль ввода внутри SheetField: без рамки, 16px — iOS не увеличивает страницу при фокусе */
+export const sheetInputClass =
+  'mt-0.5 w-full bg-transparent outline-none text-[16px] text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600';
+
+/** Переключатель строкой — как в настройках iOS */
+export const SheetToggle: React.FC<{
+  label: React.ReactNode;
+  description?: React.ReactNode;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  tone?: 'indigo' | 'emerald';
+}> = ({ label, description, checked, onChange, tone = 'emerald' }) => (
+  <label className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer">
+    <span className="min-w-0">
+      <span className="block text-[16px] text-slate-900 dark:text-white">{label}</span>
+      {description && <span className="block mt-0.5 text-[12px] leading-snug text-slate-500 dark:text-slate-400">{description}</span>}
+    </span>
+    <span className="relative inline-flex shrink-0">
+      <input type="checkbox" className="sr-only peer" checked={checked} onChange={e => onChange(e.target.checked)} />
+      <span className={`w-[51px] h-[31px] rounded-full bg-slate-200 dark:bg-slate-700 transition-colors ${tone === 'indigo' ? 'peer-checked:bg-indigo-600' : 'peer-checked:bg-emerald-500'}`} />
+      <span className="absolute top-[2px] left-[2px] w-[27px] h-[27px] rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
+    </span>
+  </label>
+);
+
+/** Строка выбора одного варианта из списка — с галочкой справа, как в настройках iOS */
+export const SheetChoice: React.FC<{
+  selected: boolean;
+  label: React.ReactNode;
+  hint?: React.ReactNode;
+  onSelect: () => void;
+}> = ({ selected, label, hint, onSelect }) => (
+  <button type="button" role="radio" aria-checked={selected} onClick={onSelect}
+          className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-700/50 transition-colors">
+    <span className="min-w-0 flex-1">
+      <span className="block text-[16px] text-slate-900 dark:text-white">{label}</span>
+      {hint && <span className="block mt-0.5 text-[12px] leading-snug text-slate-500 dark:text-slate-400">{hint}</span>}
+    </span>
+    <span className={`shrink-0 transition-opacity ${selected ? 'opacity-100' : 'opacity-0'}`}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-indigo-600 dark:text-indigo-400">
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
+    </span>
+  </button>
+);
+
+/** Выбор одного из нескольких — сегменты, как UISegmentedControl */
+export function SheetSegmented<T extends string>({ value, options, onChange }: {
+  value: T;
+  options: { id: T; label: React.ReactNode }[];
+  onChange: (id: T) => void;
+}) {
+  return (
+    <div className="grid gap-1 p-1 rounded-xl bg-slate-200/70 dark:bg-slate-800" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+      {options.map(o => (
+        <button key={o.id} type="button" onClick={() => onChange(o.id)}
+                className={`h-9 rounded-[9px] text-[13px] font-semibold transition-all ${
+                  value === o.id
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-600 dark:text-white'
+                    : 'text-slate-500 dark:text-slate-400'
+                }`}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const GlassSheet: React.FC<GlassSheetProps> = ({
   title, subtitle, onClose, cancelLabel = 'Закрыть', action, confirmClose, onSubmit,
   footer, fit = 'full', zIndex = 200, children,

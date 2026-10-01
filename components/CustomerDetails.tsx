@@ -4,7 +4,7 @@ import SaleActionsMenu from './SaleActionsMenu';
 import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier, Task, RetailSale} from '../types';
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
-import EditCustomerSheet from './EditCustomerSheet';
+import CustomerFormSheet from './CustomerFormSheet';
 import CustomerDocumentsSheet from './CustomerDocumentsSheet';
 import SubPage from './transitions/SubPage';
 import { formatCurrency, formatDate, normalizePhoneForWhatsApp, retailPaidAmount, retailRemaining } from '../src/utils';
@@ -935,7 +935,7 @@ ${customer.name}!
                 </div>
             )}
             {showEditModal && onUpdateCustomer && (
-                <EditCustomerSheet customer={customer} onClose={() => setShowEditModal(false)} onUpdate={onUpdateCustomer}/>
+                <CustomerFormSheet customer={customer} onClose={() => setShowEditModal(false)} onUpdate={onUpdateCustomer}/>
             )}
             {/* 🔹 НОВОЕ: модалка документов */}
             {showDocumentsModal && onUpdateCustomer && (

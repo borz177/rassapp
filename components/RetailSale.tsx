@@ -34,6 +34,7 @@ interface RetailSaleProps {
   onQuickAddCustomer?: (data: {
     name: string; phone: string; address?: string;
     passportSeries?: string; passportNumber?: string; passportIssuedBy?: string;
+    photo?: string; birthDate?: string;
   }) => Promise<Customer | undefined>;
   onBack: () => void;
   showCents?: boolean;

@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { User, Investor, AppSettings, StockLocation } from '../types';
 import { ICONS } from '../constants';
 import { appConfirm } from '../src/dialogs';
+import GlassSheet, { SheetSection, SheetField, SheetToggle, SheetChoice, SheetSegmented, sheetInputClass } from './GlassSheet';
 
 interface EmployeesProps {
   employees: User[];
@@ -115,8 +116,9 @@ const [fullAccessMainAccount, setFullAccessMainAccount] = useState(false);
       );
   };
 
-const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+// Сохранение из листа: закрывает его сам лист (close), а форму сбрасывает
+// resetForm на его уходе — иначе лист пропадал бы мгновенно, без анимации.
+const handleSubmit = (close: () => void) => {
     if (!name || !email) {
         alert("Заполните имя и email");
         return;
@@ -177,8 +179,18 @@ const handleSubmit = (e: React.FormEvent) => {
         }
         onAddEmployee({ ...employeeData, password });
     }
-    resetForm();
+    close();
 };
+
+  // Что было в форме при открытии — переспрашиваем при закрытии, только если что-то поменяли
+  const formSnapshot = JSON.stringify({
+    name, email, password, allowMainAccount, fullAccessMainAccount, permissions, allowedInvestorIds,
+    fullAccessInvestorIds, profitPercentage, profitBase, profitReducesManager, profitSource, profitSince,
+    warehouseMode, allowedWarehouseIds,
+  });
+  const openedWith = useRef('');
+  useEffect(() => { if (isAdding) openedWith.current = formSnapshot; }, [isAdding, editingId]);
+  const formDirty = isAdding && formSnapshot !== openedWith.current;
 
   const handleDelete = async (id: string) => {
       if (await appConfirm("Удалить сотрудника?")) {
@@ -204,336 +216,151 @@ const handleSubmit = (e: React.FormEvent) => {
       </header>
 
       {isAdding && (
-          <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-md border border-slate-100 dark:border-slate-700 space-y-5 animate-fade-in">
-              <h3 className="font-bold text-slate-800 dark:text-white border-b border-slate-100 dark:border-slate-700 pb-2">
-                  {editingId ? 'Редактирование сотрудника' : 'Новый сотрудник'}
-              </h3>
+        <GlassSheet
+          title={editingId ? 'Сотрудник' : 'Новый сотрудник'}
+          subtitle={editingId ? (name.trim() || email) : 'Войдёт в приложение по email и паролю'}
+          onClose={resetForm}
+          cancelLabel="Отмена"
+          action={{
+            label: editingId ? 'Готово' : 'Добавить',
+            submit: true,
+            disabled: !name.trim() || !email.trim() || (!editingId && !password) || (!!editingId && !formDirty),
+          }}
+          onSubmit={handleSubmit}
+          confirmClose={() => !formDirty || appConfirm({
+            title: editingId ? 'Закрыть без сохранения?' : 'Не добавлять сотрудника?',
+            message: 'Введённые данные пропадут.',
+            confirmLabel: 'Закрыть',
+            cancelLabel: 'Остаться',
+            destructive: true,
+          })}
+        >
+          <div className="space-y-6">
+            <SheetSection title="Вход в приложение">
+              <SheetField label="Имя и фамилия">
+                <input className={sheetInputClass} value={name} onChange={e => setName(e.target.value)}
+                       autoComplete="off" autoCorrect="off" spellCheck={false} autoCapitalize="words"
+                       enterKeyHint="next" placeholder="Анна Петрова" required />
+              </SheetField>
+              <SheetField label="Email — это логин">
+                <input className={sheetInputClass} value={email} onChange={e => setEmail(e.target.value)}
+                       type="email" inputMode="email" autoComplete="off" autoCapitalize="off" spellCheck={false}
+                       enterKeyHint="next" placeholder="anna@example.com" required />
+              </SheetField>
+              <SheetField label={editingId ? 'Новый пароль' : 'Пароль'}
+                          hint={editingId ? 'Оставьте пустым — пароль не изменится.' : 'Передайте его сотруднику — сменить можно здесь же.'}>
+                <input className={`${sheetInputClass} ${password ? 'font-mono' : ''}`} value={password} onChange={e => setPassword(e.target.value)}
+                       type="text" autoComplete="off" autoCapitalize="off" spellCheck={false}
+                       placeholder={editingId ? 'Не менять' : 'Минимум 6 символов'} required={!editingId} />
+              </SheetField>
+            </SheetSection>
 
-              <div className="space-y-3">
-                  <input 
-                    placeholder="Имя Фамилия"
-                    className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                  />
-                  <div className="grid grid-cols-2 gap-3">
-                      <input 
-                        placeholder="Email (Логин)"
-                        type="email"
-                        className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                      />
-                      <input 
-                        placeholder={editingId ? "Новый пароль (необяз.)" : "Пароль"}
-                        type="text"
-                        className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                      />
-                  </div>
-              </div>
+            <SheetSection title="Что может делать" hint="Без этих прав сотрудник только смотрит.">
+              <SheetToggle tone="indigo" label="Создание" description="Договоры, платежи, клиенты, расходы"
+                           checked={!!permissions.canCreate} onChange={v => setPermissions({ ...permissions, canCreate: v })} />
+              <SheetToggle tone="indigo" label="Редактирование" description="Правка уже внесённых записей"
+                           checked={!!permissions.canEdit} onChange={v => setPermissions({ ...permissions, canEdit: v })} />
+              <SheetToggle tone="indigo" label="Удаление" description="Удаление и отмена записей"
+                           checked={!!permissions.canDelete} onChange={v => setPermissions({ ...permissions, canDelete: v })} />
+              {showShop && (
+                <SheetToggle tone="indigo" label="Магазин и склад"
+                             description="Касса, товары, остатки и журнал. Без права разделы не видны, закупочные цены скрыты."
+                             checked={!!permissions.canUseShop} onChange={v => setPermissions({ ...permissions, canUseShop: v })} />
+              )}
+            </SheetSection>
 
-              {/* 💰 Мотивация: процент от прибыли */}
-              <div className="bg-emerald-50/60 dark:bg-emerald-900/20 p-4 rounded-xl space-y-3 border border-emerald-100 dark:border-emerald-900/40">
-                  <h4 className="text-sm font-bold text-slate-600 dark:text-slate-300">Процент от прибыли</h4>
+            {/* Склады — только при доступе к магазину и если их несколько: с одним выбирать нечего */}
+            {showShop && permissions.canUseShop && liveWarehouses.length > 1 && (
+              <SheetSection title="Склады"
+                            hint={warehouseMode === 'ALL' ? 'Доступны все склады, в том числе новые.' : 'Касса, остатки, приход и журнал — только по отмеченным складам.'}>
+                <div className="px-4 py-3">
+                  <SheetSegmented value={warehouseMode} onChange={setWarehouseMode}
+                                  options={[{ id: 'ALL', label: 'Все склады' }, { id: 'SELECTED', label: 'Выбранные' }]} />
+                </div>
+                {warehouseMode === 'SELECTED' && liveWarehouses.map(w => (
+                  <SheetToggle key={w.id} tone="indigo"
+                               label={<span className="flex items-center gap-2">{w.name}{w.isMain && <span className="px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-bold uppercase">Основной</span>}</span>}
+                               checked={allowedWarehouseIds.includes(w.id)}
+                               onChange={() => setAllowedWarehouseIds(prev => prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id])} />
+                ))}
+              </SheetSection>
+            )}
 
-                  <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.1"
-                        placeholder="не начисляется"
-                        className="w-40 p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                        value={profitPercentage}
-                        onChange={e => setProfitPercentage(e.target.value)}
-                      />
-                      <span className="text-slate-500 dark:text-slate-400 text-sm">% от прибыли</span>
-                  </div>
-
-                  {Number(profitPercentage) > 0 && (
-                    <>
-                      <div>
-                          <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase mb-2">Считать от</p>
-                          <div className="space-y-2">
-                              {([
-                                { key: 'CONTRACTS', label: 'Договоров, которые он оформил', hint: 'Премия капает со всех платежей его клиентов' },
-                                { key: 'PAYMENTS', label: 'Платежей, которые он принял', hint: 'Мотивация на сбор денег' },
-                                { key: 'ALL', label: 'Всей прибыли', hint: 'Доля со всего бизнеса' },
-                              ] as const).map(opt => (
-                                <label key={opt.key} className={`flex items-start gap-2.5 p-3 rounded-xl border-2 cursor-pointer ${
-                                    profitBase === opt.key
-                                      ? 'border-emerald-600 bg-white dark:bg-slate-900'
-                                      : 'border-slate-200 dark:border-slate-600 bg-white/60 dark:bg-slate-900/40'
-                                }`}>
-                                    <input
-                                      type="radio"
-                                      name="profitBase"
-                                      className="mt-0.5 w-4 h-4 text-emerald-600 focus:ring-emerald-500"
-                                      checked={profitBase === opt.key}
-                                      onChange={() => setProfitBase(opt.key)}
-                                    />
-                                    <span className="min-w-0">
-                                        <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">{opt.label}</span>
-                                        <span className="block text-xs text-slate-500 dark:text-slate-400">{opt.hint}</span>
-                                    </span>
-                                </label>
-                              ))}
-                          </div>
-                      </div>
-
-                      <div>
-                          <label className="block text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase mb-2">Начислять с даты</label>
-                          <input
-                            type="date"
-                            className="w-full p-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                            value={profitSince}
-                            onChange={e => setProfitSince(e.target.value)}
-                          />
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                              Платежи, поступившие раньше этой даты, в премию не идут.
-                              {!profitSince && ' Если оставить пусто — начнём с сегодняшнего дня.'}
-                          </p>
-                      </div>
-
-                      <div>
-                          <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase mb-2">Из чьей прибыли платится</p>
-                          <div className="space-y-2">
-                              {([
-                                { key: 'MANAGER', label: 'Из моей доли', hint: 'Сотрудник нанят вами — доли инвесторов не затрагиваются' },
-                                { key: 'SHARED', label: 'Расход общего дела', hint: 'Вычитается из прибыли до распределения — ложится и на инвесторов. Только по договорённости с ними' },
-                              ] as const).map(opt => (
-                                <label key={opt.key} className={`flex items-start gap-2.5 p-3 rounded-xl border-2 cursor-pointer ${
-                                    profitSource === opt.key
-                                      ? 'border-emerald-600 bg-white dark:bg-slate-900'
-                                      : 'border-slate-200 dark:border-slate-600 bg-white/60 dark:bg-slate-900/40'
-                                }`}>
-                                    <input
-                                      type="radio"
-                                      name="profitSource"
-                                      className="mt-0.5 w-4 h-4 text-emerald-600 focus:ring-emerald-500"
-                                      checked={profitSource === opt.key}
-                                      onChange={() => setProfitSource(opt.key)}
-                                    />
-                                    <span className="min-w-0">
-                                        <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">{opt.label}</span>
-                                        <span className="block text-xs text-slate-500 dark:text-slate-400">{opt.hint}</span>
-                                    </span>
-                                </label>
-                              ))}
-                          </div>
-                          <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
-                              Если ваша доля прибыли по счёту равна нулю, премия из неё платиться не может —
-                              тогда единственный рабочий вариант это «расход общего дела», и он требует согласия инвесторов.
-                          </p>
-                      </div>
-
-                      <label className="flex items-start gap-2.5 pt-1 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            className="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500"
-                            checked={profitReducesManager}
-                            onChange={e => setProfitReducesManager(e.target.checked)}
-                          />
-                          <span className="min-w-0">
-                              <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">Сразу уменьшать мою прибыль</span>
-                              <span className="block text-xs text-slate-500 dark:text-slate-400">
-                                  Иначе прибыль уменьшится только когда зарплата будет фактически выплачена,
-                                  а начисленное будет видно отдельно как долг перед сотрудником
-                              </span>
-                          </span>
-                      </label>
-
-                      <p className="text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-emerald-100 dark:border-emerald-900/40">
-                          Начисляется по мере поступления платежей, по мере фактической оплаты клиентами.
-                      </p>
-                    </>
-                  )}
-              </div>
-
-              {/* Permissions */}
-              <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-3">
-                  <h4 className="text-sm font-bold text-slate-600 dark:text-slate-300">Права доступа (CRUD)</h4>
-                  {/* Три права плитками в сетку: строкой они не помещались в ширину
-                      телефона, и «Удаление» уезжало за край карточки. */}
-                  <div className="grid grid-cols-3 gap-2">
-                      {([
-                        ['canCreate', 'Создание'],
-                        ['canEdit', 'Редактирование'],
-                        ['canDelete', 'Удаление'],
-                      ] as const).map(([key, label]) => (
-                        <label key={key}
-                               className={`min-w-0 flex flex-col sm:flex-row items-center justify-center gap-1.5 px-1.5 py-2.5 rounded-xl border-2 cursor-pointer text-center transition-colors ${
-                                 permissions[key]
-                                   ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30'
-                                   : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800'
-                               }`}>
-                            <input
-                              type="checkbox"
-                              className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
-                              checked={permissions[key]}
-                              onChange={e => setPermissions({...permissions, [key]: e.target.checked})}
-                            />
-                            <span className="text-[10px] tracking-tight sm:text-sm sm:tracking-normal leading-tight text-slate-700 dark:text-slate-300 break-words">{label}</span>
-                        </label>
-                      ))}
-                  </div>
-
-                  {/* Доступ к разделу, а не к действию, — поэтому отдельной
-                      строкой под чертой, а не четвёртой галочкой в ряд с CRUD. */}
-                  {showShop && (
-                    <label className="flex items-start gap-3 cursor-pointer pt-3 border-t border-slate-200 dark:border-slate-600">
-                        <input
-                          type="checkbox"
-                          className="w-5 h-5 mt-0.5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
-                          checked={!!permissions.canUseShop}
-                          onChange={e => setPermissions({...permissions, canUseShop: e.target.checked})}
-                        />
-                        <span className="text-sm">
-                            <span className="font-semibold text-slate-800 dark:text-white block">Магазин и склад</span>
-                            <span className="text-slate-500 dark:text-slate-400 text-xs">
-                                Касса, товары, остатки и журнал документов. Без этого права разделы не видны,
-                                а закупочные цены и остатки сотруднику недоступны.
-                            </span>
-                        </span>
-                    </label>
-                  )}
-
-                  {/* Какие склады открыть. Только при доступе к магазину и если складов
-                      несколько: с одним складом выбирать нечего. */}
-                  {showShop && permissions.canUseShop && liveWarehouses.length > 1 && (
-                    <div className="pl-8 space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
-                            {([['ALL', 'Все склады'], ['SELECTED', 'Выбранные']] as const).map(([mode, label]) => (
-                              <button key={mode} type="button" onClick={() => setWarehouseMode(mode)}
-                                      className={`py-2 rounded-xl border-2 text-xs font-bold transition-colors ${
-                                        warehouseMode === mode
-                                          ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
-                                          : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                                      }`}>
-                                  {label}
-                              </button>
-                            ))}
-                        </div>
-                        {warehouseMode === 'ALL' ? (
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                              Доступны все склады, в том числе новые.
-                          </p>
-                        ) : (
-                          <>
-                            <div className="rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 divide-y divide-slate-100 dark:divide-slate-700">
-                                {liveWarehouses.map(w => (
-                                  <label key={w.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
-                                        checked={allowedWarehouseIds.includes(w.id)}
-                                        onChange={() => setAllowedWarehouseIds(prev =>
-                                          prev.includes(w.id) ? prev.filter(id => id !== w.id) : [...prev, w.id])}
-                                      />
-                                      <span className="min-w-0 flex-1 text-sm text-slate-700 dark:text-slate-200 truncate">{w.name}</span>
-                                      {w.isMain && (
-                                        <span className="shrink-0 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase">
-                                            Основной
-                                        </span>
-                                      )}
-                                  </label>
-                                ))}
-                            </div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
-                                Касса, остатки, приход и журнал — только по отмеченным складам.
-                            </p>
-                          </>
-                        )}
+            <SheetSection title="Доступ к счетам"
+                          hint="По умолчанию сотрудник видит только свои записи. «Все данные» открывают всё по счёту или инвестору.">
+              <SheetToggle tone="indigo" label="Основной счёт компании"
+                           description="Операции на главном счёте — даже если инвесторов нет"
+                           checked={allowMainAccount}
+                           onChange={v => { setAllowMainAccount(v); if (!v) setFullAccessMainAccount(false); }} />
+              {allowMainAccount && (
+                <div className="pl-4 bg-slate-50/60 dark:bg-slate-900/30">
+                  <SheetToggle label="Видит все данные по счёту" checked={fullAccessMainAccount} onChange={setFullAccessMainAccount} />
+                </div>
+              )}
+              {investors.map(inv => (
+                <React.Fragment key={inv.id}>
+                  <SheetToggle tone="indigo" label={inv.name} description={inv.email || 'Инвестор'}
+                               checked={allowedInvestorIds.includes(inv.id)} onChange={() => handleInvestorToggle(inv.id)} />
+                  {allowedInvestorIds.includes(inv.id) && (
+                    <div className="pl-4 bg-slate-50/60 dark:bg-slate-900/30">
+                      <SheetToggle label="Видит все данные по инвестору"
+                                   checked={fullAccessInvestorIds.includes(inv.id)} onChange={() => handleFullAccessInvestorToggle(inv.id)} />
                     </div>
                   )}
-              </div>
+                </React.Fragment>
+              ))}
+            </SheetSection>
 
-              {/* Investor Access */}
-              {/* Доступ к счетам */}
-<div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl space-y-3">
-    <h4 className="text-sm font-bold text-slate-600 dark:text-slate-300">Доступ к счетам</h4>
-    <p className="text-xs text-slate-500 dark:text-slate-400 -mt-2">
-        По умолчанию сотрудник видит только созданные им самим записи. Включите «Видит все данные»,
-        чтобы дать полный доступ ко всем операциям по счёту/инвестору.
-    </p>
+            <SheetSection title="Процент от прибыли" hint={Number(profitPercentage) > 0
+              ? 'Начисляется по мере того, как клиенты платят.'
+              : 'Пусто — премия не начисляется.'}>
+              <SheetField label="Процент">
+                <span className="flex items-baseline gap-1">
+                  <input className={`${sheetInputClass} w-24`} value={profitPercentage} onChange={e => setProfitPercentage(e.target.value)}
+                         type="number" inputMode="decimal" min="0" max="100" step="0.1" placeholder="0" />
+                  <span className="text-[16px] text-slate-400">%</span>
+                </span>
+              </SheetField>
+            </SheetSection>
 
-    {/* ГАЛОЧКА ДЛЯ ОСНОВНОГО СЧЕТА */}
-    <div className="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg space-y-2">
-        <label className="flex items-center gap-3 cursor-pointer">
-            <input
-                type="checkbox"
-                className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"
-                checked={allowMainAccount}
-                onChange={e => {
-                    setAllowMainAccount(e.target.checked);
-                    if (!e.target.checked) setFullAccessMainAccount(false);
-                }}
-            />
-            <div className="text-sm">
-                <span className="font-semibold text-slate-800 dark:text-white block">Основной счет компании</span>
-                <span className="text-slate-500 dark:text-slate-400 text-xs">Сотрудник сможет видеть и создавать операции на главном счете, даже если нет инвесторов.</span>
-            </div>
-        </label>
-        {allowMainAccount && (
-            <label className="flex items-center gap-2 pl-8 cursor-pointer">
-                <input
-                    type="checkbox"
-                    className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500"
-                    checked={fullAccessMainAccount}
-                    onChange={e => setFullAccessMainAccount(e.target.checked)}
-                />
-                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Видит все данные по этому счёту</span>
-            </label>
-        )}
-    </div>
+            {Number(profitPercentage) > 0 && (
+              <>
+                <SheetSection title="Считать от">
+                  {([
+                    { key: 'CONTRACTS', label: 'Договоров, которые он оформил', hint: 'Премия идёт со всех платежей его клиентов' },
+                    { key: 'PAYMENTS', label: 'Платежей, которые он принял', hint: 'Мотивация на сбор денег' },
+                    { key: 'ALL', label: 'Всей прибыли', hint: 'Доля со всего бизнеса' },
+                  ] as const).map(opt => (
+                    <SheetChoice key={opt.key} selected={profitBase === opt.key} label={opt.label} hint={opt.hint} onSelect={() => setProfitBase(opt.key)} />
+                  ))}
+                </SheetSection>
 
-    <p className="text-xs text-slate-500 dark:text-slate-400 mt-4 mb-2">Или выберите конкретных инвесторов:</p>
-    <div className="max-h-56 overflow-y-auto space-y-2 border border-slate-200 dark:border-slate-600 rounded-lg p-2 bg-white dark:bg-slate-800">
-        {investors.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-500 p-2">Нет инвесторов</p>}
-        {investors.map(inv => (
-            <div key={inv.id} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg space-y-1.5">
-                <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-purple-600 focus:ring-purple-500"
-                        checked={allowedInvestorIds.includes(inv.id)}
-                        onChange={() => handleInvestorToggle(inv.id)}
-                    />
-                    <div className="text-sm">
-                        <span className="font-semibold text-slate-800 dark:text-white block">{inv.name}</span>
-                        <span className="text-slate-500 dark:text-slate-400 text-xs">{inv.email}</span>
-                    </div>
-                </label>
-                {allowedInvestorIds.includes(inv.id) && (
-                    <label className="flex items-center gap-2 pl-8 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500"
-                            checked={fullAccessInvestorIds.includes(inv.id)}
-                            onChange={() => handleFullAccessInvestorToggle(inv.id)}
-                        />
-                        <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Видит все данные по этому инвестору</span>
-                    </label>
-                )}
-            </div>
-        ))}
-    </div>
-</div>
+                <SheetSection title="Из чьей прибыли"
+                              hint="Если ваша доля прибыли по счёту нулевая, премия из неё платиться не может — тогда подходит только «расход общего дела», и он требует согласия инвесторов.">
+                  {([
+                    { key: 'MANAGER', label: 'Из моей доли', hint: 'Доли инвесторов не затрагиваются' },
+                    { key: 'SHARED', label: 'Расход общего дела', hint: 'Вычитается до распределения — ложится и на инвесторов' },
+                  ] as const).map(opt => (
+                    <SheetChoice key={opt.key} selected={profitSource === opt.key} label={opt.label} hint={opt.hint} onSelect={() => setProfitSource(opt.key)} />
+                  ))}
+                </SheetSection>
 
-              <div className="flex gap-3">
-                  <button type="button" onClick={resetForm} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-bold text-slate-600 dark:text-slate-300">Отмена</button>
-                  <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">
-                      {editingId ? 'Сохранить изменения' : 'Создать сотрудника'}
-                  </button>
-              </div>
-          </form>
+                <SheetSection hint="Иначе прибыль уменьшится, когда зарплату фактически выплатят, а начисленное будет видно как долг перед сотрудником.">
+                  <SheetField label="Начислять с даты" hint={profitSince ? 'Платежи до этой даты в премию не идут.' : 'Пусто — с сегодняшнего дня.'}>
+                    <input className={`${sheetInputClass} h-7 appearance-none [&::-webkit-date-and-time-value]:text-left`}
+                           type="date" value={profitSince} onChange={e => setProfitSince(e.target.value)} />
+                  </SheetField>
+                  <SheetToggle label="Сразу уменьшать мою прибыль" checked={profitReducesManager} onChange={setProfitReducesManager} />
+                </SheetSection>
+              </>
+            )}
+          </div>
+        </GlassSheet>
       )}
 
       {/* Employee List */}
       <div className="grid gap-4">
-          {employees.length === 0 && !isAdding && (
+          {employees.length === 0 && (
               <div className="text-center py-10 text-slate-400 dark:text-slate-500">Нет сотрудников</div>
           )}
           {employees.map(emp => (
